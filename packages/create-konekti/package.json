@@ -2,5 +2,18 @@
   "name": "create-konekti",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "bin": {
+    "create-konekti": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@konekti/cli": "workspace:*"
+  }
 }
