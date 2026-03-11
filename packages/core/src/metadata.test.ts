@@ -18,12 +18,14 @@ describe('metadata helpers', () => {
     defineModuleMetadata(ExampleModule, {
       exports: ['LOGGER'],
       imports: ['SharedModule'],
+      middleware: ['LoggingMiddleware'],
       providers: ['LoggerProvider'],
     });
 
     expect(getModuleMetadata(ExampleModule)).toEqual({
       exports: ['LOGGER'],
       imports: ['SharedModule'],
+      middleware: ['LoggingMiddleware'],
       providers: ['LoggerProvider'],
       controllers: undefined,
     });

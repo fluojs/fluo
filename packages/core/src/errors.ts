@@ -4,9 +4,6 @@ export interface KonektiErrorOptions {
   meta?: Record<string, unknown>;
 }
 
-/**
- * Base framework error for transport-agnostic failures.
- */
 export class KonektiError extends Error {
   readonly code: string;
   readonly meta?: Record<string, unknown>;
@@ -29,9 +26,6 @@ export class KonektiError extends Error {
   }
 }
 
-/**
- * Raised when an internal contract assumption is violated.
- */
 export class InvariantError extends KonektiError {
   constructor(message: string, options: Omit<KonektiErrorOptions, 'code'> = {}) {
     super(message, { ...options, code: 'INVARIANT_ERROR' });

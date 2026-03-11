@@ -5,6 +5,7 @@ export interface ModuleMetadata {
   providers?: unknown[];
   controllers?: unknown[];
   exports?: unknown[];
+  middleware?: unknown[];
 }
 
 export interface ControllerMetadata {
@@ -47,6 +48,9 @@ const routeMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, RouteMet
 const dtoFieldBindingStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldBindingMetadata>>();
 const injectionMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, InjectionMetadata>>();
 
+/**
+ * 가드와 인터셉터 배열까지 복사해 route 메타데이터를 안전하게 복제한다.
+ */
 function cloneRouteMetadata(metadata: RouteMetadata): RouteMetadata {
   return {
     ...metadata,
@@ -55,6 +59,9 @@ function cloneRouteMetadata(metadata: RouteMetadata): RouteMetadata {
   };
 }
 
+/**
+ * 특정 대상에 연결된 속성별 메타데이터 맵을 가져오고, 없으면 새로 만든다.
+ */
 function getOrCreatePropertyMap<T>(
   store: WeakMap<object, Map<MetadataPropertyKey, T>>,
   target: object,
@@ -70,7 +77,7 @@ function getOrCreatePropertyMap<T>(
 }
 
 /**
- * Stores module metadata on a module class.
+ * 모듈 클래스에 모듈 메타데이터를 저장한다.
  */
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
   moduleMetadataStore.set(target, {
@@ -78,11 +85,12 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
     providers: metadata.providers ? [...metadata.providers] : undefined,
     controllers: metadata.controllers ? [...metadata.controllers] : undefined,
     exports: metadata.exports ? [...metadata.exports] : undefined,
+    middleware: metadata.middleware ? [...metadata.middleware] : undefined,
   });
 }
 
 /**
- * Reads normalized module metadata from a module class.
+ * 모듈 클래스에서 정규화된 모듈 메타데이터를 읽는다.
  */
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
   const metadata = moduleMetadataStore.get(target);
@@ -93,12 +101,13 @@ export function getModuleMetadata(target: Function): ModuleMetadata | undefined 
         providers: metadata.providers ? [...metadata.providers] : undefined,
         controllers: metadata.controllers ? [...metadata.controllers] : undefined,
         exports: metadata.exports ? [...metadata.exports] : undefined,
+        middleware: metadata.middleware ? [...metadata.middleware] : undefined,
       }
     : undefined;
 }
 
 /**
- * Stores controller-level metadata on a controller class.
+ * 컨트롤러 클래스에 컨트롤러 레벨 메타데이터를 저장한다.
  */
 export function defineControllerMetadata(target: Function, metadata: ControllerMetadata): void {
   controllerMetadataStore.set(target, {
@@ -109,7 +118,7 @@ export function defineControllerMetadata(target: Function, metadata: ControllerM
 }
 
 /**
- * Reads normalized controller metadata from a controller class.
+ * 컨트롤러 클래스에서 정규화된 컨트롤러 메타데이터를 읽는다.
  */
 export function getControllerMetadata(target: Function): ControllerMetadata | undefined {
   const metadata = controllerMetadataStore.get(target);
@@ -124,7 +133,7 @@ export function getControllerMetadata(target: Function): ControllerMetadata | un
 }
 
 /**
- * Stores route metadata on a controller prototype method.
+ * 컨트롤러 프로토타입 메서드에 라우트 메타데이터를 저장한다.
  */
 export function defineRouteMetadata(
   target: object,
@@ -135,7 +144,7 @@ export function defineRouteMetadata(
 }
 
 /**
- * Reads normalized route metadata from a controller prototype method.
+ * 컨트롤러 프로토타입 메서드에서 정규화된 라우트 메타데이터를 읽는다.
  */
 export function getRouteMetadata(
   target: object,
@@ -147,7 +156,7 @@ export function getRouteMetadata(
 }
 
 /**
- * Stores DTO field binding metadata on a DTO prototype field.
+ * DTO 프로토타입 필드에 바인딩 메타데이터를 저장한다.
  */
 export function defineDtoFieldBindingMetadata(
   target: object,
@@ -158,7 +167,7 @@ export function defineDtoFieldBindingMetadata(
 }
 
 /**
- * Stores injection metadata on a class field.
+ * 클래스 필드에 주입 메타데이터를 저장한다.
  */
 export function defineInjectionMetadata(
   target: object,
@@ -169,7 +178,7 @@ export function defineInjectionMetadata(
 }
 
 /**
- * Builds a normalized DTO binding schema from stored field metadata.
+ * 저장된 필드 메타데이터로부터 정규화된 DTO 바인딩 스키마를 만든다.
  */
 export function getDtoBindingSchema(dto: new (...args: never[]) => unknown) {
   const map = dtoFieldBindingStore.get(dto.prototype) ?? new Map<MetadataPropertyKey, DtoFieldBindingMetadata>();
@@ -181,7 +190,7 @@ export function getDtoBindingSchema(dto: new (...args: never[]) => unknown) {
 }
 
 /**
- * Builds a normalized injection schema from stored field metadata.
+ * 저장된 필드 메타데이터로부터 정규화된 주입 스키마를 만든다.
  */
 export function getInjectionSchema(target: object) {
   const map = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
