@@ -11,7 +11,9 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@konekti/config": "workspace:*",
     "@konekti-internal/di": "workspace:*",
+    "@konekti/http": "workspace:*",
     "@konekti/core": "workspace:*"
   }
 }
