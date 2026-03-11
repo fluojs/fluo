@@ -1,4 +1,4 @@
-import type { MaybePromise } from '@konekti/core';
+import type { Constructor, MaybePromise, Token } from '@konekti/core';
 import type { RequestScopeContainer } from '@konekti-internal/di';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
@@ -43,3 +43,91 @@ export interface RequestContext {
   metadata: Record<string, unknown>;
   container: RequestScopeContainer;
 }
+
+export type ControllerHandler<Input = unknown, Result = unknown> = (
+  input: Input,
+  ctx: RequestContext,
+) => MaybePromise<Result>;
+
+export interface RouteDefinition {
+  method: HttpMethod;
+  path: string;
+  request?: Constructor;
+  guards?: GuardLike[];
+  interceptors?: InterceptorLike[];
+  successStatus?: number;
+}
+
+export interface HandlerMetadata {
+  controllerPath: string;
+  effectivePath: string;
+  moduleMiddleware: MiddlewareLike[];
+  moduleType?: Constructor;
+  pathParams: string[];
+}
+
+export interface HandlerDescriptor {
+  controllerToken: Constructor;
+  metadata: HandlerMetadata;
+  methodName: string;
+  route: RouteDefinition;
+}
+
+export interface HandlerMatch {
+  descriptor: HandlerDescriptor;
+  params: Readonly<Record<string, string>>;
+}
+
+export interface HandlerMapping {
+  readonly descriptors: HandlerDescriptor[];
+
+  match(request: FrameworkRequest): HandlerMatch | undefined;
+}
+
+export interface HandlerSource {
+  controllerToken: Constructor;
+  moduleMiddleware?: MiddlewareLike[];
+  moduleType?: Constructor;
+}
+
+export interface Dispatcher {
+  dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void>;
+}
+
+export type Next = () => Promise<void>;
+
+export interface MiddlewareContext {
+  request: FrameworkRequest;
+  requestContext: RequestContext;
+  response: FrameworkResponse;
+}
+
+export interface Middleware {
+  handle(context: MiddlewareContext, next: Next): MaybePromise<void>;
+}
+
+export interface GuardContext {
+  handler: HandlerDescriptor;
+  requestContext: RequestContext;
+}
+
+export interface Guard {
+  canActivate(context: GuardContext): MaybePromise<void | boolean>;
+}
+
+export interface CallHandler {
+  handle(): Promise<unknown>;
+}
+
+export interface InterceptorContext {
+  handler: HandlerDescriptor;
+  requestContext: RequestContext;
+}
+
+export interface Interceptor {
+  intercept(context: InterceptorContext, next: CallHandler): MaybePromise<unknown>;
+}
+
+export type MiddlewareLike = Middleware | Token<Middleware>;
+export type GuardLike = Guard | Token<Guard>;
+export type InterceptorLike = Interceptor | Token<Interceptor>;

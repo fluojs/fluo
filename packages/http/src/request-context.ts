@@ -7,21 +7,21 @@ import type { RequestContext } from './types';
 const requestContextStore = new AsyncLocalStorage<RequestContext>();
 
 /**
- * Runs a callback inside a request-scoped ALS context.
+ * 콜백을 요청 스코프 ALS 컨텍스트 안에서 실행한다.
  */
 export function runWithRequestContext<T>(context: RequestContext, callback: () => T): T {
   return requestContextStore.run(context, callback);
 }
 
 /**
- * Returns the current request context when called inside an active request scope.
+ * 현재 비동기 스코프에 활성화된 요청 컨텍스트가 있으면 반환한다.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
   return requestContextStore.getStore();
 }
 
 /**
- * Returns the current request context or throws when no request scope is active.
+ * 현재 요청 컨텍스트를 반환하고, 활성 스코프가 없으면 예외를 던진다.
  */
 export function assertRequestContext(): RequestContext {
   const context = getCurrentRequestContext();
@@ -36,7 +36,7 @@ export function assertRequestContext(): RequestContext {
 }
 
 /**
- * Creates a defensive request-context object suitable for ALS storage.
+ * ALS 저장에 안전하도록 요청 컨텍스트를 방어적으로 복사해 만든다.
  */
 export function createRequestContext(context: RequestContext): RequestContext {
   return {
