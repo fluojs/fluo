@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { Controller, Get, createDispatcher, createHandlerMapping } from '@konekti/http';
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
+import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti/http';
 import { Container } from '@konekti-internal/di';
 
 import { RequireScopes, UseAuth } from './decorators';
+import { AuthenticationRequiredError } from './errors';
 import { createPassportProviders } from './module';
 import { createPassportJsStrategyBridge } from './passport-js';
 import type { AuthStrategy } from './types';
@@ -84,6 +85,99 @@ describe('AuthGuard', () => {
     await dispatcher.dispatch(createRequest('/profile'), response);
 
     expect(response.body).toEqual({ subject: 'mock-user' });
+  });
+
+  it('maps authentication-required failures to a canonical 401 response', async () => {
+    class MissingCredentialsStrategy implements AuthStrategy {
+      async authenticate(_context: GuardContext): Promise<never> {
+        throw new AuthenticationRequiredError();
+      }
+    }
+
+    class ProtectedController {
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    Controller('/profile')(ProtectedController);
+    Get('/')(ProtectedController.prototype, 'getProfile');
+    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
+    Reflect.apply(UseAuth('mock'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
+
+    const root = new Container().register(
+      ProtectedController,
+      MissingCredentialsStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: MissingCredentialsStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile'), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: undefined,
+        status: 401,
+      },
+    });
+  });
+
+  it('maps scope failures to a canonical 403 response', async () => {
+    class ReadOnlyStrategy implements AuthStrategy {
+      async authenticate() {
+        return {
+          claims: { scopes: ['profile:read'] },
+          scopes: ['profile:read'],
+          subject: 'mock-user',
+        };
+      }
+    }
+
+    class ProtectedController {
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    Controller('/profile')(ProtectedController);
+    Get('/')(ProtectedController.prototype, 'getProfile');
+    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
+    Reflect.apply(UseAuth('mock'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
+    Reflect.apply(RequireScopes('profile:write'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
+
+    const root = new Container().register(
+      ProtectedController,
+      ReadOnlyStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: ReadOnlyStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile'), response);
+
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toEqual({
+      error: {
+        code: 'FORBIDDEN',
+        details: undefined,
+        message: 'Access denied.',
+        meta: undefined,
+        requestId: undefined,
+        status: 403,
+      },
+    });
   });
 
   it('adapts a Passport.js-style strategy success callback to principal population', async () => {
