@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -31,8 +31,15 @@ describe('scaffoldKonektiApp', () => {
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
+    const appPackageJson = JSON.parse(
+      readFileSync(join(targetDirectory, 'apps', 'starter-app', 'package.json'), 'utf8'),
+    ) as {
+      dependencies: Record<string, string>;
+    };
 
     expect(packageJson.scripts.dev).toBe("pnpm --filter './apps/*' --if-present run dev");
+    expect(appPackageJson.dependencies['@konekti/prisma']).toBe('workspace:*');
+    expect(existsSync(join(targetDirectory, 'packages', 'prisma', 'src', 'index.ts'))).toBe(true);
 
     execFileSync('pnpm', ['typecheck'], { cwd: targetDirectory, stdio: 'inherit' });
     execFileSync('pnpm', ['build'], { cwd: targetDirectory, stdio: 'inherit' });
