@@ -40,9 +40,30 @@ describe('scaffoldKonektiApp', () => {
     expect(packageJson.scripts.dev).toBe("pnpm --filter './apps/*' --if-present run dev");
     expect(appPackageJson.dependencies['@konekti/prisma']).toBe('workspace:*');
     expect(existsSync(join(targetDirectory, 'packages', 'prisma', 'src', 'index.ts'))).toBe(true);
+    expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'examples', 'user.repo.ts'), 'utf8')).toContain(
+      'this.prisma.current()',
+    );
 
     execFileSync('pnpm', ['typecheck'], { cwd: targetDirectory, stdio: 'inherit' });
     execFileSync('pnpm', ['build'], { cwd: targetDirectory, stdio: 'inherit' });
     execFileSync('pnpm', ['test'], { cwd: targetDirectory, stdio: 'inherit' });
   }, 180000);
+
+  it('scaffolds a tx-aware drizzle repository example', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'create-konekti-'));
+    createdDirectories.push(targetDirectory);
+
+    await scaffoldKonektiApp({
+      database: 'PostgreSQL',
+      orm: 'Drizzle',
+      packageManager: 'pnpm',
+      projectName: 'starter-app',
+      skipInstall: true,
+      targetDirectory,
+    });
+
+    expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'examples', 'user.repo.ts'), 'utf8')).toContain(
+      'this.database.current()',
+    );
+  });
 });
