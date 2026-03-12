@@ -1,19 +1,12 @@
-import type { MetadataPropertyKey } from '@konekti/core';
 import { UseGuard } from '@konekti/http';
 
 import { AuthGuard } from './guard';
-import { defineAuthRequirement, getOwnAuthRequirement } from './metadata';
+import { getOwnAuthRequirement } from './metadata';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
-type LegacyClassDecorator = (target: Function) => void;
-type LegacyMethodDecorator = (target: object, propertyKey: MetadataPropertyKey) => void;
-type ClassOrMethodDecoratorLike =
-  & LegacyClassDecorator
-  & LegacyMethodDecorator
-  & StandardClassDecoratorFn
-  & StandardMethodDecoratorFn;
+type ClassOrMethodDecoratorLike = StandardClassDecoratorFn & StandardMethodDecoratorFn;
 type RequirementPatch = { scopes?: string[]; strategy?: string };
 
 const standardClassRequirementKey = Symbol.for('konekti.passport.standard.class-auth');
@@ -32,15 +25,11 @@ function isStandardClassContext(context: unknown): context is ClassDecoratorCont
   return typeof context === 'object' && context !== null && 'kind' in context && context.kind === 'class';
 }
 
-function isStandardMethodContext(context: unknown): context is ClassMethodDecoratorContext {
-  return typeof context === 'object' && context !== null && 'kind' in context && context.kind === 'method';
-}
-
 function getStandardMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;
 }
 
-function defineStandardAuthRequirement(metadata: unknown, requirement: ReturnType<typeof mergeRequirement>, propertyKey?: MetadataPropertyKey) {
+function defineStandardAuthRequirement(metadata: unknown, requirement: ReturnType<typeof mergeRequirement>, propertyKey?: string | symbol) {
   const bag = getStandardMetadataBag(metadata);
 
   if (propertyKey === undefined) {
@@ -51,49 +40,25 @@ function defineStandardAuthRequirement(metadata: unknown, requirement: ReturnTyp
     return;
   }
 
-  const current = bag[standardMethodRequirementKey] as Map<MetadataPropertyKey, ReturnType<typeof mergeRequirement>> | undefined;
-  const map = current ?? new Map<MetadataPropertyKey, ReturnType<typeof mergeRequirement>>();
+  const current = bag[standardMethodRequirementKey] as Map<string | symbol, ReturnType<typeof mergeRequirement>> | undefined;
+  const map = current ?? new Map<string | symbol, ReturnType<typeof mergeRequirement>>();
   map.set(propertyKey, mergeRequirement(map.get(propertyKey), requirement));
   bag[standardMethodRequirementKey] = map;
 }
 
-function applyAuthRequirement(targetOrValue: Function | object, contextOrPropertyKey: unknown, patch: RequirementPatch): void {
+function applyAuthRequirement(targetOrValue: Function, contextOrPropertyKey: ClassDecoratorContext | ClassMethodDecoratorContext, patch: RequirementPatch): void {
   if (isStandardClassContext(contextOrPropertyKey)) {
-    if (typeof targetOrValue !== 'function') {
-      throw new TypeError('Class auth decorators can only be applied to classes.');
-    }
-
     defineStandardAuthRequirement(contextOrPropertyKey.metadata, mergeRequirement(getOwnAuthRequirement(targetOrValue), patch));
     UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey);
     return;
   }
 
-  if (isStandardMethodContext(contextOrPropertyKey)) {
-    if (typeof targetOrValue !== 'function') {
-      throw new TypeError('Method auth decorators can only be applied to methods.');
-    }
-
-    defineStandardAuthRequirement(contextOrPropertyKey.metadata, mergeRequirement(undefined, patch), contextOrPropertyKey.name);
-    UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey);
-    return;
-  }
-
-  if (contextOrPropertyKey === undefined) {
-    defineAuthRequirement(targetOrValue as Function, mergeRequirement(getOwnAuthRequirement(targetOrValue as Function), patch));
-    UseGuard(AuthGuard)(targetOrValue as Function);
-    return;
-  }
-
-  defineAuthRequirement(
-    targetOrValue,
-    mergeRequirement(getOwnAuthRequirement(targetOrValue, contextOrPropertyKey as MetadataPropertyKey), patch),
-    contextOrPropertyKey as MetadataPropertyKey,
-  );
-  UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey as MetadataPropertyKey);
+  defineStandardAuthRequirement(contextOrPropertyKey.metadata, mergeRequirement(undefined, patch), contextOrPropertyKey.name);
+  UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey);
 }
 
 function createAuthRequirementDecorator(patch: RequirementPatch): ClassOrMethodDecoratorLike {
-  const decorator = (targetOrValue: Function | object, contextOrPropertyKey?: unknown) => {
+  const decorator = (targetOrValue: Function, contextOrPropertyKey: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     applyAuthRequirement(targetOrValue, contextOrPropertyKey, patch);
   };
 
