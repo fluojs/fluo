@@ -35,13 +35,24 @@ describe('scaffoldKonektiApp', () => {
       readFileSync(join(targetDirectory, 'apps', 'starter-app', 'package.json'), 'utf8'),
     ) as {
       dependencies: Record<string, string>;
+      scripts: Record<string, string>;
     };
 
     expect(packageJson.scripts.dev).toBe("pnpm --filter './apps/*' --if-present run dev");
     expect(appPackageJson.dependencies['@konekti/prisma']).toBe('workspace:*');
+    expect(appPackageJson.scripts.dev).toBe('pnpm exec tsx watch src/main.ts');
     expect(existsSync(join(targetDirectory, 'packages', 'prisma', 'src', 'index.ts'))).toBe(true);
     expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'examples', 'user.repo.ts'), 'utf8')).toContain(
       'this.prisma.current()',
+    );
+    expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'main.ts'), 'utf8')).toContain(
+      'createConsoleApplicationLogger',
+    );
+    expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'main.ts'), 'utf8')).toContain(
+      "process.once('SIGINT'",
+    );
+    expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'main.ts'), 'utf8')).toContain(
+      'process.exit(0)',
     );
 
     execFileSync('pnpm', ['typecheck'], { cwd: targetDirectory, stdio: 'inherit' });

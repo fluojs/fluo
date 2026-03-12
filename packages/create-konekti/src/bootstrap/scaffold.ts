@@ -126,7 +126,7 @@ function createAppPackageJson(projectName: string, orm: CreateKonektiOptions['or
       scripts: {
         build:
           "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
-        dev: 'pnpm exec tsx src/main.ts',
+        dev: 'pnpm exec tsx watch src/main.ts',
         test: 'pnpm exec vitest run',
         typecheck: 'pnpm exec tsc -p tsconfig.json --noEmit',
       },
@@ -278,8 +278,26 @@ export class NodeHttpAdapter implements HttpApplicationAdapter {
       await dispatcher.dispatch(frameworkRequest, frameworkResponse);
     });
 
-    await new Promise<void>((resolve) => {
-      this.server?.listen(this.port, resolve);
+    await new Promise<void>((resolve, reject) => {
+      const server = this.server;
+
+      if (!server) {
+        reject(new Error('HTTP server instance was not created.'));
+        return;
+      }
+
+      const onError = (error: Error) => {
+        server.off('listening', onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        server.off('error', onError);
+        resolve();
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(this.port);
     });
   }
 
@@ -307,7 +325,7 @@ function createAppFile(projectName: string): string {
   return `import { fileURLToPath } from 'node:url';
 
  import { Global, Inject, Module } from '@konekti/core';
- import { bootstrapApplication } from '@konekti-internal/module';
+ import { KonektiFactory, type ApplicationLogger, type CreateApplicationOptions } from '@konekti-internal/module';
  import { Controller, Get, createCorsMiddleware, type GuardContext } from '@konekti/http';
 import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError, createJwtCoreProviders } from '@konekti/jwt';
 import {
@@ -406,15 +424,20 @@ class HealthController {
     ),
   ],
 })
-class AppModule {}
+export class AppModule {}
 
-export async function createApp(mode: 'dev' | 'prod' | 'test', adapter?: NodeHttpAdapter) {
+export const appDefaults = (
+  mode: 'dev' | 'prod' | 'test',
+  adapter?: NodeHttpAdapter,
+  logger?: ApplicationLogger,
+): CreateApplicationOptions => {
   const cwd = fileURLToPath(new URL('..', import.meta.url));
   const corsOrigin = process.env.CORS_ORIGIN ?? '*';
 
-  return bootstrapApplication({
+  return {
     adapter,
     cwd,
+    logger,
     middleware: [
       createCorsMiddleware({
         allowHeaders: ['Authorization', 'Content-Type'],
@@ -423,8 +446,15 @@ export async function createApp(mode: 'dev' | 'prod' | 'test', adapter?: NodeHtt
       }),
     ],
     mode,
-    rootModule: AppModule,
-  });
+  };
+};
+
+export async function createApp(
+  mode: 'dev' | 'prod' | 'test',
+  adapter?: NodeHttpAdapter,
+  logger?: ApplicationLogger,
+) {
+  return KonektiFactory.create(AppModule, appDefaults(mode, adapter, logger));
 }
 `;
 }
@@ -530,24 +560,65 @@ export class UserRepo {
 }
 
 function createMainFile(): string {
-  return `import { createApp } from './app';
+  return `import { createConsoleApplicationLogger, type Application } from '@konekti-internal/module';
+
+import { KonektiFactory } from '@konekti-internal/module';
+
+import { AppModule, appDefaults } from './app';
 import { NodeHttpAdapter } from './node-http-adapter';
 
 const port = Number(process.env.PORT ?? 3000);
-const app = await createApp('dev', new NodeHttpAdapter(port));
+const logger = createConsoleApplicationLogger();
+let app: Application | undefined;
 
-await app.listen();
+async function shutdown(signal: string) {
+  if (!app) {
+    process.exit(0);
+    return;
+  }
+
+  try {
+    await app.close(signal);
+    process.exit(0);
+  } catch (error) {
+    logger.error('Failed to shut down the application cleanly.', error, 'KonektiFactory');
+    process.exit(1);
+  }
+}
+
+process.once('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+
+try {
+  app = await KonektiFactory.create(AppModule, appDefaults('dev', new NodeHttpAdapter(port), logger));
+  await app.listen();
+  logger.log('Listening on http://localhost:' + String(port), 'KonektiFactory');
+} catch (error) {
+  logger.error('Failed to start application.', error, 'KonektiFactory');
+
+  if (app) {
+    await app.close('bootstrap-failed');
+  }
+
+  process.exit(1);
+}
 `;
 }
 
 function createAppTestFile(projectName: string): string {
   return `import { createHmac } from 'node:crypto';
 
-import { describe, expect, it } from 'vitest';
+  import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
+  import { KonektiFactory } from '@konekti-internal/module';
+  import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 
-import { createApp } from './app';
+  import { AppModule, appDefaults } from './app';
 
 function encodeBase64Url(value: string): string {
   return Buffer.from(value, 'utf8')
@@ -609,7 +680,7 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 
 describe('generated app', () => {
   it('dispatches the health route through the runtime path', async () => {
-    const app = await createApp('test');
+    const app = await KonektiFactory.create(AppModule, appDefaults('test'));
     const response = createResponse();
 
     await app.dispatch(createRequest('/health'), response);
@@ -620,7 +691,7 @@ describe('generated app', () => {
   });
 
   it('stores a verified principal for the protected profile route', async () => {
-    const app = await createApp('test');
+    const app = await KonektiFactory.create(AppModule, appDefaults('test'));
     const response = createResponse();
     const token = signToken(
       {
