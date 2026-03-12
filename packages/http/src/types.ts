@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, Token } from '@konekti/core';
+import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@konekti/core';
 import type { RequestScopeContainer } from '@konekti-internal/di';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
@@ -126,6 +126,40 @@ export interface InterceptorContext {
 
 export interface Interceptor {
   intercept(context: InterceptorContext, next: CallHandler): MaybePromise<unknown>;
+}
+
+export interface ArgumentResolverContext {
+  handler: HandlerDescriptor;
+  requestContext: RequestContext;
+}
+
+export interface ConverterTarget {
+  dto: Constructor;
+  propertyKey: MetadataPropertyKey;
+  source: MetadataSource;
+}
+
+export interface Binder {
+  bind(dto: Constructor, context: ArgumentResolverContext): MaybePromise<unknown>;
+}
+
+export interface Converter {
+  convert(value: unknown, target: ConverterTarget): MaybePromise<unknown>;
+}
+
+export interface ValidationIssue {
+  code: string;
+  field?: string;
+  message: string;
+  source?: MetadataSource;
+}
+
+export interface ValidationAdapter<T = unknown> {
+  validate(value: T): MaybePromise<readonly ValidationIssue[] | void>;
+}
+
+export interface Validator {
+  validate(value: unknown, target: Constructor): MaybePromise<void>;
 }
 
 export type MiddlewareLike = Middleware | Token<Middleware>;

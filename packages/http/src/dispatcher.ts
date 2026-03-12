@@ -3,11 +3,14 @@ import type { Container } from '@konekti-internal/di';
 
 import { HandlerNotFoundError } from './errors';
 import { HttpException, InternalServerException, NotFoundException, createErrorResponse } from './exceptions';
+import { DefaultBinder } from './binding';
 import { runGuardChain } from './guards';
 import { runInterceptorChain } from './interceptors';
 import { runMiddlewareChain } from './middleware';
 import { createRequestContext, runWithRequestContext } from './request-context';
+import { DefaultValidator } from './validation';
 import type {
+  ArgumentResolverContext,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
@@ -18,6 +21,9 @@ import type {
   MiddlewareLike,
   RequestContext,
 } from './types';
+
+const defaultBinder = new DefaultBinder();
+const defaultValidator = new DefaultValidator();
 
 export interface CreateDispatcherOptions {
   appMiddleware?: MiddlewareLike[];
@@ -65,7 +71,19 @@ async function invokeControllerHandler(
     );
   }
 
-  return method.call(controller, undefined, requestContext);
+  const argumentResolverContext: ArgumentResolverContext = {
+    handler,
+    requestContext,
+  };
+  const input = handler.route.request
+    ? await defaultBinder.bind(handler.route.request, argumentResolverContext)
+    : undefined;
+
+  if (handler.route.request) {
+    await defaultValidator.validate(input, handler.route.request);
+  }
+
+  return method.call(controller, input, requestContext);
 }
 
 async function writeSuccessResponse(handler: HandlerDescriptor, response: FrameworkResponse, value: unknown): Promise<void> {

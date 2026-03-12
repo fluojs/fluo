@@ -1,4 +1,5 @@
 export * from './adapter';
+export * from './binding';
 export * from './decorators';
 export * from './dispatcher';
 export * from './errors';
@@ -9,3 +10,4 @@ export * from './mapping';
 export * from './middleware';
 export * from './request-context';
 export * from './types';
+export * from './validation';

@@ -4,10 +4,14 @@ import { Container } from '@konekti-internal/di';
 
 import type { FrameworkRequest, FrameworkResponse, InterceptorContext, MiddlewareContext } from '@konekti/http';
 import {
+  FromBody,
   createDispatcher,
   createHandlerMapping,
   Controller,
   Get,
+  Post,
+  RequestDto,
+  SuccessStatus,
   UseGuard,
   UseInterceptor,
   assertRequestContext,
@@ -86,7 +90,11 @@ describe('dispatcher runtime', () => {
       }
     }
 
+    @Controller('/health')
     class HealthController {
+      @Get('/:id')
+      @UseGuard(HealthGuard)
+      @UseInterceptor(HealthInterceptor)
       getHealth(_input: unknown, ctx: ReturnType<typeof assertRequestContext>) {
         events.push('handler');
         return {
@@ -96,18 +104,6 @@ describe('dispatcher runtime', () => {
         };
       }
     }
-    Controller('/health')(HealthController);
-    Get('/:id')(HealthController.prototype, 'getHealth');
-    UseGuard(HealthGuard)(
-      HealthController.prototype,
-      'getHealth',
-      Object.getOwnPropertyDescriptor(HealthController.prototype, 'getHealth')!,
-    );
-    UseInterceptor(HealthInterceptor)(
-      HealthController.prototype,
-      'getHealth',
-      Object.getOwnPropertyDescriptor(HealthController.prototype, 'getHealth')!,
-    );
 
     const root = new Container().register(AppMiddleware, ModuleMiddleware, HealthGuard, HealthInterceptor, HealthController);
     const dispatcher = createDispatcher({
@@ -148,16 +144,14 @@ describe('dispatcher runtime', () => {
       }
     }
 
+    @Controller('/secure')
     class SecureController {
+      @Get('/resource')
+      @UseGuard(DenyGuard)
       getSecure() {
         return { ok: true };
       }
     }
-    Controller('/secure')(SecureController);
-    Get('/resource')(SecureController.prototype, 'getSecure');
-    UseGuard(
-      DenyGuard,
-    )(SecureController.prototype, 'getSecure', Object.getOwnPropertyDescriptor(SecureController.prototype, 'getSecure')!);
 
     const root = new Container().register(DenyGuard, SecureController);
     const dispatcher = createDispatcher({
@@ -191,18 +185,15 @@ describe('dispatcher runtime', () => {
       }
     }
 
+    @Controller('/secure')
     class SecureController {
+      @Get('/login')
+      @UseGuard(RedirectGuard)
       getSecure() {
         events.push('handler');
         return { ok: true };
       }
     }
-
-    Controller('/secure')(SecureController);
-    Get('/login')(SecureController.prototype, 'getSecure');
-    UseGuard(
-      RedirectGuard,
-    )(SecureController.prototype, 'getSecure', Object.getOwnPropertyDescriptor(SecureController.prototype, 'getSecure')!);
 
     const root = new Container().register(RedirectGuard, SecureController);
     const dispatcher = createDispatcher({
@@ -229,17 +220,15 @@ describe('dispatcher runtime', () => {
       }
     }
 
+    @Controller('/errors')
     class ErrorController {
+      @Get('/boom')
+      @UseGuard(PassGuard)
+      @UseInterceptor(PassInterceptor)
       fail() {
         throw new Error('boom');
       }
     }
-    Controller('/errors')(ErrorController);
-    Get('/boom')(ErrorController.prototype, 'fail');
-    UseGuard(PassGuard)(ErrorController.prototype, 'fail', Object.getOwnPropertyDescriptor(ErrorController.prototype, 'fail')!);
-    UseInterceptor(
-      PassInterceptor,
-    )(ErrorController.prototype, 'fail', Object.getOwnPropertyDescriptor(ErrorController.prototype, 'fail')!);
 
     const root = new Container().register(PassGuard, PassInterceptor, ErrorController);
     const dispatcher = createDispatcher({
@@ -259,6 +248,99 @@ describe('dispatcher runtime', () => {
         meta: undefined,
         requestId: undefined,
         status: 500,
+      },
+    });
+  });
+
+  it('binds a request DTO and returns canonical validation errors for bad input', async () => {
+    class CreateUserRequest {
+      static validate(value: CreateUserRequest) {
+        if (value.name.length > 0) {
+          return [];
+        }
+
+        return [
+          {
+            code: 'REQUIRED',
+            field: 'name',
+            message: 'name is required',
+            source: 'body' as const,
+          },
+        ];
+      }
+
+      @FromBody('name')
+      name = '';
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @RequestDto(CreateUserRequest)
+      @SuccessStatus(201)
+      @Post('/')
+      createUser(input: CreateUserRequest) {
+        return {
+          name: input.name,
+        };
+      }
+    }
+    const root = new Container().register(UsersController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: UsersController }]),
+      rootContainer: root,
+    });
+
+    const successResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/users',
+        query: {},
+        raw: {},
+        url: '/users',
+      },
+      successResponse,
+    );
+
+    expect(successResponse.statusCode).toBe(201);
+    expect(successResponse.body).toEqual({ name: 'Ada' });
+
+    const errorResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: '' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/users',
+        query: {},
+        raw: {},
+        url: '/users',
+      },
+      errorResponse,
+    );
+
+    expect(errorResponse.statusCode).toBe(400);
+    expect(errorResponse.body).toEqual({
+      error: {
+        code: 'BAD_REQUEST',
+        details: [
+          {
+            code: 'REQUIRED',
+            field: 'name',
+            message: 'name is required',
+            source: 'body',
+          },
+        ],
+        message: 'Validation failed.',
+        meta: undefined,
+        requestId: undefined,
+        status: 400,
       },
     });
   });
