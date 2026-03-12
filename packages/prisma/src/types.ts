@@ -16,5 +16,6 @@ export interface PrismaModuleOptions<TClient extends PrismaClientLike<TTransacti
 
 export interface PrismaHandleProvider<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient> {
   current(): TClient | TTransactionClient;
+  requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T>;
   transaction<T>(fn: () => Promise<T>): Promise<T>;
 }

@@ -3,6 +3,7 @@ import { defineModule, type ModuleType } from '@konekti-internal/module';
 
 import { PrismaService } from './service';
 import { PRISMA_CLIENT } from './tokens';
+import { PrismaTransactionInterceptor } from './transaction';
 import type { PrismaClientLike, PrismaModuleOptions } from './types';
 
 export function createPrismaProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
@@ -14,6 +15,7 @@ export function createPrismaProviders<TClient extends PrismaClientLike<TTransact
       useValue: options.client,
     },
     PrismaService,
+    PrismaTransactionInterceptor,
   ];
 }
 
@@ -23,7 +25,7 @@ export function createPrismaModule<TClient extends PrismaClientLike<TTransaction
   class PrismaModule {}
 
   return defineModule(PrismaModule, {
-    exports: [PrismaService],
+    exports: [PrismaService, PrismaTransactionInterceptor],
     providers: createPrismaProviders(options),
   });
 }
