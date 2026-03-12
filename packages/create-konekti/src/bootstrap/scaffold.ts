@@ -126,7 +126,7 @@ function createAppPackageJson(projectName: string, orm: CreateKonektiOptions['or
       scripts: {
         build:
           "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
-        dev: 'pnpm exec tsx watch src/main.ts',
+        dev: 'pnpm exec node --watch --watch-preserve-output --import tsx src/main.ts',
         test: 'pnpm exec vitest run',
         typecheck: 'pnpm exec tsc -p tsconfig.json --noEmit',
       },

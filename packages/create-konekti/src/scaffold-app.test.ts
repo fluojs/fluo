@@ -40,7 +40,7 @@ describe('scaffoldKonektiApp', () => {
 
     expect(packageJson.scripts.dev).toBe("pnpm --filter './apps/*' --if-present run dev");
     expect(appPackageJson.dependencies['@konekti/prisma']).toBe('workspace:*');
-    expect(appPackageJson.scripts.dev).toBe('pnpm exec tsx watch src/main.ts');
+    expect(appPackageJson.scripts.dev).toBe('pnpm exec node --watch --watch-preserve-output --import tsx src/main.ts');
     expect(existsSync(join(targetDirectory, 'packages', 'prisma', 'src', 'index.ts'))).toBe(true);
     expect(readFileSync(join(targetDirectory, 'apps', 'starter-app', 'src', 'examples', 'user.repo.ts'), 'utf8')).toContain(
       'this.prisma.current()',
