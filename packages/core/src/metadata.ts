@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey, MetadataSource } from './types';
+import type { MetadataPropertyKey, MetadataSource, Token } from './types';
 
 export interface ModuleMetadata {
   imports?: unknown[];
@@ -6,6 +6,7 @@ export interface ModuleMetadata {
   controllers?: unknown[];
   exports?: unknown[];
   middleware?: unknown[];
+  global?: boolean;
 }
 
 export interface ControllerMetadata {
@@ -34,12 +35,48 @@ export interface InjectionMetadata {
   optional?: boolean;
 }
 
+export interface ClassDiMetadata {
+  inject?: Token[];
+  scope?: 'singleton' | 'request';
+}
+
+type StandardMetadataBag = Record<PropertyKey, unknown>;
+
+const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
+export const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
+
+if (!symbolWithMetadata.metadata) {
+  Object.defineProperty(Symbol, 'metadata', {
+    configurable: true,
+    value: metadataSymbol,
+  });
+}
+
+const standardControllerMetadataKey = Symbol.for('konekti.standard.controller');
+const standardRouteMetadataKey = Symbol.for('konekti.standard.route');
+const standardDtoBindingMetadataKey = Symbol.for('konekti.standard.dto-binding');
+const standardInjectionMetadataKey = Symbol.for('konekti.standard.injection');
+
+interface StandardRouteMetadataRecord {
+  guards?: unknown[];
+  interceptors?: unknown[];
+  method?: RouteMetadata['method'];
+  path?: string;
+  request?: new (...args: never[]) => unknown;
+  successStatus?: number;
+}
+
+type StandardDtoBindingRecord = Partial<DtoFieldBindingMetadata>;
+
+type StandardInjectionRecord = Partial<InjectionMetadata>;
+
 export const metadataKeys = {
   module: Symbol.for('konekti.metadata.module'),
   controller: Symbol.for('konekti.metadata.controller'),
   route: Symbol.for('konekti.metadata.route'),
   dtoFieldBinding: Symbol.for('konekti.metadata.dto-field-binding'),
   injection: Symbol.for('konekti.metadata.injection'),
+  classDi: Symbol.for('konekti.metadata.class-di'),
 } as const;
 
 const moduleMetadataStore = new WeakMap<Function, ModuleMetadata>();
@@ -47,6 +84,25 @@ const controllerMetadataStore = new WeakMap<Function, ControllerMetadata>();
 const routeMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, RouteMetadata>>();
 const dtoFieldBindingStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldBindingMetadata>>();
 const injectionMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, InjectionMetadata>>();
+const classDiMetadataStore = new WeakMap<Function, ClassDiMetadata>();
+
+function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
+  return {
+    controllers: metadata.controllers ? [...metadata.controllers] : undefined,
+    exports: metadata.exports ? [...metadata.exports] : undefined,
+    global: metadata.global,
+    imports: metadata.imports ? [...metadata.imports] : undefined,
+    middleware: metadata.middleware ? [...metadata.middleware] : undefined,
+    providers: metadata.providers ? [...metadata.providers] : undefined,
+  };
+}
+
+function cloneClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
+  return {
+    inject: metadata.inject ? [...metadata.inject] : undefined,
+    scope: metadata.scope,
+  };
+}
 
 /**
  * 가드와 인터셉터 배열까지 복사해 route 메타데이터를 안전하게 복제한다.
@@ -76,16 +132,96 @@ function getOrCreatePropertyMap<T>(
   return map;
 }
 
+function mergeUnique<T>(existing: T[] | undefined, values: T[] | undefined): T[] | undefined {
+  if (!existing?.length && !values?.length) {
+    return undefined;
+  }
+
+  const merged = [...(existing ?? [])];
+
+  for (const value of values ?? []) {
+    if (!merged.includes(value)) {
+      merged.push(value);
+    }
+  }
+
+  return merged;
+}
+
+function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
+  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
+}
+
+function getStandardControllerMetadata(target: Function): ControllerMetadata | undefined {
+  const metadata = getStandardMetadataBag(target)?.[standardControllerMetadataKey] as ControllerMetadata | undefined;
+
+  if (!metadata) {
+    return undefined;
+  }
+
+  return {
+    basePath: metadata.basePath,
+    guards: metadata.guards ? [...metadata.guards] : undefined,
+    interceptors: metadata.interceptors ? [...metadata.interceptors] : undefined,
+  };
+}
+
+function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyKey): RouteMetadata | undefined {
+  const constructor = (target as { constructor?: Function }).constructor;
+  const routeMap = constructor
+    ? (getStandardMetadataBag(constructor)?.[standardRouteMetadataKey] as
+        | Map<MetadataPropertyKey, StandardRouteMetadataRecord>
+        | undefined)
+    : undefined;
+  const metadata = routeMap?.get(propertyKey);
+
+  if (!metadata?.method || metadata.path === undefined) {
+    return undefined;
+  }
+
+  return {
+    guards: metadata.guards ? [...metadata.guards] : undefined,
+    interceptors: metadata.interceptors ? [...metadata.interceptors] : undefined,
+    method: metadata.method,
+    path: metadata.path,
+    request: metadata.request,
+    successStatus: metadata.successStatus,
+  };
+}
+
+function getStandardDtoBindingMap(target: object): Map<MetadataPropertyKey, StandardDtoBindingRecord> | undefined {
+  const constructor = (target as { constructor?: Function }).constructor;
+
+  return constructor
+    ? (getStandardMetadataBag(constructor)?.[standardDtoBindingMetadataKey] as
+        | Map<MetadataPropertyKey, StandardDtoBindingRecord>
+        | undefined)
+    : undefined;
+}
+
+function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, StandardInjectionRecord> | undefined {
+  const constructor = (target as { constructor?: Function }).constructor;
+
+  return constructor
+    ? (getStandardMetadataBag(constructor)?.[standardInjectionMetadataKey] as
+        | Map<MetadataPropertyKey, StandardInjectionRecord>
+        | undefined)
+    : undefined;
+}
+
 /**
  * 모듈 클래스에 모듈 메타데이터를 저장한다.
  */
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
+  const existing = moduleMetadataStore.get(target);
+
   moduleMetadataStore.set(target, {
-    imports: metadata.imports ? [...metadata.imports] : undefined,
-    providers: metadata.providers ? [...metadata.providers] : undefined,
-    controllers: metadata.controllers ? [...metadata.controllers] : undefined,
-    exports: metadata.exports ? [...metadata.exports] : undefined,
-    middleware: metadata.middleware ? [...metadata.middleware] : undefined,
+    imports: metadata.imports ? [...metadata.imports] : existing?.imports ? [...existing.imports] : undefined,
+    providers: metadata.providers ? [...metadata.providers] : existing?.providers ? [...existing.providers] : undefined,
+    controllers: metadata.controllers ? [...metadata.controllers] : existing?.controllers ? [...existing.controllers] : undefined,
+    exports: metadata.exports ? [...metadata.exports] : existing?.exports ? [...existing.exports] : undefined,
+    middleware: metadata.middleware ? [...metadata.middleware] : existing?.middleware ? [...existing.middleware] : undefined,
+    global: metadata.global ?? existing?.global,
   });
 }
 
@@ -95,15 +231,29 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
   const metadata = moduleMetadataStore.get(target);
 
-  return metadata
-    ? {
-        imports: metadata.imports ? [...metadata.imports] : undefined,
-        providers: metadata.providers ? [...metadata.providers] : undefined,
-        controllers: metadata.controllers ? [...metadata.controllers] : undefined,
-        exports: metadata.exports ? [...metadata.exports] : undefined,
-        middleware: metadata.middleware ? [...metadata.middleware] : undefined,
-      }
-    : undefined;
+  return metadata ? cloneModuleMetadata(metadata) : undefined;
+}
+
+export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadata): void {
+  const existing = classDiMetadataStore.get(target);
+
+  classDiMetadataStore.set(
+    target,
+    cloneClassDiMetadata({
+      inject: metadata.inject ?? existing?.inject,
+      scope: metadata.scope ?? existing?.scope,
+    }),
+  );
+}
+
+export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undefined {
+  const metadata = classDiMetadataStore.get(target);
+
+  return metadata ? cloneClassDiMetadata(metadata) : undefined;
+}
+
+export function getClassDiMetadata(target: Function): ClassDiMetadata | undefined {
+  return getOwnClassDiMetadata(target);
 }
 
 /**
@@ -121,15 +271,18 @@ export function defineControllerMetadata(target: Function, metadata: ControllerM
  * 컨트롤러 클래스에서 정규화된 컨트롤러 메타데이터를 읽는다.
  */
 export function getControllerMetadata(target: Function): ControllerMetadata | undefined {
-  const metadata = controllerMetadataStore.get(target);
+  const stored = controllerMetadataStore.get(target);
+  const standard = getStandardControllerMetadata(target);
 
-  return metadata
-    ? {
-        ...metadata,
-        guards: metadata.guards ? [...metadata.guards] : undefined,
-        interceptors: metadata.interceptors ? [...metadata.interceptors] : undefined,
-      }
-    : undefined;
+  if (!stored && !standard) {
+    return undefined;
+  }
+
+  return {
+    basePath: stored?.basePath ?? standard?.basePath ?? '',
+    guards: mergeUnique(stored?.guards, standard?.guards),
+    interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
+  };
 }
 
 /**
@@ -150,9 +303,39 @@ export function getRouteMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
 ): RouteMetadata | undefined {
-  const metadata = routeMetadataStore.get(target)?.get(propertyKey);
+  const stored = routeMetadataStore.get(target)?.get(propertyKey);
+  const standard = getStandardRouteMetadata(target, propertyKey);
 
-  return metadata ? cloneRouteMetadata(metadata) : undefined;
+  if (!stored && !standard) {
+    return undefined;
+  }
+
+  return {
+    guards: mergeUnique(stored?.guards, standard?.guards),
+    interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
+    method: stored?.method ?? standard!.method,
+    path: stored?.path ?? standard!.path,
+    request: stored?.request ?? standard?.request,
+    successStatus: stored?.successStatus ?? standard?.successStatus,
+  };
+}
+
+/**
+ * DTO 프로토타입 필드에 저장된 개별 바인딩 메타데이터를 읽는다.
+ */
+export function getDtoFieldBindingMetadata(target: object, propertyKey: MetadataPropertyKey): DtoFieldBindingMetadata | undefined {
+  const stored = dtoFieldBindingStore.get(target)?.get(propertyKey);
+  const standard = getStandardDtoBindingMap(target)?.get(propertyKey);
+
+  if (!stored && !standard?.source) {
+    return undefined;
+  }
+
+  return {
+    key: stored?.key ?? standard?.key,
+    optional: stored?.optional ?? standard?.optional,
+    source: stored?.source ?? standard!.source!,
+  };
 }
 
 /**
@@ -181,22 +364,47 @@ export function defineInjectionMetadata(
  * 저장된 필드 메타데이터로부터 정규화된 DTO 바인딩 스키마를 만든다.
  */
 export function getDtoBindingSchema(dto: new (...args: never[]) => unknown) {
-  const map = dtoFieldBindingStore.get(dto.prototype) ?? new Map<MetadataPropertyKey, DtoFieldBindingMetadata>();
+  const stored = dtoFieldBindingStore.get(dto.prototype) ?? new Map<MetadataPropertyKey, DtoFieldBindingMetadata>();
+  const standard =
+    (getStandardMetadataBag(dto)?.[standardDtoBindingMetadataKey] as Map<MetadataPropertyKey, StandardDtoBindingRecord> | undefined) ??
+    new Map<MetadataPropertyKey, StandardDtoBindingRecord>();
+  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
 
-  return Array.from(map.entries()).map(([propertyKey, metadata]) => ({
-    propertyKey,
-    metadata: { ...metadata },
-  }));
+  return Array.from(keys)
+    .map((propertyKey) => ({
+      propertyKey,
+      metadata: getDtoFieldBindingMetadata(dto.prototype, propertyKey),
+    }))
+    .filter(
+      (entry): entry is { propertyKey: MetadataPropertyKey; metadata: DtoFieldBindingMetadata } => entry.metadata !== undefined,
+    );
 }
 
 /**
  * 저장된 필드 메타데이터로부터 정규화된 주입 스키마를 만든다.
  */
 export function getInjectionSchema(target: object) {
-  const map = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
+  const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
+  const standard = getStandardInjectionMap(target) ?? new Map<MetadataPropertyKey, StandardInjectionRecord>();
+  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
+  const schema: Array<{ propertyKey: MetadataPropertyKey; metadata: InjectionMetadata }> = [];
 
-  return Array.from(map.entries()).map(([propertyKey, metadata]) => ({
-    propertyKey,
-    metadata: { ...metadata },
-  }));
+  for (const propertyKey of keys) {
+    const metadata = stored.get(propertyKey);
+    const standardMetadata = standard.get(propertyKey);
+
+    if (!metadata && !standardMetadata?.token) {
+      continue;
+    }
+
+    schema.push({
+      propertyKey,
+      metadata: {
+        optional: metadata?.optional ?? standardMetadata?.optional,
+        token: metadata?.token ?? standardMetadata!.token!,
+      },
+    });
+  }
+
+  return schema;
 }

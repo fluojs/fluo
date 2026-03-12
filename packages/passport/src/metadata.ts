@@ -1,6 +1,11 @@
-import type { MetadataPropertyKey } from '@konekti/core';
+import { metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
 
 import type { AuthRequirement } from './types';
+
+type StandardMetadataBag = Record<PropertyKey, unknown>;
+
+const standardClassRequirementKey = Symbol.for('konekti.passport.standard.class-auth');
+const standardMethodRequirementKey = Symbol.for('konekti.passport.standard.method-auth');
 
 const classRequirementStore = new WeakMap<Function, AuthRequirement>();
 const methodRequirementStore = new WeakMap<object, Map<MetadataPropertyKey, AuthRequirement>>();
@@ -29,6 +34,23 @@ function mergeRequirements(base: AuthRequirement | undefined, extra: AuthRequire
   };
 }
 
+function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
+  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
+}
+
+function getStandardClassRequirement(target: Function): AuthRequirement | undefined {
+  return cloneRequirement(getStandardMetadataBag(target)?.[standardClassRequirementKey] as AuthRequirement | undefined);
+}
+
+function getStandardMethodRequirement(target: object, propertyKey: MetadataPropertyKey): AuthRequirement | undefined {
+  const constructor = (target as { constructor?: Function }).constructor;
+  const map = constructor
+    ? (getStandardMetadataBag(constructor)?.[standardMethodRequirementKey] as Map<MetadataPropertyKey, AuthRequirement> | undefined)
+    : undefined;
+
+  return cloneRequirement(map?.get(propertyKey));
+}
+
 export function defineAuthRequirement(target: Function | object, requirement: AuthRequirement, propertyKey?: MetadataPropertyKey): void {
   if (propertyKey === undefined) {
     classRequirementStore.set(target as Function, cloneRequirement(requirement)!);
@@ -47,10 +69,10 @@ export function defineAuthRequirement(target: Function | object, requirement: Au
 
 export function getOwnAuthRequirement(target: Function | object, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
   if (propertyKey === undefined) {
-    return cloneRequirement(classRequirementStore.get(target as Function));
+    return mergeRequirements(cloneRequirement(classRequirementStore.get(target as Function)), getStandardClassRequirement(target as Function));
   }
 
-  return cloneRequirement(methodRequirementStore.get(target)?.get(propertyKey));
+  return mergeRequirements(cloneRequirement(methodRequirementStore.get(target)?.get(propertyKey)), getStandardMethodRequirement(target, propertyKey));
 }
 
 export function getAuthRequirement(controllerType: Function, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
