@@ -106,4 +106,58 @@ describe('@konekti/prisma', () => {
       'disconnect',
     ]);
   });
+
+  it('rolls back open request transactions before disconnect on shutdown', async () => {
+    const events: string[] = [];
+    const transactionClient = {};
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionClient);
+        } catch (error) {
+          events.push('transaction:rollback');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+
+    const openTransaction = prisma.requestTransaction(
+      async () => new Promise<never>(() => undefined),
+    );
+
+    await app.close();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'disconnect',
+    ]);
+  });
 });

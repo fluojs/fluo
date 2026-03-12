@@ -11,13 +11,14 @@ import {
   Post,
   RequestDto,
   SuccessStatus,
+  UseInterceptor,
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@konekti/http';
 
-import { createPrismaModule, PrismaService } from './index';
+import { createPrismaModule, PrismaService, PrismaTransactionInterceptor } from './index';
 
-function createResponse(): FrameworkResponse & { body?: unknown } {
+function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
     committed: false,
     headers: {},
@@ -27,6 +28,7 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
       this.committed = true;
     },
     send(body: unknown) {
+      events?.push('response:send');
       this.body = body;
       this.committed = true;
     },
@@ -40,16 +42,23 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
   };
 }
 
-function createRequest(path: string, method: FrameworkRequest['method'], body?: unknown): FrameworkRequest {
+function createRequest(
+  path: string,
+  method: FrameworkRequest['method'],
+  body?: unknown,
+  headers: FrameworkRequest['headers'] = {},
+  signal?: AbortSignal,
+): FrameworkRequest {
   return {
     body,
     cookies: {},
-    headers: {},
+    headers,
     method,
     params: {},
     path,
     query: {},
     raw: {},
+    signal,
     url: path,
   };
 }
@@ -64,10 +73,22 @@ describe('@konekti/prisma vertical slice', () => {
 
     const users = new Map<string, UserRecord>();
     let sequence = 0;
+    const events: string[] = [];
+    let resolveAbortCreate!: () => void;
+    const abortCreateReached = new Promise<void>((resolve) => {
+      resolveAbortCreate = resolve;
+    });
 
     const transactionClient = {
       user: {
         async create(input: { data: { email: string; name: string } }) {
+          events.push(`tx:create:${input.data.email}`);
+
+          if (input.data.email === 'abort@example.com') {
+            resolveAbortCreate();
+            return new Promise<never>(() => undefined);
+          }
+
           const record = {
             email: input.data.email,
             id: `user-${++sequence}`,
@@ -78,18 +99,32 @@ describe('@konekti/prisma vertical slice', () => {
           return record;
         },
         async findUnique(input: { where: { id: string } }) {
+          events.push(`tx:find:${input.where.id}`);
           return users.get(input.where.id) ?? null;
         },
       },
     };
     const client = {
-      async $connect() {},
-      async $disconnect() {},
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
       async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>) {
-        return callback(transactionClient);
+        events.push('transaction:start');
+        try {
+          return await callback(transactionClient);
+        } catch (error) {
+          events.push('transaction:rollback');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
       },
       user: {
         async create(input: { data: { email: string; name: string } }) {
+          events.push(`root:create:${input.data.email}`);
           const record = {
             email: input.data.email,
             id: `user-${++sequence}`,
@@ -100,6 +135,7 @@ describe('@konekti/prisma vertical slice', () => {
           return record;
         },
         async findUnique(input: { where: { id: string } }) {
+          events.push(`root:find:${input.where.id}`);
           return users.get(input.where.id) ?? null;
         },
       },
@@ -193,12 +229,14 @@ describe('@konekti/prisma vertical slice', () => {
       @RequestDto(CreateUserRequest)
       @SuccessStatus(201)
       @Post('/')
+      @UseInterceptor(PrismaTransactionInterceptor)
       async create(input: CreateUserRequest) {
         return this.users.create(input);
       }
 
       @RequestDto(GetUserRequest)
       @Get('/:id')
+      @UseInterceptor(PrismaTransactionInterceptor)
       async getOne(input: GetUserRequest) {
         return this.users.get(input.id);
       }
@@ -219,7 +257,9 @@ describe('@konekti/prisma vertical slice', () => {
       rootModule: AppModule,
     });
 
-    const createResponseOk = createResponse();
+    expect(events).toEqual(['connect']);
+
+    const createResponseOk = createResponse(events);
     await app.dispatch(
       createRequest('/users', 'POST', {
         email: 'ada@example.com',
@@ -234,13 +274,20 @@ describe('@konekti/prisma vertical slice', () => {
       id: 'user-1',
       name: 'Ada',
     });
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'response:send',
+      'transaction:end',
+    ]);
 
-    const createResponseError = createResponse();
+    const createResponseError = createResponse(events);
     await app.dispatch(
       createRequest('/users', 'POST', {
         email: 'ada@example.com',
         name: '',
-      }),
+      }, { 'x-request-id': 'req-prisma-400' }),
       createResponseError,
     );
 
@@ -258,12 +305,23 @@ describe('@konekti/prisma vertical slice', () => {
         ],
         message: 'Validation failed.',
         meta: undefined,
-        requestId: undefined,
+        requestId: 'req-prisma-400',
         status: 400,
       },
     });
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+    ]);
 
-    const getResponseOk = createResponse();
+    const getResponseOk = createResponse(events);
     await app.dispatch(createRequest('/users/user-1', 'GET'), getResponseOk);
 
     expect(getResponseOk.statusCode).toBe(200);
@@ -272,9 +330,24 @@ describe('@konekti/prisma vertical slice', () => {
       id: 'user-1',
       name: 'Ada',
     });
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:find:user-1',
+      'response:send',
+      'transaction:end',
+    ]);
 
-    const getResponseMissing = createResponse();
-    await app.dispatch(createRequest('/users/missing', 'GET'), getResponseMissing);
+    const getResponseMissing = createResponse(events);
+    await app.dispatch(createRequest('/users/missing', 'GET', undefined, { 'x-request-id': 'req-prisma-404' }), getResponseMissing);
 
     expect(getResponseMissing.statusCode).toBe(404);
     expect(getResponseMissing.body).toEqual({
@@ -283,10 +356,52 @@ describe('@konekti/prisma vertical slice', () => {
         details: undefined,
         message: 'User missing was not found.',
         meta: undefined,
-        requestId: undefined,
+        requestId: 'req-prisma-404',
         status: 404,
       },
     });
+
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:find:user-1',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'tx:find:missing',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+    ]);
+
+    const abortController = new AbortController();
+    const abortResponse = createResponse(events);
+    const abortDispatch = app.dispatch(
+      createRequest(
+        '/users',
+        'POST',
+        {
+          email: 'abort@example.com',
+          name: 'Ada',
+        },
+        {},
+        abortController.signal,
+      ),
+      abortResponse,
+    );
+    await abortCreateReached;
+    abortController.abort(new Error('client aborted request'));
+    await abortDispatch;
+
+    expect(abortResponse.committed).toBe(false);
 
     expect(users.get('user-1')).toEqual({
       email: 'ada@example.com',
@@ -295,5 +410,31 @@ describe('@konekti/prisma vertical slice', () => {
     });
 
     await app.close();
+
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:find:user-1',
+      'response:send',
+      'transaction:end',
+      'transaction:start',
+      'tx:find:missing',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:create:abort@example.com',
+      'transaction:rollback',
+      'transaction:end',
+      'disconnect',
+    ]);
   });
 });
