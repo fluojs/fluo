@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { Container, type Provider } from '@konekti-internal/di';
 import { ConfigService, loadConfig } from '@konekti/config';
-import { InvariantError, defineModuleMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { InvariantError, defineModuleMetadata, getClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import {
   createDispatcher,
   createHandlerMapping,
@@ -38,7 +38,7 @@ function providerToken(provider: Provider): Token {
 
 function providerDependencies(provider: Provider): Token[] {
   if (typeof provider === 'function') {
-    return provider.inject ?? [];
+    return getClassDiMetadata(provider)?.inject ?? [];
   }
 
   if ('useFactory' in provider) {
@@ -46,23 +46,27 @@ function providerDependencies(provider: Provider): Token[] {
   }
 
   if ('useClass' in provider) {
-    return provider.inject ?? provider.useClass.inject ?? [];
+    return provider.inject ?? getClassDiMetadata(provider.useClass)?.inject ?? [];
   }
 
   return [];
 }
 
 function controllerDependencies(controller: ModuleType): Token[] {
-  return (controller as { inject?: Token[] }).inject ?? [];
+  return getClassDiMetadata(controller)?.inject ?? [];
 }
 
 function providerScope(provider: Provider): 'singleton' | 'request' {
   if (typeof provider === 'function') {
-    return 'singleton';
+    return getClassDiMetadata(provider)?.scope ?? 'singleton';
   }
 
   if ('useValue' in provider) {
     return 'singleton';
+  }
+
+  if ('useClass' in provider) {
+    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
   return provider.scope ?? 'singleton';
@@ -131,6 +135,7 @@ function compileModule(
   const rawDefinition = getModuleMetadata(moduleType);
   const definition: ModuleDefinition = rawDefinition
     ? {
+        global: rawDefinition.global ?? false,
         imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
         providers: (rawDefinition.providers as Provider[] | undefined) ?? [],
         controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
@@ -139,62 +144,16 @@ function compileModule(
       }
     : {};
 
-  const importedModules = (definition.imports ?? []).map((imported: ModuleType) =>
-    compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered),
-  );
+  for (const imported of definition.imports ?? []) {
+    compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered);
+  }
 
   const providerTokens = new Set((definition.providers ?? []).map((provider) => providerToken(provider)));
-  const importedExportedTokens = new Set<Token>(
-    importedModules.flatMap((compiledModule) => Array.from(compiledModule.exportedTokens)),
-  );
-  const accessibleTokens = new Set<Token>([
-    ...runtimeProviderTokens,
-    ...providerTokens,
-    ...importedExportedTokens,
-  ]);
-
-  for (const provider of definition.providers ?? []) {
-    for (const token of providerDependencies(provider)) {
-      if (!accessibleTokens.has(token)) {
-        throw new ModuleVisibilityError(
-          `Provider ${String(providerToken(provider))} in module ${moduleType.name} cannot access token ${String(
-            token,
-          )} because it is not local and not exported by an imported module.`,
-        );
-      }
-    }
-  }
-
-  for (const controller of definition.controllers ?? []) {
-    for (const token of controllerDependencies(controller)) {
-      if (!accessibleTokens.has(token)) {
-        throw new ModuleVisibilityError(
-          `Controller ${controller.name} in module ${moduleType.name} cannot access token ${String(
-            token,
-          )} because it is not local and not exported by an imported module.`,
-        );
-      }
-    }
-  }
-
-  const exportedTokens = new Set<Token>();
-
-  for (const token of definition.exports ?? []) {
-    if (!providerTokens.has(token) && !importedExportedTokens.has(token)) {
-      throw new ModuleVisibilityError(
-        `Module ${moduleType.name} cannot export token ${String(
-          token,
-        )} because it is neither local nor re-exported from an imported module.`,
-      );
-    }
-
-    exportedTokens.add(token);
-  }
 
   const compiledModule: CompiledModule = {
     type: moduleType,
     definition,
-    exportedTokens,
+    exportedTokens: new Set<Token>(),
     providerTokens,
   };
 
@@ -205,6 +164,74 @@ function compileModule(
   return compiledModule;
 }
 
+function validateCompiledModules(modules: CompiledModule[], runtimeProviderTokens: Set<Token>): void {
+  const compiledByType = new Map(modules.map((compiledModule) => [compiledModule.type, compiledModule]));
+  const globalExportedTokens = new Set<Token>();
+
+  for (const compiledModule of modules) {
+    if (!compiledModule.definition.global) {
+      continue;
+    }
+
+    for (const token of compiledModule.definition.exports ?? []) {
+      globalExportedTokens.add(token);
+    }
+  }
+
+  for (const compiledModule of modules) {
+    const importedModules = (compiledModule.definition.imports ?? []).map((imported) => compiledByType.get(imported)!);
+    const importedExportedTokens = new Set<Token>(
+      importedModules.flatMap((imported) => Array.from(imported.exportedTokens)),
+    );
+    const accessibleTokens = new Set<Token>([
+      ...runtimeProviderTokens,
+      ...compiledModule.providerTokens,
+      ...importedExportedTokens,
+      ...globalExportedTokens,
+    ]);
+
+    for (const provider of compiledModule.definition.providers ?? []) {
+      for (const token of providerDependencies(provider)) {
+        if (!accessibleTokens.has(token)) {
+          throw new ModuleVisibilityError(
+            `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
+              token,
+            )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          );
+        }
+      }
+    }
+
+    for (const controller of compiledModule.definition.controllers ?? []) {
+      for (const token of controllerDependencies(controller)) {
+        if (!accessibleTokens.has(token)) {
+          throw new ModuleVisibilityError(
+            `Controller ${controller.name} in module ${compiledModule.type.name} cannot access token ${String(
+              token,
+            )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          );
+        }
+      }
+    }
+
+    const exportedTokens = new Set<Token>();
+
+    for (const token of compiledModule.definition.exports ?? []) {
+      if (!compiledModule.providerTokens.has(token) && !importedExportedTokens.has(token)) {
+        throw new ModuleVisibilityError(
+          `Module ${compiledModule.type.name} cannot export token ${String(
+            token,
+          )} because it is neither local nor re-exported from an imported module.`,
+        );
+      }
+
+      exportedTokens.add(token);
+    }
+
+    compiledModule.exportedTokens = exportedTokens;
+  }
+}
+
 /**
  * 모듈 그래프를 정해진 순서의 목록으로 컴파일하고 visibility 규칙을 검증한다.
  */
@@ -213,6 +240,7 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
   const runtimeProviderTokens = createRuntimeTokenSet(options.providers);
 
   compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
+  validateCompiledModules(ordered, runtimeProviderTokens);
 
   return ordered;
 }

@@ -1,4 +1,4 @@
-import { InvariantError, type Token } from '@konekti/core';
+import { InvariantError, getClassDiMetadata, type Token } from '@konekti/core';
 
 import {
   ContainerResolutionError,
@@ -6,16 +6,16 @@ import {
   RequestScopeResolutionError,
 } from './errors';
 import type {
+  ClassType,
   ClassProvider,
   FactoryProvider,
-  InjectableClass,
   NormalizedProvider,
   Provider,
   Scope,
   ValueProvider,
 } from './types';
 
-function isClassConstructor(value: Provider): value is InjectableClass {
+function isClassConstructor(value: Provider): value is ClassType {
   return typeof value === 'function';
 }
 
@@ -33,10 +33,12 @@ function isClassProvider(value: Provider): value is ClassProvider {
 
 function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
+    const metadata = getClassDiMetadata(provider);
+
     return {
-      inject: provider.inject ?? [],
+      inject: metadata?.inject ?? [],
       provide: provider,
-      scope: 'singleton',
+      scope: metadata?.scope ?? 'singleton',
       type: 'class',
       useClass: provider,
     };
@@ -63,10 +65,12 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
   }
 
   if (isClassProvider(provider)) {
+    const metadata = getClassDiMetadata(provider.useClass);
+
     return {
-      inject: provider.inject ?? provider.useClass.inject ?? [],
+      inject: provider.inject ?? metadata?.inject ?? [],
       provide: provider.provide,
-      scope: provider.scope ?? 'singleton',
+      scope: provider.scope ?? metadata?.scope ?? 'singleton',
       type: 'class',
       useClass: provider.useClass,
     };

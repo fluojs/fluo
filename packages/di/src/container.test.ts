@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { Inject, Scope } from '@konekti/core';
+
 import { Container } from './container';
 
 describe('Container', () => {
@@ -59,5 +61,26 @@ describe('Container', () => {
 
     expect(a1).toBe(a2);
     expect(a1).not.toBe(b1);
+  });
+
+  it('supports @Inject and @Scope metadata for dependency tokens and scope', async () => {
+    class Logger {}
+
+    @Inject([Logger])
+    @Scope('request')
+    class RequestService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    const root = new Container().register(Logger, RequestService);
+
+    await expect(root.resolve(RequestService)).rejects.toThrow('outside request scope');
+
+    const requestScope = root.createRequestScope();
+    const first = await requestScope.resolve(RequestService);
+    const second = await requestScope.resolve(RequestService);
+
+    expect(first).toBe(second);
+    expect(first.logger).toBeInstanceOf(Logger);
   });
 });

@@ -12,6 +12,7 @@ export interface ModuleDefinition {
   controllers?: ControllerType[];
   exports?: Token[];
   middleware?: MiddlewareLike[];
+  global?: boolean;
 }
 
 export interface BootstrapModuleOptions {

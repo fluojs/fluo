@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { Inject } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
 import { Controller, Get, type FrameworkRequest, type FrameworkResponse, type HttpApplicationAdapter } from '@konekti/http';
 
@@ -7,9 +8,8 @@ import { bootstrapApplication, defineModule } from './bootstrap';
 
 describe('bootstrapApplication', () => {
   it('registers ConfigService as a bootstrap-level provider', async () => {
+    @Inject([ConfigService])
     class AppService {
-      static inject = [ConfigService];
-
       constructor(readonly config: ConfigService) {}
     }
 
@@ -111,14 +111,13 @@ describe('bootstrapApplication', () => {
   });
 
   it('exposes the dispatcher through the application shell', async () => {
+    @Controller('/health')
     class HealthController {
+      @Get('/')
       getHealth() {
         return { ok: true };
       }
     }
-
-    Controller('/health')(HealthController);
-    Get('/')(HealthController.prototype, 'getHealth');
 
     class AppModule {}
     defineModule(AppModule, {
