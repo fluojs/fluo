@@ -1,5 +1,6 @@
 export * from './adapter';
 export * from './binding';
+export * from './cors';
 export * from './decorators';
 export * from './dispatcher';
 export * from './errors';
