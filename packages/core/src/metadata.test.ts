@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  defineClassDiMetadata,
   defineControllerMetadata,
   defineDtoFieldBindingMetadata,
   defineModuleMetadata,
   defineRouteMetadata,
+  getClassDiMetadata,
   getControllerMetadata,
   getDtoBindingSchema,
+  getDtoFieldBindingMetadata,
   getModuleMetadata,
+  getOwnClassDiMetadata,
   getRouteMetadata,
 } from './metadata';
 
@@ -17,6 +21,7 @@ describe('metadata helpers', () => {
 
     defineModuleMetadata(ExampleModule, {
       exports: ['LOGGER'],
+      global: true,
       imports: ['SharedModule'],
       middleware: ['LoggingMiddleware'],
       providers: ['LoggerProvider'],
@@ -24,6 +29,7 @@ describe('metadata helpers', () => {
 
     expect(getModuleMetadata(ExampleModule)).toEqual({
       exports: ['LOGGER'],
+      global: true,
       imports: ['SharedModule'],
       middleware: ['LoggingMiddleware'],
       providers: ['LoggerProvider'],
@@ -81,5 +87,39 @@ describe('metadata helpers', () => {
         },
       },
     ]);
+    expect(getDtoFieldBindingMetadata(GetUserRequest.prototype, 'id')).toEqual({
+      key: 'id',
+      source: 'path',
+    });
+  });
+
+  it('round-trips class DI metadata', () => {
+    class ExampleService {}
+
+    defineClassDiMetadata(ExampleService, {
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+
+    expect(getClassDiMetadata(ExampleService)).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+  });
+
+  it('merges inject and scope metadata written in separate passes', () => {
+    class ExampleService {}
+
+    defineClassDiMetadata(ExampleService, {
+      inject: ['LOGGER'],
+    });
+    defineClassDiMetadata(ExampleService, {
+      scope: 'request',
+    });
+
+    expect(getOwnClassDiMetadata(ExampleService)).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
   });
 });
