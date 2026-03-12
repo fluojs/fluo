@@ -20,4 +20,9 @@ describe('CLI generators', () => {
     expect(generateServiceFiles('User')[1]?.path).toBe('user.service.test.ts');
     expect(generateRepoFiles('User')[1]?.path).toBe('user.repo.test.ts');
   });
+
+  it('can emit preset-aware repository examples', () => {
+    expect(generateRepoFiles('User', { preset: 'prisma' })[0]?.content).toContain('this.prisma.current()');
+    expect(generateRepoFiles('User', { preset: 'drizzle' })[0]?.content).toContain('this.database.current()');
+  });
 });

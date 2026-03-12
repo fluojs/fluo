@@ -4,17 +4,25 @@ import { toKebabCase, toPascalCase } from './utils';
 
 export function generateControllerFiles(name: string): GeneratedFile[] {
   const kebab = toKebabCase(name);
-  const pascal = `${toPascalCase(name)}Controller`;
+  const resource = toPascalCase(name);
+  const pascal = `${resource}Controller`;
+  const service = `${resource}Service`;
 
   return [
     {
-      content: `import { Controller, Get } from '@konekti/http';
+      content: `import { Inject } from '@konekti/core';
+import { Controller, Get } from '@konekti/http';
+
+import { ${service} } from './${kebab}.service';
 
 @Controller('/${kebab}')
+@Inject([${service}])
 class ${pascal} {
+  constructor(private readonly service: ${service}) {}
+
   @Get('/')
-  get${toPascalCase(name)}() {
-    return { ok: true };
+  async list${resource}s() {
+    return this.service.list${resource}s();
   }
 }
 
@@ -27,9 +35,15 @@ export { ${pascal} };
 
 import { ${pascal} } from './${kebab}.controller';
 
+class Fake${service} {
+  async list${resource}s() {
+    return [{ id: '${kebab}-1' }];
+  }
+}
+
 describe('${pascal}', () => {
-  it('returns the default payload', () => {
-    expect(new ${pascal}().get${toPascalCase(name)}()).toEqual({ ok: true });
+  it('delegates to the service', async () => {
+    await expect(new ${pascal}(new Fake${service}() as never).list${resource}s()).resolves.toEqual([{ id: '${kebab}-1' }]);
   });
 });
 `,

@@ -1,16 +1,25 @@
-import type { GeneratedFile } from '../types';
+import type { GenerateOptions, GeneratedFile } from '../types';
 
 import { toKebabCase, toPascalCase } from './utils';
 
-export function generateServiceFiles(name: string): GeneratedFile[] {
+export function generateServiceFiles(name: string, _options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
-  const pascal = `${toPascalCase(name)}Service`;
+  const resource = toPascalCase(name);
+  const pascal = `${resource}Service`;
+  const repo = `${resource}Repo`;
 
   return [
     {
-      content: `export class ${pascal} {
-  get${toPascalCase(name)}() {
-    return { ok: true };
+      content: `import { Inject } from '@konekti/core';
+
+import { ${repo} } from './${kebab}.repo';
+
+@Inject([${repo}])
+export class ${pascal} {
+  constructor(private readonly repo: ${repo}) {}
+
+  async list${resource}s() {
+    return this.repo.list${resource}s();
   }
 }
 `,
@@ -21,9 +30,15 @@ export function generateServiceFiles(name: string): GeneratedFile[] {
 
 import { ${pascal} } from './${kebab}.service';
 
+class Fake${repo} {
+  list${resource}s() {
+    return [{ id: '${kebab}-1' }];
+  }
+}
+
 describe('${pascal}', () => {
-  it('returns the default payload', () => {
-    expect(new ${pascal}().get${toPascalCase(name)}()).toEqual({ ok: true });
+  it('delegates to the repo', async () => {
+    await expect(new ${pascal}(new Fake${repo}() as never).list${resource}s()).resolves.toEqual([{ id: '${kebab}-1' }]);
   });
 });
 `,

@@ -4,3 +4,9 @@ export interface GeneratedFile {
 }
 
 export type GeneratorKind = 'controller' | 'dto' | 'module' | 'repo' | 'service';
+
+export type GeneratorPreset = 'drizzle' | 'generic' | 'prisma';
+
+export interface GenerateOptions {
+  preset?: GeneratorPreset;
+}
