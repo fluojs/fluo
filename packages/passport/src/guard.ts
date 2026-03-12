@@ -1,6 +1,6 @@
 import { ForbiddenException, UnauthorizedException, type GuardContext } from '@konekti/http';
 import type { Principal } from '@konekti/http';
-import type { Token } from '@konekti/core';
+import { Inject, type Token } from '@konekti/core';
 
 import {
   AuthenticationExpiredError,
@@ -36,9 +36,8 @@ function hasRequiredScopes(principal: { scopes?: string[] }, scopes: string[]): 
   return scopes.every((scope) => principal.scopes?.includes(scope));
 }
 
+@Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])
 export class AuthGuard implements AuthGuardContract {
-  static inject = [AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS];
-
   constructor(
     private readonly strategies: AuthStrategyRegistry = {},
     private readonly options: PassportModuleOptions = {},

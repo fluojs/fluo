@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+import { Inject } from '@konekti/core';
+
 import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors';
 import type { JwtClaims, JwtPrincipal, JwtVerifierOptions } from './types';
 
@@ -52,9 +54,8 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
   };
 }
 
+@Inject([JWT_OPTIONS])
 export class DefaultJwtVerifier {
-  static inject = [JWT_OPTIONS];
-
   constructor(private readonly options: JwtVerifierOptions) {}
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {

@@ -59,17 +59,15 @@ describe('AuthGuard', () => {
       }
     }
 
+    @Controller('/profile')
     class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      @RequireScopes('mock:read')
       getProfile(_input: unknown, ctx: { principal?: { subject: string } }) {
         return { subject: ctx.principal?.subject };
       }
     }
-
-    Controller('/profile')(ProtectedController);
-    Get('/')(ProtectedController.prototype, 'getProfile');
-    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
-    Reflect.apply(UseAuth('mock'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
-    Reflect.apply(RequireScopes('mock:read'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
 
     const root = new Container().register(
       ProtectedController,
@@ -94,16 +92,14 @@ describe('AuthGuard', () => {
       }
     }
 
+    @Controller('/profile')
     class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
       getProfile() {
         return { ok: true };
       }
     }
-
-    Controller('/profile')(ProtectedController);
-    Get('/')(ProtectedController.prototype, 'getProfile');
-    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
-    Reflect.apply(UseAuth('mock'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
 
     const root = new Container().register(
       ProtectedController,
@@ -142,17 +138,15 @@ describe('AuthGuard', () => {
       }
     }
 
+    @Controller('/profile')
     class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      @RequireScopes('profile:write')
       getProfile() {
         return { ok: true };
       }
     }
-
-    Controller('/profile')(ProtectedController);
-    Get('/')(ProtectedController.prototype, 'getProfile');
-    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
-    Reflect.apply(UseAuth('mock'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
-    Reflect.apply(RequireScopes('profile:write'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
 
     const root = new Container().register(
       ProtectedController,
@@ -195,16 +189,14 @@ describe('AuthGuard', () => {
 
     const googleBridge = createPassportJsStrategyBridge('google', PassportLikeGoogleStrategy);
 
+    @Controller('/oauth')
     class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google')
       getProfile(_input: unknown, ctx: { principal?: { subject: string } }) {
         return { subject: ctx.principal?.subject };
       }
     }
-
-    Controller('/oauth')(ProtectedController);
-    Get('/profile')(ProtectedController.prototype, 'getProfile');
-    const descriptor = Object.getOwnPropertyDescriptor(ProtectedController.prototype, 'getProfile')!;
-    Reflect.apply(UseAuth('google'), undefined, [ProtectedController.prototype, 'getProfile', descriptor]);
 
     const root = new Container().register(
       ProtectedController,
@@ -236,17 +228,15 @@ describe('AuthGuard', () => {
 
     const googleBridge = createPassportJsStrategyBridge('google', PassportLikeGoogleStrategy);
 
+    @Controller('/oauth')
     class LoginController {
+      @Get('/google')
+      @UseAuth('google')
       login() {
         handlerCalled = true;
         return { ok: true };
       }
     }
-
-    Controller('/oauth')(LoginController);
-    Get('/google')(LoginController.prototype, 'login');
-    const descriptor = Object.getOwnPropertyDescriptor(LoginController.prototype, 'login')!;
-    Reflect.apply(UseAuth('google'), undefined, [LoginController.prototype, 'login', descriptor]);
 
     const root = new Container().register(
       LoginController,

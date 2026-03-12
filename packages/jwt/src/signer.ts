@@ -1,5 +1,7 @@
 import { createHmac } from 'node:crypto';
 
+import { Inject } from '@konekti/core';
+
 import { JwtInvalidTokenError } from './errors';
 import type { JwtClaims, JwtVerifierOptions } from './types';
 import { JWT_OPTIONS } from './verifier';
@@ -12,9 +14,8 @@ function encodeBase64Url(value: Buffer | string): string {
     .replace(/\//g, '_');
 }
 
+@Inject([JWT_OPTIONS])
 export class DefaultJwtSigner {
-  static inject = [JWT_OPTIONS];
-
   constructor(private readonly options: JwtVerifierOptions) {}
 
   async signAccessToken(claims: JwtClaims): Promise<string> {
