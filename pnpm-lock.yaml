@@ -58,7 +58,20 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/drizzle: {}
+  packages/drizzle:
+    dependencies:
+      '@konekti-internal/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti-internal/module':
+        specifier: workspace:*
+        version: link:../module
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
 
   packages/http:
     dependencies:
@@ -77,12 +90,6 @@ importers:
       '@konekti/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/http':
-        specifier: workspace:*
-        version: link:../http
-      '@konekti/passport':
-        specifier: workspace:*
-        version: link:../passport
 
   packages/module:
     dependencies:
@@ -111,9 +118,38 @@ importers:
         specifier: workspace:*
         version: link:../http
 
-  packages/prisma: {}
+  packages/prisma:
+    dependencies:
+      '@konekti-internal/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti-internal/module':
+        specifier: workspace:*
+        version: link:../module
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
 
-  packages/testing: {}
+  packages/testing:
+    dependencies:
+      '@konekti-internal/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti-internal/module':
+        specifier: workspace:*
+        version: link:../module
+      '@konekti/config':
+        specifier: workspace:*
+        version: link:../config
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
 
   tooling/babel: {}
 
