@@ -6,14 +6,13 @@ import { createHandlerMapping } from './mapping';
 
 describe('handler mapping', () => {
   it('normalizes paths and extracts path params', () => {
+    @Controller('//users/')
     class UsersController {
+      @Get('/:id/')
       getUser() {
         return { ok: true };
       }
     }
-
-    Controller('//users/')(UsersController);
-    Get('/:id/')(UsersController.prototype, 'getUser');
 
     const mapping = createHandlerMapping([
       {
@@ -49,23 +48,21 @@ describe('handler mapping', () => {
   });
 
   it('fails fast on duplicate normalized route registrations', () => {
+    @Controller('/health')
     class HealthController {
+      @Get('/')
       first() {
         return { ok: true };
       }
     }
 
-    Controller('/health')(HealthController);
-    Get('/')(HealthController.prototype, 'first');
-
+    @Controller('//health//')
     class DuplicateHealthController {
+      @Get('')
       second() {
         return { ok: true };
       }
     }
-
-    Controller('//health//')(DuplicateHealthController);
-    Get('')(DuplicateHealthController.prototype, 'second');
 
     expect(() =>
       createHandlerMapping([

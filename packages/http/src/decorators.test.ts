@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { getControllerMetadata, getRouteMetadata } from '@konekti/core';
+import { getControllerMetadata, getDtoBindingSchema, getRouteMetadata } from '@konekti/core';
 
-import { Controller, Get, UseGuard, UseInterceptor } from './decorators';
+import {
+  Controller,
+  FromBody,
+  FromPath,
+  Get,
+  Optional,
+  RequestDto,
+  SuccessStatus,
+  UseGuard,
+  UseInterceptor,
+} from './decorators';
 
 describe('http decorators', () => {
-  it('writes controller and route metadata using helper APIs', () => {
+  it('writes controller and route metadata using decorator syntax', () => {
     class ClassGuard {
       canActivate() {}
     }
@@ -26,26 +36,28 @@ describe('http decorators', () => {
       }
     }
 
+    class GetUserRequest {
+      @FromPath('id')
+      id = '';
+
+      @FromBody('note')
+      @Optional()
+      note?: string;
+    }
+
+    @Controller('/users')
+    @UseGuard(ClassGuard)
+    @UseInterceptor(ClassInterceptor)
     class ExampleController {
+      @RequestDto(GetUserRequest)
+      @SuccessStatus(200)
+      @Get('/:id')
+      @UseGuard(MethodGuard)
+      @UseInterceptor(MethodInterceptor)
       getUser() {
         return { ok: true };
       }
     }
-
-    Controller('/users')(ExampleController);
-    UseGuard(ClassGuard)(ExampleController);
-    UseInterceptor(ClassInterceptor)(ExampleController);
-    Get('/:id')(ExampleController.prototype, 'getUser');
-    UseGuard(MethodGuard)(
-      ExampleController.prototype,
-      'getUser',
-      Object.getOwnPropertyDescriptor(ExampleController.prototype, 'getUser')!,
-    );
-    UseInterceptor(MethodInterceptor)(
-      ExampleController.prototype,
-      'getUser',
-      Object.getOwnPropertyDescriptor(ExampleController.prototype, 'getUser')!,
-    );
 
     expect(getControllerMetadata(ExampleController)).toEqual({
       basePath: '/users',
@@ -58,8 +70,27 @@ describe('http decorators', () => {
       interceptors: [MethodInterceptor],
       method: 'GET',
       path: '/:id',
-      request: undefined,
-      successStatus: undefined,
+      request: GetUserRequest,
+      successStatus: 200,
     });
+
+    expect(getDtoBindingSchema(GetUserRequest)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: undefined,
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'note',
+        metadata: {
+          key: 'note',
+          optional: true,
+          source: 'body',
+        },
+      },
+    ]);
   });
 });
