@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import type { PackageManager } from './types';
+import type { PackageManager } from './types.js';
 
 export async function installDependencies(targetDirectory: string, packageManager: PackageManager): Promise<void> {
   const command = packageManager;

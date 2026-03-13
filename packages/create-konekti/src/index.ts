@@ -20,4 +20,4 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1])) {
 }
 
 export { createTierNote, getCreateKonektiPrompts, promptForCreateKonektiAnswers, resolveSupportTier, scaffoldKonektiApp };
-export type * from './types';
+export type * from './types.js';

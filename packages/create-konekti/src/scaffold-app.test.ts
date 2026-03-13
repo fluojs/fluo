@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { scaffoldKonektiApp } from './bootstrap/scaffold';
+import { scaffoldKonektiApp } from './bootstrap/scaffold.js';
 
 const createdDirectories: string[] = [];
 const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));

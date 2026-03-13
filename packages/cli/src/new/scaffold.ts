@@ -3,10 +3,10 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
-import { generateRepoFiles } from '../generators/repo';
-import { createTierNote } from './prompt';
-import { installDependencies } from './install';
-import type { CreateKonektiOptions, PackageManager } from './types';
+import { generateRepoFiles } from '../generators/repo.js';
+import { createTierNote } from './prompt.js';
+import { installDependencies } from './install.js';
+import type { CreateKonektiOptions, PackageManager } from './types.js';
 
 const PACKAGE_DIRECTORY_BY_NAME = {
   '@konekti/cli': 'cli',

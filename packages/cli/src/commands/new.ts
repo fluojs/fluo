@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 
-import { createTierNote, promptForCreateKonektiAnswers } from '../new/prompt';
-import { scaffoldKonektiApp } from '../new/scaffold';
-import type { CreateKonektiAnswers, NewCommandOptions } from '../new/types';
+import { createTierNote, promptForCreateKonektiAnswers } from '../new/prompt.js';
+import { scaffoldKonektiApp } from '../new/scaffold.js';
+import type { CreateKonektiAnswers, NewCommandOptions } from '../new/types.js';
 
 type CliStream = {
   write(message: string): unknown;

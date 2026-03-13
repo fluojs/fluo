@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTierNote, getCreateKonektiPrompts, resolveSupportTier } from './bootstrap/prompt';
+import { createTierNote, getCreateKonektiPrompts, resolveSupportTier } from './bootstrap/prompt.js';
 
 describe('create-konekti prompt flow', () => {
   it('keeps the MVP prompt order', () => {

@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runGenerateCommand } from './commands/generate';
-import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new';
-import type { GenerateOptions, GeneratorKind, GeneratorPreset } from './types';
+import { runGenerateCommand } from './commands/generate.js';
+import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
+import type { GenerateOptions, GeneratorKind, GeneratorPreset } from './types.js';
 
 type CliStream = {
   write(message: string): unknown;

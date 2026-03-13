@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
-import type { CreateKonektiAnswers, CreatePrompt, DatabaseFamily, OrmFamily, PackageManager, SupportTier } from './types';
+import type { CreateKonektiAnswers, CreatePrompt, DatabaseFamily, OrmFamily, PackageManager, SupportTier } from './types.js';
 
 const PROMPTS: CreatePrompt[] = [
   { key: 'projectName', label: 'Project name' },

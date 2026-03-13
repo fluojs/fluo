@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runCli } from './cli';
+import { runCli } from './cli.js';
 
 const createdDirectories: string[] = [];
 
