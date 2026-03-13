@@ -1,4 +1,4 @@
-import type { Provider } from '@konekti-internal/di';
+import type { Provider } from '@konekti/di';
 import { AuthGuard } from './guard';
 import {
   AUTH_STRATEGY_REGISTRY,

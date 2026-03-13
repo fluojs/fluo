@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Controller, Get, createDispatcher, createHandlerMapping } from '@konekti/http';
 import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti/http';
-import { Container } from '@konekti-internal/di';
+import { Container } from '@konekti/di';
 
 import { RequireScopes, UseAuth } from './decorators';
 import { AuthenticationRequiredError } from './errors';

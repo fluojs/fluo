@@ -1,6 +1,6 @@
 import type { Token } from '@konekti/core';
 import type { GuardContext, Principal } from '@konekti/http';
-import type { Provider } from '@konekti-internal/di';
+import type { Provider } from '@konekti/di';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from './errors';
 import type { AuthHandledResult, AuthStrategy, AuthStrategyRegistration } from './types';
