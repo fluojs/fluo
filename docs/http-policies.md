@@ -4,7 +4,7 @@ The current starter app keeps HTTP policy knobs explicit without opening unneces
 
 ## CORS default
 
-The scaffolded app reads `CORS_ORIGIN` and wires `createCorsMiddleware(...)` in `apps/<project>/src/app.ts`.
+The scaffolded app reads `CORS_ORIGIN` and wires `createCorsMiddleware(...)` in `src/app.ts`.
 
 Default scaffold env:
 

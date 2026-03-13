@@ -12,7 +12,7 @@ pnpm typecheck
 pnpm build
 ```
 
-Generated workspaces expose the same commands through the selected package manager.
+Generated starter projects expose the same commands through the selected package manager.
 
 ## official testing API
 
@@ -38,4 +38,4 @@ Use these files as the contract examples when expanding tests:
 
 ## generated app expectations
 
-`create-konekti` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration test in `packages/create-konekti/src/scaffold-app.test.ts` verifies that a fresh workspace can run `typecheck`, `build`, and `test` immediately after install.
+`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration test in `packages/create-konekti/src/scaffold-app.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install.
