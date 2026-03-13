@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,8 +24,16 @@ function writeTextFile(filePath: string, content: string): void {
   writeFileSync(filePath, content, 'utf8');
 }
 
+function readJsonFile<T>(filePath: string): T {
+  return JSON.parse(readFileSync(filePath, 'utf8')) as T;
+}
+
+function writeJsonFile(filePath: string, content: unknown): void {
+  writeTextFile(filePath, JSON.stringify(content, null, 2));
+}
+
 function copyFrameworkSources(repoRoot: string, targetDirectory: string, orm: CreateKonektiOptions['orm']): void {
-  const packageNames = ['core', 'config', 'di', 'module', 'http', 'jwt', 'passport', 'testing'] as string[];
+  const packageNames = ['cli', 'core', 'config', 'di', 'module', 'http', 'jwt', 'passport', 'testing'] as string[];
 
   packageNames.push(orm === 'Prisma' ? 'prisma' : 'drizzle');
 
@@ -36,26 +44,139 @@ function copyFrameworkSources(repoRoot: string, targetDirectory: string, orm: Cr
   cpSync(join(repoRoot, 'tooling'), join(targetDirectory, 'tooling'), { recursive: true });
 }
 
-function createRootPackageJson(projectName: string, repoRoot: string): string {
+function createWorkspaceGlobs(): string[] {
+  return ['packages/*', 'tooling/*', 'apps/*'];
+}
+
+function collectWorkspaceVersions(targetDirectory: string): Map<string, string> {
+  const workspaceVersions = new Map<string, string>();
+
+  for (const scope of ['packages', 'tooling', 'apps']) {
+    const scopeDirectory = join(targetDirectory, scope);
+
+    if (!existsSync(scopeDirectory)) {
+      continue;
+    }
+
+    for (const entry of readdirSync(scopeDirectory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const packageJsonPath = join(scopeDirectory, entry.name, 'package.json');
+
+      if (!existsSync(packageJsonPath)) {
+        continue;
+      }
+
+      const packageJson = readJsonFile<{ name: string; version: string }>(packageJsonPath);
+      workspaceVersions.set(packageJson.name, packageJson.version);
+    }
+  }
+
+  return workspaceVersions;
+}
+
+function normalizeWorkspaceDependencyGroup(
+  dependencies: Record<string, string> | undefined,
+  workspaceVersions: Map<string, string>,
+): Record<string, string> | undefined {
+  if (!dependencies) {
+    return dependencies;
+  }
+
+  return Object.fromEntries(
+    Object.entries(dependencies).map(([dependencyName, versionRange]) => {
+      if (!versionRange.startsWith('workspace:')) {
+        return [dependencyName, versionRange];
+      }
+
+      const workspaceVersion = workspaceVersions.get(dependencyName);
+
+      if (!workspaceVersion) {
+        return [dependencyName, versionRange.slice('workspace:'.length) || '0.0.0'];
+      }
+
+      return [dependencyName, workspaceVersion];
+    }),
+  );
+}
+
+function normalizeWorkspacePackageManifests(targetDirectory: string): void {
+  const workspaceVersions = collectWorkspaceVersions(targetDirectory);
+  const manifestPaths = [join(targetDirectory, 'package.json')];
+
+  for (const scope of ['packages', 'tooling', 'apps']) {
+    const scopeDirectory = join(targetDirectory, scope);
+
+    if (!existsSync(scopeDirectory)) {
+      continue;
+    }
+
+    for (const entry of readdirSync(scopeDirectory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        manifestPaths.push(join(scopeDirectory, entry.name, 'package.json'));
+      }
+    }
+  }
+
+  for (const manifestPath of manifestPaths) {
+    if (!existsSync(manifestPath)) {
+      continue;
+    }
+
+    const packageJson = readJsonFile<{
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
+    }>(manifestPath);
+
+    packageJson.dependencies = normalizeWorkspaceDependencyGroup(packageJson.dependencies, workspaceVersions);
+    packageJson.devDependencies = normalizeWorkspaceDependencyGroup(packageJson.devDependencies, workspaceVersions);
+    packageJson.optionalDependencies = normalizeWorkspaceDependencyGroup(packageJson.optionalDependencies, workspaceVersions);
+    packageJson.peerDependencies = normalizeWorkspaceDependencyGroup(packageJson.peerDependencies, workspaceVersions);
+    packageJson.scripts = packageJson.scripts
+      ? Object.fromEntries(
+          Object.entries(packageJson.scripts).map(([scriptName, scriptCommand]) => [
+            scriptName,
+            scriptCommand.replaceAll('pnpm exec ', ''),
+          ]),
+        )
+      : packageJson.scripts;
+
+    writeJsonFile(manifestPath, packageJson);
+  }
+}
+
+function createRootPackageJson(
+  projectName: string,
+  repoRoot: string,
+  packageManager: CreateKonektiOptions['packageManager'],
+): string {
   const rootPackage = readRootPackageJson(repoRoot);
+  const rootWorkspaceGlobs = createWorkspaceGlobs();
 
   return JSON.stringify(
     {
       devDependencies: {
+        '@konekti/cli': 'workspace:*',
         ...rootPackage.devDependencies,
         tsx: '^4.20.4',
       },
       engines: rootPackage.engines,
       name: projectName,
-      packageManager: rootPackage.packageManager,
+      ...(packageManager === 'pnpm' ? { packageManager: rootPackage.packageManager } : {}),
       private: true,
       scripts: {
-        build: "pnpm -r --if-present run build",
-        dev: "pnpm --filter './apps/*' --if-present run dev",
+        build: 'node ./tooling/scripts/run-workspace-script.mjs build',
+        dev: 'node ./tooling/scripts/run-workspace-script.mjs dev --scope=apps --first',
         test: 'vitest run',
         'test:watch': 'vitest',
-        typecheck: "tsc -p tsconfig.tools.json --noEmit && pnpm -r --if-present run typecheck",
+        typecheck: 'tsc -p tsconfig.tools.json --noEmit && node ./tooling/scripts/run-workspace-script.mjs typecheck',
       },
+      workspaces: rootWorkspaceGlobs,
     },
     null,
     2,
@@ -63,7 +184,7 @@ function createRootPackageJson(projectName: string, repoRoot: string): string {
 }
 
 function createWorkspaceFile(): string {
-  return ['packages:', '  - packages/*', '  - tooling/*', '  - apps/*', ''].join('\n');
+  return ['packages:', ...createWorkspaceGlobs().map((workspace) => `  - ${workspace}`), ''].join('\n');
 }
 
 function createRootVitestConfig(): string {
@@ -96,7 +217,34 @@ export default defineConfig({
 `;
 }
 
-function createRootReadme(projectName: string, orm: CreateKonektiOptions['orm'], database: CreateKonektiOptions['database']): string {
+function createExecCommand(packageManager: CreateKonektiOptions['packageManager'], command: string): string {
+  switch (packageManager) {
+    case 'npm':
+      return `npm exec -- ${command}`;
+    case 'yarn':
+      return `yarn ${command}`;
+    default:
+      return `pnpm exec ${command}`;
+  }
+}
+
+function createRunCommand(packageManager: CreateKonektiOptions['packageManager'], command: string): string {
+  switch (packageManager) {
+    case 'npm':
+      return `npm run ${command}`;
+    case 'yarn':
+      return `yarn ${command}`;
+    default:
+      return `pnpm ${command}`;
+  }
+}
+
+function createRootReadme(
+  projectName: string,
+  orm: CreateKonektiOptions['orm'],
+  database: CreateKonektiOptions['database'],
+  packageManager: CreateKonektiOptions['packageManager'],
+): string {
   return `# ${projectName}
 
 Generated by create-konekti.
@@ -106,6 +254,17 @@ Generated by create-konekti.
 - CORS: configurable through CORS_ORIGIN and scaffolded middleware
 - Tx-aware repository example: src/examples/user.repo.ts
 - Runtime path: bootstrapApplication -> handler mapping -> dispatcher -> middleware -> guard -> interceptor -> controller
+
+## Commands
+
+- Dev: ${createRunCommand(packageManager, 'dev')}
+- Build: ${createRunCommand(packageManager, 'build')}
+- Typecheck: ${createRunCommand(packageManager, 'typecheck')}
+- Test: ${createRunCommand(packageManager, 'test')}
+
+## Generator example
+
+- Repo generator: ${createExecCommand(packageManager, 'konekti g repo User')}
 `;
 }
 
@@ -125,10 +284,10 @@ function createAppPackageJson(projectName: string, orm: CreateKonektiOptions['or
       private: true,
       scripts: {
         build:
-          "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
-        dev: 'pnpm exec node --watch --watch-preserve-output --import tsx src/main.ts',
-        test: 'pnpm exec vitest run',
-        typecheck: 'pnpm exec tsc -p tsconfig.json --noEmit',
+          "babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && tsc -p tsconfig.build.json",
+        dev: 'node --watch --watch-preserve-output --import tsx src/main.ts',
+        test: 'vitest run',
+        typecheck: 'tsc -p tsconfig.json --noEmit',
       },
       type: 'module',
       version: '0.0.0',
@@ -547,6 +706,7 @@ export class UserRepo {
   }
 
   return `import { Inject } from '@konekti/core';
+import type { DrizzleDatabaseLike } from '@konekti/drizzle';
 import { DrizzleDatabase } from '@konekti/drizzle';
 
 type UserRecord = {
@@ -554,15 +714,19 @@ type UserRecord = {
   id: string;
 };
 
+type UserDatabase = DrizzleDatabaseLike<{
+  users: {
+    findMany(): Promise<UserRecord[]>;
+  };
+}> & {
+  users: {
+    findMany(): Promise<UserRecord[]>;
+  };
+};
+
 @Inject([DrizzleDatabase])
 export class UserRepo {
-  constructor(
-    private readonly database: DrizzleDatabase<{
-      users: {
-        findMany(): Promise<UserRecord[]>;
-      };
-    }>,
-  ) {}
+  constructor(private readonly database: DrizzleDatabase<UserDatabase>) {}
 
   async listUsers(): Promise<UserRecord[]> {
     const current = this.database.current();
@@ -762,17 +926,25 @@ export async function scaffoldKonektiApp(options: CreateKonektiOptions): Promise
 
   mkdirSync(targetDirectory, { recursive: true });
   copyFrameworkSources(repoRoot, targetDirectory, options.orm);
-  writeTextFile(join(targetDirectory, 'package.json'), createRootPackageJson(options.projectName, repoRoot));
-  writeTextFile(join(targetDirectory, 'pnpm-workspace.yaml'), createWorkspaceFile());
+  writeTextFile(join(targetDirectory, 'package.json'), createRootPackageJson(options.projectName, repoRoot, options.packageManager));
+
+  if (options.packageManager === 'pnpm') {
+    writeTextFile(join(targetDirectory, 'pnpm-workspace.yaml'), createWorkspaceFile());
+  }
+
   writeTextFile(join(targetDirectory, 'tsconfig.base.json'), readFileSync(join(repoRoot, 'tsconfig.base.json'), 'utf8'));
   writeTextFile(join(targetDirectory, 'tsconfig.tools.json'), readFileSync(join(repoRoot, 'tsconfig.tools.json'), 'utf8'));
   writeTextFile(join(targetDirectory, 'vite.config.ts'), readFileSync(join(repoRoot, 'vite.config.ts'), 'utf8'));
   writeTextFile(join(targetDirectory, 'vitest.config.ts'), createRootVitestConfig());
   writeTextFile(
     join(targetDirectory, 'README.md'),
-    `${createRootReadme(options.projectName, options.orm, options.database)}\n\n${createTierNote(options.orm, options.database)}\n`,
+    `${createRootReadme(options.projectName, options.orm, options.database, options.packageManager)}\n\n${createTierNote(options.orm, options.database)}\n`,
   );
   scaffoldAppPackage(targetDirectory, options);
+
+  if (options.packageManager !== 'pnpm') {
+    normalizeWorkspacePackageManifests(targetDirectory);
+  }
 
   if (!options.skipInstall) {
     await installDependencies(targetDirectory, options.packageManager);

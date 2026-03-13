@@ -37,21 +37,26 @@ export class ${resource}Repo {
 
   if (preset === 'drizzle') {
     return `import { Inject } from '@konekti/core';
+import type { DrizzleDatabaseLike } from '@konekti/drizzle';
 import { DrizzleDatabase } from '@konekti/drizzle';
 
 type ${resource}Record = {
   id: string;
 };
 
+type ${resource}Database = DrizzleDatabaseLike<{
+  ${resource.toLowerCase()}s: {
+    findMany(): Promise<${resource}Record[]>;
+  };
+}> & {
+  ${resource.toLowerCase()}s: {
+    findMany(): Promise<${resource}Record[]>;
+  };
+};
+
 @Inject([DrizzleDatabase])
 export class ${resource}Repo {
-  constructor(
-    private readonly database: DrizzleDatabase<{
-      ${resource.toLowerCase()}s: {
-        findMany(): Promise<${resource}Record[]>;
-      };
-    }>,
-  ) {}
+  constructor(private readonly database: DrizzleDatabase<${resource}Database>) {}
 
   async list${resource}s(): Promise<${resource}Record[]> {
     const current = this.database.current();
