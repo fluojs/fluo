@@ -11,11 +11,13 @@
 - `@konekti/passport`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/di`
+- `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
 - `create-konekti`
 
-Internal-only workspace packages remain under `@konekti-internal/*` and should not leak into public app-facing guidance unless the current runtime contract still requires them.
+The current release direction treats `@konekti/di` and `@konekti/runtime` as public support packages rather than leaking `@konekti-internal/*` names into generated app code.
 
 ## request execution path
 
@@ -40,4 +42,4 @@ Concrete evidence lives in:
 ## examples
 
 - `docs/phase-3-reference-slice.md` captures the current reference slice baseline
-- `apps/<project>/src/examples/user.repo.ts` is the generated repository example in scaffolded workspaces
+- `src/examples/user.repo.ts` is the generated repository example in scaffolded starter projects
