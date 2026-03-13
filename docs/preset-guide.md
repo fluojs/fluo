@@ -19,10 +19,10 @@ This guide keeps public docs aligned with the current ORM x DB support matrix.
 
 ## CLI behavior
 
-`create-konekti` prints a tier note before dependency installation starts. `@konekti/cli` uses generated workspace package metadata to infer the selected preset for commands like `konekti g repo User`.
+`konekti new` prints a tier note before dependency installation starts. `@konekti/cli` uses generated project package metadata to infer the selected preset for commands like `konekti g repo User`.
 
 ## generated repo behavior
 
 - Prisma presets generate repositories that resolve `this.prisma.current()`
 - Drizzle presets generate repositories that resolve `this.database.current()`
-- generic generation stays available for non-scaffolded or mixed workspaces
+- generic generation stays available for non-scaffolded or mixed project layouts

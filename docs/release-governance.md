@@ -13,14 +13,11 @@ These packages are the intended public release surface once the repository leave
 - `@konekti/passport`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/di`
+- `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
 - `create-konekti`
-
-Internal workspaces:
-
-- `@konekti-internal/di`
-- `@konekti-internal/module`
 
 ## versioning policy
 
@@ -39,6 +36,6 @@ Internal workspaces:
 1. `pnpm test`
 2. `pnpm typecheck`
 3. `pnpm build`
-4. verify scaffolded `pnpm` and `npm` workspaces still run end-to-end
+4. verify scaffolded `pnpm`, `npm`, and `yarn` starter projects still run end-to-end
 5. confirm docs match the current package surface and support matrix
 6. confirm any manifest decision note still matches benchmark evidence
