@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti-internal/module';
+import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
 import { PRISMA_CLIENT } from './tokens';
