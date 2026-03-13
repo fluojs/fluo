@@ -1,0 +1,27 @@
+{
+  "decision": "defer-compile-time-manifest",
+  "note": "Current artifact measures the runtime bootstrap baseline only. Adopt a manifest path only after a prototype shows a meaningful startup gain against these scenarios.",
+  "results": [
+    {
+      "averageMs": 0.35,
+      "maxMs": 1.25,
+      "minMs": 0.1,
+      "name": "hello-world",
+      "samples": [1.25, 0.16, 0.11, 0.11, 0.1]
+    },
+    {
+      "averageMs": 0.48,
+      "maxMs": 0.71,
+      "minMs": 0.16,
+      "name": "medium-rest",
+      "samples": [0.71, 0.46, 0.66, 0.38, 0.16]
+    },
+    {
+      "averageMs": 0.47,
+      "maxMs": 0.86,
+      "minMs": 0.26,
+      "name": "module-heavy",
+      "samples": [0.86, 0.32, 0.27, 0.26, 0.65]
+    }
+  ]
+}
