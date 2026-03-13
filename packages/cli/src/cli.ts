@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runGenerateCommand } from './commands/generate';
+import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new';
 import type { GenerateOptions, GeneratorKind, GeneratorPreset } from './types';
 
 type CliStream = {
@@ -22,6 +23,17 @@ type ParsedCliArgs = {
   targetDirectory?: string;
 };
 
+type ParsedCommand =
+  | {
+      argv: string[];
+      command: 'new';
+    }
+  | {
+      argv: string[];
+      command: 'generate';
+      parsed: ParsedCliArgs;
+    };
+
 const GENERATOR_KINDS: GeneratorKind[] = ['controller', 'dto', 'module', 'repo', 'service'];
 const PRESETS: GeneratorPreset[] = ['drizzle', 'generic', 'prisma'];
 
@@ -35,6 +47,8 @@ function isGeneratorPreset(value: string): value is GeneratorPreset {
 
 function usage(): string {
   return [
+    newUsage(),
+    '',
     'Usage: konekti g <kind> <name> [--preset <generic|prisma|drizzle>] [--target-directory <path>]',
     'Aliases: konekti generate <kind> <name>',
   ].join('\n');
@@ -139,7 +153,7 @@ function resolveDefaultTargetDirectory(startDirectory: string): string {
   return resolvedStartDirectory;
 }
 
-function parseCliArgs(argv: string[]): ParsedCliArgs {
+function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   const [command, rawKind, name, ...optionArgs] = argv;
 
   if (!(command === 'g' || command === 'generate')) {
@@ -188,20 +202,45 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
   };
 }
 
-export function runCli(argv = process.argv.slice(2), runtime: CliRuntimeOptions = {}): number {
+function parseCommand(argv: string[]): ParsedCommand {
+  const [command] = argv;
+
+  if (command === 'new' || command === 'create') {
+    return {
+      argv: argv.slice(1),
+      command: 'new',
+    };
+  }
+
+  return {
+    argv,
+    command: 'generate',
+    parsed: parseGenerateArgs(argv),
+  };
+}
+
+export async function runCli(
+  argv = process.argv.slice(2),
+  runtime: CliRuntimeOptions & NewCommandRuntimeOptions = {},
+): Promise<number> {
   const cwd = runtime.cwd ? resolve(runtime.cwd) : process.cwd();
   const stdout = runtime.stdout ?? process.stdout;
   const stderr = runtime.stderr ?? process.stderr;
 
   try {
-    const parsed = parseCliArgs(argv);
-    const targetDirectory = resolve(cwd, parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
+    const parsedCommand = parseCommand(argv);
+
+    if (parsedCommand.command === 'new') {
+      return runNewCommand(parsedCommand.argv, runtime);
+    }
+
+    const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
 
     mkdirSync(targetDirectory, { recursive: true });
 
-    const files = runGenerateCommand(parsed.kind, parsed.name, targetDirectory, {
-      ...parsed.options,
-      preset: parsed.options.preset ?? detectPreset(cwd),
+    const files = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, {
+      ...parsedCommand.parsed.options,
+      preset: parsedCommand.parsed.options.preset ?? detectPreset(cwd),
     });
 
     stdout.write(`Generated ${files.length} file(s):\n`);
@@ -218,5 +257,5 @@ export function runCli(argv = process.argv.slice(2), runtime: CliRuntimeOptions 
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  process.exitCode = runCli();
+  process.exitCode = await runCli();
 }
