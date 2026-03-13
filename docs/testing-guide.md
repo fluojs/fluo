@@ -10,6 +10,7 @@ From the repository root:
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm verify:release-candidate
 ```
 
 Generated starter projects expose the same commands through the selected package manager.
@@ -39,3 +40,5 @@ Use these files as the contract examples when expanding tests:
 ## generated app expectations
 
 `konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration test in `packages/create-konekti/src/scaffold-app.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install.
+
+For the outside-the-monorepo gate, use `pnpm verify:release-candidate`. That command is the current CI-facing public release candidate check, and it exercises the packed CLI/bootstrap codepaths that back the canonical `@konekti/cli` path plus the `create-konekti` compatibility wrapper.

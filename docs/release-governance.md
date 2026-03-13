@@ -33,9 +33,17 @@ These packages are the intended public release surface once the repository leave
 
 ## release checklist
 
-1. `pnpm test`
-2. `pnpm typecheck`
-3. `pnpm build`
-4. verify scaffolded `pnpm`, `npm`, and `yarn` starter projects still run end-to-end
-5. confirm docs match the current package surface and support matrix
-6. confirm any manifest decision note still matches benchmark evidence
+1. `pnpm verify:release-candidate`
+2. confirm docs match the current package surface and support matrix
+3. confirm any manifest decision note still matches benchmark evidence
+
+## release-candidate gate
+
+`pnpm verify:release-candidate` currently proves:
+
+- package typecheck + build succeed from the monorepo root
+- scaffolded starter projects work outside the repo-local app path through the same packed CLI/bootstrap codepaths used by the canonical `pnpm dlx @konekti/cli new ...` flow and the `create-konekti` compatibility wrapper
+- `pnpm`, `npm`, and `yarn` starter projects all pass `typecheck`, `build`, `test`, and `konekti g repo ...`
+- CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution
+
+The matching CI entry lives at `.github/workflows/release-candidate.yml`.

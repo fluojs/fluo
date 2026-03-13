@@ -2,15 +2,23 @@
 
 This guide matches the current Phase 5 onboarding contract for the implementation repo.
 
-## repo-verified path
+## public release-candidate path
 
 The default public recommendation remains `Prisma + PostgreSQL`.
+
+```sh
+pnpm dlx @konekti/cli new starter-app
+```
+
+This is the canonical public release-candidate bootstrap path.
+
+## repo-local smoke path
 
 ```sh
 pnpm exec konekti new starter-app
 ```
 
-This is the repo-local smoke path verified in this repository today. For first-run public usage, the intended command shape is `pnpm dlx @konekti/cli new starter-app`.
+This remains the repo-local smoke path verified inside the implementation repository.
 
 Prompt flow:
 
