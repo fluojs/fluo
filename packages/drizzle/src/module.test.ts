@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti-internal/module';
+import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { createDrizzleModule, DrizzleDatabase } from './index';
 

@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti-internal/di';
-import { defineModule, type ModuleType } from '@konekti-internal/module';
+import type { Provider } from '@konekti/di';
+import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { DrizzleDatabase } from './database';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE } from './tokens';

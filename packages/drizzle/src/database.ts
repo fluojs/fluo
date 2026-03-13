@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import type { OnApplicationShutdown } from '@konekti-internal/module';
+import type { OnApplicationShutdown } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE } from './tokens';

@@ -1,7 +1,7 @@
 {
   "name": "@konekti/drizzle",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -13,7 +13,7 @@
   "dependencies": {
     "@konekti/core": "workspace:*",
     "@konekti/http": "workspace:*",
-    "@konekti-internal/di": "workspace:*",
-    "@konekti-internal/module": "workspace:*"
+    "@konekti/di": "workspace:*",
+    "@konekti/runtime": "workspace:*"
   }
 }
