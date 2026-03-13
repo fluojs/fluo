@@ -7,10 +7,10 @@ This guide matches the current Phase 5 onboarding contract for the implementatio
 The default public recommendation remains `Prisma + PostgreSQL`.
 
 ```sh
-pnpm --filter create-konekti exec create-konekti
+pnpm exec konekti new starter-app
 ```
 
-This is the monorepo-local smoke path verified in this repository today.
+This is the repo-local smoke path verified in this repository today. For first-run public usage, the intended command shape is `pnpm dlx @konekti/cli new starter-app`.
 
 Prompt flow:
 
@@ -21,7 +21,7 @@ Prompt flow:
 5. tier note before install starts
 6. `Target directory`
 
-## generated workspace commands
+## generated project commands
 
 Run these from the generated project root:
 
@@ -32,16 +32,16 @@ pnpm build
 pnpm test
 ```
 
-The scaffold now emits the same workspace layout for `pnpm`, `npm`, and `yarn`, with command wrappers that stay package-manager aware.
+The scaffold now emits the same single-project layout for `pnpm`, `npm`, and `yarn`, with command wrappers that stay package-manager aware.
 
 ## first generated app shape
 
 The starter app includes:
 
-- `apps/<project>/src/app.ts` with JWT + passport wiring
-- `apps/<project>/src/node-http-adapter.ts` with request-signal support
-- `apps/<project>/src/examples/user.repo.ts` with preset-aware ORM access
-- `apps/<project>/src/app.test.ts` proving the runtime path works end-to-end
+- `src/app.ts` with JWT + passport wiring
+- `src/node-http-adapter.ts` with request-signal support
+- `src/examples/user.repo.ts` with preset-aware ORM access
+- `src/app.test.ts` proving the runtime path works end-to-end
 
 ## first generator command
 
@@ -51,4 +51,4 @@ Run the repo generator from the project root:
 pnpm exec konekti g repo User
 ```
 
-On a generated single-app workspace, the CLI infers the selected preset and writes files into `apps/<project>/src` by default.
+On a generated single-app project, the CLI infers the selected preset and writes files into `src/` by default.
