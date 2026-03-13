@@ -2,6 +2,9 @@
   "name": "@konekti/cli",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "konekti": "./bin/konekti.mjs"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -9,5 +12,8 @@
   "scripts": {
     "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.20.4"
   }
 }

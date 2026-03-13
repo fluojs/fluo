@@ -1,3 +1,4 @@
+export * from './cli';
 export * from './commands/generate';
 export * from './generators/controller';
 export * from './generators/dto';
