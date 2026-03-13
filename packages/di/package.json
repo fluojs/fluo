@@ -1,7 +1,7 @@
 {
-  "name": "@konekti-internal/di",
+  "name": "@konekti/di",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

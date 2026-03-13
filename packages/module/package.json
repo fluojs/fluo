@@ -1,7 +1,7 @@
 {
-  "name": "@konekti-internal/module",
+  "name": "@konekti/runtime",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@konekti/config": "workspace:*",
-    "@konekti-internal/di": "workspace:*",
+    "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/core": "workspace:*"
   }
