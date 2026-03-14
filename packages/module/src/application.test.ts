@@ -1,11 +1,49 @@
+import { createServer } from 'node:net';
+
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
-import { Controller, Get, type FrameworkRequest, type FrameworkResponse, type HttpApplicationAdapter } from '@konekti/http';
+import {
+  Controller,
+  FromBody,
+  Get,
+  Post,
+  RequestDto,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  type HttpApplicationAdapter,
+} from '@konekti/http';
 
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
+import { ModuleInjectionMetadataError } from './errors.js';
+import { bootstrapNodeApplication, runNodeApplication } from './node.js';
 import type { ApplicationLogger } from './types.js';
+
+async function findAvailablePort(): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+
+    server.once('error', reject);
+    server.listen(0, () => {
+      const address = server.address();
+
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to resolve an available port.'));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(address.port);
+      });
+    });
+  });
+}
 
 describe('bootstrapApplication', () => {
   it('registers ConfigService as a bootstrap-level provider', async () => {
@@ -107,6 +145,93 @@ describe('bootstrapApplication', () => {
     expect(app.rootModule).toBe(AppModule);
   });
 
+  it('creates node applications that parse JSON request bodies over HTTP', async () => {
+    class CreateUserRequest {
+      @FromBody('name')
+      name = '';
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @RequestDto(CreateUserRequest)
+      @Post('/')
+      createUser(input: CreateUserRequest) {
+        return { name: input.name };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+      body: JSON.stringify({ name: 'Ada' }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ name: 'Ada' });
+
+    await app.close();
+  });
+
+  it('runs node applications with runtime-owned defaults', async () => {
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      error(message, error, context) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+      },
+      log(message, context) {
+        loggerEvents.push(`log:${context}:${message}`);
+      },
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await runNodeApplication(AppModule, {
+      logger,
+      mode: 'test',
+      port,
+    });
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    const corsPreflight = await fetch(`http://127.0.0.1:${String(port)}/health`, {
+      headers: { origin: 'https://example.com' },
+      method: 'OPTIONS',
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(corsPreflight.status).toBe(204);
+    expect(corsPreflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(loggerEvents).toContain(`log:KonektiFactory:Listening on http://localhost:${String(port)}`);
+
+    await app.close();
+  });
+
   it('fails before listen when config validation rejects bootstrap config', async () => {
     class AppModule {}
     defineModule(AppModule, {});
@@ -120,6 +245,26 @@ describe('bootstrapApplication', () => {
         },
       }),
     ).rejects.toThrow('Invalid configuration.');
+  });
+
+  it('fails during bootstrap when a provider omits required injection metadata', async () => {
+    class Logger {}
+
+    class AppService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [Logger, AppService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        mode: 'test',
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow(ModuleInjectionMetadataError);
   });
 
   it('exposes the dispatcher through the application shell', async () => {
