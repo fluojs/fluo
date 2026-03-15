@@ -1,3 +1,6 @@
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
 import {
   createTierNote,
   getCreateKonektiPrompts,
@@ -15,7 +18,7 @@ export async function runCreateKonekti(argv = process.argv.slice(2)): Promise<vo
   }
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1])) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   void runCreateKonekti();
 }
 

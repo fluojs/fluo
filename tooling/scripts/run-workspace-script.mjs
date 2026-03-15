@@ -20,6 +20,19 @@ function detectPackageManager() {
 }
 
 function readWorkspaceGlobs(rootDirectory) {
+  // pnpm uses pnpm-workspace.yaml; fall back to package.json workspaces
+  const pnpmWorkspacePath = join(rootDirectory, 'pnpm-workspace.yaml');
+
+  if (existsSync(pnpmWorkspacePath)) {
+    const content = readFileSync(pnpmWorkspacePath, 'utf8');
+    // Match list items under the "packages:" key, e.g. `  - 'packages/*'`
+    const matches = [...content.matchAll(/^\s+-\s+['"]?([^'"#\n]+?)['"]?\s*$/gm)];
+
+    if (matches.length > 0) {
+      return matches.map((m) => m[1].trim());
+    }
+  }
+
   const packageJsonPath = join(rootDirectory, 'package.json');
 
   if (!existsSync(packageJsonPath)) {
@@ -29,7 +42,7 @@ function readWorkspaceGlobs(rootDirectory) {
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 
   if (!Array.isArray(packageJson.workspaces)) {
-    throw new Error('Root package.json must define a workspaces array.');
+    throw new Error('Could not find workspace definitions in pnpm-workspace.yaml or package.json workspaces.');
   }
 
   return packageJson.workspaces;
