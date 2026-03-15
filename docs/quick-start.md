@@ -10,7 +10,15 @@ The default public recommendation remains `Prisma + PostgreSQL`.
 pnpm dlx @konekti/cli new starter-app
 ```
 
-This is the canonical public release-candidate bootstrap path.
+This is the canonical public bootstrap path.
+
+## compatibility wrapper path
+
+```sh
+npx create-konekti starter-app
+```
+
+Use this when you need the unscoped compatibility wrapper. It delegates to the same scaffold engine as `@konekti/cli`.
 
 ## repo-local smoke path
 
@@ -18,7 +26,7 @@ This is the canonical public release-candidate bootstrap path.
 pnpm exec konekti new starter-app
 ```
 
-This remains the repo-local smoke path verified inside the implementation repository.
+This remains the repo-local smoke path verified inside the implementation repository. It is testing support only, not the public entry point.
 
 Prompt flow:
 
@@ -26,8 +34,8 @@ Prompt flow:
 2. `ORM`
 3. `Database`
 4. `Package manager`
-5. tier note before install starts
-6. `Target directory`
+5. `Target directory`
+6. tier note before install starts
 
 ## generated project commands
 
@@ -46,10 +54,20 @@ The scaffold now emits the same single-project layout for `pnpm`, `npm`, and `ya
 
 The starter app includes:
 
-- `src/app.ts` with JWT + passport wiring
+- `src/app.ts` with JWT strategy registration, metrics, and OpenAPI wiring
 - `src/main.ts` with runtime-owned node bootstrap defaults
+- runtime-owned `/health` and `/ready` endpoints
+- `/metrics` and `/openapi.json` out of the box
 - `src/examples/user.repo.ts` with preset-aware ORM access
 - `src/app.test.ts` proving the runtime path works end-to-end
+
+Generated apps keep the bootstrap seam thin: `src/main.ts` calls `runNodeApplication(...)`, and the scaffold does not emit `src/node-http-adapter.ts`.
+
+## upgrade expectations
+
+- minor releases keep the generated command set and starter file shapes stable unless a doc explicitly marks a surface as `internal-only`
+- major releases may require codemods or manual edits when public package contracts move
+- repo-local verification commands like `pnpm exec konekti new` are implementation/testing tools, not upgrade guidance for external users
 
 For DTO validation, split imports are mandatory:
 

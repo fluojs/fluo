@@ -9,6 +9,8 @@
 - `@konekti/http`
 - `@konekti/dto-validator`
 - `@konekti/jwt`
+- `@konekti/openapi`
+- `@konekti/metrics`
 - `@konekti/passport`
 - `@konekti/prisma`
 - `@konekti/drizzle`
@@ -37,6 +39,8 @@ Concrete evidence lives in:
 
 - repository generation stays ORM-native and preset-aware
 - JWT token-core behavior belongs to `@konekti/jwt`
+- OpenAPI document generation and metadata-only decorators belong to `@konekti/openapi`
+- Prometheus scrape exposure belongs to `@konekti/metrics`
 - strategy registry and auth metadata belong to `@konekti/passport`
 - request-scoped transactions remain opt-in integration behavior, not a default service rule
 - DTO binding belongs to `@konekti/http`, while DTO validation decorators and the validation engine belong to `@konekti/dto-validator`
