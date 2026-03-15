@@ -4,13 +4,14 @@ HTTP-agnostic JWT token core — signs access tokens and verifies them to a norm
 
 ## What this package does
 
-`@konekti/jwt` knows nothing about HTTP requests, routes, or auth guards. It owns:
+`@konekti/jwt` knows nothing about routes or guards. It owns:
 
 - Signing access tokens with HS256 (`DefaultJwtSigner.signAccessToken`)
 - Verifying tokens: shape → algorithm → signature → claims (`exp`, `nbf`, `iss`, `aud`)
-- Normalising verified claims to a `JwtPrincipal` (unified `sub`, `roles`, `scopes` arrays)
+- Normalising verified claims to a `JwtPrincipal` (`subject`, `roles`, `scopes`, `claims`)
+- Exporting `JwtStrategy`, the reusable bearer-token strategy adapter for `@konekti/passport`
 
-The package that calls this (typically an app-local JWT strategy registered with `@konekti/passport`) is responsible for extracting the bearer token from the request. This package only handles what happens after extraction.
+`JwtStrategy` handles bearer-token extraction for the generic passport contract, while the token core stays reusable without HTTP framework coupling.
 
 ## Installation
 
@@ -32,7 +33,7 @@ import { createJwtCoreProviders } from '@konekti/jwt';
       secret: process.env.JWT_SECRET!,
       issuer: 'my-app',
       audience: 'my-app-clients',
-      expiresIn: 3600, // seconds
+      accessTokenTtlSeconds: 3600,
     }),
   ],
   exports: ['JwtVerifier', 'JwtSigner'],
@@ -67,7 +68,7 @@ import { DefaultJwtVerifier } from '@konekti/jwt';
 
 const verifier = container.resolve<DefaultJwtVerifier>('JwtVerifier');
 const principal = await verifier.verifyAccessToken(token);
-// principal: { sub: 'user-123', roles: ['admin'], scopes: ['read:profile'], claims: {...} }
+// principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], claims: {...} }
 ```
 
 ### Standalone (no DI)
@@ -75,7 +76,7 @@ const principal = await verifier.verifyAccessToken(token);
 ```typescript
 import { DefaultJwtSigner, DefaultJwtVerifier } from '@konekti/jwt';
 
-const opts = { secret: 'super-secret', issuer: 'test', audience: 'test', expiresIn: 60 };
+const opts = { secret: 'super-secret', issuer: 'test', audience: 'test', accessTokenTtlSeconds: 60 };
 const signer = new DefaultJwtSigner(opts);
 const verifier = new DefaultJwtVerifier(opts);
 
@@ -90,11 +91,12 @@ const principal = await verifier.verifyAccessToken(token);
 | `DefaultJwtVerifier` | `src/verifier.ts` | `verifyAccessToken(token) → JwtPrincipal` |
 | `DefaultJwtSigner` | `src/signer.ts` | `signAccessToken(claims) → string` |
 | `createJwtCoreProviders(options)` | `src/module.ts` | Registers options, verifier, and signer in one call |
-| `JwtPrincipal` | `src/types.ts` | `{ sub, roles, scopes, claims }` |
+| `JwtPrincipal` | `src/types.ts` | `{ subject, roles, scopes, claims }` |
 | `JwtClaims` | `src/types.ts` | Raw claims shape |
-| `JwtVerifierOptions` | `src/types.ts` | `{ secret, issuer?, audience?, algorithms? }` |
+| `JwtVerifierOptions` | `src/types.ts` | `{ secret, issuer?, audience?, algorithms?, accessTokenTtlSeconds? }` |
 | `JwtVerifier` | `src/types.ts` | Interface for custom verifier implementations |
 | `JwtSigner` | `src/types.ts` | Interface for custom signer implementations |
+| `JwtStrategy` | `src/strategy.ts` | Passport-compatible bearer-token strategy backed by `DefaultJwtVerifier` |
 
 ## Architecture
 
@@ -133,9 +135,10 @@ Two separate checks exist: "is this algorithm in the allowlist?" and "does this 
 2. `src/errors.ts` — typed JWT errors (expired, invalid signature, missing claim, etc.)
 3. `src/verifier.ts` — `DefaultJwtVerifier`, `normalizePrincipal`
 4. `src/signer.ts` — `DefaultJwtSigner`, defaults filling
-5. `src/module.ts` — `createJwtCoreProviders`
-6. `src/verifier.test.ts` — happy path, expired token, invalid signature
-7. `src/signer.test.ts` — sign/verify roundtrip
+5. `src/strategy.ts` — `JwtStrategy`
+6. `src/module.ts` — `createJwtCoreProviders`
+7. `src/verifier.test.ts` — happy path, expired token, invalid signature
+8. `src/signer.test.ts` — sign/verify roundtrip
 
 ## Related packages
 

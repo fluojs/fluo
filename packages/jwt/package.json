@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*"
+    "@konekti/di": "workspace:*",
+    "@konekti/passport": "workspace:*"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
