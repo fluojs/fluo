@@ -14,9 +14,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 ## Installation
 
 ```bash
-npm install -g @konekti/cli
-# or use directly via npx
-npx @konekti/cli new my-app
+pnpm dlx @konekti/cli new my-app
 ```
 
 ## Quick Start
@@ -24,10 +22,12 @@ npx @konekti/cli new my-app
 ### Bootstrap a new project
 
 ```bash
-npx @konekti/cli new my-app
+pnpm dlx @konekti/cli new my-app
 # follows an interactive prompt:
 #   project name, ORM (Prisma / Drizzle), database, package manager
 ```
+
+`create-konekti` stays the compatibility wrapper path for users who prefer `npx create-konekti my-app`.
 
 ### Generate a file inside an existing project
 

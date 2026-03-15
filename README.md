@@ -13,8 +13,8 @@ Planning and contract documents are maintained separately in the private `konekt
 - Phase 3 runtime baseline (`3A`-`3D`) is implemented and verified in this repo
 - Phase 4 testing/operations baseline (`4A`-`4D`) is implemented and verified in this repo
 - Phase 5 release-readiness baseline (`5A`-`5E`) is implemented and verified in this repo
-- Phase 6 public-release hardening is in progress with locked `konekti new` bootstrap/docs and a dedicated release-candidate verification path
-- release-candidate verification now has a dedicated root script: `pnpm verify:release-candidate`
+- Phase 8 public release and auth gaps are implemented in this repo (`@konekti/openapi`, `@konekti/metrics`, readiness semantics, starter contract)
+- release-candidate verification now runs through `tooling/release/verify-release-candidate.mjs` and publishes a checklist summary
 - reusable Phase 3 reference slice docs live in `./docs/phase-3-reference-slice.md`
 - verification checklists live in `../konekti-plan/execution/`
 
@@ -24,6 +24,7 @@ Planning and contract documents are maintained separately in the private `konekt
 - `./docs/architecture-overview.md`
 - `./docs/testing-guide.md`
 - `./docs/preset-guide.md`
+- `./docs/toolchain-contract-matrix.md`
 - `./docs/http-policies.md`
 - `./docs/release-governance.md`
 - `./docs/manifest-decision.md`

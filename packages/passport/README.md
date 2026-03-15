@@ -42,11 +42,12 @@ export class ProfileController {
 ```typescript
 import { Module } from '@konekti/core';
 import { createPassportProviders } from '@konekti/passport';
+import { JwtStrategy } from '@konekti/jwt';
 
 @Module({
   providers: [
-    ...createPassportProviders({ defaultStrategy: 'jwt' }),
-    JwtStrategy, // your app-local strategy that implements AuthStrategy
+    JwtStrategy,
+    ...createPassportProviders({ defaultStrategy: 'jwt' }, [{ name: 'jwt', token: JwtStrategy }]),
   ],
 })
 export class AuthModule {}
@@ -55,19 +56,21 @@ export class AuthModule {}
 ### Implement an AuthStrategy
 
 ```typescript
-import type { AuthStrategy, GuardContext, AuthStrategyResult } from '@konekti/passport';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import type { AuthStrategy, GuardContext } from '@konekti/passport';
+import { AuthenticationRequiredError } from '@konekti/passport';
 
-export class JwtStrategy implements AuthStrategy {
-  constructor(private verifier: DefaultJwtVerifier) {}
+export class ApiKeyStrategy implements AuthStrategy {
+  async authenticate(context: GuardContext) {
+    const apiKey = context.requestContext.request.headers['x-api-key'];
+    if (!apiKey) {
+      throw new AuthenticationRequiredError();
+    }
 
-  async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
-    const authHeader = context.request.headers['authorization'];
-    const token = authHeader?.replace(/^Bearer /, '');
-    if (!token) return { type: 'unauthenticated' };
-
-    const principal = await this.verifier.verifyAccessToken(token);
-    return { type: 'authenticated', principal };
+    return {
+      claims: { apiKey },
+      scopes: ['read:profile'],
+      subject: 'api-key-user',
+    };
   }
 }
 ```
@@ -95,8 +98,8 @@ const localBridge = createPassportJsStrategyBridge(
 
 | Export | Location | Description |
 |---|---|---|
-| `AuthStrategy` | `src/types.ts` | Interface: `authenticate(context) → AuthStrategyResult` |
-| `AuthStrategyResult` | `src/types.ts` | `{ type: 'authenticated', principal }` or `{ type: 'unauthenticated' }` or `{ type: 'handled' }` |
+| `AuthStrategy` | `src/types.ts` | Interface: `authenticate(context) → principal | handled result` |
+| `AuthStrategyResult` | `src/types.ts` | `Principal` or `{ handled: true, principal? }` |
 | `AuthGuard` | `src/guard.ts` | Generic guard that reads auth requirements and calls the strategy |
 | `UseAuth(strategyName)` | `src/decorators.ts` | Sets the strategy + attaches `AuthGuard` to the route |
 | `RequireScopes(...scopes)` | `src/decorators.ts` | Declares required scopes + attaches `AuthGuard` |
@@ -115,7 +118,7 @@ request arrives at route with @UseAuth / @RequireScopes
   → determine strategy name (explicit or default)
   → resolve strategy from request-scoped container
   → strategy.authenticate(context)
-  → if unauthenticated → throw UnauthorizedException (401)
+  → if the strategy throws auth errors → map to UnauthorizedException (401)
   → if authenticated → scope check
   → if scopes missing → throw ForbiddenException (403)
   → requestContext.principal = principal
@@ -152,7 +155,7 @@ This means adding a new auth strategy requires only implementing `AuthStrategy` 
 
 ## Related packages
 
-- `@konekti/jwt` — implements `AuthStrategy` using JWT token verification; strategy code lives in your app, not here
+- `@konekti/jwt` — exports `JwtStrategy` plus the token-core signer/verifier implementation
 - `@konekti/http` — `AuthGuard` is a guard in the `@konekti/http` dispatcher's guard chain
 
 ## One-liner mental model
