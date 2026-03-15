@@ -25,4 +25,13 @@ describe('CLI generators', () => {
     expect(generateRepoFiles('User', { preset: 'prisma' })[0]?.content).toContain('this.prisma.current()');
     expect(generateRepoFiles('User', { preset: 'drizzle' })[0]?.content).toContain('this.database.current()');
   });
+
+  it('emits DTO templates with split validator imports', () => {
+    const dto = generateDtoFiles('User')[0]?.content ?? '';
+
+    expect(dto).toContain("from '@konekti/http'");
+    expect(dto).toContain("from '@konekti/dto-validator'");
+    expect(dto).toContain('@FromBody(\'user\')');
+    expect(dto).toContain('@MinLength(1');
+  });
 });

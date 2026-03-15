@@ -30,11 +30,16 @@ That slice proves this path end to end:
 ## Copy-pastable example shape
 
 ```ts
+import { IsString, MinLength } from '@konekti/dto-validator';
+import { FromBody, Post, RequestDto, SuccessStatus } from '@konekti/http';
+
 class CreateUserRequest {
   @FromBody('email')
+  @IsString()
   email = '';
 
   @FromBody('name')
+  @MinLength(1, { message: 'name is required' })
   name = '';
 }
 

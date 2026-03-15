@@ -7,6 +7,7 @@
 - `@konekti/core`
 - `@konekti/config`
 - `@konekti/http`
+- `@konekti/dto-validator`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/prisma`
@@ -17,13 +18,13 @@
 - `@konekti/cli`
 - `create-konekti`
 
-The current release direction treats `@konekti/di` and `@konekti/runtime` as public support packages rather than leaking `@konekti-internal/*` names into generated app code.
+The current release direction treats `@konekti/di`, `@konekti/dto-validator`, and `@konekti/runtime` as public support packages rather than leaking `@konekti-internal/*` names into generated app code.
 
 ## request execution path
 
 The generated app and runtime tests follow this flow:
 
-`bootstrapApplication -> handler mapping -> dispatcher -> middleware -> guard -> interceptor -> controller`
+`bootstrapApplication -> handler mapping -> dispatcher -> binder -> dto-validator -> middleware -> guard -> interceptor -> controller`
 
 Concrete evidence lives in:
 
@@ -38,6 +39,7 @@ Concrete evidence lives in:
 - JWT token-core behavior belongs to `@konekti/jwt`
 - strategy registry and auth metadata belong to `@konekti/passport`
 - request-scoped transactions remain opt-in integration behavior, not a default service rule
+- DTO binding belongs to `@konekti/http`, while DTO validation decorators and the validation engine belong to `@konekti/dto-validator`
 
 ## examples
 

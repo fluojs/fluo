@@ -51,6 +51,13 @@ The starter app includes:
 - `src/examples/user.repo.ts` with preset-aware ORM access
 - `src/app.test.ts` proving the runtime path works end-to-end
 
+For DTO validation, split imports are mandatory:
+
+```ts
+import { FromBody } from '@konekti/http';
+import { IsString, MinLength } from '@konekti/dto-validator';
+```
+
 ## first generator command
 
 Run the repo generator from the project root:
