@@ -84,8 +84,10 @@ export class DefaultJwtVerifier {
     }
 
     const expected = encodeBase64Url(createHmac('sha256', secret).update(`${headerSegment}.${payloadSegment}`).digest());
+    const expectedBuf = Buffer.from(expected);
+    const actualBuf = Buffer.from(signatureSegment);
 
-    if (!timingSafeEqual(Buffer.from(expected), Buffer.from(signatureSegment))) {
+    if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
       throw new JwtInvalidTokenError();
     }
 

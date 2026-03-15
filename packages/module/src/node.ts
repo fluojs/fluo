@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { URL } from 'node:url';
 
 import {
+  BadRequestException,
   createCorsMiddleware,
   type CorsOptions,
   type Dispatcher,
@@ -321,7 +322,11 @@ async function readRequestBody(request: import('node:http').IncomingMessage): Pr
   const primaryContentType = Array.isArray(contentType) ? contentType[0] : contentType;
 
   if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
-    return JSON.parse(bodyText) as unknown;
+    try {
+      return JSON.parse(bodyText) as unknown;
+    } catch {
+      throw new BadRequestException('Request body contains invalid JSON.');
+    }
   }
 
   return bodyText;
