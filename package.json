@@ -22,6 +22,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "pnpm -r --if-present run lint",
-    "verify:release-candidate": "pnpm typecheck && pnpm build && pnpm test"
+    "verify:release-candidate": "node tooling/release/verify-release-candidate.mjs"
   }
 }

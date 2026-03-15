@@ -7,8 +7,10 @@ import { KonektiFactory, type ApplicationLogger, type ModuleType } from '../../p
 type ConstructorToken = new (...args: never[]) => unknown;
 
 const silentLogger: ApplicationLogger = {
+  debug() {},
   error() {},
   log() {},
+  warn() {},
 };
 
 function createProvider(

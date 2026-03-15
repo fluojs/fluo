@@ -33,3 +33,14 @@ jobs:
         env:
           CI: true
         run: pnpm verify:release-candidate
+
+      - name: Publish release-candidate summary
+        if: always()
+        run: cat tooling/release/release-candidate-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release-candidate summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-summary
+          path: tooling/release/release-candidate-summary.md
