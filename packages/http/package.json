@@ -14,8 +14,9 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@konekti/di": "workspace:*",
-    "@konekti/core": "workspace:*"
+    "@konekti/core": "workspace:*",
+    "@konekti/dto-validator": "workspace:*",
+    "@konekti/di": "workspace:*"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

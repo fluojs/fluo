@@ -80,6 +80,19 @@ importers:
         specifier: workspace:*
         version: link:../module
 
+  packages/dto-validator:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      validator:
+        specifier: ^13.15.26
+        version: 13.15.26
+    devDependencies:
+      '@types/validator':
+        specifier: ^13.15.10
+        version: 13.15.10
+
   packages/http:
     dependencies:
       '@konekti/core':
@@ -88,6 +101,9 @@ importers:
       '@konekti/di':
         specifier: workspace:*
         version: link:../di
+      '@konekti/dto-validator':
+        specifier: workspace:*
+        version: link:../dto-validator
 
   packages/jwt:
     dependencies:
@@ -133,6 +149,9 @@ importers:
       '@konekti/di':
         specifier: workspace:*
         version: link:../di
+      '@konekti/dto-validator':
+        specifier: workspace:*
+        version: link:../dto-validator
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
@@ -796,6 +815,9 @@ packages:
   '@types/node@22.19.15':
     resolution: {integrity: sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg==}
 
+  '@types/validator@13.15.10':
+    resolution: {integrity: sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA==}
+
   '@vitest/expect@3.2.4':
     resolution: {integrity: sha512-Io0yyORnB6sikFlt8QW5K7slY4OjqNX9jmJQ02QDda8lyM6B5oNgVWoSoKPac8/kgnCUzuHQKrSLtu/uOqqrig==}
 
@@ -1152,6 +1174,10 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
+
+  validator@13.15.26:
+    resolution: {integrity: sha512-spH26xU080ydGggxRyR1Yhcbgx+j3y5jbNXk/8L+iRvdIEQ4uTRH2Sgf2dokud6Q4oAtsbNvJ1Ft+9xmm6IZcA==}
+    engines: {node: '>= 0.10'}
 
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
@@ -1740,6 +1766,8 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/validator@13.15.10': {}
+
   '@vitest/expect@3.2.4':
     dependencies:
       '@types/chai': 5.2.3
@@ -2136,6 +2164,8 @@ snapshots:
       browserslist: 4.28.1
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  validator@13.15.26: {}
 
   vite-node@3.2.4(@types/node@22.19.15)(tsx@4.21.0):
     dependencies:

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@konekti/core": "workspace:*",
+    "@konekti/dto-validator": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/runtime": "workspace:*"
