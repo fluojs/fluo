@@ -173,6 +173,32 @@ function isOnApplicationShutdown(value: unknown): value is OnApplicationShutdown
   return hasMethod(value, 'onApplicationShutdown');
 }
 
+function hasReadinessStateMethods(value: unknown): value is { markReady(): void; markStarting(): void } {
+  if (typeof value !== 'function') {
+    return false;
+  }
+
+  const readinessAware = value as Function & { markReady?: unknown; markStarting?: unknown };
+
+  return typeof readinessAware.markReady === 'function' && typeof readinessAware.markStarting === 'function';
+}
+
+function resetReadinessState(modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    if (hasReadinessStateMethods(compiledModule.type)) {
+      compiledModule.type.markStarting();
+    }
+  }
+}
+
+function markReadinessState(modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    if (hasReadinessStateMethods(compiledModule.type)) {
+      compiledModule.type.markReady();
+    }
+  }
+}
+
 /**
  * Associates module metadata with a module type.
  */
@@ -574,6 +600,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       },
     ];
     const bootstrapped = bootstrapModule(options.rootModule, { providers: runtimeProviders });
+    resetReadinessState(bootstrapped.modules);
     const lifecycleProviders = [
       ...runtimeProviders,
       ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
@@ -581,6 +608,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     lifecycleInstances = await resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
 
     await runBootstrapHooks(lifecycleInstances);
+    markReadinessState(bootstrapped.modules);
     logCompiledModules(logger, bootstrapped.modules);
 
     const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules));
