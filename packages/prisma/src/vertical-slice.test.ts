@@ -15,6 +15,7 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@konekti/http';
+import { IsString, MinLength } from '@konekti/dto-validator';
 
 import { createPrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
 
@@ -142,34 +143,14 @@ describe('@konekti/prisma vertical slice', () => {
     };
 
     class CreateUserRequest {
-      static validate(value: CreateUserRequest) {
-        const details = [];
-
-        if (value.email.length === 0) {
-          details.push({
-            code: 'REQUIRED',
-            field: 'email',
-            message: 'email is required',
-            source: 'body' as const,
-          });
-        }
-
-        if (value.name.length === 0) {
-          details.push({
-            code: 'REQUIRED',
-            field: 'name',
-            message: 'name is required',
-            source: 'body' as const,
-          });
-        }
-
-        return details;
-      }
-
       @FromBody('email')
+      @IsString()
+      @MinLength(1, { code: 'REQUIRED', message: 'email is required' })
       email = '';
 
       @FromBody('name')
+      @IsString()
+      @MinLength(1, { code: 'REQUIRED', message: 'name is required' })
       name = '';
     }
 

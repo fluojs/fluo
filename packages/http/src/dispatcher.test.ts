@@ -17,6 +17,7 @@ import {
   assertRequestContext,
   getCurrentRequestContext,
 } from '@konekti/http';
+import { IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -321,22 +322,9 @@ describe('dispatcher runtime', () => {
 
   it('binds a request DTO and returns canonical validation errors for bad input', async () => {
     class CreateUserRequest {
-      static validate(value: CreateUserRequest) {
-        if (value.name.length > 0) {
-          return [];
-        }
-
-        return [
-          {
-            code: 'REQUIRED',
-            field: 'name',
-            message: 'name is required',
-            source: 'body' as const,
-          },
-        ];
-      }
-
       @FromBody('name')
+      @IsString()
+      @MinLength(1, { code: 'REQUIRED', message: 'name is required' })
       name = '';
     }
 
@@ -407,6 +395,69 @@ describe('dispatcher runtime', () => {
         message: 'Validation failed.',
         meta: undefined,
         requestId: 'req-users-400',
+        status: 400,
+      },
+    });
+  });
+
+  it('returns nested validation field paths through the canonical error envelope', async () => {
+    class AddressDto {
+      @MinLength(1, { code: 'REQUIRED_CITY', message: 'city is required' })
+      city = '';
+    }
+
+    class CreateProfileRequest {
+      @FromBody('address')
+      @ValidateNested(() => AddressDto)
+      address = new AddressDto();
+    }
+
+    @Controller('/profiles')
+    class ProfilesController {
+      @RequestDto(CreateProfileRequest)
+      @Post('/')
+      createProfile(input: CreateProfileRequest) {
+        return input;
+      }
+    }
+
+    const root = new Container().register(ProfilesController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProfilesController }]),
+      rootContainer: root,
+    });
+    const errorResponse = createResponse();
+
+    await dispatcher.dispatch(
+      {
+        body: { address: { city: '' } },
+        cookies: {},
+        headers: { 'x-request-id': 'req-profiles-400' },
+        method: 'POST',
+        params: {},
+        path: '/profiles',
+        query: {},
+        raw: {},
+        url: '/profiles',
+      },
+      errorResponse,
+    );
+
+    expect(errorResponse.statusCode).toBe(400);
+    expect(errorResponse.body).toEqual({
+      error: {
+        code: 'BAD_REQUEST',
+        details: [
+          {
+            code: 'REQUIRED_CITY',
+            field: 'address.city',
+            message: 'city is required',
+            source: 'body',
+          },
+        ],
+        message: 'Validation failed.',
+        meta: undefined,
+        requestId: 'req-profiles-400',
         status: 400,
       },
     });

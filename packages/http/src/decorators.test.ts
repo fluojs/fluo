@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getControllerMetadata, getDtoBindingSchema, getRouteMetadata } from '@konekti/core';
+import { getClassValidationRules, getControllerMetadata, getDtoBindingSchema, getDtoValidationSchema, getRouteMetadata } from '@konekti/core';
 
 import {
   Controller,
@@ -13,6 +13,7 @@ import {
   UseGuard,
   UseInterceptor,
 } from './decorators.js';
+import { IsString, MinLength, ValidateClass } from '@konekti/dto-validator';
 
 describe('http decorators', () => {
   it('writes controller and route metadata using decorator syntax', () => {
@@ -41,14 +42,29 @@ describe('http decorators', () => {
       id = '';
 
       @FromBody('note')
+      @IsString()
+      @MinLength(1, { code: 'REQUIRED', message: 'note is required' })
       @Optional()
       note?: string;
     }
 
+    @ValidateClass((value) => {
+      const count = typeof value === 'object' && value !== null && 'requestCount' in value
+        ? (value as { requestCount?: number }).requestCount
+        : undefined;
+
+      return typeof count === 'number' && count > 0 || {
+        code: 'REQUIRED',
+        field: 'requestCount',
+        message: 'requestCount is required',
+      };
+    })
     @Controller('/users')
     @UseGuard(ClassGuard)
     @UseInterceptor(ClassInterceptor)
     class ExampleController {
+      requestCount = 1;
+
       @RequestDto(GetUserRequest)
       @SuccessStatus(200)
       @Get('/:id')
@@ -92,5 +108,17 @@ describe('http decorators', () => {
         },
       },
     ]);
+
+    expect(getDtoValidationSchema(GetUserRequest)).toEqual([
+      {
+        propertyKey: 'note',
+        rules: [
+          { kind: 'string' },
+          { code: 'REQUIRED', kind: 'minLength', message: 'note is required', value: 1 },
+        ],
+      },
+    ]);
+
+    expect(getClassValidationRules(ExampleController)).toHaveLength(1);
   });
 });
