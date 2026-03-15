@@ -1,6 +1,7 @@
 import { InvariantError, getClassDiMetadata, type Token } from '@konekti/core';
 
 import {
+  CircularDependencyError,
   ContainerResolutionError,
   InvalidProviderError,
   RequestScopeResolutionError,
@@ -126,6 +127,14 @@ export class Container {
    * 현재 컨테이너 경계에서 토큰을 해석하고 scope 규칙에 따라 캐시한다.
    */
   async resolve<T>(token: Token<T>): Promise<T> {
+    return this.resolveWithChain(token, []);
+  }
+
+  private async resolveWithChain<T>(token: Token<T>, chain: Token[]): Promise<T> {
+    if (chain.includes(token)) {
+      throw new CircularDependencyError([...chain, token]);
+    }
+
     const provider = this.lookupProvider(token);
 
     if (!provider) {
@@ -135,7 +144,10 @@ export class Container {
     const cache = this.cacheFor(provider.scope, provider.provide);
 
     if (!cache.has(provider.provide)) {
-      cache.set(provider.provide, this.instantiate(provider));
+      const promise = this.instantiate(provider, [...chain, token]);
+
+      cache.set(provider.provide, promise);
+      promise.catch(() => cache.delete(provider.provide));
     }
 
     return (await cache.get(provider.provide)) as T;
@@ -176,7 +188,7 @@ export class Container {
   /**
    * 정규화된 provider 정의를 실제 인스턴스나 값으로 구체화한다.
    */
-  private async instantiate<T>(provider: NormalizedProvider<T>): Promise<T> {
+  private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[]): Promise<T> {
     switch (provider.type) {
       case 'value':
         return provider.useValue as T;
@@ -185,7 +197,7 @@ export class Container {
           throw new InvariantError('Factory provider is missing useFactory.');
         }
 
-        const deps = await Promise.all(provider.inject.map((token) => this.resolve(token)));
+        const deps = await Promise.all(provider.inject.map((token) => this.resolveWithChain(token, chain)));
 
         return provider.useFactory(...deps);
       }
@@ -194,7 +206,7 @@ export class Container {
           throw new InvariantError('Class provider is missing useClass.');
         }
 
-        const deps = await Promise.all(provider.inject.map((token) => this.resolve(token)));
+        const deps = await Promise.all(provider.inject.map((token) => this.resolveWithChain(token, chain)));
 
         return new provider.useClass(...deps) as T;
       }
