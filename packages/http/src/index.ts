@@ -1,5 +1,6 @@
 export * from './adapter.js';
 export * from './binding.js';
+export * from './correlation.js';
 export * from './cors.js';
 export * from './decorators.js';
 export * from './dispatcher.js';
