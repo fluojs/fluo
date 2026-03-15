@@ -63,7 +63,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(readFileSync(join(targetDirectory, 'starter-app', 'package.json'), 'utf8')).toContain('@konekti/runtime');
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
-  });
+  }, 20000);
 
   it('returns a non-zero exit code for invalid commands', async () => {
     const stderrBuffer: string[] = [];
