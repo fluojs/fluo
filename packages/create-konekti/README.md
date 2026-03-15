@@ -10,9 +10,9 @@ The unscoped bootstrap entry for Konekti — delegates directly to `@konekti/cli
 npx create-konekti my-app
 ```
 
-instead of `npx @konekti/cli new my-app`. Everything after the entrypoint — prompts, scaffolding, dependency installation — is owned by `@konekti/cli`. This package does not maintain a separate scaffold engine.
+instead of `pnpm dlx @konekti/cli new my-app`. Everything after the entrypoint — prompts, scaffolding, dependency installation — is owned by `@konekti/cli`. This package does not maintain a separate scaffold engine.
 
-The generated starter app is a **living reference slice**: it contains a public health route, a protected profile route, dispatcher wiring, a Passport adapter with app-local JWT strategy, and the ORM package you selected during prompts. It uses `runNodeApplication()` from `@konekti/runtime` as its startup seam — it does not generate an app-owned `node-http-adapter.ts`.
+The generated starter app is a **living reference slice**: it contains runtime-owned `/health` and `/ready`, a protected profile route, `/metrics`, `/openapi.json`, and the ORM package you selected during prompts. It uses `runNodeApplication()` from `@konekti/runtime` as its startup seam — it does not generate an app-owned `node-http-adapter.ts`.
 
 ## Installation
 
@@ -31,7 +31,7 @@ npx create-konekti my-app
 #   3. Database
 #   4. Package manager
 #   5. Target directory
-#   (Support tier note shown before install starts)
+#   6. Support tier note shown before install starts
 
 cd my-app
 npm run dev
@@ -45,7 +45,7 @@ The ORM choice is reflected in the actual scaffold output: the correct ORM packa
 |---|---|---|
 | `runCreateKonekti(argv)` | `src/index.ts` | Main entry — delegates to `@konekti/cli runCli(['new', ...argv])` |
 | `promptForCreateKonektiAnswers()` | `src/bootstrap/prompt.ts` | Interactive prompt flow; applies current support matrix |
-| `resolveSupportTier(orm, db)` | `src/bootstrap/prompt.ts` | Returns support tier (`supported` / `community` / `experimental`) for an ORM+DB combo |
+| `resolveSupportTier(orm, db)` | `src/bootstrap/prompt.ts` | Returns support tier (`recommended` / `official` / `preview`) for an ORM+DB combo |
 | `createTierNote(tier)` | `src/bootstrap/prompt.ts` | Formats the tier notice shown before install |
 | `scaffoldKonektiApp(answers)` | `src/bootstrap/scaffold.ts` | Re-export surface over `@konekti/cli`'s scaffold function |
 | `CreateKonektiAnswers` | `src/types.ts` | Prompt answer shape (name, ORM, DB, package manager, tier) |
@@ -62,7 +62,7 @@ runCreateKonekti(argv)
   → print next steps
 ```
 
-This package owns the unscoped entrypoint and the support-tier note at prompt time. The canonical scaffold/install engine is owned by `@konekti/cli`.
+This package owns the unscoped entrypoint and the support-tier note shown after prompts resolve. The canonical scaffold/install engine is owned by `@konekti/cli`, and the repo-local `pnpm exec konekti new` path remains testing support only.
 
 ### Why the scaffold test matters
 
@@ -82,7 +82,7 @@ This package owns the unscoped entrypoint and the support-tier note at prompt ti
 
 - `@konekti/cli` — the canonical scaffold engine this package wraps
 - `@konekti/runtime` — generated app's startup path (`runNodeApplication`)
-- `@konekti/http`, `@konekti/passport`, `@konekti/jwt` — what the generated app's runtime/auth story looks like
+- `@konekti/http`, `@konekti/passport`, `@konekti/jwt`, `@konekti/openapi`, `@konekti/metrics` — what the generated app's runtime/auth/observability story looks like
 - `@konekti/prisma`, `@konekti/drizzle` — ORM integrations included in the generated workspace
 
 ## One-liner mental model

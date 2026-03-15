@@ -13,7 +13,7 @@ const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))
 
 beforeAll(() => {
   execFileSync('pnpm', ['build'], { cwd: repoRoot, stdio: 'inherit' });
-});
+}, 120000);
 
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
@@ -68,6 +68,8 @@ describe('scaffoldKonektiApp', () => {
     };
 
     expect(packageJson.dependencies['@konekti/runtime']).toContain('.konekti/packages');
+    expect(packageJson.dependencies['@konekti/openapi']).toContain('.konekti/packages');
+    expect(packageJson.dependencies['@konekti/metrics']).toContain('.konekti/packages');
     expect(packageJson.devDependencies['@konekti/cli']).toContain('.konekti/packages');
     expect(packageJson.scripts.dev).toBe('node --env-file=.env.dev --watch --watch-preserve-output --import tsx src/main.ts');
     expect(readFileSync(join(targetDirectory, 'src', 'examples', 'user.repo.ts'), 'utf8')).toContain('this.prisma.current()');
