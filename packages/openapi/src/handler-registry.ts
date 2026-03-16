@@ -11,13 +11,3 @@ export class OpenApiHandlerRegistry {
     return [...this.descriptors];
   }
 }
-
-const registry = new OpenApiHandlerRegistry();
-
-export function setOpenApiHandlerDescriptors(descriptors: readonly HandlerDescriptor[]): void {
-  registry.setDescriptors(descriptors);
-}
-
-export function getOpenApiHandlerDescriptors(): HandlerDescriptor[] {
-  return registry.getDescriptors();
-}

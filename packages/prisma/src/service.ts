@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import { raceWithAbort } from '@konekti/runtime';
 import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
@@ -93,28 +94,4 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
       settle();
     }
   }
-}
-
-async function raceWithAbort<T>(fn: () => Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) {
-    throw createAbortError(signal.reason);
-  }
-
-  return await new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      reject(createAbortError(signal.reason));
-    };
-
-    signal.addEventListener('abort', onAbort, { once: true });
-
-    Promise.resolve(fn()).then(resolve, reject).finally(() => {
-      signal.removeEventListener('abort', onAbort);
-    });
-  });
-}
-
-function createAbortError(reason: unknown): Error {
-  const error = reason instanceof Error ? reason : new Error('Request aborted before response commit.');
-  error.name = 'AbortError';
-  return error;
 }

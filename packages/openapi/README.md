@@ -198,15 +198,6 @@ interface BuildOpenApiDocumentOptions {
 function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument;
 ```
 
-### `OpenApiHandlerRegistry`
-
-Singleton registry for sharing handler descriptors across module boundaries.
-
-```typescript
-function setOpenApiHandlerDescriptors(descriptors: readonly HandlerDescriptor[]): void;
-function getOpenApiHandlerDescriptors(): HandlerDescriptor[];
-```
-
 ### Metadata readers
 
 Read decorator metadata programmatically:

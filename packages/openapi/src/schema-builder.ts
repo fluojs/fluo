@@ -420,9 +420,10 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
       tags,
       ...(methodMeta?.operation?.summary !== undefined && { summary: methodMeta.operation.summary }),
       ...(methodMeta?.operation?.description !== undefined && { description: methodMeta.operation.description }),
-      ...(createRequestBody(descriptor.route.request, componentSchemas) !== undefined && {
-        requestBody: createRequestBody(descriptor.route.request, componentSchemas),
-      }),
+      ...(() => {
+        const requestBody = createRequestBody(descriptor.route.request, componentSchemas);
+        return requestBody !== undefined ? { requestBody } : {};
+      })(),
       ...(security !== undefined && { security }),
     };
 

@@ -22,7 +22,7 @@ pnpm dlx @konekti/cli new my-app
 ```bash
 pnpm dlx @konekti/cli new my-app
 # follows an interactive prompt:
-#   project name, ORM (Prisma / Drizzle), database, package manager
+#   project name, ORM (Prisma / Drizzle), database, package manager, target directory
 ```
 
 ### Generate a file inside an existing project
@@ -41,10 +41,8 @@ Each generator produces a file (or files) with correctly kebab-cased names and P
 
 | Export | Location | Description |
 |---|---|---|
-| `runGenerateCommand(kind, name, targetDir, options?)` | `src/commands/generate.ts` | Generator dispatch → file write |
-| `runNewCommand(argv)` | `src/commands/new.ts` | Prompt → scaffold → install → next steps |
-| `toKebabCase(str)` | `src/generators/utils.ts` | Naming utility |
-| `toPascalCase(str)` | `src/generators/utils.ts` | Naming utility |
+| `runCli(options?)` | `src/cli.ts` | Entry point for the CLI binary |
+| `runNewCommand(argv, runtime?)` | `src/commands/new.ts` | Prompt → scaffold → install → next steps |
 
 ## Architecture
 
@@ -65,7 +63,7 @@ konekti new:
   runNewCommand(argv)
     → collect prompt answers
     → print support tier note
-    → scaffoldKonektiApp(options)
+    → scaffoldBootstrapApp(options)
     → install
     → print next steps
 ```

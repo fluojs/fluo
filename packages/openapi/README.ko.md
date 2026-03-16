@@ -197,15 +197,6 @@ interface BuildOpenApiDocumentOptions {
 function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument;
 ```
 
-### `OpenApiHandlerRegistry`
-
-모듈 경계를 넘어 핸들러 디스크립터를 공유하기 위한 싱글턴 레지스트리.
-
-```typescript
-function setOpenApiHandlerDescriptors(descriptors: readonly HandlerDescriptor[]): void;
-function getOpenApiHandlerDescriptors(): HandlerDescriptor[];
-```
-
 ### 메타데이터 리더
 
 데코레이터 메타데이터를 프로그래밍 방식으로 읽습니다:

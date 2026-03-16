@@ -1,7 +1,7 @@
 import { Controller, Get, NotFoundException, type HandlerDescriptor, type RequestContext } from '@konekti/http';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
-import { getOpenApiHandlerDescriptors, setOpenApiHandlerDescriptors } from './handler-registry.js';
+import { OpenApiHandlerRegistry } from './handler-registry.js';
 import { buildOpenApiDocument } from './schema-builder.js';
 
 export interface OpenApiModuleOptions {
@@ -37,17 +37,20 @@ export class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     const uiEnabled = options.ui ?? false;
 
-    setOpenApiHandlerDescriptors(options.descriptors ?? []);
+    const registry = new OpenApiHandlerRegistry();
+    registry.setDescriptors(options.descriptors ?? []);
+
+    const document = buildOpenApiDocument({
+      descriptors: registry.getDescriptors(),
+      title: options.title,
+      version: options.version,
+    });
 
     @Controller('')
     class OpenApiController {
       @Get('/openapi.json')
       getDocument() {
-        return buildOpenApiDocument({
-          descriptors: getOpenApiHandlerDescriptors(),
-          title: options.title,
-          version: options.version,
-        });
+        return document;
       }
 
       @Get('/docs')

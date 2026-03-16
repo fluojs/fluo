@@ -275,6 +275,15 @@ function createNodeMiddleware(options: BootstrapNodeApplicationOptions): Middlew
   return middleware;
 }
 
+/**
+ * `cors` 옵션을 생략했을 때 사용되는 기본 CORS 설정을 반환한다.
+ *
+ * @remarks
+ * 이 함수는 DI 컨테이너가 초기화되기 전, 즉 `ConfigService`가 생성되기 전에 호출된다.
+ * 따라서 `CORS_ORIGIN` 값은 `@konekti/config`의 우선순위 병합(defaults < .env 파일 < process.env < runtimeOverrides)을
+ * 우회하여 `process.env.CORS_ORIGIN`에서 직접 읽는다.
+ * `runtimeOverrides`로 `CORS_ORIGIN`을 제어해야 하는 경우, `cors` 옵션에 `CorsOptions`를 명시적으로 전달할 것.
+ */
 function createDefaultCorsOptions(): CorsOptions {
   const corsOrigin = process.env.CORS_ORIGIN ?? '*';
 
