@@ -199,21 +199,28 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
         return;
       }
 
-      if (!response.hasHeader('Content-Type')) {
-        response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      const existingContentType = response.getHeader('Content-Type');
+      const serialized = serializeResponseBody(
+        body,
+        typeof existingContentType === 'string' ? existingContentType : undefined,
+      );
+
+      if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
+        response.setHeader('Content-Type', serialized.defaultContentType);
       }
 
-      const serialized = body === undefined ? '' : JSON.stringify(body);
       const contentType = response.getHeader('Content-Type') as string | undefined;
+      const payload = typeof serialized.payload === 'string'
+        ? Buffer.from(serialized.payload, 'utf8')
+        : serialized.payload;
 
-      if (acceptEncoding && serialized.length >= 256) {
-        const buf = Buffer.from(serialized, 'utf8');
+      if (acceptEncoding && payload.byteLength >= 256) {
         this.committed = true;
-        void compressResponse(response, buf, acceptEncoding, contentType);
+        void compressResponse(response, payload, acceptEncoding, contentType);
         return;
       }
 
-      response.end(serialized);
+      response.end(payload);
       this.committed = true;
     },
     setHeader(name, value) {
@@ -225,6 +232,52 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
     },
     statusCode: 200,
   };
+}
+
+function serializeResponseBody(
+  body: unknown,
+  contentType?: string,
+): { defaultContentType?: string; payload: Buffer | string } {
+  if (body === undefined) {
+    return { payload: '' };
+  }
+
+  if (Buffer.isBuffer(body)) {
+    return {
+      defaultContentType: 'application/octet-stream',
+      payload: body,
+    };
+  }
+
+  if (body instanceof Uint8Array) {
+    return {
+      defaultContentType: 'application/octet-stream',
+      payload: Buffer.from(body),
+    };
+  }
+
+  if (body instanceof ArrayBuffer) {
+    return {
+      defaultContentType: 'application/octet-stream',
+      payload: Buffer.from(body),
+    };
+  }
+
+  if (typeof body === 'string') {
+    return {
+      defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
+      payload: isJsonContentType(contentType) ? JSON.stringify(body) : body,
+    };
+  }
+
+  return {
+    defaultContentType: 'application/json; charset=utf-8',
+    payload: JSON.stringify(body),
+  };
+}
+
+function isJsonContentType(contentType: string | undefined): boolean {
+  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
 }
 
 async function createFrameworkRequest(

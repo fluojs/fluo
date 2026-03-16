@@ -9,6 +9,7 @@ import {
   FromBody,
   Get,
   Post,
+  type RequestContext,
   RequestDto,
   type FrameworkRequest,
   type FrameworkResponse,
@@ -182,6 +183,55 @@ describe('bootstrapApplication', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ name: 'Ada' });
+
+    await app.close();
+  });
+
+  it('serves text and HTML bodies over the Node adapter without JSON quoting', async () => {
+    const docsHtml = '<!doctype html><html><body>Docs</body></html>';
+    const metricsBody = 'process_cpu_seconds_total 1';
+
+    @Controller('')
+    class RuntimeController {
+      @Get('/docs')
+      getDocs(_input: undefined, context: RequestContext) {
+        context.response.setHeader('content-type', 'text/html; charset=utf-8');
+        return docsHtml;
+      }
+
+      @Get('/metrics')
+      getMetrics(_input: undefined, context: RequestContext) {
+        context.response.setHeader('content-type', 'text/plain; version=0.0.4; charset=utf-8');
+        return metricsBody;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RuntimeController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [docsResponse, metricsResponse] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/docs`),
+      fetch(`http://127.0.0.1:${String(port)}/metrics`),
+    ]);
+
+    expect(docsResponse.status).toBe(200);
+    expect(docsResponse.headers.get('content-type')).toContain('text/html');
+    await expect(docsResponse.text()).resolves.toBe(docsHtml);
+
+    expect(metricsResponse.status).toBe(200);
+    expect(metricsResponse.headers.get('content-type')).toContain('text/plain');
+    await expect(metricsResponse.text()).resolves.toBe(metricsBody);
 
     await app.close();
   });
