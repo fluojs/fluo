@@ -53,8 +53,6 @@ run('pnpm', ['test']);
 const quickStart = read('docs/quick-start.md');
 const releaseGovernance = read('docs/release-governance.md');
 const toolchainContract = read('docs/toolchain-contract-matrix.md');
-const presetGuide = read('docs/preset-guide.md');
-const cliPrompt = read('packages/cli/src/new/prompt.ts');
 const cliReadme = read('packages/cli/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
@@ -68,8 +66,8 @@ assertCheck(
 assertCheck(
   checks,
   'Repo-local smoke path docs',
-  quickStart.includes('pnpm exec konekti new starter-app') && quickStart.includes('testing support only'),
-  'The repo-local bootstrap path is documented as testing support only.',
+  quickStart.includes('pnpm --dir packages/cli run sandbox:test') && quickStart.includes('testing support only'),
+  'The repo-local sandbox path is documented as testing support only.',
 );
 assertCheck(
   checks,
@@ -83,14 +81,13 @@ assertCheck(
 );
 assertCheck(
   checks,
-  'Support-tier wording alignment',
-  cliPrompt.includes('recommended') &&
-    cliPrompt.includes('official') &&
-    cliPrompt.includes('preview') &&
-    presetGuide.includes('recommended') &&
-    presetGuide.includes('official') &&
-    presetGuide.includes('preview'),
-  'Prompt code and public docs use the same recommended/official/preview tier language.',
+  'Generic-first bootstrap contract',
+  !quickStart.includes('ORM') &&
+    !quickStart.includes('Database') &&
+    !scaffoldSource.includes('@konekti/prisma') &&
+    !scaffoldSource.includes('@konekti/drizzle') &&
+    !scaffoldSource.includes('createTierNote'),
+  'Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.',
 );
 assertCheck(
   checks,

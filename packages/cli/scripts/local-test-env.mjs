@@ -95,10 +95,6 @@ async function createSandboxProject(projectName) {
     [
       'new',
       projectName,
-      '--orm',
-      'Prisma',
-      '--database',
-      'PostgreSQL',
       '--package-manager',
       'pnpm',
       '--target-directory',
