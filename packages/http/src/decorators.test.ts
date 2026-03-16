@@ -113,8 +113,8 @@ describe('http decorators', () => {
       {
         propertyKey: 'note',
         rules: [
-          { kind: 'string' },
           { code: 'REQUIRED', kind: 'minLength', message: 'note is required', value: 1 },
+          { kind: 'string' },
         ],
       },
     ]);

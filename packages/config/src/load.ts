@@ -51,24 +51,10 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
 
   const envFileValues = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, 'utf8')) : {};
 
-  const knownKeys = new Set([
-    ...Object.keys(defaults),
-    ...Object.keys(envFileValues),
-    ...Object.keys(runtimeOverrides),
-  ]);
-
-  const filteredProcessEnv: Record<string, string | undefined> = {};
-
-  for (const key of knownKeys) {
-    if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
-      filteredProcessEnv[key] = processEnv[key];
-    }
-  }
-
   const merged: ConfigDictionary = {
     ...defaults,
     ...envFileValues,
-    ...filteredProcessEnv,
+    ...processEnv,
     ...runtimeOverrides,
   };
 

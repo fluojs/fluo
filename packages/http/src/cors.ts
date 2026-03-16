@@ -32,6 +32,12 @@ function setHeaderIfValue(response: { setHeader(name: string, value: string): vo
 }
 
 export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
+  if (options.allowCredentials === true && options.allowOrigin === '*') {
+    throw new Error(
+      'CORS misconfiguration: allowCredentials cannot be true when allowOrigin is "*". Specify explicit origins instead.',
+    );
+  }
+
   const allowMethods = options.allowMethods ?? ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
 
   return {
