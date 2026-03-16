@@ -209,6 +209,9 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/drizzle');
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
     expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.dto.ts'))).toBe(true);
 
     run('pnpm', ['typecheck'], projectDirectory);
     run('pnpm', ['build'], projectDirectory);

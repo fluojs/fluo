@@ -279,9 +279,9 @@ import {
 import { createHealthModule } from '@konekti/runtime';
 import { IsBoolean, IsString } from '@konekti/dto-validator';
 
-import { HealthResponseDto } from './dto/health.dto';
-import { HealthRepo } from './health.repo';
-import { HealthService } from './health.service';
+import { HealthResponseDto } from './health/health.dto';
+import { HealthRepo } from './health/health.repo';
+import { HealthService } from './health/health.service';
 
 class ProfileResponseDto {
   @IsBoolean()
@@ -356,7 +356,7 @@ export class AppModule {}
 }
 
 function createHealthRepoFile(projectName: string): string {
-  return `import type { HealthResponseDto } from './dto/health.dto';
+  return `import type { HealthResponseDto } from './health.dto';
 
 export class HealthRepo {
   findHealth(): HealthResponseDto {
@@ -371,7 +371,7 @@ export class HealthRepo {
 
 function createHealthServiceFile(): string {
   return `import { Inject } from '@konekti/core';
-import type { HealthResponseDto } from './dto/health.dto';
+import type { HealthResponseDto } from './health.dto';
 
 import { HealthRepo } from './health.repo';
 
@@ -568,9 +568,9 @@ export async function scaffoldBootstrapApp(
   writeTextFile(join(targetDirectory, 'src/config/konekti-babel-decorators-plugin.ts'), createDecoratorsPluginFile());
   writeTextFile(join(targetDirectory, 'src/app.ts'), createAppFile(options.projectName));
   writeTextFile(join(targetDirectory, 'src/main.ts'), createMainFile());
-  writeTextFile(join(targetDirectory, 'src/health.repo.ts'), createHealthRepoFile(options.projectName));
-  writeTextFile(join(targetDirectory, 'src/health.service.ts'), createHealthServiceFile());
-  writeTextFile(join(targetDirectory, 'src/dto/health.dto.ts'), createHealthDtoFile());
+  writeTextFile(join(targetDirectory, 'src/health/health.repo.ts'), createHealthRepoFile(options.projectName));
+  writeTextFile(join(targetDirectory, 'src/health/health.service.ts'), createHealthServiceFile());
+  writeTextFile(join(targetDirectory, 'src/health/health.dto.ts'), createHealthDtoFile());
   writeTextFile(join(targetDirectory, 'src/examples/user.repo.ts'), createRepositoryExampleFile());
   writeTextFile(join(targetDirectory, 'src/app.test.ts'), createAppTestFile(options.projectName));
 
