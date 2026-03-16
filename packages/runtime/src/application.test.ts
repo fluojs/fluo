@@ -7,6 +7,7 @@ import { ConfigService } from '@konekti/config';
 import {
   Controller,
   FromBody,
+  FromCookie,
   Get,
   Post,
   type RequestContext,
@@ -489,5 +490,142 @@ describe('bootstrapApplication', () => {
 
     await expect(app.listen()).rejects.toThrow('port already in use');
     expect(loggerEvents).toContain('error:KonektiApplication:Failed to start the HTTP adapter.:port already in use');
+  });
+
+  it('parses Cookie header and exposes individual cookies via FromCookie', async () => {
+    class TokenInput {
+      @FromCookie()
+      session!: string;
+    }
+
+    @Controller('/cookie-test')
+    class CookieController {
+      @RequestDto(TokenInput)
+      @Get('/')
+      readCookie(input: TokenInput) {
+        return { session: input.session };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [CookieController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/cookie-test`, {
+      headers: { cookie: 'session=abc123; other=value' },
+    });
+
+    await expect(response.json()).resolves.toEqual({ session: 'abc123' });
+
+    await app.close();
+  });
+
+  it('accepts a cors string and merges with framework defaults', async () => {
+    @Controller('/ping')
+    class PingController {
+      @Get('/')
+      ping() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [PingController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: 'https://my-frontend.com',
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+      headers: { origin: 'https://my-frontend.com' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
+    expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
+    expect(response.headers.get('access-control-expose-headers')).toContain('X-Request-Id');
+
+    await app.close();
+  });
+
+  it('accepts a cors string array and merges with framework defaults', async () => {
+    @Controller('/ping')
+    class PingController {
+      @Get('/')
+      ping() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [PingController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: ['https://a.com', 'https://b.com'],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const responseA = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+      headers: { origin: 'https://a.com' },
+    });
+    const responseB = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+      headers: { origin: 'https://c.com' },
+    });
+
+    expect(responseA.headers.get('access-control-allow-origin')).toBe('https://a.com');
+    expect(responseB.headers.get('access-control-allow-origin')).toBeNull();
+    expect(responseA.headers.get('access-control-allow-headers')).toContain('Authorization');
+
+    await app.close();
+  });
+
+  it('accepts a partial CorsOptions object and merges with framework defaults', async () => {
+    @Controller('/ping')
+    class PingController {
+      @Get('/')
+      ping() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [PingController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: { allowOrigin: 'https://my-frontend.com', maxAge: 600 },
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+      headers: { origin: 'https://my-frontend.com' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
+    expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
+    expect(response.headers.get('access-control-max-age')).toBe('600');
+
+    await app.close();
   });
 });
