@@ -25,7 +25,9 @@ pnpm --dir packages/cli run sandbox:create
 pnpm --dir packages/cli run sandbox:verify
 ```
 
-The sandbox harness uses the same generic starter flow as the public CLI and writes the generated app under your system temp directory by default; set `KONEKTI_CLI_SANDBOX_ROOT=/path` if you want a different sandbox root.
+The sandbox harness uses the same generic starter flow as the public CLI and writes the generated app directly at a system temp path by default.
+
+`KONEKTI_CLI_SANDBOX_ROOT=/path` is an advanced override and must point to a dedicated directory outside the monorepo workspace. If it points inside the repo, the harness warns and falls back to the temp sandbox root so `pnpm install` runs against the generated app instead of the workspace.
 
 Public `konekti new` now defaults to a generic bootstrap flow:
 

@@ -47,6 +47,8 @@ For contributor-facing manual verification, `packages/cli` now exposes a persist
 pnpm --dir packages/cli run sandbox:test
 ```
 
-That command refreshes `starter-app` under the temp sandbox root (override with `KONEKTI_CLI_SANDBOX_ROOT=/path`) from local packed workspace packages, then reruns the same generated-app checks (`typecheck`, `build`, `test`, and `pnpm exec konekti g repo User`) against the installed CLI binary.
+That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns the same generated-app checks (`typecheck`, `build`, `test`, and `pnpm exec konekti g repo User`) against the installed CLI binary.
+
+`KONEKTI_CLI_SANDBOX_ROOT=/path` is still available for advanced local setups, but it must point to a dedicated directory outside the monorepo workspace. Repo-internal paths are warned on and automatically replaced with the temp sandbox root so contributor verification keeps using a standalone app.
 
 For the outside-the-monorepo gate, use `pnpm verify:release-candidate`. That command is the current CI-facing public release candidate check, and it relies on the CLI test suite to exercise the packed CLI entrypoint and starter scaffolding that back the documented `@konekti/cli` flow. The command also emits `tooling/release/release-candidate-summary.md` so CI can publish a checklist artifact.
