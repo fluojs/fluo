@@ -1,4 +1,4 @@
-export type JwtAlgorithm = 'HS256';
+export type JwtAlgorithm = 'HS256' | 'HS384' | 'HS512';
 
 export interface JwtKeyEntry {
   kid: string;
