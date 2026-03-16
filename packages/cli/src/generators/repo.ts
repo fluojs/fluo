@@ -1,89 +1,29 @@
-import type { GenerateOptions, GeneratedFile, GeneratorPreset } from '../types.js';
+import type { GenerateOptions, GeneratedFile } from '../types.js';
 
 import { toKebabCase, toPascalCase } from './utils.js';
 
-function createRepoImplementation(resource: string, preset: GeneratorPreset): string {
-  if (preset === 'prisma') {
-    return `import { Inject } from '@konekti/core';
-import type { PrismaClientLike } from '@konekti/prisma';
-import { PrismaService } from '@konekti/prisma';
-
+function createRepoImplementation(resource: string): string {
+  return `
 type ${resource}Record = {
   id: string;
 };
 
-type ${resource}PrismaClient = PrismaClientLike<{
-  ${resource.toLowerCase()}: {
-    findMany(): Promise<${resource}Record[]>;
-  };
-}> & {
-  ${resource.toLowerCase()}: {
-    findMany(): Promise<${resource}Record[]>;
-  };
-};
-
-@Inject([PrismaService])
 export class ${resource}Repo {
-  constructor(private readonly prisma: PrismaService<${resource}PrismaClient>) {}
-
   async list${resource}s(): Promise<${resource}Record[]> {
-    const current = this.prisma.current();
-
-    return current.${resource.toLowerCase()}.findMany();
-  }
-}
-`;
-  }
-
-  if (preset === 'drizzle') {
-    return `import { Inject } from '@konekti/core';
-import type { DrizzleDatabaseLike } from '@konekti/drizzle';
-import { DrizzleDatabase } from '@konekti/drizzle';
-
-type ${resource}Record = {
-  id: string;
-};
-
-type ${resource}Database = DrizzleDatabaseLike<{
-  ${resource.toLowerCase()}s: {
-    findMany(): Promise<${resource}Record[]>;
-  };
-}> & {
-  ${resource.toLowerCase()}s: {
-    findMany(): Promise<${resource}Record[]>;
-  };
-};
-
-@Inject([DrizzleDatabase])
-export class ${resource}Repo {
-  constructor(private readonly database: DrizzleDatabase<${resource}Database>) {}
-
-  async list${resource}s(): Promise<${resource}Record[]> {
-    const current = this.database.current();
-
-    return current.${resource.toLowerCase()}s.findMany();
-  }
-}
-`;
-  }
-
-  return `export class ${resource}Repo {
-  list${resource}s() {
-    return [{ id: '${toKebabCase(resource)}-1' }];
+    return [];
   }
 }
 `;
 }
 
-export function generateRepoFiles(name: string, options: GenerateOptions = {}): GeneratedFile[] {
+export function generateRepoFiles(name: string, _options: GenerateOptions = {}): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const resource = toPascalCase(name);
   const pascal = `${resource}Repo`;
-  const preset = options.preset ?? 'generic';
 
   return [
     {
-      content: createRepoImplementation(resource, preset),
+      content: createRepoImplementation(resource),
       path: `${kebab}.repo.ts`,
     },
     {

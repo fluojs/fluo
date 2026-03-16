@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { createTierNote, promptForBootstrapAnswers } from '../new/prompt.js';
+import { resolveBootstrapAnswers } from '../new/prompt.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
 
@@ -8,8 +8,13 @@ type CliStream = {
   write(message: string): unknown;
 };
 
+function isHelpFlag(value: string | undefined): boolean {
+  return value === '--help' || value === '-h';
+}
+
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
   stderr?: CliStream;
   stdout?: CliStream;
 }
@@ -24,14 +29,6 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
     switch (arg) {
       case '--name':
         parsed.projectName = next;
-        index += 1;
-        break;
-      case '--orm':
-        parsed.orm = next as BootstrapAnswers['orm'];
-        index += 1;
-        break;
-      case '--database':
-        parsed.database = next as BootstrapAnswers['database'];
         index += 1;
         break;
       case '--package-manager':
@@ -56,7 +53,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
 
 export function newUsage(): string {
   return [
-    'Usage: konekti new <project-name> [--orm <Prisma|Drizzle>] [--database <PostgreSQL|MySQL>] [--package-manager <pnpm|npm|yarn>] [--target-directory <path>]',
+    'Usage: konekti new <project-name> [--package-manager <pnpm|npm|yarn>] [--target-directory <path>]',
     'Aliases: konekti create <project-name>',
   ].join('\n');
 }
@@ -66,7 +63,18 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
   const stderr = runtime.stderr ?? process.stderr;
 
   try {
-    const answers = await promptForBootstrapAnswers(parseArgs(argv));
+    if (argv.some(isHelpFlag)) {
+      stdout.write(`${newUsage()}\n`);
+      return 0;
+    }
+
+    const parsed = parseArgs(argv);
+
+    if (!parsed.projectName) {
+      throw new Error(newUsage());
+    }
+
+    const answers = resolveBootstrapAnswers(parsed, runtime.cwd ?? process.cwd(), runtime.env ?? process.env);
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,
@@ -75,7 +83,6 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       targetDirectory: resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory),
     };
 
-    stdout.write(`${createTierNote(answers.orm, answers.database)}\n`);
     stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
 
     await scaffoldBootstrapApp(options);

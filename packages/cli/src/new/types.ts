@@ -1,13 +1,8 @@
-export type OrmFamily = 'Drizzle' | 'Prisma';
-export type DatabaseFamily = 'MySQL' | 'PostgreSQL';
 export type PackageManager = 'npm' | 'pnpm' | 'yarn';
-export type SupportTier = 'official' | 'preview' | 'recommended';
 export type DependencySource = 'local' | 'published';
 
 export interface BootstrapOptions {
-  database: DatabaseFamily;
   dependencySource?: DependencySource;
-  orm: OrmFamily;
   packageManager: PackageManager;
   projectName: string;
   repoRoot?: string;
@@ -16,13 +11,11 @@ export interface BootstrapOptions {
 }
 
 export interface BootstrapPrompt {
-  key: keyof BootstrapAnswers | 'tierNote';
+  key: keyof BootstrapAnswers;
   label: string;
 }
 
 export interface BootstrapAnswers {
-  database: DatabaseFamily;
-  orm: OrmFamily;
   packageManager: PackageManager;
   projectName: string;
   targetDirectory: string;

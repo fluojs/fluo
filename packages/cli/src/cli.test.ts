@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('CLI command runner', () => {
-  it('infers the preset and default target directory from a single-app workspace root', async () => {
+  it('uses the default target directory from a single-app workspace root', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
 
@@ -40,7 +40,7 @@ describe('CLI command runner', () => {
     mkdirSync(join(workspaceDirectory, 'apps', 'starter-app', 'src'), { recursive: true });
     writeFileSync(
       join(workspaceDirectory, 'apps', 'starter-app', 'package.json'),
-      JSON.stringify({ dependencies: { '@konekti/prisma': 'workspace:*' }, name: 'starter-app', private: true }, null, 2),
+      JSON.stringify({ name: 'starter-app', private: true }, null, 2),
     );
     writeFileSync(join(workspaceDirectory, 'apps', 'starter-app', 'src', '.gitkeep'), '');
 
@@ -52,10 +52,86 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(workspaceDirectory, 'apps', 'starter-app', 'src', 'users', 'user.repo.ts'), 'utf8')).toContain(
-      'this.prisma.current()',
-    );
+    expect(readFileSync(join(workspaceDirectory, 'apps', 'starter-app', 'src', 'users', 'user.repo.ts'), 'utf8')).toContain('return [];');
     expect(stdoutBuffer.join('')).toContain('Generated 3 file(s):');
+  });
+
+  it('auto-detects the package manager from the calling context when no flag is provided', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app'], {
+      cwd: workspaceDirectory,
+      env: { npm_config_user_agent: 'npm/10.0.0 node/v22.0.0 darwin x64' },
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Installing dependencies with npm');
+    expect(stdoutBuffer.join('')).toContain('npm run dev');
+  });
+
+  it('falls back to pnpm when package manager detection has no signal', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
+    expect(stdoutBuffer.join('')).toContain('pnpm dev');
+  });
+
+  it('prints top-level usage for `help`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti new <project-name>');
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti g <kind> <name>');
+  });
+
+  it('prints `new` usage for `new --help`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', '--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti new <project-name>');
+    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti g <kind> <name>');
+  });
+
+  it('prints generate usage for `help generate`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help', 'generate'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti g <kind> <name>');
+    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new <project-name>');
   });
 
   it('places generated files under a domain subdirectory and auto-creates the module', async () => {
@@ -119,7 +195,7 @@ describe('CLI command runner', () => {
 
     const projectDirectory = join(targetDirectory, 'starter-app');
 
-    const exitCode = await runCli(['new', 'starter-app', '--orm', 'Prisma', '--database', 'PostgreSQL', '--package-manager', 'pnpm'], {
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'pnpm'], {
       cwd: targetDirectory,
       dependencySource: 'local',
       repoRoot,
@@ -129,6 +205,8 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/runtime');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/prisma');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/drizzle');
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
     expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
 

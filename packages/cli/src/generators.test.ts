@@ -21,9 +21,12 @@ describe('CLI generators', () => {
     expect(generateRepoFiles('User')[1]?.path).toBe('user.repo.test.ts');
   });
 
-  it('can emit preset-aware repository examples', () => {
-    expect(generateRepoFiles('User', { preset: 'prisma' })[0]?.content).toContain('this.prisma.current()');
-    expect(generateRepoFiles('User', { preset: 'drizzle' })[0]?.content).toContain('this.database.current()');
+  it('emits generic repository examples without ORM-specific access', () => {
+    const content = generateRepoFiles('User')[0]?.content ?? '';
+
+    expect(content).toContain('return [];');
+    expect(content).not.toContain('this.prisma.current()');
+    expect(content).not.toContain('this.database.current()');
   });
 
   it('emits DTO templates with split validator imports', () => {

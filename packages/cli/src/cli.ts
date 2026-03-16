@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runGenerateCommand } from './commands/generate.js';
 import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
-import type { GenerateOptions, GeneratorKind, GeneratorPreset } from './types.js';
+import type { GenerateOptions, GeneratorKind } from './types.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -35,101 +35,27 @@ type ParsedCommand =
     };
 
 const GENERATOR_KINDS: GeneratorKind[] = ['controller', 'dto', 'module', 'repo', 'service'];
-const PRESETS: GeneratorPreset[] = ['drizzle', 'generic', 'prisma'];
-
 function isGeneratorKind(value: string): value is GeneratorKind {
   return GENERATOR_KINDS.includes(value as GeneratorKind);
 }
 
-function isGeneratorPreset(value: string): value is GeneratorPreset {
-  return PRESETS.includes(value as GeneratorPreset);
+function isHelpFlag(value: string | undefined): boolean {
+  return value === '--help' || value === '-h';
+}
+
+function generateUsage(): string {
+  return [
+    'Usage: konekti g <kind> <name> [--target-directory <path>] [--force]',
+    'Aliases: konekti generate <kind> <name>',
+  ].join('\n');
 }
 
 function usage(): string {
   return [
     newUsage(),
     '',
-    'Usage: konekti g <kind> <name> [--preset <generic|prisma|drizzle>] [--target-directory <path>] [--force]',
-    'Aliases: konekti generate <kind> <name>',
+    generateUsage(),
   ].join('\n');
-}
-
-function readJson(filePath: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
-}
-
-function readPresetFromPackageJson(filePath: string): GeneratorPreset | undefined {
-  const packageJson = readJson(filePath) as {
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-
-  const dependencies = {
-    ...packageJson.dependencies,
-    ...packageJson.devDependencies,
-  };
-
-  if (dependencies['@konekti/prisma']) {
-    return 'prisma';
-  }
-
-  if (dependencies['@konekti/drizzle']) {
-    return 'drizzle';
-  }
-
-  return undefined;
-}
-
-function detectPreset(startDirectory: string): GeneratorPreset {
-  let currentDirectory = resolve(startDirectory);
-
-  while (true) {
-    const packageJsonPath = join(currentDirectory, 'package.json');
-
-    if (existsSync(packageJsonPath)) {
-      const detectedPreset = readPresetFromPackageJson(packageJsonPath);
-
-      if (detectedPreset) {
-        return detectedPreset;
-      }
-    }
-
-    const appsDirectory = join(currentDirectory, 'apps');
-
-    if (existsSync(appsDirectory)) {
-      const presets = new Set<GeneratorPreset>();
-
-      for (const entry of readdirSync(appsDirectory, { withFileTypes: true })) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const appPackageJson = join(appsDirectory, entry.name, 'package.json');
-
-        if (!existsSync(appPackageJson)) {
-          continue;
-        }
-
-        const detectedPreset = readPresetFromPackageJson(appPackageJson);
-
-        if (detectedPreset) {
-          presets.add(detectedPreset);
-        }
-      }
-
-      if (presets.size === 1) {
-        return [...presets][0] ?? 'generic';
-      }
-    }
-
-    const parentDirectory = dirname(currentDirectory);
-
-    if (parentDirectory === currentDirectory) {
-      return 'generic';
-    }
-
-    currentDirectory = parentDirectory;
-  }
 }
 
 function resolveDefaultTargetDirectory(startDirectory: string): string {
@@ -170,16 +96,6 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   for (let index = 0; index < optionArgs.length; index += 1) {
     const option = optionArgs[index];
     const next = optionArgs[index + 1];
-
-    if (option === '--preset' || option === '-p') {
-      if (!next || !isGeneratorPreset(next)) {
-        throw new Error('Expected --preset to be one of: generic, prisma, drizzle.');
-      }
-
-      parsedOptions.preset = next;
-      index += 1;
-      continue;
-    }
 
     if (option === '--target-directory' || option === '-o') {
       if (!next) {
@@ -233,6 +149,37 @@ export async function runCli(
   const stderr = runtime.stderr ?? process.stderr;
 
   try {
+    if (argv.length === 0) {
+      throw new Error(usage());
+    }
+
+    if (argv[0] === 'help') {
+      const topic = argv[1];
+
+      if (topic === 'new' || topic === 'create') {
+        stdout.write(`${newUsage()}\n`);
+        return 0;
+      }
+
+      if (topic === 'g' || topic === 'generate') {
+        stdout.write(`${generateUsage()}\n`);
+        return 0;
+      }
+
+      stdout.write(`${usage()}\n`);
+      return 0;
+    }
+
+    if (isHelpFlag(argv[0])) {
+      stdout.write(`${usage()}\n`);
+      return 0;
+    }
+
+    if ((argv[0] === 'g' || argv[0] === 'generate') && argv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${generateUsage()}\n`);
+      return 0;
+    }
+
     const parsedCommand = parseCommand(argv);
 
     if (parsedCommand.command === 'new') {
@@ -241,10 +188,7 @@ export async function runCli(
 
     const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
 
-    const files = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, {
-      ...parsedCommand.parsed.options,
-      preset: parsedCommand.parsed.options.preset ?? detectPreset(cwd),
-    });
+    const files = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, parsedCommand.parsed.options);
 
     stdout.write(`Generated ${files.length} file(s):\n`);
     for (const file of files) {
