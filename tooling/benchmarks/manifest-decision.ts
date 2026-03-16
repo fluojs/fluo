@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 
-import { Inject, Module } from '../../packages/core/src/index';
+import { defineClassDiMetadata, Module } from '../../packages/core/src/index';
 import { Controller, Get } from '../../packages/http/src/index';
 import { KonektiFactory, type ApplicationLogger, type ModuleType } from '../../packages/module/src/index';
 
@@ -19,13 +19,16 @@ function createProvider(
   providerIndex: number,
   dependency?: ConstructorToken,
 ): ConstructorToken {
-  @Inject(dependency ? [dependency] : [])
   class BenchProvider {
     constructor(private readonly previous?: { value(): number }) {}
 
     value(): number {
       return moduleIndex + providerIndex + (this.previous?.value() ?? 0);
     }
+  }
+
+  if (dependency) {
+    defineClassDiMetadata(BenchProvider, { inject: [dependency] });
   }
 
   Object.defineProperty(BenchProvider, 'name', {
@@ -41,7 +44,6 @@ function createController(
   controllerIndex: number,
   dependency?: ConstructorToken,
 ): ModuleType {
-  @Inject(dependency ? [dependency] : [])
   @Controller(`/${scenarioName.toLowerCase()}-${moduleIndex}-${controllerIndex}`)
   class BenchController {
     constructor(private readonly provider?: { value(): number }) {}
@@ -53,6 +55,10 @@ function createController(
         value: this.provider?.value() ?? controllerIndex,
       };
     }
+  }
+
+  if (dependency) {
+    defineClassDiMetadata(BenchController, { inject: [dependency] });
   }
 
   Object.defineProperty(BenchController, 'name', {
