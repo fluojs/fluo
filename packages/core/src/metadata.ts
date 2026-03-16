@@ -161,7 +161,7 @@ export interface InjectionMetadata {
 
 export interface ClassDiMetadata {
   inject?: Token[];
-  scope?: 'singleton' | 'request';
+  scope?: 'singleton' | 'request' | 'transient';
 }
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;

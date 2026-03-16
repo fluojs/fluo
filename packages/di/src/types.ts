@@ -1,6 +1,6 @@
 import type { Constructor, MaybePromise, Token } from '@konekti/core';
 
-export type Scope = 'singleton' | 'request';
+export type Scope = 'singleton' | 'request' | 'transient';
 
 export interface ClassType<T = unknown> extends Constructor<T> {
 }
