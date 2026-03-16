@@ -12,7 +12,8 @@ pnpm add @konekti/openapi
 
 ```typescript
 import { Controller, Get, Post, createHandlerMapping } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { bootstrapApplication } from '@konekti/runtime';
 import {
   ApiTag,
   ApiOperation,
@@ -42,9 +43,7 @@ class UsersController {
 
 const descriptors = createHandlerMapping([{ controllerToken: UsersController }]).descriptors;
 
-class AppModule {}
-
-defineModule(AppModule, {
+@Module({
   controllers: [UsersController],
   imports: [
     OpenApiModule.forRoot({
@@ -54,7 +53,8 @@ defineModule(AppModule, {
       ui: true,               // /docs에서 Swagger UI 활성화
     }),
   ],
-});
+})
+class AppModule {}
 
 await bootstrapApplication({ rootModule: AppModule });
 // GET /openapi.json  → OpenAPI 3.1.0 JSON 문서
@@ -223,4 +223,4 @@ function getMethodApiMetadata(target: Function, propertyKey: MetadataPropertyKey
 |--------|------|
 | `@konekti/core` | 공유 메타데이터 유틸리티 |
 | `@konekti/http` | 컨트롤러/라우팅 데코레이터, `HandlerDescriptor` |
-| `@konekti/runtime` | `defineModule`, `ModuleType` |
+| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |

@@ -12,7 +12,8 @@ pnpm add @konekti/openapi
 
 ```typescript
 import { Controller, Get, Post, createHandlerMapping } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { bootstrapApplication } from '@konekti/runtime';
 import {
   ApiTag,
   ApiOperation,
@@ -42,9 +43,7 @@ class UsersController {
 
 const descriptors = createHandlerMapping([{ controllerToken: UsersController }]).descriptors;
 
-class AppModule {}
-
-defineModule(AppModule, {
+@Module({
   controllers: [UsersController],
   imports: [
     OpenApiModule.forRoot({
@@ -54,7 +53,8 @@ defineModule(AppModule, {
       ui: true,               // enable Swagger UI at /docs
     }),
   ],
-});
+})
+class AppModule {}
 
 await bootstrapApplication({ rootModule: AppModule });
 // GET /openapi.json  → OpenAPI 3.1.0 JSON document
@@ -232,4 +232,4 @@ interface MethodApiMetadata {
 |---------|------|
 | `@konekti/core` | Shared metadata utilities |
 | `@konekti/http` | Controller/routing decorators, `HandlerDescriptor` |
-| `@konekti/runtime` | `defineModule`, `ModuleType` |
+| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |

@@ -11,16 +11,16 @@ pnpm add @konekti/metrics
 ## 빠른 시작
 
 ```typescript
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { bootstrapApplication } from '@konekti/runtime';
 import { MetricsModule } from '@konekti/metrics';
 
-class AppModule {}
-
-defineModule(AppModule, {
+@Module({
   imports: [
     MetricsModule.forRoot(),
   ],
-});
+})
+class AppModule {}
 
 await bootstrapApplication({ rootModule: AppModule });
 // GET /metrics → Prometheus 텍스트 형식
@@ -107,5 +107,5 @@ httpRequests.inc({ method: 'GET', status: '200' });
 | 패키지 | 역할 |
 |--------|------|
 | `@konekti/http` | `Controller`, `Get`, `RequestContext`, `MiddlewareLike` |
-| `@konekti/runtime` | `defineModule`, `ModuleType` |
+| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |
 | `prom-client` | Prometheus 메트릭 수집 및 포맷팅 |

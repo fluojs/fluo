@@ -11,16 +11,16 @@ pnpm add @konekti/metrics
 ## Quick Start
 
 ```typescript
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { bootstrapApplication } from '@konekti/runtime';
 import { MetricsModule } from '@konekti/metrics';
 
-class AppModule {}
-
-defineModule(AppModule, {
+@Module({
   imports: [
     MetricsModule.forRoot(),
   ],
-});
+})
+class AppModule {}
 
 await bootstrapApplication({ rootModule: AppModule });
 // GET /metrics → Prometheus text format
@@ -107,5 +107,5 @@ httpRequests.inc({ method: 'GET', status: '200' });
 | Package | Role |
 |---------|------|
 | `@konekti/http` | `Controller`, `Get`, `RequestContext`, `MiddlewareLike` |
-| `@konekti/runtime` | `defineModule`, `ModuleType` |
+| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |
 | `prom-client` | Prometheus metrics collection and formatting |
