@@ -36,7 +36,7 @@ Concrete evidence lives in:
 
 ## data and auth stance
 
-- repository generation stays ORM-native and preset-aware
+- repository generation stays generic-first and persistence-agnostic
 - JWT token-core behavior belongs to `@konekti/jwt`
 - OpenAPI document generation and metadata-only decorators belong to `@konekti/openapi`
 - Prometheus scrape exposure belongs to `@konekti/metrics`

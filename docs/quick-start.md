@@ -4,13 +4,11 @@ This guide matches the current Phase 5 onboarding contract for the implementatio
 
 ## public release-candidate path
 
-The default public recommendation remains `Prisma + PostgreSQL`.
+This is the canonical public bootstrap path.
 
 ```sh
 pnpm dlx @konekti/cli new starter-app
 ```
-
-This is the canonical public bootstrap path.
 
 ## repo-local smoke path
 
@@ -27,16 +25,13 @@ pnpm --dir packages/cli run sandbox:create
 pnpm --dir packages/cli run sandbox:verify
 ```
 
-The sandbox harness pins the recommended local path (`Prisma + PostgreSQL + pnpm`) so reruns stay deterministic. By default it writes the generated app under your system temp directory; set `KONEKTI_CLI_SANDBOX_ROOT=/path` if you want a different sandbox root.
+The sandbox harness uses the same generic starter flow as the public CLI and writes the generated app under your system temp directory by default; set `KONEKTI_CLI_SANDBOX_ROOT=/path` if you want a different sandbox root.
 
-Public `konekti new` still uses this prompt flow:
+Public `konekti new` now defaults to a generic bootstrap flow:
 
 1. `Project name`
-2. `ORM`
-3. `Database`
-4. `Package manager`
-5. `Target directory`
-6. tier note before install starts
+2. `Target directory` only when you override the default
+3. `Package manager` resolved from the calling context or `pnpm` fallback
 
 ## generated project commands
 
@@ -59,7 +54,7 @@ The starter app includes:
 - `src/main.ts` with runtime-owned node bootstrap defaults
 - runtime-owned `/health` and `/ready` endpoints
 - `/metrics` and `/openapi.json` out of the box
-- `src/examples/user.repo.ts` with preset-aware ORM access
+- `src/examples/user.repo.ts` with generic repository shape
 - `src/app.test.ts` proving the runtime path works end-to-end
 
 Generated apps keep the bootstrap seam thin: `src/main.ts` calls `runNodeApplication(...)`, and the scaffold does not emit `src/node-http-adapter.ts`.
@@ -85,4 +80,4 @@ Run the repo generator from the project root:
 pnpm exec konekti g repo User
 ```
 
-On a generated single-app project, the CLI infers the selected preset and writes files into `src/` by default.
+On a generated single-app project, the CLI writes files into `src/` by default.

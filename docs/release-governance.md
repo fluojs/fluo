@@ -37,7 +37,7 @@ These packages are the intended public release surface once the repository leave
 ## release checklist
 
 1. `pnpm verify:release-candidate`
-2. confirm docs match the current package surface and support matrix
+2. confirm docs match the current package surface and bootstrap contract
 3. confirm any manifest decision note still matches benchmark evidence
 
 ## release-candidate gate

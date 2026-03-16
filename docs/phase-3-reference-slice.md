@@ -2,7 +2,7 @@
 
 This document is the reusable reference slice for Phase 3.
 
-It points to one concrete request flow that later phases can reuse when they need an end-to-end example covering request DTO binding, validation, service boundaries, ORM access, and canonical responses.
+It points to one concrete request flow that later phases can reuse when they need an end-to-end example covering request DTO binding, validation, service boundaries, repository seams, and canonical responses.
 
 ## Reference flow
 
@@ -15,7 +15,7 @@ That slice proves this path end to end:
 3. DTO validation runs before the controller method body.
 4. The controller delegates to a service.
 5. The service delegates to a repository.
-6. The repository uses the selected ORM integration (`PrismaService`).
+6. The repository seam is exercised through one concrete adapter-backed example.
 7. The runtime returns canonical success and error responses.
 
 ## Main artifacts
@@ -24,8 +24,8 @@ That slice proves this path end to end:
 - Controller: `UsersController` in `packages/prisma/src/vertical-slice.test.ts`
 - Service: `UserService` in `packages/prisma/src/vertical-slice.test.ts`
 - Repository: `UserRepository` in `packages/prisma/src/vertical-slice.test.ts`
-- ORM module boundary: `createPrismaModule(...)` in `packages/prisma/src/module.ts`
-- ORM runtime handle: `PrismaService` in `packages/prisma/src/service.ts`
+- Adapter module boundary: `createPrismaModule(...)` in `packages/prisma/src/module.ts`
+- Adapter runtime handle: `PrismaService` in `packages/prisma/src/service.ts`
 
 ## Copy-pastable example shape
 
@@ -57,7 +57,7 @@ class UsersController {
 }
 ```
 
-This is the smallest recommended Phase 3 shape for later docs and examples: one request DTO, one controller route, one service boundary, and one selected ORM integration path.
+This is the smallest recommended Phase 3 shape for later docs and examples: one request DTO, one controller route, one service boundary, and one concrete repository/adaptor path.
 
 ## Canonical error example
 
@@ -86,7 +86,7 @@ This shows the strict-close 3B/3D contract in one place: the reference slice inc
 
 - It uses the same explicit decorator contracts as real apps.
 - It exercises DTO binding and validation through the HTTP runtime.
-- It crosses the controller -> service -> repository -> ORM seam.
+- It crosses the controller -> service -> repository -> adapter seam.
 - It includes both success and canonical error responses.
 - It is small enough to copy into later docs, generators, and examples without inventing a second pattern.
 
@@ -95,5 +95,5 @@ This shows the strict-close 3B/3D contract in one place: the reference slice inc
 When a later phase needs a concrete example, prefer adapting this slice instead of introducing a new ad hoc one.
 
 - For HTTP/docs work, keep `CreateUserRequest` and `UsersController` as the request-shape reference.
-- For data-layer docs, keep `UserRepository` + `PrismaService` as the ORM-boundary reference.
+- For data-layer docs, keep `UserRepository` + `PrismaService` as one adapter-boundary reference rather than a bootstrap default.
 - For testing/docs examples, keep the success + validation-error + not-found response set as the canonical response reference.

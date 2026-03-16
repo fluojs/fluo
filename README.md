@@ -23,7 +23,6 @@ Planning and contract documents are maintained separately in the private `konekt
 - `./docs/quick-start.md`
 - `./docs/architecture-overview.md`
 - `./docs/testing-guide.md`
-- `./docs/preset-guide.md`
 - `./docs/toolchain-contract-matrix.md`
 - `./docs/http-policies.md`
 - `./docs/release-governance.md`

@@ -6,7 +6,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 `@konekti/cli` provides two top-level commands:
 
-- **`konekti new`** — interactive prompt → scaffold a starter project → install dependencies
+- **`konekti new`** — scaffold a starter project with defaults → install dependencies
 - **`konekti generate <kind> <name>`** — create a single file (module, controller, service, repo, or dto) inside an existing project
 
 ## Installation
@@ -21,8 +21,9 @@ pnpm dlx @konekti/cli new my-app
 
 ```bash
 pnpm dlx @konekti/cli new my-app
-# follows an interactive prompt:
-#   project name, ORM (Prisma / Drizzle), database, package manager, target directory
+# optional overrides:
+#   --package-manager <pnpm|npm|yarn>
+#   --target-directory <path>
 ```
 
 ### Generate a file inside an existing project
@@ -68,7 +69,7 @@ Use `pnpm --dir packages/cli run test` for the package-local Vitest suite.
 
 Generators return `GeneratedFile[]` — they never write to the filesystem directly. The command layer owns the write. This separation makes generators testable without touching disk and allows future dry-run or preview modes.
 
-The `repo` generator is **preset-aware**: pass `{ preset: 'prisma' }` or `{ preset: 'drizzle' }` to get a transaction-aware repository template for the selected ORM.
+The `repo` generator is generic-only: it creates a persistence-agnostic repository stub and does not auto-wire Prisma or Drizzle services.
 
 ```
 konekti generate:
@@ -81,8 +82,7 @@ konekti generate:
 
 konekti new:
   runNewCommand(argv)
-    → collect prompt answers
-    → print support tier note
+    → resolve defaults
     → scaffoldBootstrapApp(options)
     → install
     → print next steps
@@ -98,7 +98,7 @@ konekti new:
 
 ## Related packages
 
-- **`@konekti/prisma`** / **`@konekti/drizzle`** — what the preset-aware repo generator produces
+- **`@konekti/prisma`** / **`@konekti/drizzle`** — optional adapters that apps add when they need them
 
 ## One-liner mental model
 
