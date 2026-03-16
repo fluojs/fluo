@@ -56,22 +56,14 @@ const toolchainContract = read('docs/toolchain-contract-matrix.md');
 const presetGuide = read('docs/preset-guide.md');
 const cliPrompt = read('packages/cli/src/new/prompt.ts');
 const cliReadme = read('packages/cli/README.md');
-const createKonektiReadme = read('packages/create-konekti/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
-const createKonektiPackage = JSON.parse(read('packages/create-konekti/package.json'));
 
 assertCheck(
   checks,
   'Canonical bootstrap docs',
   quickStart.includes('pnpm dlx @konekti/cli new starter-app') && quickStart.includes('This is the canonical public bootstrap path.'),
   'The quick start guide documents the public `pnpm dlx @konekti/cli new` path.',
-);
-assertCheck(
-  checks,
-  'Compatibility wrapper docs',
-  quickStart.includes('npx create-konekti starter-app') && createKonektiReadme.includes('compatibility bootstrap layer'),
-  'The compatibility wrapper stays documented as `create-konekti`, not a competing primary path.',
 );
 assertCheck(
   checks,
@@ -97,10 +89,7 @@ assertCheck(
     cliPrompt.includes('preview') &&
     presetGuide.includes('recommended') &&
     presetGuide.includes('official') &&
-    presetGuide.includes('preview') &&
-    createKonektiReadme.includes('recommended') &&
-    createKonektiReadme.includes('official') &&
-    createKonektiReadme.includes('preview'),
+    presetGuide.includes('preview'),
   'Prompt code and public docs use the same recommended/official/preview tier language.',
 );
 assertCheck(
@@ -123,10 +112,8 @@ assertCheck(
   'Dist-based package entrypoints',
   cliPackage.bin.konekti === './bin/konekti.mjs' &&
     cliPackage.main === './dist/index.js' &&
-    createKonektiPackage.bin['create-konekti'] === './bin/create-konekti.mjs' &&
-    createKonektiPackage.main === './dist/index.js' &&
     cliReadme.includes('canonical CLI'),
-  'CLI manifests and bins prove a dist-backed public entrypoint.',
+  'CLI manifest and bin prove a dist-backed public entrypoint.',
 );
 
 writeSummary(checks);

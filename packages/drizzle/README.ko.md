@@ -140,7 +140,7 @@ cleanup hook을 database value에서 분리하면:
 
 - `@konekti/runtime` — 모듈 import/export와 shutdown lifecycle
 - `@konekti/prisma` — Prisma 쪽에서 같은 문제를 어떻게 다르게 푸는지 비교
-- `create-konekti` — Drizzle 선택 시 scaffold에 포함
+- `@konekti/cli` — Drizzle 선택 시 scaffold에 포함
 
 ## 한 줄 mental model
 

@@ -10,7 +10,7 @@ This matrix locks the public toolchain contract for generated apps and release-c
 | `vitest.config.ts` in generated apps | `generated (stable)` | Node test environment, `src/**/*.test.ts`, uses the Konekti decorators plugin |
 | Generated dev dependencies | `public contract` | `@babel/cli ^7.26.4`, `@babel/core ^7.26.10`, `@babel/plugin-proposal-decorators ^7.28.0`, `@babel/preset-typescript ^7.27.1`, `@types/babel__core ^7.20.5`, `@types/node ^22.13.10`, `tsx ^4.20.4`, `typescript ^5.8.2`, `vite ^6.2.1`, `vitest ^3.0.8` |
 | Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` keep the current single-app command shape |
-| `@konekti/cli` / `create-konekti` prompt flow | `public contract` | Canonical path is `pnpm dlx @konekti/cli new`; `create-konekti` stays a compatibility wrapper |
+| `@konekti/cli` prompt flow | `public contract` | Canonical path is `pnpm dlx @konekti/cli new` |
 | Workspace root TypeScript / Vite / Vitest wiring | `internal-only` | Root repo config files support package development and are not copied into generated apps |
 | Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*` is testing support for release-candidate verification only |
 

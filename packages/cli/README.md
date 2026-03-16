@@ -9,8 +9,6 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 - **`konekti new`** — interactive prompt → scaffold a starter project → install dependencies
 - **`konekti generate <kind> <name>`** — create a single file (module, controller, service, repo, or dto) inside an existing project
 
-`create-konekti` is a thin compatibility wrapper around this package's `new` path.
-
 ## Installation
 
 ```bash
@@ -26,8 +24,6 @@ pnpm dlx @konekti/cli new my-app
 # follows an interactive prompt:
 #   project name, ORM (Prisma / Drizzle), database, package manager
 ```
-
-`create-konekti` stays the compatibility wrapper path for users who prefer `npx create-konekti my-app`.
 
 ### Generate a file inside an existing project
 
@@ -84,7 +80,6 @@ konekti new:
 
 ## Related packages
 
-- **`create-konekti`** — compatibility bootstrap entry that wraps `konekti new`
 - **`@konekti/prisma`** / **`@konekti/drizzle`** — what the preset-aware repo generator produces
 
 ## One-liner mental model

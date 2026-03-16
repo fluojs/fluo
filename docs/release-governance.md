@@ -19,7 +19,6 @@ These packages are the intended public release surface once the repository leave
 - `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
-- `create-konekti`
 
 ## versioning policy
 
@@ -46,7 +45,7 @@ These packages are the intended public release surface once the repository leave
 `pnpm verify:release-candidate` currently proves:
 
 - package typecheck + build succeed from the monorepo root
-- scaffolded starter projects work outside the repo-local app path through the packed CLI/bootstrap codepaths that underlie the canonical `@konekti/cli` and `create-konekti` flows
+- scaffolded starter projects work outside the repo-local app path through the packed CLI/bootstrap codepaths that underlie the canonical `@konekti/cli` flow
 - `pnpm`, `npm`, and `yarn` starter projects all pass `typecheck`, `build`, `test`, and `konekti g repo ...`
 - generated starter projects expose runtime-owned `/health` + `/ready`, `/metrics`, and `/openapi.json`
 - CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution

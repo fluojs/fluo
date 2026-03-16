@@ -12,14 +12,6 @@ pnpm dlx @konekti/cli new starter-app
 
 This is the canonical public bootstrap path.
 
-## compatibility wrapper path
-
-```sh
-npx create-konekti starter-app
-```
-
-Use this when you need the unscoped compatibility wrapper. It delegates to the same scaffold engine as `@konekti/cli`.
-
 ## repo-local smoke path
 
 ```sh

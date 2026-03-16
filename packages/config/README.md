@@ -95,7 +95,7 @@ bootstrapApplication(options)
 ## Related packages
 
 - **`@konekti/runtime`** — calls `loadConfig()` and registers `ConfigService` as a provider
-- **`create-konekti`** — shows how generated apps lay out `.env.dev` / `.env.test` / `.env.prod`
+- **`@konekti/cli`** — shows how generated apps lay out `.env.dev` / `.env.test` / `.env.prod`
 
 ## One-liner mental model
 

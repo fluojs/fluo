@@ -95,7 +95,7 @@ bootstrapApplication(options)
 ## 관련 패키지
 
 - **`@konekti/runtime`** — `loadConfig()`를 호출하고 `ConfigService`를 provider로 등록
-- **`create-konekti`** — 생성된 앱이 `.env.dev` / `.env.test` / `.env.prod`를 배치하는 방식
+- **`@konekti/cli`** — 생성된 앱이 `.env.dev` / `.env.test` / `.env.prod`를 배치하는 방식
 
 ## 한 줄 mental model
 

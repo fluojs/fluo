@@ -39,6 +39,6 @@ Use these files as the contract examples when expanding tests:
 
 ## generated app expectations
 
-`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration test in `packages/create-konekti/src/scaffold-app.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, `/metrics`, and `/openapi.json`.
+`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration test in `packages/cli/src/scaffold-app.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, `/metrics`, and `/openapi.json`.
 
-For the outside-the-monorepo gate, use `pnpm verify:release-candidate`. That command is the current CI-facing public release candidate check, and it exercises the packed CLI/bootstrap codepaths that back the documented `@konekti/cli` and `create-konekti` flows through the scaffold integration tests. The command also emits `tooling/release/release-candidate-summary.md` so CI can publish a checklist artifact.
+For the outside-the-monorepo gate, use `pnpm verify:release-candidate`. That command is the current CI-facing public release candidate check, and it exercises the packed CLI/bootstrap codepaths that back the documented `@konekti/cli` flow through the scaffold integration tests. The command also emits `tooling/release/release-candidate-summary.md` so CI can publish a checklist artifact.

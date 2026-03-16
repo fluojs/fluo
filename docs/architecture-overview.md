@@ -18,7 +18,6 @@
 - `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
-- `create-konekti`
 
 The current release direction treats `@konekti/di`, `@konekti/dto-validator`, and `@konekti/runtime` as public support packages rather than leaking `@konekti-internal/*` names into generated app code.
 

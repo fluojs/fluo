@@ -140,7 +140,7 @@ Separating the cleanup hook from the database value means:
 
 - `@konekti/runtime` — module import/export and shutdown lifecycle
 - `@konekti/prisma` — the same problem solved for Prisma; compare for perspective
-- `create-konekti` — scaffold includes this package when Drizzle is selected
+- `@konekti/cli` — scaffold includes this package when Drizzle is selected
 
 ## One-liner mental model
 
