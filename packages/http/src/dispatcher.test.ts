@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from '@konekti/di';
 
-import type { FrameworkRequest, FrameworkResponse, InterceptorContext, MiddlewareContext, RequestObservationContext } from '@konekti/http';
+import type {
+  FrameworkRequest,
+  FrameworkResponse,
+  InterceptorContext,
+  Middleware,
+  MiddlewareContext,
+  Next,
+  RequestObservationContext,
+} from '@konekti/http';
 import {
   FromBody,
   createDispatcher,
@@ -18,6 +26,8 @@ import {
   getCurrentRequestContext,
 } from '@konekti/http';
 import { IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
+
+import { forRoutes, runMiddlewareChain } from './middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -61,6 +71,165 @@ function createRequest(
 }
 
 describe('dispatcher runtime', () => {
+  describe('runMiddlewareChain with forRoutes filtering', () => {
+    it('runs middleware with matching forRoutes path', async () => {
+      const events: string[] = [];
+
+      class LogMW implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('log');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(LogMW);
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/cats'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      const config = forRoutes(LogMW, '/cats');
+      await runMiddlewareChain([config], context, async () => {
+        events.push('handler');
+      });
+
+      expect(events).toEqual(['log', 'handler']);
+    });
+
+    it('skips middleware with non-matching forRoutes path', async () => {
+      const events: string[] = [];
+
+      class LogMW implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('log');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(LogMW);
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/dogs'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      const config = forRoutes(LogMW, '/cats');
+      await runMiddlewareChain([config], context, async () => {
+        events.push('handler');
+      });
+
+      expect(events).toEqual(['handler']);
+    });
+
+    it('supports wildcard in forRoutes', async () => {
+      const events: string[] = [];
+
+      class LogMW implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('log');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(LogMW);
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/cats/123'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      const config = forRoutes(LogMW, '/cats/*');
+      await runMiddlewareChain([config], context, async () => {
+        events.push('handler');
+      });
+
+      expect(events).toEqual(['log', 'handler']);
+    });
+
+    it('preserves middleware order with mixed forRoutes and unfiltered', async () => {
+      const events: string[] = [];
+
+      class MwA implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('A');
+          await next();
+        }
+      }
+
+      class MwB implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('B');
+          await next();
+        }
+      }
+
+      class MwC implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('C');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(MwA);
+      container.register(MwB);
+      container.register(MwC);
+      const requestContext = { container } as any;
+      const definitions = [MwA, forRoutes(MwB, '/cats'), MwC];
+
+      const catsCtx = {
+        request: createRequest('/cats'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      await runMiddlewareChain(definitions, catsCtx, async () => {
+        events.push('handler');
+      });
+      expect(events).toEqual(['A', 'B', 'C', 'handler']);
+
+      events.length = 0;
+      const dogsCtx = {
+        request: createRequest('/dogs'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      await runMiddlewareChain(definitions, dogsCtx, async () => {
+        events.push('handler');
+      });
+      expect(events).toEqual(['A', 'C', 'handler']);
+    });
+
+    it('treats empty routes array as match-all', async () => {
+      const events: string[] = [];
+
+      class LogMW implements Middleware {
+        async handle(_ctx: MiddlewareContext, next: Next) {
+          events.push('log');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(LogMW);
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/anything'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      const config = forRoutes(LogMW);
+      await runMiddlewareChain([config], context, async () => {
+        events.push('handler');
+      });
+
+      expect(events).toEqual(['log', 'handler']);
+    });
+  });
+
   it('dispatches a GET route through middleware, guards, interceptors, and controller', async () => {
     const events: string[] = [];
 
@@ -460,6 +629,166 @@ describe('dispatcher runtime', () => {
         requestId: 'req-profiles-400',
         status: 400,
       },
+    });
+  });
+
+  describe('E2E: class middleware with DI and forRoutes', () => {
+    it('resolves class middleware dependency from DI and runs on matching route', async () => {
+      const events: string[] = [];
+
+      class Logger {
+        calls: string[] = [];
+
+        log(message: string) {
+          this.calls.push(message);
+        }
+      }
+
+      class AuditMiddleware implements Middleware {
+        constructor(private logger: Logger) {}
+
+        async handle(context: MiddlewareContext, next: Next) {
+          this.logger.log(`audit:${context.request.path}`);
+          events.push('audit');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(Logger, { inject: [Logger], provide: AuditMiddleware, useClass: AuditMiddleware });
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/cats'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+
+      await runMiddlewareChain([forRoutes(AuditMiddleware, '/cats')], context, async () => {
+        events.push('handler');
+      });
+
+      const logger = await container.resolve(Logger);
+      expect(events).toEqual(['audit', 'handler']);
+      expect(logger.calls).toEqual(['audit:/cats']);
+    });
+
+    it('skips class middleware when forRoutes path does not match', async () => {
+      const events: string[] = [];
+
+      class Logger {
+        calls: string[] = [];
+
+        log(message: string) {
+          this.calls.push(message);
+        }
+      }
+
+      class AuditMiddleware implements Middleware {
+        constructor(private logger: Logger) {}
+
+        async handle(context: MiddlewareContext, next: Next) {
+          this.logger.log(`audit:${context.request.path}`);
+          events.push('audit');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(Logger, { inject: [Logger], provide: AuditMiddleware, useClass: AuditMiddleware });
+      const requestContext = { container } as any;
+      const context = {
+        request: createRequest('/dogs'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+
+      await runMiddlewareChain([forRoutes(AuditMiddleware, '/cats')], context, async () => {
+        events.push('handler');
+      });
+
+      const logger = await container.resolve(Logger);
+      expect(events).toEqual(['handler']);
+      expect(logger.calls).toEqual([]);
+    });
+
+    it('runs mixed DI middleware chain in order and skips forRoutes middleware on non-matching route', async () => {
+      const events: string[] = [];
+
+      class Logger {
+        calls: string[] = [];
+
+        log(message: string) {
+          this.calls.push(message);
+        }
+      }
+
+      class MwA implements Middleware {
+        constructor(private logger: Logger) {}
+
+        async handle(context: MiddlewareContext, next: Next) {
+          this.logger.log(`A:${context.request.path}`);
+          events.push('A');
+          await next();
+        }
+      }
+
+      class MwB implements Middleware {
+        constructor(private logger: Logger) {}
+
+        async handle(context: MiddlewareContext, next: Next) {
+          this.logger.log(`B:${context.request.path}`);
+          events.push('B');
+          await next();
+        }
+      }
+
+      class MwC implements Middleware {
+        constructor(private logger: Logger) {}
+
+        async handle(context: MiddlewareContext, next: Next) {
+          this.logger.log(`C:${context.request.path}`);
+          events.push('C');
+          await next();
+        }
+      }
+
+      const container = new Container();
+      container.register(
+        Logger,
+        { inject: [Logger], provide: MwA, useClass: MwA },
+        { inject: [Logger], provide: MwB, useClass: MwB },
+        { inject: [Logger], provide: MwC, useClass: MwC },
+      );
+      const requestContext = { container } as any;
+      const definitions = [MwA, forRoutes(MwB, '/cats'), MwC];
+
+      const catsContext = {
+        request: createRequest('/cats'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      await runMiddlewareChain(definitions, catsContext, async () => {
+        events.push('handler');
+      });
+
+      const logger = await container.resolve(Logger);
+      expect(events).toEqual(['A', 'B', 'C', 'handler']);
+      expect(logger.calls).toEqual(['A:/cats', 'B:/cats', 'C:/cats']);
+
+      events.length = 0;
+      logger.calls.length = 0;
+
+      const dogsContext = {
+        request: createRequest('/dogs'),
+        requestContext,
+        response: createResponse(),
+      } as MiddlewareContext;
+      await runMiddlewareChain(definitions, dogsContext, async () => {
+        events.push('handler');
+      });
+
+      expect(events).toEqual(['A', 'C', 'handler']);
+      expect(logger.calls).toEqual(['A:/dogs', 'C:/dogs']);
     });
   });
 });
