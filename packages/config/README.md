@@ -11,7 +11,7 @@ Sources, in merge order (lowest → highest precedence):
 1. `defaults` (inline object)
 2. env file (`.env.dev`, `.env.test`, `.env.prod`, depending on mode)
 3. `process.env`
-4. `overrides` (inline object)
+4. `runtimeOverrides` (inline object)
 
 Validation runs after merging. If validation fails, the app refuses to start.
 
@@ -26,7 +26,7 @@ npm install @konekti/config
 ```typescript
 import { loadConfig, ConfigService } from '@konekti/config';
 
-const config = await loadConfig({
+const config = loadConfig({
   mode: 'dev',
   defaults: { PORT: '3000' },
   validate: (raw) => {
@@ -50,23 +50,27 @@ In practice you use `bootstrapApplication()` from `@konekti/runtime`, which call
 | Option | Type | Description |
 |---|---|---|
 | `mode` | `'dev' \| 'prod' \| 'test'` | Selects the env file to load |
-| `defaults` | `Record<string, string>` | Lowest-precedence values |
-| `overrides` | `Record<string, string>` | Highest-precedence values |
+| `defaults` | `ConfigDictionary` | Lowest-precedence values |
+| `envFile` | `string` | Override the default `.env.<mode>` file path |
+| `cwd` | `string` | Resolve the env file from a custom working directory |
+| `processEnv` | `NodeJS.ProcessEnv` | Override the source used instead of the live `process.env` |
+| `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
 | `validate` | `(raw) => T` | Throws on invalid config, returns typed dictionary |
 
 ### `ConfigService`
 
 ```typescript
-class ConfigService<T extends Record<string, string>> {
-  get(key: keyof T): string           // required — throws if missing
-  getOptional(key: keyof T): string | undefined
-  snapshot(): T                       // returns current normalized values copy
+class ConfigService {
+  get<T>(key: string): T              // required — throws if missing
+  getOptional<T>(key: string): T | undefined
+  snapshot(): ConfigDictionary        // returns current normalized values copy
 }
 ```
 
 ### Types
 
 - `ConfigMode` — `'dev' | 'prod' | 'test'`
+- `ConfigDictionary`
 - `ConfigModuleOptions`
 - `ConfigLoadOptions`
 
@@ -75,7 +79,7 @@ class ConfigService<T extends Record<string, string>> {
 ```
 bootstrapApplication(options)
   → loadConfig(options)
-      → read defaults + env file + process.env + overrides
+      → read defaults + env file + process.env + runtimeOverrides
       → merge in precedence order
       → validate(merged)
       → ConfigDictionary

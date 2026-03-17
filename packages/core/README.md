@@ -68,7 +68,7 @@ class RequestScopedService {}
 
 ```typescript
 class KonektiError extends Error {
-  constructor(message: string, readonly code?: string, readonly meta?: unknown)
+  constructor(message: string, options?: { code?: string; cause?: unknown; meta?: Record<string, unknown> })
 }
 
 class InvariantError extends KonektiError {}
@@ -83,11 +83,11 @@ Use these when signalling framework-level contract violations — not business e
 | `@Module(options)` | Class | Declares a module with providers, controllers, imports, exports |
 | `@Global()` | Class | Makes a module's exports visible globally without explicit import |
 | `@Inject(tokens)` | Class | Declares explicit injection token list |
-| `@Scope(scope)` | Class | Sets lifetime to `'singleton'` (default) or `'request'` |
+| `@Scope(scope)` | Class | Sets lifetime to `'singleton'` (default), `'request'`, or `'transient'` |
 
 ### Metadata Helpers (`src/metadata.ts`)
 
-These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/module`, and other packages. You typically don't call them directly from application code.
+These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/runtime`, and other packages. You typically don't call them directly from application code.
 
 | Helper pair | Purpose |
 |---|---|
@@ -100,13 +100,15 @@ These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/m
 
 All metadata is stored in a WeakMap keyed by class/prototype, so it's scoped to the object's lifetime and doesn't pollute a global registry.
 
+`@konekti/core` also re-exports additional metadata helpers and types from `src/metadata.ts`; treat this table as the most important helpers, not the full public surface.
+
 ## Architecture
 
 ```
 Decorator / bootstrap code
   → core metadata helper
       → WeakMap metadata store
-          ← later read by di / http / module / passport
+          ← later read by di / http / runtime / passport
 ```
 
 The WeakMap approach means metadata is isolated per class, avoids global registry collisions, and plays well with test isolation.

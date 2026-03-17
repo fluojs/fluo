@@ -68,7 +68,7 @@ class RequestScopedService {}
 
 ```typescript
 class KonektiError extends Error {
-  constructor(message: string, readonly code?: string, readonly meta?: unknown)
+  constructor(message: string, options?: { code?: string; cause?: unknown; meta?: Record<string, unknown> })
 }
 
 class InvariantError extends KonektiError {}
@@ -83,7 +83,7 @@ class InvariantError extends KonektiError {}
 | `@Module(options)` | 클래스 | providers, controllers, imports, exports가 있는 모듈 선언 |
 | `@Global()` | 클래스 | 명시적 import 없이 모듈의 exports를 전역으로 노출 |
 | `@Inject(tokens)` | 클래스 | 명시적 주입 토큰 목록 선언 |
-| `@Scope(scope)` | 클래스 | lifetime을 `'singleton'`(기본값) 또는 `'request'`로 설정 |
+| `@Scope(scope)` | 클래스 | lifetime을 `'singleton'`(기본값), `'request'`, `'transient'`로 설정 |
 
 ### 메타데이터 헬퍼 (`src/metadata.ts`)
 
@@ -100,13 +100,15 @@ class InvariantError extends KonektiError {}
 
 모든 메타데이터는 class/prototype을 키로 하는 WeakMap에 저장되므로 객체의 lifetime에 맞게 스코프가 지정되고 전역 레지스트리를 오염시키지 않습니다.
 
+`@konekti/core`는 `src/metadata.ts`의 추가 메타데이터 헬퍼와 타입도 함께 re-export합니다. 위 표는 가장 중요한 헬퍼 요약이지 전체 public surface 목록은 아닙니다.
+
 ## 구조
 
 ```
 데코레이터 / 부트스트랩 코드
   → core 메타데이터 헬퍼
       → WeakMap 메타데이터 저장소
-          ← 나중에 di / http / module / passport가 읽음
+          ← 나중에 di / http / runtime / passport가 읽음
 ```
 
 WeakMap 방식은 메타데이터가 클래스별로 격리되고, 전역 레지스트리 충돌을 피하며, 테스트 격리에도 잘 맞습니다.

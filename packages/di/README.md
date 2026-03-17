@@ -4,7 +4,7 @@ The minimal token-based DI container that powers every Konekti app.
 
 ## What this package does
 
-`@konekti/di` provides an explicit token-based dependency injection container. It handles three provider shapes (class, factory, value), two scopes (singleton, request), and a four-method public API. The goal is not a full-featured DI framework — it is the smallest container that covers Konekti's bootstrap and request-lifecycle scenarios reliably.
+`@konekti/di` provides an explicit token-based dependency injection container. It handles three provider shapes (class, factory, value), three scopes (singleton, request, transient), and a four-method public API. The goal is not a full-featured DI framework — it is the smallest container that covers Konekti's bootstrap and request-lifecycle scenarios reliably.
 
 The `@Inject()` and `@Scope()` decorators that annotate your application classes live in `@konekti/core`. This package owns the container runtime that reads that metadata and turns tokens into instances.
 
@@ -26,9 +26,10 @@ class Logger {
   log(msg: string) { console.log(msg); }
 }
 
+@Inject([LOGGER])
 @Scope('singleton')
 class UserService {
-  constructor(@Inject(LOGGER) private logger: Logger) {}
+  constructor(private logger: Logger) {}
 
   greet(name: string) {
     this.logger.log(`Hello, ${name}`);
@@ -66,7 +67,9 @@ const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
 | `ClassProvider` | `src/types.ts` | `{ provide, useClass, scope? }` |
 | `FactoryProvider` | `src/types.ts` | `{ provide, useFactory, inject?, scope? }` |
 | `ValueProvider` | `src/types.ts` | `{ provide, useValue }` |
-| `Scope` | `src/types.ts` | `'singleton' \| 'request'` |
+| `Scope` | `src/types.ts` | `'singleton' \| 'request' \| 'transient'` |
+
+Additional public exports include `Provider`, `RequestScopeContainer`, `NormalizedProvider`, and the typed DI errors from `src/errors.ts`.
 
 ## Architecture
 
@@ -80,6 +83,7 @@ The container separates **where to find a provider** from **where to cache its i
 
 - **singleton** → cache in root container, shared across all requests
 - **request** → cache in the child container created by `createRequestScope()`
+- **transient** → instantiate every resolve, never cache
 
 A provider can be registered in the root but cached in the request child. This is the mechanism that makes request-scoped providers per-request without re-registering them.
 

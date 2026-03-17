@@ -11,7 +11,7 @@
 1. `defaults` (인라인 객체)
 2. env 파일 (`.env.dev`, `.env.test`, `.env.prod`, mode에 따라)
 3. `process.env`
-4. `overrides` (인라인 객체)
+4. `runtimeOverrides` (인라인 객체)
 
 병합 후 validation이 실행됩니다. validation에 실패하면 앱이 시작을 거부합니다.
 
@@ -26,7 +26,7 @@ npm install @konekti/config
 ```typescript
 import { loadConfig, ConfigService } from '@konekti/config';
 
-const config = await loadConfig({
+const config = loadConfig({
   mode: 'dev',
   defaults: { PORT: '3000' },
   validate: (raw) => {
@@ -50,23 +50,27 @@ service.snapshot();                   // 현재 값 복사본 반환
 | 옵션 | 타입 | 설명 |
 |---|---|---|
 | `mode` | `'dev' \| 'prod' \| 'test'` | 로드할 env 파일 선택 |
-| `defaults` | `Record<string, string>` | 가장 낮은 우선순위 값 |
-| `overrides` | `Record<string, string>` | 가장 높은 우선순위 값 |
+| `defaults` | `ConfigDictionary` | 가장 낮은 우선순위 값 |
+| `envFile` | `string` | 기본 `.env.<mode>` 경로를 override |
+| `cwd` | `string` | env 파일을 해석할 작업 디렉터리 지정 |
+| `processEnv` | `NodeJS.ProcessEnv` | 실제 `process.env` 대신 사용할 소스 |
+| `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
 | `validate` | `(raw) => T` | 유효하지 않으면 throw, 타입 딕셔너리 반환 |
 
 ### `ConfigService`
 
 ```typescript
-class ConfigService<T extends Record<string, string>> {
-  get(key: keyof T): string           // 필수 — 없으면 throw
-  getOptional(key: keyof T): string | undefined
-  snapshot(): T                       // 현재 정규화된 값 복사본 반환
+class ConfigService {
+  get<T>(key: string): T              // 필수 — 없으면 throw
+  getOptional<T>(key: string): T | undefined
+  snapshot(): ConfigDictionary        // 현재 정규화된 값 복사본 반환
 }
 ```
 
 ### 타입
 
 - `ConfigMode` — `'dev' | 'prod' | 'test'`
+- `ConfigDictionary`
 - `ConfigModuleOptions`
 - `ConfigLoadOptions`
 
@@ -75,7 +79,7 @@ class ConfigService<T extends Record<string, string>> {
 ```
 bootstrapApplication(options)
   → loadConfig(options)
-      → defaults + env 파일 + process.env + overrides 읽기
+      → defaults + env 파일 + process.env + runtimeOverrides 읽기
       → 우선순위 순서로 병합
       → validate(merged)
       → ConfigDictionary
