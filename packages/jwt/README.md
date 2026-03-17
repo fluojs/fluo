@@ -23,6 +23,12 @@ The current official docs/examples path uses this package through bearer-token a
 
 `JwtStrategy` handles bearer-token extraction for the generic passport contract, while the token core stays reusable without HTTP framework coupling.
 
+Current scope note:
+
+- shipped algorithms: `HS256`, `HS384`, `HS512`
+- not currently shipped: asymmetric JWT algorithms such as `RS256` / `ES256`
+- refresh-token issuance, rotation, and revoke/logout flows are outside this package and remain application-owned
+
 ## Installation
 
 ```bash
@@ -140,6 +146,8 @@ If `iss`, `aud`, `iat`, or `exp` are absent from the claims passed to `signAcces
 ### Algorithm design
 
 Two separate checks exist: "is this algorithm in the allowlist?" and "does this implementation support it?". The current implementation supports HS256, HS384, and HS512, and the separation makes it safe to extend one without accidentally opening the other.
+
+This package should therefore be read as an HMAC-first JWT core today, not as a general-purpose JWT surface that already covers asymmetric verification.
 
 ## File reading order for contributors
 

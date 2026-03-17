@@ -23,6 +23,12 @@ The current official docs/examples path uses bearer-token JWT auth as the recomm
 
 `AuthGuard` follows the generic HTTP guard contract explicitly: it returns success to continue the pipeline, throws `UnauthorizedException` / `ForbiddenException` for auth failures, and allows committed-response flows such as redirects to short-circuit the handler.
 
+Scope note:
+
+- the current official example path is bearer-token JWT auth
+- refresh-token rotation, revoke/logout handling, and cookie/session policy remain application-level concerns
+- `@konekti/passport` owns strategy execution, not the broader account/session lifecycle
+
 ## Installation
 
 ```bash

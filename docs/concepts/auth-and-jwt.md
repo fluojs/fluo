@@ -39,6 +39,12 @@ HTTP request
 - `@konekti/jwt` stays transport-agnostic except for its exported strategy adapter
 - app code should prefer normalized principals over raw JWT payloads
 
+## current shipped JWT scope
+
+- the built-in JWT core currently supports HMAC algorithms only: `HS256`, `HS384`, and `HS512`
+- asymmetric JWT verification/signing such as `RS256` or `ES256` is not part of the current shipped package surface
+- if a project needs asymmetric verification today, that should be treated as future product work rather than assumed built-in behavior
+
 ## official default auth story
 
 The current official docs/examples story is bearer-token auth with JWT verification through the `Authorization: Bearer <token>` header.
@@ -50,7 +56,7 @@ Explicitly not standardized as framework-wide defaults today:
 - logout/revoke semantics
 - account-linking policy across identity sources
 
-Those remain application-level policy choices until the product defines a broader official auth opinion.
+Those remain application-level policy choices. The current framework docs should describe them as app-owned behavior rather than implying a hidden default lifecycle.
 
 ## related package docs
 
