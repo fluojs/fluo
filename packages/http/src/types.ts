@@ -112,6 +112,11 @@ export interface Middleware {
   handle(context: MiddlewareContext, next: Next): MaybePromise<void>;
 }
 
+export interface MiddlewareRouteConfig {
+  middleware: Constructor<Middleware>;
+  routes: string[];
+}
+
 export interface GuardContext {
   handler: HandlerDescriptor;
   requestContext: RequestContext;
@@ -161,7 +166,7 @@ export interface Converter {
   convert(value: unknown, target: ConverterTarget): MaybePromise<unknown>;
 }
 
-export type MiddlewareLike = Middleware | Token<Middleware>;
+export type MiddlewareLike = Middleware | Token<Middleware> | MiddlewareRouteConfig;
 export type GuardLike = Guard | Token<Guard>;
 export type InterceptorLike = Interceptor | Token<Interceptor>;
 export type RequestObserverLike = RequestObserver | Token<RequestObserver>;
