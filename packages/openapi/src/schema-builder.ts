@@ -357,11 +357,14 @@ function createParameters(
   }
 
   const entries = collectDtoEntries(dto).filter(
-    (entry) => entry.binding?.metadata.source === 'path' || entry.binding?.metadata.source === 'query' || entry.binding?.metadata.source === 'header',
+    (entry) => entry.binding?.metadata.source === 'path'
+      || entry.binding?.metadata.source === 'query'
+      || entry.binding?.metadata.source === 'header'
+      || entry.binding?.metadata.source === 'cookie',
   );
 
   return entries.map((entry) => {
-    const source = entry.binding!.metadata.source as 'header' | 'path' | 'query';
+    const source = entry.binding!.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
     const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' as const };
     const schema = applyValidationConstraints(inferred, rules);
@@ -401,7 +404,7 @@ function createRequestBody(
         schema: createSchemaRef(schemaName),
       },
     },
-    required: true,
+    ...(entries.some((entry) => isPropertyRequired(entry.binding, entry.validation)) ? { required: true } : {}),
   };
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 import { Controller, Get, Post, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
-import { FromBody, RequestDto } from '@konekti/http';
+import { FromBody, FromCookie, RequestDto } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag } from './decorators.js';
@@ -102,9 +102,8 @@ describe('OpenApiModule', () => {
       }
     }
 
-    const descriptors = createHandlerMapping([{ controllerToken: UsersController }]).descriptors;
     const openApiModule = OpenApiModule.forRoot({
-      descriptors,
+      sources: [{ controllerToken: UsersController }],
       title: 'Test API',
       version: '1.0.0',
     });
@@ -271,5 +270,93 @@ describe('OpenApiModule', () => {
     expect(response.headers['content-type']).toBe('text/html; charset=utf-8');
     expect(response.body).toEqual(expect.stringContaining("url: '/openapi.json'"));
     expect(response.body).toEqual(expect.stringContaining('SwaggerUIBundle'));
+  });
+
+  it('documents cookie parameters and optional-only request bodies accurately', async () => {
+    class SessionCookieRequest {
+      @FromCookie('session')
+      @IsString()
+      session = '';
+    }
+
+    class PatchProfileRequest {
+      @FromBody('nickname')
+      @IsOptional()
+      @IsString()
+      nickname?: string;
+    }
+
+    @Controller('/profile')
+    class ProfileController {
+      @Get('/session')
+      @RequestDto(SessionCookieRequest)
+      getSession() {
+        return { ok: true };
+      }
+
+      @Post('/optional')
+      @RequestDto(PatchProfileRequest)
+      updateProfile() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: ProfileController }],
+      title: 'Profile API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ProfileController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: expect.objectContaining({
+          '/profile/session': expect.objectContaining({
+            get: expect.objectContaining({
+              parameters: [
+                {
+                  in: 'cookie',
+                  name: 'session',
+                  required: true,
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              ],
+            }),
+          }),
+          '/profile/optional': expect.objectContaining({
+            post: expect.objectContaining({
+              requestBody: {
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/PatchProfileRequest',
+                    },
+                  },
+                },
+              },
+            }),
+          }),
+        }),
+      }),
+    );
+
+    expect((response.body as { paths: Record<string, { post?: { requestBody?: { required?: boolean } } }> }).paths['/profile/optional']?.post?.requestBody?.required).toBeUndefined();
   });
 });
