@@ -26,6 +26,12 @@ Generated starter projects expose the same commands through the selected package
 - provider override support
 - predictable cleanup through the bootstrap/runtime lifecycle
 
+Current public boundary:
+
+- keep `@konekti/testing` as the minimal public testing baseline
+- do not expand the public testing API surface now
+- do not add richer generated test-template families now
+
 Primary evidence:
 
 - `packages/testing/src/module.ts`

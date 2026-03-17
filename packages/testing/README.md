@@ -5,6 +5,8 @@
 
 The official module construction and provider override baseline for testing Konekti applications.
 
+The current public contract stays intentionally minimal. Broader testing helpers and richer generated test templates are deferred for now.
+
 ## See also
 
 - `../../docs/operations/testing-guide.md`
