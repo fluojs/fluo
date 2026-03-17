@@ -64,19 +64,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ### core runtime and validation contracts
 
-#### `#4` Decide future HTTP and runtime API expansion points
-
-- what it covers
-  - possible transport-neutral `handler(requestObject)` API
-  - first-class response wrappers
-  - route-level middleware exposure
-  - richer custom guard results
-- why it matters
-  - this is the highest-impact framework surface decision after docs cleanup
-- how to proceed
-  - decide runtime boundaries before broadening decorators or transport contracts
-  - reject or defer anything that weakens current dispatcher clarity without a strong use case
-
 #### `#3` Plan validation and DTO evolution beyond the current decorator model
 
 - what it covers
@@ -144,12 +131,11 @@ If work starts now, the most efficient order is:
 1. `#1`
 2. `#10`
 3. `#6`
-4. `#4`
-5. `#3`
-6. `#9`
-7. `#7`
-8. `#5`
-9. `#8`
+4. `#3`
+5. `#9`
+6. `#7`
+7. `#5`
+8. `#8`
 
 ## maintenance rule
 

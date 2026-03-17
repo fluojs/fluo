@@ -60,6 +60,26 @@ The generated starter keeps a few HTTP defaults consistent:
 
 These defaults live above any single package README because they describe how packages are composed in the starter app.
 
+## current public boundary
+
+The shipped HTTP/runtime contract stays intentionally narrow for now.
+
+Current public direction:
+
+- keep the handler shape as `handler(input, ctx)`
+- keep plain return values plus `@SuccessStatus(...)` as the main success-response model
+- keep middleware exposure at the app and module levels only
+- keep the current guard allow/deny model without adding a richer general HTTP deny-result contract
+
+Explicitly deferred for a future track:
+
+- a new top-level transport-neutral `handler(requestObject)` public API
+- first-class response wrapper objects as the main success path
+- route-level middleware as a public contract
+- broader custom guard result shapes beyond the current allow/deny model
+
+These items are deferred to protect dispatcher clarity and keep transport expansion sequenced after the current HTTP-first model.
+
 ## where to look next
 
 - package API details -> `packages/http/README.md`
