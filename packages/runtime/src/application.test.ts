@@ -10,13 +10,13 @@ import {
   FromCookie,
   Get,
   Post,
+  createSecurityHeadersMiddleware,
   type RequestContext,
   RequestDto,
   type FrameworkRequest,
   type FrameworkResponse,
   type HttpApplicationAdapter,
 } from '@konekti/http';
-
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { bootstrapNodeApplication, runNodeApplication } from './node.js';
@@ -233,6 +233,95 @@ describe('bootstrapApplication', () => {
     expect(metricsResponse.status).toBe(200);
     expect(metricsResponse.headers.get('content-type')).toContain('text/plain');
     await expect(metricsResponse.text()).resolves.toBe(metricsBody);
+
+    await app.close();
+  });
+
+  it('applies security headers before the response is committed', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      middleware: [createSecurityHeadersMiddleware()],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-security-policy')).toBe("default-src 'self'");
+    expect(response.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+    expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(response.headers.get('strict-transport-security')).toBe('max-age=15552000; includeSubDomains');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(response.headers.get('x-xss-protection')).toBe('0');
+
+    await app.close();
+  });
+
+  it('returns HTTP 413 when a JSON request body exceeds maxBodySize', async () => {
+    class CreateUserRequest {
+      @FromBody('name')
+      name = '';
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @RequestDto(CreateUserRequest)
+      @Post('/')
+      createUser(input: CreateUserRequest) {
+        return { name: input.name };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      maxBodySize: 8,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+      body: JSON.stringify({ name: 'Ada Lovelace' }),
+      headers: { 'content-type': 'application/json', 'x-request-id': 'req-oversized-body' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        details: undefined,
+        message: 'Request body exceeds the size limit.',
+        meta: undefined,
+        requestId: 'req-oversized-body',
+        status: 413,
+      },
+    });
 
     await app.close();
   });
