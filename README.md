@@ -1,29 +1,94 @@
 # konekti
 
-Implementation repository for the `konekti` framework.
+Konekti is a TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
 
-Planning and contract documents are maintained separately in the private `konekti-plan` repository.
+## Quick Start
 
-## Current status
+Create a starter app with the canonical public bootstrap path:
 
-- private workspace implementing the canonical CLI-first bootstrap contract
-- workspace/package surface initialized
-- Phase 1 foundation baseline is in place
-- Phase 2 runtime baseline (`2A`-`2E`) is implemented and verified in this repo
-- Phase 3 runtime baseline (`3A`-`3D`) is implemented and verified in this repo
-- Phase 4 testing/operations baseline (`4A`-`4D`) is implemented and verified in this repo
-- Phase 5 release-readiness baseline (`5A`-`5E`) is implemented and verified in this repo
-- Phase 8 public release and auth gaps are implemented in this repo (`@konekti/openapi`, `@konekti/metrics`, readiness semantics, starter contract)
-- release-candidate verification now runs through `tooling/release/verify-release-candidate.mjs` and publishes a checklist summary
-- reusable Phase 3 reference slice docs live in `./docs/phase-3-reference-slice.md`
-- verification checklists live in `../konekti-plan/execution/`
+```sh
+pnpm dlx @konekti/cli new starter-app
+cd starter-app
+pnpm dev
+```
 
-## Docs
+Generated apps include:
 
-- `./docs/quick-start.md`
-- `./docs/architecture-overview.md`
-- `./docs/testing-guide.md`
-- `./docs/toolchain-contract-matrix.md`
-- `./docs/http-policies.md`
-- `./docs/release-governance.md`
-- `./docs/manifest-decision.md`
+- runtime-owned `src/main.ts` bootstrap
+- `/health`, `/ready`, `/metrics`, and `/openapi.json`
+- JWT strategy wiring and a generic repository example
+- `dev`, `build`, `typecheck`, and `test` commands out of the box
+
+## What Konekti Includes
+
+### Core framework packages
+
+- `@konekti/core`
+- `@konekti/config`
+- `@konekti/di`
+- `@konekti/http`
+- `@konekti/runtime`
+- `@konekti/testing`
+
+### Validation, auth, and docs packages
+
+- `@konekti/dto-validator`
+- `@konekti/jwt`
+- `@konekti/passport`
+- `@konekti/openapi`
+- `@konekti/metrics`
+
+### Data integration packages
+
+- `@konekti/prisma`
+- `@konekti/drizzle`
+
+### Tooling
+
+- `@konekti/cli`
+
+## Core Usage Flow
+
+1. Bootstrap a new app with `konekti new`
+2. Generate modules, controllers, services, repositories, middleware, and DTOs with `konekti g`
+3. Build request flow with explicit DTO binding and validation
+4. Compose auth, metrics, OpenAPI, and data adapters as package-level imports
+5. Run and verify with the runtime-owned HTTP/bootstrap path
+
+## Why It Is Shaped This Way
+
+- **CLI-first bootstrap** keeps the starter path consistent and documented.
+- **Package-local truth** lives in each package README instead of a separate plan repo.
+- **Cross-package contracts** live in `docs/` as architecture and reference guides.
+- **Planning lives in GitHub Issues**, not in phase-based docs inside the product repo.
+
+## Documentation
+
+Start here:
+
+- `docs/README.md`
+- `docs/getting-started/quick-start.md`
+- `docs/concepts/architecture-overview.md`
+- `docs/reference/package-surface.md`
+
+Package-level docs:
+
+- `packages/cli/README.md`
+- `packages/http/README.md`
+- `packages/runtime/README.md`
+- `packages/passport/README.md`
+- `packages/openapi/README.md`
+- `packages/metrics/README.md`
+
+## Documentation Rules
+
+- root `README.md` is the project hub
+- `docs/` owns cross-package current truth
+- `packages/*/README*.md` own package-specific APIs and examples
+- future work and follow-ups belong in GitHub Issues
+
+## Contributing
+
+- if you change a package surface, update the matching package README
+- if you change a cross-package contract, update the matching `docs/` guide
+- if you identify future work, open or update a GitHub Issue instead of writing phase status prose
