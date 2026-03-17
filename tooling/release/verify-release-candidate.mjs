@@ -6,6 +6,13 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const summaryPath = join(scriptDirectory, 'release-candidate-summary.md');
+const summaryKoPath = join(scriptDirectory, 'release-candidate-summary.ko.md');
+
+function languageToggle(current) {
+  const english = current === 'en' ? '<strong><kbd>English</kbd></strong>' : '<a href="./release-candidate-summary.md"><kbd>English</kbd></a>';
+  const korean = current === 'ko' ? '<strong><kbd>한국어</kbd></strong>' : '<a href="./release-candidate-summary.ko.md"><kbd>한국어</kbd></a>';
+  return `<p>${english} ${korean}</p>`;
+}
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -36,12 +43,24 @@ function writeSummary(checks) {
   const summary = [
     '# release candidate summary',
     '',
+    languageToggle('en'),
+    '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
     '- Commands executed: `pnpm typecheck`, `pnpm build`, `pnpm test`',
   ].join('\n');
+  const summaryKo = [
+    '# 릴리즈 후보 검증 요약',
+    '',
+    languageToggle('ko'),
+    '',
+    ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
+    '',
+    '- 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+  ].join('\n');
 
   writeFileSync(summaryPath, `${summary}\n`, 'utf8');
+  writeFileSync(summaryKoPath, `${summaryKo}\n`, 'utf8');
 }
 
 const checks = [];
@@ -50,9 +69,9 @@ run('pnpm', ['typecheck']);
 run('pnpm', ['build']);
 run('pnpm', ['test']);
 
-const quickStart = read('docs/quick-start.md');
-const releaseGovernance = read('docs/release-governance.md');
-const toolchainContract = read('docs/toolchain-contract-matrix.md');
+const quickStart = read('docs/getting-started/quick-start.md');
+const releaseGovernance = read('docs/operations/release-governance.md');
+const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
 const cliReadme = read('packages/cli/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
