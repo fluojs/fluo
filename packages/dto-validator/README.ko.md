@@ -33,8 +33,8 @@ try {
   if (err instanceof DtoValidationError) {
     console.log(err.issues);
     // [
-    //   { code: 'isEmail', field: 'email', message: '...' },
-    //   { code: 'minLength', field: 'name', message: '...' },
+    //   { code: 'EMAIL', field: 'email', message: '...' },
+    //   { code: 'MIN_LENGTH', field: 'name', message: '...' },
     // ]
   }
 }
@@ -66,7 +66,7 @@ class DtoValidationError extends Error {
 
 ```typescript
 interface ValidationIssue {
-  code: string;       // 예: 'isEmail', 'minLength'
+  code: string;       // 예: 'EMAIL', 'MIN_LENGTH'
   field?: string;     // 점/대괄호 경로: 'address.city', 'tags[0]'
   message: string;
   source?: MetadataSource;
@@ -96,7 +96,7 @@ interface Validator {
 | `@IsBoolean()` | 불리언이어야 함 |
 | `@IsDate()` | `Date` 인스턴스여야 함 |
 | `@IsArray()` | 배열이어야 함 |
-| `@IsObject()` | 일반 객체여야 함 |
+| `@IsObject()` | null이 아니고 배열이 아닌 객체여야 함 |
 | `@IsInt()` | 정수여야 함 |
 | `@IsEnum(entity)` | 주어진 enum의 값이어야 함 |
 
@@ -132,8 +132,8 @@ interface Validator {
 
 | 데코레이터 | 설명 |
 |-----------|------|
-| `@MinDate(date)` | `date` 이후여야 함 |
-| `@MaxDate(date)` | `date` 이전이어야 함 |
+| `@MinDate(date)` | `date`와 같거나 이후여야 함 |
+| `@MaxDate(date)` | `date`와 같거나 이전이어야 함 |
 
 ### 문자열 길이
 
@@ -166,7 +166,7 @@ interface Validator {
 | `@ArrayMaxSize(n)` | 배열 길이 ≤ `n` |
 | `@ArrayUnique()` | 모든 배열 요소가 고유해야 함 |
 
-대부분의 배열 데코레이터는 각 문자열 요소를 개별적으로 검증하기 위해 `{ each: true }`도 받습니다.
+`{ each: true }`는 `@MinLength(...)` 같은 스칼라 validator를 배열 요소별로 적용할 때 가장 유용합니다.
 
 ### 중첩 및 조건부
 
@@ -174,7 +174,7 @@ interface Validator {
 |-----------|------|
 | `@ValidateNested(() => TargetClass)` | 중첩 객체를 재귀적으로 검증 |
 | `@ValidateNested(() => TargetClass, { each: true })` | 배열의 각 항목을 재귀적으로 검증 |
-| `@ValidateIf(condition)` | `condition(obj) === true`일 때만 데코레이터 적용 |
+| `@ValidateIf(condition)` | `condition(dto, value) === true`일 때만 데코레이터 적용 (동기/비동기 가능) |
 
 ### 커스텀 검증기
 

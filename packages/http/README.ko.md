@@ -24,7 +24,7 @@ npm install @konekti/http
 ### Controller 정의
 
 ```typescript
-import { Controller, Get, Post, FromBody, FromPath } from '@konekti/http';
+import { Controller, Get, Post, FromBody, FromPath, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/dto-validator';
 import type { RequestContext } from '@konekti/http';
 
@@ -44,11 +44,13 @@ class GetUserParams {
 @Controller('/users')
 export class UserController {
   @Post('/')
+  @RequestDto(CreateUserDto)
   async create(input: CreateUserDto, ctx: RequestContext) {
     return { created: input.name };
   }
 
   @Get('/:id')
+  @RequestDto(GetUserParams)
   async getById(input: GetUserParams, ctx: RequestContext) {
     return { id: input.id };
   }
@@ -69,8 +71,8 @@ throw new BadRequestException('Invalid input', { field: 'email', message: 'must 
 ```typescript
 import { createHandlerMapping, createDispatcher } from '@konekti/http';
 
-const mapping = createHandlerMapping(controllers);
-const dispatcher = createDispatcher({ mapping, container, middleware, guards });
+const handlerMapping = createHandlerMapping([{ controllerToken: UserController }]);
+const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, appMiddleware: middleware });
 ```
 
 ## 핵심 API
@@ -107,10 +109,12 @@ const dispatcher = createDispatcher({ mapping, container, middleware, guards });
 
 | Export | 위치 | 설명 |
 |---|---|---|
-| `createHandlerMapping(controllers)` | `src/mapping.ts` | controller 메타데이터에서 normalized routing table 생성 |
+| `createHandlerMapping(sources)` | `src/mapping.ts` | `{ controllerToken }` 같은 handler source에서 normalized routing table 생성 |
 | `createDispatcher(options)` | `src/dispatcher.ts` | request dispatch 함수 생성 |
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS middleware 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 context factory |
+
+추가 public export로는 `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
 
 ### Exception
 
@@ -146,7 +150,7 @@ const dispatcher = createDispatcher({ mapping, container, middleware, guards });
 
 binder는 단순 필드 복사가 아니다. 두 가지 정책이 적용된다:
 
-1. **`@FromBody`의 strict allowlist** — DTO에 선언되지 않은 request body 필드는 자동으로 제거되어 mass-assignment 공격을 방지한다.
+1. **`@FromBody`의 strict allowlist** — DTO에 선언되지 않은 request body 필드는 `BadRequestException`으로 거부되어 mass-assignment 공격을 방지한다.
 2. **위험한 key 차단** — `__proto__`, `constructor`, `prototype` 같은 key는 무조건 거부된다.
 
 ### Routing table 구성
@@ -167,7 +171,7 @@ binder는 단순 필드 복사가 아니다. 두 가지 정책이 적용된다:
 2. `src/decorators.ts` — route와 DTO binding 메타데이터 writer
 3. `src/mapping.ts` — routing table 구성 + 충돌 감지
 4. `src/binding.ts` — request 각 부분에서 DTO 인스턴스화
-5. `src/validation.ts` — DTO validation adapter
+5. `src/dto-validation-adapter.ts` — DTO validation adapter
 6. `src/request-context.ts` — ALS 기반 context
 7. `src/dispatcher.ts` — 실행 체인 순서 결정
 8. `src/exceptions.ts` — HTTP exception family + error envelope

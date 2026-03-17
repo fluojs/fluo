@@ -33,8 +33,8 @@ try {
   if (err instanceof DtoValidationError) {
     console.log(err.issues);
     // [
-    //   { code: 'isEmail', field: 'email', message: '...' },
-    //   { code: 'minLength', field: 'name', message: '...' },
+    //   { code: 'EMAIL', field: 'email', message: '...' },
+    //   { code: 'MIN_LENGTH', field: 'name', message: '...' },
     // ]
   }
 }
@@ -66,7 +66,7 @@ class DtoValidationError extends Error {
 
 ```typescript
 interface ValidationIssue {
-  code: string;       // e.g. 'isEmail', 'minLength'
+  code: string;       // e.g. 'EMAIL', 'MIN_LENGTH'
   field?: string;     // dot/bracket path: 'address.city', 'tags[0]'
   message: string;
   source?: MetadataSource;
@@ -96,7 +96,7 @@ Implement this interface to supply a custom validation strategy.
 | `@IsBoolean()` | Must be a boolean |
 | `@IsDate()` | Must be a `Date` instance |
 | `@IsArray()` | Must be an array |
-| `@IsObject()` | Must be a plain object |
+| `@IsObject()` | Must be a non-null object that is not an array |
 | `@IsInt()` | Must be an integer |
 | `@IsEnum(entity)` | Must be a member of the given enum |
 
@@ -132,8 +132,8 @@ Implement this interface to supply a custom validation strategy.
 
 | Decorator | Description |
 |-----------|-------------|
-| `@MinDate(date)` | Must be after `date` |
-| `@MaxDate(date)` | Must be before `date` |
+| `@MinDate(date)` | Must be on or after `date` |
+| `@MaxDate(date)` | Must be on or before `date` |
 
 ### String Length
 
@@ -166,7 +166,7 @@ Implement this interface to supply a custom validation strategy.
 | `@ArrayMaxSize(n)` | Array length ≤ `n` |
 | `@ArrayUnique()` | All array elements must be unique |
 
-Most array decorators also accept `{ each: true }` to validate each string element individually.
+`{ each: true }` is most useful with scalar validators such as `@MinLength(...)` when you want to validate each array element individually.
 
 ### Nested & Conditional
 
@@ -174,7 +174,7 @@ Most array decorators also accept `{ each: true }` to validate each string eleme
 |-----------|-------------|
 | `@ValidateNested(() => TargetClass)` | Recursively validate a nested object |
 | `@ValidateNested(() => TargetClass, { each: true })` | Recursively validate each item in an array |
-| `@ValidateIf(condition)` | Apply decorators only when `condition(obj) === true` |
+| `@ValidateIf(condition)` | Apply decorators only when `condition(dto, value) === true` (sync or async) |
 
 ### Custom Validators
 

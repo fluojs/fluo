@@ -24,7 +24,7 @@ npm install @konekti/http
 ### Define a controller
 
 ```typescript
-import { Controller, Get, Post, FromBody, FromPath } from '@konekti/http';
+import { Controller, Get, Post, FromBody, FromPath, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/dto-validator';
 import type { RequestContext } from '@konekti/http';
 
@@ -44,11 +44,13 @@ class GetUserParams {
 @Controller('/users')
 export class UserController {
   @Post('/')
+  @RequestDto(CreateUserDto)
   async create(input: CreateUserDto, ctx: RequestContext) {
     return { created: input.name };
   }
 
   @Get('/:id')
+  @RequestDto(GetUserParams)
   async getById(input: GetUserParams, ctx: RequestContext) {
     return { id: input.id };
   }
@@ -69,8 +71,8 @@ throw new BadRequestException('Invalid input', { field: 'email', message: 'must 
 ```typescript
 import { createHandlerMapping, createDispatcher } from '@konekti/http';
 
-const mapping = createHandlerMapping(controllers);
-const dispatcher = createDispatcher({ mapping, container, middleware, guards });
+const handlerMapping = createHandlerMapping([{ controllerToken: UserController }]);
+const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, appMiddleware: middleware });
 ```
 
 ## Key API
@@ -107,10 +109,12 @@ const dispatcher = createDispatcher({ mapping, container, middleware, guards });
 
 | Export | Location | Description |
 |---|---|---|
-| `createHandlerMapping(controllers)` | `src/mapping.ts` | Builds the normalized routing table from controller metadata |
+| `createHandlerMapping(sources)` | `src/mapping.ts` | Builds the normalized routing table from handler sources such as `{ controllerToken }` |
 | `createDispatcher(options)` | `src/dispatcher.ts` | Creates the request dispatch function |
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
+
+Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
 ### Exceptions
 
@@ -146,7 +150,7 @@ incoming request
 
 The binder is not a simple field copy. Two policies are enforced:
 
-1. **Strict allowlist on `@FromBody`** — any field in the request body that is not declared in the DTO is silently dropped, preventing mass-assignment attacks.
+1. **Strict allowlist on `@FromBody`** — any field in the request body that is not declared in the DTO is rejected with `BadRequestException`, preventing mass-assignment attacks.
 2. **Dangerous key blocking** — keys like `__proto__`, `constructor`, and `prototype` are rejected unconditionally.
 
 ### Routing table construction
@@ -167,7 +171,7 @@ The binder is not a simple field copy. Two policies are enforced:
 2. `src/decorators.ts` — route and DTO binding metadata writers
 3. `src/mapping.ts` — routing table build + conflict detection
 4. `src/binding.ts` — DTO instantiation from request parts
-5. `src/validation.ts` — DTO validation adapter
+5. `src/dto-validation-adapter.ts` — DTO validation adapter
 6. `src/request-context.ts` — ALS-backed context
 7. `src/dispatcher.ts` — execution chain sequencing
 8. `src/exceptions.ts` — HTTP exception family + error envelope
