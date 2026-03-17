@@ -22,17 +22,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ### auth defaults and ecosystem expansion
 
-#### `#5` Track future support-matrix and data-layer expansion
-
-- what it covers
-  - future ORM x DB combinations
-  - whether integrations remain template-level or become public packages
-  - out-of-matrix candidates such as MongoDB-oriented support
-- why it matters
-  - support claims affect docs, CI, examples, and package shape
-- how to proceed
-  - require docs + tests + examples + support-tier criteria before promoting any new stack
-
 #### `#8` Plan the next expansion of `@konekti/testing`
 
 - what it covers
@@ -48,8 +37,7 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#5`
-2. `#8`
+1. `#8`
 
 ## maintenance rule
 

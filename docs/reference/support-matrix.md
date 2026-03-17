@@ -38,6 +38,13 @@ Promotion requires all of the following together:
 - example coverage
 - troubleshooting guidance
 
+## current boundary
+
+- the current official matrix is limited to the combinations listed above
+- no additional ORM x DB combinations are promoted today
+- no additional public data-integration packages are promised today
+- out-of-matrix candidates should stay issue-driven until they satisfy the same promotion gate
+
 ## transaction support notes
 
 - request-scoped automatic transactions are opt-in interceptor integrations, not the default service policy

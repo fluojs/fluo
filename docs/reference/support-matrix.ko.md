@@ -38,6 +38,13 @@
 - example coverage
 - troubleshooting guidance
 
+## 현재 boundary
+
+- 현재 official matrix는 위에 나열된 조합으로 제한됩니다.
+- 추가 ORM x DB 조합은 현재 승격하지 않습니다.
+- 추가 public data-integration package도 현재 약속하지 않습니다.
+- matrix 밖 후보는 동일한 promotion gate를 만족하기 전까지 issue 중심으로 다뤄야 합니다.
+
 ## 트랜잭션 지원 메모
 
 - request-scoped 자동 트랜잭션은 기본 서비스 정책이 아니라 opt-in interceptor 통합임
