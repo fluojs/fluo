@@ -21,6 +21,8 @@ The current official docs/examples path uses bearer-token JWT auth as the recomm
 3. Auth errors map to `UnauthorizedException` (401) or `ForbiddenException` (403)
 4. Passport.js strategies can be bridged in via `createPassportJsStrategyBridge()`
 
+`AuthGuard` follows the generic HTTP guard contract explicitly: it returns success to continue the pipeline, throws `UnauthorizedException` / `ForbiddenException` for auth failures, and allows committed-response flows such as redirects to short-circuit the handler.
+
 ## Installation
 
 ```bash
