@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { runGenerateCommand } from './commands/generate.js';
 import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
+import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 
 type CliStream = {
@@ -34,19 +35,53 @@ type ParsedCommand =
       parsed: ParsedCliArgs;
     };
 
-const GENERATE_KIND_HELP = [
-  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller' as const },
-  { aliases: ['dto'], description: 'Generate a data transfer object.', kind: 'dto' as const },
-  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard' as const },
-  { aliases: ['itc'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor' as const },
-  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware' as const },
-  { aliases: ['mo'], description: 'Generate a module.', kind: 'module' as const },
-  { aliases: ['repo'], description: 'Generate a repository.', kind: 'repo' as const },
-  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service' as const },
+type GenerateKindHelpEntry = {
+  aliases: string[];
+  description: string;
+  kind: GeneratorKind;
+};
+
+type GenerateOptionHelpEntry = {
+  aliases: string[];
+  description: string;
+  option: string;
+};
+
+type TopLevelCommandHelpEntry = {
+  aliases: string[];
+  command: string;
+  description: string;
+};
+
+const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
+  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller' },
+  { aliases: [], description: 'Generate a data transfer object.', kind: 'dto' },
+  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard' },
+  { aliases: ['itc'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor' },
+  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware' },
+  { aliases: ['mo'], description: 'Generate a module.', kind: 'module' },
+  { aliases: [], description: 'Generate a repository.', kind: 'repo' },
+  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service' },
 ];
 
-function normalizeGeneratorKind(value: string): GeneratorKind | undefined {
-  const entry = GENERATE_KIND_HELP.find((e) => e.kind === value || e.aliases.includes(value));
+const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
+  { aliases: ['-o'], description: 'Write generated files under a specific source directory.', option: '--target-directory <path>' },
+  { aliases: ['-f'], description: 'Overwrite files that already exist.', option: '--force' },
+  { aliases: ['-h'], description: 'Show help for the generate command.', option: '--help' },
+];
+
+const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
+  { aliases: ['create'], command: 'new', description: 'Scaffold a new Konekti application.' },
+  { aliases: ['g'], command: 'generate', description: 'Generate files inside an existing Konekti application.' },
+  { aliases: [], command: 'help', description: 'Show command-specific help output.' },
+];
+
+function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const entry = GENERATE_KIND_HELP.find((item) => item.kind === value || item.aliases.includes(value));
   return entry?.kind;
 }
 
@@ -56,16 +91,36 @@ function isHelpFlag(value: string | undefined): boolean {
 
 function generateUsage(): string {
   return [
-    'Usage: konekti g <kind> <name> [--target-directory <path>] [--force]',
-    'Aliases: konekti generate <kind> <name>',
+    'Usage: konekti generate|g <kind> <name> [options]',
+    '',
+    'Schematics',
+    renderHelpTable(GENERATE_KIND_HELP, [
+      { header: 'Schematic', render: (entry) => entry.kind },
+      { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
+      { header: 'Description', render: (entry) => entry.description },
+    ]),
+    '',
+    'Options',
+    renderHelpTable(GENERATE_OPTION_HELP, [
+      { header: 'Option', render: (entry) => entry.option },
+      { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
+      { header: 'Description', render: (entry) => entry.description },
+    ]),
   ].join('\n');
 }
 
 function usage(): string {
   return [
-    newUsage(),
+    'Usage: konekti <command> [options]',
     '',
-    generateUsage(),
+    'Commands',
+    renderHelpTable(TOP_LEVEL_COMMAND_HELP, [
+      { header: 'Command', render: (entry) => entry.command },
+      { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
+      { header: 'Description', render: (entry) => entry.description },
+    ]),
+    '',
+    "Run 'konekti help <command>' for more information on a command.",
   ].join('\n');
 }
 
@@ -92,14 +147,14 @@ function resolveDefaultTargetDirectory(startDirectory: string): string {
 
 function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   const [command, rawKind, name, ...optionArgs] = argv;
+  const kind = normalizeGeneratorKind(rawKind);
 
   if (!(command === 'g' || command === 'generate')) {
     throw new Error(usage());
   }
 
-  const kind = rawKind ? normalizeGeneratorKind(rawKind) : undefined;
   if (!kind || !name) {
-    throw new Error(usage());
+    throw new Error(generateUsage());
   }
 
   const parsedOptions: GenerateOptions = {};

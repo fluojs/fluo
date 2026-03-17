@@ -102,8 +102,10 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti new <project-name>');
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti g <kind> <name>');
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('| Command  | Aliases | Description');
+    expect(stdoutBuffer.join('')).toContain('| new      | create');
+    expect(stdoutBuffer.join('')).toContain('| generate | g');
   });
 
   it('prints `new` usage for `new --help`', async () => {
@@ -116,22 +118,61 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti new <project-name>');
-    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti g <kind> <name>');
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti new|create [project-name] [options]');
+    expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
+    expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn>');
+    expect(stdoutBuffer.join('')).not.toContain('Schematics');
   });
 
-  it('prints generate usage for `help generate`', async () => {
+  it('prints `new` usage for `create --help`', async () => {
     const stdoutBuffer: string[] = [];
 
-    const exitCode = await runCli(['help', 'generate'], {
+    const exitCode = await runCli(['create', '--help'], {
       cwd: process.cwd(),
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti g <kind> <name>');
-    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new <project-name>');
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti new|create [project-name] [options]');
+  });
+
+  it('prints generate usage for `help g`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help', 'g'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Description\s+\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*controller\s*\|\s*co\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*guard\s*\|\s*gu\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*interceptor\s*\|\s*itc\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*middleware\s*\|\s*mi\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*module\s*\|\s*mo\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
+    expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
+    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
+  });
+
+  it('prints generate usage for `generate --help`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['generate', '--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
   });
 
   it('places generated files under a domain subdirectory and auto-creates the module', async () => {
@@ -158,6 +199,89 @@ describe('CLI command runner', () => {
     const moduleContent = readFileSync(join(workspaceDirectory, 'src', 'posts', 'post.module.ts'), 'utf8');
     expect(moduleContent).toContain('PostService');
     expect(moduleContent).toContain("from './post.service'");
+  });
+
+  it('accepts `repo` as the repository generator kind', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'repo', 'User'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.repo.ts'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.module.ts'))).toBe(true);
+  });
+
+  it('accepts `co` as a controller alias', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'co', 'Order'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'orders', 'order.controller.ts'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'src', 'orders', 'order.module.ts'))).toBe(true);
+  });
+
+  it('accepts `mo` as a module alias', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'mo', 'Health'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'healths', 'health.module.ts'))).toBe(true);
+  });
+
+  it('accepts `s` as a service alias', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 's', 'Post'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'posts', 'post.service.ts'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'src', 'posts', 'post.module.ts'))).toBe(true);
   });
 
   it('registers controller into existing module when present', async () => {
@@ -270,7 +394,35 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Usage: konekti g <kind> <name>');
+    expect(stderrBuffer.join('')).toContain('Usage: konekti <command> [options]');
+  });
+
+  it('prints generate usage for an unknown schematic', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'unknown', 'User'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+  });
+
+  it('prints generate usage when the schematic name is missing', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'repo'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
   });
 
   it('resolves mi alias to middleware', async () => {

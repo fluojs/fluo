@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import { renderAliasList, renderHelpTable } from '../help.js';
 import { resolveBootstrapAnswers } from '../new/prompt.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
@@ -18,6 +19,35 @@ export interface NewCommandRuntimeOptions extends NewCommandOptions {
   stderr?: CliStream;
   stdout?: CliStream;
 }
+
+type NewOptionHelpEntry = {
+  aliases: string[];
+  description: string;
+  option: string;
+};
+
+const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
+  {
+    aliases: [],
+    description: 'Provide the project name without using the positional argument.',
+    option: '--name <project-name>',
+  },
+  {
+    aliases: [],
+    description: 'Choose which package manager installs the starter dependencies.',
+    option: '--package-manager <pnpm|npm|yarn>',
+  },
+  {
+    aliases: [],
+    description: 'Write the new app to a custom target directory.',
+    option: '--target-directory <path>',
+  },
+  {
+    aliases: ['-h'],
+    description: 'Show help for the new command.',
+    option: '--help',
+  },
+];
 
 function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
   const parsed: Partial<BootstrapAnswers> = {};
@@ -53,8 +83,23 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
 
 export function newUsage(): string {
   return [
-    'Usage: konekti new <project-name> [--package-manager <pnpm|npm|yarn>] [--target-directory <path>]',
-    'Aliases: konekti create <project-name>',
+    'Usage: konekti new|create [project-name] [options]',
+    '',
+    'Options',
+    renderHelpTable(NEW_OPTION_HELP, [
+      {
+        header: 'Option',
+        render: (entry) => entry.option,
+      },
+      {
+        header: 'Aliases',
+        render: (entry) => renderAliasList(entry.aliases),
+      },
+      {
+        header: 'Description',
+        render: (entry) => entry.description,
+      },
+    ]),
   ].join('\n');
 }
 
