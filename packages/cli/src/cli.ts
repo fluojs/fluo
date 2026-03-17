@@ -34,9 +34,20 @@ type ParsedCommand =
       parsed: ParsedCliArgs;
     };
 
-const GENERATOR_KINDS: GeneratorKind[] = ['controller', 'dto', 'module', 'repo', 'service'];
-function isGeneratorKind(value: string): value is GeneratorKind {
-  return GENERATOR_KINDS.includes(value as GeneratorKind);
+const GENERATE_KIND_HELP = [
+  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller' as const },
+  { aliases: ['dto'], description: 'Generate a data transfer object.', kind: 'dto' as const },
+  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard' as const },
+  { aliases: ['itc'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor' as const },
+  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware' as const },
+  { aliases: ['mo'], description: 'Generate a module.', kind: 'module' as const },
+  { aliases: ['repo'], description: 'Generate a repository.', kind: 'repo' as const },
+  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service' as const },
+];
+
+function normalizeGeneratorKind(value: string): GeneratorKind | undefined {
+  const entry = GENERATE_KIND_HELP.find((e) => e.kind === value || e.aliases.includes(value));
+  return entry?.kind;
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -86,7 +97,8 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
     throw new Error(usage());
   }
 
-  if (!rawKind || !isGeneratorKind(rawKind) || !name) {
+  const kind = rawKind ? normalizeGeneratorKind(rawKind) : undefined;
+  if (!kind || !name) {
     throw new Error(usage());
   }
 
@@ -116,7 +128,7 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   }
 
   return {
-    kind: rawKind,
+    kind,
     name,
     options: parsedOptions,
     targetDirectory,
