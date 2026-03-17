@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import type { Socket } from 'node:net';
 import { URL } from 'node:url';
 
 import {
@@ -33,11 +34,14 @@ export interface NodeHttpAdapterOptions {
   port?: number;
   retryDelayMs?: number;
   retryLimit?: number;
+  shutdownTimeoutMs?: number;
 }
 
 export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
 
 export type CorsInput = false | string | string[] | CorsOptions;
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
@@ -49,6 +53,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   port?: number;
   retryDelayMs?: number;
   retryLimit?: number;
+  shutdownTimeoutMs?: number;
 }
 
 export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptions {
@@ -59,6 +64,7 @@ type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private server?: import('node:http').Server;
+  private readonly sockets = new Set<Socket>();
 
   constructor(
     private readonly port: number,
@@ -67,6 +73,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly compression = false,
     private readonly multipartOptions?: MultipartOptions,
     private readonly maxBodySize = 1 * 1024 * 1024,
+    private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {}
 
   async listen(dispatcher: Dispatcher): Promise<void> {
@@ -96,6 +103,13 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     if (!server) {
       throw new Error('Adapter server was not created before listen().');
     }
+
+    server.on('connection', (socket) => {
+      this.sockets.add(socket);
+      socket.once('close', () => {
+        this.sockets.delete(socket);
+      });
+    });
 
     await new Promise<void>((resolve, reject) => {
       const tryListen = (attempt: number) => {
@@ -129,20 +143,42 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async close(): Promise<void> {
-    if (!this.server) {
+    const server = this.server;
+
+    if (!server) {
       return;
     }
 
     await new Promise<void>((resolve, reject) => {
-      this.server?.close((error) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        forceCloseConnections(server, this.sockets);
+      }, this.shutdownTimeoutMs);
+
+      const finish = (error?: Error | null) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+
         if (error) {
           reject(error);
           return;
         }
 
         resolve();
+      };
+
+      server.close((error) => {
+        finish(error);
       });
+
+      closeIdleConnections(server);
     });
+
+    this.server = undefined;
   }
 }
 
@@ -154,6 +190,7 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     multipartOptions,
     options.maxBodySize,
+    options.shutdownTimeoutMs,
   );
 }
 
@@ -415,6 +452,21 @@ function createRequestSignal(
   });
 
   return controller.signal;
+}
+
+function closeIdleConnections(server: import('node:http').Server): void {
+  server.closeIdleConnections?.();
+}
+
+function forceCloseConnections(server: import('node:http').Server, sockets: ReadonlySet<Socket>): void {
+  if (typeof server.closeAllConnections === 'function') {
+    server.closeAllConnections();
+    return;
+  }
+
+  for (const socket of sockets) {
+    socket.destroy();
+  }
 }
 
 function resolveRequestIdFromHeaders(headers: import('node:http').IncomingHttpHeaders): string | undefined {
