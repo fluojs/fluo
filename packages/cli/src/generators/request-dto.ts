@@ -2,10 +2,10 @@ import type { GeneratedFile } from '../types.js';
 
 import { toKebabCase, toPascalCase } from './utils.js';
 
-export function generateDtoFiles(name: string): GeneratedFile[] {
+export function generateRequestDtoFiles(name: string): GeneratedFile[] {
   const kebab = toKebabCase(name);
   const resource = toPascalCase(name);
-  const pascal = `${resource}Dto`;
+  const pascal = `${resource}RequestDto`;
   const bodyField = resource.charAt(0).toLowerCase() + resource.slice(1);
 
   return [
@@ -20,7 +20,7 @@ export class ${pascal} {
   ${bodyField} = '';
 }
 `,
-      path: `${kebab}.dto.ts`,
+      path: `${kebab}.request.dto.ts`,
     },
   ];
 }

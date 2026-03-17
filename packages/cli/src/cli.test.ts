@@ -151,10 +151,12 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Description\s+\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*controller\s*\|\s*co\s*\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*guard\s*\|\s*gu\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*interceptor\s*\|\s*itc\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*interceptor\s*\|\s*in\s*\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*middleware\s*\|\s*mi\s*\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*module\s*\|\s*mo\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*response-dto\s*\|\s*res\s*\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
     expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
@@ -171,7 +173,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
     expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
   });
 
@@ -220,6 +222,67 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.repo.ts'))).toBe(true);
     expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.module.ts'))).toBe(true);
+  });
+
+  it('accepts `repository` as the repository schematic name', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'repository', 'User'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.repo.ts'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'src', 'users', 'user.module.ts'))).toBe(true);
+  });
+
+  it('accepts `request-dto` as a request DTO schematic', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'request-dto', 'CreateUser'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'create-users', 'create-user.request.dto.ts'))).toBe(true);
+  });
+
+  it('accepts `response-dto` as a response DTO schematic', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'response-dto', 'UserProfile'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'src', 'user-profiles', 'user-profile.response.dto.ts'))).toBe(true);
   });
 
   it('accepts `co` as a controller alias', async () => {
@@ -335,7 +398,7 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
-    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.dto.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.response.dto.ts'))).toBe(true);
 
     run('pnpm', ['typecheck'], projectDirectory);
     run('pnpm', ['build'], projectDirectory);
@@ -408,13 +471,13 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(1);
     expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
-    expect(stderrBuffer.join('')).toMatch(/\|\s*repo\s*\|\s*-\s*\|/);
+    expect(stderrBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
   });
 
   it('prints generate usage when the schematic name is missing', async () => {
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['g', 'repo'], {
+    const exitCode = await runCli(['g', 'repository'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
@@ -465,7 +528,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
   });
 
-  it('resolves itc alias to interceptor', async () => {
+  it('resolves `in` alias to interceptor', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
 
@@ -476,12 +539,64 @@ describe('CLI command runner', () => {
     );
 
     const stdoutBuffer: string[] = [];
-    const exitCode = await runCli(['g', 'itc', 'MyInterceptor'], {
+    const exitCode = await runCli(['g', 'in', 'MyInterceptor'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
     expect(exitCode).toBe(0);
+  });
+
+  it('resolves `req` alias to request-dto', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'req', 'CreateUser'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('resolves `res` alias to response-dto', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const exitCode = await runCli(['g', 'res', 'UserProfile'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('rejects the removed `dto` schematic name', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'dto', 'User'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
   });
 });

@@ -39,6 +39,7 @@ type GenerateKindHelpEntry = {
   aliases: string[];
   description: string;
   kind: GeneratorKind;
+  schematic: string;
 };
 
 type GenerateOptionHelpEntry = {
@@ -54,14 +55,15 @@ type TopLevelCommandHelpEntry = {
 };
 
 const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
-  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller' },
-  { aliases: [], description: 'Generate a data transfer object.', kind: 'dto' },
-  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard' },
-  { aliases: ['itc'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor' },
-  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware' },
-  { aliases: ['mo'], description: 'Generate a module.', kind: 'module' },
-  { aliases: [], description: 'Generate a repository.', kind: 'repo' },
-  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service' },
+  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller', schematic: 'controller' },
+  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard', schematic: 'guard' },
+  { aliases: ['in'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor', schematic: 'interceptor' },
+  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware', schematic: 'middleware' },
+  { aliases: ['mo'], description: 'Generate a module.', kind: 'module', schematic: 'module' },
+  { aliases: ['repo'], description: 'Generate a repository.', kind: 'repo', schematic: 'repository' },
+  { aliases: ['req'], description: 'Generate a request DTO with body binding and validation.', kind: 'request-dto', schematic: 'request-dto' },
+  { aliases: ['res'], description: 'Generate a response DTO for typed response payloads.', kind: 'response-dto', schematic: 'response-dto' },
+  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service', schematic: 'service' },
 ];
 
 const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
@@ -81,7 +83,7 @@ function normalizeGeneratorKind(value: string | undefined): GeneratorKind | unde
     return undefined;
   }
 
-  const entry = GENERATE_KIND_HELP.find((item) => item.kind === value || item.aliases.includes(value));
+  const entry = GENERATE_KIND_HELP.find((item) => item.kind === value || item.schematic === value || item.aliases.includes(value));
   return entry?.kind;
 }
 
@@ -95,7 +97,7 @@ function generateUsage(): string {
     '',
     'Schematics',
     renderHelpTable(GENERATE_KIND_HELP, [
-      { header: 'Schematic', render: (entry) => entry.kind },
+      { header: 'Schematic', render: (entry) => entry.schematic },
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
     ]),

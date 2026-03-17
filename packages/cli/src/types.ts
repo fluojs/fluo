@@ -3,7 +3,7 @@ export interface GeneratedFile {
   path: string;
 }
 
-export type GeneratorKind = 'controller' | 'dto' | 'guard' | 'interceptor' | 'middleware' | 'module' | 'repo' | 'service';
+export type GeneratorKind = 'controller' | 'guard' | 'interceptor' | 'middleware' | 'module' | 'repo' | 'request-dto' | 'response-dto' | 'service';
 
 export interface GenerateOptions {
   force?: boolean;

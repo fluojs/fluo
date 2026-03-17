@@ -4,12 +4,13 @@ import { join, normalize, resolve } from 'node:path';
 import type { GenerateOptions, GeneratedFile, GeneratorKind } from '../types.js';
 
 import { generateControllerFiles } from '../generators/controller.js';
-import { generateDtoFiles } from '../generators/dto.js';
 import { generateGuardFiles } from '../generators/guard.js';
 import { generateInterceptorFiles } from '../generators/interceptor.js';
 import { generateMiddlewareFiles } from '../generators/middleware.js';
 import { generateModuleFiles, registerInModule } from '../generators/module.js';
 import { generateRepoFiles } from '../generators/repo.js';
+import { generateRequestDtoFiles } from '../generators/request-dto.js';
+import { generateResponseDtoFiles } from '../generators/response-dto.js';
 import { generateServiceFiles } from '../generators/service.js';
 import { toKebabCase, toPascalCase, toPlural } from '../generators/utils.js';
 
@@ -17,8 +18,6 @@ function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptio
   switch (kind) {
     case 'controller':
       return generateControllerFiles(name);
-    case 'dto':
-      return generateDtoFiles(name);
     case 'guard':
       return generateGuardFiles(name);
     case 'interceptor':
@@ -29,6 +28,10 @@ function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptio
       return generateModuleFiles(name);
     case 'repo':
       return generateRepoFiles(name, options);
+    case 'request-dto':
+      return generateRequestDtoFiles(name);
+    case 'response-dto':
+      return generateResponseDtoFiles(name);
     case 'service':
       return generateServiceFiles(name, options);
     default:

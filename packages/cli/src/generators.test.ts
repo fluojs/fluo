@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { generateControllerFiles } from './generators/controller.js';
-import { generateDtoFiles } from './generators/dto.js';
 import { generateGuardFiles } from './generators/guard.js';
 import { generateInterceptorFiles } from './generators/interceptor.js';
 import { generateMiddlewareFiles } from './generators/middleware.js';
 import { generateModuleFiles, registerInModule } from './generators/module.js';
 import { generateRepoFiles } from './generators/repo.js';
+import { generateRequestDtoFiles } from './generators/request-dto.js';
+import { generateResponseDtoFiles } from './generators/response-dto.js';
 import { generateServiceFiles } from './generators/service.js';
 
 describe('CLI generators', () => {
@@ -15,7 +16,8 @@ describe('CLI generators', () => {
     expect(generateControllerFiles('User')[0]?.path).toBe('user.controller.ts');
     expect(generateServiceFiles('User')[0]?.path).toBe('user.service.ts');
     expect(generateRepoFiles('User')[0]?.path).toBe('user.repo.ts');
-    expect(generateDtoFiles('User')[0]?.path).toBe('user.dto.ts');
+    expect(generateRequestDtoFiles('User')[0]?.path).toBe('user.request.dto.ts');
+    expect(generateResponseDtoFiles('User')[0]?.path).toBe('user.response.dto.ts');
   });
 
   it('emits test templates for controller, service, and repo generators', () => {
@@ -32,13 +34,21 @@ describe('CLI generators', () => {
     expect(content).not.toContain('this.database.current()');
   });
 
-  it('emits DTO templates with split validator imports', () => {
-    const dto = generateDtoFiles('User')[0]?.content ?? '';
+  it('emits request DTO templates with split validator imports', () => {
+    const dto = generateRequestDtoFiles('User')[0]?.content ?? '';
 
     expect(dto).toContain("from '@konekti/http'");
     expect(dto).toContain("from '@konekti/dto-validator'");
     expect(dto).toContain('@FromBody(\'user\')');
     expect(dto).toContain('@MinLength(1');
+  });
+
+  it('emits response DTO templates with response naming', () => {
+    const dto = generateResponseDtoFiles('User')[0]?.content ?? '';
+
+    expect(dto).toContain('export class UserResponseDto');
+    expect(dto).toContain('user!: string;');
+    expect(dto).not.toContain('@FromBody');
   });
 
   it('generates module file with empty controllers and providers arrays', () => {
