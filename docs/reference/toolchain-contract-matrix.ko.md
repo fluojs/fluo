@@ -26,3 +26,12 @@
 
 - 생성된 스타터 및 릴리스 후보 스캐폴드 테스트는 위에 나열된 것과 동일한 TypeScript/Babel/Vite/Vitest 버전을 고정함
 - 공식 예시는 가이드에서 특정 파일을 `internal-only`로 명시하지 않는 한, 생성된 앱과 동일한 설정 형태를 사용해야 함
+
+## runtime 및 manifest parity 메모
+
+- Node.js는 첫 번째 official runtime입니다.
+- Bun과 fetch-style adapters는 여전히 preview surface입니다.
+- 공유 Babel decorators transform 계약은 제품 계약이며, generated apps와 official packages는 같은 metadata transform 모델을 사용해야 합니다.
+- runtime helper reads는 semantic source of truth로 유지됩니다.
+- compile-time manifest generation은 이후 최적화가 될 수 있지만, observable framework semantics를 바꾸면 안 됩니다.
+- semantic parity 없는 benchmark 이득만으로는 manifest adoption을 정당화할 수 없습니다.

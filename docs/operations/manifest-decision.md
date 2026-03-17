@@ -46,3 +46,9 @@ Treat an improvement around `~20%` as a useful decision aid, not an automatic ru
 - memory cost
 - build/toolchain cost
 - generator and docs maintenance burden
+
+## parity rule
+
+- runtime helper reads remain the semantic source of truth
+- any manifest-based optimization must preserve parity for route metadata, module graph behavior, provider registration, DTO binding metadata, and diagnostics
+- parity evidence matters more than benchmark wins alone

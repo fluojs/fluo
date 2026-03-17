@@ -26,3 +26,12 @@ This matrix locks the public toolchain contract for generated apps and release-c
 
 - The generated starter and the release-candidate scaffold tests pin the same TypeScript/Babel/Vite/Vitest versions listed above.
 - Official examples are expected to use the same config shapes as generated apps unless a guide explicitly marks a file as `internal-only`.
+
+## runtime and manifest parity notes
+
+- Node.js is the first official runtime.
+- Bun and fetch-style adapters remain preview surfaces.
+- The shared Babel decorators transform contract is the product contract; generated apps and official packages must use the same metadata transform model.
+- Runtime helper reads remain the semantic source of truth.
+- Compile-time manifest generation may become an optimization later, but it must not change observable framework semantics.
+- Benchmark gains without semantic parity are not sufficient for manifest adoption.

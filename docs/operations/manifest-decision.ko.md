@@ -46,3 +46,9 @@ pnpm exec tsx tooling/benchmarks/manifest-decision.ts
 - 메모리 비용
 - 빌드/툴체인 비용
 - 생성기 및 문서 유지 관리 부담
+
+## parity 규칙
+
+- runtime helper reads는 semantic source of truth로 유지됩니다.
+- manifest 기반 최적화는 route metadata, module graph 동작, provider registration, DTO binding metadata, diagnostics에 대한 parity를 보존해야 합니다.
+- benchmark 이득만으로는 충분하지 않고, parity 근거가 더 중요합니다.
