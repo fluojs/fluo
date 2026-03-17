@@ -2,6 +2,11 @@
 
 여러 설정 소스를 읽고, 병합하고, 검증해 타입이 있는 런타임 계약으로 만듭니다. 단순한 `.env` 리더가 아닙니다.
 
+## 관련 문서
+
+- `../../docs/concepts/config-and-environments.md`
+- `../../docs/concepts/lifecycle-and-shutdown.md`
+
 ## 이 패키지가 하는 일
 
 `@konekti/config`는 부트스트랩 시점에 여러 설정 소스를 하나의 검증된 딕셔너리로 정규화하고, 앱의 나머지 부분이 사용하는 타입 accessor(`ConfigService`)로 감쌉니다.

@@ -2,6 +2,11 @@
 
 Konekti의 공유 기반 레이어 — 다른 모든 패키지가 사용하는 기본 타입, 공통 에러 클래스, 메타데이터 헬퍼.
 
+## 관련 문서
+
+- `../../docs/concepts/architecture-overview.md`
+- `../../docs/concepts/decorators-and-metadata.md`
+
 ## 이 패키지가 하는 일
 
 `@konekti/core`는 기능을 직접 실행하지 않습니다. 다른 모든 패키지가 사용하는 공통 언어를 정의합니다:

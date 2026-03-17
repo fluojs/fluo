@@ -2,6 +2,11 @@
 
 모든 Konekti 앱을 구동하는 최소 토큰 기반 DI 컨테이너.
 
+## 관련 문서
+
+- `../../docs/concepts/di-and-modules.md`
+- `../../docs/concepts/architecture-overview.md`
+
 ## 이 패키지가 하는 일
 
 `@konekti/di`는 명시적 토큰 기반 의존성 주입 컨테이너를 제공한다. 세 가지 provider shape(class, factory, value), 세 가지 scope(singleton, request, transient), 네 가지 메서드로 구성된 public API를 처리한다. 목표는 full-featured DI 프레임워크가 아니라, Konekti의 bootstrap과 request lifecycle 시나리오를 안정적으로 처리하는 최소 컨테이너다.

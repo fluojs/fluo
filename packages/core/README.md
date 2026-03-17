@@ -2,6 +2,11 @@
 
 The shared foundation layer of Konekti — base types, common error classes, and metadata helpers used by every other package.
 
+## See also
+
+- `../../docs/concepts/architecture-overview.md`
+- `../../docs/concepts/decorators-and-metadata.md`
+
 ## What this package does
 
 `@konekti/core` doesn't run any features itself. It defines the common language that all other packages speak:

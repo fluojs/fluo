@@ -2,6 +2,11 @@
 
 Reads, merges, validates, and exposes configuration as a typed runtime contract. Not just an `.env` reader.
 
+## See also
+
+- `../../docs/concepts/config-and-environments.md`
+- `../../docs/concepts/lifecycle-and-shutdown.md`
+
 ## What this package does
 
 `@konekti/config` normalises multiple configuration sources into a single validated dictionary at bootstrap time, then wraps it in a typed accessor (`ConfigService`) that the rest of the app uses.

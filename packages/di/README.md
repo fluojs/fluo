@@ -2,6 +2,11 @@
 
 The minimal token-based DI container that powers every Konekti app.
 
+## See also
+
+- `../../docs/concepts/di-and-modules.md`
+- `../../docs/concepts/architecture-overview.md`
+
 ## What this package does
 
 `@konekti/di` provides an explicit token-based dependency injection container. It handles three provider shapes (class, factory, value), three scopes (singleton, request, transient), and a four-method public API. The goal is not a full-featured DI framework — it is the smallest container that covers Konekti's bootstrap and request-lifecycle scenarios reliably.
