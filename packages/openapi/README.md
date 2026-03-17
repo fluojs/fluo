@@ -19,7 +19,7 @@ pnpm add @konekti/openapi
 ## Quick Start
 
 ```typescript
-import { Controller, Get, Post, createHandlerMapping } from '@konekti/http';
+import { Controller, Get, Post } from '@konekti/http';
 import { Module } from '@konekti/core';
 import { bootstrapApplication } from '@konekti/runtime';
 import {
@@ -49,13 +49,11 @@ class UsersController {
   }
 }
 
-const descriptors = createHandlerMapping([{ controllerToken: UsersController }]).descriptors;
-
 @Module({
   controllers: [UsersController],
   imports: [
     OpenApiModule.forRoot({
-      descriptors,
+      sources: [{ controllerToken: UsersController }],
       title: 'My API',
       version: '1.0.0',
       ui: true,               // enable Swagger UI at /docs
@@ -80,6 +78,7 @@ interface OpenApiModuleOptions {
   title: string;
   version: string;
   descriptors?: readonly HandlerDescriptor[];  // handler descriptors from createHandlerMapping()
+  sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
   ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
 }
 
@@ -185,6 +184,8 @@ The generated document follows OpenAPI 3.1.0:
 - **`tags`** default to the controller class name when `@ApiTag` is not used.
 - **`security`** schemes are only included in the document when at least one handler uses `@ApiBearerAuth()`.
 - Request DTOs decorated with `@konekti/dto-validator` are emitted as `components.schemas` entries and linked through `requestBody`.
+- Cookie-bound DTO fields are emitted as `in: cookie` parameters.
+- Request bodies are only marked `required: true` when at least one body-bound DTO field is required.
 
 ---
 
