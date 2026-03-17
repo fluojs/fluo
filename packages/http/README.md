@@ -116,6 +116,14 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 
 Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
+### Success status defaults
+
+- `GET`, `PUT`, `PATCH`, `HEAD` default to `200`
+- `POST` defaults to `201`
+- `DELETE` and `OPTIONS` default to `204` when the handler returns `undefined`, otherwise `200`
+- `@SuccessStatus(code)` always overrides the method default
+- the dispatcher decides the final success code after the interceptor chain resolves, so interceptor result shaping still affects the default-status decision
+
 ### Exceptions
 
 | Export | Status Code |
@@ -142,6 +150,7 @@ incoming request
   → request DTO binding  (fromBody / fromPath / fromQuery / ...)
   → DTO validation  (via @konekti/dto-validator)
   → controller method(input, ctx)
+  → success status resolution (`@SuccessStatus` override or method default)
   → success response write
   → catch → canonical error response write
 ```

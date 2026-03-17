@@ -116,6 +116,14 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 
 추가 public export로는 `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
 
+### 성공 상태 코드 기본값
+
+- `GET`, `PUT`, `PATCH`, `HEAD`는 기본적으로 `200`
+- `POST`는 기본적으로 `201`
+- `DELETE`, `OPTIONS`는 핸들러가 `undefined`를 반환하면 `204`, 아니면 `200`
+- `@SuccessStatus(code)`는 항상 메서드 기본값보다 우선합니다
+- dispatcher는 interceptor 체인이 끝난 뒤 최종 성공 코드를 결정하므로, interceptor가 결과를 바꾸면 기본 상태 코드 결정에도 반영됩니다
+
 ### Exception
 
 | Export | 상태 코드 |
@@ -142,6 +150,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
   → request DTO binding  (fromBody / fromPath / fromQuery / ...)
   → DTO validation  (@konekti/dto-validator 사용)
   → controller method(input, ctx)
+  → 성공 상태 코드 결정 (`@SuccessStatus` override 또는 메서드 기본값)
   → 성공 response 작성
   → catch → canonical error response 작성
 ```
