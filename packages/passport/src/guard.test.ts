@@ -5,7 +5,7 @@ import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti
 import { Container } from '@konekti/di';
 
 import { RequireScopes, UseAuth } from './decorators.js';
-import { AuthenticationRequiredError } from './errors.js';
+import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { createPassportProviders } from './module.js';
 import { createPassportJsStrategyBridge } from './passport-js.js';
 import type { AuthStrategy } from './types.js';
@@ -257,5 +257,89 @@ describe('AuthGuard', () => {
     expect(handlerCalled).toBe(false);
     expect(response.statusCode).toBe(302);
     expect(response.headers.Location).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+  });
+
+  it('maps authentication-failed errors to a canonical 401 response', async () => {
+    class FailingStrategy implements AuthStrategy {
+      async authenticate(_context: GuardContext): Promise<never> {
+        throw new AuthenticationFailedError();
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      FailingStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: FailingStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', { 'x-request-id': 'req-failed' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-failed',
+        status: 401,
+      },
+    });
+  });
+
+  it('maps authentication-expired errors to a canonical 401 response', async () => {
+    class ExpiredStrategy implements AuthStrategy {
+      async authenticate(_context: GuardContext): Promise<never> {
+        throw new AuthenticationExpiredError();
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      ExpiredStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: ExpiredStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', { 'x-request-id': 'req-expired' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-expired',
+        status: 401,
+      },
+    });
   });
 });
