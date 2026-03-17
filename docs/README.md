@@ -31,6 +31,7 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 20. `reference/workspace-topology.md`
 21. `operations/testing-guide.md`
 22. `operations/release-governance.md`
+23. `operations/open-issues.md`
 
 ## Sections
 
@@ -60,6 +61,7 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 - testing policy
 - release governance
 - benchmark/decision notes that still affect current behavior
+- repo-local convenience index for current GitHub issues (GitHub remains the source of truth)
 
 ### reference/
 
