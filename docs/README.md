@@ -11,11 +11,20 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 3. `getting-started/generator-workflow.md`
 4. `concepts/architecture-overview.md`
 5. `concepts/http-runtime.md`
-6. `concepts/auth-and-jwt.md`
-7. `reference/package-surface.md`
-8. `reference/toolchain-contract-matrix.md`
-9. `operations/testing-guide.md`
-10. `operations/release-governance.md`
+6. `concepts/di-and-modules.md`
+7. `concepts/decorators-and-metadata.md`
+8. `concepts/config-and-environments.md`
+9. `concepts/lifecycle-and-shutdown.md`
+10. `concepts/auth-and-jwt.md`
+11. `concepts/openapi.md`
+12. `concepts/observability.md`
+13. `concepts/security-middleware.md`
+14. `concepts/transactions.md`
+15. `concepts/error-responses.md`
+16. `reference/package-surface.md`
+17. `reference/toolchain-contract-matrix.md`
+18. `operations/testing-guide.md`
+19. `operations/release-governance.md`
 
 ## Sections
 
@@ -28,8 +37,17 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 ### concepts/
 
 - runtime flow and package boundaries
+- DI and module visibility rules
+- decorator and metadata ownership
+- config and environment contract
+- lifecycle and shutdown model
 - auth ownership
 - HTTP behavior and cross-package contracts
+- OpenAPI generation model
+- observability and health/readiness semantics
+- security middleware defaults and boundaries
+- transaction semantics across integrations
+- canonical error response and exposure rules
 
 ### operations/
 
