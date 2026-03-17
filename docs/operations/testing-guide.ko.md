@@ -26,6 +26,12 @@ pnpm verify:release-candidate
 - 프로바이더 오버라이드(override) 지원
 - 부트스트랩/런타임 생명주기를 통한 예측 가능한 정리(cleanup)
 
+현재 public boundary:
+
+- `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
+- public testing API surface를 지금 확장하지 않습니다.
+- 더 풍부한 generated test-template 계열도 지금 추가하지 않습니다.
+
 주요 근거 자료:
 
 - `packages/testing/src/module.ts`

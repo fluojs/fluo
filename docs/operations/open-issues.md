@@ -20,24 +20,11 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ## issue groups
 
-### auth defaults and ecosystem expansion
+## current status
 
-#### `#8` Plan the next expansion of `@konekti/testing`
+There are currently no open planning issues in `konektijs/konekti`.
 
-- what it covers
-  - how far the testing API should grow
-  - how rich generated test templates should become
-- why it matters
-  - testing should follow the supported runtime/package workflows instead of inventing them ahead of time
-- how to proceed
-  - sequence this after the public bootstrap/auth/support defaults are clearer
-  - expand only where concrete user workflows justify new helpers
-
-## practical next steps
-
-If work starts now, the most efficient order is:
-
-1. `#8`
+If new future-work questions appear, open them as GitHub Issues and update this file only if a grouped backlog index becomes useful again.
 
 ## maintenance rule
 
