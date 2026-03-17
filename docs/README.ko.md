@@ -31,6 +31,7 @@
 20. `reference/workspace-topology.md`
 21. `operations/testing-guide.md`
 22. `operations/release-governance.md`
+23. `operations/open-issues.md`
 
 ## 섹션 (Sections)
 
@@ -60,6 +61,7 @@
 - 테스트 정책
 - 릴리스 거버넌스
 - 현재 동작에 영향을 주는 벤치마크/결정 사항 노트
+- 현재 GitHub issue를 묶어 보여주는 repo-local convenience index (source of truth는 여전히 GitHub)
 
 ### reference/
 
