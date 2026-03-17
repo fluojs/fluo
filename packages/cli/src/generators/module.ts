@@ -23,7 +23,7 @@ export { ${pascal} };
   ];
 }
 
-function insertIntoModuleArray(source: string, arrayKey: 'controllers' | 'providers', className: string): string {
+function insertIntoModuleArray(source: string, arrayKey: 'controllers' | 'providers' | 'middleware', className: string): string {
   const alreadyPresent = new RegExp(`\\b${className}\\b`).test(source);
   if (alreadyPresent) {
     return source;
@@ -42,6 +42,12 @@ function insertIntoModuleArray(source: string, arrayKey: 'controllers' | 'provid
   });
 }
 
-export function registerInModule(source: string, arrayKey: 'controllers' | 'providers', className: string): string {
-  return insertIntoModuleArray(source, arrayKey, className);
+export function registerInModule(source: string, arrayKey: 'controllers' | 'providers' | 'middleware', className: string): string {
+  let result = insertIntoModuleArray(source, arrayKey, className);
+  
+  if (arrayKey === 'middleware' && !new RegExp(`${arrayKey}:\\s*\\[`).test(result)) {
+    result = result.replace(/\}\)\nclass/, `})\n  middleware: [${className}],\nclass`);
+  }
+  
+  return result;
 }

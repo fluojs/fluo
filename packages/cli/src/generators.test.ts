@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { generateControllerFiles } from './generators/controller.js';
 import { generateDtoFiles } from './generators/dto.js';
+import { generateGuardFiles } from './generators/guard.js';
+import { generateInterceptorFiles } from './generators/interceptor.js';
+import { generateMiddlewareFiles } from './generators/middleware.js';
 import { generateModuleFiles, registerInModule } from './generators/module.js';
 import { generateRepoFiles } from './generators/repo.js';
 import { generateServiceFiles } from './generators/service.js';
@@ -44,6 +47,45 @@ describe('CLI generators', () => {
     expect(content).toContain('providers: []');
   });
 
+  it('generates guard file with correct naming', () => {
+    expect(generateGuardFiles('Auth')[0]?.path).toBe('auth.guard.ts');
+  });
+
+  it('generates guard with Guard interface implementation', () => {
+    const content = generateGuardFiles('Auth')[0]?.content ?? '';
+    expect(content).toContain('implements Guard');
+    expect(content).toContain('canActivate');
+    expect(content).toContain("from '@konekti/http'");
+  });
+
+  it('generates interceptor file with correct naming', () => {
+    expect(generateInterceptorFiles('Logging')[0]?.path).toBe('logging.interceptor.ts');
+  });
+
+  it('generates interceptor with Interceptor interface implementation', () => {
+    const content = generateInterceptorFiles('Logging')[0]?.content ?? '';
+    expect(content).toContain('implements Interceptor');
+    expect(content).toContain('intercept');
+    expect(content).toContain("from '@konekti/http'");
+  });
+
+  it('generates middleware file with correct naming', () => {
+    expect(generateMiddlewareFiles('Auth')[0]?.path).toBe('auth.middleware.ts');
+  });
+
+  it('generates middleware with Middleware interface and static forRoutes', () => {
+    const content = generateMiddlewareFiles('Auth')[0]?.content ?? '';
+    expect(content).toContain('implements Middleware');
+    expect(content).toContain('static forRoutes');
+    expect(content).toContain('MiddlewareRouteConfig');
+    expect(content).toContain("from '@konekti/http'");
+  });
+
+  it('generates middleware that registers into middleware array', () => {
+    const content = generateMiddlewareFiles('Auth')[0]?.content ?? '';
+    expect(content).toContain('handle(context: MiddlewareContext, next: Next)');
+  });
+
   describe('registerInModule', () => {
     const baseModule = `import { Module } from '@konekti/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n\nexport { UserModule };\n`;
 
@@ -71,6 +113,21 @@ describe('CLI generators', () => {
       const withRepo = registerInModule(withService, 'providers', 'UserRepo');
       expect(withRepo).toContain('UserService');
       expect(withRepo).toContain('UserRepo');
+    });
+
+    it('injects middleware array when absent and registers the class', () => {
+      const result = registerInModule(baseModule, 'middleware', 'AuthMiddleware');
+      expect(result).toContain('AuthMiddleware');
+      expect(result).toContain('middleware:');
+    });
+
+    it('registers middleware into an existing middleware array', () => {
+      const withMiddlewareArray = baseModule.replace(
+        '@Module({\n  controllers: [],\n  providers: [],\n})',
+        '@Module({\n  controllers: [],\n  providers: [],\n  middleware: [],\n})'
+      );
+      const result = registerInModule(withMiddlewareArray, 'middleware', 'AuthMiddleware');
+      expect(result).toMatch(/middleware:\s*\[[\s\S]*AuthMiddleware/);
     });
   });
 });

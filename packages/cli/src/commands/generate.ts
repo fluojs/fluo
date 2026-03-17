@@ -5,6 +5,9 @@ import type { GenerateOptions, GeneratedFile, GeneratorKind } from '../types.js'
 
 import { generateControllerFiles } from '../generators/controller.js';
 import { generateDtoFiles } from '../generators/dto.js';
+import { generateGuardFiles } from '../generators/guard.js';
+import { generateInterceptorFiles } from '../generators/interceptor.js';
+import { generateMiddlewareFiles } from '../generators/middleware.js';
 import { generateModuleFiles, registerInModule } from '../generators/module.js';
 import { generateRepoFiles } from '../generators/repo.js';
 import { generateServiceFiles } from '../generators/service.js';
@@ -16,6 +19,12 @@ function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptio
       return generateControllerFiles(name);
     case 'dto':
       return generateDtoFiles(name);
+    case 'guard':
+      return generateGuardFiles(name);
+    case 'interceptor':
+      return generateInterceptorFiles(name);
+    case 'middleware':
+      return generateMiddlewareFiles(name);
     case 'module':
       return generateModuleFiles(name);
     case 'repo':
@@ -27,9 +36,10 @@ function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptio
   }
 }
 
-function moduleArrayKey(kind: GeneratorKind): 'controllers' | 'providers' | null {
+function moduleArrayKey(kind: GeneratorKind): 'controllers' | 'providers' | 'middleware' | null {
   if (kind === 'controller') return 'controllers';
-  if (kind === 'service' || kind === 'repo') return 'providers';
+  if (kind === 'service' || kind === 'repo' || kind === 'guard' || kind === 'interceptor') return 'providers';
+  if (kind === 'middleware') return 'middleware';
   return null;
 }
 
@@ -38,6 +48,9 @@ function classNameForKind(name: string, kind: GeneratorKind): string {
   if (kind === 'controller') return `${resource}Controller`;
   if (kind === 'service') return `${resource}Service`;
   if (kind === 'repo') return `${resource}Repo`;
+  if (kind === 'guard') return `${resource}Guard`;
+  if (kind === 'interceptor') return `${resource}Interceptor`;
+  if (kind === 'middleware') return `${resource}Middleware`;
   return resource;
 }
 
@@ -56,7 +69,7 @@ function ensureModuleFile(domainDirectory: string, name: string): string {
   return modulePath;
 }
 
-function updateModuleFile(modulePath: string, arrayKey: 'controllers' | 'providers', className: string, importPath: string): void {
+function updateModuleFile(modulePath: string, arrayKey: 'controllers' | 'providers' | 'middleware', className: string, importPath: string): void {
   let source = readFileSync(modulePath, 'utf8');
 
   const alreadyImported = /^import [^;]*;$/m.test(source) &&
