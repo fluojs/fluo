@@ -44,7 +44,7 @@ export class AuthGuard implements AuthGuardContract {
     private readonly options: PassportModuleOptions = {},
   ) {}
 
-  async canActivate(context: GuardContext): Promise<void> {
+  async canActivate(context: GuardContext): Promise<true> {
     const requirement = getAuthRequirement(context.handler.controllerToken, context.handler.methodName);
     const strategyName = requirement?.strategy ?? this.options.defaultStrategy;
 
@@ -53,7 +53,7 @@ export class AuthGuard implements AuthGuardContract {
         throw new AuthStrategyResolutionError('Auth requirement exists without an active strategy.');
       }
 
-      return;
+      return true;
     }
 
     const strategyToken = this.strategies[strategyName];
@@ -75,7 +75,7 @@ export class AuthGuard implements AuthGuardContract {
       const principal = resolvePrincipal(result);
 
       if (isAuthHandledResult(result) && !principal) {
-        return;
+        return true;
       }
 
       if (!principal) {
@@ -87,6 +87,7 @@ export class AuthGuard implements AuthGuardContract {
       }
 
       context.requestContext.principal = principal;
+      return true;
     } catch (error) {
       if (error instanceof AuthenticationRequiredError) {
         throw new UnauthorizedException('Authentication required.');

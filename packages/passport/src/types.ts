@@ -32,5 +32,5 @@ export interface PassportModuleOptions {
 }
 
 export interface AuthGuardContract extends Guard {
-  canActivate(context: GuardContext): Promise<void>;
+  canActivate(context: GuardContext): Promise<true>;
 }
