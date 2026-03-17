@@ -29,6 +29,12 @@
 - 유효성 검사는 프레임워크 소유의 데코레이터 metadata를 통해 실행됩니다.
 - 중첩된 DTO 유효성 검사는 퍼스트 파티 모델의 일부입니다.
 
+현재 public boundary:
+
+- 지원되는 계약은 decorator-first DTO 모델을 유지합니다.
+- schema-object validation을 first-class public path로 추가하지 않습니다.
+- validation-adapter 계약을 더 풍부한 일반 확장 API로 넓히지 않습니다.
+
 ## DTO security rules
 
 - 요청 DTO, 응답 DTO, 영속성 모델은 분리되어 유지됩니다.

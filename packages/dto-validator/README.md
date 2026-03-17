@@ -5,6 +5,8 @@
 
 Decorator-based DTO validation for TypeScript. Declare validation rules directly on class fields and get structured, typed errors — no schema files, no manual checks.
 
+The current public contract is decorator-first. Schema-object validation and richer validation-adapter contracts are not part of the supported public surface today.
+
 ## See also
 
 - `../../docs/concepts/decorators-and-metadata.md`
