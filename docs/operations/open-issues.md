@@ -13,41 +13,12 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ## recommended execution order
 
-1. foundation and public-contract cleanup
-2. bootstrap and scaffold UX
-3. core runtime and validation contracts
-4. transport expansion
-5. auth defaults and ecosystem expansion
+1. bootstrap and scaffold UX
+2. core runtime and validation contracts
+3. transport expansion
+4. auth defaults and ecosystem expansion
 
 ## issue groups
-
-### foundation and public-contract cleanup
-
-#### `#1` Retire `konekti-plan` as an active source and finish repo docs migration
-
-- what it covers
-  - finish the last migration work from the old planning repo into `konekti`
-  - ensure `README.md`, `docs/`, and package READMEs are the only active documentation sources
-  - keep historical material as history only, not active truth
-- why it matters
-  - this issue locks the new docs model and removes ambiguity about where current truth lives
-- how to proceed
-  - audit the remaining `konekti-plan` artifacts one last time
-  - confirm every durable contract is either in `docs/` or a package README
-  - close the issue only after no active contributor flow depends on the retired repo
-
-#### `#10` Decide public release evolution for toolchain packages and metadata extension
-
-- what it covers
-  - future packaging of toolchain building blocks
-  - support policy for third-party metadata/decorator extension
-  - public-release positioning beyond the current repo docs cleanup
-- why it matters
-  - this affects release posture, package boundaries, and extension guarantees
-- how to proceed
-  - document what remains internal-only
-  - define whether any tooling pieces should become public packages
-  - decide how far extension support should go before advertising it
 
 ### bootstrap and scaffold UX
 
@@ -128,14 +99,12 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#1`
-2. `#10`
-3. `#6`
-4. `#3`
-5. `#9`
-6. `#7`
-7. `#5`
-8. `#8`
+1. `#6`
+2. `#3`
+3. `#9`
+4. `#7`
+5. `#5`
+6. `#8`
 
 ## maintenance rule
 

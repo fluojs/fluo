@@ -41,6 +41,7 @@
 - 헬퍼 소유의 metadata API가 저수준 쓰기/읽기 경계로 유지됩니다.
 - runtime 및 기타 패키지는 헬퍼 API를 통해 정규화된 metadata를 읽어야 합니다.
 - 커스텀 데코레이터는 원시 저장 형태를 공개 규약으로 의존해서는 안 됩니다.
+- framework-owned category를 넘는 third-party metadata/decorator extension은 현재 public contract의 일부가 아닙니다.
 
 ## practical mental model
 

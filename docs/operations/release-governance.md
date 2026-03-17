@@ -23,6 +23,10 @@ These packages are the intended public release surface once the repository leave
 - `@konekti/testing`
 - `@konekti/cli`
 
+The current public release boundary is package-first: the supported public bootstrap contract is `pnpm dlx @konekti/cli new`, and the release surface is the published `@konekti/*` package family only.
+
+Toolchain workspaces under `tooling/` remain internal support artifacts unless a future issue explicitly promotes one into the public package surface.
+
 ## versioning policy
 
 - semver for public packages
@@ -30,6 +34,11 @@ These packages are the intended public release surface once the repository leave
 - major releases may require app updates when a public contract moves; those releases must ship migration notes in the same window
 - coordinated workspace releases happen when public package contracts move together
 - internal workspace version bumps follow the public release train but are not public API promises on their own
+
+## current extension boundary
+
+- framework-owned metadata categories are the only documented public metadata contract today
+- third-party decorator/metadata extension beyond those framework-owned categories is not a supported public guarantee yet
 
 ## changelog and deprecation policy
 

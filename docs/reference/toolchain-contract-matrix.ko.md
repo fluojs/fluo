@@ -35,3 +35,9 @@
 - runtime helper reads는 semantic source of truth로 유지됩니다.
 - compile-time manifest generation은 이후 최적화가 될 수 있지만, observable framework semantics를 바꾸면 안 됩니다.
 - semantic parity 없는 benchmark 이득만으로는 manifest adoption을 정당화할 수 없습니다.
+
+## 현재 public packaging 입장
+
+- `tooling/*` 워크스페이스는 internal-only support package로 유지됩니다.
+- 현재 공개 bootstrap 계약은 `@konekti/cli`를 통한 package-first 경로를 유지합니다.
+- 추가 public toolchain package surface는 현재 약속하지 않습니다.

@@ -23,6 +23,10 @@
 - `@konekti/testing`
 - `@konekti/cli`
 
+현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm dlx @konekti/cli new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
+
+`tooling/` 아래의 toolchain 워크스페이스는 향후 별도 이슈를 통해 공개 패키지로 승격되기 전까지 internal support artifact로 유지됩니다.
+
 ## 버전 관리 정책
 
 - 공개 패키지에는 semver를 적용함
@@ -30,6 +34,11 @@
 - 메이저(major) 릴리스는 공개 계약이 변경될 때 앱 업데이트를 요구할 수 있으며, 해당 릴리스와 함께 마이그레이션 노트를 제공해야 함
 - 공개 패키지 계약이 함께 변경될 때 조정된 워크스페이스 릴리스를 진행함
 - 내부 워크스페이스 버전 상향은 공개 릴리스 주기를 따르지만, 그 자체로 공개 API 보장을 의미하지는 않음
+
+## 현재 extension 경계
+
+- framework-owned metadata category만이 현재 문서화된 공개 metadata 계약입니다.
+- 그 범위를 넘는 third-party decorator/metadata extension은 아직 지원되는 공개 보장이 아닙니다.
 
 ## 변경 로그 및 지원 중단(Deprecation) 정책
 

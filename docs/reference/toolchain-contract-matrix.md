@@ -35,3 +35,9 @@ This matrix locks the public toolchain contract for generated apps and release-c
 - Runtime helper reads remain the semantic source of truth.
 - Compile-time manifest generation may become an optimization later, but it must not change observable framework semantics.
 - Benchmark gains without semantic parity are not sufficient for manifest adoption.
+
+## current public packaging stance
+
+- `tooling/*` workspaces remain internal-only support packages
+- the current public bootstrap contract stays package-first through `@konekti/cli`
+- no additional public toolchain package surface is promised today

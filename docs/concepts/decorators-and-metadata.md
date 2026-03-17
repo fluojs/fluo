@@ -41,6 +41,7 @@ Core families include:
 - helper-owned metadata APIs remain the low-level write/read boundary
 - runtime and other packages should read normalized metadata through helper APIs
 - custom decorators should not depend on raw storage shape as a public contract
+- third-party metadata/decorator extension beyond framework-owned categories is not part of the current public contract
 
 ## practical mental model
 
