@@ -3,7 +3,11 @@ import { URL } from 'node:url';
 
 import {
   BadRequestException,
+  HttpException,
+  InternalServerException,
   createCorsMiddleware,
+  createErrorResponse,
+  PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
   type FrameworkRequest,
@@ -67,14 +71,23 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.server = createServer(async (request, response) => {
-      const signal = createRequestSignal(request, response);
-      const frameworkRequest = await createFrameworkRequest(request, signal, this.multipartOptions, this.maxBodySize);
       const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
+      const signal = createRequestSignal(response);
 
-      await dispatcher.dispatch(frameworkRequest, frameworkResponse);
+      try {
+        const frameworkRequest = await createFrameworkRequest(request, signal, this.multipartOptions, this.maxBodySize);
 
-      if (!frameworkResponse.committed) {
-        await frameworkResponse.send(undefined);
+        await dispatcher.dispatch(frameworkRequest, frameworkResponse);
+
+        if (!frameworkResponse.committed) {
+          await frameworkResponse.send(undefined);
+        }
+      } catch (error) {
+        if (signal.aborted || frameworkResponse.committed) {
+          return;
+        }
+
+        await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
       }
     });
 
@@ -386,7 +399,6 @@ function parseCookieHeader(cookieHeader: string | undefined): Record<string, str
 }
 
 function createRequestSignal(
-  request: import('node:http').IncomingMessage,
   response: import('node:http').ServerResponse,
 ): AbortSignal {
   const controller = new AbortController();
@@ -396,9 +408,6 @@ function createRequestSignal(
     }
   };
 
-  request.once('aborted', () => {
-    abort('Request aborted before response commit.');
-  });
   response.once('close', () => {
     if (!response.writableEnded) {
       abort('Response closed before response commit.');
@@ -406,6 +415,33 @@ function createRequestSignal(
   });
 
   return controller.signal;
+}
+
+function resolveRequestIdFromHeaders(headers: import('node:http').IncomingHttpHeaders): string | undefined {
+  const requestId = headers['x-request-id'] ?? headers['x-correlation-id'];
+
+  return Array.isArray(requestId) ? requestId[0] : requestId;
+}
+
+function toHttpException(error: unknown): HttpException {
+  if (error instanceof HttpException) {
+    return error;
+  }
+
+  return new InternalServerException('Internal server error.', {
+    cause: error,
+  });
+}
+
+async function writeNodeAdapterErrorResponse(
+  error: unknown,
+  response: FrameworkResponse,
+  requestId?: string,
+): Promise<void> {
+  const httpError = toHttpException(error);
+
+  response.setStatus(httpError.status);
+  await response.send(createErrorResponse(httpError, requestId));
 }
 
 function defaultShutdownSignals(mode: RunNodeApplicationOptions['mode']): false | readonly NodeApplicationSignal[] {
@@ -451,7 +487,7 @@ async function readRequestBody(request: import('node:http').IncomingMessage, con
     totalSize += buf.byteLength;
 
     if (totalSize > maxBodySize) {
-      throw new BadRequestException('Request body exceeds the size limit.');
+      throw new PayloadTooLargeException('Request body exceeds the size limit.');
     }
 
     chunks.push(buf);
