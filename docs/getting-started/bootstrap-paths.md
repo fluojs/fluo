@@ -32,6 +32,17 @@ What it intentionally does not ask:
 - no install-skip prompt
 - no bundled `g resource` generator flow
 
+## current scaffold boundary
+
+The current public scaffold contract stays intentionally narrow:
+
+- one stable generated project shape across supported package managers
+- package-manager-aware install and run commands
+- no current-directory initialization contract today
+- no package-manager-specific scaffold/template divergence today
+
+If either current-directory init or package-manager-specific output ever becomes official later, it should be added as an explicit supported surface rather than an implied convenience.
+
 ## repo-local smoke path
 
 The implementation repo also keeps repo-local verification commands:

@@ -46,6 +46,7 @@ Examples:
 - individual generators are the default path
 - `g resource` is not part of the current default CLI model
 - request and response DTOs are intentionally split into separate schematics
+- scaffold and generator output stay package-manager-neutral apart from package-manager-aware commands and lockfiles
 
 ## related docs
 

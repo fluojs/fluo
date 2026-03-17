@@ -19,6 +19,8 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 - **`konekti generate <kind> <name>`** — create one or more files and update the module when the generator kind participates in module registration
 - **`konekti help [command]`** — show top-level or command-specific help output
 
+The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
+
 ## Installation
 
 ```bash

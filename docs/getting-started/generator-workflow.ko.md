@@ -46,6 +46,7 @@ konekti g <kind> <name>
 - 개별 생성기가 기본 경로입니다.
 - `g resource`는 현재 기본 CLI 모델의 일부가 아닙니다.
 - 요청(request) 및 응답(response) DTO는 의도적으로 별도의 스키매틱으로 분리되어 있습니다.
+- scaffold와 generator 출력은 package-manager-aware 명령과 lockfile을 제외하면 package-manager-neutral을 유지합니다.
 
 ## 관련 문서
 

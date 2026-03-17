@@ -20,19 +20,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ## issue groups
 
-### bootstrap and scaffold UX
-
-#### `#6` Decide scaffold evolution beyond the current CLI bootstrap flow
-
-- what it covers
-  - package-manager-specific output customization
-  - current-directory initialization support
-- why it matters
-  - this shapes the first-run experience and starter expectations
-- how to proceed
-  - keep the canonical bootstrap contract stable first
-  - only add scaffold options that can be documented and tested end to end
-
 ### core runtime and validation contracts
 
 #### `#3` Plan validation and DTO evolution beyond the current decorator model
@@ -99,12 +86,11 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#6`
-2. `#3`
-3. `#9`
-4. `#7`
-5. `#5`
-6. `#8`
+1. `#3`
+2. `#9`
+3. `#7`
+4. `#5`
+5. `#8`
 
 ## maintenance rule
 

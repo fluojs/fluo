@@ -32,6 +32,17 @@ pnpm dlx @konekti/cli new my-app
 - 설치 건너뛰기 프롬프트 없음
 - 번들된 `g resource` 생성기 흐름 없음
 
+## 현재 scaffold 경계
+
+현재 공개 scaffold 계약은 의도적으로 좁게 유지됩니다:
+
+- 지원되는 패키지 매니저 전반에 걸쳐 하나의 안정적인 generated project shape 유지
+- package-manager-aware install 및 run 명령 제공
+- current-directory initialization 계약은 현재 제공하지 않음
+- package-manager별 scaffold/template divergence는 현재 제공하지 않음
+
+나중에 current-directory init이나 package-manager-specific output이 공식 지원이 되더라도, 암묵적 convenience가 아니라 명시적인 supported surface로 추가되어야 합니다.
+
 ## 레포지토리 로컬 smoke 경로
 
 구현 레포지토리는 로컬 검증 명령어도 유지합니다:
