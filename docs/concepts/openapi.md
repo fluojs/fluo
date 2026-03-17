@@ -19,6 +19,7 @@ See also:
 - optional Swagger UI at `/docs`
 
 The document is built from handler descriptors gathered at application startup.
+`OpenApiModule.forRoot(...)` can receive either prebuilt descriptors or the same `HandlerSource[]` model that `createHandlerMapping()` consumes.
 
 ## operation-level decorators
 
@@ -36,12 +37,14 @@ These decorators are metadata-only. They do not affect runtime request handling.
 - request DTO metadata is read through normalized helpers
 - validator metadata drives `components.schemas`
 - request DTOs are linked through `requestBody`
+- cookie-bound DTO fields are emitted as cookie parameters
 - response DTOs can be referenced through `@ApiResponse(..., { type: ... })`
 - nested DTOs and arrays are expressed as component schema references where possible
 
 ## generation model
 
 - route metadata is read from handler descriptors
+- those descriptors can be derived from the same handler sources the runtime uses
 - tags, operation metadata, response metadata, and request DTO schema are assembled into one OpenAPI 3.1 document
 - the generated document is built at startup and served statically
 
