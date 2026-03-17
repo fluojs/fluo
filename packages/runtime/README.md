@@ -155,6 +155,8 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createNodeHttpAdapter`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `raceWithAbort`, and `createAbortError`.
 
+`createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
+
 ### Node startup concerns owned by runtime
 
 `runNodeApplication()` consolidates Node-specific startup details that should not live in application code:

@@ -27,6 +27,7 @@ See also:
 - module/provider graph errors fail at startup
 - infrastructure connection failures do not leave half-started state
 - app ready means the transport is actually ready to receive requests
+- health and readiness remain separate runtime concerns: `/health` is liveness-only, while `/ready` reflects startup and registered readiness checks
 
 ## hook model
 

@@ -37,10 +37,12 @@ interface ApplicationLogger {
 
 ## health and readiness
 
-- `GET /health` -> `200 { status: 'ok' }`
+- `GET /health` -> `200 { status: 'ok' }` and acts as a liveness-only signal
 - `GET /ready` -> `503 { status: 'starting' }` until boot completes
 - `GET /ready` -> `200 { status: 'ready' }` after boot completes
 - readiness can also return `503 { status: 'unavailable' }` when an added readiness check fails
+
+The important split is that liveness does not fold readiness checks back into `/health`. A failed readiness check leaves `/health` unchanged while `/ready` moves to `unavailable`.
 
 ## metrics
 
