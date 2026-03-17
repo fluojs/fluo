@@ -99,14 +99,24 @@ async function invokeControllerHandler(
   return method.call(controller, input, requestContext);
 }
 
+function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
+  switch (handler.route.method) {
+    case 'POST':
+      return 201;
+    case 'DELETE':
+    case 'OPTIONS':
+      return value === undefined ? 204 : 200;
+    default:
+      return 200;
+  }
+}
+
 async function writeSuccessResponse(handler: HandlerDescriptor, response: FrameworkResponse, value: unknown): Promise<void> {
   if (response.committed) {
     return;
   }
 
-  if (handler.route.successStatus !== undefined) {
-    response.setStatus(handler.route.successStatus);
-  }
+  response.setStatus(handler.route.successStatus ?? resolveDefaultSuccessStatus(handler, value));
 
   await response.send(value);
 }
@@ -194,13 +204,14 @@ async function dispatchMatchedHandler(
   }
 
   const result = await runInterceptorChain(handler.route.interceptors ?? [], interceptorContext, async () => {
-    const value = await invokeControllerHandler(handler, requestContext);
-
-    ensureRequestNotAborted(requestContext.request);
-    await writeSuccessResponse(handler, requestContext.response, value);
-
-    return value;
+    return invokeControllerHandler(handler, requestContext);
   });
+
+  ensureRequestNotAborted(requestContext.request);
+
+  if (!requestContext.response.committed) {
+    await writeSuccessResponse(handler, requestContext.response, result);
+  }
 
   await notifyObservers(
     observers,
