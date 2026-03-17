@@ -5,6 +5,8 @@
 
 데코레이터 기반 TypeScript DTO 검증. 클래스 필드에 검증 규칙을 선언적으로 적고 구조화된 타입 에러를 얻습니다 — 별도 스키마 파일도, 수동 검사도 없습니다.
 
+현재 공개 계약은 decorator-first입니다. schema-object validation과 더 풍부한 validation-adapter 계약은 현재 지원되는 public surface에 포함되지 않습니다.
+
 ## 관련 문서
 
 - `../../docs/concepts/decorators-and-metadata.md`

@@ -20,18 +20,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ## issue groups
 
-### core runtime and validation contracts
-
-#### `#3` Plan validation and DTO evolution beyond the current decorator model
-
-- what it covers
-  - schema-object validation as a first-class path
-  - richer validation adapter interfaces
-- why it matters
-  - request binding and validation are core DX contracts; any expansion touches docs, generators, and tests
-- how to proceed
-  - make this decision after `#4`, so DTO evolution follows the chosen runtime/request model
-
 ### transport expansion
 
 #### `#9` Explore future non-HTTP transport and gateway model
@@ -86,11 +74,10 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#3`
-2. `#9`
-3. `#7`
-4. `#5`
-5. `#8`
+1. `#9`
+2. `#7`
+3. `#5`
+4. `#8`
 
 ## maintenance rule
 

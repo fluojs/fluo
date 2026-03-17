@@ -29,6 +29,12 @@ Core families include:
 - validation runs from framework-owned decorator metadata
 - nested DTO validation is part of the first-party model
 
+Current public boundary:
+
+- keep the decorator-first DTO model as the supported contract
+- do not add schema-object validation as a first-class public path now
+- do not broaden validation-adapter contracts into a richer general extension API now
+
 ## DTO security rules
 
 - request DTO, response DTO, and persistence model stay separate
