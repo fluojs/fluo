@@ -169,6 +169,15 @@ incoming request
   → catch → canonical error response write
 ```
 
+### Guard contract
+
+Guards have a deliberately small contract:
+
+- return `false` to deny the request with the default `ForbiddenException` / 403 path
+- return `true` or `undefined` to continue the request pipeline
+- throw an HTTP exception when the denial should use a more specific status or message
+- commit the response directly (for example redirect flows) when the guard fully handles the outcome itself
+
 ### DTO binding security
 
 The binder is not a simple field copy. Two policies are enforced:
