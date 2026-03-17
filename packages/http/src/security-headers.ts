@@ -29,37 +29,40 @@ export function createSecurityHeadersMiddleware(options: SecurityHeadersOptions 
   const xfo = 'xFrameOptions' in options ? options.xFrameOptions : DEFAULTS.xFrameOptions;
   const xxp = 'xXssProtection' in options ? options.xXssProtection : DEFAULTS.xXssProtection;
 
+  const applyHeaders = (response: Parameters<Middleware['handle']>[0]['response']) => {
+    if (csp) {
+      response.setHeader('Content-Security-Policy', csp);
+    }
+
+    if (coop) {
+      response.setHeader('Cross-Origin-Opener-Policy', coop);
+    }
+
+    if (referrer) {
+      response.setHeader('Referrer-Policy', referrer);
+    }
+
+    if (hsts) {
+      response.setHeader('Strict-Transport-Security', hsts);
+    }
+
+    if (xcto) {
+      response.setHeader('X-Content-Type-Options', xcto);
+    }
+
+    if (xfo) {
+      response.setHeader('X-Frame-Options', xfo);
+    }
+
+    if (xxp) {
+      response.setHeader('X-XSS-Protection', xxp);
+    }
+  };
+
   return {
     async handle(context, next) {
+      applyHeaders(context.response);
       await next();
-
-      if (csp) {
-        context.response.setHeader('Content-Security-Policy', csp);
-      }
-
-      if (coop) {
-        context.response.setHeader('Cross-Origin-Opener-Policy', coop);
-      }
-
-      if (referrer) {
-        context.response.setHeader('Referrer-Policy', referrer);
-      }
-
-      if (hsts) {
-        context.response.setHeader('Strict-Transport-Security', hsts);
-      }
-
-      if (xcto) {
-        context.response.setHeader('X-Content-Type-Options', xcto);
-      }
-
-      if (xfo) {
-        context.response.setHeader('X-Frame-Options', xfo);
-      }
-
-      if (xxp) {
-        context.response.setHeader('X-XSS-Protection', xxp);
-      }
     },
   };
 }
