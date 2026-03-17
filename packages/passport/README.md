@@ -5,6 +5,8 @@
 
 Strategy-agnostic auth execution layer for Konekti — routes any `AuthStrategy` through a generic `AuthGuard` into the request context.
 
+The current official docs/examples path uses bearer-token JWT auth as the recommended preset. Cookie-based auth, refresh-token policy, and account-linking policy remain application-level concerns today.
+
 ## See also
 
 - `../../docs/concepts/auth-and-jwt.md`

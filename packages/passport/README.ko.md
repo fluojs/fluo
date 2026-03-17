@@ -5,6 +5,8 @@
 
 Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 generic `AuthGuard`를 통해 request context에 연결한다.
 
+현재 공식 docs/examples 경로는 bearer-token JWT auth를 권장 preset으로 사용합니다. Cookie 기반 auth, refresh-token 정책, account-linking 정책은 현재 application-level concern으로 남아 있습니다.
+
 ## 관련 문서
 
 - `../../docs/concepts/auth-and-jwt.md`

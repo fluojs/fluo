@@ -39,6 +39,19 @@ HTTP 요청
 - `@konekti/jwt`는 내보낸 strategy adapter를 제외하고는 전송 계층에 독립적(transport-agnostic)입니다.
 - 애플리케이션 코드는 가급적 원시 JWT 페이로드보다 정규화된 principal을 사용해야 합니다.
 
+## 공식 기본 auth story
+
+현재 공식 docs/examples 경로는 `Authorization: Bearer <token>` 헤더를 통한 bearer-token auth와 JWT verification입니다.
+
+현재 framework-wide 기본값으로 표준화하지 않는 항목:
+
+- 기본 공식 preset으로서의 HttpOnly cookie auth
+- refresh-token lifecycle 및 rotation 정책
+- logout/revoke 시맨틱
+- identity source 간 account-linking 정책
+
+이 항목들은 제품이 더 넓은 공식 auth opinion을 정의하기 전까지 application-level policy choice로 남깁니다.
+
 ## related package docs
 
 - `packages/jwt/README.md`

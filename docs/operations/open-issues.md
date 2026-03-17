@@ -22,19 +22,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ### auth defaults and ecosystem expansion
 
-#### `#7` Define the official auth product policy defaults
-
-- what it covers
-  - bearer vs HttpOnly cookie default recommendation
-  - refresh-token lifecycle and rotation
-  - logout/revoke behavior
-  - account-linking policy across identity sources
-- why it matters
-  - examples, starter guidance, and public policy all depend on one coherent auth story
-- how to proceed
-  - keep the strategy-generic foundation
-  - choose one official default story for docs/examples before expanding permutations
-
 #### `#5` Track future support-matrix and data-layer expansion
 
 - what it covers
@@ -61,9 +48,8 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#7`
-2. `#5`
-3. `#8`
+1. `#5`
+2. `#8`
 
 ## maintenance rule
 

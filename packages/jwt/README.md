@@ -5,6 +5,8 @@
 
 HTTP-agnostic JWT token core — signs access tokens and verifies them to a normalized `JwtPrincipal`.
 
+The current official docs/examples path uses this package through bearer-token auth. Broader session/cookie policy remains outside the framework default story today.
+
 ## See also
 
 - `../../docs/concepts/auth-and-jwt.md`
