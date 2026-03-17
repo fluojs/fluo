@@ -165,6 +165,8 @@ Additional public exports also include helpers such as `KonektiFactory`, `create
 - `SIGTERM`/`SIGINT` → `app.close()` wiring
 - Request abort signal → `FrameworkRequest.signal` bridge
 
+The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in Node bootstrap options to override the default 10-second drain window.
+
 ## File reading order for contributors
 
 1. `packages/core/src/decorators.ts` — `@Module()`, `@Global()` metadata writers

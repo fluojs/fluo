@@ -54,6 +54,8 @@ The runtime owns the standard lifecycle hook sequence:
 - forced termination remains available after drain timeout
 - request-scoped cleanup must remain finally-safe
 
+In the runtime-owned Node adapter, the default drain window is 10 seconds. `bootstrapNodeApplication()` and `runNodeApplication()` expose `shutdownTimeoutMs` to override that window for test or deployment needs.
+
 ## integration implications
 
 - ORM clients should follow provider lifecycle
