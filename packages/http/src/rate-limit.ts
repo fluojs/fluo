@@ -16,16 +16,24 @@ function defaultKeyResolver(ctx: MiddlewareContext): string {
   return raw?.socket?.remoteAddress ?? 'unknown';
 }
 
-function evictExpiredEntries(store: Map<string, WindowEntry>, now: number): void {
+function evictExpiredEntries(store: Map<string, WindowEntry>, now: number): number {
+  let nextResetAt = Number.POSITIVE_INFINITY;
+
   for (const [key, entry] of store) {
     if (now >= entry.resetAt) {
       store.delete(key);
+      continue;
     }
+
+    nextResetAt = Math.min(nextResetAt, entry.resetAt);
   }
+
+  return nextResetAt;
 }
 
 export function createRateLimitMiddleware(options: RateLimitOptions): Middleware {
   const store = new Map<string, WindowEntry>();
+  let nextSweepAt = 0;
 
   return {
     async handle(context, next) {
@@ -34,11 +42,18 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
         : defaultKeyResolver(context);
 
       const now = Date.now();
+
+      if (now >= nextSweepAt) {
+        nextSweepAt = evictExpiredEntries(store, now);
+      }
+
       const entry = store.get(key);
 
       if (!entry || now >= entry.resetAt) {
-        evictExpiredEntries(store, now);
-        store.set(key, { count: 1, resetAt: now + options.windowMs });
+        const resetAt = now + options.windowMs;
+
+        store.set(key, { count: 1, resetAt });
+        nextSweepAt = Math.min(nextSweepAt, resetAt);
         return next();
       }
 
