@@ -20,19 +20,6 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 ## issue groups
 
-### transport expansion
-
-#### `#9` Explore future non-HTTP transport and gateway model
-
-- what it covers
-  - non-HTTP transport boundary model
-  - gateway/websocket execution model and package surface
-- why it matters
-  - future transports should reuse current framework contracts instead of diluting HTTP semantics prematurely
-- how to proceed
-  - sequence this after `#4`
-  - define package boundaries, lifecycle, and ownership before implementation
-
 ### auth defaults and ecosystem expansion
 
 #### `#7` Define the official auth product policy defaults
@@ -74,10 +61,9 @@ GitHub Issues remain the source of truth for planning. This document exists only
 
 If work starts now, the most efficient order is:
 
-1. `#9`
-2. `#7`
-3. `#5`
-4. `#8`
+1. `#7`
+2. `#5`
+3. `#8`
 
 ## maintenance rule
 

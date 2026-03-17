@@ -71,3 +71,15 @@ Concrete behavior lives in:
 - package boundaries matter more than phase history
 - starter apps should use runtime-owned bootstrap helpers rather than app-local infrastructure copies
 - package READMEs own package truth; `docs/` owns cross-package truth
+
+## transport boundary
+
+Konekti remains HTTP-first as the current public runtime story.
+
+Current public direction:
+
+- the official runtime and starter path assume HTTP request/response execution
+- adapter-agnostic framework types may exist, but they do not imply a supported non-HTTP product surface
+- gateway/websocket or other non-HTTP runtime productization is deferred to a future track
+
+This keeps transport expansion behind an explicit product decision rather than letting it emerge accidentally from helper or adapter internals.

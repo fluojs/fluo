@@ -71,3 +71,15 @@ bootstrap -> handler mapping -> app middleware -> route match -> module middlewa
 - 단계별 이력보다 패키지 경계가 더 중요합니다.
 - 시작 애플리케이션(starter apps)은 애플리케이션 로컬 인프라를 복제하는 대신 runtime 소유의 부트스트랩 헬퍼를 사용해야 합니다.
 - 패키지 README는 패키지의 진실을 담고, `docs/`는 패키지 간 교차되는 진실을 담습니다.
+
+## transport boundary
+
+Konekti는 현재 공개 runtime 스토리에서 HTTP-first를 유지합니다.
+
+현재 public 방향:
+
+- 공식 runtime과 starter 경로는 HTTP request/response 실행을 전제로 합니다.
+- adapter-agnostic framework type이 존재하더라도, 그것이 지원되는 non-HTTP product surface를 의미하지는 않습니다.
+- gateway/websocket 또는 기타 non-HTTP runtime productization은 future track으로 defer합니다.
+
+이렇게 해야 transport 확장이 helper나 adapter 내부 구현에서 우연히 드러나는 것이 아니라, 명시적인 제품 결정 뒤에 오도록 유지할 수 있습니다.
