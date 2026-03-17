@@ -5,6 +5,8 @@
 
 Konekti 애플리케이션 테스트를 위한 공식 모듈 구성 및 프로바이더 오버라이드 baseline입니다.
 
+현재 공개 계약은 의도적으로 최소 범위에 머뭅니다. 더 넓은 테스트 헬퍼와 더 풍부한 generated test template는 지금은 defer합니다.
+
 ## 관련 문서
 
 - `../../docs/operations/testing-guide.md`
