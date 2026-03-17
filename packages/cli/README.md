@@ -7,7 +7,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 `@konekti/cli` provides two top-level commands:
 
 - **`konekti new`** — scaffold a starter project with defaults → install dependencies
-- **`konekti generate <kind> <name>`** — create a single file (module, controller, service, repo, or dto) inside an existing project
+- **`konekti generate <kind> <name>`** — create a single file (module, controller, service, repository, request-dto, or response-dto) inside an existing project
 
 ## Installation
 
@@ -33,7 +33,8 @@ konekti generate module users
 konekti generate controller users
 konekti generate service users
 konekti generate repo users
-konekti generate dto create-user
+konekti generate request-dto create-user
+konekti generate response-dto user-profile
 ```
 
 Each generator produces a file (or files) with correctly kebab-cased names and PascalCase class names.
