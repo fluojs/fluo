@@ -25,9 +25,12 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 14. `concepts/transactions.md`
 15. `concepts/error-responses.md`
 16. `reference/package-surface.md`
-17. `reference/toolchain-contract-matrix.md`
-18. `operations/testing-guide.md`
-19. `operations/release-governance.md`
+17. `reference/support-matrix.md`
+18. `reference/glossary-and-mental-model.md`
+19. `reference/toolchain-contract-matrix.md`
+20. `reference/workspace-topology.md`
+21. `operations/testing-guide.md`
+22. `operations/release-governance.md`
 
 ## Sections
 
@@ -61,8 +64,11 @@ Use it for framework-level truth that spans multiple packages. Package-local API
 ### reference/
 
 - package surface
+- support matrix
+- glossary and mental model
 - naming conventions
 - toolchain contract
+- workspace topology
 - reusable example slices
 
 ## Authority Rules

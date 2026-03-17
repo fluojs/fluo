@@ -25,9 +25,12 @@
 14. `concepts/transactions.md`
 15. `concepts/error-responses.md`
 16. `reference/package-surface.md`
-17. `reference/toolchain-contract-matrix.md`
-18. `operations/testing-guide.md`
-19. `operations/release-governance.md`
+17. `reference/support-matrix.md`
+18. `reference/glossary-and-mental-model.md`
+19. `reference/toolchain-contract-matrix.md`
+20. `reference/workspace-topology.md`
+21. `operations/testing-guide.md`
+22. `operations/release-governance.md`
 
 ## 섹션 (Sections)
 
@@ -61,8 +64,11 @@
 ### reference/
 
 - 패키지 외부 인터페이스 (Surface)
+- 지원 매트릭스
+- 용어집과 멘탈 모델
 - 명명 규칙
 - 툴체인 계약
+- 워크스페이스 토폴로지
 - 재사용 가능한 예시 슬라이스
 
 ## 권한 규칙
