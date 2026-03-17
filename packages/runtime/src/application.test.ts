@@ -47,6 +47,17 @@ async function findAvailablePort(): Promise<number> {
   });
 }
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe('bootstrapApplication', () => {
   it('registers ConfigService as a bootstrap-level provider', async () => {
     @Inject([ConfigService])
@@ -372,6 +383,91 @@ describe('bootstrapApplication', () => {
     expect(loggerEvents).toContain(`log:KonektiFactory:Listening on http://localhost:${String(port)}`);
 
     await app.close();
+  });
+
+  it('waits for an in-flight request to finish before closing', async () => {
+    const requestStarted = createDeferred<void>();
+    const allowResponse = createDeferred<void>();
+
+    @Controller('/slow')
+    class SlowController {
+      @Get('/')
+      async getSlowResponse() {
+        requestStarted.resolve();
+        await allowResponse.promise;
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SlowController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      shutdownTimeoutMs: 1_000,
+    });
+
+    await app.listen();
+
+    const responsePromise = fetch(`http://127.0.0.1:${String(port)}/slow`);
+    await requestStarted.promise;
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(closeResolved).toBe(false);
+
+    allowResponse.resolve();
+
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+
+    await closePromise;
+    expect(closeResolved).toBe(true);
+  });
+
+  it('forces shutdown when the drain timeout expires', async () => {
+    const requestStarted = createDeferred<void>();
+
+    @Controller('/hang')
+    class HangingController {
+      @Get('/')
+      async getHangingResponse() {
+        requestStarted.resolve();
+        await new Promise(() => {});
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HangingController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      shutdownTimeoutMs: 50,
+    });
+
+    await app.listen();
+
+    const responsePromise = fetch(`http://127.0.0.1:${String(port)}/hang`);
+    await requestStarted.promise;
+
+    await expect(app.close()).resolves.toBeUndefined();
+    await expect(responsePromise).rejects.toThrow();
   });
 
   it('fails before listen when config validation rejects bootstrap config', async () => {
