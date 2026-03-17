@@ -39,6 +39,19 @@ HTTP request
 - `@konekti/jwt` stays transport-agnostic except for its exported strategy adapter
 - app code should prefer normalized principals over raw JWT payloads
 
+## official default auth story
+
+The current official docs/examples story is bearer-token auth with JWT verification through the `Authorization: Bearer <token>` header.
+
+Explicitly not standardized as framework-wide defaults today:
+
+- HttpOnly cookie auth as the primary official preset
+- refresh-token lifecycle and rotation policy
+- logout/revoke semantics
+- account-linking policy across identity sources
+
+Those remain application-level policy choices until the product defines a broader official auth opinion.
+
 ## related package docs
 
 - `packages/jwt/README.md`

@@ -5,6 +5,8 @@
 
 HTTP를 모르는 JWT token core — access token을 서명하고 검증하여 정규화된 `JwtPrincipal`을 반환한다.
 
+현재 공식 docs/examples 경로는 이 패키지를 bearer-token auth를 통해 사용합니다. 더 넓은 session/cookie 정책은 현재 framework default story 밖에 있습니다.
+
 ## 관련 문서
 
 - `../../docs/concepts/auth-and-jwt.md`
