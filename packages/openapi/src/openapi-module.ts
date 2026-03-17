@@ -1,4 +1,12 @@
-import { Controller, Get, NotFoundException, type HandlerDescriptor, type RequestContext } from '@konekti/http';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  createHandlerMapping,
+  type HandlerDescriptor,
+  type HandlerSource,
+  type RequestContext,
+} from '@konekti/http';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
@@ -9,6 +17,7 @@ export interface OpenApiModuleOptions {
   version: string;
   ui?: boolean;
   descriptors?: readonly HandlerDescriptor[];
+  sources?: readonly HandlerSource[];
 }
 
 function createSwaggerUiHtml(title: string): string {
@@ -37,8 +46,12 @@ export class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     const uiEnabled = options.ui ?? false;
 
+    if (options.descriptors && options.sources) {
+      throw new Error('OpenApiModule.forRoot() accepts either descriptors or sources, but not both.');
+    }
+
     const registry = new OpenApiHandlerRegistry();
-    registry.setDescriptors(options.descriptors ?? []);
+    registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
 
     const document = buildOpenApiDocument({
       descriptors: registry.getDescriptors(),
