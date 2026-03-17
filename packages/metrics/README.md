@@ -2,6 +2,11 @@
 
 Prometheus metrics endpoint for konekti applications. Mount `MetricsModule` to expose a `/metrics` scrape target with Node.js default metrics collected out of the box.
 
+## See also
+
+- `../../docs/concepts/observability.md`
+- `../../docs/concepts/http-runtime.md`
+
 ## Installation
 
 ```bash

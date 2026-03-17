@@ -2,6 +2,11 @@
 
 Konekti 애플리케이션을 위한 데코레이터 기반 OpenAPI 3.1.0 문서 생성. 컨트롤러와 핸들러에 어노테이션을 달고 `OpenApiModule`을 마운트하면 `/openapi.json`에서 스펙을 자동으로 서빙하고 선택적으로 `/docs`에서 Swagger UI도 제공합니다.
 
+## 관련 문서
+
+- `../../docs/concepts/openapi.md`
+- `../../docs/concepts/http-runtime.md`
+
 ## 설치
 
 ```bash

@@ -2,6 +2,11 @@
 
 Konekti 애플리케이션을 위한 Prometheus 메트릭 엔드포인트. `MetricsModule`을 마운트하면 Node.js 기본 메트릭이 자동으로 수집되고 `/metrics` 스크레이프 타겟이 노출됩니다.
 
+## 관련 문서
+
+- `../../docs/concepts/observability.md`
+- `../../docs/concepts/http-runtime.md`
+
 ## 설치
 
 ```bash

@@ -2,6 +2,11 @@
 
 Decorator-based OpenAPI 3.1.0 document generation for konekti applications. Annotate controllers and handlers, then mount `OpenApiModule` to automatically serve a spec at `/openapi.json` and an optional Swagger UI at `/docs`.
 
+## See also
+
+- `../../docs/concepts/openapi.md`
+- `../../docs/concepts/http-runtime.md`
+
 ## Installation
 
 ```bash
