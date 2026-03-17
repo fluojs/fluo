@@ -1,5 +1,8 @@
 # @konekti/jwt
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 HTTP-agnostic JWT token core — signs access tokens and verifies them to a normalized `JwtPrincipal`.
 
 ## See also

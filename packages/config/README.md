@@ -1,5 +1,8 @@
 # @konekti/config
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Reads, merges, validates, and exposes configuration as a typed runtime contract. Not just an `.env` reader.
 
 ## See also

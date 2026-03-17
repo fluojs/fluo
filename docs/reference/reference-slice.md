@@ -1,5 +1,8 @@
 # reference slice
 
+<p><strong><kbd>English</kbd></strong> <a href="./reference-slice.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This document captures one concrete request flow that later docs can reuse when they need an end-to-end example covering request DTO binding, validation, service boundaries, repository seams, and canonical responses.
 
 ## reference flow

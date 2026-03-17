@@ -1,5 +1,8 @@
 # @konekti/cli
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The canonical CLI for Konekti — bootstrap a new app and generate individual files within an existing one.
 
 ## See also

@@ -1,5 +1,8 @@
 # lifecycle and shutdown
 
+<p><strong><kbd>English</kbd></strong> <a href="./lifecycle-and-shutdown.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current application lifecycle model across bootstrap, readiness, and shutdown.
 
 See also:

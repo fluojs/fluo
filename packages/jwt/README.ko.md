@@ -1,5 +1,8 @@
 # @konekti/jwt
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 HTTP를 모르는 JWT token core — access token을 서명하고 검증하여 정규화된 `JwtPrincipal`을 반환한다.
 
 ## 관련 문서

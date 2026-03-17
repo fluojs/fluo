@@ -1,5 +1,8 @@
 # bootstrap paths
 
+<p><strong><kbd>English</kbd></strong> <a href="./bootstrap-paths.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This file documents the current supported ways to bootstrap and verify a Konekti app.
 
 ## public bootstrap path

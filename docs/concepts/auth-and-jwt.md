@@ -1,5 +1,8 @@
 # auth and jwt
 
+<p><strong><kbd>English</kbd></strong> <a href="./auth-and-jwt.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide explains how the current auth stack is split across Konekti packages.
 
 ## package boundary

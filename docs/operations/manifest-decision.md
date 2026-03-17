@@ -1,5 +1,8 @@
 # manifest strategy decision
 
+<p><strong><kbd>English</kbd></strong> <a href="./manifest-decision.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Compile-time manifest generation is still treated as an optimization decision gate, not the default architecture.
 
 ## current decision

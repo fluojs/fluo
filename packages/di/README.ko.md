@@ -1,5 +1,8 @@
 # @konekti/di
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 모든 Konekti 앱을 구동하는 최소 토큰 기반 DI 컨테이너.
 
 ## 관련 문서

@@ -1,5 +1,8 @@
 # testing guide
 
+<p><strong><kbd>English</kbd></strong> <a href="./testing-guide.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current testing and verification baseline for Konekti.
 
 ## commands

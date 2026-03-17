@@ -1,5 +1,8 @@
 # @konekti/metrics
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 Konekti 애플리케이션을 위한 Prometheus 메트릭 엔드포인트. `MetricsModule`을 마운트하면 Node.js 기본 메트릭이 자동으로 수집되고 `/metrics` 스크레이프 타겟이 노출됩니다.
 
 ## 관련 문서

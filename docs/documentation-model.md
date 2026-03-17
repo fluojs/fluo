@@ -1,5 +1,8 @@
 # documentation model
 
+<p><strong><kbd>English</kbd></strong> <a href="./documentation-model.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This file defines the target documentation model for `konekti` after retiring phase-oriented planning docs as an active source of truth.
 
 ## goals

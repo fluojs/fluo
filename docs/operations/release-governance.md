@@ -1,5 +1,8 @@
 # release governance
 
+<p><strong><kbd>English</kbd></strong> <a href="./release-governance.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This file describes the current public release and governance expectations for Konekti.
 
 ## intended publish surface

@@ -1,5 +1,8 @@
 # error responses
 
+<p><strong><kbd>English</kbd></strong> <a href="./error-responses.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the canonical error envelope and exposure policy across the HTTP runtime.
 
 See also:

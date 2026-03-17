@@ -1,5 +1,8 @@
 # naming and file conventions
 
+<p><strong><kbd>English</kbd></strong> <a href="./naming-and-file-conventions.ko.md"><kbd>한국어</kbd></a></p>
+
+
 ## generator naming
 
 Default generator naming follows the current CLI suffix rules.

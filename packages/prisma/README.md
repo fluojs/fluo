@@ -1,5 +1,8 @@
 # @konekti/prisma
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Connect Prisma to the Konekti lifecycle and transaction model — without hiding Prisma itself.
 
 ## See also

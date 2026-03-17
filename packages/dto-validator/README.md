@@ -1,5 +1,8 @@
 # @konekti/dto-validator
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Decorator-based DTO validation for TypeScript. Declare validation rules directly on class fields and get structured, typed errors — no schema files, no manual checks.
 
 ## See also

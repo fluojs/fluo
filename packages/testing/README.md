@@ -1,5 +1,8 @@
 # @konekti/testing
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The official module construction and provider override baseline for testing Konekti applications.
 
 ## See also

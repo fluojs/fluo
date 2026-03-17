@@ -1,5 +1,8 @@
 # quick start
 
+<p><strong><kbd>English</kbd></strong> <a href="./quick-start.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current public bootstrap path for Konekti.
 
 ## canonical bootstrap path

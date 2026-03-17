@@ -1,5 +1,8 @@
 # @konekti/core
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The shared foundation layer of Konekti — base types, common error classes, and metadata helpers used by every other package.
 
 ## See also

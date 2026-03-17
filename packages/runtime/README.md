@@ -1,5 +1,8 @@
 # @konekti/runtime
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The assembly layer that compiles a module graph and wires config, DI, and HTTP into a runnable application shell.
 
 ## See also

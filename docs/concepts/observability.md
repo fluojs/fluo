@@ -1,5 +1,8 @@
 # observability
 
+<p><strong><kbd>English</kbd></strong> <a href="./observability.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current observability model across logging, correlation IDs, health/readiness, and metrics exposure.
 
 See also:

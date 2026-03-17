@@ -1,5 +1,8 @@
 # transactions
 
+<p><strong><kbd>English</kbd></strong> <a href="./transactions.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current transaction semantics across the runtime and official ORM integrations.
 
 See also:

@@ -1,5 +1,8 @@
 # @konekti/dto-validator
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 데코레이터 기반 TypeScript DTO 검증. 클래스 필드에 검증 규칙을 선언적으로 적고 구조화된 타입 에러를 얻습니다 — 별도 스키마 파일도, 수동 검사도 없습니다.
 
 ## 관련 문서

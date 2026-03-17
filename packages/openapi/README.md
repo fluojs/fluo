@@ -1,5 +1,8 @@
 # @konekti/openapi
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Decorator-based OpenAPI 3.1.0 document generation for konekti applications. Annotate controllers and handlers, then mount `OpenApiModule` to automatically serve a spec at `/openapi.json` and an optional Swagger UI at `/docs`.
 
 ## See also

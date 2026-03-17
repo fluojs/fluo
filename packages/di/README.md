@@ -1,5 +1,8 @@
 # @konekti/di
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The minimal token-based DI container that powers every Konekti app.
 
 ## See also

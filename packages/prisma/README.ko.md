@@ -1,5 +1,8 @@
 # @konekti/prisma
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 Prisma를 Konekti의 라이프사이클과 트랜잭션 모델에 연결합니다 — Prisma 자체는 숨기지 않고요.
 
 ## 관련 문서

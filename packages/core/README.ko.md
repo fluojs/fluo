@@ -1,5 +1,8 @@
 # @konekti/core
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 Konekti의 공유 기반 레이어 — 다른 모든 패키지가 사용하는 기본 타입, 공통 에러 클래스, 메타데이터 헬퍼.
 
 ## 관련 문서

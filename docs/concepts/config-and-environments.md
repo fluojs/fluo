@@ -1,5 +1,8 @@
 # config and environments
 
+<p><strong><kbd>English</kbd></strong> <a href="./config-and-environments.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current configuration contract across `@konekti/config`, runtime bootstrap, and package integrations.
 
 See also:

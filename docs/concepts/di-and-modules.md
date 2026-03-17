@@ -1,5 +1,8 @@
 # di and modules
 
+<p><strong><kbd>English</kbd></strong> <a href="./di-and-modules.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current dependency-injection and module model across `@konekti/core`, `@konekti/di`, and `@konekti/runtime`.
 
 See also:

@@ -1,5 +1,8 @@
 # generator workflow
 
+<p><strong><kbd>English</kbd></strong> <a href="./generator-workflow.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This file describes the current CLI generator surface.
 
 ## command shape

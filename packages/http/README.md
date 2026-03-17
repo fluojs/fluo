@@ -1,5 +1,8 @@
 # @konekti/http
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 The HTTP execution layer that turns route metadata into a request processing chain.
 
 ## See also

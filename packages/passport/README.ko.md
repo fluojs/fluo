@@ -1,5 +1,8 @@
 # @konekti/passport
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 generic `AuthGuard`를 통해 request context에 연결한다.
 
 ## 관련 문서

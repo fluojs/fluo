@@ -1,5 +1,8 @@
 # decorators and metadata
 
+<p><strong><kbd>English</kbd></strong> <a href="./decorators-and-metadata.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current decorator and metadata model across `@konekti/core`, `@konekti/http`, and `@konekti/dto-validator`.
 
 See also:

@@ -1,5 +1,8 @@
 # security middleware
 
+<p><strong><kbd>English</kbd></strong> <a href="./security-middleware.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current transport-level security middleware model in `@konekti/http`.
 
 See also:

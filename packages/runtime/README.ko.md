@@ -1,5 +1,8 @@
 # @konekti/runtime
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 module graph을 컴파일하고 config, DI, HTTP를 실행 가능한 application shell로 연결하는 조립 레이어.
 
 ## 관련 문서

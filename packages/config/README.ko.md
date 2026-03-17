@@ -1,5 +1,8 @@
 # @konekti/config
 
+<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+
 여러 설정 소스를 읽고, 병합하고, 검증해 타입이 있는 런타임 계약으로 만듭니다. 단순한 `.env` 리더가 아닙니다.
 
 ## 관련 문서

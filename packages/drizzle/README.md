@@ -1,5 +1,8 @@
 # @konekti/drizzle
 
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Official Drizzle integration baseline for Konekti — wraps a Drizzle database handle with a transaction-aware `current()` seam and an optional dispose hook.
 
 ## See also

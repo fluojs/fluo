@@ -1,5 +1,8 @@
 # http runtime
 
+<p><strong><kbd>English</kbd></strong> <a href="./http-runtime.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current HTTP execution model across `@konekti/http`, `@konekti/runtime`, auth packages, and the generated starter app.
 
 See also:

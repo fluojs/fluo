@@ -1,5 +1,8 @@
 # openapi
 
+<p><strong><kbd>English</kbd></strong> <a href="./openapi.ko.md"><kbd>한국어</kbd></a></p>
+
+
 This guide describes the current OpenAPI generation model across `@konekti/openapi`, `@konekti/http`, and request DTO metadata.
 
 See also:

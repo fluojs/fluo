@@ -1,5 +1,8 @@
 # architecture overview
 
+<p><strong><kbd>English</kbd></strong> <a href="./architecture-overview.ko.md"><kbd>한국어</kbd></a></p>
+
+
 Konekti keeps the public surface intentionally narrow and pushes most behavior behind stable decorators, explicit package boundaries, and a CLI-first bootstrap flow.
 
 See also:
