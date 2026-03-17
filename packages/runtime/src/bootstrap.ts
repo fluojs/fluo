@@ -402,7 +402,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 }
 
 /**
- * Phase 2A 기준 애플리케이션 라이프사이클과 상태 전이를 담당하는 최소 런타임 셸이다.
+ * 애플리케이션 라이프사이클과 상태 전이를 담당하는 최소 런타임 셸이다.
  */
 class KonektiApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
@@ -596,7 +596,7 @@ function logRouteMappings(
 
 /**
  * config 로딩, bootstrap-level provider 등록, 모듈 부트스트랩, lifecycle hook 실행까지를 묶어
- * Phase 2A 애플리케이션 셸을 만든다.
+ * 런타임 애플리케이션 셸을 만든다.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
