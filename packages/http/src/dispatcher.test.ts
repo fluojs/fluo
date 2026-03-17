@@ -414,6 +414,35 @@ describe('dispatcher runtime', () => {
     });
   });
 
+  it('continues handler execution when a guard returns true explicitly', async () => {
+    class PassGuard {
+      canActivate() {
+        return true;
+      }
+    }
+
+    @Controller('/secure')
+    class SecureController {
+      @Get('/resource')
+      @UseGuard(PassGuard)
+      getSecure() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(PassGuard, SecureController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: SecureController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/secure/resource'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+  });
+
   it('short-circuits handler execution when a guard commits redirect response', async () => {
     const events: string[] = [];
 
