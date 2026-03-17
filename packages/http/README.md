@@ -125,6 +125,10 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 
 Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
+### Rate limiting caveat
+
+`createRateLimitMiddleware()` uses an in-process memory store. That makes it suitable for local development, tests, and single-process deployments, but it is not a shared/global limiter across clustered Node workers or multiple app instances. If you need cross-instance enforcement today, place the shared limit at a gateway/proxy layer or add an application-level shared store in front of Konekti.
+
 ### Success status defaults
 
 - `GET`, `PUT`, `PATCH`, `HEAD` default to `200`
@@ -142,6 +146,7 @@ Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatu
 | `ForbiddenException` | 403 |
 | `NotFoundException` | 404 |
 | `ConflictException` | 409 |
+| `PayloadTooLargeException` | 413 |
 | `InternalServerException` | 500 |
 
 ## Architecture

@@ -21,6 +21,7 @@ See also:
 - can resolve a request key through a custom resolver
 - returns `429 Too Many Requests` with `Retry-After` when the limit is exceeded
 - uses an in-process store by default, so it is not cluster-safe without a shared adapter
+- should be treated as single-process protection unless you place a shared limiter at the edge or in app-owned infrastructure
 
 ### security headers
 
