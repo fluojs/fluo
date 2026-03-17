@@ -82,4 +82,24 @@ describe('createRateLimitMiddleware', () => {
     expect(firstContext.response.statusCode).toBe(200);
     expect(secondContext.response.statusCode).toBe(200);
   });
+
+  it('uses an independent in-process store per middleware instance', async () => {
+    const first = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const second = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const context = createContext();
+    const next = vi.fn(async () => {});
+
+    await first.handle(context, next);
+    await first.handle(context, next);
+
+    expect(context.response.statusCode).toBe(429);
+
+    context.response.statusCode = 200;
+    context.response.committed = false;
+
+    await second.handle(context, next);
+
+    expect(context.response.statusCode).toBe(200);
+    expect(next).toHaveBeenCalledTimes(2);
+  });
 });

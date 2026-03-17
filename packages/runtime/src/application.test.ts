@@ -813,4 +813,57 @@ describe('bootstrapApplication', () => {
 
     await app.close();
   });
+
+  it('aborts the request signal when the response is closed before the handler commits', async () => {
+    const handlerReached = createDeferred();
+    const signalCapture = createDeferred<AbortSignal>();
+
+    @Controller('/slow')
+    class SlowController {
+      @Get('/')
+      async get(_input: unknown, ctx: RequestContext) {
+        signalCapture.resolve(ctx.request.signal!);
+        handlerReached.resolve();
+        await new Promise<void>(() => {});
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [SlowController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const net = await import('node:net');
+    const socket = net.createConnection(port, '127.0.0.1');
+
+    await new Promise<void>((resolve) => socket.once('connect', resolve));
+
+    socket.write('GET /slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n');
+
+    await handlerReached.promise;
+    socket.destroy();
+
+    const signal = await signalCapture.promise;
+
+    await new Promise<void>((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    });
+
+    expect(signal.aborted).toBe(true);
+
+    await app.close();
+  });
 });
