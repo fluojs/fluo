@@ -20,22 +20,31 @@ Generated starter projects expose the same commands through the selected package
 
 ## official testing API
 
-`@konekti/testing` currently provides the minimal public testing surface:
+`@konekti/testing` currently provides a minimal but practical public testing surface:
 
 - `createTestingModule(...)`
 - provider override support
-- predictable cleanup through the bootstrap/runtime lifecycle
+- `TestingModuleRef.resolve(...)`
+- `TestingModuleRef.dispatch(...)`
+- `createTestApp(...)` for end-to-end style request dispatch
+- `TestApp.dispatch(...)` for direct request execution without fluent builder
+- fluent request building with request principal injection
+- predictable cleanup through `createTestApp`'s `close()` lifecycle path
 
 Current public boundary:
 
 - keep `@konekti/testing` as the minimal public testing baseline
-- do not expand the public testing API surface now
+- keep the surface focused on module compilation, dispatch, and lightweight request helpers
 - do not add richer generated test-template families now
 
 Primary evidence:
 
 - `packages/testing/src/module.ts`
+- `packages/testing/src/app.ts`
+- `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/README.md`
+- `packages/testing/README.ko.md`
 
 ## runtime and slice coverage
 
