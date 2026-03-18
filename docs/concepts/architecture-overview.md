@@ -32,6 +32,7 @@ See also:
 
 ### data integrations
 
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 
@@ -50,6 +51,7 @@ See also:
 - `@konekti/passport` owns generic auth strategy registration and guard wiring
 - `@konekti/openapi` reads route and DTO metadata to produce documents
 - `@konekti/metrics` exposes Prometheus metrics through runtime-owned HTTP routes
+- `@konekti/redis` owns the shared Redis client lifecycle and DI token surface
 
 ## request execution path
 

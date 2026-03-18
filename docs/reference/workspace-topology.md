@@ -31,6 +31,7 @@ The following workspaces map to public package surfaces:
 - `packages/passport`
 - `packages/openapi`
 - `packages/metrics`
+- `packages/redis`
 - `packages/prisma`
 - `packages/drizzle`
 - `packages/cli`

@@ -15,6 +15,7 @@ This file lists the current public package family at a glance.
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/openapi`
@@ -34,7 +35,7 @@ This file lists the current public package family at a glance.
 - `@konekti/passport` -> auth strategy registry and generic auth guard wiring
 - `@konekti/openapi` -> document generation and metadata-only OpenAPI decorators
 - `@konekti/metrics` -> Prometheus metrics exposure
-- `@konekti/prisma` / `@konekti/drizzle` -> data integration families
+- `@konekti/redis` / `@konekti/prisma` / `@konekti/drizzle` -> data integration families
 - `@konekti/testing` -> testing module and helper surface
 - `@konekti/cli` -> app bootstrap and file generation commands
 

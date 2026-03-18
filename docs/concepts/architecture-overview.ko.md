@@ -32,6 +32,7 @@ Konekti는 공개되는 인터페이스를 의도적으로 좁게 유지하며, 
 
 ### data integrations
 
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 
@@ -50,6 +51,7 @@ Konekti는 공개되는 인터페이스를 의도적으로 좁게 유지하며, 
 - `@konekti/passport`: 범용 인증 strategy 등록 및 guard 연결을 소유합니다.
 - `@konekti/openapi`: route 및 DTO metadata를 읽어 문서를 생성합니다.
 - `@konekti/metrics`: runtime이 소유한 HTTP route를 통해 Prometheus 메트릭을 노출합니다.
+- `@konekti/redis`: 공유 Redis client lifecycle과 DI 토큰 표면을 소유합니다.
 
 ## request execution path
 
