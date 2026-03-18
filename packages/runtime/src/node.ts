@@ -32,6 +32,7 @@ declare module '@konekti/http' {
 export interface NodeHttpAdapterOptions {
   maxBodySize?: number;
   port?: number;
+  rawBody?: boolean;
   retryDelayMs?: number;
   retryLimit?: number;
   shutdownTimeoutMs?: number;
@@ -51,6 +52,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
   port?: number;
+  rawBody?: boolean;
   retryDelayMs?: number;
   retryLimit?: number;
   shutdownTimeoutMs?: number;
@@ -73,6 +75,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly compression = false,
     private readonly multipartOptions?: MultipartOptions,
     private readonly maxBodySize = 1 * 1024 * 1024,
+    private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {}
 
@@ -82,7 +85,13 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
       const signal = createRequestSignal(response);
 
       try {
-        const frameworkRequest = await createFrameworkRequest(request, signal, this.multipartOptions, this.maxBodySize);
+        const frameworkRequest = await createFrameworkRequest(
+          request,
+          signal,
+          this.multipartOptions,
+          this.maxBodySize,
+          this.preserveRawBody,
+        );
 
         await dispatcher.dispatch(frameworkRequest, frameworkResponse);
 
@@ -190,6 +199,7 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     compression,
     multipartOptions,
     options.maxBodySize,
+    options.rawBody,
     options.shutdownTimeoutMs,
   );
 }
@@ -342,6 +352,7 @@ async function createFrameworkRequest(
   signal: AbortSignal,
   multipartOptions?: MultipartOptions,
   maxBodySize = 1 * 1024 * 1024,
+  preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const headers = Object.fromEntries(
@@ -353,6 +364,7 @@ async function createFrameworkRequest(
 
   let body: unknown;
   let files: UploadedFile[] | undefined;
+  let rawBody: Uint8Array | undefined;
 
   if (isMultipart) {
     const result = await parseMultipart(request, multipartOptions);
@@ -360,7 +372,9 @@ async function createFrameworkRequest(
     body = result.fields;
     files = result.files;
   } else {
-    body = await readRequestBody(request, headers['content-type'], maxBodySize);
+    const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
+    body = bodyResult.body;
+    rawBody = bodyResult.rawBody;
   }
 
   const frameworkRequest: FrameworkRequest = {
@@ -378,6 +392,10 @@ async function createFrameworkRequest(
 
   if (files) {
     frameworkRequest.files = files;
+  }
+
+  if (rawBody) {
+    frameworkRequest.rawBody = rawBody;
   }
 
   return frameworkRequest;
@@ -530,7 +548,12 @@ async function closeFromSignal(app: Application, logger: ApplicationLogger, sign
   }
 }
 
-async function readRequestBody(request: import('node:http').IncomingMessage, contentType: string | string[] | undefined, maxBodySize = 1 * 1024 * 1024): Promise<unknown> {
+async function readRequestBody(
+  request: import('node:http').IncomingMessage,
+  contentType: string | string[] | undefined,
+  maxBodySize = 1 * 1024 * 1024,
+  preserveRawBody = false,
+): Promise<{ body: unknown; rawBody?: Uint8Array }> {
   const chunks: Uint8Array[] = [];
   let totalSize = 0;
 
@@ -546,26 +569,33 @@ async function readRequestBody(request: import('node:http').IncomingMessage, con
   }
 
   if (chunks.length === 0) {
-    return undefined;
+    return { body: undefined };
   }
 
-  const bodyText = Buffer.concat(chunks).toString('utf8');
+  const rawBody = Buffer.concat(chunks);
+  const bodyText = rawBody.toString('utf8');
 
   if (bodyText.length === 0) {
-    return undefined;
+    return { body: undefined, rawBody: preserveRawBody ? rawBody : undefined };
   }
 
   const primaryContentType = Array.isArray(contentType) ? contentType[0] : contentType;
 
   if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
     try {
-      return JSON.parse(bodyText) as unknown;
+      return {
+        body: JSON.parse(bodyText) as unknown,
+        rawBody: preserveRawBody ? rawBody : undefined,
+      };
     } catch {
       throw new BadRequestException('Request body contains invalid JSON.');
     }
   }
 
-  return bodyText;
+  return {
+    body: bodyText,
+    rawBody: preserveRawBody ? rawBody : undefined,
+  };
 }
 
 function resolveNodePort(value: number | undefined): number {
