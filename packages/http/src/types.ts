@@ -13,6 +13,7 @@ export interface FrameworkRequest {
   cookies: Readonly<Record<string, string | undefined>>;
   params: Readonly<Record<string, string>>;
   body?: unknown;
+  rawBody?: Uint8Array;
   raw: unknown;
   signal?: AbortSignal;
 }

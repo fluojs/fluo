@@ -74,6 +74,35 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Raw webhook body (opt-in)
+
+```typescript
+import { Controller, Post, type RequestContext } from '@konekti/http';
+import { runNodeApplication } from '@konekti/runtime';
+
+@Controller('/webhooks')
+class WebhookController {
+  @Post('/stripe')
+  verify(_input: undefined, context: RequestContext) {
+    const rawBody = context.request.rawBody;
+
+    if (!rawBody) {
+      throw new Error('rawBody must be enabled for signature verification.');
+    }
+
+    const signature = context.request.headers['stripe-signature'];
+    return verifyStripeSignature(rawBody, signature);
+  }
+}
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  rawBody: true,
+});
+```
+
+`rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The Node adapter currently applies this to non-multipart bodies such as JSON and text, and leaves `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
+
 ### Module with imports and exports
 
 ```typescript

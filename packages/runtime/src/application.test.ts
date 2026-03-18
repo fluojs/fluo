@@ -199,6 +199,157 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('preserves the raw request body for JSON and text requests when enabled', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/json')
+      handleJson(_input: undefined, context: RequestContext) {
+        return {
+          parsed: context.request.body,
+          raw: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+        };
+      }
+
+      @Post('/text')
+      handleText(_input: undefined, context: RequestContext) {
+        return {
+          parsed: context.request.body,
+          raw: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      rawBody: true,
+    });
+
+    await app.listen();
+
+    const [jsonResponse, textResponse] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+        body: JSON.stringify({ provider: 'stripe' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+      fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+        body: 'ping=1',
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+        method: 'POST',
+      }),
+    ]);
+
+    expect(jsonResponse.status).toBe(201);
+    await expect(jsonResponse.json()).resolves.toEqual({
+      parsed: { provider: 'stripe' },
+      raw: '{"provider":"stripe"}',
+    });
+
+    expect(textResponse.status).toBe(201);
+    await expect(textResponse.json()).resolves.toEqual({
+      parsed: 'ping=1',
+      raw: 'ping=1',
+    });
+
+    await app.close();
+  });
+
+  it('does not expose rawBody unless the Node adapter option is enabled', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/json')
+      handleJson(_input: undefined, context: RequestContext) {
+        return {
+          hasRawBody: context.request.rawBody !== undefined,
+          parsed: context.request.body,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+      body: JSON.stringify({ provider: 'stripe' }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      hasRawBody: false,
+      parsed: { provider: 'stripe' },
+    });
+
+    await app.close();
+  });
+
+  it('does not preserve rawBody for multipart requests', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          fileCount: context.request.files?.length ?? 0,
+          hasRawBody: context.request.rawBody !== undefined,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      rawBody: true,
+    });
+
+    await app.listen();
+
+    const form = new FormData();
+    form.set('name', 'Ada');
+    form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+      body: form,
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      body: { name: 'Ada' },
+      fileCount: 1,
+      hasRawBody: false,
+    });
+
+    await app.close();
+  });
+
   it('serves text and HTML bodies over the Node adapter without JSON quoting', async () => {
     const docsHtml = '<!doctype html><html><body>Docs</body></html>';
     const metricsBody = 'process_cpu_seconds_total 1';
