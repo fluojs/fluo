@@ -145,7 +145,9 @@ Multiple `@ApiResponse` decorators can be stacked on the same handler.
 
 ### Mapped DTO helpers from `@konekti/http`
 
-OpenAPI generation preserves metadata from `PickType()`, `OmitType()`, and `IntersectionType()` request DTOs, so derived request bodies and parameter schemas continue to render from the resolved DTO class.
+OpenAPI generation preserves metadata from `PickType()`, `OmitType()`, `IntersectionType()`, and `PartialType()` request DTOs, so derived request bodies and parameter schemas continue to render from the resolved DTO class.
+
+`PartialType()` also changes required semantics: request bodies and non-path parameters become optional in the generated OpenAPI document, while path parameters stay required because the OpenAPI spec requires that.
 
 ### `@Version(value)` from `@konekti/http`
 

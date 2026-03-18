@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
-import { Controller, Get, IntersectionType, OmitType, PickType, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
-import { FromBody, FromCookie, RequestDto } from '@konekti/http';
+import { Controller, Get, IntersectionType, OmitType, PartialType, PickType, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
+import { FromBody, FromCookie, FromQuery, RequestDto } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag } from './decorators.js';
@@ -572,5 +572,115 @@ describe('OpenApiModule', () => {
         }),
       }),
     );
+  });
+
+  it('emits optional request body and parameter semantics for PartialType DTOs', async () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(1)
+      name = '';
+
+      @FromQuery('role')
+      @IsString()
+      role = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+
+    @Controller('/partial')
+    class PartialController {
+      @RequestDto(PartialUpdateUserRequest)
+      @Post('/users')
+      updateUser() {
+        return { ok: true };
+      }
+
+      @RequestDto(PartialUpdateUserRequest)
+      @Get('/users')
+      filterUsers() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: PartialController }],
+      title: 'Partial API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [PartialController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            UpdateUserRequestPartialTypeRequestBody: {
+              additionalProperties: false,
+              properties: {
+                name: {
+                  minLength: 1,
+                  type: 'string',
+                },
+              },
+              type: 'object',
+            },
+          }),
+        }),
+        paths: expect.objectContaining({
+          '/partial/users': expect.objectContaining({
+            get: expect.objectContaining({
+              parameters: [
+                {
+                  in: 'query',
+                  name: 'role',
+                  required: false,
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              ],
+            }),
+            post: expect.objectContaining({
+              parameters: [
+                {
+                  in: 'query',
+                  name: 'role',
+                  required: false,
+                  schema: {
+                    type: 'string',
+                  },
+                },
+              ],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/UpdateUserRequestPartialTypeRequestBody',
+                    },
+                  },
+                },
+              },
+            }),
+          }),
+        }),
+      }),
+    );
+
+    expect((response.body as { paths: Record<string, { post?: { requestBody?: { required?: boolean } } }> }).paths['/partial/users']?.post?.requestBody?.required).toBeUndefined();
   });
 });

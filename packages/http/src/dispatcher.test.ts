@@ -27,7 +27,7 @@ import {
 } from '@konekti/http';
 import { IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 
-import { IntersectionType, OmitType, PickType } from './mapped-types.js';
+import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { forRoutes, runMiddlewareChain } from './middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
@@ -735,6 +735,107 @@ describe('dispatcher runtime', () => {
         message: 'Request body contains unsupported fields.',
         meta: undefined,
         requestId: 'req-mapped-pick-400',
+        status: 400,
+      },
+    });
+  });
+
+  it('binds PartialType DTOs with optional runtime semantics', async () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
+      name = '';
+
+      @FromBody('email')
+      @IsString()
+      email = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+
+    @Controller('/partial')
+    class PartialController {
+      @RequestDto(PartialUpdateUserRequest)
+      @Post('/users')
+      updateUser(input: InstanceType<typeof PartialUpdateUserRequest>) {
+        return input;
+      }
+    }
+
+    const root = new Container().register(PartialController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: PartialController }]),
+      rootContainer: root,
+    });
+
+    const emptyResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: {},
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      emptyResponse,
+    );
+    expect(emptyResponse.statusCode).toBe(201);
+    expect(emptyResponse.body).toEqual({});
+
+    const partialResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      partialResponse,
+    );
+    expect(partialResponse.statusCode).toBe(201);
+    expect(partialResponse.body).toEqual({ name: 'Ada' });
+
+    const validationErrorResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: '' },
+        cookies: {},
+        headers: { 'x-request-id': 'req-partial-400' },
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      validationErrorResponse,
+    );
+
+    expect(validationErrorResponse.statusCode).toBe(400);
+    expect(validationErrorResponse.body).toEqual({
+      error: {
+        code: 'BAD_REQUEST',
+        details: [
+          {
+            code: 'NAME_MIN',
+            field: 'name',
+            message: 'name must be at least 2 chars',
+            source: 'body',
+          },
+        ],
+        message: 'Validation failed.',
+        meta: undefined,
+        requestId: 'req-partial-400',
         status: 400,
       },
     });

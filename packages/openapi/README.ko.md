@@ -146,7 +146,9 @@ getProduct() { ... }
 
 ### `@konekti/http`의 mapped DTO helper
 
-OpenAPI 생성은 `PickType()`, `OmitType()`, `IntersectionType()` request DTO의 metadata도 보존하므로, 파생 request body와 parameter schema가 해결된 DTO 클래스를 기준으로 계속 생성됩니다.
+OpenAPI 생성은 `PickType()`, `OmitType()`, `IntersectionType()`, `PartialType()` request DTO의 metadata도 보존하므로, 파생 request body와 parameter schema가 해결된 DTO 클래스를 기준으로 계속 생성됩니다.
+
+`PartialType()`은 required semantics도 함께 바꿉니다. 따라서 request body와 path가 아닌 parameter는 생성된 OpenAPI 문서에서 optional이 되지만, path parameter는 OpenAPI 스펙상 required여야 하므로 계속 required로 남습니다.
 
 ### `@konekti/http`의 `@Version(value)`
 

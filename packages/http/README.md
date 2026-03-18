@@ -17,7 +17,7 @@ The HTTP execution layer that turns route metadata into a request processing cha
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
 - Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
-- Mapped DTO helpers (`PickType`, `OmitType`, `IntersectionType`)
+- Mapped DTO helpers (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
 - Routing table construction (`createHandlerMapping`)
 - Request DTO binding and validation
 - The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
@@ -134,7 +134,7 @@ class UsersV1Controller {
 Konekti supports metadata-preserving mapped DTO helpers for common request-shape derivation.
 
 ```typescript
-import { IntersectionType, OmitType, PickType } from '@konekti/http';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/http';
 
 class CreateUserRequest {
   @FromBody('name')
@@ -152,12 +152,16 @@ class AddressRequest {
 const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
 const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
 const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+const UpdateUserRequest = PartialType(CreateUserRequest);
 ```
 
 - `PickType()` keeps only the selected DTO fields and their metadata
 - `OmitType()` removes selected DTO fields while preserving the rest of the metadata
 - `IntersectionType()` composes metadata from multiple DTO bases into one derived DTO
+- `PartialType()` preserves the DTO shape while making inherited fields optional for request binding, validation, and non-path OpenAPI required semantics
 - derived DTOs continue to work with `RequestDto(...)`, runtime binding, validation, and OpenAPI generation
+
+`PartialType()` is intentionally separate from the other mapped helpers because it changes field optionality semantics instead of only composing metadata. Path parameters remain required in generated OpenAPI parameters because the spec requires path params to be required.
 
 ### DTO binding decorators
 
@@ -181,7 +185,7 @@ const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, Address
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
 ### Rate limiting caveat
 

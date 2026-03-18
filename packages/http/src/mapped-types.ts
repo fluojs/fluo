@@ -58,6 +58,12 @@ function copyDtoMetadata(
   }
 }
 
+function hasOptionalRule(source: DtoConstructor, propertyKey: MetadataPropertyKey): boolean {
+  return getDtoValidationSchema(source)
+    .find((entry) => entry.propertyKey === propertyKey)
+    ?.rules.some((rule) => rule.kind === 'optional') ?? false;
+}
+
 export function PickType<TBase extends DtoConstructor, TKey extends Extract<keyof InstanceType<TBase>, string>>(
   BaseDto: TBase,
   keys: readonly TKey[],
@@ -119,4 +125,27 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
   }
 
   return IntersectionDto as DtoConstructor<IntersectionInstance<TBaseDtos>>;
+}
+
+export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoConstructor<Partial<InstanceType<TBase>>> {
+  const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (_instance) => {});
+
+  for (const entry of getDtoBindingSchema(BaseDto)) {
+    defineDtoFieldBindingMetadata(PartialDto.prototype, entry.propertyKey, {
+      ...entry.metadata,
+      optional: true,
+    });
+  }
+
+  for (const entry of getDtoValidationSchema(BaseDto)) {
+    for (const rule of entry.rules) {
+      appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, rule);
+    }
+
+    if (!hasOptionalRule(BaseDto, entry.propertyKey)) {
+      appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, { kind: 'optional' });
+    }
+  }
+
+  return PartialDto as DtoConstructor<Partial<InstanceType<TBase>>>;
 }
