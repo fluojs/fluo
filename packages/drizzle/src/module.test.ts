@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
+import { Global, Inject, Module } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
-import { createDrizzleModule, DrizzleDatabase } from './index.js';
+import { createDrizzleModule, createDrizzleModuleAsync, DrizzleDatabase } from './index.js';
 
 describe('@konekti/drizzle', () => {
   it('exposes current database handles, transaction callbacks, and optional disposal', async () => {
@@ -149,5 +149,88 @@ describe('@konekti/drizzle', () => {
       'transaction:end',
       'dispose',
     ]);
+  });
+});
+
+describe('createDrizzleModuleAsync', () => {
+  function makeFakeDatabase() {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    const database = {
+      async transaction<T>(callback: (tx: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+        const result = await callback(transactionDatabase);
+        events.push('transaction:end');
+        return result;
+      },
+    };
+    return { database, events };
+  }
+
+  it('factory receives injected token and resolves DrizzleDatabase', async () => {
+    const { database, events } = makeFakeDatabase();
+
+    class ConfigService {
+      readonly url = 'postgres://localhost/test';
+    }
+
+    @Global()
+    @Module({ providers: [ConfigService], exports: [ConfigService] })
+    class ConfigModule {}
+
+    const factory = vi.fn().mockResolvedValue({ database });
+
+    const DrizzleModule = createDrizzleModuleAsync({
+      inject: [ConfigService],
+      useFactory: factory,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [ConfigModule, DrizzleModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const db = await app.container.resolve(DrizzleDatabase);
+
+    expect(factory).toHaveBeenCalledOnce();
+    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+
+    void db;
+    void events;
+
+    await app.close();
+  });
+
+  it('factory returning a promise resolves the database correctly', async () => {
+    const { database } = makeFakeDatabase();
+
+    const DrizzleModule = createDrizzleModuleAsync({
+      useFactory: () => Promise.resolve({ database }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [DrizzleModule] });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const db = await app.container.resolve(DrizzleDatabase);
+
+    expect(db).toBeInstanceOf(DrizzleDatabase);
+
+    await app.close();
+  });
+
+  it('propagates factory errors during module initialization', async () => {
+    const DrizzleModule = createDrizzleModuleAsync({
+      useFactory: () => Promise.reject(new Error('db config fetch failed')),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [DrizzleModule] });
+
+    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('db config fetch failed');
   });
 });
