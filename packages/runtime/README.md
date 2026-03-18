@@ -135,6 +135,23 @@ await runNodeApplication(AppModule, {
 
 `globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op.
 
+### URI versioning
+
+```typescript
+import { Controller, Get, Version } from '@konekti/http';
+
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+}
+```
+
+Konekti currently supports URI versioning only. `@Version('1')` turns `/users` into `/v1/users`, and handler-level versions override controller-level versions for specific routes.
+
 ### Module with imports and exports
 
 ```typescript
