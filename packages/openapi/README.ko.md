@@ -19,7 +19,7 @@ pnpm add @konekti/openapi
 ## 빠른 시작
 
 ```typescript
-import { Controller, Get, Post, createHandlerMapping } from '@konekti/http';
+import { Controller, Get, Post, Version, createHandlerMapping } from '@konekti/http';
 import { Module } from '@konekti/core';
 import { bootstrapApplication } from '@konekti/runtime';
 import {
@@ -30,6 +30,7 @@ import {
   OpenApiModule,
 } from '@konekti/openapi';
 
+@Version('1')
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
@@ -143,6 +144,21 @@ getProduct() { ... }
 
 같은 핸들러에 `@ApiResponse` 데코레이터를 여러 개 중첩할 수 있습니다.
 
+### `@konekti/http`의 `@Version(value)`
+
+URI 버저닝이 controller 또는 handler 레벨에 적용되면 OpenAPI path도 해결된 versioned route를 그대로 반영합니다.
+
+```typescript
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {}
+}
+
+// OpenAPI path: /v1/users
+```
+
 ### `@ApiBearerAuth()`
 
 핸들러에 Bearer 토큰 인증이 필요함을 표시합니다. 오퍼레이션의 `security` 요구사항에 `bearerAuth`를 추가하고 생성된 문서에 `bearerAuth` 보안 스킴을 등록합니다.
@@ -181,7 +197,7 @@ createProduct() { ... }
 }
 ```
 
-- **`operationId`**는 첫 번째 태그, 핸들러 이름, HTTP 메서드, 정규화된 경로를 조합해 자동 생성됩니다 (예: `Users_listUsers_get_users`).
+- **`operationId`**는 첫 번째 태그, 핸들러 이름, HTTP 메서드, 정규화된 경로를 조합해 자동 생성됩니다 (예: `Users_listUsers_get_v1_users`).
 - **`tags`**는 `@ApiTag`를 사용하지 않으면 컨트롤러 클래스 이름으로 기본 설정됩니다.
 - **`security`** 스킴은 최소 하나의 핸들러가 `@ApiBearerAuth()`를 사용할 때만 문서에 포함됩니다.
 - `@konekti/dto-validator`가 붙은 request DTO는 `components.schemas`와 `requestBody`로 연결됩니다.

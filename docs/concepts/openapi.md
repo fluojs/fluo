@@ -44,6 +44,7 @@ These decorators are metadata-only. They do not affect runtime request handling.
 ## generation model
 
 - route metadata is read from handler descriptors
+- URI versioning written by `@Version(...)` is reflected directly in the resolved OpenAPI paths (for example `/v1/users`)
 - those descriptors can be derived from the same handler sources the runtime uses
 - tags, operation metadata, response metadata, and request DTO schema are assembled into one OpenAPI 3.1 document
 - the generated document is built at startup and served statically
