@@ -31,6 +31,7 @@ konekti/
 - `packages/passport`
 - `packages/openapi`
 - `packages/metrics`
+- `packages/redis`
 - `packages/prisma`
 - `packages/drizzle`
 - `packages/cli`

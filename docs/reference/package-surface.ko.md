@@ -15,6 +15,7 @@
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/openapi`
@@ -34,7 +35,7 @@
 - `@konekti/passport` -> 인증 전략 레지스트리 및 범용 인증 가드 연결
 - `@konekti/openapi` -> 문서 생성 및 메타데이터 전용 OpenAPI 데코레이터
 - `@konekti/metrics` -> Prometheus 메트릭 노출
-- `@konekti/prisma` / `@konekti/drizzle` -> 데이터 연동 제품군
+- `@konekti/redis` / `@konekti/prisma` / `@konekti/drizzle` -> 데이터 연동 제품군
 - `@konekti/testing` -> 테스트 모듈 및 헬퍼 인터페이스
 - `@konekti/cli` -> 앱 부트스트랩 및 파일 생성 명령
 

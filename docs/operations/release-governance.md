@@ -16,6 +16,7 @@ These packages are the intended public release surface once the repository leave
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/passport`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/di`
