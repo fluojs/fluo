@@ -20,6 +20,7 @@ import {
 } from '@konekti/http';
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
+import { createHealthModule } from './health.js';
 import { bootstrapNodeApplication, runNodeApplication } from './node.js';
 import type { ApplicationLogger } from './types.js';
 
@@ -783,6 +784,213 @@ describe('bootstrapApplication', () => {
     const listenEvent = loggerEvents.find((event) => event.includes(`Listening on http://localhost:${String(port)}`));
     expect(listenEvent).toBeDefined();
     expect(listenEvent).toContain('bound to');
+
+    await app.close();
+  });
+
+  it('applies a global prefix to application routes while leaving runtime-owned paths unprefixed', async () => {
+    const HealthModule = createHealthModule();
+
+    @Controller('')
+    class RuntimeOwnedController {
+      @Get('/docs')
+      getDocs() {
+        return { ok: true, route: 'docs' };
+      }
+
+      @Get('/metrics')
+      getMetrics() {
+        return 'process_cpu_seconds_total 1';
+      }
+
+      @Get('/openapi.json')
+      getOpenApi() {
+        return { openapi: '3.1.0' };
+      }
+    }
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController, RuntimeOwnedController],
+      imports: [HealthModule],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [prefixedApp, unprefixedApp, health, ready, docs, metrics, openapi, prefixedHealth, prefixedDocs] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetch(`http://127.0.0.1:${String(port)}/app/info`),
+      fetch(`http://127.0.0.1:${String(port)}/health`),
+      fetch(`http://127.0.0.1:${String(port)}/ready`),
+      fetch(`http://127.0.0.1:${String(port)}/docs`),
+      fetch(`http://127.0.0.1:${String(port)}/metrics`),
+      fetch(`http://127.0.0.1:${String(port)}/openapi.json`),
+      fetch(`http://127.0.0.1:${String(port)}/api/health`),
+      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
+    ]);
+
+    expect(prefixedApp.status).toBe(200);
+    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+
+    expect(unprefixedApp.status).toBe(404);
+    expect(health.status).toBe(200);
+    await expect(health.json()).resolves.toEqual({ status: 'ok' });
+    expect(ready.status).toBe(200);
+    await expect(ready.json()).resolves.toEqual({ status: 'ready' });
+    expect(docs.status).toBe(200);
+    await expect(docs.json()).resolves.toEqual({ ok: true, route: 'docs' });
+    expect(metrics.status).toBe(200);
+    await expect(metrics.text()).resolves.toBe('process_cpu_seconds_total 1');
+    expect(openapi.status).toBe(200);
+    await expect(openapi.json()).resolves.toEqual({ openapi: '3.1.0' });
+    expect(prefixedHealth.status).toBe(404);
+    expect(prefixedDocs.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('supports additional global prefix exclusion patterns', async () => {
+    @Controller('/internal')
+    class InternalController {
+      @Get('/ping')
+      getPing() {
+        return { ok: true, route: 'internal' };
+      }
+    }
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController, InternalController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      globalPrefixExclude: ['/internal/*'],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [internal, prefixedInternal, prefixedApp, unprefixedApp] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/internal/ping`),
+      fetch(`http://127.0.0.1:${String(port)}/api/internal/ping`),
+      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetch(`http://127.0.0.1:${String(port)}/app/info`),
+    ]);
+
+    expect(internal.status).toBe(200);
+    await expect(internal.json()).resolves.toEqual({ ok: true, route: 'internal' });
+    expect(prefixedInternal.status).toBe(404);
+    expect(prefixedApp.status).toBe(200);
+    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+    expect(unprefixedApp.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('normalizes global prefix and exclusion inputs before matching routes', async () => {
+    @Controller('/internal')
+    class InternalController {
+      @Get('/ping')
+      getPing() {
+        return { ok: true, route: 'internal' };
+      }
+    }
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController, InternalController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '///api//',
+      globalPrefixExclude: ['//internal//*'],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [prefixedApp, internal, prefixedInternal] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetch(`http://127.0.0.1:${String(port)}/internal/ping`),
+      fetch(`http://127.0.0.1:${String(port)}/api/internal/ping`),
+    ]);
+
+    expect(prefixedApp.status).toBe(200);
+    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+    expect(internal.status).toBe(200);
+    await expect(internal.json()).resolves.toEqual({ ok: true, route: 'internal' });
+    expect(prefixedInternal.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('treats a root global prefix as a no-op', async () => {
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/',
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/app/info`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
 
     await app.close();
   });
