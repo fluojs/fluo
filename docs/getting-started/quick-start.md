@@ -59,7 +59,7 @@ The scaffold emits the same single-project layout for `pnpm`, `npm`, and `yarn`,
 Generate a repository from the project root:
 
 ```sh
-pnpm exec konekti g repo User
+konekti g repo User
 ```
 
 The CLI writes files into `src/` by default on generated apps.

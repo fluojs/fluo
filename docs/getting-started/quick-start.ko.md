@@ -59,7 +59,7 @@ pnpm test
 프로젝트 루트에서 리포지토리를 생성합니다:
 
 ```sh
-pnpm exec konekti g repo User
+konekti g repo User
 ```
 
 CLI는 생성된 앱의 `src/` 디렉토리에 파일을 기본으로 작성합니다.

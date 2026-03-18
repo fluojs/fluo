@@ -65,7 +65,7 @@ When you are working inside the Konekti monorepo, use the package-local sandbox 
 pnpm --dir packages/cli run sandbox:test
 ```
 
-That command rebuilds `@konekti/cli`, scaffolds `starter-app` directly at a standalone temp sandbox path, installs local tarballs from the workspace, and then verifies the generated app can run `typecheck`, `build`, `test`, and `pnpm exec konekti g repo User`.
+That command rebuilds `@konekti/cli`, scaffolds `starter-app` directly at a standalone temp sandbox path, installs local tarballs from the workspace, and then verifies the generated app can run `typecheck`, `build`, `test`, and `konekti g repo User`.
 
 `KONEKTI_CLI_SANDBOX_ROOT=/path` remains available as an advanced override, but it must point to a dedicated directory outside the monorepo workspace. If it points inside the repo, the harness prints a warning and falls back to the temp sandbox root so `pnpm install` cannot be captured by the workspace.
 
