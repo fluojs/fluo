@@ -20,22 +20,31 @@ pnpm verify:release-candidate
 
 ## 공식 테스트 API
 
-`@konekti/testing`은 현재 다음과 같은 최소한의 공개 테스트 인터페이스를 제공합니다:
+`@konekti/testing`은 현재 다음과 같은 최소하지만 실용적인 공개 테스트 인터페이스를 제공합니다:
 
 - `createTestingModule(...)`
 - 프로바이더 오버라이드(override) 지원
-- 부트스트랩/런타임 생명주기를 통한 예측 가능한 정리(cleanup)
+- `TestingModuleRef.resolve(...)`
+- `TestingModuleRef.dispatch(...)`
+- 엔드투엔드 스타일 요청 실행을 위한 `createTestApp(...)`
+- 빌더 없이 직접 요청을 실행하는 `TestApp.dispatch(...)`
+- 요청 principal 주입을 포함한 플루언트 request 빌더
+- `createTestApp().close()`를 통한 정리(cleanup)
 
 현재 public boundary:
 
 - `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
-- public testing API surface를 지금 확장하지 않습니다.
+- 공개 표면은 모듈 컴파일, dispatch, 경량 request 헬퍼에 집중합니다.
 - 더 풍부한 generated test-template 계열도 지금 추가하지 않습니다.
 
 주요 근거 자료:
 
 - `packages/testing/src/module.ts`
+- `packages/testing/src/app.ts`
+- `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/README.md`
+- `packages/testing/README.ko.md`
 
 ## 런타임 및 슬라이스 커버리지
 

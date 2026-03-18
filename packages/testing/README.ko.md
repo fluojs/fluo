@@ -106,6 +106,70 @@ createTestingModule(options: TestingModuleOptions): TestingModuleBuilder
 |---|---|
 | `.resolve(token)` | 컴파일된 모듈 그래프에서 프로바이더를 resolve합니다. 클래스 생성자 또는 DI 토큰을 받고 `Promise<T>`를 반환합니다. |
 | `.has(token)` | 컴파일된 그래프에 해당 provider 토큰이 있는지 확인합니다. |
+| `.dispatch(request)` | 컴파일된 모듈 디스패처를 통해 요청을 실행하고 `TestResponse`를 반환합니다. |
+
+### `createTestApp(options)`
+
+요청-응답 스타일 테스트를 위해 사용합니다. `bootstrapApplication` 기반의 테스트 애플리케이션을 생성합니다.
+
+```typescript
+import { createTestApp } from '@konekti/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/users')
+  .body({ name: 'Alice' })
+  .header('x-request-id', 'req-1')
+  .query('scope', 'admin')
+  .send();
+
+expect(response.status).toBe(201);
+
+await app.close();
+```
+
+### `TestApp.dispatch(request)`
+
+빌더를 쓰지 않고 요청을 바로 실행하고 싶을 때 사용합니다.
+
+```typescript
+const response = await app.dispatch({
+  method: 'GET',
+  path: '/users/me',
+  principal: {
+    subject: 'user-1',
+    roles: ['admin'],
+    claims: { tenant: 'acme' },
+  },
+});
+
+expect(response.status).toBe(200);
+```
+
+`app.dispatch(request)`는 `app.request(...).send()`와 같은 테스트 파이프라인을 그대로 사용하며,
+`method`, `path`, `query`, `headers`, `body`, `principal`을 동일한 형태로 받습니다.
+
+`createTestApp()`는 `bootstrapApplication`을 `mode: 'test'`로 호출하므로, 실제 앱 파이프라인을 유지하면서도 테스트 실행에 맞춘 경량 클라이언트를 제공합니다.
+
+### `request()` 빌더
+
+`request()`는 체이닝 가능한 빌더를 반환해 테스트 요청을 구성합니다.
+
+```typescript
+const response = await app
+  .request('GET', '/me')
+  .principal({ id: 'user-1', roles: ['admin'] })
+  .send();
+
+expect(response.body).toEqual({
+  subject: 'user-1',
+  roles: ['admin'],
+  claims: { id: 'user-1' },
+});
+```
+
+`principal`은 `subject`(우선) 또는 `id`(호환성)를 통해 주체를 구성할 수 있으며, 둘 다 없으면 `subject: 'test'`로 기본 주입됩니다.
 
 ## 구조
 
@@ -126,6 +190,7 @@ TestingModuleRef
     │
     ▼
 .resolve(token)  → 그래프에서 인스턴스 반환
+createTestApp({ rootModule })  → 테스트 앱 생성 후 request() 호출 가능
 ```
 
 오버라이드는 모듈 그래프가 구성된 **이후** 적용되어, 실제 프로바이더를 공급한 가짜 구현으로 교체합니다. 그래프의 나머지 부분은 그대로 유지되므로, 명시적으로 오버라이드한 토큰만 대체됩니다.
