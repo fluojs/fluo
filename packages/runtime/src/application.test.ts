@@ -286,6 +286,48 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('keeps the framework response statusCode in sync with Node adapter writes', async () => {
+    const observedStatusCodes: number[] = [];
+
+    @Controller('')
+    class RuntimeController {
+      @Get('/created')
+      create(_input: undefined, context: RequestContext) {
+        context.response.setStatus(201);
+
+        return { created: true };
+      }
+    }
+
+    class StatusObserver {
+      onRequestFinish(context: { requestContext: RequestContext }) {
+        observedStatusCodes.push(context.requestContext.response.statusCode ?? -1);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RuntimeController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      mode: 'test',
+      observers: [new StatusObserver()],
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/created`);
+
+    expect(response.status).toBe(201);
+    expect(observedStatusCodes).toEqual([201]);
+    await expect(response.json()).resolves.toEqual({ created: true });
+
+    await app.close();
+  });
+
   it('returns HTTP 413 when a JSON request body exceeds maxBodySize', async () => {
     class CreateUserRequest {
       @FromBody('name')
