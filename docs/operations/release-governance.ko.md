@@ -16,6 +16,7 @@
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/passport`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/di`

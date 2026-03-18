@@ -44,6 +44,7 @@ pnpm dev
 
 ### 데이터 통합 패키지
 
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 
@@ -80,6 +81,7 @@ pnpm dev
 - `packages/cli/README.md`
 - `packages/http/README.md`
 - `packages/runtime/README.md`
+- `packages/redis/README.md`
 - `packages/passport/README.md`
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
