@@ -13,7 +13,7 @@ import {
   UseGuard,
   UseInterceptor,
 } from './decorators.js';
-import { IntersectionType, OmitType, PickType } from './mapped-types.js';
+import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { IsString, MinLength, ValidateClass } from '@konekti/dto-validator';
 
 describe('http decorators', () => {
@@ -246,6 +246,49 @@ describe('http decorators', () => {
       {
         propertyKey: 'city',
         rules: [{ kind: 'string' }],
+      },
+    ]);
+  });
+
+  it('makes inherited binding and validation metadata optional for PartialType', () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
+      name = '';
+
+      @FromPath('id')
+      id = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+
+    expect(getDtoBindingSchema(PartialUpdateUserRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        metadata: {
+          key: 'name',
+          optional: true,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: true,
+          source: 'path',
+        },
+      },
+    ]);
+    expect(getDtoValidationSchema(PartialUpdateUserRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [
+          { code: 'NAME_MIN', kind: 'minLength', message: 'name must be at least 2 chars', value: 2 },
+          { kind: 'string' },
+          { kind: 'optional' },
+        ],
       },
     ]);
   });
