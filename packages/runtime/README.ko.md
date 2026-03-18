@@ -106,6 +106,23 @@ await runNodeApplication(AppModule, {
 
 `globalPrefixExclude`는 `/internal/ping` 같은 exact path와 `/internal/*` 같은 trailing `/*` pattern만 지원합니다. 런타임은 매칭 전에 중복 슬래시와 trailing slash를 정규화하며, `globalPrefix: '/'`는 no-op으로 취급합니다.
 
+### URI 버저닝
+
+```typescript
+import { Controller, Get, Version } from '@konekti/http';
+
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+}
+```
+
+현재 Konekti는 URI 버저닝만 지원합니다. `@Version('1')`은 `/users`를 `/v1/users`로 바꾸고, handler 레벨 버전은 특정 route에서 controller 레벨 버전을 override합니다.
+
 ### imports와 exports를 가진 모듈
 
 ```typescript

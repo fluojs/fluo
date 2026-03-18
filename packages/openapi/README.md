@@ -19,7 +19,7 @@ pnpm add @konekti/openapi
 ## Quick Start
 
 ```typescript
-import { Controller, Get, Post } from '@konekti/http';
+import { Controller, Get, Post, Version } from '@konekti/http';
 import { Module } from '@konekti/core';
 import { bootstrapApplication } from '@konekti/runtime';
 import {
@@ -30,6 +30,7 @@ import {
   OpenApiModule,
 } from '@konekti/openapi';
 
+@Version('1')
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
@@ -142,6 +143,21 @@ getProduct() { ... }
 
 Multiple `@ApiResponse` decorators can be stacked on the same handler.
 
+### `@Version(value)` from `@konekti/http`
+
+When URI versioning is applied at the controller or handler level, OpenAPI paths reflect the resolved versioned route directly.
+
+```typescript
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {}
+}
+
+// OpenAPI path: /v1/users
+```
+
 ### `@ApiBearerAuth()`
 
 Marks a handler as requiring Bearer token authentication. Adds `bearerAuth` to the operation's `security` requirements and registers the `bearerAuth` security scheme in the generated document.
@@ -180,7 +196,7 @@ The generated document follows OpenAPI 3.1.0:
 }
 ```
 
-- **`operationId`** is auto-generated from the primary tag, handler name, HTTP method, and normalized route path (for example: `Users_listUsers_get_users`).
+- **`operationId`** is auto-generated from the primary tag, handler name, HTTP method, and normalized route path (for example: `Users_listUsers_get_v1_users`).
 - **`tags`** default to the controller class name when `@ApiTag` is not used.
 - **`security`** schemes are only included in the document when at least one handler uses `@ApiBearerAuth()`.
 - Request DTOs decorated with `@konekti/dto-validator` are emitted as `components.schemas` entries and linked through `requestBody`.

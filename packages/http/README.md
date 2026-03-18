@@ -16,7 +16,7 @@ The HTTP execution layer that turns route metadata into a request processing cha
 `@konekti/http` is not a router — it is the full request execution runtime. It owns:
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
-- Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@FromBody`, `@FromPath`, etc.)
+- Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
 - Routing table construction (`createHandlerMapping`)
 - Request DTO binding and validation
 - The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
@@ -33,7 +33,7 @@ npm install @konekti/http
 ### Define a controller
 
 ```typescript
-import { Controller, Get, Post, FromBody, FromPath, RequestDto } from '@konekti/http';
+import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/dto-validator';
 import type { RequestContext } from '@konekti/http';
 
@@ -50,6 +50,7 @@ class GetUserParams {
   id!: string;
 }
 
+@Version('1')
 @Controller('/users')
 export class UserController {
   @Post('/')
@@ -100,6 +101,32 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|
 | `@Controller(path)` | Marks a class as a controller with a base path |
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
+| `@Version(value)` | Applies URI versioning such as `/v1/...`; handler-level version overrides controller-level version |
+
+### URI versioning
+
+Konekti currently supports URI versioning only.
+
+```typescript
+@Version('1')
+@Controller('/users')
+class UsersV1Controller {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+
+  @Version('2')
+  @Post('/')
+  createUser() {
+    return {};
+  }
+}
+```
+
+- controller-level `@Version('1')` produces routes such as `/v1/users`
+- handler-level `@Version('2')` overrides the controller version for that specific route
+- unversioned controllers keep their normal paths
 
 ### DTO binding decorators
 
@@ -123,7 +150,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
 ### Rate limiting caveat
 
