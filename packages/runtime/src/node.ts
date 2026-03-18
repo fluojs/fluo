@@ -5,10 +5,11 @@ import { URL } from 'node:url';
 
 import {
   BadRequestException,
-  HttpException,
-  InternalServerException,
   createCorsMiddleware,
   createErrorResponse,
+  HttpException,
+  InternalServerException,
+  NotFoundException,
   PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
@@ -46,10 +47,13 @@ export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_GLOBAL_PREFIX_EXCLUDE = ['/health', '/ready', '/openapi.json', '/docs', '/metrics'] as const;
 
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
   cors?: CorsInput;
+  globalPrefix?: string;
+  globalPrefixExclude?: readonly string[];
   host?: string;
   https?: HttpsServerOptions;
   logger?: ApplicationLogger;
@@ -471,6 +475,10 @@ async function createFrameworkRequest(
 function createNodeMiddleware(options: BootstrapNodeApplicationOptions): MiddlewareLike[] {
   const middleware = [...(options.middleware ?? [])];
 
+  if (options.globalPrefix) {
+    middleware.unshift(createGlobalPrefixMiddleware(options.globalPrefix, options.globalPrefixExclude));
+  }
+
   if (options.cors !== false) {
     const defaultCorsOptions: CorsOptions = {
       allowHeaders: ['Authorization', 'Content-Type'],
@@ -484,6 +492,97 @@ function createNodeMiddleware(options: BootstrapNodeApplicationOptions): Middlew
   }
 
   return middleware;
+}
+
+function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[] | undefined): MiddlewareLike {
+  const normalizedPrefix = normalizePathPattern(prefix);
+
+  if (normalizedPrefix === '/') {
+    return {
+      async handle(_context, next) {
+        await next();
+      },
+    };
+  }
+
+  const exclusions = [...DEFAULT_GLOBAL_PREFIX_EXCLUDE, ...(exclude ?? [])].map((path) => normalizePathPattern(path));
+
+  return {
+    async handle(context, next) {
+      const requestPath = normalizePathPattern(context.request.path);
+
+      if (matchesExcludedPath(requestPath, exclusions)) {
+        await next();
+        return;
+      }
+
+      if (!matchesPrefix(requestPath, normalizedPrefix)) {
+        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
+        return;
+      }
+
+      const strippedPath = stripGlobalPrefix(requestPath, normalizedPrefix);
+
+      if (matchesExcludedPath(strippedPath, exclusions)) {
+        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
+        return;
+      }
+
+      context.request.path = strippedPath;
+      context.request.url = rewritePrefixedUrl(context.request.url, requestPath, strippedPath);
+      await next();
+    },
+  };
+}
+
+function writeGlobalPrefixNotFound(requestId: string | undefined, response: FrameworkResponse): Promise<void> {
+  const error = new NotFoundException('Resource not found.');
+  response.setStatus(error.status);
+  return Promise.resolve(response.send(createErrorResponse(error, requestId)));
+}
+
+function normalizePathPattern(path: string): string {
+  if (path.endsWith('/*')) {
+    return `${normalizePathPattern(path.slice(0, -2))}/*`;
+  }
+
+  const segments = path.split('/').filter(Boolean);
+  const normalized = `/${segments.join('/')}`;
+
+  return normalized === '' ? '/' : normalized;
+}
+
+function matchesPrefix(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function stripGlobalPrefix(path: string, prefix: string): string {
+  if (path === prefix) {
+    return '/';
+  }
+
+  return normalizePathPattern(path.slice(prefix.length));
+}
+
+function matchesExcludedPath(path: string, exclusions: readonly string[]): boolean {
+  return exclusions.some((pattern) => matchNodeRoutePattern(pattern, path));
+}
+
+function matchNodeRoutePattern(pattern: string, path: string): boolean {
+  if (pattern.endsWith('/*')) {
+    const prefix = pattern.slice(0, -2);
+    return path === prefix || path.startsWith(`${prefix}/`);
+  }
+
+  return path === pattern;
+}
+
+function rewritePrefixedUrl(url: string, originalPath: string, rewrittenPath: string): string {
+  if (!url.startsWith(originalPath)) {
+    return rewrittenPath;
+  }
+
+  return rewrittenPath + url.slice(originalPath.length);
 }
 
 function resolveCorsOptions(cors: Exclude<CorsInput, false> | undefined, defaults: CorsOptions): CorsOptions {

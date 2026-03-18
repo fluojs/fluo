@@ -121,6 +121,20 @@ await runNodeApplication(AppModule, {
 
 When `host` is set, the Node adapter binds explicitly to that host instead of the default all-interfaces behavior. When `https` is provided, the adapter starts an HTTPS server and the startup log reports an `https://...` URL. If the public URL differs from the actual bind target, the startup log includes both. The `https` object is passed through to Node's `node:https.createServer`, so callers must supply valid TLS material such as `key` and `cert`.
 
+### Global prefix for application routes
+
+```typescript
+await runNodeApplication(AppModule, {
+  globalPrefix: '/api',
+  globalPrefixExclude: ['/internal/*'],
+  mode: 'prod',
+});
+```
+
+`globalPrefix` applies to application routes owned by the runtime-owned HTTP app, so a controller route like `/app/info` becomes `/api/app/info`. By default, runtime-owned operational endpoints stay unprefixed at `/health`, `/ready`, `/openapi.json`, `/docs`, and `/metrics`, and their prefixed forms like `/api/health` return `404` by design. `globalPrefixExclude` adds more unprefixed path patterns on top of that default exclusion set.
+
+`globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op.
+
 ### Module with imports and exports
 
 ```typescript
