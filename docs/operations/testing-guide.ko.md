@@ -56,7 +56,7 @@ pnpm verify:release-candidate
 pnpm --dir packages/cli run sandbox:test
 ```
 
-이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 설치된 CLI 바이너리에 대해 동일한 생성 앱 체크(`typecheck`, `build`, `test`, `pnpm exec konekti g repo User`)를 다시 실행합니다.
+이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 설치된 CLI 바이너리에 대해 동일한 생성 앱 체크(`typecheck`, `build`, `test`, `konekti g repo User`)를 다시 실행합니다.
 
 고급 로컬 설정을 위해 `KONEKTI_CLI_SANDBOX_ROOT=/path`를 여전히 사용할 수 있지만, 반드시 모노레포 워크스페이스 외부의 전용 디렉터리를 가리켜야 합니다. 레포 내부 경로는 경고와 함께 자동으로 임시 샌드박스 루트로 대체되어, 기여자 검증이 독립된 앱 환경에서 유지되도록 합니다.
 
