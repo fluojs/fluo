@@ -7,10 +7,11 @@ import {
   type HandlerSource,
   type RequestContext,
 } from '@konekti/http';
+import { Inject, type AsyncModuleOptions, type MaybePromise, type Token } from '@konekti/core';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
-import { buildOpenApiDocument } from './schema-builder.js';
+import { buildOpenApiDocument, type OpenApiDocument } from './schema-builder.js';
 
 export interface OpenApiModuleOptions {
   title: string;
@@ -19,6 +20,17 @@ export interface OpenApiModuleOptions {
   descriptors?: readonly HandlerDescriptor[];
   sources?: readonly HandlerSource[];
 }
+
+type OpenApiOptionsProvider =
+  | {
+      scope: 'singleton';
+      useValue: OpenApiModuleOptions;
+    }
+  | {
+      inject?: Token[];
+      scope: 'singleton';
+      useFactory: (...deps: unknown[]) => MaybePromise<OpenApiModuleOptions>;
+    };
 
 function createSwaggerUiHtml(title: string): string {
   return `<!doctype html>
@@ -42,39 +54,58 @@ function createSwaggerUiHtml(title: string): string {
 </html>`;
 }
 
+function isOpenApiModuleOptions(value: unknown): value is OpenApiModuleOptions {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const options = value as Record<string, unknown>;
+
+  return typeof options.title === 'string' && typeof options.version === 'string';
+}
+
 export class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType {
-    const uiEnabled = options.ui ?? false;
-
-    if (options.descriptors && options.sources) {
-      throw new Error('OpenApiModule.forRoot() accepts either descriptors or sources, but not both.');
-    }
-
-    const registry = new OpenApiHandlerRegistry();
-    registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
-
-    const document = buildOpenApiDocument({
-      descriptors: registry.getDescriptors(),
-      title: options.title,
-      version: options.version,
+    return this.createModule({
+      scope: 'singleton',
+      useValue: options,
     });
+  }
+
+  static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType {
+    return this.createModule({
+      inject: options.inject,
+      scope: 'singleton',
+      useFactory: options.useFactory,
+    });
+  }
+
+  private static createModule(optionsProvider: OpenApiOptionsProvider): ModuleType {
+    const openApiModuleOptionsToken = Symbol('konekti.openapi.module-options');
+    const openApiDocumentToken = Symbol('konekti.openapi.document');
 
     @Controller('')
+    @Inject([openApiDocumentToken, openApiModuleOptionsToken])
     class OpenApiController {
+      constructor(
+        private readonly document: OpenApiDocument,
+        private readonly options: OpenApiModuleOptions,
+      ) {}
+
       @Get('/openapi.json')
       getDocument() {
-        return document;
+        return this.document;
       }
 
       @Get('/docs')
       getSwaggerUi(_input: undefined, context: RequestContext): string {
-        if (!uiEnabled) {
+        if (!(this.options.ui ?? false)) {
           throw new NotFoundException('Swagger UI is disabled.');
         }
 
         context.response.setHeader('content-type', 'text/html; charset=utf-8');
 
-        return createSwaggerUiHtml(options.title);
+        return createSwaggerUiHtml(this.options.title);
       }
     }
 
@@ -82,6 +113,38 @@ export class OpenApiModule {
 
     defineModule(OpenApiRuntimeModule, {
       controllers: [OpenApiController],
+      providers: [
+        {
+          ...optionsProvider,
+          provide: openApiModuleOptionsToken,
+        },
+        {
+          inject: [openApiModuleOptionsToken],
+          provide: openApiDocumentToken,
+          scope: 'singleton',
+          useFactory: (...deps: unknown[]): OpenApiDocument => {
+            const [options] = deps;
+
+            if (!isOpenApiModuleOptions(options)) {
+              throw new Error('OpenApiModule options provider must resolve title and version.');
+            }
+
+            if (options.descriptors && options.sources) {
+              throw new Error('OpenApiModule.forRoot() accepts either descriptors or sources, but not both.');
+            }
+
+            const registry = new OpenApiHandlerRegistry();
+
+            registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
+
+            return buildOpenApiDocument({
+              descriptors: registry.getDescriptors(),
+              title: options.title,
+              version: options.version,
+            });
+          },
+        },
+      ],
     });
 
     return OpenApiRuntimeModule;

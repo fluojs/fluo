@@ -823,4 +823,85 @@ describe('OpenApiModule', () => {
       }),
     );
   });
+
+  it('resolves injected async options and serves the resulting document', async () => {
+    const OPENAPI_TITLE = Symbol('openapi-title');
+    const injectedTitles: string[] = [];
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRootAsync({
+      inject: [OPENAPI_TITLE],
+      useFactory: async (...deps) => {
+        const [title] = deps;
+
+        if (typeof title !== 'string') {
+          throw new Error('openapi title token must resolve to a string.');
+        }
+
+        injectedTitles.push(title);
+        await Promise.resolve();
+
+        return {
+          sources: [{ controllerToken: HealthController }],
+          title,
+          version: '2.0.0',
+        };
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: OPENAPI_TITLE, useValue: 'Async OpenAPI' }],
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(injectedTitles).toEqual(['Async OpenAPI']);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        info: {
+          title: 'Async OpenAPI',
+          version: '2.0.0',
+        },
+      }),
+    );
+  });
+
+  it('propagates async option factory errors during bootstrap', async () => {
+    const openApiModule = OpenApiModule.forRootAsync({
+      useFactory: async () => {
+        throw new Error('openapi async options failed');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [openApiModule],
+    });
+
+    await expect(
+      bootstrapApplication({
+        mode: 'test',
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('openapi async options failed');
+  });
 });
