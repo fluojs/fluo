@@ -143,6 +143,10 @@ getProduct() { ... }
 
 Multiple `@ApiResponse` decorators can be stacked on the same handler.
 
+### Mapped DTO helpers from `@konekti/http`
+
+OpenAPI generation preserves metadata from `PickType()`, `OmitType()`, and `IntersectionType()` request DTOs, so derived request bodies and parameter schemas continue to render from the resolved DTO class.
+
 ### `@Version(value)` from `@konekti/http`
 
 When URI versioning is applied at the controller or handler level, OpenAPI paths reflect the resolved versioned route directly.

@@ -17,6 +17,7 @@ route metadata를 request 처리 체인으로 바꾸는 HTTP 실행 레이어.
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — adapter, middleware, guard, interceptor, controller 사이의 공통 언어
 - Route와 DTO 데코레이터 (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath` 등)
+- Mapped DTO helper (`PickType`, `OmitType`, `IntersectionType`)
 - Routing table 구성 (`createHandlerMapping`)
 - Request DTO binding과 validation
 - middleware → guard → interceptor → bind → validate → handler 호출을 순서대로 실행하는 dispatcher
@@ -128,6 +129,36 @@ class UsersV1Controller {
 - handler 레벨 `@Version('2')`는 해당 route에 한해 controller 버전을 override합니다
 - 버전을 지정하지 않은 controller는 기존 경로를 그대로 유지합니다
 
+### Mapped DTO helper
+
+Konekti는 일반적인 request shape 파생을 위해 metadata-preserving mapped DTO helper를 지원합니다.
+
+```typescript
+import { IntersectionType, OmitType, PickType } from '@konekti/http';
+
+class CreateUserRequest {
+  @FromBody('name')
+  name = '';
+
+  @FromBody('email')
+  email = '';
+}
+
+class AddressRequest {
+  @FromBody('city')
+  city = '';
+}
+
+const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
+const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
+const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+```
+
+- `PickType()`은 선택한 DTO field와 해당 metadata만 유지합니다
+- `OmitType()`은 선택한 DTO field를 제거하고 나머지 metadata를 유지합니다
+- `IntersectionType()`은 여러 DTO base의 metadata를 하나의 파생 DTO로 합성합니다
+- 파생 DTO는 `RequestDto(...)`, runtime binding, validation, OpenAPI generation과 계속 함께 동작합니다
+
 ### DTO binding 데코레이터
 
 | 데코레이터 | 설명 |
@@ -150,7 +181,7 @@ class UsersV1Controller {
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS middleware 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 context factory |
 
-추가 public export로는 `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
+추가 public export로는 `Options`, `Head`, `IntersectionType`, `OmitType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
 
 ### 성공 상태 코드 기본값
 

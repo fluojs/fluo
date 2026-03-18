@@ -144,6 +144,10 @@ getProduct() { ... }
 
 같은 핸들러에 `@ApiResponse` 데코레이터를 여러 개 중첩할 수 있습니다.
 
+### `@konekti/http`의 mapped DTO helper
+
+OpenAPI 생성은 `PickType()`, `OmitType()`, `IntersectionType()` request DTO의 metadata도 보존하므로, 파생 request body와 parameter schema가 해결된 DTO 클래스를 기준으로 계속 생성됩니다.
+
 ### `@konekti/http`의 `@Version(value)`
 
 URI 버저닝이 controller 또는 handler 레벨에 적용되면 OpenAPI path도 해결된 versioned route를 그대로 반영합니다.
