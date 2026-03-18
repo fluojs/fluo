@@ -1,5 +1,6 @@
-import { createServer } from 'node:http';
-import type { Socket } from 'node:net';
+import { createServer as createHttpServer, type RequestListener } from 'node:http';
+import { createServer as createHttpsServer, type ServerOptions as HttpsServerOptions } from 'node:https';
+import type { AddressInfo, Socket } from 'node:net';
 import { URL } from 'node:url';
 
 import {
@@ -30,6 +31,8 @@ declare module '@konekti/http' {
 }
 
 export interface NodeHttpAdapterOptions {
+  host?: string;
+  https?: HttpsServerOptions;
   maxBodySize?: number;
   port?: number;
   rawBody?: boolean;
@@ -47,6 +50,8 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
   cors?: CorsInput;
+  host?: string;
+  https?: HttpsServerOptions;
   logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
@@ -64,23 +69,37 @@ export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptio
 
 type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
+interface NodeListenTarget {
+  bindTarget: string;
+  url: string;
+}
+
+type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
+type NodeRequestListener = RequestListener;
+
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
-  private server?: import('node:http').Server;
+  private server?: NodeServer;
   private readonly sockets = new Set<Socket>();
 
   constructor(
     private readonly port: number,
+    private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
     private readonly compression = false,
+    private readonly httpsOptions: HttpsServerOptions | undefined,
     private readonly multipartOptions?: MultipartOptions,
     private readonly maxBodySize = 1 * 1024 * 1024,
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {}
 
+  getListenTarget(): NodeListenTarget {
+    return resolveNodeListenTarget(this.server?.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
+  }
+
   async listen(dispatcher: Dispatcher): Promise<void> {
-    this.server = createServer(async (request, response) => {
+    const requestHandler: NodeRequestListener = async (request, response) => {
       const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
       const signal = createRequestSignal(response);
 
@@ -105,7 +124,9 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
         await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
       }
-    });
+    };
+
+    this.server = createNodeServer(this.httpsOptions, requestHandler);
 
     const server = this.server;
 
@@ -144,7 +165,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
         server.once('error', onError);
         server.once('listening', onListening);
-        server.listen(this.port);
+        server.listen({ host: this.host, port: this.port });
       };
 
       tryListen(0);
@@ -194,9 +215,11 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
     resolveNodePort(options.port),
+    options.host,
     options.retryDelayMs,
     options.retryLimit,
     compression,
+    options.https,
     multipartOptions,
     options.maxBodySize,
     options.rawBody,
@@ -224,15 +247,18 @@ export async function runNodeApplication(
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
-  const app = await bootstrapNodeApplication(rootModule, {
+  const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
+  const app = await bootstrapApplication({
     ...options,
+    adapter,
     logger,
+    middleware: createNodeMiddleware(options),
+    rootModule,
   });
-  const port = resolveNodePort(options.port);
 
   try {
     await app.listen();
-    logger.log(`Listening on http://localhost:${String(port)}`, 'KonektiFactory');
+    logger.log(formatListenMessage(adapter.getListenTarget()), 'KonektiFactory');
   } catch (error) {
     logger.error('Failed to start application.', error, 'KonektiFactory');
 
@@ -246,6 +272,47 @@ export async function runNodeApplication(
   registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals(options.mode));
 
   return app;
+}
+
+function createNodeServer(
+  httpsOptions: HttpsServerOptions | undefined,
+  handler: NodeRequestListener,
+): NodeServer {
+  return httpsOptions ? createHttpsServer(httpsOptions, handler) : createHttpServer(handler);
+}
+
+function formatListenMessage(target: NodeListenTarget): string {
+  return target.url.endsWith(target.bindTarget)
+    ? `Listening on ${target.url}`
+    : `Listening on ${target.url} (bound to ${target.bindTarget})`;
+}
+
+function resolveNodeListenTarget(
+  address: AddressInfo | string | null,
+  port: number,
+  host: string | undefined,
+  useHttps: boolean,
+): NodeListenTarget {
+  const protocol = useHttps ? 'https' : 'http';
+  const resolvedPort = typeof address === 'object' && address !== null ? address.port : port;
+  const bindHost = typeof address === 'object' && address !== null ? address.address : host ?? '0.0.0.0';
+  const publicHost = resolvePublicHost(host ?? bindHost);
+  const bindTarget = `${formatHostForAuthority(bindHost)}:${String(resolvedPort)}`;
+  const url = `${protocol}://${formatHostForAuthority(publicHost)}:${String(resolvedPort)}`;
+
+  return { bindTarget, url };
+}
+
+function resolvePublicHost(host: string): string {
+  return isWildcardHost(host) ? 'localhost' : host;
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === '0.0.0.0' || host === '::' || host === '[::]';
+}
+
+function formatHostForAuthority(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
 function createFrameworkResponse(response: import('node:http').ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {

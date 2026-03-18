@@ -74,6 +74,24 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Host 바인딩과 HTTPS
+
+```typescript
+import { readFileSync } from 'node:fs';
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  host: '127.0.0.1',
+  https: {
+    cert: readFileSync('./certs/dev.crt'),
+    key: readFileSync('./certs/dev.key'),
+  },
+  port: 8443,
+});
+```
+
+`host`를 지정하면 Node adapter가 기본 all-interfaces 바인딩 대신 해당 host에 명시적으로 바인딩합니다. `https`를 제공하면 adapter가 HTTPS 서버로 시작되고, startup log도 `https://...` URL을 기준으로 출력됩니다. 공개 URL과 실제 bind target이 다르면 startup log에 둘 다 표시됩니다. `https` 객체는 Node의 `node:https.createServer`로 그대로 전달되므로, 호출자가 `key`, `cert` 같은 유효한 TLS 재료를 직접 제공해야 합니다.
+
 ### imports와 exports를 가진 모듈
 
 ```typescript
