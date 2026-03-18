@@ -23,7 +23,7 @@ These packages are the intended public release surface once the repository leave
 - `@konekti/testing`
 - `@konekti/cli`
 
-The current public release boundary is package-first: the supported public bootstrap contract is `pnpm dlx @konekti/cli new`, and the release surface is the published `@konekti/*` package family only.
+The current public release boundary is package-first: the supported public bootstrap contract is `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
 
 Toolchain workspaces under `tooling/` remain internal support artifacts unless a future issue explicitly promotes one into the public package surface.
 

@@ -8,12 +8,21 @@
 ## 표준 부트스트랩 경로
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```
 
 이것이 현재 지원되는 공식적인 공개 엔트리포인트입니다.
+
+한 번만 실행하는 zero-install 부트스트랩에는 아래 대안도 계속 지원됩니다:
+
+```sh
+pnpm dlx @konekti/cli new starter-app
+```
+
+`pnpm add -g @konekti/cli` + `konekti new ...` 경로가 이제 표준 공개 부트스트랩 흐름입니다.
 
 참고 항목:
 

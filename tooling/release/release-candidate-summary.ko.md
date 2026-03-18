@@ -3,7 +3,7 @@
 <p><a href="./release-candidate-summary.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-- [x] 정식 부트스트랩 문서 — 빠른 시작 가이드에서 공개 `pnpm dlx @konekti/cli new` 경로를 문서화함.
+- [x] 정식 부트스트랩 문서 — 빠른 시작 가이드에서 공개 `pnpm add -g @konekti/cli` + `konekti new` 경로를 문서화함.
 - [x] 레포 로컬 스모크 경로 문서 — 레포 로컬 부트스트랩 경로를 테스트 지원 전용으로 문서화함.
 - [x] 스타터 형태 및 런타임 소유권 — 생성된 스타터는 런타임 소유의 부트스트랩 헬퍼를 사용하며 헬스 체크, 메트릭, OpenAPI 인터페이스를 포함함.
 - [x] 지원 등급 문구 일치 — 프롬프트 코드와 공개 문서에서 동일한 권장(recommended)/공식(official)/프리뷰(preview) 등급 용어를 사용함.

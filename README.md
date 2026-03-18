@@ -3,14 +3,15 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Konekti is a TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
+Konekti is a standard-decorator-based TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
 
 ## Quick Start
 
 Create a starter app with the canonical public bootstrap path:
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```

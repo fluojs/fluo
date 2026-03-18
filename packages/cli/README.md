@@ -24,19 +24,23 @@ The current public scaffold contract is one stable generated project shape. Pack
 ## Installation
 
 ```bash
-pnpm dlx @konekti/cli new my-app
+pnpm add -g @konekti/cli
 ```
+
+After installation, use the `konekti` binary directly.
 
 ## Quick Start
 
 ### Bootstrap a new project
 
 ```bash
-pnpm dlx @konekti/cli new my-app
+konekti new my-app
 # optional overrides:
 #   --package-manager <pnpm|npm|yarn>
 #   --target-directory <path>
 ```
+
+For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported.
 
 ### Generate a file inside an existing project
 

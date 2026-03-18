@@ -3,14 +3,15 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-Konekti는 명시적인 DI(의존성 주입), 예측 가능한 HTTP 런타임, 패키지 단위의 통합, 그리고 CLI 중심의 부트스트랩 흐름을 기반으로 구축된 TypeScript 백엔드 프레임워크입니다.
+Konekti는 표준 데코레이터 문법을 기반으로 하며, 명시적인 DI(의존성 주입), 예측 가능한 HTTP 런타임, 패키지 단위의 통합, 그리고 CLI 중심의 부트스트랩 흐름을 중심으로 구축된 TypeScript 백엔드 프레임워크입니다.
 
 ## 빠른 시작 (Quick Start)
 
 표준 공개 부트스트랩 경로를 사용하여 시작 앱을 생성하세요.
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```

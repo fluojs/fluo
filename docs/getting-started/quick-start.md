@@ -8,12 +8,21 @@ This guide describes the current public bootstrap path for Konekti.
 ## canonical bootstrap path
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```
 
 This is the supported public entrypoint today.
+
+For a one-off zero-install bootstrap, this alternative remains supported:
+
+```sh
+pnpm dlx @konekti/cli new starter-app
+```
+
+The global-install `pnpm add -g @konekti/cli` + `konekti new ...` path is now the canonical public bootstrap flow.
 
 See also:
 

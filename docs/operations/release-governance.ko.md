@@ -23,7 +23,7 @@
 - `@konekti/testing`
 - `@konekti/cli`
 
-현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm dlx @konekti/cli new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
+현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm add -g @konekti/cli` 후 `konekti new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
 
 `tooling/` 아래의 toolchain 워크스페이스는 향후 별도 이슈를 통해 공개 패키지로 승격되기 전까지 internal support artifact로 유지됩니다.
 
