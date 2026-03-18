@@ -47,24 +47,28 @@ describe('metadata helpers', () => {
     defineControllerMetadata(ExampleController, {
       basePath: '/users',
       guards: ['AuthGuard'],
+      version: '1',
     });
 
     defineRouteMetadata(ExampleController.prototype, 'getUser', {
       method: 'GET',
       path: '/:id',
       successStatus: 200,
+      version: '2',
     });
 
     expect(getControllerMetadata(ExampleController)).toEqual({
       basePath: '/users',
       guards: ['AuthGuard'],
       interceptors: undefined,
+      version: '1',
     });
 
     expect(getRouteMetadata(ExampleController.prototype, 'getUser')).toEqual({
       method: 'GET',
       path: '/:id',
       successStatus: 200,
+      version: '2',
     });
   });
 

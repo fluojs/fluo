@@ -59,11 +59,13 @@ export interface RouteDefinition {
   guards?: GuardLike[];
   interceptors?: InterceptorLike[];
   successStatus?: number;
+  version?: string;
 }
 
 export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
+  effectiveVersion?: string;
   moduleMiddleware: MiddlewareLike[];
   moduleType?: Constructor;
   pathParams: string[];

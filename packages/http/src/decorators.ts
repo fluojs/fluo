@@ -29,6 +29,7 @@ interface StandardRouteMetadataRecord {
   path?: string;
   request?: Constructor;
   successStatus?: number;
+  version?: string;
 }
 
 function mergeUnique<T>(existing: T[] | undefined, values: T[]): T[] {
@@ -153,6 +154,19 @@ export function Controller(basePath = ''): ClassDecoratorLike {
   };
 
   return decorator as ClassDecoratorLike;
+}
+
+export function Version(version: string): ClassOrMethodDecoratorLike {
+  const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
+    if (context.kind === 'class') {
+      getStandardControllerRecord(context.metadata).version = version;
+      return;
+    }
+
+    getStandardRouteRecord(context.metadata, context.name).version = version;
+  };
+
+  return decorator as ClassOrMethodDecoratorLike;
 }
 
 export const Get = createRouteDecorator('GET');
