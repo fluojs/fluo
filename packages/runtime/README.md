@@ -103,6 +103,24 @@ await runNodeApplication(AppModule, {
 
 `rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The Node adapter currently applies this to non-multipart bodies such as JSON and text, and leaves `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
 
+### Host binding and HTTPS
+
+```typescript
+import { readFileSync } from 'node:fs';
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  host: '127.0.0.1',
+  https: {
+    cert: readFileSync('./certs/dev.crt'),
+    key: readFileSync('./certs/dev.key'),
+  },
+  port: 8443,
+});
+```
+
+When `host` is set, the Node adapter binds explicitly to that host instead of the default all-interfaces behavior. When `https` is provided, the adapter starts an HTTPS server and the startup log reports an `https://...` URL. If the public URL differs from the actual bind target, the startup log includes both. The `https` object is passed through to Node's `node:https.createServer`, so callers must supply valid TLS material such as `key` and `cert`.
+
 ### Module with imports and exports
 
 ```typescript
