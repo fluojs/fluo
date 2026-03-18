@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
-import { generateRepoFiles } from '../generators/repo.js';
+import { generateRepoFiles } from '../generators/repository.js';
 import { installDependencies } from './install.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
