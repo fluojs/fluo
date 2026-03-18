@@ -683,4 +683,144 @@ describe('OpenApiModule', () => {
 
     expect((response.body as { paths: Record<string, { post?: { requestBody?: { required?: boolean } } }> }).paths['/partial/users']?.post?.requestBody?.required).toBeUndefined();
   });
+
+  it('emits correct response schemas when mapped DTO helpers are used with @ApiResponse', async () => {
+    class UserResponseDto {
+      @IsString()
+      id = '';
+
+      @IsString()
+      name = '';
+
+      @IsString()
+      email = '';
+    }
+
+    const UserSummaryResponse = PickType(UserResponseDto, ['id', 'name']);
+    const UserWithoutEmailResponse = OmitType(UserResponseDto, ['email']);
+    const PartialUserResponse = PartialType(UserResponseDto);
+
+    @Controller('/users')
+    class UsersController {
+      @ApiResponse(200, { description: 'User summary', type: UserSummaryResponse })
+      @Get('/summary')
+      getSummary() {
+        return { id: '1', name: 'Alice' };
+      }
+
+      @ApiResponse(200, { description: 'User without email', type: UserWithoutEmailResponse })
+      @Get('/no-email')
+      getWithoutEmail() {
+        return { id: '1', name: 'Alice' };
+      }
+
+      @ApiResponse(200, { description: 'Partial user', type: PartialUserResponse })
+      @Get('/partial')
+      getPartial() {
+        return { id: '1' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
+      title: 'Response Mapped Type API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            UserResponseDtoPickType: {
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+              },
+              required: ['id', 'name'],
+              type: 'object',
+            },
+            UserResponseDtoOmitType: {
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+              },
+              required: ['id', 'name'],
+              type: 'object',
+            },
+            UserResponseDtoPartialType: {
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                email: { type: 'string' },
+              },
+              type: 'object',
+            },
+          }),
+        }),
+        paths: expect.objectContaining({
+          '/users/summary': {
+            get: expect.objectContaining({
+              responses: {
+                '200': {
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/UserResponseDtoPickType' },
+                    },
+                  },
+                  description: 'User summary',
+                },
+              },
+            }),
+          },
+          '/users/no-email': {
+            get: expect.objectContaining({
+              responses: {
+                '200': {
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/UserResponseDtoOmitType' },
+                    },
+                  },
+                  description: 'User without email',
+                },
+              },
+            }),
+          },
+          '/users/partial': {
+            get: expect.objectContaining({
+              responses: {
+                '200': {
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/UserResponseDtoPartialType' },
+                    },
+                  },
+                  description: 'Partial user',
+                },
+              },
+            }),
+          },
+        }),
+      }),
+    );
+  });
 });
