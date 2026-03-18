@@ -17,6 +17,7 @@ The HTTP execution layer that turns route metadata into a request processing cha
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
 - Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
+- Mapped DTO helpers (`PickType`, `OmitType`, `IntersectionType`)
 - Routing table construction (`createHandlerMapping`)
 - Request DTO binding and validation
 - The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
@@ -128,6 +129,36 @@ class UsersV1Controller {
 - handler-level `@Version('2')` overrides the controller version for that specific route
 - unversioned controllers keep their normal paths
 
+### Mapped DTO helpers
+
+Konekti supports metadata-preserving mapped DTO helpers for common request-shape derivation.
+
+```typescript
+import { IntersectionType, OmitType, PickType } from '@konekti/http';
+
+class CreateUserRequest {
+  @FromBody('name')
+  name = '';
+
+  @FromBody('email')
+  email = '';
+}
+
+class AddressRequest {
+  @FromBody('city')
+  city = '';
+}
+
+const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
+const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
+const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+```
+
+- `PickType()` keeps only the selected DTO fields and their metadata
+- `OmitType()` removes selected DTO fields while preserving the rest of the metadata
+- `IntersectionType()` composes metadata from multiple DTO bases into one derived DTO
+- derived DTOs continue to work with `RequestDto(...)`, runtime binding, validation, and OpenAPI generation
+
 ### DTO binding decorators
 
 | Decorator | Description |
@@ -150,7 +181,7 @@ class UsersV1Controller {
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
 ### Rate limiting caveat
 
