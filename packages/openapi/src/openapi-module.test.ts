@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
-import { Controller, Get, Post, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
+import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { FromBody, FromCookie, RequestDto } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
@@ -358,5 +358,61 @@ describe('OpenApiModule', () => {
     );
 
     expect((response.body as { paths: Record<string, { post?: { requestBody?: { required?: boolean } } }> }).paths['/profile/optional']?.post?.requestBody?.required).toBeUndefined();
+  });
+
+  it('emits URI-versioned paths and operation ids for versioned handlers', async () => {
+    @Version('1')
+    @Controller('/users')
+    class UsersController {
+      @Get('/')
+      listUsers() {
+        return [{ id: '1' }];
+      }
+
+      @Version('2')
+      @Post('/')
+      createUser() {
+        return { id: '2' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
+      title: 'Versioned API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: {
+          '/v1/users': {
+            get: expect.objectContaining({
+              operationId: 'UsersController_listUsers_get_v1_users',
+            }),
+          },
+          '/v2/users': {
+            post: expect.objectContaining({
+              operationId: 'UsersController_createUser_post_v2_users',
+            }),
+          },
+        },
+      }),
+    );
   });
 });
