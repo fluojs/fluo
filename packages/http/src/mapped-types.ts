@@ -1,6 +1,8 @@
 import {
+  appendClassValidationRule,
   appendDtoFieldValidationRule,
   defineDtoFieldBindingMetadata,
+  getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
   type Constructor,
@@ -55,6 +57,10 @@ function copyDtoMetadata(
     for (const rule of entry.rules) {
       appendDtoFieldValidationRule(target.prototype, entry.propertyKey, rule);
     }
+  }
+
+  for (const rule of getClassValidationRules(source)) {
+    appendClassValidationRule(target, rule);
   }
 }
 
@@ -128,7 +134,9 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
 }
 
 export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoConstructor<Partial<InstanceType<TBase>>> {
-  const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (_instance) => {});
+  const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (instance) => {
+    Object.assign(instance, new BaseDto());
+  });
 
   for (const entry of getDtoBindingSchema(BaseDto)) {
     defineDtoFieldBindingMetadata(PartialDto.prototype, entry.propertyKey, {
@@ -145,6 +153,10 @@ export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoCo
     if (!hasOptionalRule(BaseDto, entry.propertyKey)) {
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, { kind: 'optional' });
     }
+  }
+
+  for (const rule of getClassValidationRules(BaseDto)) {
+    appendClassValidationRule(PartialDto, rule);
   }
 
   return PartialDto as DtoConstructor<Partial<InstanceType<TBase>>>;
