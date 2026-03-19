@@ -17,6 +17,7 @@ export interface ModuleDefinition {
 
 export interface BootstrapModuleOptions {
   providers?: Provider[];
+  validationTokens?: Token[];
 }
 
 export interface CompiledModule {

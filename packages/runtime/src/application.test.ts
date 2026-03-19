@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
+import type { Container } from '@konekti/di';
 import {
   Controller,
   FromBody,
@@ -22,7 +23,9 @@ import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health.js';
 import { bootstrapNodeApplication, runNodeApplication } from './node.js';
+import { COMPILED_MODULES, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger } from './types.js';
+import type { CompiledModule, OnApplicationBootstrap, OnModuleInit } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -216,6 +219,45 @@ describe('bootstrapApplication', () => {
       'app:shutdown:SIGTERM',
     ]);
     expect(app.state).toBe('closed');
+  });
+
+  it('injects real runtime tokens before OnModuleInit runs', async () => {
+    @Inject([RUNTIME_CONTAINER, COMPILED_MODULES])
+    class RuntimeTokenProbe implements OnModuleInit, OnApplicationBootstrap {
+      seenCompiledModules: readonly CompiledModule[] = [];
+      seenContainer: Container | undefined;
+      sawRootModule = false;
+
+      constructor(
+        private readonly runtimeContainer: Container,
+        private readonly compiledModules: readonly CompiledModule[],
+      ) {}
+
+      async onModuleInit(): Promise<void> {
+        this.seenContainer = this.runtimeContainer;
+        this.seenCompiledModules = this.compiledModules;
+      }
+
+      async onApplicationBootstrap(): Promise<void> {
+        this.sawRootModule = this.compiledModules.some((compiledModule: CompiledModule) => compiledModule.type === AppModule);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [RuntimeTokenProbe],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const probe = await app.container.resolve(RuntimeTokenProbe);
+
+    expect(probe.seenContainer).toBe(app.container);
+    expect(probe.seenCompiledModules.length).toBeGreaterThan(0);
+    expect(probe.seenCompiledModules.some((compiledModule: CompiledModule) => compiledModule.type === AppModule)).toBe(true);
+    expect(probe.sawRootModule).toBe(true);
   });
 
   it('creates applications through KonektiFactory', async () => {

@@ -80,6 +80,13 @@ function createRuntimeTokenSet(providers: Provider[] = []): Set<Token> {
   return new Set(providers.map((provider) => providerToken(provider)));
 }
 
+function mergeRuntimeTokenSets(providers: Provider[] = [], validationTokens: readonly Token[] = []): Set<Token> {
+  return new Set<Token>([
+    ...createRuntimeTokenSet(providers),
+    ...validationTokens,
+  ]);
+}
+
 function requiredConstructorParameters(target: Function): number {
   return target.length;
 }
@@ -347,7 +354,7 @@ function validateCompiledModules(
 export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
   const ordered: CompiledModule[] = [];
   const runtimeProviders = options.providers ?? [];
-  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
+  const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
 
   compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
   validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
@@ -606,39 +613,42 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting Konekti application...', 'KonektiFactory');
     const configValues = loadConfig(options);
     const config = new ConfigService(configValues);
-     const runtimeProviders: Provider[] = [
-       ...(options.providers ?? []),
+    const runtimeProviders: Provider[] = [
+      ...(options.providers ?? []),
       {
         provide: ConfigService,
         useValue: config,
       },
-       {
-         provide: APPLICATION_LOGGER,
-         useValue: logger,
-        },
-       {
-         provide: RUNTIME_CONTAINER,
-         useValue: null,
-       },
-       {
-         provide: COMPILED_MODULES,
-         useValue: [] as readonly CompiledModule[],
-       },
-     ];
-     const bootstrapped = bootstrapModule(options.rootModule, { providers: runtimeProviders });
-     bootstrapped.container.register(
-       {
-         provide: RUNTIME_CONTAINER,
-         useValue: bootstrapped.container,
-       },
-       {
-         provide: COMPILED_MODULES,
-         useValue: bootstrapped.modules,
-       },
-     );
-     resetReadinessState(bootstrapped.modules);
+      {
+        provide: APPLICATION_LOGGER,
+        useValue: logger,
+      },
+    ];
+    const bootstrapped = bootstrapModule(options.rootModule, {
+      providers: runtimeProviders,
+      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
+    });
+    bootstrapped.container.register(
+      {
+        provide: RUNTIME_CONTAINER,
+        useValue: bootstrapped.container,
+      },
+      {
+        provide: COMPILED_MODULES,
+        useValue: bootstrapped.modules,
+      },
+    );
+    resetReadinessState(bootstrapped.modules);
     const lifecycleProviders = [
       ...runtimeProviders,
+      {
+        provide: RUNTIME_CONTAINER,
+        useValue: bootstrapped.container,
+      },
+      {
+        provide: COMPILED_MODULES,
+        useValue: bootstrapped.modules,
+      },
       ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
     ];
     lifecycleInstances = await resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
@@ -651,11 +661,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logRouteMappings(logger, handlerMapping.descriptors);
 
     const dispatcher = createDispatcher({
-       appMiddleware: options.middleware ?? [],
-       handlerMapping,
-       observers: options.observers ?? [],
-       rootContainer: bootstrapped.container,
-     });
+      appMiddleware: options.middleware ?? [],
+      handlerMapping,
+      observers: options.observers ?? [],
+      rootContainer: bootstrapped.container,
+    });
 
     return new KonektiApplication(
       config,
