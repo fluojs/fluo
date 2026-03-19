@@ -44,6 +44,7 @@ pnpm dev
 - `@konekti/cron`
 - `@konekti/event-bus`
 - `@konekti/websocket`
+- `@konekti/queue`
 
 ### 데이터 통합 패키지
 
@@ -91,6 +92,7 @@ pnpm dev
 - `packages/cron/README.md`
 - `packages/event-bus/README.md`
 - `packages/websocket/README.md`
+- `packages/queue/README.md`
 
 ## 문서화 규칙
 
