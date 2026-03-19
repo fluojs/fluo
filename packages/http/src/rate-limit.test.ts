@@ -51,7 +51,16 @@ describe('createRateLimitMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(2);
     expect(context.response.statusCode).toBe(429);
     expect(context.response.headers['Retry-After']).toBe('1');
-    expect(context.response.send).toHaveBeenCalledWith({ message: 'Too Many Requests' });
+    expect(context.response.send).toHaveBeenCalledWith({
+      error: {
+        code: 'TOO_MANY_REQUESTS',
+        details: undefined,
+        message: 'Too Many Requests',
+        meta: { retryAfter: 1 },
+        requestId: undefined,
+        status: 429,
+      },
+    });
   });
 
   it('resets the counter after the window expires', async () => {
