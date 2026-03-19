@@ -1,0 +1,42 @@
+{
+  "name": "@konekti/graphql",
+  "version": "0.0.0",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/konektijs/konekti.git",
+    "directory": "packages/graphql"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@konekti/core": "workspace:*",
+    "@konekti/di": "workspace:*",
+    "@konekti/http": "workspace:*",
+    "@konekti/runtime": "workspace:*",
+    "graphql": "^16.13.1",
+    "graphql-yoga": "^5.18.1"
+  }
+}
