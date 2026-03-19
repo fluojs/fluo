@@ -25,8 +25,7 @@ import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health.js';
 import { bootstrapNodeApplication, createNodeHttpAdapter, runNodeApplication } from './node.js';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
-import type { ApplicationLogger } from './types.js';
-import type { CompiledModule, OnApplicationBootstrap, OnModuleInit } from './types.js';
+import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -1650,6 +1649,140 @@ describe('bootstrapApplication', () => {
 
     response.destroy();
     await streamClosed.promise;
+
+    await app.close();
+  });
+});
+
+describe('exception filter pipeline', () => {
+  it('calls the filter and stops the chain when the filter returns true', async () => {
+    const caughtErrors: unknown[] = [];
+
+    class ThrowingController {
+      @Get('/boom')
+      boom() {
+        throw new Error('test error');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ThrowingController],
+    });
+
+    const filter: ExceptionFilterHandler = {
+      catch(error: unknown, context: ExceptionFilterContext): boolean {
+        caughtErrors.push(error);
+        context.response.setStatus(418);
+        void context.response.send({ handled: true });
+
+        return true;
+      },
+    };
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      filters: [filter],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+
+    expect(response.status).toBe(418);
+    await expect(response.json()).resolves.toEqual({ handled: true });
+    expect(caughtErrors).toHaveLength(1);
+    expect(caughtErrors[0]).toBeInstanceOf(Error);
+
+    await app.close();
+  });
+
+  it('falls through to the default 500 handler when the filter returns undefined', async () => {
+    class ThrowingController {
+      @Get('/boom')
+      boom() {
+        throw new Error('unhandled error');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ThrowingController],
+    });
+
+    const filter: ExceptionFilterHandler = {
+      catch(): undefined {
+        return undefined;
+      },
+    };
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      filters: [filter],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+
+    expect(response.status).toBe(500);
+
+    await app.close();
+  });
+
+  it('stops the chain at the first filter that returns true and skips subsequent filters', async () => {
+    const callOrder: string[] = [];
+
+    class ThrowingController {
+      @Get('/boom')
+      boom() {
+        throw new Error('test error');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ThrowingController],
+    });
+
+    const firstFilter: ExceptionFilterHandler = {
+      catch(_error: unknown, context: ExceptionFilterContext): boolean {
+        callOrder.push('first');
+        context.response.setStatus(400);
+        void context.response.send({ filter: 'first' });
+
+        return true;
+      },
+    };
+
+    const secondFilter: ExceptionFilterHandler = {
+      catch(): undefined {
+        callOrder.push('second');
+
+        return undefined;
+      },
+    };
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      filters: [firstFilter, secondFilter],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+
+    expect(response.status).toBe(400);
+    expect(callOrder).toEqual(['first']);
 
     await app.close();
   });

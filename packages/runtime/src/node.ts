@@ -198,9 +198,10 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   ): Promise<void> {
     const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
     const signal = createRequestSignal(response);
+    let frameworkRequest: FrameworkRequest | undefined;
 
     try {
-      const frameworkRequest = await createFrameworkRequest(
+      frameworkRequest = await createFrameworkRequest(
         request,
         signal,
         this.multipartOptions,
@@ -222,7 +223,8 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
         return;
       }
 
-      await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
+      const requestId = resolveRequestIdFromHeaders(request.headers);
+      await writeNodeAdapterErrorResponse(error, frameworkResponse, requestId);
     }
   }
 }

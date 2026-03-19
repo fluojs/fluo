@@ -17,3 +17,9 @@ export class ModuleInjectionMetadataError extends KonektiError {
     super(message, { code: 'MODULE_INJECTION_METADATA_ERROR' });
   }
 }
+
+export class DuplicateProviderError extends KonektiError {
+  constructor(message: string) {
+    super(message, { code: 'DUPLICATE_PROVIDER_ERROR' });
+  }
+}

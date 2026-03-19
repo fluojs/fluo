@@ -135,6 +135,44 @@ await runNodeApplication(AppModule, {
 
 `globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op.
 
+### Global exception filters
+
+```typescript
+import { NotFoundException } from '@konekti/http';
+import type { ExceptionFilterHandler } from '@konekti/runtime';
+
+class DomainExceptionFilter implements ExceptionFilterHandler {
+  catch(error, context) {
+    if (error instanceof UserNotFoundError) {
+      context.response.setStatus(404);
+      void context.response.send({ message: error.message });
+      return true;
+    }
+
+    return undefined;
+  }
+}
+
+await runNodeApplication(AppModule, {
+  filters: [new DomainExceptionFilter()],
+  mode: 'prod',
+});
+```
+
+`filters` registers global exception filters that run in order when a handler, guard, interceptor, or middleware throws. Return `true` after writing the response to stop the chain; return `undefined` to fall through to the next filter and eventually the built-in HTTP exception serializer.
+
+### Duplicate provider diagnostics
+
+```typescript
+await bootstrapApplication({
+  duplicateProviderPolicy: 'throw',
+  mode: 'prod',
+  rootModule: AppModule,
+});
+```
+
+`duplicateProviderPolicy` controls what happens when multiple modules register the same provider token during bootstrap. Use `'warn'` to log and continue, `'throw'` to fail fast with `DuplicateProviderError`, or `'ignore'` to preserve the existing last-registration-wins behavior.
+
 ### URI versioning
 
 ```typescript

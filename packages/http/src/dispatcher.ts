@@ -29,10 +29,13 @@ import type {
 const defaultBinder = new DefaultBinder();
 const defaultValidator = new HttpDtoValidationAdapter();
 
+export type ErrorHandler = (error: unknown, request: FrameworkRequest, response: FrameworkResponse, requestId?: string) => Promise<boolean | void> | boolean | void;
+
 export interface CreateDispatcherOptions {
   appMiddleware?: MiddlewareLike[];
   handlerMapping: HandlerMapping;
   observers?: RequestObserverLike[];
+  onError?: ErrorHandler;
   rootContainer: Container;
 }
 
@@ -286,6 +289,13 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
               await observer.onRequestError?.(context, error);
             },
           );
+
+          const handled = await options.onError?.(error, requestContext.request, response, requestContext.requestId);
+
+          if (handled) {
+            return;
+          }
+
           await writeErrorResponse(error, response, requestContext.requestId);
         } finally {
           await notifyObservers(observers, requestContext, async (observer, context) => {
