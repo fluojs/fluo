@@ -21,6 +21,11 @@ interface RedisLockClient {
   set(key: string, value: string, mode: 'PX', ttl: number, existence: 'NX'): Promise<'OK' | null | undefined>;
 }
 
+const RELEASE_LOCK_SCRIPT =
+  'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end';
+const RENEW_LOCK_SCRIPT =
+  'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], ARGV[2]) else return 0 end';
+
 interface DiscoveryCandidate {
   moduleName: string;
   scope: 'request' | 'singleton' | 'transient';
@@ -189,6 +194,8 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
         seenMethods.add(methodName);
         seen.set(candidate.token, seenMethods);
         descriptors.push({
+          afterRun: entry.metadata.options.afterRun,
+          beforeRun: entry.metadata.options.beforeRun,
           distributed: entry.metadata.options.distributed ?? true,
           expression: entry.metadata.expression,
           lockKey: createLockKey(this.options.distributed.keyPrefix, entry.metadata.options.key ?? taskName),
@@ -196,6 +203,8 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
           methodKey: entry.propertyKey,
           methodName,
           moduleName: candidate.moduleName,
+          onError: entry.metadata.options.onError,
+          onSuccess: entry.metadata.options.onSuccess,
           targetName: candidate.targetType.name,
           taskName,
           timezone: entry.metadata.options.timezone,
@@ -270,9 +279,15 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
       return;
     }
 
+    const renewalIntervalMs = Math.max(1_000, Math.floor(descriptor.lockTtlMs / 2));
+    const renewalTimer = setInterval(() => {
+      void this.renewLock(descriptor);
+    }, renewalIntervalMs);
+
     try {
       await this.executeTask(descriptor);
     } finally {
+      clearInterval(renewalTimer);
       await this.releaseLock(descriptor);
     }
   }
@@ -307,10 +322,24 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
       return;
     }
 
+    if (descriptor.beforeRun) {
+      await Promise.resolve(descriptor.beforeRun());
+    }
+
     try {
       await Promise.resolve((value as (this: unknown) => Promise<void>).call(instance));
+      if (descriptor.onSuccess) {
+        await Promise.resolve(descriptor.onSuccess());
+      }
     } catch (error) {
       this.logger.error(`Cron task ${descriptor.taskName} failed.`, error, 'CronLifecycleService');
+      if (descriptor.onError) {
+        await Promise.resolve(descriptor.onError(error));
+      }
+    } finally {
+      if (descriptor.afterRun) {
+        await Promise.resolve(descriptor.afterRun());
+      }
     }
   }
 
@@ -349,6 +378,30 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
   }
 
+  private async renewLock(descriptor: CronTaskDescriptor): Promise<void> {
+    const redis = this.redisClient;
+
+    if (!redis) {
+      return;
+    }
+
+    try {
+      await redis.eval(
+        RENEW_LOCK_SCRIPT,
+        1,
+        descriptor.lockKey,
+        this.options.distributed.ownerId,
+        String(descriptor.lockTtlMs),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to renew distributed cron lock for ${descriptor.taskName}.`,
+        error,
+        'CronLifecycleService',
+      );
+    }
+  }
+
   private async releaseOwnedLocks(): Promise<void> {
     if (!this.redisClient || this.ownedLockKeys.size === 0) {
       return;
@@ -371,12 +424,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
 
     try {
-      await redis.eval(
-        'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end',
-        1,
-        lockKey,
-        this.options.distributed.ownerId,
-      );
+      await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId);
     } catch (error) {
       this.logger.error(
         `Failed to release distributed cron lock for ${taskName}.`,

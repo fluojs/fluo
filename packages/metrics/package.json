@@ -32,6 +32,7 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/runtime": "workspace:*",
     "prom-client": "^15.1.3"

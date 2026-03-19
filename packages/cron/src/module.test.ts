@@ -36,8 +36,16 @@ class InMemoryLockRedisClient {
     return 'OK';
   }
 
-  async eval(_script: string, _keysLength: number, key: string, owner: string): Promise<number> {
+  async eval(script: string, _keysLength: number, key: string, owner: string, _ttl?: string): Promise<number> {
     if (this.locks.get(key) !== owner) {
+      return 0;
+    }
+
+    if (script.includes('PEXPIRE')) {
+      return 1;
+    }
+
+    if (!script.includes('DEL')) {
       return 0;
     }
 
@@ -548,5 +556,91 @@ describe('@konekti/cron', () => {
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(store.count).toBe(1);
+  });
+
+  it('throws during decoration when @Cron() expression is invalid', () => {
+    expect(() => {
+      class InvalidCronTask {
+        @Cron('not-a-cron')
+        run() {}
+      }
+
+      return InvalidCronTask;
+    }).toThrow('@Cron(): invalid cron expression "not-a-cron".');
+  });
+
+  it('runs lifecycle hooks around successful cron execution', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class HookedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        beforeRun: () => {
+          events.push('before');
+        },
+        name: 'hooked-success-task',
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      run() {
+        events.push('run');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [HookedTaskService],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+    await scheduled.records[0]!.tick();
+
+    expect(events).toEqual(['before', 'run', 'success', 'after']);
+
+    await app.close();
+  });
+
+  it('runs error lifecycle hooks when cron task fails', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class HookedFailingTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        beforeRun: () => {
+          events.push('before');
+        },
+        name: 'hooked-failing-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+      })
+      run() {
+        events.push('run');
+        throw new Error('hook boom');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [HookedFailingTaskService],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+    await scheduled.records[0]!.tick();
+
+    expect(events).toEqual(['before', 'run', 'error:hook boom', 'after']);
+
+    await app.close();
   });
 });

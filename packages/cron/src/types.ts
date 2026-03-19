@@ -1,10 +1,14 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
 
 export interface CronTaskOptions {
+  afterRun?: () => void | Promise<void>;
+  beforeRun?: () => void | Promise<void>;
   distributed?: boolean;
   key?: string;
   lockTtlMs?: number;
   name?: string;
+  onError?: (error: unknown) => void | Promise<void>;
+  onSuccess?: () => void | Promise<void>;
   timezone?: string;
 }
 
@@ -47,6 +51,8 @@ export interface NormalizedCronModuleOptions {
 }
 
 export interface CronTaskDescriptor {
+  afterRun?: () => void | Promise<void>;
+  beforeRun?: () => void | Promise<void>;
   distributed: boolean;
   expression: string;
   lockKey: string;
@@ -54,6 +60,8 @@ export interface CronTaskDescriptor {
   methodKey: MetadataPropertyKey;
   methodName: string;
   moduleName: string;
+  onError?: (error: unknown) => void | Promise<void>;
+  onSuccess?: () => void | Promise<void>;
   taskName: string;
   timezone?: string;
   targetName: string;

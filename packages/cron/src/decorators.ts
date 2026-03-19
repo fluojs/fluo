@@ -1,4 +1,5 @@
 import { metadataSymbol } from '@konekti/core';
+import { Cron as CronValidator } from 'croner';
 
 import type { CronTaskMetadata, CronTaskOptions } from './types.js';
 import { cronMetadataSymbol } from './metadata.js';
@@ -24,6 +25,12 @@ function defineStandardCronMetadata(metadata: unknown, propertyKey: string | sym
 }
 
 export function Cron(expression: string, options: CronTaskOptions = {}): MethodDecoratorLike {
+  try {
+    new CronValidator(expression, { maxRuns: 0 });
+  } catch {
+    throw new Error(`@Cron(): invalid cron expression "${expression}".`);
+  }
+
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
     if (context.private) {
       throw new Error('@Cron() cannot be used on private methods.');

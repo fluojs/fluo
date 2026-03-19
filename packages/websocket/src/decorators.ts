@@ -1,7 +1,7 @@
 import { metadataSymbol } from '@konekti/core';
 
 import { webSocketGatewayMetadataSymbol, webSocketHandlerMetadataSymbol } from './metadata.js';
-import type { WebSocketGatewayHandlerMetadata, WebSocketGatewayOptions } from './types.js';
+import type { WebSocketEventMap, WebSocketGatewayHandlerMetadata, WebSocketGatewayOptions } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
@@ -63,7 +63,9 @@ function createMethodDecorator(metadata: WebSocketGatewayHandlerMetadata): Metho
   return decorator as MethodDecoratorLike;
 }
 
-export function WebSocketGateway(options: WebSocketGatewayOptions = {}): ClassDecoratorLike {
+export function WebSocketGateway<TEvents extends WebSocketEventMap = WebSocketEventMap>(
+  options: WebSocketGatewayOptions<TEvents> = {},
+): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext) => {
     defineStandardGatewayMetadata(context.metadata, options);
   };
@@ -71,7 +73,10 @@ export function WebSocketGateway(options: WebSocketGatewayOptions = {}): ClassDe
   return decorator as ClassDecoratorLike;
 }
 
-export function OnMessage(event?: string): MethodDecoratorLike {
+export function OnMessage<
+  TEvents extends WebSocketEventMap = WebSocketEventMap,
+  K extends keyof TEvents = keyof TEvents,
+>(event?: K & string): MethodDecoratorLike {
   return createMethodDecorator({
     event,
     type: 'message',

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { Container, type Provider } from '@konekti/di';
+import { Container, isForwardRef, isOptionalToken, type ForwardRefFn, type OptionalToken, type Provider } from '@konekti/di';
 import { ConfigService, loadConfig } from '@konekti/config';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import {
@@ -44,7 +44,15 @@ function providerToken(provider: Provider): Token {
   return provider.provide;
 }
 
-function providerDependencies(provider: Provider): Token[] {
+type InjectionToken = Token | ForwardRefFn | OptionalToken;
+
+function resolveInjectionToken(t: InjectionToken): Token {
+  if (isForwardRef(t)) return t.forwardRef();
+  if (isOptionalToken(t)) return t.token;
+  return t;
+}
+
+function providerDependencies(provider: Provider): InjectionToken[] {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.inject ?? [];
   }
@@ -95,7 +103,11 @@ function providerScope(provider: Provider): 'singleton' | 'request' | 'transient
     return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
-  return provider.scope ?? 'singleton';
+  if ('useFactory' in provider) {
+    return provider.scope ?? 'singleton';
+  }
+
+  return 'singleton';
 }
 
 function createRuntimeTokenSet(providers: Provider[] = []): Set<Token> {
@@ -120,7 +132,7 @@ function requiredConstructorParameters(target: Function): number {
 function validateClassInjectionMetadata(
   subject: string,
   implementation: Function,
-  inject: readonly Token[],
+  inject: readonly InjectionToken[],
   scope: string,
   remedy: string,
 ): void {
@@ -343,7 +355,9 @@ function validateCompiledModules(
     for (const provider of compiledModule.definition.providers ?? []) {
       validateProviderInjectionMetadata(provider, scope);
 
-      for (const token of providerDependencies(provider)) {
+      for (const rawToken of providerDependencies(provider)) {
+        const token = resolveInjectionToken(rawToken);
+
         if (!accessibleTokens.has(token)) {
           throw new ModuleVisibilityError(
             `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(

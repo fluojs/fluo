@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -18,7 +19,13 @@ import type { HttpApplicationAdapter } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
-import type { WebSocketGatewayDescriptor, WebSocketGatewayHandlerDescriptor } from './types.js';
+import { WEBSOCKET_OPTIONS } from './tokens.js';
+import type {
+  WebSocketGatewayDescriptor,
+  WebSocketGatewayHandlerDescriptor,
+  WebSocketModuleOptions,
+  WebSocketRoomService,
+} from './types.js';
 
 interface DiscoveryCandidate {
   moduleName: string;
@@ -129,10 +136,18 @@ function rejectUpgradeRequest(socket: Duplex): void {
   socket.destroy();
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER])
-export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS])
+export class WebSocketGatewayLifecycleService
+  implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
+{
   private attachments: GatewayAttachment[] = [];
+  private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly pingPending = new Set<string>();
+  private readonly pingSentAt = new Map<string, number>();
+  private readonly roomSockets = new Map<string, Set<string>>();
   private shutdownPromise: Promise<void> | undefined;
+  private readonly socketRegistry = new Map<string, WebSocket>();
+  private readonly socketRooms = new Map<string, Set<string>>();
   private upgradeListener: NodeUpgradeListener | undefined;
   private upgradeServer: NodeUpgradeServer | undefined;
 
@@ -141,6 +156,7 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly adapter: HttpApplicationAdapter,
+    private readonly moduleOptions: WebSocketModuleOptions,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -197,6 +213,12 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
     this.upgradeServer = upgradeServer;
     this.upgradeListener = listener;
     this.attachments = Array.from(attachmentsByPath.values());
+
+    if (this.moduleOptions.heartbeat?.enabled === true) {
+      const intervalMs = this.moduleOptions.heartbeat.intervalMs ?? 30_000;
+      const timeoutMs = this.moduleOptions.heartbeat.timeoutMs ?? intervalMs;
+      this.startHeartbeat(intervalMs, timeoutMs);
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -230,6 +252,9 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
     socket: WebSocket,
     request: IncomingMessage,
   ): Promise<void> {
+    const socketId = randomUUID();
+    this.socketRegistry.set(socketId, socket);
+
     const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
 
     for (const descriptor of descriptors) {
@@ -242,11 +267,12 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
 
     await Promise.all(
       resolved.map(async ({ descriptor, instance }) => {
-        await this.runHandlers(instance, descriptor, 'connect', socket, request);
+        await this.runHandlers(instance, descriptor, 'connect', socket, request, socketId);
       }),
     );
 
     if (socket.readyState !== WebSocket.OPEN) {
+      this.unregisterSocket(socketId);
       return;
     }
 
@@ -254,8 +280,14 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
       void this.handleMessage(resolved, socket, request, data);
     });
 
+    socket.on('pong', () => {
+      this.pingPending.delete(socketId);
+      this.pingSentAt.delete(socketId);
+    });
+
     socket.on('close', (code: number, reason: Buffer) => {
-      void this.handleDisconnect(resolved, socket, code, reason);
+      this.unregisterSocket(socketId);
+      void this.handleDisconnect(resolved, socket, code, reason, socketId);
     });
   }
 
@@ -287,10 +319,11 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
     socket: WebSocket,
     code: number,
     reason: Buffer,
+    socketId: string,
   ): Promise<void> {
     await Promise.all(
       resolved.map(async ({ descriptor, instance }) => {
-        await this.runHandlers(instance, descriptor, 'disconnect', socket, code, reason.toString('utf8'));
+        await this.runHandlers(instance, descriptor, 'disconnect', socket, code, reason.toString('utf8'), socketId);
       }),
     );
   }
@@ -434,6 +467,11 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
     }
 
     this.shutdownPromise = (async () => {
+      if (this.heartbeatTimer) {
+        clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = undefined;
+      }
+
       if (this.upgradeServer && this.upgradeListener) {
         this.upgradeServer.off('upgrade', this.upgradeListener);
       }
@@ -454,8 +492,114 @@ export class WebSocketGatewayLifecycleService implements OnApplicationBootstrap,
           });
         }),
       );
+
+      this.socketRegistry.clear();
+      this.socketRooms.clear();
+      this.roomSockets.clear();
+      this.pingPending.clear();
+      this.pingSentAt.clear();
     })();
 
     await this.shutdownPromise;
+  }
+
+  joinRoom(socketId: string, room: string): void {
+    let rooms = this.socketRooms.get(socketId);
+
+    if (!rooms) {
+      rooms = new Set<string>();
+      this.socketRooms.set(socketId, rooms);
+    }
+
+    rooms.add(room);
+
+    let sockets = this.roomSockets.get(room);
+    if (!sockets) {
+      sockets = new Set<string>();
+      this.roomSockets.set(room, sockets);
+    }
+
+    sockets.add(socketId);
+  }
+
+  leaveRoom(socketId: string, room: string): void {
+    const rooms = this.socketRooms.get(socketId);
+    rooms?.delete(room);
+    if (rooms && rooms.size === 0) {
+      this.socketRooms.delete(socketId);
+    }
+
+    const sockets = this.roomSockets.get(room);
+    sockets?.delete(socketId);
+    if (sockets && sockets.size === 0) {
+      this.roomSockets.delete(room);
+    }
+  }
+
+  broadcastToRoom(room: string, event: string, data: unknown): void {
+    const socketIds = this.roomSockets.get(room);
+
+    if (!socketIds) {
+      return;
+    }
+
+    const message = JSON.stringify({ data, event });
+    for (const socketId of socketIds) {
+      const socket = this.socketRegistry.get(socketId);
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+      }
+    }
+  }
+
+  getRooms(socketId: string): ReadonlySet<string> {
+    return this.socketRooms.get(socketId) ?? new Set<string>();
+  }
+
+  private startHeartbeat(intervalMs: number, timeoutMs: number): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+
+    this.heartbeatTimer = setInterval(() => {
+      const now = Date.now();
+
+      for (const [socketId, socket] of this.socketRegistry) {
+        if (this.pingPending.has(socketId)) {
+          const pingAt = this.pingSentAt.get(socketId);
+          const elapsed = pingAt === undefined ? timeoutMs : now - pingAt;
+
+          if (elapsed >= timeoutMs) {
+            socket.terminate();
+            this.unregisterSocket(socketId);
+          }
+          continue;
+        }
+
+        if (socket.readyState === WebSocket.OPEN) {
+          this.pingPending.add(socketId);
+          this.pingSentAt.set(socketId, now);
+          socket.ping();
+        }
+      }
+    }, intervalMs);
+  }
+
+  private unregisterSocket(socketId: string): void {
+    this.socketRegistry.delete(socketId);
+    this.pingPending.delete(socketId);
+    this.pingSentAt.delete(socketId);
+
+    const rooms = this.socketRooms.get(socketId);
+    if (rooms) {
+      for (const room of rooms) {
+        const sockets = this.roomSockets.get(room);
+        sockets?.delete(socketId);
+        if (sockets && sockets.size === 0) {
+          this.roomSockets.delete(room);
+        }
+      }
+      this.socketRooms.delete(socketId);
+    }
   }
 }
