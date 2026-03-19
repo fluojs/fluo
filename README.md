@@ -41,6 +41,7 @@ Generated apps include:
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/metrics`
+- `@konekti/cron`
 
 ### Data integration packages
 
@@ -85,6 +86,7 @@ Package-level docs:
 - `packages/passport/README.md`
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
+- `packages/cron/README.md`
 
 ## Documentation Rules
 

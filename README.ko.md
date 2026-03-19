@@ -41,6 +41,7 @@ pnpm dev
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/metrics`
+- `@konekti/cron`
 
 ### 데이터 통합 패키지
 
@@ -85,6 +86,7 @@ pnpm dev
 - `packages/passport/README.md`
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
+- `packages/cron/README.md`
 
 ## 문서화 규칙
 
