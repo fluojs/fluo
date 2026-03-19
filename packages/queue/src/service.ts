@@ -195,17 +195,14 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       return;
     }
 
-    if (this.startPromise) {
-      await this.startPromise;
-      return;
+    if (!this.startPromise) {
+      this.startPromise = (async () => {
+        const redis = this.getRedisClient();
+        this.discoverWorkers();
+        await this.initializeWorkers(redis);
+        this.started = true;
+      })();
     }
-
-    this.startPromise = (async () => {
-      const redis = this.getRedisClient();
-      this.discoverWorkers();
-      await this.initializeWorkers(redis);
-      this.started = true;
-    })();
 
     try {
       await this.startPromise;
@@ -349,7 +346,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     const connection = redis.duplicate();
     this.ownedConnections.push(connection);
 
-    if (connection.status === 'wait') {
+    if (connection.status === 'wait' || connection.status === 'reconnecting') {
       await connection.connect();
     }
 
@@ -401,7 +398,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       const deadLetter = {
         attemptsMade: job.attemptsMade,
         errorMessage: error.message,
-        failedAt: new Date().toISOString(),
+        failedAt: new Date(job.finishedOn ?? Date.now()).toISOString(),
         jobId: job.id ?? '',
         jobName: descriptor.jobName,
         payload: job.data,
@@ -455,8 +452,28 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         }
       }
 
+      const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
+
       while (this.pendingDeadLetterWrites.size > 0) {
-        await Promise.allSettled(Array.from(this.pendingDeadLetterWrites));
+        const writes = Array.from(this.pendingDeadLetterWrites).map((write) =>
+          Promise.race([
+            write,
+            new Promise<void>((_, reject) =>
+              setTimeout(
+                () => reject(new Error('dead-letter write timed out')),
+                DEAD_LETTER_DRAIN_TIMEOUT_MS,
+              ),
+            ),
+          ]).catch((error) => {
+            this.logger.error(
+              'Dead-letter write did not complete within shutdown timeout.',
+              error,
+              'QueueLifecycleService',
+            );
+          }),
+        );
+
+        await Promise.allSettled(writes);
       }
 
       const ownedConnections = this.ownedConnections.splice(0);
