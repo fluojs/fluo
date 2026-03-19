@@ -59,4 +59,87 @@ describe('DefaultValidator', () => {
       ],
     });
   });
+
+  it('transform returns a typed DTO instance from plain object', async () => {
+    class CreateUserDto {
+      @IsEmail()
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+    const result = await validator.transform<CreateUserDto>({ email: 'hello@example.com' }, CreateUserDto);
+
+    expect(result).toBeInstanceOf(CreateUserDto);
+    expect(result.email).toBe('hello@example.com');
+  });
+
+  it('transform recursively transforms nested DTOs', async () => {
+    class AddressDto {
+      @MinLength(1)
+      city = '';
+    }
+
+    class CreateOrderDto {
+      @ValidateNested(() => AddressDto)
+      address = new AddressDto();
+
+      @ValidateNested(() => AddressDto, { each: true })
+      previousAddresses: AddressDto[] = [];
+    }
+
+    const validator = new DefaultValidator();
+    const result = await validator.transform<CreateOrderDto>(
+      {
+        address: { city: 'Seoul' },
+        previousAddresses: [{ city: 'Busan' }],
+      },
+      CreateOrderDto,
+    );
+
+    expect(result).toBeInstanceOf(CreateOrderDto);
+    expect(result.address).toBeInstanceOf(AddressDto);
+    expect(result.previousAddresses[0]).toBeInstanceOf(AddressDto);
+  });
+
+  it('transform throws DtoValidationError on invalid input', async () => {
+    class CreateUserDto {
+      @IsEmail()
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.transform({ email: 'not-an-email' }, CreateUserDto)).rejects.toBeInstanceOf(DtoValidationError);
+  });
+
+  it('resolves lazy circular nested references at validation time', async () => {
+    class ParentDto {
+      @MinLength(1)
+      name = '';
+
+      @ValidateNested(() => ChildDto)
+      child!: ChildDto;
+    }
+
+    class ChildDto {
+      @ValidateNested(() => ParentDto, { each: true })
+      parents: ParentDto[] = [];
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ParentDto(), {
+          child: {
+            parents: [{}],
+          },
+          name: 'ok',
+        }),
+        ParentDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'child.parents[0].name' }],
+    });
+  });
 });

@@ -15,6 +15,14 @@ import {
 import { DtoValidationError } from './errors.js';
 import type { ValidationIssue, Validator } from './types.js';
 
+function resolveNestedDto(dto: Constructor | (() => Constructor)): Constructor {
+  if (typeof dto === 'function' && 'prototype' in dto && dto.prototype) {
+    return dto as Constructor;
+  }
+
+  return (dto as () => Constructor)();
+}
+
 function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
 }
@@ -104,6 +112,53 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
     const sourceKey = bindingMap.get(propertyKey)?.key;
     if (!sourceKey) continue;
     instance[propertyKey] = rawValue[sourceKey];
+  }
+
+  for (const entry of getDtoValidationSchema(target)) {
+    const nestedRule = entry.rules.find(
+      (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
+    );
+
+    if (!nestedRule) {
+      continue;
+    }
+
+    const currentValue = instance[entry.propertyKey];
+    if (currentValue === undefined || currentValue === null) {
+      continue;
+    }
+
+    const resolvedDto = resolveNestedDto(nestedRule.dto);
+
+    if (nestedRule.each) {
+      if (Array.isArray(currentValue)) {
+        instance[entry.propertyKey] = currentValue.map((item) =>
+          item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
+        );
+        continue;
+      }
+
+      if (currentValue instanceof Set) {
+        instance[entry.propertyKey] = new Set(
+          Array.from(currentValue.values(), (item) =>
+            item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
+          ),
+        );
+        continue;
+      }
+
+      if (currentValue instanceof Map) {
+        instance[entry.propertyKey] = new Map(
+          Array.from(currentValue.entries(), ([key, item]) => [
+            key,
+            item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
+          ]),
+        );
+        continue;
+      }
+    }
+
+    instance[entry.propertyKey] = createNestedDtoInstance(resolvedDto, currentValue);
   }
 
   return instance as T;
@@ -257,12 +312,13 @@ async function validateNestedRule(
 ): Promise<ValidationIssue[]> {
   const values = rule.each ? getIterableValues(value) ?? [value] : [value];
   const issues: ValidationIssue[] = [];
+  const resolvedDto = resolveNestedDto(rule.dto);
 
   for (const [index, entry] of values.entries()) {
     if (entry === undefined || entry === null) continue;
     const nestedPath = rule.each ? `${fieldPath}[${String(index)}]` : fieldPath;
-    const nestedDto = createNestedDtoInstance(rule.dto, entry);
-    issues.push(...(await collectValidationIssuesInternal(rule.dto, nestedDto, { fieldPrefix: nestedPath, inheritedSource })));
+    const nestedDto = createNestedDtoInstance(resolvedDto, entry);
+    issues.push(...(await collectValidationIssuesInternal(resolvedDto, nestedDto, { fieldPrefix: nestedPath, inheritedSource })));
   }
 
   return issues;
@@ -385,5 +441,16 @@ export class DefaultValidator implements Validator {
     const issues = await collectValidationIssues(target, value);
     if (issues.length === 0) return;
     throw new DtoValidationError('Validation failed.', issues);
+  }
+
+  async transform<T>(value: unknown, target: Constructor<T>): Promise<T> {
+    const instance = createNestedDtoInstance(target, value);
+    const issues = await collectValidationIssues(target, instance);
+
+    if (issues.length > 0) {
+      throw new DtoValidationError('Validation failed.', issues);
+    }
+
+    return instance;
   }
 }

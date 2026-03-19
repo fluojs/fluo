@@ -140,6 +140,14 @@ function createSchemaRef(name: string): OpenApiSchemaObject {
   };
 }
 
+function resolveNestedDto(dto: Constructor | (() => Constructor)): Constructor {
+  if (typeof dto === 'function' && 'prototype' in dto && dto.prototype) {
+    return dto as Constructor;
+  }
+
+  return (dto as () => Constructor)();
+}
+
 function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): OpenApiSchemaObject | undefined {
   const hasRule = <TKind extends DtoFieldValidationRule['kind']>(kind: TKind) =>
     rules.find((rule): rule is Extract<DtoFieldValidationRule, { kind: TKind }> => rule.kind === kind);
@@ -155,11 +163,13 @@ function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): 
   const enumRule = hasRule('enum');
 
   if (nestedRule && nestedRule.each) {
-    return { items: createSchemaRef(nestedRule.dto.name), type: 'array' };
+    const resolvedDto = resolveNestedDto(nestedRule.dto);
+    return { items: createSchemaRef(resolvedDto.name), type: 'array' };
   }
 
   if (nestedRule) {
-    return createSchemaRef(nestedRule.dto.name);
+    const resolvedDto = resolveNestedDto(nestedRule.dto);
+    return createSchemaRef(resolvedDto.name);
   }
 
   if (arrayRule) {
@@ -208,7 +218,8 @@ function inferEachItemSchema(rules: readonly DtoFieldValidationRule[]): OpenApiS
   );
 
   if (nestedRule) {
-    return createSchemaRef(nestedRule.dto.name);
+    const resolvedDto = resolveNestedDto(nestedRule.dto);
+    return createSchemaRef(resolvedDto.name);
   }
 
   const enumRule = rules.find(
@@ -319,7 +330,7 @@ function ensureComponentSchemaFromEntries(
 
     for (const rule of rules) {
       if (rule.kind === 'nested') {
-        ensureComponentSchema(rule.dto, componentSchemas);
+        ensureComponentSchema(resolveNestedDto(rule.dto), componentSchemas);
       }
     }
 
@@ -371,15 +382,71 @@ function createParameters(
     const schema = applyValidationConstraints(inferred, rules);
     const isRequired = source === 'path' ? true : isPropertyRequired(entry.binding, entry.validation);
 
-    const ensuredSchema = '$ref' in schema ? ensureComponentSchema(dto, componentSchemas) : schema;
+    if ('$ref' in schema) {
+      const nestedRule = rules.find(
+        (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
+      );
+
+      if (nestedRule) {
+        ensureComponentSchema(resolveNestedDto(nestedRule.dto), componentSchemas);
+      }
+    }
 
     return {
       in: source,
       name: entry.binding.metadata.key ?? entry.name,
       required: isRequired,
-      schema: ensuredSchema,
+      schema,
     };
   });
+}
+
+function ensureErrorResponseSchema(componentSchemas: Record<string, OpenApiSchemaObject>): OpenApiSchemaObject {
+  const schemaName = 'ErrorResponse';
+
+  if (!componentSchemas[schemaName]) {
+    componentSchemas[schemaName] = {
+      additionalProperties: false,
+      properties: {
+        error: { type: 'string' },
+        message: { type: 'string' },
+        statusCode: { type: 'integer' },
+      },
+      required: ['statusCode', 'message', 'error'],
+      type: 'object',
+    };
+  }
+
+  return createSchemaRef(schemaName);
+}
+
+function addDefaultErrorResponses(
+  responses: Record<string, OpenApiResponseObject>,
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+): void {
+  const errorSchema = ensureErrorResponseSchema(componentSchemas);
+  const defaultErrorResponses: Record<string, string> = {
+    '400': 'Bad Request',
+    '401': 'Unauthorized',
+    '403': 'Forbidden',
+    '404': 'Not Found',
+    '500': 'Internal Server Error',
+  };
+
+  for (const [status, description] of Object.entries(defaultErrorResponses)) {
+    if (responses[status]) {
+      continue;
+    }
+
+    responses[status] = {
+      content: {
+        'application/json': {
+          schema: errorSchema,
+        },
+      },
+      description,
+    };
+  }
 }
 
 function createRequestBody(
@@ -455,6 +522,8 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     } else {
       responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
     }
+
+    addDefaultErrorResponses(responses, componentSchemas);
 
     const security: OpenApiSecurityRequirementObject[] | undefined =
       methodMeta?.security && methodMeta.security.length > 0
