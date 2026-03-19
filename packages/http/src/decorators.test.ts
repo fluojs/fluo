@@ -8,10 +8,12 @@ import {
   FromPath,
   Get,
   Optional,
+  Produces,
   RequestDto,
   SuccessStatus,
   UseGuard,
   UseInterceptor,
+  getRouteProducesMetadata,
 } from './decorators.js';
 import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { IsString, MinLength, ValidateClass } from '@konekti/dto-validator';
@@ -121,6 +123,19 @@ describe('http decorators', () => {
     ]);
 
     expect(getClassValidationRules(ExampleController)).toHaveLength(1);
+  });
+
+  it('stores handler-level produced media types', () => {
+    @Controller('/feeds')
+    class FeedController {
+      @Produces('application/json', 'text/plain', 'application/json')
+      @Get('/')
+      getFeed() {
+        return { ok: true };
+      }
+    }
+
+    expect(getRouteProducesMetadata(FeedController, 'getFeed')).toEqual(['application/json', 'text/plain']);
   });
 
   it('preserves binding and validator metadata for PickType, OmitType, and IntersectionType', () => {

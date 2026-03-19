@@ -1,5 +1,6 @@
 import { getControllerMetadata, getRouteMetadata, type Constructor, type MetadataPropertyKey } from '@konekti/core';
 
+import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
 import type {
   FrameworkRequest,
@@ -88,6 +89,7 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
 
     const effectiveVersion = routeMetadata.version ?? controllerMetadata.version;
     const effectivePath = applyVersionPrefix(joinPaths(controllerMetadata.basePath, routeMetadata.path), effectiveVersion);
+    const produces = getRouteProducesMetadata(source.controllerToken, propertyKey);
 
     descriptors.push({
       controllerToken: source.controllerToken,
@@ -102,6 +104,7 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
       methodName: String(propertyKey),
       route: {
         ...routeMetadata,
+        ...(produces ? { produces } : {}),
         guards: [
           ...((controllerMetadata.guards ?? []) as GuardLike[]),
           ...((routeMetadata.guards ?? []) as GuardLike[]),

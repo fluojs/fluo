@@ -18,6 +18,7 @@ import {
   Controller,
   Get,
   Post,
+  Produces,
   RequestDto,
   SseResponse,
   SuccessStatus,
@@ -75,6 +76,152 @@ function createRequest(
 }
 
 describe('dispatcher runtime', () => {
+  it('keeps JSON response behavior when no formatters are configured', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Get('/default')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation/default', 'GET', { accept: 'text/plain' }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(response.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('selects formatter by Accept header when content negotiation is configured', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation/formatted', 'GET', { accept: 'text/plain' }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('returns 406 when Accept does not match available formatters', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Produces('application/json')
+      @Get('/json-only')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation/json-only', 'GET', { accept: 'text/plain' }), response);
+
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({
+      error: {
+        code: 'NOT_ACCEPTABLE',
+        details: undefined,
+        message: 'No acceptable response representation found.',
+        meta: undefined,
+        requestId: undefined,
+        status: 406,
+      },
+    });
+  });
+
+  it('falls back to default formatter for wildcard Accept header', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/wildcard')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        defaultMediaType: 'text/plain',
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation/wildcard', 'GET', { accept: '*/*' }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
   describe('runMiddlewareChain with forRoutes filtering', () => {
     it('runs middleware with matching forRoutes path', async () => {
       const events: string[] = [];
