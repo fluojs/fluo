@@ -2,13 +2,13 @@ import { createHmac } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
+import { DefaultJwtVerifier } from '@konekti/jwt';
+
 import {
   AuthenticationExpiredError,
   AuthenticationFailedError,
   AuthenticationRequiredError,
-} from '@konekti/passport';
-
-import { DefaultJwtVerifier } from './verifier.js';
+} from './errors.js';
 import { JwtStrategy } from './strategy.js';
 
 type GuardContext = Parameters<JwtStrategy['authenticate']>[0];

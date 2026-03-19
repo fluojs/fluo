@@ -10,9 +10,10 @@ interface LogEntry {
   timestamp: string;
   requestId?: string;
   context?: string;
+  error?: { message: string; name: string; stack?: string };
 }
 
-function buildEntry(level: LogLevel, message: string, context?: string): LogEntry {
+function buildEntry(level: LogLevel, message: string, context?: string, error?: unknown): LogEntry {
   const entry: LogEntry = {
     level,
     message,
@@ -29,6 +30,10 @@ function buildEntry(level: LogLevel, message: string, context?: string): LogEntr
     entry.context = context;
   }
 
+  if (error instanceof Error) {
+    entry.error = { message: error.message, name: error.name, stack: error.stack };
+  }
+
   return entry;
 }
 
@@ -37,8 +42,8 @@ export function createJsonApplicationLogger(): ApplicationLogger {
     debug(message, context) {
       process.stdout.write(JSON.stringify(buildEntry('debug', message, context)) + '\n');
     },
-    error(message, _error, context) {
-      process.stderr.write(JSON.stringify(buildEntry('error', message, context)) + '\n');
+    error(message, error, context) {
+      process.stderr.write(JSON.stringify(buildEntry('error', message, context, error)) + '\n');
     },
     log(message, context) {
       process.stdout.write(JSON.stringify(buildEntry('log', message, context)) + '\n');

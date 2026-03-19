@@ -33,7 +33,12 @@ function verifyHmacSignature(
   signingInput: string,
   signatureSegment: string,
 ): void {
-  const hash = HMAC_HASH[algorithm]!;
+  const hash = HMAC_HASH[algorithm];
+
+  if (!hash) {
+    throw new JwtInvalidTokenError();
+  }
+
   const expected = encodeBase64Url(createHmac(hash, secret).update(signingInput).digest());
   const expectedBuf = Buffer.from(expected, 'base64url');
   const actualBuf = Buffer.from(signatureSegment, 'base64url');
@@ -49,7 +54,12 @@ function verifyAsymmetricSignature(
   signingInput: string,
   signatureSegment: string,
 ): void {
-  const hash = ASYMMETRIC_HASH[algorithm]!;
+  const hash = ASYMMETRIC_HASH[algorithm];
+
+  if (!hash) {
+    throw new JwtInvalidTokenError();
+  }
+
   const verifier = createVerify(hash);
   verifier.update(signingInput);
   const valid = verifier.verify(publicKey, signatureSegment, 'base64url');
@@ -153,6 +163,10 @@ export class DefaultJwtVerifier {
 
     const now = Math.floor(Date.now() / 1000);
     const clockSkew = this.options.clockSkewSeconds ?? 0;
+
+    if (this.options.requireExp && typeof payload.exp !== 'number') {
+      throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
+    }
 
     if (typeof payload.exp === 'number' && payload.exp + clockSkew < now) {
       throw new JwtExpiredTokenError();

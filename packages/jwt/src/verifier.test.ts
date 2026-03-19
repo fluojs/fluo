@@ -245,4 +245,27 @@ describe('DefaultJwtVerifier', () => {
       subject: 'user-kid-rs256',
     });
   });
+
+  it('rejects a token without exp when requireExp is true', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      requireExp: true,
+      secret: 'secret',
+    });
+    const token = signToken({ sub: 'user-no-exp' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('accepts a token without exp when requireExp is not set', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signToken({ sub: 'user-no-exp' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'user-no-exp',
+    });
+  });
 });

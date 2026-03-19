@@ -265,7 +265,7 @@ export async function runCli(
     }
 
     return 0;
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`${message}\n`);
     return 1;

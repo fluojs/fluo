@@ -18,7 +18,7 @@ export class HttpDtoValidationAdapter implements Validator {
   async validate(value: unknown, target: Parameters<BaseDefaultValidator['validate']>[1]): Promise<void> {
     try {
       await this.validator.validate(value, target);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         throw new BadRequestException(error.message, {
           details: error.issues.map(toDetail),

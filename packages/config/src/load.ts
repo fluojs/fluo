@@ -21,6 +21,7 @@ function parseEnvFile(content: string): Record<string, string> {
     const equalsIndex = trimmed.indexOf('=');
 
     if (equalsIndex === -1) {
+      console.warn(`[config] Skipping malformed .env line (missing '='): ${trimmed}`);
       continue;
     }
 
@@ -60,7 +61,7 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
 
   try {
     return options.validate ? options.validate(merged) : merged;
-  } catch (error) {
+  } catch (error: unknown) {
     throw new KonektiError('Invalid configuration.', {
       code: 'INVALID_CONFIG',
       cause: error,

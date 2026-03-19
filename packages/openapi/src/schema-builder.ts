@@ -357,14 +357,15 @@ function createParameters(
   }
 
   const entries = collectDtoEntries(dto).filter(
-    (entry) => entry.binding?.metadata.source === 'path'
+    (entry): entry is typeof entry & { binding: DtoBindingEntry } =>
+      entry.binding?.metadata.source === 'path'
       || entry.binding?.metadata.source === 'query'
       || entry.binding?.metadata.source === 'header'
       || entry.binding?.metadata.source === 'cookie',
   );
 
   return entries.map((entry) => {
-    const source = entry.binding!.metadata.source as 'cookie' | 'header' | 'path' | 'query';
+    const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
     const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' as const };
     const schema = applyValidationConstraints(inferred, rules);
@@ -374,7 +375,7 @@ function createParameters(
 
     return {
       in: source,
-      name: entry.binding!.metadata.key ?? entry.name,
+      name: entry.binding.metadata.key ?? entry.name,
       required: isRequired,
       schema: ensuredSchema,
     };

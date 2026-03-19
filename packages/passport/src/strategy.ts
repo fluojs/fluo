@@ -1,13 +1,8 @@
 import { Inject } from '@konekti/core';
-import {
-  AuthenticationExpiredError,
-  AuthenticationFailedError,
-  AuthenticationRequiredError,
-  type AuthStrategy,
-} from '@konekti/passport';
+import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
-import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
+import type { AuthStrategy } from './types.js';
 
 function extractBearerToken(value: string | string[] | undefined): string | undefined {
   const authorization = Array.isArray(value) ? value[0] : value;
@@ -38,7 +33,7 @@ export class JwtStrategy implements AuthStrategy {
 
     try {
       return await this.verifier.verifyAccessToken(token);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof JwtExpiredTokenError) {
         throw new AuthenticationExpiredError();
       }

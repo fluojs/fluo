@@ -1,14 +1,22 @@
 import type { MiddlewareContext, Middleware } from './types.js';
 
+export interface RateLimitStoreEntry {
+  count: number;
+  resetAt: number;
+}
+
+export interface RateLimitStore {
+  get(key: string): RateLimitStoreEntry | undefined | Promise<RateLimitStoreEntry | undefined>;
+  set(key: string, entry: RateLimitStoreEntry): void | Promise<void>;
+  increment(key: string): number | Promise<number>;
+  evict(now: number): void | Promise<void>;
+}
+
 export interface RateLimitOptions {
   limit: number;
   windowMs: number;
   keyResolver?: (ctx: MiddlewareContext) => string;
-}
-
-interface WindowEntry {
-  count: number;
-  resetAt: number;
+  store?: RateLimitStore;
 }
 
 function defaultKeyResolver(ctx: MiddlewareContext): string {
@@ -16,24 +24,50 @@ function defaultKeyResolver(ctx: MiddlewareContext): string {
   return raw?.socket?.remoteAddress ?? 'unknown';
 }
 
-function evictExpiredEntries(store: Map<string, WindowEntry>, now: number): number {
-  let nextResetAt = Number.POSITIVE_INFINITY;
+export function createMemoryRateLimitStore(): RateLimitStore {
+  const map = new Map<string, RateLimitStoreEntry>();
+  let nextSweepAt = 0;
 
-  for (const [key, entry] of store) {
-    if (now >= entry.resetAt) {
-      store.delete(key);
-      continue;
-    }
+  return {
+    get(key) {
+      return map.get(key);
+    },
+    set(key, entry) {
+      map.set(key, entry);
+    },
+    increment(key) {
+      const entry = map.get(key);
 
-    nextResetAt = Math.min(nextResetAt, entry.resetAt);
-  }
+      if (!entry) {
+        return 0;
+      }
 
-  return nextResetAt;
+      entry.count++;
+      return entry.count;
+    },
+    evict(now) {
+      if (now < nextSweepAt) {
+        return;
+      }
+
+      let next = Number.POSITIVE_INFINITY;
+
+      for (const [key, entry] of map) {
+        if (now >= entry.resetAt) {
+          map.delete(key);
+          continue;
+        }
+
+        next = Math.min(next, entry.resetAt);
+      }
+
+      nextSweepAt = next;
+    },
+  };
 }
 
 export function createRateLimitMiddleware(options: RateLimitOptions): Middleware {
-  const store = new Map<string, WindowEntry>();
-  let nextSweepAt = 0;
+  const store = options.store ?? createMemoryRateLimitStore();
 
   return {
     async handle(context, next) {
@@ -43,17 +77,14 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
 
       const now = Date.now();
 
-      if (now >= nextSweepAt) {
-        nextSweepAt = evictExpiredEntries(store, now);
-      }
+      await store.evict(now);
 
-      const entry = store.get(key);
+      const entry = await store.get(key);
 
       if (!entry || now >= entry.resetAt) {
         const resetAt = now + options.windowMs;
 
-        store.set(key, { count: 1, resetAt });
-        nextSweepAt = Math.min(nextSweepAt, resetAt);
+        await store.set(key, { count: 1, resetAt });
         return next();
       }
 
@@ -66,7 +97,7 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
         return;
       }
 
-      entry.count++;
+      await store.increment(key);
       return next();
     },
   };

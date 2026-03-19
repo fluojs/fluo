@@ -43,4 +43,41 @@ describe('createSecurityHeadersMiddleware', () => {
       'next',
     ]);
   });
+
+  it('applies custom header values when options are provided', async () => {
+    const middleware = createSecurityHeadersMiddleware({
+      contentSecurityPolicy: "default-src 'none'",
+      xFrameOptions: 'DENY',
+    });
+    const context = createContext();
+    const calls: Array<[string, string]> = [];
+
+    context.response.setHeader = vi.fn((name: string, value: string) => {
+      calls.push([name, value]);
+    });
+
+    await middleware.handle(context, async () => {});
+
+    expect(calls).toContainEqual(['Content-Security-Policy', "default-src 'none'"]);
+    expect(calls).toContainEqual(['X-Frame-Options', 'DENY']);
+  });
+
+  it('skips a header when its option is set to false', async () => {
+    const middleware = createSecurityHeadersMiddleware({
+      strictTransportSecurity: false,
+      xContentTypeOptions: false,
+    });
+    const context = createContext();
+    const headerNames: string[] = [];
+
+    context.response.setHeader = vi.fn((name: string) => {
+      headerNames.push(name);
+    });
+
+    await middleware.handle(context, async () => {});
+
+    expect(headerNames).not.toContain('Strict-Transport-Security');
+    expect(headerNames).not.toContain('X-Content-Type-Options');
+    expect(headerNames).toContain('Content-Security-Policy');
+  });
 });

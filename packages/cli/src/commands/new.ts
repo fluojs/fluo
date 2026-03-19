@@ -137,7 +137,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : `${answers.packageManager} dev`}\n`,
     );
     return 0;
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`${message}\n`);
     return 1;

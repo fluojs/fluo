@@ -155,9 +155,6 @@ importers:
       '@konekti/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/passport':
-        specifier: workspace:*
-        version: link:../passport
 
   packages/metrics:
     dependencies:
@@ -201,6 +198,9 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
+      '@konekti/jwt':
+        specifier: workspace:*
+        version: link:../jwt
 
   packages/prisma:
     dependencies:

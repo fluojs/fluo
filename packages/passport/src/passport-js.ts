@@ -137,7 +137,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
         settle(() => {
           try {
             resolve(mapPrincipal({ context, info, user }));
-          } catch (error) {
+          } catch (error: unknown) {
             reject(error);
           }
         });
@@ -173,7 +173,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
 
       try {
         strategy.authenticate(request, this.options.authenticateOptions);
-      } catch (error) {
+      } catch (error: unknown) {
         settle(() => {
           reject(error);
         });
