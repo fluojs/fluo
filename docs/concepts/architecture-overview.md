@@ -29,6 +29,7 @@ See also:
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/metrics`
+- `@konekti/cron`
 
 ### data integrations
 
@@ -51,6 +52,7 @@ See also:
 - `@konekti/passport` owns generic auth strategy registration and guard wiring
 - `@konekti/openapi` reads route and DTO metadata to produce documents
 - `@konekti/metrics` exposes Prometheus metrics through runtime-owned HTTP routes
+- `@konekti/cron` owns decorator-based background task scheduling and optional distributed cron locks
 - `@konekti/redis` owns the shared Redis client lifecycle and DI token surface
 
 ## request execution path
