@@ -44,7 +44,7 @@ const bullmqState = vi.hoisted(() => {
       failures: number;
       name: string;
       processor: (job: MockQueueJob) => Promise<unknown>;
-      workerOpts: { concurrency?: number };
+      workerOpts: { concurrency?: number; limiter?: { duration: number; max: number } };
     }
   >();
 
@@ -109,7 +109,11 @@ const bullmqState = vi.hoisted(() => {
       queues.set(name, queue);
       return queue;
     },
-    createWorker(name: string, processor: (job: MockQueueJob) => Promise<unknown>, workerOpts: { concurrency?: number }) {
+    createWorker(
+      name: string,
+      processor: (job: MockQueueJob) => Promise<unknown>,
+      workerOpts: { concurrency?: number; limiter?: { duration: number; max: number } },
+    ) {
       const worker = {
         active: new Set<Promise<void>>(),
         closeCalls: 0,
@@ -175,7 +179,11 @@ vi.mock('bullmq', () => ({
     constructor(
       name: string,
       processor: (job: MockQueueJob) => Promise<unknown>,
-      options: { concurrency?: number; connection: MockRedisConnection },
+      options: {
+        concurrency?: number;
+        connection: MockRedisConnection;
+        limiter?: { duration: number; max: number };
+      },
     ) {
       this.worker = bullmqState.createWorker(name, processor, options);
     }
@@ -575,6 +583,40 @@ describe('@konekti/queue', () => {
 
     const deadLetters = redis.deadLetters.get('konekti:queue:dead-letter:shutdown-failing-job') ?? [];
     expect(deadLetters).toHaveLength(1);
+  });
+
+  it('passes rate limiter options from @QueueWorker() to Bull worker configuration', async () => {
+    class RateLimitedJob {
+      constructor(public readonly value: string) {}
+    }
+
+    @QueueWorker(RateLimitedJob, { rateLimiter: { duration: 1_000, max: 10 } })
+    class RateLimitedWorker {
+      async handle(_job: RateLimitedJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [RateLimitedWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await app.container.resolve<Queue>(QUEUE);
+
+    const worker = bullmqState.workers.get('RateLimitedJob');
+    expect(worker?.workerOpts.limiter).toEqual({
+      duration: 1_000,
+      max: 10,
+    });
+
+    await app.close();
   });
 
   it('applies module defaults for attempts/concurrency and shuts down idempotently', async () => {

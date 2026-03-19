@@ -267,6 +267,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         jobName,
         jobType,
         moduleName: candidate.moduleName,
+        rateLimiter: metadata.options.rateLimiter ?? this.options.defaultRateLimiter,
         token: candidate.token,
         workerName: candidate.targetType.name,
       });
@@ -326,6 +327,14 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         {
           concurrency: descriptor.concurrency,
           connection: workerConnection as unknown as ConnectionOptions,
+          ...(descriptor.rateLimiter
+            ? {
+                limiter: {
+                  duration: descriptor.rateLimiter.duration,
+                  max: descriptor.rateLimiter.max,
+                },
+              }
+            : {}),
         },
       );
 

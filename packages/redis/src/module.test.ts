@@ -6,6 +6,9 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 interface MockRedisInstance {
   options: Record<string, unknown>;
   status: string;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ...args: unknown[]): Promise<'OK'>;
+  del(key: string): Promise<number>;
 }
 
 const mockRedisState = vi.hoisted(() => ({
@@ -18,6 +21,7 @@ vi.mock('ioredis', () => ({
   default: class MockRedis {
     readonly options: Record<string, unknown>;
     status = 'wait';
+    private readonly storage = new Map<string, string>();
 
     constructor(options: Record<string, unknown> = {}) {
       this.options = options;
@@ -44,10 +48,24 @@ vi.mock('ioredis', () => ({
       this.status = 'end';
       return 'OK';
     }
+
+    async get(key: string): Promise<string | null> {
+      return this.storage.get(key) ?? null;
+    }
+
+    async set(key: string, value: string, ..._args: unknown[]): Promise<'OK'> {
+      this.storage.set(key, value);
+      return 'OK';
+    }
+
+    async del(key: string): Promise<number> {
+      const existed = this.storage.delete(key);
+      return existed ? 1 : 0;
+    }
   },
 }));
 
-import { createRedisModule, REDIS_CLIENT } from './index.js';
+import { createRedisModule, REDIS_CLIENT, REDIS_SERVICE, RedisService } from './index.js';
 
 describe('@konekti/redis', () => {
   beforeEach(() => {
@@ -101,5 +119,37 @@ describe('@konekti/redis', () => {
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('provides a typed RedisService facade with get/set/del operations', async () => {
+    @Inject([REDIS_SERVICE])
+    class CacheFacade {
+      constructor(readonly redisService: RedisService) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [CacheFacade],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const cacheFacade = await app.container.resolve(CacheFacade);
+
+    expect(cacheFacade.redisService).toBeInstanceOf(RedisService);
+
+    await cacheFacade.redisService.set('user:1', { id: 'user-1', name: 'Ada' }, 60);
+
+    const user = await cacheFacade.redisService.get<{ id: string; name: string }>('user:1');
+    expect(user).toEqual({ id: 'user-1', name: 'Ada' });
+
+    await cacheFacade.redisService.del('user:1');
+    await expect(cacheFacade.redisService.get('user:1')).resolves.toBeNull();
+
+    await app.close();
   });
 });
