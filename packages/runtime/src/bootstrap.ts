@@ -2,18 +2,20 @@ import { join } from 'node:path';
 
 import { Container, type Provider } from '@konekti/di';
 import { ConfigService, loadConfig } from '@konekti/config';
-import { InvariantError, defineModuleMetadata, getClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { InvariantError, defineModuleMetadata, getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import {
   createDispatcher,
   createHandlerMapping,
   createNoopHttpApplicationAdapter,
+  type FrameworkRequest,
+  type FrameworkResponse,
   type HttpApplicationAdapter,
   type Dispatcher,
   type HandlerSource,
   type MiddlewareLike,
 } from '@konekti/http';
 
-import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
+import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { createConsoleApplicationLogger } from './logger.js';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
 import type {
@@ -25,6 +27,7 @@ import type {
   BootstrapResult,
   CompiledModule,
   CreateApplicationOptions,
+  ExceptionFilterHandler,
   ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
@@ -61,6 +64,24 @@ function controllerDependencies(controller: ModuleType): Token[] {
   return getClassDiMetadata(controller)?.inject ?? [];
 }
 
+async function runExceptionFilters(
+  filters: readonly ExceptionFilterHandler[],
+  error: unknown,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  requestId?: string,
+): Promise<boolean> {
+  for (const filter of filters) {
+    const handled = await filter.catch(error, { request, response, requestId });
+
+    if (handled) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function providerScope(provider: Provider): 'singleton' | 'request' | 'transient' {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
@@ -89,6 +110,10 @@ function mergeRuntimeTokenSets(providers: Provider[] = [], validationTokens: rea
 }
 
 function requiredConstructorParameters(target: Function): number {
+  if (getOwnClassDiMetadata(target)?.inject !== undefined) {
+    return 0;
+  }
+
   return target.length;
 }
 
@@ -369,13 +394,33 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
 export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
   const modules = compileModuleGraph(rootModule, options);
   const container = new Container();
+  const policy = options.duplicateProviderPolicy ?? 'warn';
 
   if (options.providers?.length) {
     container.register(...options.providers);
   }
 
+  const registeredProviderTokens = new Map<string | symbol | Function, string>();
+
   for (const compiledModule of modules) {
     for (const provider of compiledModule.definition.providers ?? []) {
+      const token = providerToken(provider);
+      const tokenKey = typeof token === 'function' ? token : token;
+      const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
+      const existing = registeredProviderTokens.get(tokenKey);
+
+      if (existing !== undefined && policy !== 'ignore') {
+        const message = `Duplicate provider token "${tokenLabel}" registered in module "${compiledModule.type.name}". Previously registered in module "${existing}".`;
+
+        if (policy === 'throw') {
+          throw new DuplicateProviderError(message);
+        } else {
+          options.logger?.warn(message, 'BootstrapModule');
+        }
+      } else {
+        registeredProviderTokens.set(tokenKey, compiledModule.type.name);
+      }
+
       container.register(provider);
     }
 
@@ -640,6 +685,8 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       },
     ];
     const bootstrapped = bootstrapModule(options.rootModule, {
+      duplicateProviderPolicy: options.duplicateProviderPolicy,
+      logger,
       providers: runtimeProviders,
       validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
     });
@@ -674,6 +721,9 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     const dispatcher = createDispatcher({
       appMiddleware: options.middleware ?? [],
       handlerMapping,
+      onError: options.filters && options.filters.length > 0
+        ? async (error, request, response, requestId) => runExceptionFilters(options.filters ?? [], error, request, response, requestId)
+        : undefined,
       observers: options.observers ?? [],
       rootContainer: bootstrapped.container,
     });
