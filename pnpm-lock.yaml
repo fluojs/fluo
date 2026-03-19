@@ -102,6 +102,18 @@ importers:
         specifier: ^13.15.10
         version: 13.15.10
 
+  packages/event-bus:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/http:
     dependencies:
       '@konekti/core':
