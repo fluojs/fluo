@@ -68,7 +68,10 @@ export class DefaultJwtSigner {
 
       const signer = createSign(hash);
       signer.update(signingInput);
-      signatureSegment = signer.sign(privateKey, 'base64url');
+      const isEc = algorithm.startsWith('ES');
+      signatureSegment = isEc
+        ? signer.sign({ dsaEncoding: 'ieee-p1363', key: privateKey } as Parameters<typeof signer.sign>[0], 'base64url')
+        : signer.sign(privateKey, 'base64url');
     } else {
       const secret = activeKey?.secret ?? this.options.secret;
 

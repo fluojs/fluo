@@ -4,8 +4,21 @@ import { Inject, getModuleMetadata, type Constructor, type Token } from '@konekt
 import { Container, type Provider } from '@konekti/di';
 
 import { JwtModule } from './module.js';
+import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh-token.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
+
+class NoopRefreshTokenStore implements RefreshTokenStore {
+  async save(_: RefreshTokenRecord): Promise<void> {}
+
+  async find(_: string): Promise<RefreshTokenRecord | undefined> {
+    return undefined;
+  }
+
+  async revoke(_: string): Promise<void> {}
+
+  async revokeBySubject(_: string): Promise<void> {}
+}
 
 @Inject([DefaultJwtSigner, DefaultJwtVerifier])
 class JwtRoundTripService {
@@ -54,7 +67,7 @@ describe('JwtModule', () => {
     const container = new Container();
     const moduleType = JwtModule.forRootAsync({
       inject: [JWT_SECRET],
-      useFactory: async (...deps) => {
+      useFactory: async (...deps: unknown[]) => {
         const [secret] = deps;
 
         if (typeof secret !== 'string') {
@@ -94,5 +107,22 @@ describe('JwtModule', () => {
     container.register(...moduleProviders(moduleType));
 
     await expect(container.resolve(DefaultJwtSigner)).rejects.toThrow('jwt async options failed');
+  });
+
+  it('registers refresh token service when refresh options are provided', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 60,
+        rotation: true,
+        secret: 'refresh-secret',
+        store: new NoopRefreshTokenStore(),
+      },
+      secret: 'jwt-secret',
+    });
+
+    container.register(...moduleProviders(moduleType));
+    await expect(container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
   });
 });
