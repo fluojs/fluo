@@ -82,7 +82,8 @@ type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof create
 type NodeRequestListener = RequestListener;
 
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
-  private server?: NodeServer;
+  private readonly server: NodeServer;
+  private dispatcher?: Dispatcher;
   private readonly sockets = new Set<Socket>();
 
   constructor(
@@ -96,54 +97,29 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly maxBodySize = 1 * 1024 * 1024,
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
-  ) {}
-
-  getListenTarget(): NodeListenTarget {
-    return resolveNodeListenTarget(this.server?.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
-  }
-
-  async listen(dispatcher: Dispatcher): Promise<void> {
-    const requestHandler: NodeRequestListener = async (request, response) => {
-      const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
-      const signal = createRequestSignal(response);
-
-      try {
-        const frameworkRequest = await createFrameworkRequest(
-          request,
-          signal,
-          this.multipartOptions,
-          this.maxBodySize,
-          this.preserveRawBody,
-        );
-
-        await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-        if (!frameworkResponse.committed) {
-          await frameworkResponse.send(undefined);
-        }
-      } catch (error) {
-        if (signal.aborted || frameworkResponse.committed) {
-          return;
-        }
-
-        await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
-      }
-    };
-
-    this.server = createNodeServer(this.httpsOptions, requestHandler);
-
-    const server = this.server;
-
-    if (!server) {
-      throw new Error('Adapter server was not created before listen().');
-    }
-
-    server.on('connection', (socket) => {
+  ) {
+    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+      void this.handleRequest(request, response);
+    });
+    this.server.on('connection', (socket) => {
       this.sockets.add(socket);
       socket.once('close', () => {
         this.sockets.delete(socket);
       });
     });
+  }
+
+  getServer(): NodeServer {
+    return this.server;
+  }
+
+  getListenTarget(): NodeListenTarget {
+    return resolveNodeListenTarget(this.server.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
+  }
+
+  async listen(dispatcher: Dispatcher): Promise<void> {
+    this.dispatcher = dispatcher;
+    const server = this.server;
 
     await new Promise<void>((resolve, reject) => {
       const tryListen = (attempt: number) => {
@@ -179,7 +155,8 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   async close(): Promise<void> {
     const server = this.server;
 
-    if (!server) {
+    if (!server.listening) {
+      this.dispatcher = undefined;
       return;
     }
 
@@ -212,7 +189,41 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
       closeIdleConnections(server);
     });
 
-    this.server = undefined;
+    this.dispatcher = undefined;
+  }
+
+  private async handleRequest(
+    request: import('node:http').IncomingMessage,
+    response: import('node:http').ServerResponse,
+  ): Promise<void> {
+    const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
+    const signal = createRequestSignal(response);
+
+    try {
+      const frameworkRequest = await createFrameworkRequest(
+        request,
+        signal,
+        this.multipartOptions,
+        this.maxBodySize,
+        this.preserveRawBody,
+      );
+
+      if (!this.dispatcher) {
+        throw new Error('Node HTTP adapter received a request before dispatcher binding completed.');
+      }
+
+      await this.dispatcher.dispatch(frameworkRequest, frameworkResponse);
+
+      if (!frameworkResponse.committed) {
+        await frameworkResponse.send(undefined);
+      }
+    } catch (error) {
+      if (signal.aborted || frameworkResponse.committed) {
+        return;
+      }
+
+      await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
+    }
   }
 }
 

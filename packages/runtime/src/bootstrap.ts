@@ -7,6 +7,7 @@ import {
   createDispatcher,
   createHandlerMapping,
   createNoopHttpApplicationAdapter,
+  type HttpApplicationAdapter,
   type Dispatcher,
   type HandlerSource,
   type MiddlewareLike,
@@ -14,7 +15,7 @@ import {
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { createConsoleApplicationLogger } from './logger.js';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from './tokens.js';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
 import type {
   Application,
   ApplicationLogger,
@@ -414,6 +415,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 class KonektiApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
+  private closingPromise: Promise<void> | undefined;
   private readonly lifecycleInstances: unknown[];
 
   constructor(
@@ -424,7 +426,7 @@ class KonektiApplication implements Application {
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     readonly dispatcher: Dispatcher,
-    private readonly adapter: ReturnType<typeof createNoopHttpApplicationAdapter>,
+    private readonly adapter: HttpApplicationAdapter,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
   ) {
@@ -480,12 +482,24 @@ class KonektiApplication implements Application {
       return;
     }
 
-    this.closed = true;
-    await this.adapter.close(signal);
+    if (this.closingPromise) {
+      await this.closingPromise;
+      return;
+    }
 
-    await runShutdownHooks(this.lifecycleInstances, signal);
+    this.closingPromise = (async () => {
+      await runShutdownHooks(this.lifecycleInstances, signal);
+      await this.adapter.close(signal);
+      this.closed = true;
+      this.applicationState = 'closed';
+    })();
 
-    this.applicationState = 'closed';
+    try {
+      await this.closingPromise;
+    } catch (error) {
+      this.closingPromise = undefined;
+      throw error;
+    }
   }
 }
 
@@ -608,6 +622,7 @@ function logRouteMappings(
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
   let lifecycleInstances: unknown[] = [];
+  const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
 
   try {
     logger.log('Starting Konekti application...', 'KonektiFactory');
@@ -626,9 +641,13 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     ];
     const bootstrapped = bootstrapModule(options.rootModule, {
       providers: runtimeProviders,
-      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
+      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
     });
     bootstrapped.container.register(
+      {
+        provide: HTTP_APPLICATION_ADAPTER,
+        useValue: adapter,
+      },
       {
         provide: RUNTIME_CONTAINER,
         useValue: bootstrapped.container,
@@ -667,7 +686,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       bootstrapped.modules,
       options.rootModule,
       dispatcher,
-      options.adapter ?? createNoopHttpApplicationAdapter(),
+      adapter,
       lifecycleInstances,
       logger,
     );
