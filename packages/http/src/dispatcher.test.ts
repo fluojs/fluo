@@ -19,6 +19,7 @@ import {
   Get,
   Post,
   RequestDto,
+  SseResponse,
   SuccessStatus,
   UseGuard,
   UseInterceptor,
@@ -231,6 +232,66 @@ describe('dispatcher runtime', () => {
 
       expect(events).toEqual(['log', 'handler']);
     });
+  });
+
+  it('bypasses the default success writer when a handler returns SseResponse', async () => {
+    const writes: string[] = [];
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      stream(_input: undefined, ctx: ReturnType<typeof assertRequestContext>) {
+        const sse = new SseResponse(ctx);
+        sse.send({ ok: true }, { event: 'ready', id: 'evt-1' });
+        return sse;
+      }
+    }
+
+    const root = new Container().register(EventsController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: EventsController }]),
+      rootContainer: root,
+    });
+
+    const response: FrameworkResponse & { body?: unknown; raw: { writableEnded: boolean; write(chunk: string): boolean; end(): void } } = {
+      committed: false,
+      headers: {},
+      raw: {
+        end() {
+          this.writableEnded = true;
+        },
+        writableEnded: false,
+        write(chunk) {
+          writes.push(chunk);
+          return true;
+        },
+      },
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+      setStatus(code) {
+        this.statusCode = code;
+        this.statusSet = true;
+      },
+      statusCode: undefined,
+      statusSet: false,
+    };
+
+    await dispatcher.dispatch(createRequest('/events', 'GET'), response);
+
+    expect(response.body).toBeUndefined();
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/event-stream; charset=utf-8');
+    expect(writes).toEqual(['event: ready\nid: evt-1\ndata: {"ok":true}\n\n']);
   });
 
   it('dispatches a GET route through middleware, guards, interceptors, and controller', async () => {

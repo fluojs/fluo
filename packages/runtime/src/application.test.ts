@@ -12,6 +12,7 @@ import {
   FromCookie,
   Get,
   Post,
+  SseResponse,
   createSecurityHeadersMiddleware,
   type RequestContext,
   RequestDto,
@@ -1515,6 +1516,87 @@ describe('bootstrapApplication', () => {
     });
 
     expect(signal.aborted).toBe(true);
+
+    await app.close();
+  });
+
+  it('streams SSE frames over the Node adapter and closes on client disconnect', async () => {
+    const streamStarted = createDeferred<void>();
+    const streamClosed = createDeferred<void>();
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      stream(_input: undefined, context: RequestContext) {
+        const sse = new SseResponse(context);
+        sse.comment('ready');
+        streamStarted.resolve();
+
+        const interval = setInterval(() => {
+          sse.send({ ok: true }, { event: 'tick' });
+        }, 10);
+
+        const closeStream = () => {
+          clearInterval(interval);
+          sse.close();
+          streamClosed.resolve();
+        };
+
+        if (context.request.signal?.aborted) {
+          closeStream();
+        } else {
+          context.request.signal?.addEventListener('abort', closeStream, { once: true });
+        }
+
+        return sse;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [EventsController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const http = await import('node:http');
+    const clientRequest = http.request({
+      headers: { accept: 'text/event-stream' },
+      host: '127.0.0.1',
+      method: 'GET',
+      path: '/events',
+      port,
+    });
+
+    const response = await new Promise<import('node:http').IncomingMessage>((resolve, reject) => {
+      clientRequest.once('error', reject);
+      clientRequest.once('response', resolve);
+      clientRequest.end();
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/event-stream');
+    expect(response.headers['cache-control']).toBe('no-cache, no-transform');
+
+    const firstChunk = await new Promise<string>((resolve, reject) => {
+      response.once('error', reject);
+      response.once('data', (chunk: Buffer | string) => {
+        resolve(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk);
+      });
+    });
+
+    expect(firstChunk).toContain(': ready\n\n');
+    await streamStarted.promise;
+
+    response.destroy();
+    await streamClosed.promise;
 
     await app.close();
   });
