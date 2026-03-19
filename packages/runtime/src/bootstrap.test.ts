@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Global, Inject, Module, defineModuleMetadata } from '@konekti/core';
 
 import { bootstrapModule } from './bootstrap.js';
-import { ModuleInjectionMetadataError } from './errors.js';
+import { DuplicateProviderError, ModuleInjectionMetadataError } from './errors.js';
 
 describe('bootstrapModule', () => {
   it('boots a simple module graph deterministically', () => {
@@ -232,6 +232,170 @@ describe('bootstrapModule middleware DI registration', () => {
     defineModuleMetadata(AppModule, {
       middleware: [LoggingMiddleware],
       providers: [LoggingMiddleware],
+    });
+
+    expect(() => bootstrapModule(AppModule)).not.toThrow();
+  });
+});
+
+describe('bootstrapModule duplicate provider detection', () => {
+  it('warns but continues when the same token is registered in two modules and policy is "warn"', () => {
+    class SharedService {}
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+
+    expect(() => bootstrapModule(RootModule, { duplicateProviderPolicy: 'warn', logger })).not.toThrow();
+    expect(warnFn).toHaveBeenCalledOnce();
+    expect(warnFn.mock.calls[0]![0]).toContain('SharedService');
+  });
+
+  it('warns when no policy is specified (default is "warn")', () => {
+    class SharedService {}
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+
+    expect(() => bootstrapModule(RootModule, { logger })).not.toThrow();
+    expect(warnFn).toHaveBeenCalledOnce();
+  });
+
+  it('throws DuplicateProviderError when the same token is registered in two modules and policy is "throw"', () => {
+    class SharedService {}
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    expect(() => bootstrapModule(RootModule, { duplicateProviderPolicy: 'throw' })).toThrow(DuplicateProviderError);
+    expect(() => bootstrapModule(RootModule, { duplicateProviderPolicy: 'throw' })).toThrow('SharedService');
+  });
+
+  it('silently allows duplicate tokens when policy is "ignore"', () => {
+    class SharedService {}
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+
+    expect(() => bootstrapModule(RootModule, { duplicateProviderPolicy: 'ignore', logger })).not.toThrow();
+    expect(warnFn).not.toHaveBeenCalled();
+  });
+
+  it('does not report duplicates for runtime providers passed via options.providers', () => {
+    class SharedService {}
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [SharedService],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+
+    // SharedService is registered both as a runtime provider and a module provider —
+    // only module-level duplicates trigger the policy.
+    expect(() =>
+      bootstrapModule(AppModule, {
+        duplicateProviderPolicy: 'warn',
+        logger,
+        providers: [SharedService],
+      }),
+    ).not.toThrow();
+    expect(warnFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('bootstrapModule requiredConstructorParameters fix', () => {
+  it('does not throw for a class decorated with @Inject([]) (explicit empty inject list)', () => {
+    @Inject([])
+    class ZeroDependencyService {}
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [ZeroDependencyService],
+    });
+
+    expect(() => bootstrapModule(AppModule)).not.toThrow();
+  });
+
+  it('does not throw for a class decorated with @Inject([Token]) that also has a default parameter', () => {
+    class Logger {}
+
+    @Inject([Logger])
+    class AppService {
+      constructor(
+        readonly logger: Logger,
+        readonly timeout: number = 5000,
+      ) {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [Logger, AppService],
     });
 
     expect(() => bootstrapModule(AppModule)).not.toThrow();
