@@ -60,7 +60,12 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError('JWT private key is not configured.');
       }
 
-      const hash = ASYMMETRIC_HASH[algorithm]!;
+      const hash = ASYMMETRIC_HASH[algorithm];
+
+      if (!hash) {
+        throw new JwtConfigurationError(`No hash mapping for asymmetric algorithm "${algorithm}".`);
+      }
+
       const signer = createSign(hash);
       signer.update(signingInput);
       signatureSegment = signer.sign(privateKey, 'base64url');
@@ -71,7 +76,12 @@ export class DefaultJwtSigner {
         throw new JwtConfigurationError('JWT secret is not configured.');
       }
 
-      const hash = HMAC_HASH[algorithm]!;
+      const hash = HMAC_HASH[algorithm];
+
+      if (!hash) {
+        throw new JwtConfigurationError(`No hash mapping for HMAC algorithm "${algorithm}".`);
+      }
+
       signatureSegment = encodeBase64Url(createHmac(hash, secret).update(signingInput).digest());
     }
 

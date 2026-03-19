@@ -83,6 +83,56 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(200);
   });
 
+  it('accepts a custom keyResolver', async () => {
+    const middleware = createRateLimitMiddleware({
+      keyResolver: (ctx) => String((ctx.request as unknown as { headers: Record<string, string> }).headers['x-api-key'] ?? 'anon'),
+      limit: 1,
+      windowMs: 1_000,
+    });
+    const contextA = createContext('127.0.0.1');
+    (contextA.request as unknown as { headers: Record<string, string> }).headers = { 'x-api-key': 'key-a' };
+    const contextB = createContext('127.0.0.1');
+    (contextB.request as unknown as { headers: Record<string, string> }).headers = { 'x-api-key': 'key-b' };
+    const next = vi.fn(async () => {});
+
+    await middleware.handle(contextA, next);
+    await middleware.handle(contextB, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts a custom store implementation', async () => {
+    const entries = new Map<string, { count: number; resetAt: number }>();
+    const customStore = {
+      evict: vi.fn(),
+      get: vi.fn((key: string) => entries.get(key)),
+      increment: vi.fn((key: string) => {
+        const entry = entries.get(key);
+
+        if (!entry) {
+          return 0;
+        }
+
+        entry.count++;
+        return entry.count;
+      }),
+      set: vi.fn((key: string, entry: { count: number; resetAt: number }) => {
+        entries.set(key, entry);
+      }),
+    };
+    const middleware = createRateLimitMiddleware({ limit: 1, store: customStore, windowMs: 1_000 });
+    const context = createContext();
+    const next = vi.fn(async () => {});
+
+    await middleware.handle(context, next);
+    await middleware.handle(context, next);
+
+    expect(customStore.get).toHaveBeenCalled();
+    expect(customStore.set).toHaveBeenCalled();
+    expect(customStore.evict).toHaveBeenCalled();
+    expect(context.response.statusCode).toBe(429);
+  });
+
   it('uses an independent in-process store per middleware instance', async () => {
     const first = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
     const second = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });

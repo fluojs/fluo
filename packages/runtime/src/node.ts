@@ -8,6 +8,7 @@ import {
   InternalServerException,
   createCorsMiddleware,
   createErrorResponse,
+  createSecurityHeadersMiddleware,
   PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
@@ -15,6 +16,7 @@ import {
   type FrameworkResponse,
   type HttpApplicationAdapter,
   type MiddlewareLike,
+  type SecurityHeadersOptions,
 } from '@konekti/http';
 
 import { bootstrapApplication } from './bootstrap.js';
@@ -53,6 +55,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   port?: number;
   retryDelayMs?: number;
   retryLimit?: number;
+  securityHeaders?: false | SecurityHeadersOptions;
   shutdownTimeoutMs?: number;
 }
 
@@ -89,7 +92,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
         if (!frameworkResponse.committed) {
           await frameworkResponse.send(undefined);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         if (signal.aborted || frameworkResponse.committed) {
           return;
         }
@@ -223,7 +226,7 @@ export async function runNodeApplication(
   try {
     await app.listen();
     logger.log(`Listening on http://localhost:${String(port)}`, 'KonektiFactory');
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error('Failed to start application.', error, 'KonektiFactory');
 
     if (app.state !== 'closed') {
@@ -270,7 +273,13 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
 
       if (acceptEncoding && payload.byteLength >= 256) {
         this.committed = true;
-        void compressResponse(response, payload, acceptEncoding, contentType);
+
+        compressResponse(response, payload, acceptEncoding, contentType).catch(() => {
+          if (!response.writableEnded) {
+            response.end();
+          }
+        });
+
         return;
       }
 
@@ -386,10 +395,15 @@ async function createFrameworkRequest(
 function createNodeMiddleware(options: BootstrapNodeApplicationOptions): MiddlewareLike[] {
   const middleware = [...(options.middleware ?? [])];
 
-  if (options.cors !== false) {
+  if (options.securityHeaders !== false) {
+    middleware.unshift(createSecurityHeadersMiddleware(
+      typeof options.securityHeaders === 'object' ? options.securityHeaders : undefined,
+    ));
+  }
+
+  if (options.cors !== undefined && options.cors !== false) {
     const defaultCorsOptions: CorsOptions = {
       allowHeaders: ['Authorization', 'Content-Type'],
-      allowOrigin: '*',
       exposeHeaders: ['X-Request-Id'],
     };
 
@@ -518,15 +532,16 @@ function registerShutdownSignals(
 
 async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeApplicationSignal): Promise<void> {
   if (app.state === 'closed') {
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
 
   try {
     await app.close(signal);
-    process.exit(0);
-  } catch (error) {
+    process.exitCode = 0;
+  } catch (error: unknown) {
     logger.error('Failed to shut down the application cleanly.', error, 'KonektiFactory');
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

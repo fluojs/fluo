@@ -378,8 +378,9 @@ describe('bootstrapApplication', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(corsPreflight.status).toBe(204);
-    expect(corsPreflight.headers.get('access-control-allow-origin')).toBe('*');
+    // CORS is opt-in — without explicit cors option, no CORS middleware is applied
+    expect(corsPreflight.status).toBe(404);
+    expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
     expect(loggerEvents).toContain(`log:KonektiFactory:Listening on http://localhost:${String(port)}`);
 
     await app.close();

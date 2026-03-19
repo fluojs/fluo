@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Controller, Get, createDispatcher, createHandlerMapping } from '@konekti/http';
+import { Controller, Get, UnauthorizedException, createDispatcher, createHandlerMapping } from '@konekti/http';
 import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti/http';
 import { Container } from '@konekti/di';
 
@@ -341,5 +341,57 @@ describe('AuthGuard', () => {
         status: 401,
       },
     });
+  });
+
+  it('preserves the original auth error as the cause of UnauthorizedException', async () => {
+    const originalError = new AuthenticationRequiredError();
+
+    class FailingStrategy implements AuthStrategy {
+      async authenticate(_context: GuardContext): Promise<never> {
+        throw originalError;
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      FailingStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: FailingStrategy }]),
+    );
+    const guardContext = {
+      handler: {
+        controllerToken: ProtectedController,
+        methodName: 'getProfile',
+      },
+      requestContext: {
+        container: root,
+        principal: undefined,
+        request: createRequest('/profile'),
+        requestId: 'req-cause-direct',
+        response: createResponse(),
+      },
+    } as unknown as GuardContext;
+
+    const { AuthGuard } = await import('./guard.js');
+    const guard = new AuthGuard(
+      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
+      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
+    );
+
+    try {
+      await guard.canActivate(guardContext);
+      expect.unreachable('Expected canActivate to throw');
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(UnauthorizedException);
+      expect((thrown as Error).cause).toBe(originalError);
+    }
   });
 });

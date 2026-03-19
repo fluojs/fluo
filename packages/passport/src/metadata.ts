@@ -53,7 +53,7 @@ function getStandardMethodRequirement(target: object, propertyKey: MetadataPrope
 
 export function defineAuthRequirement(target: Function | object, requirement: AuthRequirement, propertyKey?: MetadataPropertyKey): void {
   if (propertyKey === undefined) {
-    classRequirementStore.set(target as Function, cloneRequirement(requirement)!);
+    classRequirementStore.set(target as Function, cloneRequirement(requirement) as AuthRequirement);
     return;
   }
 
@@ -64,7 +64,7 @@ export function defineAuthRequirement(target: Function | object, requirement: Au
     methodRequirementStore.set(target, map);
   }
 
-  map.set(propertyKey, cloneRequirement(requirement)!);
+  map.set(propertyKey, cloneRequirement(requirement) as AuthRequirement);
 }
 
 export function getOwnAuthRequirement(target: Function | object, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {

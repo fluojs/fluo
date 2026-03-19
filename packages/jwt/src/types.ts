@@ -16,6 +16,7 @@ export interface JwtVerifierOptions {
   clockSkewSeconds?: number;
   issuer?: string;
   keys?: JwtKeyEntry[];
+  requireExp?: boolean;
   secret?: string;
   privateKey?: string | KeyObject;
   publicKey?: string | KeyObject;

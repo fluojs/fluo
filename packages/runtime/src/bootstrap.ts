@@ -219,7 +219,11 @@ function compileModule(
   ordered: CompiledModule[] = [],
 ) {
   if (compiled.has(moduleType)) {
-    return compiled.get(moduleType)!;
+    const existing = compiled.get(moduleType);
+
+    if (existing) {
+      return existing;
+    }
   }
 
   if (visiting.has(moduleType)) {
@@ -284,7 +288,15 @@ function validateCompiledModules(
 
   for (const compiledModule of modules) {
     const scope = `module ${compiledModule.type.name}`;
-    const importedModules = (compiledModule.definition.imports ?? []).map((imported) => compiledByType.get(imported)!);
+    const importedModules = (compiledModule.definition.imports ?? []).map((imported) => {
+      const importedModule = compiledByType.get(imported);
+
+      if (!importedModule) {
+        throw new ModuleGraphError(`Imported module ${imported.name} was not compiled.`);
+      }
+
+      return importedModule;
+    });
     const importedExportedTokens = new Set<Token>(
       importedModules.flatMap((imported) => Array.from(imported.exportedTokens)),
     );
@@ -452,7 +464,7 @@ class KonektiApplication implements Application {
     await this.ready();
     try {
       await this.adapter.listen(this.dispatcher);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to start the HTTP adapter.', error, 'KonektiApplication');
       throw error;
     }
@@ -651,7 +663,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       lifecycleInstances,
       logger,
     );
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error('Failed to bootstrap application.', error, 'KonektiFactory');
 
     if (lifecycleInstances.length > 0) {

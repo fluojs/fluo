@@ -217,14 +217,18 @@ async function dispatchMatchedHandler(
     await writeSuccessResponse(handler, requestContext.response, result);
   }
 
-  await notifyObservers(
-    observers,
-    requestContext,
-    async (observer, context) => {
-      await observer.onRequestSuccess?.(context, result);
-    },
-    handler,
-  );
+  try {
+    await notifyObservers(
+      observers,
+      requestContext,
+      async (observer, context) => {
+        await observer.onRequestSuccess?.(context, result);
+      },
+      handler,
+    );
+  } catch {
+    // Observer errors must not mask a successful request.
+  }
 }
 
 export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
@@ -273,23 +277,31 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
               await dispatchMatchedHandler(match.descriptor, requestContext, observers);
             });
           });
-        } catch (error) {
+        } catch (error: unknown) {
           if (error instanceof RequestAbortedError || requestContext.request.signal?.aborted) {
             return;
           }
 
-          await notifyObservers(
-            observers,
-            requestContext,
-            async (observer, context) => {
-              await observer.onRequestError?.(context, error);
-            },
-          );
+          try {
+            await notifyObservers(
+              observers,
+              requestContext,
+              async (observer, context) => {
+                await observer.onRequestError?.(context, error);
+              },
+            );
+          } catch {
+            // Observer errors must not mask the original request error.
+          }
           await writeErrorResponse(error, response, requestContext.requestId);
         } finally {
-          await notifyObservers(observers, requestContext, async (observer, context) => {
-            await observer.onRequestFinish?.(context);
-          });
+          try {
+            await notifyObservers(observers, requestContext, async (observer, context) => {
+              await observer.onRequestFinish?.(context);
+            });
+          } catch {
+            // Observer errors in the finally block must not mask earlier errors.
+          }
         }
       });
     },

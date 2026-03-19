@@ -488,7 +488,7 @@ export function getDtoFieldBindingMetadata(target: object, propertyKey: Metadata
   return {
     key: stored?.key ?? standard?.key,
     optional: stored?.optional ?? standard?.optional,
-    source: stored?.source ?? standard!.source!,
+    source: stored?.source ?? (standard as { source: MetadataSource }).source,
   };
 }
 
@@ -592,7 +592,7 @@ export function getInjectionSchema(target: object) {
       propertyKey,
       metadata: {
         optional: metadata?.optional ?? standardMetadata?.optional,
-        token: metadata?.token ?? standardMetadata!.token!,
+        token: metadata?.token ?? (standardMetadata as { token: unknown }).token,
       },
     });
   }

@@ -36,5 +36,13 @@
     "@konekti/http": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.30.0"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    }
   }
 }
