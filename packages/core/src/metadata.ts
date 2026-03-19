@@ -13,6 +13,7 @@ export interface ControllerMetadata {
   basePath: string;
   guards?: unknown[];
   interceptors?: unknown[];
+  version?: string;
 }
 
 export interface RouteMetadata {
@@ -22,6 +23,7 @@ export interface RouteMetadata {
   guards?: unknown[];
   interceptors?: unknown[];
   successStatus?: number;
+  version?: string;
 }
 
 export interface DtoFieldBindingMetadata {
@@ -190,6 +192,7 @@ interface StandardRouteMetadataRecord {
   path?: string;
   request?: new (...args: never[]) => unknown;
   successStatus?: number;
+  version?: string;
 }
 
 type StandardDtoBindingRecord = Partial<DtoFieldBindingMetadata>;
@@ -294,6 +297,7 @@ function getStandardControllerMetadata(target: Function): ControllerMetadata | u
     basePath: metadata.basePath,
     guards: metadata.guards ? [...metadata.guards] : undefined,
     interceptors: metadata.interceptors ? [...metadata.interceptors] : undefined,
+    version: metadata.version,
   };
 }
 
@@ -317,6 +321,7 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
     path: metadata.path,
     request: metadata.request,
     successStatus: metadata.successStatus,
+    version: metadata.version,
   };
 }
 
@@ -411,6 +416,7 @@ export function defineControllerMetadata(target: Function, metadata: ControllerM
     ...metadata,
     guards: metadata.guards ? [...metadata.guards] : undefined,
     interceptors: metadata.interceptors ? [...metadata.interceptors] : undefined,
+    version: metadata.version,
   });
 }
 
@@ -429,6 +435,7 @@ export function getControllerMetadata(target: Function): ControllerMetadata | un
     basePath: stored?.basePath ?? standard?.basePath ?? '',
     guards: mergeUnique(stored?.guards, standard?.guards),
     interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
+    version: stored?.version ?? standard?.version,
   };
 }
 
@@ -471,6 +478,7 @@ export function getRouteMetadata(
     path,
     request: stored?.request ?? standard?.request,
     successStatus: stored?.successStatus ?? standard?.successStatus,
+    version: stored?.version ?? standard?.version,
   };
 }
 

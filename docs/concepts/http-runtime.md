@@ -54,8 +54,7 @@ The runtime treats request DTOs as an explicit boundary, not a convenience copy 
 The generated starter keeps a few HTTP defaults consistent:
 
 - runtime-owned `/health` and `/ready`
-- `/metrics` through `@konekti/metrics`
-- `/openapi.json` through `@konekti/openapi`
+- starter-owned `/health-info/` through the generated `health/` module
 - default CORS policy driven by runtime bootstrap config
 
 These defaults live above any single package README because they describe how packages are composed in the starter app.

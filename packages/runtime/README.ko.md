@@ -74,6 +74,55 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Host 바인딩과 HTTPS
+
+```typescript
+import { readFileSync } from 'node:fs';
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  host: '127.0.0.1',
+  https: {
+    cert: readFileSync('./certs/dev.crt'),
+    key: readFileSync('./certs/dev.key'),
+  },
+  port: 8443,
+});
+```
+
+`host`를 지정하면 Node adapter가 기본 all-interfaces 바인딩 대신 해당 host에 명시적으로 바인딩합니다. `https`를 제공하면 adapter가 HTTPS 서버로 시작되고, startup log도 `https://...` URL을 기준으로 출력됩니다. 공개 URL과 실제 bind target이 다르면 startup log에 둘 다 표시됩니다. `https` 객체는 Node의 `node:https.createServer`로 그대로 전달되므로, 호출자가 `key`, `cert` 같은 유효한 TLS 재료를 직접 제공해야 합니다.
+
+### 애플리케이션 라우트용 global prefix
+
+```typescript
+await runNodeApplication(AppModule, {
+  globalPrefix: '/api',
+  globalPrefixExclude: ['/internal/*'],
+  mode: 'prod',
+});
+```
+
+`globalPrefix`는 runtime-owned HTTP app의 애플리케이션 라우트에 적용되므로, `/app/info` 같은 controller route는 `/api/app/info`로 노출됩니다. 기본적으로 runtime-owned 운영 엔드포인트인 `/health`, `/ready`, `/openapi.json`, `/docs`, `/metrics`는 prefix 없이 유지되고, `/api/health` 같은 prefixed 경로는 의도적으로 `404`를 반환합니다. `globalPrefixExclude`는 이 기본 exclusion 집합 위에 추가로 unprefixed path pattern을 더합니다.
+
+`globalPrefixExclude`는 `/internal/ping` 같은 exact path와 `/internal/*` 같은 trailing `/*` pattern만 지원합니다. 런타임은 매칭 전에 중복 슬래시와 trailing slash를 정규화하며, `globalPrefix: '/'`는 no-op으로 취급합니다.
+
+### URI 버저닝
+
+```typescript
+import { Controller, Get, Version } from '@konekti/http';
+
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+}
+```
+
+현재 Konekti는 URI 버저닝만 지원합니다. `@Version('1')`은 `/users`를 `/v1/users`로 바꾸고, handler 레벨 버전은 특정 route에서 controller 레벨 버전을 override합니다.
+
 ### imports와 exports를 가진 모듈
 
 ```typescript

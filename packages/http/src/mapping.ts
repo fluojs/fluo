@@ -23,6 +23,20 @@ function joinPaths(basePath: string, routePath: string): string {
   return normalizePath(`${basePath}/${routePath}`);
 }
 
+function normalizeVersionSegment(version: string): string {
+  const normalized = version.trim().replace(/^v/i, '');
+
+  return `v${normalized}`;
+}
+
+function applyVersionPrefix(path: string, version: string | undefined): string {
+  if (!version) {
+    return path;
+  }
+
+  return joinPaths(`/${normalizeVersionSegment(version)}`, path);
+}
+
 function getControllerMethodNames(controllerToken: Constructor): MetadataPropertyKey[] {
   return Object.getOwnPropertyNames(controllerToken.prototype).filter((propertyKey) => propertyKey !== 'constructor');
 }
@@ -72,13 +86,15 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
       continue;
     }
 
-    const effectivePath = joinPaths(controllerMetadata.basePath, routeMetadata.path);
+    const effectiveVersion = routeMetadata.version ?? controllerMetadata.version;
+    const effectivePath = applyVersionPrefix(joinPaths(controllerMetadata.basePath, routeMetadata.path), effectiveVersion);
 
     descriptors.push({
       controllerToken: source.controllerToken,
       metadata: {
         controllerPath: controllerMetadata.basePath,
         effectivePath,
+        effectiveVersion,
         moduleMiddleware: [...(source.moduleMiddleware ?? [])],
         moduleType: source.moduleType,
         pathParams: extractPathParams(effectivePath),
@@ -95,6 +111,7 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
           ...((routeMetadata.interceptors ?? []) as InterceptorLike[]),
         ],
         path: effectivePath,
+        version: effectiveVersion,
       },
     });
   }

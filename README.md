@@ -3,14 +3,15 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Konekti is a TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
+Konekti is a **standard-decorator-based** TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
 
 ## Quick Start
 
 Create a starter app with the canonical public bootstrap path:
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```
@@ -18,8 +19,7 @@ pnpm dev
 Generated apps include:
 
 - runtime-owned `src/main.ts` bootstrap
-- `/health`, `/ready`, `/metrics`, and `/openapi.json`
-- JWT strategy wiring and a generic repository example
+- `/health`, `/ready`, and a minimal `health/` module example at `/health-info/`
 - `dev`, `build`, `typecheck`, and `test` commands out of the box
 
 ## What Konekti Includes
@@ -40,9 +40,14 @@ Generated apps include:
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/metrics`
+- `@konekti/cron`
+- `@konekti/event-bus`
+- `@konekti/websocket`
+- `@konekti/queue`
 
 ### Data integration packages
 
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 
@@ -79,9 +84,14 @@ Package-level docs:
 - `packages/cli/README.md`
 - `packages/http/README.md`
 - `packages/runtime/README.md`
+- `packages/redis/README.md`
 - `packages/passport/README.md`
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
+- `packages/cron/README.md`
+- `packages/event-bus/README.md`
+- `packages/websocket/README.md`
+- `packages/queue/README.md`
 
 ## Documentation Rules
 

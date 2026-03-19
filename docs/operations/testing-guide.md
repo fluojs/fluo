@@ -20,22 +20,31 @@ Generated starter projects expose the same commands through the selected package
 
 ## official testing API
 
-`@konekti/testing` currently provides the minimal public testing surface:
+`@konekti/testing` currently provides a minimal but practical public testing surface:
 
 - `createTestingModule(...)`
 - provider override support
-- predictable cleanup through the bootstrap/runtime lifecycle
+- `TestingModuleRef.resolve(...)`
+- `TestingModuleRef.dispatch(...)`
+- `createTestApp(...)` for end-to-end style request dispatch
+- `TestApp.dispatch(...)` for direct request execution without fluent builder
+- fluent request building with request principal injection
+- predictable cleanup through `createTestApp`'s `close()` lifecycle path
 
 Current public boundary:
 
 - keep `@konekti/testing` as the minimal public testing baseline
-- do not expand the public testing API surface now
+- keep the surface focused on module compilation, dispatch, and lightweight request helpers
 - do not add richer generated test-template families now
 
 Primary evidence:
 
 - `packages/testing/src/module.ts`
+- `packages/testing/src/app.ts`
+- `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/README.md`
+- `packages/testing/README.ko.md`
 
 ## runtime and slice coverage
 
@@ -48,7 +57,7 @@ Use these files as the contract examples when expanding tests:
 
 ## generated app expectations
 
-`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, `/metrics`, and `/openapi.json`.
+`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, and the starter-owned `/health-info/` route.
 
 For contributor-facing manual verification, `packages/cli` now exposes a persistent sandbox harness:
 
@@ -56,7 +65,7 @@ For contributor-facing manual verification, `packages/cli` now exposes a persist
 pnpm --dir packages/cli run sandbox:test
 ```
 
-That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns the same generated-app checks (`typecheck`, `build`, `test`, and `pnpm exec konekti g repo User`) against the installed CLI binary.
+That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns the same generated-app checks (`typecheck`, `build`, `test`, and `konekti g repo User`) against the installed CLI binary.
 
 `KONEKTI_CLI_SANDBOX_ROOT=/path` is still available for advanced local setups, but it must point to a dedicated directory outside the monorepo workspace. Repo-internal paths are warned on and automatically replaced with the temp sandbox root so contributor verification keeps using a standalone app.
 

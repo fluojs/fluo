@@ -20,22 +20,31 @@ pnpm verify:release-candidate
 
 ## 공식 테스트 API
 
-`@konekti/testing`은 현재 다음과 같은 최소한의 공개 테스트 인터페이스를 제공합니다:
+`@konekti/testing`은 현재 다음과 같은 최소하지만 실용적인 공개 테스트 인터페이스를 제공합니다:
 
 - `createTestingModule(...)`
 - 프로바이더 오버라이드(override) 지원
-- 부트스트랩/런타임 생명주기를 통한 예측 가능한 정리(cleanup)
+- `TestingModuleRef.resolve(...)`
+- `TestingModuleRef.dispatch(...)`
+- 엔드투엔드 스타일 요청 실행을 위한 `createTestApp(...)`
+- 빌더 없이 직접 요청을 실행하는 `TestApp.dispatch(...)`
+- 요청 principal 주입을 포함한 플루언트 request 빌더
+- `createTestApp().close()`를 통한 정리(cleanup)
 
 현재 public boundary:
 
 - `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
-- public testing API surface를 지금 확장하지 않습니다.
+- 공개 표면은 모듈 컴파일, dispatch, 경량 request 헬퍼에 집중합니다.
 - 더 풍부한 generated test-template 계열도 지금 추가하지 않습니다.
 
 주요 근거 자료:
 
 - `packages/testing/src/module.ts`
+- `packages/testing/src/app.ts`
+- `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/README.md`
+- `packages/testing/README.ko.md`
 
 ## 런타임 및 슬라이스 커버리지
 
@@ -48,7 +57,7 @@ pnpm verify:release-candidate
 
 ## 생성된 앱에 대한 기대 사항
 
-`konekti new`는 실행 가능한 `src/app.test.ts`가 포함된 스타터 앱을 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`, `konekti g ...`를 실행할 수 있는지 검증하며, 생성된 앱 테스트 자체는 `/health`, `/ready`, `/metrics`, `/openapi.json` 작동 여부를 증명합니다.
+`konekti new`는 실행 가능한 `src/app.test.ts`가 포함된 스타터 앱을 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`, `konekti g ...`를 실행할 수 있는지 검증하며, 생성된 앱 테스트 자체는 `/health`, `/ready`, 그리고 스타터가 소유한 `/health-info/` 라우트 작동 여부를 증명합니다.
 
 기여자를 위한 수동 검증용으로 `packages/cli`는 이제 영구적인 샌드박스 하네스를 제공합니다:
 
@@ -56,7 +65,7 @@ pnpm verify:release-candidate
 pnpm --dir packages/cli run sandbox:test
 ```
 
-이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 설치된 CLI 바이너리에 대해 동일한 생성 앱 체크(`typecheck`, `build`, `test`, `pnpm exec konekti g repo User`)를 다시 실행합니다.
+이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 설치된 CLI 바이너리에 대해 동일한 생성 앱 체크(`typecheck`, `build`, `test`, `konekti g repo User`)를 다시 실행합니다.
 
 고급 로컬 설정을 위해 `KONEKTI_CLI_SANDBOX_ROOT=/path`를 여전히 사용할 수 있지만, 반드시 모노레포 워크스페이스 외부의 전용 디렉터리를 가리켜야 합니다. 레포 내부 경로는 경고와 함께 자동으로 임시 샌드박스 루트로 대체되어, 기여자 검증이 독립된 앱 환경에서 유지되도록 합니다.
 

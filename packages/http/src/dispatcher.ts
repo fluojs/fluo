@@ -9,6 +9,7 @@ import { runGuardChain } from './guards.js';
 import { runInterceptorChain } from './interceptors.js';
 import { runMiddlewareChain } from './middleware.js';
 import { createRequestContext, runWithRequestContext } from './request-context.js';
+import { SseResponse } from './sse.js';
 import type {
   ArgumentResolverContext,
   Dispatcher,
@@ -28,10 +29,13 @@ import type {
 const defaultBinder = new DefaultBinder();
 const defaultValidator = new HttpDtoValidationAdapter();
 
+export type ErrorHandler = (error: unknown, request: FrameworkRequest, response: FrameworkResponse, requestId?: string) => Promise<boolean | void> | boolean | void;
+
 export interface CreateDispatcherOptions {
   appMiddleware?: MiddlewareLike[];
   handlerMapping: HandlerMapping;
   observers?: RequestObserverLike[];
+  onError?: ErrorHandler;
   rootContainer: Container;
 }
 
@@ -213,7 +217,7 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (!requestContext.response.committed) {
+  if (!(result instanceof SseResponse) && !requestContext.response.committed) {
     await writeSuccessResponse(handler, requestContext.response, result);
   }
 
@@ -293,6 +297,13 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           } catch {
             // Observer errors must not mask the original request error.
           }
+
+          const handled = await options.onError?.(error, requestContext.request, response, requestContext.requestId);
+
+          if (handled) {
+            return;
+          }
+
           await writeErrorResponse(error, response, requestContext.requestId);
         } finally {
           try {

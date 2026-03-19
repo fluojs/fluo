@@ -15,10 +15,15 @@ This file lists the current public package family at a glance.
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/openapi`
 - `@konekti/metrics`
+- `@konekti/cron`
+- `@konekti/event-bus`
+- `@konekti/websocket`
+- `@konekti/queue`
 - `@konekti/testing`
 - `@konekti/cli`
 
@@ -34,7 +39,11 @@ This file lists the current public package family at a glance.
 - `@konekti/passport` -> auth strategy registry and generic auth guard wiring
 - `@konekti/openapi` -> document generation and metadata-only OpenAPI decorators
 - `@konekti/metrics` -> Prometheus metrics exposure
-- `@konekti/prisma` / `@konekti/drizzle` -> data integration families
+- `@konekti/cron` -> decorator-based task scheduling with lifecycle-managed startup/shutdown and optional distributed locks
+- `@konekti/event-bus` -> in-process event publishing with decorator-driven handler discovery
+- `@konekti/websocket` -> decorator-based WebSocket gateway discovery and Node upgrade wiring
+- `@konekti/queue` -> Redis-backed background jobs with decorator-driven worker discovery and dead-letter list fallback
+- `@konekti/redis` / `@konekti/prisma` / `@konekti/drizzle` -> data integration families
 - `@konekti/testing` -> testing module and helper surface
 - `@konekti/cli` -> app bootstrap and file generation commands
 

@@ -7,13 +7,22 @@ This file documents the current supported ways to bootstrap and verify a Konekti
 
 ## public bootstrap path
 
-Use the CLI package directly:
+Use the globally installed CLI:
+
+```sh
+pnpm add -g @konekti/cli
+konekti new my-app
+```
+
+This is the canonical public bootstrap path.
+
+For a one-off zero-install bootstrap, this alternative remains supported:
 
 ```sh
 pnpm dlx @konekti/cli new my-app
 ```
 
-This is the canonical public bootstrap path.
+The zero-install path remains a supported convenience, but it is no longer the canonical public entrypoint.
 
 There is no separate public `create-konekti` wrapper in the current supported contract. If a compatibility wrapper ever ships later, it must be documented as an additive surface rather than an implied alias.
 

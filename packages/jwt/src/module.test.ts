@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+
+import { Inject, getModuleMetadata, type Constructor, type Token } from '@konekti/core';
+import { Container, type Provider } from '@konekti/di';
+
+import { JwtModule } from './module.js';
+import { DefaultJwtSigner } from './signer.js';
+import { DefaultJwtVerifier } from './verifier.js';
+
+@Inject([DefaultJwtSigner, DefaultJwtVerifier])
+class JwtRoundTripService {
+  constructor(
+    private readonly signer: DefaultJwtSigner,
+    private readonly verifier: DefaultJwtVerifier,
+  ) {}
+
+  async signAndVerify(subject: string): Promise<string> {
+    const token = await this.signer.signAccessToken({ sub: subject });
+    const principal = await this.verifier.verifyAccessToken(token);
+
+    return principal.subject;
+  }
+}
+
+function moduleProviders(moduleType: Constructor): Provider[] {
+  const metadata = getModuleMetadata(moduleType);
+
+  if (!metadata || !Array.isArray(metadata.providers)) {
+    throw new Error('JwtModule did not register providers metadata.');
+  }
+
+  return metadata.providers as Provider[];
+}
+
+describe('JwtModule', () => {
+  it('supports synchronous forRoot registration', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      issuer: 'jwt-module-tests',
+      secret: 'sync-secret',
+    });
+
+    container.register(...moduleProviders(moduleType), JwtRoundTripService);
+    const service = await container.resolve(JwtRoundTripService);
+
+    await expect(service.signAndVerify('sync-user')).resolves.toBe('sync-user');
+  });
+
+  it('resolves injected async options and wires them into jwt providers', async () => {
+    const JWT_SECRET = Symbol('jwt-secret');
+    const capturedSecrets: string[] = [];
+
+    const container = new Container();
+    const moduleType = JwtModule.forRootAsync({
+      inject: [JWT_SECRET],
+      useFactory: async (...deps) => {
+        const [secret] = deps;
+
+        if (typeof secret !== 'string') {
+          throw new Error('jwt secret token must resolve to a string.');
+        }
+
+        capturedSecrets.push(secret);
+        await Promise.resolve();
+
+        return {
+          algorithms: ['HS256'],
+          issuer: 'jwt-module-tests',
+          secret,
+        };
+      },
+    });
+
+    container.register(
+      { provide: JWT_SECRET as Token<string>, useValue: 'async-secret' },
+      ...moduleProviders(moduleType),
+      JwtRoundTripService,
+    );
+    const service = await container.resolve(JwtRoundTripService);
+
+    expect(capturedSecrets).toEqual(['async-secret']);
+    await expect(service.signAndVerify('async-user')).resolves.toBe('async-user');
+  });
+
+  it('propagates async option factory failures while resolving jwt providers', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.forRootAsync({
+      useFactory: async () => {
+        throw new Error('jwt async options failed');
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+
+    await expect(container.resolve(DefaultJwtSigner)).rejects.toThrow('jwt async options failed');
+  });
+});

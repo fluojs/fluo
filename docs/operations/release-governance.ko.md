@@ -16,6 +16,7 @@
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/passport`
+- `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
 - `@konekti/di`
@@ -23,7 +24,7 @@
 - `@konekti/testing`
 - `@konekti/cli`
 
-현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm dlx @konekti/cli new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
+현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm add -g @konekti/cli` 후 `konekti new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
 
 `tooling/` 아래의 toolchain 워크스페이스는 향후 별도 이슈를 통해 공개 패키지로 승격되기 전까지 internal support artifact로 유지됩니다.
 
@@ -58,8 +59,8 @@
 
 - 모노레포 루트에서 패키지 타입 체크 및 빌드 성공 여부
 - 패키징된 CLI 엔트리포인트를 통해 스캐폴딩된 스타터 프로젝트 검증 및 `pnpm verify:release-candidate` 내에서 실행되는 CLI 테스트 스위트로 스타터 스캐폴딩 확인
-- `pnpm`, `npm`, `yarn` 스타터 프로젝트 모두 `typecheck`, `build`, `test` 및 `konekti g repo ...` 통과 여부
-- 생성된 스타터 프로젝트가 런타임 소유의 `/health`, `/ready`, `/metrics`, `/openapi.json`을 노출하는지 확인
+- `pnpm` 스타터 프로젝트 경로가 `typecheck`, `build`, `test`, `konekti g repo ...`를 통과하는지, 그리고 CLI 테스트가 별도로 패키지 매니저 선택 동작을 커버하는지 확인
+- 생성된 스타터 프로젝트가 런타임 소유의 `/health`, `/ready`와 스타터 소유의 `/health-info/` 라우트를 노출하는지 확인
 - CLI 바이너리와 패키징된 아티팩트가 `src` 직접 실행이 아닌 `dist` 출력물에서 작동하는지 확인
 
 또한 이 명령은 `tooling/release/release-candidate-summary.md`를 작성하며, CI는 이 요약본을 워크플로 요약 및 아티팩트로 게시합니다.

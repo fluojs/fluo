@@ -7,13 +7,22 @@
 
 ## 공개 부트스트랩 경로
 
-CLI 패키지를 직접 사용하세요:
+전역 설치된 CLI를 사용하세요:
+
+```sh
+pnpm add -g @konekti/cli
+konekti new my-app
+```
+
+이것이 표준 공개 부트스트랩 경로입니다.
+
+한 번만 실행하는 zero-install 부트스트랩에는 아래 대안도 계속 지원됩니다:
 
 ```sh
 pnpm dlx @konekti/cli new my-app
 ```
 
-이것이 표준 공개 부트스트랩 경로입니다.
+zero-install 경로는 여전히 지원되는 convenience이지만, 더 이상 표준 공개 엔트리포인트는 아닙니다.
 
 현재 지원되는 계약에는 별도의 공개 `create-konekti` wrapper가 없습니다. 나중에 compatibility wrapper가 추가되더라도, 암묵적인 별칭이 아니라 추가적인 surface로 명시적으로 문서화되어야 합니다.
 

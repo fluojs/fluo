@@ -79,24 +79,25 @@ const cliPackage = JSON.parse(read('packages/cli/package.json'));
 assertCheck(
   checks,
   'Canonical bootstrap docs',
-  quickStart.includes('pnpm dlx @konekti/cli new starter-app') && quickStart.includes('This is the canonical public bootstrap path.'),
-  'The quick start guide documents the public `pnpm dlx @konekti/cli new` path.',
+  quickStart.includes('pnpm dlx @konekti/cli new starter-app') && quickStart.includes('canonical public bootstrap flow'),
+  'The quick start guide documents the public `pnpm add -g @konekti/cli` + `konekti new` path.',
 );
 assertCheck(
   checks,
   'Repo-local smoke path docs',
-  quickStart.includes('pnpm --dir packages/cli run sandbox:test') && quickStart.includes('testing support only'),
-  'The repo-local sandbox path is documented as testing support only.',
+  cliReadme.includes('pnpm --dir packages/cli run sandbox:test') && cliReadme.includes('instead of publishing prereleases'),
+  'The repo-local sandbox path is documented in the CLI README as monorepo-only verification support.',
 );
 assertCheck(
   checks,
   'Starter shape and runtime ownership',
   scaffoldSource.includes('runNodeApplication') &&
     scaffoldSource.includes('createHealthModule') &&
-    scaffoldSource.includes('MetricsModule.forRoot') &&
-    scaffoldSource.includes('OpenApiModule.forRoot') &&
+    scaffoldSource.includes("@Controller('/health-info')") &&
+    !scaffoldSource.includes('MetricsModule.forRoot') &&
+    !scaffoldSource.includes('OpenApiModule.forRoot') &&
     !scaffoldSource.includes('src/node-http-adapter.ts'),
-  'The generated starter uses runtime-owned bootstrap helpers and includes health, metrics, and OpenAPI surfaces.',
+  'The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.',
 );
 assertCheck(
   checks,

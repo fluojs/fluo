@@ -106,6 +106,84 @@ The compiled test container.
 |---|---|
 | `.resolve(token)` | Resolve a provider from the compiled module graph. Accepts class constructors or DI tokens and returns `Promise<T>`. |
 | `.has(token)` | Check whether a provider token is available in the compiled graph. |
+| `.dispatch(request)` | Run a request through the compiled module dispatcher (`createDispatcher`) and return a `TestResponse`. |
+
+### `createTestApp(options)`
+
+Use this when you want an end-to-end style test client backed by a bootstrapped application shell.
+
+```typescript
+import { createTestApp } from '@konekti/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/users')
+  .body({ name: 'Alice' })
+  .header('x-request-id', 'req-1')
+  .query('scope', 'admin')
+  .send();
+
+expect(response.status).toBe(201);
+
+await app.close();
+```
+
+`createTestApp()` calls `bootstrapApplication` with `mode: 'test'`, so it keeps the full application dispatch stack while remaining lightweight.
+
+### `TestApp.dispatch(request)`
+
+Run a request directly without the fluent builder.
+
+```typescript
+const response = await app.dispatch({
+  method: 'GET',
+  path: '/users/me',
+  principal: {
+    subject: 'user-1',
+    roles: ['admin'],
+    claims: { tenant: 'acme' },
+  },
+});
+
+expect(response.status).toBe(200);
+```
+
+`app.dispatch(request)` is the non-builder equivalent of `app.request(...).send()`. It accepts the same `TestRequestWithOptions` contract, including `method`, `path`, `query`, `headers`, `body`, and `principal`, and runs through the same test middleware path.
+
+### Request builder
+
+`request()` returns a fluent builder for composing common request fields.
+
+```typescript
+const response = await app
+  .request('GET', '/me')
+  .principal({
+    subject: 'user-1',
+    roles: ['admin'],
+    claims: { tenant: 'acme' },
+  })
+  .send();
+
+expect(response.body).toEqual({
+  subject: 'user-1',
+  roles: ['admin'],
+  claims: { tenant: 'acme' },
+});
+
+const defaultResponse = await app
+  .request('GET', '/me')
+  .principal({ roles: ['anonymous'] })
+  .send();
+
+expect(defaultResponse.body).toEqual({
+  subject: 'test',
+  claims: {},
+  roles: ['anonymous'],
+});
+```
+
+`principal` accepts `subject` (explicit), or `id` (legacy convenience) and falls back to `'test'` when neither is provided.
 
 ## Architecture
 
@@ -126,6 +204,7 @@ TestingModuleRef
     │
     ▼
 .resolve(token)  → instance from graph
+createTestApp({ rootModule })  → bootstrapped test app with request()
 ```
 
 Overrides are applied **after** the module graph is constructed, replacing the real providers with the fakes you supplied. The rest of the graph remains intact, so only the tokens you explicitly override are substituted.

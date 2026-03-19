@@ -13,6 +13,7 @@ export interface FrameworkRequest {
   cookies: Readonly<Record<string, string | undefined>>;
   params: Readonly<Record<string, string>>;
   body?: unknown;
+  rawBody?: Uint8Array;
   raw: unknown;
   signal?: AbortSignal;
 }
@@ -22,6 +23,7 @@ export interface FrameworkResponse {
   statusSet?: boolean;
   headers: Record<string, string>;
   committed: boolean;
+  raw?: unknown;
   setStatus(code: number): void;
   setHeader(name: string, value: string): void;
   redirect(status: number, location: string): void;
@@ -58,11 +60,13 @@ export interface RouteDefinition {
   guards?: GuardLike[];
   interceptors?: InterceptorLike[];
   successStatus?: number;
+  version?: string;
 }
 
 export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
+  effectiveVersion?: string;
   moduleMiddleware: MiddlewareLike[];
   moduleType?: Constructor;
   pathParams: string[];

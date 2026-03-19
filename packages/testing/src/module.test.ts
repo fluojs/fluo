@@ -1,11 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Module } from '@konekti/core';
+import { Controller, Get, Post, type RequestContext } from '@konekti/http';
 import type { Dispatcher } from '@konekti/http';
 
-import { asMock, createMock } from './mock.js';
-import { makeRequest } from './http.js';
-import { createTestingModule } from './module.js';
+import { asMock, createMock, createTestApp, createTestingModule, makeRequest } from './index.js';
+
+@Controller('/users')
+class UserController {
+  @Post('/')
+  async createUser(_: undefined, context: RequestContext) {
+    return {
+      body: context.request.body,
+      headers: context.request.headers,
+      query: context.request.query,
+    };
+  }
+
+  @Get('/me')
+  async getMe(_: undefined, context: RequestContext) {
+    return context.principal;
+  }
+}
+
+@Module({
+  controllers: [UserController],
+})
+class AppModule {}
 
 describe('@konekti/testing', () => {
   it('creates a testing module and resolves providers from the module graph', async () => {
@@ -21,10 +42,10 @@ describe('@konekti/testing', () => {
     @Module({
       providers: [Logger, UserService],
     })
-    class AppModule {}
+    class ServiceModule {}
 
     const testingModule = await createTestingModule({
-      rootModule: AppModule,
+      rootModule: ServiceModule,
     }).compile();
 
     const service = await testingModule.resolve(UserService);
@@ -46,10 +67,10 @@ describe('@konekti/testing', () => {
     @Module({
       providers: [Logger, UserService],
     })
-    class AppModule {}
+    class ServiceModule {}
 
     const testingModule = await createTestingModule({
-      rootModule: AppModule,
+      rootModule: ServiceModule,
     })
       .overrideProvider(Logger, { name: 'fake-logger' })
       .compile();
@@ -139,6 +160,161 @@ describe('makeRequest', () => {
       status: 201,
       headers: { 'x-powered-by': 'konekti' },
       body: { ok: true },
+    });
+  });
+});
+
+describe('createTestApp', () => {
+  it('provides request builder helpers and closes cleanly', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    const response = await app
+      .request('POST', '/users')
+      .header('x-test-id', 'k1')
+      .query('page', '1')
+      .query('tag', ['a', 'b'])
+      .body({ name: 'Alice' })
+      .send();
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      body: { name: 'Alice' },
+      headers: { 'x-test-id': 'k1' },
+      query: { page: '1', tag: ['a', 'b'] },
+    });
+
+    await expect(app.close()).resolves.toBeUndefined();
+  });
+
+  it('injects principal into request context for e2e-style calls', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    const response = await app
+      .request('GET', '/users/me')
+      .principal({
+        id: 'user-1',
+        roles: ['admin'],
+      })
+      .send();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      subject: 'user-1',
+      roles: ['admin'],
+      claims: { id: 'user-1' },
+    });
+
+    await app.close();
+  });
+
+  it('dispatches a request directly through the app helper and injects subject-based principal', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    const response = await app.dispatch({
+      method: 'GET',
+      path: '/users/me',
+      principal: {
+        subject: 'dispatch-subject',
+        roles: ['ops'],
+        claims: { tenant: 'edge' },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      subject: 'dispatch-subject',
+      roles: ['ops'],
+      claims: { tenant: 'edge' },
+    });
+
+    await app.close();
+  });
+
+  it('prioritizes subject over id and falls back to default subject when missing', async () => {
+    const app = await createTestApp({ rootModule: AppModule });
+
+    const subjectResponse = await app
+      .request('GET', '/users/me')
+      .principal({
+        subject: 'subject-win',
+        id: 'ignored-id',
+      })
+      .send();
+
+    expect(subjectResponse.body).toEqual({
+      subject: 'subject-win',
+      claims: { id: 'ignored-id' },
+    });
+
+    const idResponse = await app
+      .request('GET', '/users/me')
+      .principal({
+        id: 'legacy-id',
+        roles: ['support'],
+      })
+      .send();
+
+    expect(idResponse.body).toEqual({
+      subject: 'legacy-id',
+      roles: ['support'],
+      claims: { id: 'legacy-id' },
+    });
+
+    const fallbackResponse = await app
+      .request('GET', '/users/me')
+      .principal({
+        roles: ['defaulted'],
+      })
+      .send();
+
+    expect(fallbackResponse.status).toBe(200);
+    expect(fallbackResponse.body).toEqual({
+      subject: 'test',
+      roles: ['defaulted'],
+      claims: {},
+    });
+
+    await app.close();
+  });
+});
+
+describe('TestingModuleRef.dispatch', () => {
+  it('dispatches full HTTP request lifecycle from a compiled module ref', async () => {
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    const response = await testingModule.dispatch({
+      method: 'GET',
+      path: '/users/me',
+      principal: {
+        id: 'dispatch-user',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      subject: 'dispatch-user',
+      claims: {
+        id: 'dispatch-user',
+      },
+    });
+  });
+
+  it('supports POST body, headers, and query with module-level dispatch', async () => {
+    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+
+    const response = await testingModule.dispatch({
+      method: 'post',
+      path: '/users',
+      headers: { 'x-test-id': 'dispatch' },
+      query: { scope: 'all' },
+      body: { name: 'Bob' },
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      body: { name: 'Bob' },
+      headers: { 'x-test-id': 'dispatch' },
+      query: { scope: 'all' },
     });
   });
 });

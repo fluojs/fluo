@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Global, Module } from '@konekti/core';
 
-import { createPrismaModule, PrismaService } from './index.js';
+import { createPrismaModule, createPrismaModuleAsync, PrismaService } from './index.js';
 
 describe('@konekti/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
@@ -159,5 +160,98 @@ describe('@konekti/prisma', () => {
       'transaction:end',
       'disconnect',
     ]);
+  });
+});
+
+describe('createPrismaModuleAsync', () => {
+  function makeFakeClient() {
+    const events: string[] = [];
+    const transactionClient = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (tx: Record<string, never>) => Promise<T>): Promise<T> {
+        return callback({});
+      },
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (tx: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+    return { client, events };
+  }
+
+  it('factory receives injected token and resolves PrismaService', async () => {
+    const { client, events } = makeFakeClient();
+
+    class ConfigService {
+      readonly url = 'postgres://localhost/test';
+    }
+
+    @Global()
+    @Module({ providers: [ConfigService], exports: [ConfigService] })
+    class ConfigModule {}
+
+    const factory = vi.fn().mockResolvedValue({ client });
+
+    const PrismaModule = createPrismaModuleAsync({
+      inject: [ConfigService],
+      useFactory: factory,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [ConfigModule, PrismaModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const prisma = await app.container.resolve(PrismaService);
+
+    expect(factory).toHaveBeenCalledOnce();
+    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+    expect(events).toEqual(['connect']);
+
+    await app.close();
+    expect(events).toEqual(['connect', 'disconnect']);
+
+    void prisma;
+  });
+
+  it('factory returning a promise resolves the client correctly', async () => {
+    const { client } = makeFakeClient();
+
+    const PrismaModule = createPrismaModuleAsync({
+      useFactory: () => Promise.resolve({ client }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [PrismaModule] });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const prisma = await app.container.resolve(PrismaService);
+
+    expect(prisma).toBeInstanceOf(PrismaService);
+
+    await app.close();
+  });
+
+  it('propagates factory errors during module initialization', async () => {
+    const PrismaModule = createPrismaModuleAsync({
+      useFactory: () => Promise.reject(new Error('secret fetch failed')),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [PrismaModule] });
+
+    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('secret fetch failed');
   });
 });

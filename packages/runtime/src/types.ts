@@ -1,7 +1,7 @@
 import type { ConfigLoadOptions, ConfigMode, ConfigService } from '@konekti/config';
 import type { Constructor, MaybePromise, Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
-import type { Dispatcher, HttpApplicationAdapter, MiddlewareLike, RequestObserverLike } from '@konekti/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpApplicationAdapter, MiddlewareLike, RequestObserverLike } from '@konekti/http';
 
 export type ModuleType = Constructor & { definition?: ModuleDefinition };
 export type ControllerType = Constructor;
@@ -16,7 +16,10 @@ export interface ModuleDefinition {
 }
 
 export interface BootstrapModuleOptions {
+  duplicateProviderPolicy?: 'warn' | 'throw' | 'ignore';
+  logger?: ApplicationLogger;
   providers?: Provider[];
+  validationTokens?: Token[];
 }
 
 export interface CompiledModule {
@@ -57,8 +60,37 @@ export interface ApplicationLogger {
 
 export type ApplicationState = 'bootstrapped' | 'ready' | 'closed';
 
+/**
+ * Called when an unhandled error escapes the request pipeline.
+ * Return a value to override the default error response, or return `undefined`
+ * to fall through to the next filter or the built-in 500 handler.
+ */
+export interface ExceptionFilterContext {
+  request: FrameworkRequest;
+  response: FrameworkResponse;
+  requestId?: string;
+}
+
+export interface ExceptionFilterHandler {
+  catch(error: unknown, context: ExceptionFilterContext): MaybePromise<boolean | void>;
+}
+
 export interface BootstrapApplicationOptions extends ConfigLoadOptions {
   adapter?: HttpApplicationAdapter;
+  /**
+   * Policy for duplicate provider tokens across modules.
+   *
+   * - `'warn'`   — log a warning but continue bootstrap (default)
+   * - `'throw'`  — throw a `DuplicateProviderError` and abort bootstrap
+   * - `'ignore'` — silently allow duplicates (last-registered wins)
+   */
+  duplicateProviderPolicy?: 'warn' | 'throw' | 'ignore';
+  /**
+   * Global exception filters, evaluated before any module/controller/handler
+   * scoped filters.  Each filter's `catch()` is called in order; the first
+   * one that returns `true` (handled) stops the chain.
+   */
+  filters?: ExceptionFilterHandler[];
   logger?: ApplicationLogger;
   middleware?: MiddlewareLike[];
   observers?: RequestObserverLike[];

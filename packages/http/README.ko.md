@@ -16,7 +16,8 @@ route metadata를 request 처리 체인으로 바꾸는 HTTP 실행 레이어.
 `@konekti/http`는 단순 라우터가 아니라 전체 request 실행 런타임이다. 다음을 소유한다:
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — adapter, middleware, guard, interceptor, controller 사이의 공통 언어
-- Route와 DTO 데코레이터 (`@Controller`, `@Get`, `@Post`, `@FromBody`, `@FromPath` 등)
+- Route와 DTO 데코레이터 (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath` 등)
+- Mapped DTO helper (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
 - Routing table 구성 (`createHandlerMapping`)
 - Request DTO binding과 validation
 - middleware → guard → interceptor → bind → validate → handler 호출을 순서대로 실행하는 dispatcher
@@ -33,7 +34,7 @@ npm install @konekti/http
 ### Controller 정의
 
 ```typescript
-import { Controller, Get, Post, FromBody, FromPath, RequestDto } from '@konekti/http';
+import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/dto-validator';
 import type { RequestContext } from '@konekti/http';
 
@@ -50,6 +51,7 @@ class GetUserParams {
   id!: string;
 }
 
+@Version('1')
 @Controller('/users')
 export class UserController {
   @Post('/')
@@ -100,6 +102,66 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|
 | `@Controller(path)` | 클래스를 base path를 가진 controller로 지정 |
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
+| `@Version(value)` | `/v1/...` 같은 URI 버저닝을 적용; handler 레벨 버전이 controller 레벨 버전을 override |
+
+### URI 버저닝
+
+현재 Konekti는 URI 버저닝만 지원합니다.
+
+```typescript
+@Version('1')
+@Controller('/users')
+class UsersV1Controller {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+
+  @Version('2')
+  @Post('/')
+  createUser() {
+    return {};
+  }
+}
+```
+
+- controller 레벨 `@Version('1')`은 `/v1/users` 같은 경로를 만듭니다
+- handler 레벨 `@Version('2')`는 해당 route에 한해 controller 버전을 override합니다
+- 버전을 지정하지 않은 controller는 기존 경로를 그대로 유지합니다
+
+### Mapped DTO helper
+
+Konekti는 일반적인 request shape 파생을 위해 metadata-preserving mapped DTO helper를 지원합니다.
+
+```typescript
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/http';
+
+class CreateUserRequest {
+  @FromBody('name')
+  name = '';
+
+  @FromBody('email')
+  email = '';
+}
+
+class AddressRequest {
+  @FromBody('city')
+  city = '';
+}
+
+const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
+const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
+const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+const UpdateUserRequest = PartialType(CreateUserRequest);
+```
+
+- `PickType()`은 선택한 DTO field와 해당 metadata만 유지합니다
+- `OmitType()`은 선택한 DTO field를 제거하고 나머지 metadata를 유지합니다
+- `IntersectionType()`은 여러 DTO base의 metadata를 하나의 파생 DTO로 합성합니다
+- `PartialType()`은 DTO shape를 유지하면서 상속된 field를 request binding, validation, 그리고 path가 아닌 OpenAPI required semantics 기준으로 optional하게 만듭니다
+- 파생 DTO는 `RequestDto(...)`, runtime binding, validation, OpenAPI generation과 계속 함께 동작합니다
+
+`PartialType()`은 단순 metadata composition이 아니라 field optionality semantics를 바꾸기 때문에 다른 mapped helper와 별도의 의미를 가집니다. Path parameter는 OpenAPI 스펙상 required여야 하므로 생성된 OpenAPI parameter에서는 계속 required로 남습니다.
 
 ### DTO binding 데코레이터
 
@@ -120,10 +182,40 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|---|
 | `createHandlerMapping(sources)` | `src/mapping.ts` | `{ controllerToken }` 같은 handler source에서 normalized routing table 생성 |
 | `createDispatcher(options)` | `src/dispatcher.ts` | request dispatch 함수 생성 |
+| `SseResponse` | `src/sse.ts` | `RequestContext`에서 Server-Sent Events 스트림 생성 helper |
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS middleware 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 context factory |
 
-추가 public export로는 `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
+추가 public export로는 `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
+
+### Server-Sent Events (SSE)
+
+핸들러가 HTTP 연결을 유지하면서 시간이 지나도 계속 프레임을 써야 할 때 `SseResponse`를 사용합니다.
+
+```typescript
+import { Controller, Get, SseResponse, type RequestContext } from '@konekti/http';
+
+@Controller('/events')
+class EventsController {
+  @Get('/')
+  stream(_input: undefined, ctx: RequestContext) {
+    const stream = new SseResponse(ctx);
+
+    stream.comment('connected');
+    stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+
+    return stream;
+  }
+}
+```
+
+- `new SseResponse(ctx)`는 SSE 헤더를 즉시 commit합니다
+- `send(data, { event, id, retry })`는 canonical SSE message frame을 작성합니다
+- `comment(text)`는 comment frame을 작성합니다
+- `close()`는 idempotent하며 `ctx.request.signal`이 abort될 때도 자동으로 실행됩니다
+- `encodeSseMessage()`와 `encodeSseComment()`는 테스트나 custom framing에 사용할 수 있도록 export됩니다
+- 현재 SSE는 Node adapter 또는 `write()`, `end()`, `writableEnded`, optional `flushHeaders()`를 제공하는 custom `FrameworkResponse.raw` 객체가 필요합니다
+- request observer는 SSE 소켓이 닫힐 때까지 유지되지 않고, 핸들러가 반환되는 시점에 완료됩니다
 
 ### 성공 상태 코드 기본값
 

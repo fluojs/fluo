@@ -19,6 +19,7 @@ import {
   Get,
   Post,
   RequestDto,
+  SseResponse,
   SuccessStatus,
   UseGuard,
   UseInterceptor,
@@ -27,6 +28,7 @@ import {
 } from '@konekti/http';
 import { IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 
+import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { forRoutes, runMiddlewareChain } from './middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
@@ -230,6 +232,66 @@ describe('dispatcher runtime', () => {
 
       expect(events).toEqual(['log', 'handler']);
     });
+  });
+
+  it('bypasses the default success writer when a handler returns SseResponse', async () => {
+    const writes: string[] = [];
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      stream(_input: undefined, ctx: ReturnType<typeof assertRequestContext>) {
+        const sse = new SseResponse(ctx);
+        sse.send({ ok: true }, { event: 'ready', id: 'evt-1' });
+        return sse;
+      }
+    }
+
+    const root = new Container().register(EventsController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: EventsController }]),
+      rootContainer: root,
+    });
+
+    const response: FrameworkResponse & { body?: unknown; raw: { writableEnded: boolean; write(chunk: string): boolean; end(): void } } = {
+      committed: false,
+      headers: {},
+      raw: {
+        end() {
+          this.writableEnded = true;
+        },
+        writableEnded: false,
+        write(chunk) {
+          writes.push(chunk);
+          return true;
+        },
+      },
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+      setStatus(code) {
+        this.statusCode = code;
+        this.statusSet = true;
+      },
+      statusCode: undefined,
+      statusSet: false,
+    };
+
+    await dispatcher.dispatch(createRequest('/events', 'GET'), response);
+
+    expect(response.body).toBeUndefined();
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/event-stream; charset=utf-8');
+    expect(writes).toEqual(['event: ready\nid: evt-1\ndata: {"ok":true}\n\n']);
   });
 
   it('dispatches a GET route through middleware, guards, interceptors, and controller', async () => {
@@ -595,6 +657,246 @@ describe('dispatcher runtime', () => {
         message: 'Validation failed.',
         meta: undefined,
         requestId: 'req-users-400',
+        status: 400,
+      },
+    });
+  });
+
+  it('binds mapped DTO helpers through RequestDto without exposing omitted fields', async () => {
+    class CreateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(1, { code: 'REQUIRED', message: 'name is required' })
+      name = '';
+
+      @FromBody('role')
+      @IsString()
+      role = 'user';
+    }
+
+    class AddressRequest {
+      @FromBody('city')
+      @IsString()
+      city = '';
+    }
+
+    const PickedUserRequest = PickType(CreateUserRequest, ['name']);
+    const OmittedUserRequest = OmitType(CreateUserRequest, ['role']);
+    const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+
+    @Controller('/mapped')
+    class MappedController {
+      @RequestDto(PickedUserRequest)
+      @Post('/pick')
+      pick(input: InstanceType<typeof PickedUserRequest>) {
+        return input;
+      }
+
+      @RequestDto(OmittedUserRequest)
+      @Post('/omit')
+      omit(input: InstanceType<typeof OmittedUserRequest>) {
+        return input;
+      }
+
+      @RequestDto(CreateUserWithAddressRequest)
+      @Post('/intersection')
+      intersection(input: InstanceType<typeof CreateUserWithAddressRequest>) {
+        return input;
+      }
+    }
+
+    const root = new Container().register(MappedController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: MappedController }]),
+      rootContainer: root,
+    });
+
+    const pickResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/mapped/pick',
+        query: {},
+        raw: {},
+        url: '/mapped/pick',
+      },
+      pickResponse,
+    );
+    expect(pickResponse.statusCode).toBe(201);
+    expect(pickResponse.body).toEqual({ name: 'Ada' });
+
+    const omitResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/mapped/omit',
+        query: {},
+        raw: {},
+        url: '/mapped/omit',
+      },
+      omitResponse,
+    );
+    expect(omitResponse.statusCode).toBe(201);
+    expect(omitResponse.body).toEqual({ name: 'Ada' });
+
+    const intersectionResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { city: 'Seoul', name: 'Ada', role: 'admin' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/mapped/intersection',
+        query: {},
+        raw: {},
+        url: '/mapped/intersection',
+      },
+      intersectionResponse,
+    );
+    expect(intersectionResponse.statusCode).toBe(201);
+    expect(intersectionResponse.body).toEqual({ city: 'Seoul', name: 'Ada', role: 'admin' });
+
+    const pickErrorResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada', role: 'admin' },
+        cookies: {},
+        headers: { 'x-request-id': 'req-mapped-pick-400' },
+        method: 'POST',
+        params: {},
+        path: '/mapped/pick',
+        query: {},
+        raw: {},
+        url: '/mapped/pick',
+      },
+      pickErrorResponse,
+    );
+
+    expect(pickErrorResponse.statusCode).toBe(400);
+    expect(pickErrorResponse.body).toEqual({
+      error: {
+        code: 'BAD_REQUEST',
+        details: [
+          {
+            code: 'UNKNOWN_FIELD',
+            field: 'role',
+            message: 'Unknown body field role.',
+            source: 'body',
+          },
+        ],
+        message: 'Request body contains unsupported fields.',
+        meta: undefined,
+        requestId: 'req-mapped-pick-400',
+        status: 400,
+      },
+    });
+  });
+
+  it('binds PartialType DTOs with optional runtime semantics', async () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
+      name = '';
+
+      @FromBody('email')
+      @IsString()
+      email = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+
+    @Controller('/partial')
+    class PartialController {
+      @RequestDto(PartialUpdateUserRequest)
+      @Post('/users')
+      updateUser(input: InstanceType<typeof PartialUpdateUserRequest>) {
+        return input;
+      }
+    }
+
+    const root = new Container().register(PartialController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: PartialController }]),
+      rootContainer: root,
+    });
+
+    const emptyResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: {},
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      emptyResponse,
+    );
+    expect(emptyResponse.statusCode).toBe(201);
+    expect(emptyResponse.body).toEqual({});
+
+    const partialResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: 'Ada' },
+        cookies: {},
+        headers: {},
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      partialResponse,
+    );
+    expect(partialResponse.statusCode).toBe(201);
+    expect(partialResponse.body).toEqual({ name: 'Ada' });
+
+    const validationErrorResponse = createResponse();
+    await dispatcher.dispatch(
+      {
+        body: { name: '' },
+        cookies: {},
+        headers: { 'x-request-id': 'req-partial-400' },
+        method: 'POST',
+        params: {},
+        path: '/partial/users',
+        query: {},
+        raw: {},
+        url: '/partial/users',
+      },
+      validationErrorResponse,
+    );
+
+    expect(validationErrorResponse.statusCode).toBe(400);
+    expect(validationErrorResponse.body).toEqual({
+      error: {
+        code: 'BAD_REQUEST',
+        details: [
+          {
+            code: 'NAME_MIN',
+            field: 'name',
+            message: 'name must be at least 2 chars',
+            source: 'body',
+          },
+        ],
+        message: 'Validation failed.',
+        meta: undefined,
+        requestId: 'req-partial-400',
         status: 400,
       },
     });

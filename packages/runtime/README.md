@@ -74,6 +74,122 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Raw webhook body (opt-in)
+
+```typescript
+import { Controller, Post, type RequestContext } from '@konekti/http';
+import { runNodeApplication } from '@konekti/runtime';
+
+@Controller('/webhooks')
+class WebhookController {
+  @Post('/stripe')
+  verify(_input: undefined, context: RequestContext) {
+    const rawBody = context.request.rawBody;
+
+    if (!rawBody) {
+      throw new Error('rawBody must be enabled for signature verification.');
+    }
+
+    const signature = context.request.headers['stripe-signature'];
+    return verifyStripeSignature(rawBody, signature);
+  }
+}
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  rawBody: true,
+});
+```
+
+`rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The Node adapter currently applies this to non-multipart bodies such as JSON and text, and leaves `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
+
+### Host binding and HTTPS
+
+```typescript
+import { readFileSync } from 'node:fs';
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  host: '127.0.0.1',
+  https: {
+    cert: readFileSync('./certs/dev.crt'),
+    key: readFileSync('./certs/dev.key'),
+  },
+  port: 8443,
+});
+```
+
+When `host` is set, the Node adapter binds explicitly to that host instead of the default all-interfaces behavior. When `https` is provided, the adapter starts an HTTPS server and the startup log reports an `https://...` URL. If the public URL differs from the actual bind target, the startup log includes both. The `https` object is passed through to Node's `node:https.createServer`, so callers must supply valid TLS material such as `key` and `cert`.
+
+### Global prefix for application routes
+
+```typescript
+await runNodeApplication(AppModule, {
+  globalPrefix: '/api',
+  globalPrefixExclude: ['/internal/*'],
+  mode: 'prod',
+});
+```
+
+`globalPrefix` applies to application routes owned by the runtime-owned HTTP app, so a controller route like `/app/info` becomes `/api/app/info`. By default, runtime-owned operational endpoints stay unprefixed at `/health`, `/ready`, `/openapi.json`, `/docs`, and `/metrics`, and their prefixed forms like `/api/health` return `404` by design. `globalPrefixExclude` adds more unprefixed path patterns on top of that default exclusion set.
+
+`globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op.
+
+### Global exception filters
+
+```typescript
+import { NotFoundException } from '@konekti/http';
+import type { ExceptionFilterHandler } from '@konekti/runtime';
+
+class DomainExceptionFilter implements ExceptionFilterHandler {
+  catch(error, context) {
+    if (error instanceof UserNotFoundError) {
+      context.response.setStatus(404);
+      void context.response.send({ message: error.message });
+      return true;
+    }
+
+    return undefined;
+  }
+}
+
+await runNodeApplication(AppModule, {
+  filters: [new DomainExceptionFilter()],
+  mode: 'prod',
+});
+```
+
+`filters` registers global exception filters that run in order when a handler, guard, interceptor, or middleware throws. Return `true` after writing the response to stop the chain; return `undefined` to fall through to the next filter and eventually the built-in HTTP exception serializer.
+
+### Duplicate provider diagnostics
+
+```typescript
+await bootstrapApplication({
+  duplicateProviderPolicy: 'throw',
+  mode: 'prod',
+  rootModule: AppModule,
+});
+```
+
+`duplicateProviderPolicy` controls what happens when multiple modules register the same provider token during bootstrap. Use `'warn'` to log and continue, `'throw'` to fail fast with `DuplicateProviderError`, or `'ignore'` to preserve the existing last-registration-wins behavior.
+
+### URI versioning
+
+```typescript
+import { Controller, Get, Version } from '@konekti/http';
+
+@Version('1')
+@Controller('/users')
+class UsersController {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+}
+```
+
+Konekti currently supports URI versioning only. `@Version('1')` turns `/users` into `/v1/users`, and handler-level versions override controller-level versions for specific routes.
+
 ### Module with imports and exports
 
 ```typescript

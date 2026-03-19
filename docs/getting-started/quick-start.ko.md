@@ -8,12 +8,21 @@
 ## 표준 부트스트랩 경로
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```
 
 이것이 현재 지원되는 공식적인 공개 엔트리포인트입니다.
+
+한 번만 실행하는 zero-install 부트스트랩에는 아래 대안도 계속 지원됩니다:
+
+```sh
+pnpm dlx @konekti/cli new starter-app
+```
+
+`pnpm add -g @konekti/cli` + `konekti new ...` 경로가 이제 표준 공개 부트스트랩 흐름입니다.
 
 참고 항목:
 
@@ -28,8 +37,7 @@ pnpm dev
 - 런타임 소유의 Node 부트스트랩을 포함한 `src/main.ts`
 - 스타터 모듈 연결을 포함한 `src/app.ts`
 - 런타임 소유의 `/health` 및 `/ready`
-- `/metrics` 및 `/openapi.json`
-- `src/examples/`의 일반적인 리포지토리 예시
+- `/health-info/`를 노출하는 스타터 소유 `health/` 모듈
 - 앱이 올바르게 부팅되고 디스패치되는지 증명하는 스타터 테스트
 
 ## 생성된 프로젝트 명령어
@@ -50,7 +58,7 @@ pnpm test
 프로젝트 루트에서 리포지토리를 생성합니다:
 
 ```sh
-pnpm exec konekti g repo User
+konekti g repo User
 ```
 
 CLI는 생성된 앱의 `src/` 디렉토리에 파일을 기본으로 작성합니다.

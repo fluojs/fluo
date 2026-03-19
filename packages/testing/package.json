@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vitest": {
+      "types": "./dist/vitest.d.ts",
+      "import": "./dist/vitest.js"
     }
   },
   "main": "./dist/index.js",
@@ -37,5 +41,13 @@
     "@konekti/http": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "@babel/core": ">=7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@babel/core": {
+      "optional": true
+    }
   }
 }

@@ -8,12 +8,21 @@ This guide describes the current public bootstrap path for Konekti.
 ## canonical bootstrap path
 
 ```sh
-pnpm dlx @konekti/cli new starter-app
+pnpm add -g @konekti/cli
+konekti new starter-app
 cd starter-app
 pnpm dev
 ```
 
 This is the supported public entrypoint today.
+
+For a one-off zero-install bootstrap, this alternative remains supported:
+
+```sh
+pnpm dlx @konekti/cli new starter-app
+```
+
+The global-install `pnpm add -g @konekti/cli` + `konekti new ...` path is now the canonical public bootstrap flow.
 
 See also:
 
@@ -28,8 +37,7 @@ A new app currently includes:
 - `src/main.ts` with runtime-owned Node bootstrap
 - `src/app.ts` with starter module wiring
 - runtime-owned `/health` and `/ready`
-- `/metrics` and `/openapi.json`
-- a generic repository example in `src/examples/`
+- a starter-owned `health/` module exposing `/health-info/`
 - a starter test proving the app boots and dispatches correctly
 
 ## generated project commands
@@ -50,7 +58,7 @@ The scaffold emits the same single-project layout for `pnpm`, `npm`, and `yarn`,
 Generate a repository from the project root:
 
 ```sh
-pnpm exec konekti g repo User
+konekti g repo User
 ```
 
 The CLI writes files into `src/` by default on generated apps.

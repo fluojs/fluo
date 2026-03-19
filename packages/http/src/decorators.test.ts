@@ -13,6 +13,7 @@ import {
   UseGuard,
   UseInterceptor,
 } from './decorators.js';
+import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
 import { IsString, MinLength, ValidateClass } from '@konekti/dto-validator';
 
 describe('http decorators', () => {
@@ -120,5 +121,175 @@ describe('http decorators', () => {
     ]);
 
     expect(getClassValidationRules(ExampleController)).toHaveLength(1);
+  });
+
+  it('preserves binding and validator metadata for PickType, OmitType, and IntersectionType', () => {
+    class AddressRequest {
+      @FromBody('city')
+      @IsString()
+      city = '';
+    }
+
+    class CreateUserRequest {
+      @FromPath('id')
+      id = '';
+
+      @FromBody('name')
+      @IsString()
+      @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
+      name = '';
+
+      @FromBody('nickname')
+      @Optional()
+      @IsString()
+      nickname?: string;
+    }
+
+    const PickedRequest = PickType(CreateUserRequest, ['name']);
+    const OmittedRequest = OmitType(CreateUserRequest, ['nickname']);
+    const IntersectionRequest = IntersectionType(CreateUserRequest, AddressRequest);
+
+    expect(getDtoBindingSchema(PickedRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        metadata: {
+          key: 'name',
+          optional: undefined,
+          source: 'body',
+        },
+      },
+    ]);
+    expect(getDtoValidationSchema(PickedRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [
+          { code: 'NAME_MIN', kind: 'minLength', message: 'name must be at least 2 chars', value: 2 },
+          { kind: 'string' },
+        ],
+      },
+    ]);
+
+    expect(getDtoBindingSchema(OmittedRequest)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: undefined,
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'name',
+        metadata: {
+          key: 'name',
+          optional: undefined,
+          source: 'body',
+        },
+      },
+    ]);
+    expect(getDtoValidationSchema(OmittedRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [
+          { code: 'NAME_MIN', kind: 'minLength', message: 'name must be at least 2 chars', value: 2 },
+          { kind: 'string' },
+        ],
+      },
+    ]);
+
+    expect(getDtoBindingSchema(IntersectionRequest)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: undefined,
+          source: 'path',
+        },
+      },
+      {
+        propertyKey: 'name',
+        metadata: {
+          key: 'name',
+          optional: undefined,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'nickname',
+        metadata: {
+          key: 'nickname',
+          optional: true,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'city',
+        metadata: {
+          key: 'city',
+          optional: undefined,
+          source: 'body',
+        },
+      },
+    ]);
+    expect(getDtoValidationSchema(IntersectionRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [
+          { code: 'NAME_MIN', kind: 'minLength', message: 'name must be at least 2 chars', value: 2 },
+          { kind: 'string' },
+        ],
+      },
+      {
+        propertyKey: 'nickname',
+        rules: [{ kind: 'string' }],
+      },
+      {
+        propertyKey: 'city',
+        rules: [{ kind: 'string' }],
+      },
+    ]);
+  });
+
+  it('makes inherited binding and validation metadata optional for PartialType', () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
+      name = '';
+
+      @FromPath('id')
+      id = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+
+    expect(getDtoBindingSchema(PartialUpdateUserRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        metadata: {
+          key: 'name',
+          optional: true,
+          source: 'body',
+        },
+      },
+      {
+        propertyKey: 'id',
+        metadata: {
+          key: 'id',
+          optional: true,
+          source: 'path',
+        },
+      },
+    ]);
+    expect(getDtoValidationSchema(PartialUpdateUserRequest)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [
+          { code: 'NAME_MIN', kind: 'minLength', message: 'name must be at least 2 chars', value: 2 },
+          { kind: 'string' },
+          { kind: 'optional' },
+        ],
+      },
+    ]);
   });
 });

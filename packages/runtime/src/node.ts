@@ -1,14 +1,16 @@
-import { createServer } from 'node:http';
-import type { Socket } from 'node:net';
+import { createServer as createHttpServer, type RequestListener } from 'node:http';
+import { createServer as createHttpsServer, type ServerOptions as HttpsServerOptions } from 'node:https';
+import type { AddressInfo, Socket } from 'node:net';
 import { URL } from 'node:url';
 
 import {
   BadRequestException,
-  HttpException,
-  InternalServerException,
   createCorsMiddleware,
   createErrorResponse,
   createSecurityHeadersMiddleware,
+  HttpException,
+  InternalServerException,
+  NotFoundException,
   PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
@@ -32,8 +34,11 @@ declare module '@konekti/http' {
 }
 
 export interface NodeHttpAdapterOptions {
+  host?: string;
+  https?: HttpsServerOptions;
   maxBodySize?: number;
   port?: number;
+  rawBody?: boolean;
   retryDelayMs?: number;
   retryLimit?: number;
   shutdownTimeoutMs?: number;
@@ -44,15 +49,21 @@ export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_GLOBAL_PREFIX_EXCLUDE = ['/health', '/ready', '/openapi.json', '/docs', '/metrics'] as const;
 
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
   cors?: CorsInput;
+  globalPrefix?: string;
+  globalPrefixExclude?: readonly string[];
+  host?: string;
+  https?: HttpsServerOptions;
   logger?: ApplicationLogger;
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
   port?: number;
+  rawBody?: boolean;
   retryDelayMs?: number;
   retryLimit?: number;
   securityHeaders?: false | SecurityHeadersOptions;
@@ -65,54 +76,54 @@ export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptio
 
 type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
+interface NodeListenTarget {
+  bindTarget: string;
+  url: string;
+}
+
+type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
+type NodeRequestListener = RequestListener;
+
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
-  private server?: import('node:http').Server;
+  private readonly server: NodeServer;
+  private dispatcher?: Dispatcher;
   private readonly sockets = new Set<Socket>();
 
   constructor(
     private readonly port: number,
+    private readonly host: string | undefined,
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
     private readonly compression = false,
+    private readonly httpsOptions: HttpsServerOptions | undefined,
     private readonly multipartOptions?: MultipartOptions,
     private readonly maxBodySize = 1 * 1024 * 1024,
+    private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
-  ) {}
+  ) {
+    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+      void this.handleRequest(request, response);
 
-  async listen(dispatcher: Dispatcher): Promise<void> {
-    this.server = createServer(async (request, response) => {
-      const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
-      const signal = createRequestSignal(response);
-
-      try {
-        const frameworkRequest = await createFrameworkRequest(request, signal, this.multipartOptions, this.maxBodySize);
-
-        await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-        if (!frameworkResponse.committed) {
-          await frameworkResponse.send(undefined);
-        }
-      } catch (error: unknown) {
-        if (signal.aborted || frameworkResponse.committed) {
-          return;
-        }
-
-        await writeNodeAdapterErrorResponse(error, frameworkResponse, resolveRequestIdFromHeaders(request.headers));
-      }
     });
-
-    const server = this.server;
-
-    if (!server) {
-      throw new Error('Adapter server was not created before listen().');
-    }
-
-    server.on('connection', (socket) => {
+    this.server.on('connection', (socket) => {
       this.sockets.add(socket);
       socket.once('close', () => {
         this.sockets.delete(socket);
       });
     });
+  }
+
+  getServer(): NodeServer {
+    return this.server;
+  }
+
+  getListenTarget(): NodeListenTarget {
+    return resolveNodeListenTarget(this.server.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
+  }
+
+  async listen(dispatcher: Dispatcher): Promise<void> {
+    this.dispatcher = dispatcher;
+    const server = this.server;
 
     await new Promise<void>((resolve, reject) => {
       const tryListen = (attempt: number) => {
@@ -138,7 +149,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
         server.once('error', onError);
         server.once('listening', onListening);
-        server.listen(this.port);
+        server.listen({ host: this.host, port: this.port });
       };
 
       tryListen(0);
@@ -148,7 +159,8 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   async close(): Promise<void> {
     const server = this.server;
 
-    if (!server) {
+    if (!server.listening) {
+      this.dispatcher = undefined;
       return;
     }
 
@@ -181,18 +193,57 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
       closeIdleConnections(server);
     });
 
-    this.server = undefined;
+    this.dispatcher = undefined;
+  }
+
+  private async handleRequest(
+    request: import('node:http').IncomingMessage,
+    response: import('node:http').ServerResponse,
+  ): Promise<void> {
+    const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
+    const signal = createRequestSignal(response);
+    let frameworkRequest: FrameworkRequest | undefined;
+
+    try {
+      frameworkRequest = await createFrameworkRequest(
+        request,
+        signal,
+        this.multipartOptions,
+        this.maxBodySize,
+        this.preserveRawBody,
+      );
+
+      if (!this.dispatcher) {
+        throw new Error('Node HTTP adapter received a request before dispatcher binding completed.');
+      }
+
+      await this.dispatcher.dispatch(frameworkRequest, frameworkResponse);
+
+      if (!frameworkResponse.committed) {
+        await frameworkResponse.send(undefined);
+      }
+    } catch (error: unknown) {
+      if (signal.aborted || frameworkResponse.committed) {
+        return;
+      }
+
+      const requestId = resolveRequestIdFromHeaders(request.headers);
+      await writeNodeAdapterErrorResponse(error, frameworkResponse, requestId);
+    }
   }
 }
 
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
   return new NodeHttpApplicationAdapter(
     resolveNodePort(options.port),
+    options.host,
     options.retryDelayMs,
     options.retryLimit,
     compression,
+    options.https,
     multipartOptions,
     options.maxBodySize,
+    options.rawBody,
     options.shutdownTimeoutMs,
   );
 }
@@ -217,15 +268,18 @@ export async function runNodeApplication(
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
-  const app = await bootstrapNodeApplication(rootModule, {
+  const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
+  const app = await bootstrapApplication({
     ...options,
+    adapter,
     logger,
+    middleware: createNodeMiddleware(options),
+    rootModule,
   });
-  const port = resolveNodePort(options.port);
 
   try {
     await app.listen();
-    logger.log(`Listening on http://localhost:${String(port)}`, 'KonektiFactory');
+    logger.log(formatListenMessage(adapter.getListenTarget()), 'KonektiFactory');
   } catch (error: unknown) {
     logger.error('Failed to start application.', error, 'KonektiFactory');
 
@@ -241,16 +295,58 @@ export async function runNodeApplication(
   return app;
 }
 
+function createNodeServer(
+  httpsOptions: HttpsServerOptions | undefined,
+  handler: NodeRequestListener,
+): NodeServer {
+  return httpsOptions ? createHttpsServer(httpsOptions, handler) : createHttpServer(handler);
+}
+
+function formatListenMessage(target: NodeListenTarget): string {
+  return target.url.endsWith(target.bindTarget)
+    ? `Listening on ${target.url}`
+    : `Listening on ${target.url} (bound to ${target.bindTarget})`;
+}
+
+function resolveNodeListenTarget(
+  address: AddressInfo | string | null,
+  port: number,
+  host: string | undefined,
+  useHttps: boolean,
+): NodeListenTarget {
+  const protocol = useHttps ? 'https' : 'http';
+  const resolvedPort = typeof address === 'object' && address !== null ? address.port : port;
+  const bindHost = typeof address === 'object' && address !== null ? address.address : host ?? '0.0.0.0';
+  const publicHost = resolvePublicHost(host ?? bindHost);
+  const bindTarget = `${formatHostForAuthority(bindHost)}:${String(resolvedPort)}`;
+  const url = `${protocol}://${formatHostForAuthority(publicHost)}:${String(resolvedPort)}`;
+
+  return { bindTarget, url };
+}
+
+function resolvePublicHost(host: string): string {
+  return isWildcardHost(host) ? 'localhost' : host;
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === '0.0.0.0' || host === '::' || host === '[::]';
+}
+
+function formatHostForAuthority(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
 function createFrameworkResponse(response: import('node:http').ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {
-  return {
+  const frameworkResponse: MutableFrameworkResponse & { raw: import('node:http').ServerResponse } = {
     committed: response.headersSent || response.writableEnded,
     headers: {},
-    redirect(status, location) {
+    raw: response,
+    redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
       void this.send(undefined);
     },
-    send(body) {
+    send(body: unknown) {
       if (response.writableEnded) {
         this.committed = true;
         return;
@@ -286,11 +382,11 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
       response.end(payload);
       this.committed = true;
     },
-    setHeader(name, value) {
+    setHeader(name: string, value: string) {
       response.setHeader(name, value);
       this.headers[name] = value;
     },
-    setStatus(code) {
+    setStatus(code: number) {
       response.statusCode = code;
       this.statusCode = code;
       this.statusSet = true;
@@ -298,6 +394,8 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
     statusCode: undefined,
     statusSet: false,
   };
+
+  return frameworkResponse;
 }
 
 function serializeResponseBody(
@@ -351,6 +449,7 @@ async function createFrameworkRequest(
   signal: AbortSignal,
   multipartOptions?: MultipartOptions,
   maxBodySize = 1 * 1024 * 1024,
+  preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const headers = Object.fromEntries(
@@ -362,6 +461,7 @@ async function createFrameworkRequest(
 
   let body: unknown;
   let files: UploadedFile[] | undefined;
+  let rawBody: Uint8Array | undefined;
 
   if (isMultipart) {
     const result = await parseMultipart(request, multipartOptions);
@@ -369,7 +469,9 @@ async function createFrameworkRequest(
     body = result.fields;
     files = result.files;
   } else {
-    body = await readRequestBody(request, headers['content-type'], maxBodySize);
+    const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
+    body = bodyResult.body;
+    rawBody = bodyResult.rawBody;
   }
 
   const frameworkRequest: FrameworkRequest = {
@@ -389,6 +491,10 @@ async function createFrameworkRequest(
     frameworkRequest.files = files;
   }
 
+  if (rawBody) {
+    frameworkRequest.rawBody = rawBody;
+  }
+
   return frameworkRequest;
 }
 
@@ -399,6 +505,10 @@ function createNodeMiddleware(options: BootstrapNodeApplicationOptions): Middlew
     middleware.unshift(createSecurityHeadersMiddleware(
       typeof options.securityHeaders === 'object' ? options.securityHeaders : undefined,
     ));
+  }
+
+  if (options.globalPrefix) {
+    middleware.unshift(createGlobalPrefixMiddleware(options.globalPrefix, options.globalPrefixExclude));
   }
 
   if (options.cors !== undefined && options.cors !== false) {
@@ -413,6 +523,97 @@ function createNodeMiddleware(options: BootstrapNodeApplicationOptions): Middlew
   }
 
   return middleware;
+}
+
+function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[] | undefined): MiddlewareLike {
+  const normalizedPrefix = normalizePathPattern(prefix);
+
+  if (normalizedPrefix === '/') {
+    return {
+      async handle(_context, next) {
+        await next();
+      },
+    };
+  }
+
+  const exclusions = [...DEFAULT_GLOBAL_PREFIX_EXCLUDE, ...(exclude ?? [])].map((path) => normalizePathPattern(path));
+
+  return {
+    async handle(context, next) {
+      const requestPath = normalizePathPattern(context.request.path);
+
+      if (matchesExcludedPath(requestPath, exclusions)) {
+        await next();
+        return;
+      }
+
+      if (!matchesPrefix(requestPath, normalizedPrefix)) {
+        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
+        return;
+      }
+
+      const strippedPath = stripGlobalPrefix(requestPath, normalizedPrefix);
+
+      if (matchesExcludedPath(strippedPath, exclusions)) {
+        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
+        return;
+      }
+
+      context.request.path = strippedPath;
+      context.request.url = rewritePrefixedUrl(context.request.url, requestPath, strippedPath);
+      await next();
+    },
+  };
+}
+
+function writeGlobalPrefixNotFound(requestId: string | undefined, response: FrameworkResponse): Promise<void> {
+  const error = new NotFoundException('Resource not found.');
+  response.setStatus(error.status);
+  return Promise.resolve(response.send(createErrorResponse(error, requestId)));
+}
+
+function normalizePathPattern(path: string): string {
+  if (path.endsWith('/*')) {
+    return `${normalizePathPattern(path.slice(0, -2))}/*`;
+  }
+
+  const segments = path.split('/').filter(Boolean);
+  const normalized = `/${segments.join('/')}`;
+
+  return normalized === '' ? '/' : normalized;
+}
+
+function matchesPrefix(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function stripGlobalPrefix(path: string, prefix: string): string {
+  if (path === prefix) {
+    return '/';
+  }
+
+  return normalizePathPattern(path.slice(prefix.length));
+}
+
+function matchesExcludedPath(path: string, exclusions: readonly string[]): boolean {
+  return exclusions.some((pattern) => matchNodeRoutePattern(pattern, path));
+}
+
+function matchNodeRoutePattern(pattern: string, path: string): boolean {
+  if (pattern.endsWith('/*')) {
+    const prefix = pattern.slice(0, -2);
+    return path === prefix || path.startsWith(`${prefix}/`);
+  }
+
+  return path === pattern;
+}
+
+function rewritePrefixedUrl(url: string, originalPath: string, rewrittenPath: string): string {
+  if (!url.startsWith(originalPath)) {
+    return rewrittenPath;
+  }
+
+  return rewrittenPath + url.slice(originalPath.length);
 }
 
 function resolveCorsOptions(cors: Exclude<CorsInput, false> | undefined, defaults: CorsOptions): CorsOptions {
@@ -545,7 +746,12 @@ async function closeFromSignal(app: Application, logger: ApplicationLogger, sign
   }
 }
 
-async function readRequestBody(request: import('node:http').IncomingMessage, contentType: string | string[] | undefined, maxBodySize = 1 * 1024 * 1024): Promise<unknown> {
+async function readRequestBody(
+  request: import('node:http').IncomingMessage,
+  contentType: string | string[] | undefined,
+  maxBodySize = 1 * 1024 * 1024,
+  preserveRawBody = false,
+): Promise<{ body: unknown; rawBody?: Uint8Array }> {
   const chunks: Uint8Array[] = [];
   let totalSize = 0;
 
@@ -561,26 +767,33 @@ async function readRequestBody(request: import('node:http').IncomingMessage, con
   }
 
   if (chunks.length === 0) {
-    return undefined;
+    return { body: undefined };
   }
 
-  const bodyText = Buffer.concat(chunks).toString('utf8');
+  const rawBody = Buffer.concat(chunks);
+  const bodyText = rawBody.toString('utf8');
 
   if (bodyText.length === 0) {
-    return undefined;
+    return { body: undefined, rawBody: preserveRawBody ? rawBody : undefined };
   }
 
   const primaryContentType = Array.isArray(contentType) ? contentType[0] : contentType;
 
   if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
     try {
-      return JSON.parse(bodyText) as unknown;
+      return {
+        body: JSON.parse(bodyText) as unknown,
+        rawBody: preserveRawBody ? rawBody : undefined,
+      };
     } catch {
       throw new BadRequestException('Request body contains invalid JSON.');
     }
   }
 
-  return bodyText;
+  return {
+    body: bodyText,
+    rawBody: preserveRawBody ? rawBody : undefined,
+  };
 }
 
 function resolveNodePort(value: number | undefined): number {

@@ -16,7 +16,8 @@ The HTTP execution layer that turns route metadata into a request processing cha
 `@konekti/http` is not a router — it is the full request execution runtime. It owns:
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
-- Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@FromBody`, `@FromPath`, etc.)
+- Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
+- Mapped DTO helpers (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
 - Routing table construction (`createHandlerMapping`)
 - Request DTO binding and validation
 - The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
@@ -33,7 +34,7 @@ npm install @konekti/http
 ### Define a controller
 
 ```typescript
-import { Controller, Get, Post, FromBody, FromPath, RequestDto } from '@konekti/http';
+import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/dto-validator';
 import type { RequestContext } from '@konekti/http';
 
@@ -50,6 +51,7 @@ class GetUserParams {
   id!: string;
 }
 
+@Version('1')
 @Controller('/users')
 export class UserController {
   @Post('/')
@@ -100,6 +102,66 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|
 | `@Controller(path)` | Marks a class as a controller with a base path |
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
+| `@Version(value)` | Applies URI versioning such as `/v1/...`; handler-level version overrides controller-level version |
+
+### URI versioning
+
+Konekti currently supports URI versioning only.
+
+```typescript
+@Version('1')
+@Controller('/users')
+class UsersV1Controller {
+  @Get('/')
+  listUsers() {
+    return [];
+  }
+
+  @Version('2')
+  @Post('/')
+  createUser() {
+    return {};
+  }
+}
+```
+
+- controller-level `@Version('1')` produces routes such as `/v1/users`
+- handler-level `@Version('2')` overrides the controller version for that specific route
+- unversioned controllers keep their normal paths
+
+### Mapped DTO helpers
+
+Konekti supports metadata-preserving mapped DTO helpers for common request-shape derivation.
+
+```typescript
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/http';
+
+class CreateUserRequest {
+  @FromBody('name')
+  name = '';
+
+  @FromBody('email')
+  email = '';
+}
+
+class AddressRequest {
+  @FromBody('city')
+  city = '';
+}
+
+const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
+const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
+const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
+const UpdateUserRequest = PartialType(CreateUserRequest);
+```
+
+- `PickType()` keeps only the selected DTO fields and their metadata
+- `OmitType()` removes selected DTO fields while preserving the rest of the metadata
+- `IntersectionType()` composes metadata from multiple DTO bases into one derived DTO
+- `PartialType()` preserves the DTO shape while making inherited fields optional for request binding, validation, and non-path OpenAPI required semantics
+- derived DTOs continue to work with `RequestDto(...)`, runtime binding, validation, and OpenAPI generation
+
+`PartialType()` is intentionally separate from the other mapped helpers because it changes field optionality semantics instead of only composing metadata. Path parameters remain required in generated OpenAPI parameters because the spec requires path params to be required.
 
 ### DTO binding decorators
 
@@ -120,10 +182,40 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|---|
 | `createHandlerMapping(sources)` | `src/mapping.ts` | Builds the normalized routing table from handler sources such as `{ controllerToken }` |
 | `createDispatcher(options)` | `src/dispatcher.ts` | Creates the request dispatch function |
+| `SseResponse` | `src/sse.ts` | Helper for streaming Server-Sent Events from a `RequestContext` |
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+
+### Server-Sent Events (SSE)
+
+Use `SseResponse` when a handler needs to keep the HTTP connection open and stream frames over time.
+
+```typescript
+import { Controller, Get, SseResponse, type RequestContext } from '@konekti/http';
+
+@Controller('/events')
+class EventsController {
+  @Get('/')
+  stream(_input: undefined, ctx: RequestContext) {
+    const stream = new SseResponse(ctx);
+
+    stream.comment('connected');
+    stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+
+    return stream;
+  }
+}
+```
+
+- `new SseResponse(ctx)` commits SSE headers immediately
+- `send(data, { event, id, retry })` writes a canonical SSE message frame
+- `comment(text)` writes a comment frame
+- `close()` is idempotent and also runs when `ctx.request.signal` aborts
+- `encodeSseMessage()` and `encodeSseComment()` are exported for tests and custom framing needs
+- SSE currently requires the Node adapter or a custom `FrameworkResponse.raw` object exposing `write()`, `end()`, `writableEnded`, and optional `flushHeaders()`
+- request observers still complete when the handler returns; they do not stay open for the full lifetime of the SSE socket
 
 ### Rate limiting caveat
 

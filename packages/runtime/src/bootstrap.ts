@@ -2,19 +2,22 @@ import { join } from 'node:path';
 
 import { Container, type Provider } from '@konekti/di';
 import { ConfigService, loadConfig } from '@konekti/config';
-import { InvariantError, defineModuleMetadata, getClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { InvariantError, defineModuleMetadata, getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import {
   createDispatcher,
   createHandlerMapping,
   createNoopHttpApplicationAdapter,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  type HttpApplicationAdapter,
   type Dispatcher,
   type HandlerSource,
   type MiddlewareLike,
 } from '@konekti/http';
 
-import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
+import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { createConsoleApplicationLogger } from './logger.js';
-import { APPLICATION_LOGGER } from './tokens.js';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
 import type {
   Application,
   ApplicationLogger,
@@ -24,6 +27,7 @@ import type {
   BootstrapResult,
   CompiledModule,
   CreateApplicationOptions,
+  ExceptionFilterHandler,
   ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
@@ -60,6 +64,24 @@ function controllerDependencies(controller: ModuleType): Token[] {
   return getClassDiMetadata(controller)?.inject ?? [];
 }
 
+async function runExceptionFilters(
+  filters: readonly ExceptionFilterHandler[],
+  error: unknown,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  requestId?: string,
+): Promise<boolean> {
+  for (const filter of filters) {
+    const handled = await filter.catch(error, { request, response, requestId });
+
+    if (handled) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function providerScope(provider: Provider): 'singleton' | 'request' | 'transient' {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
@@ -80,7 +102,18 @@ function createRuntimeTokenSet(providers: Provider[] = []): Set<Token> {
   return new Set(providers.map((provider) => providerToken(provider)));
 }
 
+function mergeRuntimeTokenSets(providers: Provider[] = [], validationTokens: readonly Token[] = []): Set<Token> {
+  return new Set<Token>([
+    ...createRuntimeTokenSet(providers),
+    ...validationTokens,
+  ]);
+}
+
 function requiredConstructorParameters(target: Function): number {
+  if (getOwnClassDiMetadata(target)?.inject !== undefined) {
+    return 0;
+  }
+
   return target.length;
 }
 
@@ -359,7 +392,7 @@ function validateCompiledModules(
 export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
   const ordered: CompiledModule[] = [];
   const runtimeProviders = options.providers ?? [];
-  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
+  const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
 
   compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
   validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
@@ -373,13 +406,33 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
 export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
   const modules = compileModuleGraph(rootModule, options);
   const container = new Container();
+  const policy = options.duplicateProviderPolicy ?? 'warn';
 
   if (options.providers?.length) {
     container.register(...options.providers);
   }
 
+  const registeredProviderTokens = new Map<string | symbol | Function, string>();
+
   for (const compiledModule of modules) {
     for (const provider of compiledModule.definition.providers ?? []) {
+      const token = providerToken(provider);
+      const tokenKey = typeof token === 'function' ? token : token;
+      const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
+      const existing = registeredProviderTokens.get(tokenKey);
+
+      if (existing !== undefined && policy !== 'ignore') {
+        const message = `Duplicate provider token "${tokenLabel}" registered in module "${compiledModule.type.name}". Previously registered in module "${existing}".`;
+
+        if (policy === 'throw') {
+          throw new DuplicateProviderError(message);
+        } else {
+          options.logger?.warn(message, 'BootstrapModule');
+        }
+      } else {
+        registeredProviderTokens.set(tokenKey, compiledModule.type.name);
+      }
+
       container.register(provider);
     }
 
@@ -419,6 +472,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 class KonektiApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
+  private closingPromise: Promise<void> | undefined;
   private readonly lifecycleInstances: unknown[];
 
   constructor(
@@ -429,7 +483,7 @@ class KonektiApplication implements Application {
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     readonly dispatcher: Dispatcher,
-    private readonly adapter: ReturnType<typeof createNoopHttpApplicationAdapter>,
+    private readonly adapter: HttpApplicationAdapter,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
   ) {
@@ -485,12 +539,24 @@ class KonektiApplication implements Application {
       return;
     }
 
-    this.closed = true;
-    await this.adapter.close(signal);
+    if (this.closingPromise) {
+      await this.closingPromise;
+      return;
+    }
 
-    await runShutdownHooks(this.lifecycleInstances, signal);
+    this.closingPromise = (async () => {
+      await runShutdownHooks(this.lifecycleInstances, signal);
+      await this.adapter.close(signal);
+      this.closed = true;
+      this.applicationState = 'closed';
+    })();
 
-    this.applicationState = 'closed';
+    try {
+      await this.closingPromise;
+    } catch (error) {
+      this.closingPromise = undefined;
+      throw error;
+    }
   }
 }
 
@@ -613,6 +679,7 @@ function logRouteMappings(
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
   let lifecycleInstances: unknown[] = [];
+  const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
 
   try {
     logger.log('Starting Konekti application...', 'KonektiFactory');
@@ -629,7 +696,26 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
         useValue: logger,
       },
     ];
-    const bootstrapped = bootstrapModule(options.rootModule, { providers: runtimeProviders });
+    const bootstrapped = bootstrapModule(options.rootModule, {
+      duplicateProviderPolicy: options.duplicateProviderPolicy,
+      logger,
+      providers: runtimeProviders,
+      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
+    });
+    bootstrapped.container.register(
+      {
+        provide: HTTP_APPLICATION_ADAPTER,
+        useValue: adapter,
+      },
+      {
+        provide: RUNTIME_CONTAINER,
+        useValue: bootstrapped.container,
+      },
+      {
+        provide: COMPILED_MODULES,
+        useValue: bootstrapped.modules,
+      },
+    );
     resetReadinessState(bootstrapped.modules);
     const lifecycleProviders = [
       ...runtimeProviders,
@@ -645,11 +731,14 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logRouteMappings(logger, handlerMapping.descriptors);
 
     const dispatcher = createDispatcher({
-       appMiddleware: options.middleware ?? [],
-       handlerMapping,
-       observers: options.observers ?? [],
-       rootContainer: bootstrapped.container,
-     });
+      appMiddleware: options.middleware ?? [],
+      handlerMapping,
+      onError: options.filters && options.filters.length > 0
+        ? async (error, request, response, requestId) => runExceptionFilters(options.filters ?? [], error, request, response, requestId)
+        : undefined,
+      observers: options.observers ?? [],
+      rootContainer: bootstrapped.container,
+    });
 
     return new KonektiApplication(
       config,
@@ -659,7 +748,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       bootstrapped.modules,
       options.rootModule,
       dispatcher,
-      options.adapter ?? createNoopHttpApplicationAdapter(),
+      adapter,
       lifecycleInstances,
       logger,
     );
