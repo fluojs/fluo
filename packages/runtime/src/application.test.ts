@@ -23,8 +23,8 @@ import {
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health.js';
-import { bootstrapNodeApplication, runNodeApplication } from './node.js';
-import { COMPILED_MODULES, RUNTIME_CONTAINER } from './tokens.js';
+import { bootstrapNodeApplication, createNodeHttpAdapter, runNodeApplication } from './node.js';
+import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger } from './types.js';
 import type { CompiledModule, OnApplicationBootstrap, OnModuleInit } from './types.js';
 
@@ -215,28 +215,72 @@ describe('bootstrapApplication', () => {
       'module:init',
       'app:bootstrap',
       'adapter:listen',
-      'adapter:close:SIGTERM',
       'module:destroy',
       'app:shutdown:SIGTERM',
+      'adapter:close:SIGTERM',
     ]);
     expect(app.state).toBe('closed');
   });
 
+  it('allows close to be retried after an adapter shutdown failure', async () => {
+    const events: string[] = [];
+    let failClose = true;
+
+    const adapter: HttpApplicationAdapter = {
+      async close(signal) {
+        events.push(`adapter:close:${signal ?? 'none'}`);
+
+        if (failClose) {
+          failClose = false;
+          throw new Error('close failed');
+        }
+      },
+      async listen() {
+        events.push('adapter:listen');
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await bootstrapApplication({
+      adapter,
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    await app.listen();
+    await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
+    expect(app.state).toBe('ready');
+
+    await expect(app.close('SIGTERM')).resolves.toBeUndefined();
+    expect(app.state).toBe('closed');
+    expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
+  });
+
   it('injects real runtime tokens before OnModuleInit runs', async () => {
-    @Inject([RUNTIME_CONTAINER, COMPILED_MODULES])
+    const adapter: HttpApplicationAdapter = {
+      async close() {},
+      async listen() {},
+    };
+
+    @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER])
     class RuntimeTokenProbe implements OnModuleInit, OnApplicationBootstrap {
       seenCompiledModules: readonly CompiledModule[] = [];
       seenContainer: Container | undefined;
+      seenAdapter: HttpApplicationAdapter | undefined;
       sawRootModule = false;
 
       constructor(
         private readonly runtimeContainer: Container,
         private readonly compiledModules: readonly CompiledModule[],
+        private readonly httpAdapter: HttpApplicationAdapter,
       ) {}
 
       async onModuleInit(): Promise<void> {
         this.seenContainer = this.runtimeContainer;
         this.seenCompiledModules = this.compiledModules;
+        this.seenAdapter = this.httpAdapter;
       }
 
       async onApplicationBootstrap(): Promise<void> {
@@ -250,6 +294,7 @@ describe('bootstrapApplication', () => {
     });
 
     const app = await bootstrapApplication({
+      adapter,
       mode: 'test',
       rootModule: AppModule,
     });
@@ -258,6 +303,7 @@ describe('bootstrapApplication', () => {
     expect(probe.seenContainer).toBe(app.container);
     expect(probe.seenCompiledModules.length).toBeGreaterThan(0);
     expect(probe.seenCompiledModules.some((compiledModule: CompiledModule) => compiledModule.type === AppModule)).toBe(true);
+    expect(probe.seenAdapter).toBe(adapter);
     expect(probe.sawRootModule).toBe(true);
   });
 
@@ -311,6 +357,13 @@ describe('bootstrapApplication', () => {
     await expect(response.json()).resolves.toEqual({ name: 'Ada' });
 
     await app.close();
+  });
+
+  it('provides getServer() on the Node HTTP adapter before listen()', async () => {
+    const adapter = createNodeHttpAdapter({ port: 0 }) as { getServer?: () => unknown };
+
+    expect(typeof adapter.getServer).toBe('function');
+    expect(adapter.getServer?.()).toBeDefined();
   });
 
   it('preserves the raw request body for JSON and text requests when enabled', async () => {

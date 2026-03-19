@@ -22,6 +22,7 @@
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/event-bus`
+- `@konekti/websocket`
 - `@konekti/testing`
 - `@konekti/cli`
 
@@ -39,6 +40,7 @@
 - `@konekti/metrics` -> Prometheus 메트릭 노출
 - `@konekti/cron` -> 데코레이터 기반 작업 스케줄링, 라이프사이클 시작/종료, 선택적 분산 락
 - `@konekti/event-bus` -> 데코레이터 기반 핸들러 탐색을 사용하는 인프로세스 이벤트 발행
+- `@konekti/websocket` -> 데코레이터 기반 WebSocket 게이트웨이 탐색 및 Node 업그레이드 연결
 - `@konekti/redis` / `@konekti/prisma` / `@konekti/drizzle` -> 데이터 연동 제품군
 - `@konekti/testing` -> 테스트 모듈 및 헬퍼 인터페이스
 - `@konekti/cli` -> 앱 부트스트랩 및 파일 생성 명령
