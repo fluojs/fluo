@@ -256,6 +256,9 @@ importers:
 
   packages/testing:
     dependencies:
+      '@babel/core':
+        specifier: '>=7.0.0'
+        version: 7.29.0
       '@konekti/config':
         specifier: workspace:*
         version: link:../config
