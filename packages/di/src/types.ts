@@ -43,8 +43,13 @@ export type Provider<T = unknown> =
   | ValueProvider<T>
   | ExistingProvider<T>;
 
+export interface Disposable {
+  onDestroy(): MaybePromise<void>;
+}
+
 export interface RequestScopeContainer {
   resolve<T>(token: Token<T>): Promise<T>;
+  dispose(): Promise<void>;
 }
 
 export interface NormalizedProvider<T = unknown> {
