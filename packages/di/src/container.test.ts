@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { Inject, Scope } from '@konekti/core';
 
 import { Container } from './container.js';
-import { CircularDependencyError, ScopeMismatchError } from './errors.js';
+import { CircularDependencyError, DuplicateProviderError, ScopeMismatchError } from './errors.js';
+import { forwardRef, optional } from './types.js';
 
 describe('Container', () => {
   it('caches singleton providers', async () => {
@@ -258,6 +259,126 @@ describe('Container', () => {
       expect(root.left).toBeInstanceOf(Left);
       expect(root.right).toBeInstanceOf(Right);
       expect(root.left.shared).toBe(root.right.shared);
+    });
+
+    it('resolves circular dependency between two providers using forwardRef', async () => {
+      class ServiceA {
+        constructor(public b: ServiceB) {}
+      }
+
+      class ServiceB {
+        value = 'b';
+      }
+
+      const container = new Container().register(
+        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+        { provide: ServiceB, useClass: ServiceB, inject: [] },
+      );
+
+      const a = await container.resolve(ServiceA);
+
+      expect(a).toBeInstanceOf(ServiceA);
+      expect(a.b).toBeInstanceOf(ServiceB);
+      expect(a.b.value).toBe('b');
+    });
+  });
+
+  describe('duplicate provider detection', () => {
+    it('throws DuplicateProviderError when registering the same token twice', async () => {
+      class MyService {}
+
+      expect(() =>
+        new Container().register(MyService, MyService),
+      ).toThrow(DuplicateProviderError);
+    });
+
+    it('allows override() to silently replace an existing provider', async () => {
+      const token = Symbol('config');
+
+      const container = new Container()
+        .register({ provide: token, useValue: 'original' })
+        .override({ provide: token, useValue: 'overridden' });
+
+      expect(await container.resolve(token)).toBe('overridden');
+    });
+  });
+
+  describe('optional injection', () => {
+    it('injects undefined when an optional token is not registered', async () => {
+      const LOGGER = Symbol('Logger');
+
+      class MyService {
+        constructor(public logger: unknown) {}
+      }
+
+      const container = new Container().register({
+        provide: MyService,
+        useClass: MyService,
+        inject: [optional(LOGGER)],
+      });
+
+      const instance = await container.resolve(MyService);
+
+      expect(instance.logger).toBeUndefined();
+    });
+
+    it('injects the resolved value when an optional token is registered', async () => {
+      const LOGGER = Symbol('Logger');
+
+      class Logger {
+        readonly name = 'logger';
+      }
+
+      class MyService {
+        constructor(public logger: Logger | undefined) {}
+      }
+
+      const container = new Container().register(
+        { provide: LOGGER, useClass: Logger },
+        { provide: MyService, useClass: MyService, inject: [optional(LOGGER)] },
+      );
+
+      const instance = await container.resolve(MyService);
+
+      expect(instance.logger).toBeInstanceOf(Logger);
+    });
+  });
+
+  describe('useExisting provider (alias)', () => {
+    it('resolves the original instance via an alias token', async () => {
+      class Logger {}
+
+      const LOGGER_ALIAS = Symbol('LoggerAlias');
+
+      const container = new Container().register(
+        Logger,
+        { provide: LOGGER_ALIAS, useExisting: Logger },
+      );
+
+      const original = await container.resolve(Logger);
+      const alias = await container.resolve<Logger>(LOGGER_ALIAS);
+
+      expect(alias).toBe(original);
+    });
+  });
+
+  describe('multi-provider', () => {
+    it('collects all multi providers into an array', async () => {
+      const PLUGINS = Symbol('Plugins');
+
+      class PluginA {}
+      class PluginB {}
+
+      const container = new Container().register(
+        { provide: PLUGINS, useClass: PluginA, multi: true },
+        { provide: PLUGINS, useClass: PluginB, multi: true },
+      );
+
+      const plugins = await container.resolve<unknown[]>(PLUGINS);
+
+      expect(plugins).toHaveLength(2);
+      expect(plugins[0]).toBeInstanceOf(PluginA);
+      expect(plugins[1]).toBeInstanceOf(PluginB);
     });
   });
 });

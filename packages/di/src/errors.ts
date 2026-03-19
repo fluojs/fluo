@@ -42,3 +42,18 @@ export class CircularDependencyError extends KonektiError {
     return String(token);
   }
 }
+
+export class DuplicateProviderError extends KonektiError {
+  constructor(token: unknown) {
+    const name =
+      typeof token === 'function' && 'name' in token && token.name
+        ? String(token.name)
+        : typeof token === 'symbol'
+          ? token.toString()
+          : String(token);
+    super(
+      `Token "${name}" is already registered. Use container.override() for intentional overrides.`,
+      { code: 'DUPLICATE_PROVIDER' },
+    );
+  }
+}

@@ -3,6 +3,7 @@ import { InvariantError, getClassDiMetadata, type Token } from '@konekti/core';
 import {
   CircularDependencyError,
   ContainerResolutionError,
+  DuplicateProviderError,
   InvalidProviderError,
   RequestScopeResolutionError,
   ScopeMismatchError,
@@ -10,12 +11,16 @@ import {
 import type {
   ClassType,
   ClassProvider,
+  ExistingProvider,
   FactoryProvider,
+  ForwardRefFn,
   NormalizedProvider,
+  OptionalToken,
   Provider,
   Scope,
   ValueProvider,
 } from './types.js';
+import { isForwardRef, isOptionalToken } from './types.js';
 
 function isClassConstructor(value: Provider): value is ClassType {
   return typeof value === 'function';
@@ -33,12 +38,20 @@ function isClassProvider(value: Provider): value is ClassProvider {
   return typeof value === 'object' && value !== null && 'useClass' in value;
 }
 
+function isExistingProvider(value: Provider): value is ExistingProvider {
+  return typeof value === 'object' && value !== null && 'useExisting' in value;
+}
+
+function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
+  return token;
+}
+
 function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
     const metadata = getClassDiMetadata(provider);
 
     return {
-      inject: metadata?.inject ?? [],
+      inject: (metadata?.inject ?? []).map(normalizeInjectToken),
       provide: provider,
       scope: metadata?.scope ?? 'singleton',
       type: 'class',
@@ -49,6 +62,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isValueProvider(provider)) {
     return {
       inject: [],
+      multi: provider.multi,
       provide: provider.provide,
       scope: 'singleton',
       type: 'value',
@@ -58,7 +72,8 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
 
   if (isFactoryProvider(provider)) {
     return {
-      inject: provider.inject ?? [],
+      inject: (provider.inject ?? []).map(normalizeInjectToken),
+      multi: provider.multi,
       provide: provider.provide,
       scope: provider.scope ?? 'singleton',
       type: 'factory',
@@ -70,7 +85,8 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     const metadata = getClassDiMetadata(provider.useClass);
 
     return {
-      inject: provider.inject ?? metadata?.inject ?? [],
+      inject: (provider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
+      multi: provider.multi,
       provide: provider.provide,
       scope: provider.scope ?? metadata?.scope ?? 'singleton',
       type: 'class',
@@ -78,14 +94,22 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     };
   }
 
+  if (isExistingProvider(provider)) {
+    return {
+      inject: [],
+      provide: provider.provide,
+      scope: 'singleton',
+      type: 'existing',
+      useExisting: provider.useExisting,
+    };
+  }
+
   throw new InvalidProviderError('Unsupported provider type.');
 }
 
-/**
- * 명시적 토큰 기반 DI를 처리하는 최소 컨테이너 구현이다.
- */
 export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
+  private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
 
@@ -97,10 +121,27 @@ export class Container {
     this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
   }
 
-  /**
-   * 하나 이상의 provider를 현재 컨테이너 경계에 등록한다.
-   */
   register(...providers: Provider[]): this {
+    for (const provider of providers) {
+      const normalized = normalizeProvider(provider);
+
+      if (normalized.multi) {
+        const existing = this.multiRegistrations.get(normalized.provide) ?? [];
+
+        this.multiRegistrations.set(normalized.provide, [...existing, normalized]);
+      } else {
+        if (this.registrations.has(normalized.provide)) {
+          throw new DuplicateProviderError(normalized.provide);
+        }
+
+        this.registrations.set(normalized.provide, normalized);
+      }
+    }
+
+    return this;
+  }
+
+  override(...providers: Provider[]): this {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
@@ -110,36 +151,66 @@ export class Container {
     return this;
   }
 
-  /**
-   * 현재 컨테이너나 상위 컨테이너에서 토큰을 해석할 수 있는지 확인한다.
-   */
   has(token: Token): boolean {
-    return this.lookupProvider(token) !== undefined;
+    return this.lookupProvider(token) !== undefined || this.hasMulti(token);
   }
 
-  /**
-   * 요청 스코프 전용 provider 인스턴스를 소유하는 자식 컨테이너를 만든다.
-   */
   createRequestScope(): Container {
     return new Container(this, true, this.root().singletonCache);
   }
 
-  /**
-   * 현재 컨테이너 경계에서 토큰을 해석하고 scope 규칙에 따라 캐시한다.
-   */
   async resolve<T>(token: Token<T>): Promise<T> {
     return this.resolveWithChain(token, []);
   }
 
-  private async resolveWithChain<T>(token: Token<T>, chain: Token[]): Promise<T> {
+  private hasMulti(token: Token): boolean {
+    if (this.multiRegistrations.has(token)) return true;
+
+    return this.parent?.hasMulti(token) ?? false;
+  }
+
+  private collectMultiProviders(token: Token): NormalizedProvider[] {
+    const parentProviders = this.parent?.collectMultiProviders(token) ?? [];
+    const local = this.multiRegistrations.get(token) ?? [];
+
+    return [...parentProviders, ...local];
+  }
+
+  private async resolveWithChain<T>(token: Token<T>, chain: Token[], allowForwardRef = false): Promise<T> {
     if (chain.includes(token)) {
+      if (allowForwardRef) {
+        // A forwardRef dep is in the chain — return the partially-initialized
+        // instance from the singleton cache if it is already being constructed.
+        const cache = this.singletonCacheFor(token);
+
+        if (cache?.has(token)) {
+          return (await cache.get(token)) as T;
+        }
+      }
+
       throw new CircularDependencyError([...chain, token]);
+    }
+
+    const multiProviders = this.collectMultiProviders(token);
+
+    if (multiProviders.length > 0) {
+      const instances = await Promise.all(
+        multiProviders.map((p) => this.instantiate(p, [...chain, token])),
+      );
+
+      return instances as unknown as T;
     }
 
     const provider = this.lookupProvider(token);
 
     if (!provider) {
       throw new ContainerResolutionError(`No provider registered for token ${String(token)}.`);
+    }
+
+    if (provider.type === 'existing') {
+      const target = provider.useExisting!;
+
+      return this.resolveWithChain(target as Token<T>, [...chain, token]);
     }
 
     if (provider.scope === 'transient') {
@@ -158,6 +229,37 @@ export class Container {
     return (await cache.get(provider.provide)) as T;
   }
 
+  private singletonCacheFor(token: Token): Map<Token, Promise<unknown>> | undefined {
+    const provider = this.lookupProvider(token);
+
+    if (!provider || provider.scope !== 'singleton') return undefined;
+
+    return this.root().singletonCache;
+  }
+
+  private async resolveDepToken(
+    depEntry: Token | ForwardRefFn | OptionalToken,
+    chain: Token[],
+  ): Promise<unknown> {
+    if (isOptionalToken(depEntry)) {
+      const innerToken = depEntry.token;
+
+      if (!this.has(innerToken)) {
+        return undefined;
+      }
+
+      return this.resolveWithChain(innerToken, chain);
+    }
+
+    if (isForwardRef(depEntry)) {
+      const resolvedToken = depEntry.forwardRef();
+
+      return this.resolveWithChain(resolvedToken, chain, /* allowForwardRef */ true);
+    }
+
+    return this.resolveWithChain(depEntry as Token, chain);
+  }
+
   private root(): Container {
     return this.parent ? this.parent.root() : this;
   }
@@ -172,15 +274,11 @@ export class Container {
     return this.parent?.lookupProvider(token);
   }
 
-  /**
-   * scope에 맞는 캐시 저장소를 반환하고, 잘못된 request-scope 접근을 차단한다.
-   */
   private cacheFor(scope: Scope, token: Token) {
     if (scope === 'singleton') {
       return this.root().singletonCache;
     }
 
-    // request-scope provider는 루트 컨테이너에서 직접 resolve되면 안 된다.
     if (!this.requestScopeEnabled) {
       throw new RequestScopeResolutionError(
         `Request-scoped provider ${String(token)} cannot be resolved outside request scope.`,
@@ -190,12 +288,15 @@ export class Container {
     return this.requestCache;
   }
 
-  /**
-   * 정규화된 provider 정의를 실제 인스턴스나 값으로 구체화한다.
-   */
   private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[]): Promise<T> {
     if (provider.scope === 'singleton') {
-      for (const depToken of provider.inject) {
+      for (const depEntry of provider.inject) {
+        const depToken = isForwardRef(depEntry)
+          ? depEntry.forwardRef()
+          : isOptionalToken(depEntry)
+            ? depEntry.token
+            : (depEntry as Token);
+
         const depProvider = this.lookupProvider(depToken);
 
         if (depProvider?.scope === 'request') {
@@ -215,7 +316,7 @@ export class Container {
           throw new InvariantError('Factory provider is missing useFactory.');
         }
 
-        const deps = await Promise.all(provider.inject.map((token) => this.resolveWithChain(token, chain)));
+        const deps = await Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
 
         return provider.useFactory(...deps);
       }
@@ -224,7 +325,7 @@ export class Container {
           throw new InvariantError('Class provider is missing useClass.');
         }
 
-        const deps = await Promise.all(provider.inject.map((token) => this.resolveWithChain(token, chain)));
+        const deps = await Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
 
         return new provider.useClass(...deps) as T;
       }
