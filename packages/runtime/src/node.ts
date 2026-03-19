@@ -320,15 +320,16 @@ function formatHostForAuthority(host: string): string {
 }
 
 function createFrameworkResponse(response: import('node:http').ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {
-  return {
+  const frameworkResponse: MutableFrameworkResponse & { raw: import('node:http').ServerResponse } = {
     committed: response.headersSent || response.writableEnded,
     headers: {},
-    redirect(status, location) {
+    raw: response,
+    redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
       void this.send(undefined);
     },
-    send(body) {
+    send(body: unknown) {
       if (response.writableEnded) {
         this.committed = true;
         return;
@@ -358,11 +359,11 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
       response.end(payload);
       this.committed = true;
     },
-    setHeader(name, value) {
+    setHeader(name: string, value: string) {
       response.setHeader(name, value);
       this.headers[name] = value;
     },
-    setStatus(code) {
+    setStatus(code: number) {
       response.statusCode = code;
       this.statusCode = code;
       this.statusSet = true;
@@ -370,6 +371,8 @@ function createFrameworkResponse(response: import('node:http').ServerResponse, a
     statusCode: undefined,
     statusSet: false,
   };
+
+  return frameworkResponse;
 }
 
 function serializeResponseBody(

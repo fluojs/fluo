@@ -9,6 +9,7 @@ import { runGuardChain } from './guards.js';
 import { runInterceptorChain } from './interceptors.js';
 import { runMiddlewareChain } from './middleware.js';
 import { createRequestContext, runWithRequestContext } from './request-context.js';
+import { SseResponse } from './sse.js';
 import type {
   ArgumentResolverContext,
   Dispatcher,
@@ -213,7 +214,7 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (!requestContext.response.committed) {
+  if (!(result instanceof SseResponse) && !requestContext.response.committed) {
     await writeSuccessResponse(handler, requestContext.response, result);
   }
 
