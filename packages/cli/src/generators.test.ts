@@ -5,7 +5,7 @@ import { generateGuardFiles } from './generators/guard.js';
 import { generateInterceptorFiles } from './generators/interceptor.js';
 import { generateMiddlewareFiles } from './generators/middleware.js';
 import { generateModuleFiles, registerInModule } from './generators/module.js';
-import { generateRepoFiles } from './generators/repo.js';
+import { generateRepoFiles } from './generators/repository.js';
 import { generateRequestDtoFiles } from './generators/request-dto.js';
 import { generateResponseDtoFiles } from './generators/response-dto.js';
 import { generateServiceFiles } from './generators/service.js';
