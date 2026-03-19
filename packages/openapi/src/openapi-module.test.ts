@@ -186,7 +186,7 @@ describe('OpenApiModule', () => {
         paths: {
           '/users': {
             get: expect.objectContaining({
-              responses: {
+              responses: expect.objectContaining({
                 '201': {
                   content: {
                     'application/json': {
@@ -197,7 +197,7 @@ describe('OpenApiModule', () => {
                   },
                   description: 'Created',
                 },
-              },
+              }),
               security: [{ bearerAuth: [] }],
               summary: 'Create user',
               tags: ['users'],
@@ -213,7 +213,7 @@ describe('OpenApiModule', () => {
                 },
                 required: true,
               },
-              responses: {
+              responses: expect.objectContaining({
                 '201': {
                   content: {
                     'application/json': {
@@ -224,7 +224,7 @@ describe('OpenApiModule', () => {
                   },
                   description: 'Created',
                 },
-              },
+              }),
               summary: 'Create user',
               tags: ['users'],
             }),
@@ -779,7 +779,7 @@ describe('OpenApiModule', () => {
         paths: expect.objectContaining({
           '/users/summary': {
             get: expect.objectContaining({
-              responses: {
+              responses: expect.objectContaining({
                 '200': {
                   content: {
                     'application/json': {
@@ -788,12 +788,12 @@ describe('OpenApiModule', () => {
                   },
                   description: 'User summary',
                 },
-              },
+              }),
             }),
           },
           '/users/no-email': {
             get: expect.objectContaining({
-              responses: {
+              responses: expect.objectContaining({
                 '200': {
                   content: {
                     'application/json': {
@@ -802,12 +802,12 @@ describe('OpenApiModule', () => {
                   },
                   description: 'User without email',
                 },
-              },
+              }),
             }),
           },
           '/users/partial': {
             get: expect.objectContaining({
-              responses: {
+              responses: expect.objectContaining({
                 '200': {
                   content: {
                     'application/json': {
@@ -816,7 +816,216 @@ describe('OpenApiModule', () => {
                   },
                   description: 'Partial user',
                 },
+              }),
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('keeps nested parameter schema refs at field level', async () => {
+    class FilterDto {
+      @IsString()
+      term = '';
+    }
+
+    class SearchRequest {
+      @FromQuery('filter')
+      @ValidateNested(() => FilterDto)
+      filter = new FilterDto();
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @Get('/')
+      @RequestDto(SearchRequest)
+      search() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: SearchController }],
+      title: 'Search API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [SearchController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            FilterDto: expect.any(Object),
+          }),
+        }),
+        paths: expect.objectContaining({
+          '/search': {
+            get: expect.objectContaining({
+              parameters: [
+                {
+                  in: 'query',
+                  name: 'filter',
+                  required: true,
+                  schema: {
+                    $ref: '#/components/schemas/FilterDto',
+                  },
+                },
+              ],
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('adds default error responses when @ApiResponse is absent', async () => {
+    @Controller('/errors')
+    class ErrorsController {
+      @Get('/default')
+      defaultHandler() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: ErrorsController }],
+      title: 'Errors API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ErrorsController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            ErrorResponse: {
+              additionalProperties: false,
+              properties: {
+                error: { type: 'string' },
+                message: { type: 'string' },
+                statusCode: { type: 'integer' },
               },
+              required: ['statusCode', 'message', 'error'],
+              type: 'object',
+            },
+          }),
+        }),
+        paths: expect.objectContaining({
+          '/errors/default': {
+            get: expect.objectContaining({
+              responses: expect.objectContaining({
+                '200': { description: 'OK' },
+                '400': expect.objectContaining({
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/ErrorResponse' },
+                    },
+                  },
+                  description: 'Bad Request',
+                }),
+                '401': expect.objectContaining({ description: 'Unauthorized' }),
+                '403': expect.objectContaining({ description: 'Forbidden' }),
+                '404': expect.objectContaining({ description: 'Not Found' }),
+                '500': expect.objectContaining({ description: 'Internal Server Error' }),
+              }),
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('preserves explicit @ApiResponse and fills missing default error responses', async () => {
+    class CreatedResponse {
+      @IsString()
+      id = '';
+    }
+
+    @Controller('/errors')
+    class ErrorsController {
+      @ApiResponse(201, { description: 'Created', type: CreatedResponse })
+      @ApiResponse(400, { description: 'Custom bad request' })
+      @Post('/custom')
+      create() {
+        return { id: '1' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: ErrorsController }],
+      title: 'Errors API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ErrorsController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: expect.objectContaining({
+          '/errors/custom': {
+            post: expect.objectContaining({
+              responses: expect.objectContaining({
+                '201': {
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/CreatedResponse' },
+                    },
+                  },
+                  description: 'Created',
+                },
+                '400': {
+                  description: 'Custom bad request',
+                },
+                '401': expect.objectContaining({ description: 'Unauthorized' }),
+                '403': expect.objectContaining({ description: 'Forbidden' }),
+                '404': expect.objectContaining({ description: 'Not Found' }),
+                '500': expect.objectContaining({ description: 'Internal Server Error' }),
+              }),
             }),
           },
         }),

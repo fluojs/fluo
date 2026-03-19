@@ -98,7 +98,7 @@ export type DtoFieldValidationRule =
   | ({ kind: 'length'; min: number; max?: number } & ValidationDecoratorOptions)
   | ({ kind: 'minLength'; value: number } & ValidationDecoratorOptions)
   | ({ kind: 'maxLength'; value: number } & ValidationDecoratorOptions)
-  | ({ kind: 'nested'; dto: Constructor } & ValidationDecoratorOptions)
+  | ({ kind: 'nested'; dto: Constructor | (() => Constructor) } & ValidationDecoratorOptions)
   | ({
       kind: 'validatorjs';
       validator:

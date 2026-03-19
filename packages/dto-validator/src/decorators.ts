@@ -162,7 +162,7 @@ export function Length(min: number, max?: number, options?: ValidationDecoratorO
 
 export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorLike {
   return createValidationDecorator(() => ({
-    dto: typeof dto === 'function' && 'prototype' in dto && dto.prototype ? (dto as Constructor) : (dto as () => Constructor)(),
+    dto,
     kind: 'nested',
     ...options,
   }));
