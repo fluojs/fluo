@@ -8,6 +8,8 @@ export interface SseSendOptions {
 
 interface WritableSseStream {
   flushHeaders?: () => void;
+  on?: (event: 'close', listener: () => void) => void;
+  removeListener?: (event: 'close', listener: () => void) => void;
   writableEnded: boolean;
   write(chunk: string): boolean;
   end(): void;
@@ -32,7 +34,11 @@ function toSseDataString(data: unknown): string {
 
   const serialized = JSON.stringify(data);
 
-  return serialized ?? '';
+  if (serialized === undefined) {
+    throw new TypeError(`SseResponse data must be JSON-serializable. Received ${typeof data}.`);
+  }
+
+  return serialized;
 }
 
 function isWritableSseStream(value: unknown): value is WritableSseStream {
@@ -120,14 +126,18 @@ export class SseResponse {
     }
 
     context.request.signal?.addEventListener('abort', this.onAbort, { once: true });
+
+    if (context.request.signal === undefined) {
+      this.stream.on?.('close', this.onAbort);
+    }
   }
 
-  send(data: unknown, options: SseSendOptions = {}): void {
-    this.writeFrame(encodeSseMessage(data, options));
+  send(data: unknown, options: SseSendOptions = {}): boolean {
+    return this.writeFrame(encodeSseMessage(data, options));
   }
 
-  comment(comment: string): void {
-    this.writeFrame(encodeSseComment(comment));
+  comment(comment: string): boolean {
+    return this.writeFrame(encodeSseComment(comment));
   }
 
   close(): void {
@@ -137,6 +147,7 @@ export class SseResponse {
 
     this.closed = true;
     this.context.request.signal?.removeEventListener('abort', this.onAbort);
+    this.stream.removeListener?.('close', this.onAbort);
 
     if (!this.stream.writableEnded) {
       this.stream.end();
@@ -145,16 +156,16 @@ export class SseResponse {
     this.context.response.committed = true;
   }
 
-  private writeFrame(frame: string): void {
+  private writeFrame(frame: string): boolean {
     if (this.closed) {
-      return;
+      return false;
     }
 
     if (this.stream.writableEnded) {
       this.close();
-      return;
+      return false;
     }
 
-    this.stream.write(frame);
+    return this.stream.write(frame);
   }
 }
