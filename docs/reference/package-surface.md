@@ -21,6 +21,7 @@ This file lists the current public package family at a glance.
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/event-bus`
 - `@konekti/testing`
 - `@konekti/cli`
 
@@ -37,6 +38,7 @@ This file lists the current public package family at a glance.
 - `@konekti/openapi` -> document generation and metadata-only OpenAPI decorators
 - `@konekti/metrics` -> Prometheus metrics exposure
 - `@konekti/cron` -> decorator-based task scheduling with lifecycle-managed startup/shutdown and optional distributed locks
+- `@konekti/event-bus` -> in-process event publishing with decorator-driven handler discovery
 - `@konekti/redis` / `@konekti/prisma` / `@konekti/drizzle` -> data integration families
 - `@konekti/testing` -> testing module and helper surface
 - `@konekti/cli` -> app bootstrap and file generation commands
