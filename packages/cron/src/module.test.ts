@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
+import { Inject, Scope, defineControllerMetadata } from '@konekti/core';
 import { REDIS_CLIENT } from '@konekti/redis';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
@@ -250,6 +250,95 @@ describe('@konekti/cron', () => {
     await app.close();
 
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns when @Cron() is declared on a non-singleton provider and skips scheduling', async () => {
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+
+    class ReportService {
+      @Cron('0 0 2 * * *')
+      generateDailyReport() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [
+        {
+          provide: ReportService,
+          scope: 'transient',
+          useClass: ReportService,
+        },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    expect(scheduled.records).toHaveLength(0);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'warn:CronLifecycleService:ReportService in module AppModule declares @Cron() methods but is registered with transient scope.',
+        ),
+      ),
+    ).toBe(true);
+
+    await app.close();
+  });
+
+  it('warns when @Cron() is declared on non-singleton controllers and skips scheduling', async () => {
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+
+    @Scope('request')
+    class RequestScopedReportController {
+      @Cron('0 0 2 * * *')
+      generateRequestScopedReport() {}
+    }
+
+    @Scope('transient')
+    class TransientExportController {
+      @Cron('0 30 2 * * *')
+      generateTransientExport() {}
+    }
+
+    defineControllerMetadata(RequestScopedReportController, { basePath: '/reports' });
+    defineControllerMetadata(TransientExportController, { basePath: '/exports' });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [RequestScopedReportController, TransientExportController],
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    expect(scheduled.records).toHaveLength(0);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'warn:CronLifecycleService:RequestScopedReportController in module AppModule declares @Cron() methods but is registered with request scope.',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'warn:CronLifecycleService:TransientExportController in module AppModule declares @Cron() methods but is registered with transient scope.',
+        ),
+      ),
+    ).toBe(true);
+
+    await app.close();
   });
 
   it('uses distributed Redis locking so only one app executes the same task tick', async () => {
