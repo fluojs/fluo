@@ -57,7 +57,7 @@ pnpm verify:release-candidate
 
 ## 생성된 앱에 대한 기대 사항
 
-`konekti new`는 실행 가능한 `src/app.test.ts`가 포함된 스타터 앱을 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`, `konekti g ...`를 실행할 수 있는지 검증하며, 생성된 앱 테스트 자체는 `/health`, `/ready`, `/metrics`, `/openapi.json` 작동 여부를 증명합니다.
+`konekti new`는 실행 가능한 `src/app.test.ts`가 포함된 스타터 앱을 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`, `konekti g ...`를 실행할 수 있는지 검증하며, 생성된 앱 테스트 자체는 `/health`, `/ready`, 그리고 스타터가 소유한 `/health-info/` 라우트 작동 여부를 증명합니다.
 
 기여자를 위한 수동 검증용으로 `packages/cli`는 이제 영구적인 샌드박스 하네스를 제공합니다:
 

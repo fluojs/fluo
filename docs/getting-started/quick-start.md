@@ -37,8 +37,7 @@ A new app currently includes:
 - `src/main.ts` with runtime-owned Node bootstrap
 - `src/app.ts` with starter module wiring
 - runtime-owned `/health` and `/ready`
-- `/metrics` and `/openapi.json`
-- a generic repository example in `src/examples/`
+- a starter-owned `health/` module exposing `/health-info/`
 - a starter test proving the app boots and dispatches correctly
 
 ## generated project commands

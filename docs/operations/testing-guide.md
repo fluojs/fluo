@@ -57,7 +57,7 @@ Use these files as the contract examples when expanding tests:
 
 ## generated app expectations
 
-`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, `/metrics`, and `/openapi.json`.
+`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, and the starter-owned `/health-info/` route.
 
 For contributor-facing manual verification, `packages/cli` now exposes a persistent sandbox harness:
 

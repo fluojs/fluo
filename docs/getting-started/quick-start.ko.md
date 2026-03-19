@@ -37,8 +37,7 @@ pnpm dlx @konekti/cli new starter-app
 - 런타임 소유의 Node 부트스트랩을 포함한 `src/main.ts`
 - 스타터 모듈 연결을 포함한 `src/app.ts`
 - 런타임 소유의 `/health` 및 `/ready`
-- `/metrics` 및 `/openapi.json`
-- `src/examples/`의 일반적인 리포지토리 예시
+- `/health-info/`를 노출하는 스타터 소유 `health/` 모듈
 - 앱이 올바르게 부팅되고 디스패치되는지 증명하는 스타터 테스트
 
 ## 생성된 프로젝트 명령어

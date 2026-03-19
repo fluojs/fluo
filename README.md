@@ -19,8 +19,7 @@ pnpm dev
 Generated apps include:
 
 - runtime-owned `src/main.ts` bootstrap
-- `/health`, `/ready`, `/metrics`, and `/openapi.json`
-- JWT strategy wiring and a generic repository example
+- `/health`, `/ready`, and a minimal `health/` module example at `/health-info/`
 - `dev`, `build`, `typecheck`, and `test` commands out of the box
 
 ## What Konekti Includes

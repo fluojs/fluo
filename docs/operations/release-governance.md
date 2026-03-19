@@ -59,8 +59,8 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 
 - package typecheck + build succeed from the monorepo root
 - scaffolded starter projects are verified through the packed CLI entrypoint and starter scaffolding exercised by the CLI test suite that runs inside `pnpm verify:release-candidate`
-- `pnpm`, `npm`, and `yarn` starter projects all pass `typecheck`, `build`, `test`, and `konekti g repo ...`
-- generated starter projects expose runtime-owned `/health` + `/ready`, `/metrics`, and `/openapi.json`
+- the `pnpm` starter project path passes `typecheck`, `build`, `test`, and `konekti g repo ...`, while CLI tests separately cover package-manager selection behavior
+- generated starter projects expose runtime-owned `/health` + `/ready` and the starter-owned `/health-info/` route
 - CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution
 
 The command also writes `tooling/release/release-candidate-summary.md`, and CI publishes that summary as both a workflow summary and an artifact.

@@ -19,8 +19,7 @@ pnpm dev
 생성된 앱에는 다음이 포함됩니다:
 
 - 런타임 소유의 `src/main.ts` 부트스트랩
-- `/health`, `/ready`, `/metrics`, 그리고 `/openapi.json`
-- JWT 전략 연결 및 일반적인 repository 예시
+- `/health`, `/ready`, 그리고 `/health-info/`를 제공하는 최소 `health/` 모듈 예시
 - 바로 사용할 수 있는 `dev`, `build`, `typecheck`, `test` 명령어
 
 ## Konekti 포함 패키지
