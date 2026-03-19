@@ -71,6 +71,18 @@ export class ConflictException extends HttpException {
   }
 }
 
+export class NotAcceptableException extends HttpException {
+  constructor(message = 'Not acceptable.', options: Omit<HttpExceptionOptions, 'code'> = {}) {
+    super(406, message, { ...options, code: 'NOT_ACCEPTABLE' });
+  }
+}
+
+export class TooManyRequestsException extends HttpException {
+  constructor(message = 'Too many requests.', options: Omit<HttpExceptionOptions, 'code'> = {}) {
+    super(429, message, { ...options, code: 'TOO_MANY_REQUESTS' });
+  }
+}
+
 export class PayloadTooLargeException extends HttpException {
   constructor(message = 'Payload too large.', options: Omit<HttpExceptionOptions, 'code'> = {}) {
     super(413, message, { ...options, code: 'PAYLOAD_TOO_LARGE' });

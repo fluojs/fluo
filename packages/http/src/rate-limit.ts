@@ -1,4 +1,5 @@
 import type { MiddlewareContext, Middleware } from './types.js';
+import { TooManyRequestsException, createErrorResponse } from './exceptions.js';
 
 export interface RateLimitStoreEntry {
   count: number;
@@ -90,10 +91,13 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
 
       if (entry.count >= options.limit) {
         const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        const error = new TooManyRequestsException('Too Many Requests', {
+          meta: { retryAfter },
+        });
 
         context.response.setHeader('Retry-After', String(retryAfter));
         context.response.setStatus(429);
-        await context.response.send({ message: 'Too Many Requests' });
+        await context.response.send(createErrorResponse(error, context.requestContext.requestId));
         return;
       }
 

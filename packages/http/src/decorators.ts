@@ -27,9 +27,26 @@ interface StandardRouteMetadataRecord {
   interceptors?: InterceptorLike[];
   method?: HttpMethod;
   path?: string;
+  produces?: string[];
   request?: Constructor;
   successStatus?: number;
   version?: string;
+}
+
+function normalizeProducesMediaTypes(mediaTypes: readonly string[]): string[] {
+  const normalized: string[] = [];
+
+  for (const mediaType of mediaTypes) {
+    const value = mediaType.trim();
+
+    if (!value || normalized.includes(value)) {
+      continue;
+    }
+
+    normalized.push(value);
+  }
+
+  return normalized;
 }
 
 function mergeUnique<T>(existing: T[] | undefined, values: T[]): T[] {
@@ -181,9 +198,23 @@ export const RequestDto = createRouteValueDecorator<Constructor>((record, dto) =
   record.request = dto;
 });
 
+export function Produces(...mediaTypes: string[]): MethodDecoratorLike {
+  return createRouteValueDecorator<string[]>((record, value) => {
+    record.produces = normalizeProducesMediaTypes(value);
+  })(mediaTypes);
+}
+
 export const SuccessStatus = createRouteValueDecorator<number>((record, status) => {
   record.successStatus = status;
 });
+
+export function getRouteProducesMetadata(controllerToken: Constructor, propertyKey: MetadataPropertyKey): string[] | undefined {
+  const bag = (controllerToken as unknown as Record<PropertyKey, unknown>)[metadataSymbol] as StandardMetadataBag | undefined;
+  const routeMap = bag?.[standardRouteMetadataKey] as Map<MetadataPropertyKey, StandardRouteMetadataRecord> | undefined;
+  const produces = routeMap?.get(propertyKey)?.produces;
+
+  return produces ? [...produces] : undefined;
+}
 
 export const FromPath = createDtoFieldDecorator('path');
 export const FromQuery = createDtoFieldDecorator('query');

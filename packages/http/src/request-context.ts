@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { KonektiError } from '@konekti/core';
 
-import type { RequestContext } from './types.js';
+import type { ContextKey, RequestContext } from './types.js';
 
 const requestContextStore = new AsyncLocalStorage<RequestContext>();
 
@@ -43,4 +43,19 @@ export function createRequestContext(context: RequestContext): RequestContext {
     ...context,
     metadata: { ...context.metadata },
   };
+}
+
+export function createContextKey<T>(description: string): ContextKey<T> {
+  return {
+    description,
+    id: Symbol(description),
+  };
+}
+
+export function getContextValue<T>(context: RequestContext, key: ContextKey<T>): T | undefined {
+  return context.metadata[key.id] as T | undefined;
+}
+
+export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, value: T): void {
+  context.metadata[key.id] = value;
 }

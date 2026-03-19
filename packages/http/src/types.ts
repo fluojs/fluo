@@ -30,6 +30,16 @@ export interface FrameworkResponse {
   send(body: unknown): MaybePromise<void>;
 }
 
+export interface ResponseFormatter {
+  readonly mediaType: string;
+  format(body: unknown): string | Buffer;
+}
+
+export interface ContentNegotiationOptions {
+  defaultMediaType?: string;
+  formatters?: ResponseFormatter[];
+}
+
 export interface Principal {
   subject: string;
   issuer?: string;
@@ -44,8 +54,14 @@ export interface RequestContext {
   response: FrameworkResponse;
   requestId?: string;
   principal?: Principal;
-  metadata: Record<string, unknown>;
+  metadata: Record<string | symbol, unknown>;
   container: RequestScopeContainer;
+}
+
+export interface ContextKey<T> {
+  readonly id: symbol;
+  readonly description: string;
+  readonly __type?: T;
 }
 
 export type ControllerHandler<Input = unknown, Result = unknown> = (
@@ -56,6 +72,7 @@ export type ControllerHandler<Input = unknown, Result = unknown> = (
 export interface RouteDefinition {
   method: HttpMethod;
   path: string;
+  produces?: string[];
   request?: Constructor;
   guards?: GuardLike[];
   interceptors?: InterceptorLike[];

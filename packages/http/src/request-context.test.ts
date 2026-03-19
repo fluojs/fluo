@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { Container } from '@konekti/di';
 
-import { assertRequestContext, createRequestContext, getCurrentRequestContext, runWithRequestContext } from './request-context.js';
+import {
+  assertRequestContext,
+  createContextKey,
+  createRequestContext,
+  getContextValue,
+  getCurrentRequestContext,
+  runWithRequestContext,
+  setContextValue,
+} from './request-context.js';
 import type { RequestContext } from './types.js';
 
 function createMockContext(): RequestContext {
@@ -95,5 +103,48 @@ describe('request context store', () => {
     });
 
     expect(requestA).not.toBe(requestB);
+  });
+
+  describe('typed context keys', () => {
+    it('stores and retrieves typed values via ContextKey', async () => {
+      const TENANT_KEY = createContextKey<string>('tenantId');
+      const TRACE_KEY = createContextKey<string>('traceId');
+      const context = createRequestContext(createMockContext());
+
+      setContextValue(context, TENANT_KEY, 'acme');
+      setContextValue(context, TRACE_KEY, 'trace-123');
+
+      expect(getContextValue(context, TENANT_KEY)).toBe('acme');
+      expect(getContextValue(context, TRACE_KEY)).toBe('trace-123');
+    });
+
+    it('returns undefined for unset context keys', () => {
+      const KEY = createContextKey<number>('counter');
+      const context = createRequestContext(createMockContext());
+
+      expect(getContextValue(context, KEY)).toBeUndefined();
+    });
+
+    it('isolates context keys between requests via ALS', async () => {
+      const LOCALE_KEY = createContextKey<string>('locale');
+      const contextA = createRequestContext(createMockContext());
+      const contextB = createRequestContext(createMockContext());
+
+      setContextValue(contextA, LOCALE_KEY, 'en-US');
+      setContextValue(contextB, LOCALE_KEY, 'ko-KR');
+
+      const resultA = await runWithRequestContext(contextA, async () => {
+        const ctx = assertRequestContext();
+        return getContextValue(ctx, LOCALE_KEY);
+      });
+
+      const resultB = await runWithRequestContext(contextB, async () => {
+        const ctx = assertRequestContext();
+        return getContextValue(ctx, LOCALE_KEY);
+      });
+
+      expect(resultA).toBe('en-US');
+      expect(resultB).toBe('ko-KR');
+    });
   });
 });
