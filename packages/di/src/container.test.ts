@@ -381,4 +381,127 @@ describe('Container', () => {
       expect(plugins[1]).toBeInstanceOf(PluginB);
     });
   });
+
+  describe('dispose', () => {
+    it('calls onDestroy for resolved singleton instances in reverse creation order', async () => {
+      const events: string[] = [];
+
+      class FirstService {
+        onDestroy() {
+          events.push('first');
+        }
+      }
+
+      class SecondService {
+        onDestroy() {
+          events.push('second');
+        }
+      }
+
+      const container = new Container().register(FirstService, SecondService);
+
+      await container.resolve(FirstService);
+      await container.resolve(SecondService);
+      await container.dispose();
+
+      expect(events).toEqual(['second', 'first']);
+    });
+
+    it('disposes only the request cache for request-scoped containers', async () => {
+      const events: string[] = [];
+
+      class SingletonService {
+        onDestroy() {
+          events.push('singleton');
+        }
+      }
+
+      class RequestService {
+        onDestroy() {
+          events.push('request');
+        }
+      }
+
+      const root = new Container().register(
+        SingletonService,
+        { provide: RequestService, scope: 'request', useClass: RequestService },
+      );
+
+      const requestScope = root.createRequestScope();
+
+      await root.resolve(SingletonService);
+      await requestScope.resolve(RequestService);
+      await requestScope.dispose();
+
+      expect(events).toEqual(['request']);
+
+      await root.dispose();
+
+      expect(events).toEqual(['request', 'singleton']);
+    });
+
+    it('does not call onDestroy more than once', async () => {
+      let disposed = 0;
+
+      class DisposableService {
+        onDestroy() {
+          disposed += 1;
+        }
+      }
+
+      const container = new Container().register(DisposableService);
+
+      await container.resolve(DisposableService);
+      await container.dispose();
+      await container.dispose();
+
+      expect(disposed).toBe(1);
+    });
+
+    it('rejects new resolves after dispose', async () => {
+      class DisposableService {
+        onDestroy() {}
+      }
+
+      const container = new Container().register(DisposableService);
+
+      await container.resolve(DisposableService);
+      await container.dispose();
+
+      await expect(container.resolve(DisposableService)).rejects.toThrow('Container has been disposed');
+    });
+
+    it('rejects request scope creation after dispose', async () => {
+      const container = new Container();
+
+      await container.dispose();
+
+      expect(() => container.createRequestScope()).toThrow('Container has been disposed');
+    });
+
+    it('continues disposal when one onDestroy fails', async () => {
+      const events: string[] = [];
+
+      class FirstService {
+        onDestroy() {
+          events.push('first');
+          throw new Error('first failed');
+        }
+      }
+
+      class SecondService {
+        onDestroy() {
+          events.push('second');
+        }
+      }
+
+      const container = new Container().register(FirstService, SecondService);
+
+      await container.resolve(FirstService);
+      await container.resolve(SecondService);
+
+      await expect(container.dispose()).rejects.toThrow('first failed');
+      expect(events).toEqual(['second', 'first']);
+    });
+  });
 });

@@ -11,6 +11,7 @@ import {
 import type {
   ClassType,
   ClassProvider,
+  Disposable,
   ExistingProvider,
   FactoryProvider,
   ForwardRefFn,
@@ -112,6 +113,8 @@ export class Container {
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
+  private disposePromise: Promise<void> | undefined;
+  private disposed = false;
 
   constructor(
     private readonly parent?: Container,
@@ -156,11 +159,37 @@ export class Container {
   }
 
   createRequestScope(): Container {
+    if (this.disposed) {
+      throw new ContainerResolutionError('Container has been disposed and can no longer create request scopes.');
+    }
+
     return new Container(this, true, this.root().singletonCache);
   }
 
   async resolve<T>(token: Token<T>): Promise<T> {
+    if (this.disposed) {
+      throw new ContainerResolutionError('Container has been disposed and can no longer resolve providers.');
+    }
+
     return this.resolveWithChain(token, []);
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposePromise) {
+      await this.disposePromise;
+      return;
+    }
+
+    this.disposed = true;
+    this.disposePromise = this.disposeCache(this.disposalCacheEntries());
+
+    try {
+      await this.disposePromise;
+    } catch (error) {
+      this.disposed = false;
+      this.disposePromise = undefined;
+      throw error;
+    }
   }
 
   private hasMulti(token: Token): boolean {
@@ -286,6 +315,57 @@ export class Container {
     }
 
     return this.requestCache;
+  }
+
+  private disposalCacheEntries(): Array<[Token, Promise<unknown>]> {
+    if (this.parent) {
+      return Array.from(this.requestCache.entries());
+    }
+
+    return Array.from(this.singletonCache.entries());
+  }
+
+  private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
+    const disposables = new Map<Token, Disposable>();
+    const errors: unknown[] = [];
+
+    for (const [token, instancePromise] of entries) {
+      try {
+        const instance = await instancePromise;
+
+        if (this.isDisposable(instance)) {
+          disposables.set(token, instance);
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
+    for (const instance of Array.from(disposables.values()).reverse()) {
+      try {
+        await instance.onDestroy();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
+    if (this.parent) {
+      this.requestCache.clear();
+    } else {
+      this.singletonCache.clear();
+    }
+
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Container disposal failed for one or more providers.');
+    }
+  }
+
+  private isDisposable(value: unknown): value is Disposable {
+    return typeof value === 'object' && value !== null && 'onDestroy' in value && typeof value.onDestroy === 'function';
   }
 
   private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[]): Promise<T> {
