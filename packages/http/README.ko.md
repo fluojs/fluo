@@ -182,10 +182,40 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 |---|---|---|
 | `createHandlerMapping(sources)` | `src/mapping.ts` | `{ controllerToken }` 같은 handler source에서 normalized routing table 생성 |
 | `createDispatcher(options)` | `src/dispatcher.ts` | request dispatch 함수 생성 |
+| `SseResponse` | `src/sse.ts` | `RequestContext`에서 Server-Sent Events 스트림 생성 helper |
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS middleware 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 context factory |
 
-추가 public export로는 `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
+추가 public export로는 `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 있습니다.
+
+### Server-Sent Events (SSE)
+
+핸들러가 HTTP 연결을 유지하면서 시간이 지나도 계속 프레임을 써야 할 때 `SseResponse`를 사용합니다.
+
+```typescript
+import { Controller, Get, SseResponse, type RequestContext } from '@konekti/http';
+
+@Controller('/events')
+class EventsController {
+  @Get('/')
+  stream(_input: undefined, ctx: RequestContext) {
+    const stream = new SseResponse(ctx);
+
+    stream.comment('connected');
+    stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+
+    return stream;
+  }
+}
+```
+
+- `new SseResponse(ctx)`는 SSE 헤더를 즉시 commit합니다
+- `send(data, { event, id, retry })`는 canonical SSE message frame을 작성합니다
+- `comment(text)`는 comment frame을 작성합니다
+- `close()`는 idempotent하며 `ctx.request.signal`이 abort될 때도 자동으로 실행됩니다
+- `encodeSseMessage()`와 `encodeSseComment()`는 테스트나 custom framing에 사용할 수 있도록 export됩니다
+- 현재 SSE는 Node adapter 또는 `write()`, `end()`, `writableEnded`, optional `flushHeaders()`를 제공하는 custom `FrameworkResponse.raw` 객체가 필요합니다
+- request observer는 SSE 소켓이 닫힐 때까지 유지되지 않고, 핸들러가 반환되는 시점에 완료됩니다
 
 ### 성공 상태 코드 기본값
 

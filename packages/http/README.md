@@ -182,10 +182,40 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 |---|---|---|
 | `createHandlerMapping(sources)` | `src/mapping.ts` | Builds the normalized routing table from handler sources such as `{ controllerToken }` |
 | `createDispatcher(options)` | `src/dispatcher.ts` | Creates the request dispatch function |
+| `SseResponse` | `src/sse.ts` | Helper for streaming Server-Sent Events from a `RequestContext` |
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+
+### Server-Sent Events (SSE)
+
+Use `SseResponse` when a handler needs to keep the HTTP connection open and stream frames over time.
+
+```typescript
+import { Controller, Get, SseResponse, type RequestContext } from '@konekti/http';
+
+@Controller('/events')
+class EventsController {
+  @Get('/')
+  stream(_input: undefined, ctx: RequestContext) {
+    const stream = new SseResponse(ctx);
+
+    stream.comment('connected');
+    stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+
+    return stream;
+  }
+}
+```
+
+- `new SseResponse(ctx)` commits SSE headers immediately
+- `send(data, { event, id, retry })` writes a canonical SSE message frame
+- `comment(text)` writes a comment frame
+- `close()` is idempotent and also runs when `ctx.request.signal` aborts
+- `encodeSseMessage()` and `encodeSseComment()` are exported for tests and custom framing needs
+- SSE currently requires the Node adapter or a custom `FrameworkResponse.raw` object exposing `write()`, `end()`, `writableEnded`, and optional `flushHeaders()`
+- request observers still complete when the handler returns; they do not stay open for the full lifetime of the SSE socket
 
 ### Rate limiting caveat
 

@@ -14,4 +14,5 @@ export * from './middleware.js';
 export * from './rate-limit.js';
 export * from './request-context.js';
 export * from './security-headers.js';
+export * from './sse.js';
 export * from './types.js';

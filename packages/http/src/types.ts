@@ -23,6 +23,7 @@ export interface FrameworkResponse {
   statusSet?: boolean;
   headers: Record<string, string>;
   committed: boolean;
+  raw?: unknown;
   setStatus(code: number): void;
   setHeader(name: string, value: string): void;
   redirect(status: number, location: string): void;
