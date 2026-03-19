@@ -43,6 +43,7 @@ Generated apps include:
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/event-bus`
+- `@konekti/websocket`
 
 ### Data integration packages
 
@@ -89,6 +90,7 @@ Package-level docs:
 - `packages/metrics/README.md`
 - `packages/cron/README.md`
 - `packages/event-bus/README.md`
+- `packages/websocket/README.md`
 
 ## Documentation Rules
 
