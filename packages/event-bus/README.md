@@ -3,13 +3,15 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-In-process event publishing for Konekti applications with decorator-based handler discovery across singleton providers and controllers.
+**In-process only.** In-process event publishing for Konekti applications with decorator-based handler discovery across singleton providers and controllers.
 
 ## Installation
 
 ```bash
 npm install @konekti/event-bus
 ```
+
+> **⚠️ Scope: In-process only.** This package dispatches events within a single Node.js process. It provides no durability guarantees, no persistence, no cross-process delivery, and no replay capability. If your application crashes mid-dispatch, in-flight events are lost. For durable, distributed event processing, use `@konekti/queue` backed by Redis.
 
 ## Quick Start
 

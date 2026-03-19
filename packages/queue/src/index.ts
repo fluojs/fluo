@@ -7,5 +7,6 @@ export type {
   QueueBackoffType,
   QueueJobType,
   QueueModuleOptions,
+  QueueRateLimiterOptions,
   QueueWorkerOptions,
 } from './types.js';

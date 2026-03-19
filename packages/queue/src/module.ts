@@ -33,6 +33,7 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
         }
       : undefined,
     defaultConcurrency: normalizePositiveInteger(options.defaultConcurrency, 1),
+    defaultRateLimiter: options.defaultRateLimiter,
   };
 }
 

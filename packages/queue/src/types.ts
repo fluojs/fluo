@@ -11,23 +11,31 @@ export interface QueueBackoffOptions {
   type?: QueueBackoffType;
 }
 
+export interface QueueRateLimiterOptions {
+  max: number;
+  duration: number;
+}
+
 export interface QueueWorkerOptions {
   attempts?: number;
   backoff?: QueueBackoffOptions;
   concurrency?: number;
   jobName?: string;
+  rateLimiter?: QueueRateLimiterOptions;
 }
 
 export interface QueueModuleOptions {
   defaultAttempts?: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency?: number;
+  defaultRateLimiter?: QueueRateLimiterOptions;
 }
 
 export interface NormalizedQueueModuleOptions {
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;
+  defaultRateLimiter?: QueueRateLimiterOptions;
 }
 
 export interface QueueWorkerMetadata {
@@ -42,6 +50,7 @@ export interface QueueWorkerDescriptor {
   jobName: string;
   jobType: QueueJobType;
   moduleName: string;
+  rateLimiter?: QueueRateLimiterOptions;
   token: Token;
   workerName: string;
 }
