@@ -14,7 +14,7 @@ import {
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { createConsoleApplicationLogger } from './logger.js';
-import { APPLICATION_LOGGER } from './tokens.js';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from './tokens.js';
 import type {
   Application,
   ApplicationLogger,
@@ -606,19 +606,37 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting Konekti application...', 'KonektiFactory');
     const configValues = loadConfig(options);
     const config = new ConfigService(configValues);
-    const runtimeProviders: Provider[] = [
-      ...(options.providers ?? []),
+     const runtimeProviders: Provider[] = [
+       ...(options.providers ?? []),
       {
         provide: ConfigService,
         useValue: config,
       },
-      {
-        provide: APPLICATION_LOGGER,
-        useValue: logger,
-      },
-    ];
-    const bootstrapped = bootstrapModule(options.rootModule, { providers: runtimeProviders });
-    resetReadinessState(bootstrapped.modules);
+       {
+         provide: APPLICATION_LOGGER,
+         useValue: logger,
+        },
+       {
+         provide: RUNTIME_CONTAINER,
+         useValue: null,
+       },
+       {
+         provide: COMPILED_MODULES,
+         useValue: [] as readonly CompiledModule[],
+       },
+     ];
+     const bootstrapped = bootstrapModule(options.rootModule, { providers: runtimeProviders });
+     bootstrapped.container.register(
+       {
+         provide: RUNTIME_CONTAINER,
+         useValue: bootstrapped.container,
+       },
+       {
+         provide: COMPILED_MODULES,
+         useValue: bootstrapped.modules,
+       },
+     );
+     resetReadinessState(bootstrapped.modules);
     const lifecycleProviders = [
       ...runtimeProviders,
       ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
