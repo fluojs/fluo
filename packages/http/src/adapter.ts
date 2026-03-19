@@ -6,6 +6,7 @@ import type { Dispatcher } from './types.js';
  * 애플리케이션 라이프사이클과 실제 전송 계층을 연결하는 최소 HTTP 어댑터 계약이다.
  */
 export interface HttpApplicationAdapter {
+  getServer?(): unknown;
   listen(dispatcher: Dispatcher): MaybePromise<void>;
   close(signal?: string): MaybePromise<void>;
 }
