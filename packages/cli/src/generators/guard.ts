@@ -1,5 +1,6 @@
 import type { GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateGuardFiles(name: string): GeneratedFile[] {
@@ -8,14 +9,7 @@ export function generateGuardFiles(name: string): GeneratedFile[] {
   const pascal = `${resource}Guard`;
 
   return [{
-    content: `import type { Guard, GuardContext } from '@konekti/http';
-
-export class ${pascal} implements Guard {
-  canActivate(context: GuardContext): boolean {
-    return true;
-  }
-}
-`,
+    content: renderTemplate('guard.ts.ejs', { kebab, resource, pascal }),
     path: `${kebab}.guard.ts`,
   }];
 }

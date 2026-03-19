@@ -1,10 +1,11 @@
 import type { Token } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core';
 import type { ClassType, Provider } from '@konekti/di';
-import type { BootstrapResult } from '@konekti/runtime';
-import { bootstrapModule } from '@konekti/runtime';
+import type { BootstrapResult, ModuleDefinition, ModuleType } from '@konekti/runtime';
+import { bootstrapModule, defineModule } from '@konekti/runtime';
 
 import { createDispatcher, createHandlerMapping } from '@konekti/http';
-import type { HandlerSource } from '@konekti/http';
+import type { Guard, HandlerSource, Interceptor } from '@konekti/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
 
@@ -50,6 +51,7 @@ function normalizeOverride<T>(token: Token<T>, value: Provider<T> | T): Provider
 
 class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   private readonly overrides: Provider[] = [];
+  private readonly moduleReplacements = new Map<ModuleType, ModuleType>();
 
   constructor(private readonly options: TestingModuleOptions) {}
 
@@ -58,13 +60,37 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     return this;
   }
 
+  overrideGuard(guard: Token<Guard>, fake: Partial<Guard> = {}): this {
+    const passthrough: Guard = { canActivate: () => true, ...fake };
+    this.overrides.push({ provide: guard as Token<Guard>, useValue: passthrough });
+    return this;
+  }
+
+  overrideInterceptor(interceptor: Token<Interceptor>, fake: Partial<Interceptor> = {}): this {
+    const passthrough: Interceptor = { intercept: (_ctx, next) => next.handle(), ...fake };
+    this.overrides.push({ provide: interceptor as Token<Interceptor>, useValue: passthrough });
+    return this;
+  }
+
+  overrideFilter(filter: Token<unknown>, fake: unknown = {}): this {
+    this.overrides.push({ provide: filter, useValue: fake });
+    return this;
+  }
+
+  overrideModule(module: ModuleType, replacement: ModuleType): this {
+    this.moduleReplacements.set(module, replacement);
+    return this;
+  }
+
   async compile(): Promise<TestingModuleRef> {
-    const bootstrapped = bootstrapModule(this.options.rootModule, {
+    const rootModule = this._applyModuleReplacements(this.options.rootModule);
+
+    const bootstrapped = bootstrapModule(rootModule, {
       providers: this.options.providers,
     });
 
     if (this.overrides.length > 0) {
-      bootstrapped.container.register(...this.overrides);
+      bootstrapped.container.override(...this.overrides);
     }
 
     const dispatcher = createTestingDispatcher(bootstrapped);
@@ -75,6 +101,41 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       resolve: (token) => bootstrapped.container.resolve(token),
       dispatch: (request: TestRequestWithOptions) => makeRequest(dispatcher, request),
     };
+  }
+
+  private _applyModuleReplacements(module: ModuleType): ModuleType {
+    if (this.moduleReplacements.size === 0) {
+      return module;
+    }
+
+    const replacement = this.moduleReplacements.get(module);
+    if (replacement) {
+      return replacement;
+    }
+
+    const metadata = getModuleMetadata(module);
+    if (!metadata?.imports || metadata.imports.length === 0) {
+      return module;
+    }
+
+    const rewrittenImports = (metadata.imports as ModuleType[]).map(
+      (imp) => this._applyModuleReplacements(imp),
+    );
+    const hasChange = rewrittenImports.some(
+      (imp, i) => imp !== (metadata.imports as ModuleType[])[i],
+    );
+
+    if (!hasChange) {
+      return module;
+    }
+
+    class PatchedModule {}
+    defineModule(PatchedModule as unknown as ModuleType, {
+      ...(metadata as ModuleDefinition),
+      imports: rewrittenImports,
+    });
+
+    return PatchedModule as unknown as ModuleType;
   }
 }
 

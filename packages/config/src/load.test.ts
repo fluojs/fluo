@@ -38,13 +38,91 @@ describe('loadConfig', () => {
       }),
     ).toThrow('Invalid configuration.');
   });
+
+  it('parses multiline values from env files using dotenv', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-multiline-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQ\\n-----END RSA PRIVATE KEY-----"\n');
+
+    const loaded = loadConfig({ cwd, mode: 'dev', processEnv: {} });
+
+    expect(loaded['PRIVATE_KEY']).toContain('BEGIN RSA PRIVATE KEY');
+    expect(loaded['PRIVATE_KEY']).toContain('\n');
+  });
+
+  it('expands variable interpolation in env files', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-expand-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'DB_HOST=localhost\nDB_PORT=5432\nDATABASE_URL=${DB_HOST}:${DB_PORT}/mydb\n');
+
+    const loaded = loadConfig({ cwd, mode: 'dev', processEnv: {} });
+
+    expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
+  });
+
+  it('uses a custom parse function when provided', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-custom-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'KEY: value\n');
+
+    const loaded = loadConfig({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      parse: (content) => {
+        const result: Record<string, string> = {};
+        for (const line of content.split('\n')) {
+          const colonIdx = line.indexOf(':');
+          if (colonIdx !== -1) {
+            result[line.slice(0, colonIdx).trim()] = line.slice(colonIdx + 1).trim();
+          }
+        }
+        return result;
+      },
+    });
+
+    expect(loaded['KEY']).toBe('value');
+  });
 });
 
 describe('ConfigService', () => {
   it('reads required and optional keys', () => {
     const service = new ConfigService({ PORT: '3000' });
 
-    expect(service.get<string>('PORT')).toBe('3000');
-    expect(service.getOptional<string>('MISSING')).toBeUndefined();
+    expect(service.get('PORT')).toBe('3000');
+    expect(service.getOptional('MISSING' as never)).toBeUndefined();
+  });
+
+  it('resolves nested dot-path keys', () => {
+    const service = new ConfigService({ db: { host: 'localhost', port: 5432 } });
+
+    expect(service.get('db.host')).toBe('localhost');
+    expect(service.get('db.port')).toBe(5432);
+  });
+
+  it('throws on missing required key', () => {
+    const service = new ConfigService({ PORT: '3000' });
+
+    expect(() => service.get('MISSING' as never)).toThrow('Missing config key');
+  });
+
+  it('returns undefined for missing optional nested key', () => {
+    const service = new ConfigService({ db: { host: 'localhost' } });
+
+    expect(service.getOptional('db.missing' as never)).toBeUndefined();
+  });
+
+  it('provides typed get/getOptional for generic ConfigService', () => {
+    type AppConfig = { PORT: string; DB_URL: string };
+    const service = new ConfigService<AppConfig>({ PORT: '3000', DB_URL: 'postgres://localhost' });
+
+    const port = service.get('PORT');
+    const dbUrl = service.getOptional('DB_URL');
+
+    expect(port).toBe('3000');
+    expect(dbUrl).toBe('postgres://localhost');
   });
 });

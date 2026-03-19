@@ -1,5 +1,6 @@
 import type { GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateResponseDtoFiles(name: string): GeneratedFile[] {
@@ -10,10 +11,7 @@ export function generateResponseDtoFiles(name: string): GeneratedFile[] {
 
   return [
     {
-      content: `export class ${pascal} {
-  ${field}!: string;
-}
-`,
+      content: renderTemplate('response-dto.ts.ejs', { kebab, resource, pascal, field }),
       path: `${kebab}.response.dto.ts`,
     },
   ];

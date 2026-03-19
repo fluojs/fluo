@@ -1,48 +1,24 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, watch } from 'node:fs';
 import { join } from 'node:path';
 
 import { KonektiError } from '@konekti/core';
+import { parse as dotenvParse } from 'dotenv';
+import { expand as dotenvExpand } from 'dotenv-expand';
 
 import type { ConfigDictionary, ConfigLoadOptions } from './types.js';
 
-/**
- * `.env` 파일 내용을 단순한 key-value 맵으로 파싱한다.
- */
-function parseEnvFile(content: string): Record<string, string> {
-  const parsed: Record<string, string> = {};
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    const equalsIndex = trimmed.indexOf('=');
-
-    if (equalsIndex === -1) {
-      console.warn(`[config] Skipping malformed .env line (missing '='): ${trimmed}`);
-      continue;
-    }
-
-    const key = trimmed.slice(0, equalsIndex).trim();
-    const rawValue = trimmed.slice(equalsIndex + 1).trim();
-
-    const value =
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-        ? rawValue.slice(1, -1)
-        : rawValue;
-
-    parsed[key] = value;
+function parseEnvContent(content: string, processEnv: NodeJS.ProcessEnv, customParser?: (content: string) => Record<string, string>): Record<string, string> {
+  if (customParser) {
+    return customParser(content);
   }
-
-  return parsed;
+  const parsed = dotenvParse(content);
+  const safeProcessEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+  const result = dotenvExpand({ parsed, processEnv: safeProcessEnv });
+  return result.parsed ?? {};
 }
 
-/**
- * 정해진 우선순서에 따라 설정을 병합하고 검증한다.
- */
 export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   const cwd = options.cwd ?? process.cwd();
   const envFile = options.envFile ?? join(cwd, `.env.${options.mode}`);
@@ -50,7 +26,9 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   const processEnv = options.processEnv ?? process.env;
   const runtimeOverrides = options.runtimeOverrides ?? {};
 
-  const envFileValues = existsSync(envFile) ? parseEnvFile(readFileSync(envFile, 'utf8')) : {};
+  const envFileValues = existsSync(envFile)
+    ? parseEnvContent(readFileSync(envFile, 'utf8'), processEnv, options.parse)
+    : {};
 
   const merged: ConfigDictionary = {
     ...defaults,
@@ -59,12 +37,34 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
     ...runtimeOverrides,
   };
 
+  let validated: ConfigDictionary;
+
   try {
-    return options.validate ? options.validate(merged) : merged;
+    validated = options.validate ? options.validate(merged) : merged;
   } catch (error: unknown) {
     throw new KonektiError('Invalid configuration.', {
       code: 'INVALID_CONFIG',
       cause: error,
     });
   }
+
+  if (options.watch && existsSync(envFile)) {
+    watch(envFile, { persistent: false }, () => {
+      try {
+        const reloaded = parseEnvContent(readFileSync(envFile, 'utf8'), processEnv, options.parse);
+        const mergedReloaded: ConfigDictionary = {
+          ...defaults,
+          ...reloaded,
+          ...processEnv,
+          ...runtimeOverrides,
+        };
+        const result = options.validate ? options.validate(mergedReloaded) : mergedReloaded;
+        process.emit('CONFIG_RELOADED' as never, result as never);
+      } catch {
+        // silently skip reload errors — watch mode is best-effort
+      }
+    });
+  }
+
+  return validated;
 }
