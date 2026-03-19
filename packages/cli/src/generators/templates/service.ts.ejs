@@ -1,0 +1,12 @@
+import { Inject } from '@konekti/core';
+
+import { <%- repo %> } from './<%- kebab %>.repo';
+
+@Inject([<%- repo %>])
+export class <%- pascal %> {
+  constructor(private readonly repo: <%- repo %>) {}
+
+  async list<%- resource %>s() {
+    return this.repo.list<%- resource %>s();
+  }
+}

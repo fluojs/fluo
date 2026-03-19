@@ -1,5 +1,6 @@
 import type { GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateRequestDtoFiles(name: string): GeneratedFile[] {
@@ -10,16 +11,7 @@ export function generateRequestDtoFiles(name: string): GeneratedFile[] {
 
   return [
     {
-      content: `import { IsString, MinLength } from '@konekti/dto-validator';
-import { FromBody } from '@konekti/http';
-
-export class ${pascal} {
-  @FromBody('${bodyField}')
-  @IsString()
-  @MinLength(1, { message: '${bodyField} is required' })
-  ${bodyField} = '';
-}
-`,
+      content: renderTemplate('request-dto.ts.ejs', { kebab, resource, pascal, bodyField }),
       path: `${kebab}.request.dto.ts`,
     },
   ];

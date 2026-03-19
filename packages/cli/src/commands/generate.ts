@@ -1,43 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 
-import type { GenerateOptions, GeneratedFile, GeneratorKind } from '../types.js';
+import type { GenerateOptions, GeneratorKind } from '../types.js';
+import { defaultRegistry } from '../registry.js';
 
-import { generateControllerFiles } from '../generators/controller.js';
-import { generateGuardFiles } from '../generators/guard.js';
-import { generateInterceptorFiles } from '../generators/interceptor.js';
-import { generateMiddlewareFiles } from '../generators/middleware.js';
 import { generateModuleFiles, registerInModule } from '../generators/module.js';
-import { generateRepoFiles } from '../generators/repository.js';
-import { generateRequestDtoFiles } from '../generators/request-dto.js';
-import { generateResponseDtoFiles } from '../generators/response-dto.js';
-import { generateServiceFiles } from '../generators/service.js';
 import { toKebabCase, toPascalCase, toPlural } from '../generators/utils.js';
-
-function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptions = {}): GeneratedFile[] {
-  switch (kind) {
-    case 'controller':
-      return generateControllerFiles(name);
-    case 'guard':
-      return generateGuardFiles(name);
-    case 'interceptor':
-      return generateInterceptorFiles(name);
-    case 'middleware':
-      return generateMiddlewareFiles(name);
-    case 'module':
-      return generateModuleFiles(name);
-    case 'repo':
-      return generateRepoFiles(name, options);
-    case 'request-dto':
-      return generateRequestDtoFiles(name);
-    case 'response-dto':
-      return generateResponseDtoFiles(name);
-    case 'service':
-      return generateServiceFiles(name, options);
-    default:
-      return [];
-  }
-}
 
 function moduleArrayKey(kind: GeneratorKind): 'controllers' | 'providers' | 'middleware' | null {
   if (kind === 'controller') return 'controllers';
@@ -105,7 +73,8 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
 
   mkdirSync(domainDirectory, { recursive: true });
 
-  const files = generateFiles(kind, name, options);
+  const factory = defaultRegistry.resolve(kind);
+  const files = factory ? factory(name, options) : [];
 
   const writtenPaths = files.map((file) => {
     const filePath = join(domainDirectory, file.path);

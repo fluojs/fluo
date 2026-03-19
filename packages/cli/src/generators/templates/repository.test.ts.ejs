@@ -1,0 +1,9 @@
+import { describe, expect, it } from 'vitest';
+
+import { <%- pascal %> } from './<%- kebab %>.repo';
+
+describe('<%- pascal %>', () => {
+  it('exposes a list method', () => {
+    expect(typeof <%- pascal %>.prototype.list<%- resource %>s).toBe('function');
+  });
+});

@@ -13,3 +13,10 @@ export interface ModuleRegistration {
   className: string;
   kind: 'controller' | 'provider';
 }
+
+export type GeneratorFactory = (name: string, options?: GenerateOptions) => GeneratedFile[];
+
+export interface GeneratorRegistration {
+  factory: GeneratorFactory;
+  description?: string;
+}

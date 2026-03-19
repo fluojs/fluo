@@ -1,5 +1,6 @@
 import type { GenerateOptions, GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateServiceFiles(name: string, _options: GenerateOptions = {}): GeneratedFile[] {
@@ -8,40 +9,15 @@ export function generateServiceFiles(name: string, _options: GenerateOptions = {
   const pascal = `${resource}Service`;
   const repo = `${resource}Repo`;
 
+  const vars = { kebab, resource, pascal, repo };
+
   return [
     {
-      content: `import { Inject } from '@konekti/core';
-
-import { ${repo} } from './${kebab}.repo';
-
-@Inject([${repo}])
-export class ${pascal} {
-  constructor(private readonly repo: ${repo}) {}
-
-  async list${resource}s() {
-    return this.repo.list${resource}s();
-  }
-}
-`,
+      content: renderTemplate('service.ts.ejs', vars),
       path: `${kebab}.service.ts`,
     },
     {
-      content: `import { describe, expect, it } from 'vitest';
-
-import { ${pascal} } from './${kebab}.service';
-
-class Fake${repo} {
-  list${resource}s() {
-    return [{ id: '${kebab}-1' }];
-  }
-}
-
-describe('${pascal}', () => {
-  it('delegates to the repo', async () => {
-    await expect(new ${pascal}(new Fake${repo}() as never).list${resource}s()).resolves.toEqual([{ id: '${kebab}-1' }]);
-  });
-});
-`,
+      content: renderTemplate('service.test.ts.ejs', vars),
       path: `${kebab}.service.test.ts`,
     },
   ];

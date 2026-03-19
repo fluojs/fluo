@@ -1,5 +1,6 @@
 import type { GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateMiddlewareFiles(name: string): GeneratedFile[] {
@@ -8,18 +9,7 @@ export function generateMiddlewareFiles(name: string): GeneratedFile[] {
   const pascal = `${resource}Middleware`;
 
   return [{
-    content: `import type { Middleware, MiddlewareContext, MiddlewareRouteConfig, Next } from '@konekti/http';
-
-export class ${pascal} implements Middleware {
-  static forRoutes(...routes: string[]): MiddlewareRouteConfig {
-    return { middleware: ${pascal}, routes };
-  }
-
-  async handle(context: MiddlewareContext, next: Next): Promise<void> {
-    await next();
-  }
-}
-`,
+    content: renderTemplate('middleware.ts.ejs', { kebab, resource, pascal }),
     path: `${kebab}.middleware.ts`,
   }];
 }

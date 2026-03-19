@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { generateControllerFiles } from './generators/controller.js';
 import { generateGuardFiles } from './generators/guard.js';
@@ -9,6 +9,7 @@ import { generateRepoFiles } from './generators/repository.js';
 import { generateRequestDtoFiles } from './generators/request-dto.js';
 import { generateResponseDtoFiles } from './generators/response-dto.js';
 import { generateServiceFiles } from './generators/service.js';
+import { GeneratorRegistry, defaultRegistry } from './registry.js';
 
 describe('CLI generators', () => {
   it('follow naming conventions for default generators', () => {
@@ -139,5 +140,45 @@ describe('CLI generators', () => {
       const result = registerInModule(withMiddlewareArray, 'middleware', 'AuthMiddleware');
       expect(result).toMatch(/middleware:\s*\[[\s\S]*AuthMiddleware/);
     });
+  });
+});
+
+describe('GeneratorRegistry', () => {
+  it('resolves all built-in generator kinds from defaultRegistry', () => {
+    const kinds = ['controller', 'guard', 'interceptor', 'middleware', 'module', 'repository', 'repo', 'request-dto', 'response-dto', 'service'] as const;
+    for (const kind of kinds) {
+      expect(defaultRegistry.has(kind), `expected defaultRegistry to have kind: ${kind}`).toBe(true);
+    }
+  });
+
+  it('returns undefined for unknown kind', () => {
+    expect(defaultRegistry.resolve('unknown')).toBeUndefined();
+  });
+
+  it('allows registering and invoking custom generators', () => {
+    const registry = new GeneratorRegistry();
+    const factory = vi.fn().mockReturnValue([{ path: 'foo.ts', content: 'bar' }]);
+    registry.register('custom', factory);
+    expect(registry.has('custom')).toBe(true);
+    const result = registry.resolve('custom')?.('Foo');
+    expect(factory).toHaveBeenCalledWith('Foo');
+    expect(result).toEqual([{ path: 'foo.ts', content: 'bar' }]);
+  });
+
+  it('overrides an existing registration', () => {
+    const registry = new GeneratorRegistry();
+    const original = vi.fn().mockReturnValue([]);
+    const replacement = vi.fn().mockReturnValue([{ path: 'replaced.ts', content: '' }]);
+    registry.register('controller', original);
+    registry.register('controller', replacement);
+    registry.resolve('controller')?.('User');
+    expect(replacement).toHaveBeenCalledOnce();
+    expect(original).not.toHaveBeenCalled();
+  });
+
+  it('lists all registered kinds', () => {
+    const registry = new GeneratorRegistry();
+    registry.register('a', vi.fn()).register('b', vi.fn());
+    expect(registry.kinds()).toEqual(['a', 'b']);
   });
 });

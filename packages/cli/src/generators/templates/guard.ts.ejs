@@ -1,0 +1,7 @@
+import type { Guard, GuardContext } from '@konekti/http';
+
+export class <%- pascal %> implements Guard {
+  canActivate(context: GuardContext): boolean {
+    return true;
+  }
+}

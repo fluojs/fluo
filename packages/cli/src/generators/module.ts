@@ -1,5 +1,6 @@
 import type { GeneratedFile } from '../types.js';
 
+import { renderTemplate } from './render.js';
 import { toKebabCase, toPascalCase } from './utils.js';
 
 export function generateModuleFiles(name: string): GeneratedFile[] {
@@ -8,16 +9,7 @@ export function generateModuleFiles(name: string): GeneratedFile[] {
 
   return [
     {
-      content: `import { Module } from '@konekti/core';
-
-@Module({
-  controllers: [],
-  providers: [],
-})
-class ${pascal} {}
-
-export { ${pascal} };
-`,
+      content: renderTemplate('module.ts.ejs', { kebab, pascal }),
       path: `${kebab}.module.ts`,
     },
   ];

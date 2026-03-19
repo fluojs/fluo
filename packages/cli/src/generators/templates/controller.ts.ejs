@@ -1,0 +1,17 @@
+import { Inject } from '@konekti/core';
+import { Controller, Get } from '@konekti/http';
+
+import { <%- service %> } from './<%- kebab %>.service';
+
+@Controller('/<%- kebab %>')
+@Inject([<%- service %>])
+class <%- pascal %> {
+  constructor(private readonly service: <%- service %>) {}
+
+  @Get('/')
+  async list<%- resource %>s() {
+    return this.service.list<%- resource %>s();
+  }
+}
+
+export { <%- pascal %> };

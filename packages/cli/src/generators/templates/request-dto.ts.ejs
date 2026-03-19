@@ -1,0 +1,9 @@
+import { IsString, MinLength } from '@konekti/dto-validator';
+import { FromBody } from '@konekti/http';
+
+export class <%- pascal %> {
+  @FromBody('<%- bodyField %>')
+  @IsString()
+  @MinLength(1, { message: '<%- bodyField %> is required' })
+  <%- bodyField %> = '';
+}

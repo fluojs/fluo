@@ -32,6 +32,8 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*"
+    "@konekti/core": "workspace:*",
+    "dotenv": "^16.0.0",
+    "dotenv-expand": "^11.0.0"
   }
 }
