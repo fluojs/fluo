@@ -2,10 +2,8 @@ import { metadataSymbol } from '@konekti/core';
 
 import {
   argMetadataSymbol,
-  mutationMetadataSymbol,
-  queryMetadataSymbol,
+  handlerMetadataSymbol,
   resolverMetadataSymbol,
-  subscriptionMetadataSymbol,
 } from './metadata.js';
 import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 
@@ -71,13 +69,7 @@ function defineStandardResolverMetadata(metadata: unknown, resolverMetadata: Res
 
 function defineStandardHandlerMetadata(metadata: unknown, propertyKey: string | symbol, handlerMetadata: ResolverHandlerMetadata): void {
   const bag = getStandardMetadataBag(metadata);
-  const key =
-    handlerMetadata.type === 'query'
-      ? queryMetadataSymbol
-      : handlerMetadata.type === 'mutation'
-        ? mutationMetadataSymbol
-        : subscriptionMetadataSymbol;
-  const current = bag[key] as Map<string | symbol, ResolverHandlerMetadata> | undefined;
+  const current = bag[handlerMetadataSymbol] as Map<string | symbol, ResolverHandlerMetadata> | undefined;
   const map = current ?? new Map<string | symbol, ResolverHandlerMetadata>();
 
   map.set(propertyKey, {
@@ -86,7 +78,7 @@ function defineStandardHandlerMetadata(metadata: unknown, propertyKey: string | 
     topics: handlerMetadata.topics,
     type: handlerMetadata.type,
   });
-  bag[key] = map;
+  bag[handlerMetadataSymbol] = map;
 }
 
 function defineStandardArgFieldMetadata(metadata: unknown, propertyKey: string | symbol, argFieldMetadata: ArgFieldMetadata): void {

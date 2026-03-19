@@ -7,14 +7,12 @@ import type { Container, Provider } from '@konekti/di';
 import {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
-  HTTP_APPLICATION_ADAPTER,
   RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@konekti/runtime';
-import type { HttpApplicationAdapter } from '@konekti/http';
 import type {
   GraphQLFieldConfigMap,
   GraphQLObjectType as GraphQLObjectTypeType,
@@ -423,7 +421,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
   };
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_MODULE_OPTIONS])
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, GRAPHQL_MODULE_OPTIONS])
 export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private middlewareRegistered = false;
   private yoga: YogaLike | undefined;
@@ -473,7 +471,6 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
-    private readonly _adapter: HttpApplicationAdapter,
     private readonly options: GraphqlModuleOptions,
   ) {}
 

@@ -187,7 +187,5 @@ export function getArgFieldMetadataEntries(
 }
 
 export const resolverMetadataSymbol = standardResolverMetadataKey;
-export const queryMetadataSymbol = standardHandlerMetadataKey;
-export const mutationMetadataSymbol = standardHandlerMetadataKey;
-export const subscriptionMetadataSymbol = standardHandlerMetadataKey;
+export const handlerMetadataSymbol = standardHandlerMetadataKey;
 export const argMetadataSymbol = standardArgFieldMetadataKey;
