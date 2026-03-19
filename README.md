@@ -42,6 +42,7 @@ Generated apps include:
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/event-bus`
 
 ### Data integration packages
 
@@ -87,6 +88,7 @@ Package-level docs:
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
 - `packages/cron/README.md`
+- `packages/event-bus/README.md`
 
 ## Documentation Rules
 

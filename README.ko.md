@@ -42,6 +42,7 @@ pnpm dev
 - `@konekti/openapi`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/event-bus`
 
 ### 데이터 통합 패키지
 
@@ -87,6 +88,7 @@ pnpm dev
 - `packages/openapi/README.md`
 - `packages/metrics/README.md`
 - `packages/cron/README.md`
+- `packages/event-bus/README.md`
 
 ## 문서화 규칙
 
