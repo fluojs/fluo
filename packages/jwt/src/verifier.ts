@@ -4,6 +4,7 @@ import type { KeyObject } from 'node:crypto';
 import { Inject } from '@konekti/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwksClient } from './jwks.js';
 import type { JwtAlgorithm, JwtClaims, JwtPrincipal, JwtVerifierOptions } from './types.js';
 
 export const JWT_OPTIONS = Symbol.for('konekti.jwt.options');
@@ -62,7 +63,14 @@ function verifyAsymmetricSignature(
 
   const verifier = createVerify(hash);
   verifier.update(signingInput);
-  const valid = verifier.verify(publicKey, signatureSegment, 'base64url');
+  const isEc = algorithm.startsWith('ES');
+  const valid = verifier.verify(
+    isEc
+      ? ({ dsaEncoding: 'ieee-p1363', key: publicKey } as Parameters<typeof verifier.verify>[0])
+      : publicKey,
+    signatureSegment,
+    'base64url',
+  );
   if (!valid) {
     throw new JwtInvalidTokenError();
   }
@@ -117,7 +125,11 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
 
 @Inject([JWT_OPTIONS])
 export class DefaultJwtVerifier {
-  constructor(private readonly options: JwtVerifierOptions) {}
+  private readonly jwksClient: JwksClient | undefined;
+
+  constructor(private readonly options: JwtVerifierOptions) {
+    this.jwksClient = options.jwksUri ? new JwksClient(options.jwksUri, options.jwksCacheTtl) : undefined;
+  }
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
     const segments = token.split('.');
@@ -127,7 +139,7 @@ export class DefaultJwtVerifier {
     }
 
     const [headerSegment, payloadSegment, signatureSegment] = segments;
-    const header = parseJwtPart<{ alg?: string; typ?: string; kid?: string }>(headerSegment);
+    const header = parseJwtPart<{ [key: string]: unknown; alg?: string; kid?: string; typ?: string }>(headerSegment);
     const payload = parseJwtPart<JwtClaims>(payloadSegment);
     const algorithms = this.options.algorithms;
 
@@ -138,10 +150,19 @@ export class DefaultJwtVerifier {
     const signingInput = `${headerSegment}.${payloadSegment}`;
 
     if (header.alg in HMAC_HASH) {
+      const providerKey = this.options.secretOrKeyProvider
+        ? await this.options.secretOrKeyProvider({ alg: header.alg, ...header })
+        : undefined;
+
+      if (providerKey !== undefined && typeof providerKey !== 'string') {
+        throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
+      }
+
       const secret =
-        (header.kid !== undefined && header.kid !== ''
+        providerKey ??
+        ((header.kid !== undefined && header.kid !== ''
           ? this.options.keys?.find((k) => k.kid === header.kid)?.secret
-          : undefined) ?? this.options.secret;
+          : undefined) ?? this.options.secret);
 
       if (!secret) {
         throw new JwtConfigurationError('JWT secret is not configured.');
@@ -149,10 +170,16 @@ export class DefaultJwtVerifier {
 
       verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
     } else {
+      const providerKey = this.options.secretOrKeyProvider
+        ? await this.options.secretOrKeyProvider({ alg: header.alg, ...header })
+        : undefined;
       const publicKey =
-        (header.kid !== undefined && header.kid !== ''
-          ? this.options.keys?.find((k) => k.kid === header.kid)?.publicKey
-          : undefined) ?? this.options.publicKey;
+        providerKey ??
+        (this.jwksClient
+          ? await this.resolveJwksPublicKey(header.kid)
+          : ((header.kid !== undefined && header.kid !== ''
+              ? this.options.keys?.find((k) => k.kid === header.kid)?.publicKey
+              : undefined) ?? this.options.publicKey));
 
       if (!publicKey) {
         throw new JwtConfigurationError('JWT public key is not configured.');
@@ -164,8 +191,12 @@ export class DefaultJwtVerifier {
     const now = Math.floor(Date.now() / 1000);
     const clockSkew = this.options.clockSkewSeconds ?? 0;
 
-    if (this.options.requireExp && typeof payload.exp !== 'number') {
+    if (this.options.requireExp !== false && typeof payload.exp !== 'number') {
       throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
+    }
+
+    if (typeof this.options.maxAge === 'number' && typeof payload.iat === 'number' && now - payload.iat > this.options.maxAge) {
+      throw new JwtExpiredTokenError('JWT exceeds maxAge.');
     }
 
     if (typeof payload.exp === 'number' && payload.exp + clockSkew < now) {
@@ -190,5 +221,17 @@ export class DefaultJwtVerifier {
     }
 
     return normalizePrincipal(payload);
+  }
+
+  private async resolveJwksPublicKey(kid: string | undefined): Promise<KeyObject> {
+    if (!this.jwksClient) {
+      throw new JwtConfigurationError('JWKS client is not configured.');
+    }
+
+    if (typeof kid !== 'string' || kid.length === 0) {
+      throw new JwtInvalidTokenError('JWT is missing key id (kid) for JWKS resolution.');
+    }
+
+    return this.jwksClient.getSigningKey(kid);
   }
 }

@@ -1,6 +1,6 @@
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { DefaultJwtVerifier } from './verifier.js';
@@ -166,7 +166,7 @@ describe('DefaultJwtVerifier', () => {
     const payloadSegment = encodeBase64Url(JSON.stringify(payload));
     const signer = createSign('sha256');
     signer.update(`${headerSegment}.${payloadSegment}`);
-    const signatureSegment = signer.sign(privateKey, 'base64url');
+    const signatureSegment = signer.sign({ dsaEncoding: 'ieee-p1363', key: privateKey }, 'base64url');
     const token = `${headerSegment}.${payloadSegment}.${signatureSegment}`;
 
     const verifier = new DefaultJwtVerifier({
@@ -189,7 +189,7 @@ describe('DefaultJwtVerifier', () => {
     const payloadSegment = encodeBase64Url(JSON.stringify(payload));
     const signer = createSign('sha256');
     signer.update(`${headerSegment}.${payloadSegment}`);
-    const signatureSegment = signer.sign(privateKey, 'base64url');
+    const signatureSegment = signer.sign({ dsaEncoding: 'ieee-p1363', key: privateKey }, 'base64url');
     const token = `${headerSegment}.${payloadSegment}.${signatureSegment}`;
 
     const verifier = new DefaultJwtVerifier({
@@ -246,6 +246,16 @@ describe('DefaultJwtVerifier', () => {
     });
   });
 
+  it('rejects a token without exp by default', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signToken({ sub: 'user-no-exp' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
   it('rejects a token without exp when requireExp is true', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS256'],
@@ -257,15 +267,103 @@ describe('DefaultJwtVerifier', () => {
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
   });
 
-  it('accepts a token without exp when requireExp is not set', async () => {
+  it('accepts a token without exp when requireExp is false', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS256'],
+      requireExp: false,
       secret: 'secret',
     });
     const token = signToken({ sub: 'user-no-exp' }, 'secret');
 
     await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
       subject: 'user-no-exp',
+    });
+  });
+
+  it('accepts a token with exp under default requireExp behavior', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signToken({ exp: Math.floor(Date.now() / 1000) + 60, sub: 'user-with-exp' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'user-with-exp',
+    });
+  });
+
+  it('rejects tokens older than maxAge', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      maxAge: 10,
+      secret: 'secret',
+    });
+    const token = signToken({ exp: now + 60, iat: now - 30, sub: 'too-old' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
+  });
+
+  it('accepts tokens within maxAge', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      maxAge: 30,
+      secret: 'secret',
+    });
+    const token = signToken({ exp: now + 60, iat: now - 10, sub: 'fresh-enough' }, 'secret');
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'fresh-enough',
+    });
+  });
+
+  it('calls secretOrKeyProvider with header and verifies token', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = signToken({ exp: now + 60, sub: 'provider-user' }, 'secret', { alg: 'HS256', kid: 'k1', typ: 'JWT' });
+    const provider = vi.fn(async (header: { alg: string; kid?: string }) => {
+      expect(header.alg).toBe('HS256');
+      expect(header.kid).toBe('k1');
+      return 'secret';
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secretOrKeyProvider: provider,
+    });
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'provider-user',
+    });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects token when secretOrKeyProvider returns wrong key', async () => {
+    const token = signToken({ exp: Math.floor(Date.now() / 1000) + 60, sub: 'provider-user' }, 'secret');
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secretOrKeyProvider: async () => 'wrong-secret',
+    });
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('verifies RS256 token when secretOrKeyProvider returns public key', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const headerSegment = encodeBase64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+    const payloadSegment = encodeBase64Url(JSON.stringify({ exp, sub: 'provider-rs-user' }));
+    const signer = createSign('sha256');
+    signer.update(`${headerSegment}.${payloadSegment}`);
+    const signatureSegment = signer.sign(privateKey, 'base64url');
+    const token = `${headerSegment}.${payloadSegment}.${signatureSegment}`;
+
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['RS256'],
+      secretOrKeyProvider: async () => publicKey,
+    });
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'provider-rs-user',
     });
   });
 });
