@@ -135,7 +135,9 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
 
 export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoConstructor<Partial<InstanceType<TBase>>> {
   const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (instance) => {
-    Object.assign(instance, new BaseDto());
+    for (const key of ownKeysOf(BaseDto)) {
+      instance[key] = undefined;
+    }
   });
 
   for (const entry of getDtoBindingSchema(BaseDto)) {
