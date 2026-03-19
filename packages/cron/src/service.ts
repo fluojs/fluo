@@ -164,11 +164,20 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     const descriptors: CronTaskDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
+      const entries = getCronTaskMetadataEntries(candidate.targetType.prototype);
+
       if (candidate.scope !== 'singleton') {
+        if (entries.length > 0) {
+          this.logger.warn(
+            `${candidate.targetType.name} in module ${candidate.moduleName} declares @Cron() methods but is registered with ${candidate.scope} scope. Cron tasks are scheduled only for singleton providers.`,
+            'CronLifecycleService',
+          );
+        }
+
         continue;
       }
 
-      for (const entry of getCronTaskMetadataEntries(candidate.targetType.prototype)) {
+      for (const entry of entries) {
         const methodName = methodKeyToName(entry.propertyKey);
         const taskName = entry.metadata.options.name ?? buildDefaultTaskName(candidate.targetType.name, methodName);
         const seenMethods = seen.get(candidate.token) ?? new Set<string>();
@@ -226,7 +235,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
       for (const controller of compiledModule.definition.controllers ?? []) {
         candidates.push({
           moduleName: compiledModule.type.name,
-          scope: 'singleton',
+          scope: scopeFromProvider(controller),
           targetType: controller,
           token: controller,
         });
