@@ -34,7 +34,12 @@ function isProviderDescriptor<T>(value: Provider<T> | T): value is Provider<T> {
 }
 
 function isClassConstructor<T>(value: Provider<T> | T): value is ClassType<T> {
-  return typeof value === 'function';
+  if (typeof value !== 'function') {
+    return false;
+  }
+
+  const source = Function.prototype.toString.call(value);
+  return source.startsWith('class ');
 }
 
 function normalizeOverride<T>(token: Token<T>, value: Provider<T> | T): Provider<T> {
