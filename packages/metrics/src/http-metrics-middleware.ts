@@ -1,4 +1,4 @@
-import type { Middleware, MiddlewareContext, Next } from '@konekti/http';
+import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@konekti/http';
 import { Counter, Histogram, type Registry } from 'prom-client';
 
 type HttpMetricLabels = {
@@ -6,6 +6,23 @@ type HttpMetricLabels = {
   path: string;
   status: string;
 };
+
+export type HttpMetricsPathLabelMode = 'raw' | 'template';
+
+export interface HttpMetricsPathLabelContext {
+  method: string;
+  params: Readonly<Record<string, string>>;
+  path: string;
+  request: FrameworkRequest;
+}
+
+export type HttpMetricsPathLabelNormalizer = (context: HttpMetricsPathLabelContext) => string;
+
+export interface HttpMetricsMiddlewareOptions {
+  pathLabelMode?: HttpMetricsPathLabelMode;
+  pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
+  unknownPathLabel?: string;
+}
 
 function readErrorStatusCode(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) {
@@ -31,8 +48,14 @@ export class HttpMetricsMiddleware implements Middleware {
   private readonly requestsTotal: Counter<string>;
   private readonly errorsTotal: Counter<string>;
   private readonly requestDuration: Histogram<string>;
+  private readonly pathLabelMode: HttpMetricsPathLabelMode;
+  private readonly pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
+  private readonly unknownPathLabel: string;
 
-  constructor(registry: Registry) {
+  constructor(registry: Registry, options: HttpMetricsMiddlewareOptions = {}) {
+    this.pathLabelMode = options.pathLabelMode ?? 'template';
+    this.pathLabelNormalizer = options.pathLabelNormalizer;
+    this.unknownPathLabel = options.unknownPathLabel ?? 'UNKNOWN';
     this.requestsTotal = new Counter({
       help: 'Total number of HTTP requests',
       labelNames: ['method', 'path', 'status'],
@@ -53,10 +76,29 @@ export class HttpMetricsMiddleware implements Middleware {
     });
   }
 
+  private resolvePathLabel(request: FrameworkRequest): string {
+    if (this.pathLabelNormalizer) {
+      const normalized = this.pathLabelNormalizer({
+        method: request.method,
+        params: request.params,
+        path: request.path,
+        request,
+      });
+      return normalized.trim() || this.unknownPathLabel;
+    }
+
+    if (this.pathLabelMode === 'raw') {
+      return request.path;
+    }
+
+    const normalized = normalizePathToTemplate(request.path, request.params);
+    return normalized || this.unknownPathLabel;
+  }
+
   async handle(context: MiddlewareContext, next: Next): Promise<void> {
     const start = performance.now();
     const method = context.request.method;
-    const path = context.request.path;
+    const path = this.resolvePathLabel(context.request);
     let requestError: unknown;
 
     try {
@@ -82,5 +124,39 @@ export class HttpMetricsMiddleware implements Middleware {
         this.errorsTotal.inc(labels);
       }
     }
+  }
+}
+
+function normalizePathToTemplate(path: string, params: Readonly<Record<string, string>>): string {
+  if (!path) {
+    return '/';
+  }
+
+  const normalizedSegments = path
+    .split('/')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => {
+      const decoded = safeDecodeURIComponent(segment);
+      for (const [paramKey, paramValue] of Object.entries(params)) {
+        if (segment === paramValue || decoded === paramValue) {
+          return `:${paramKey}`;
+        }
+      }
+
+      return segment;
+    });
+
+  if (normalizedSegments.length === 0) {
+    return '/';
+  }
+
+  return `/${normalizedSegments.join('/')}`;
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
 }

@@ -4,6 +4,9 @@ import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { MetricsModule } from './metrics-module.js';
+import { METER_PROVIDER } from './meter-provider.js';
+import { METRICS_SERVICE, MetricsService } from './metrics-service.js';
+import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
@@ -25,19 +28,19 @@ function createResponse(): TestResponse {
   return {
     committed: false,
     headers: {},
-    redirect(status, location) {
+    redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('location', location);
       this.committed = true;
     },
-    send(body) {
+    send(body: unknown) {
       this.body = body;
       this.committed = true;
     },
-    setHeader(name, value) {
+    setHeader(name: string, value: string) {
       this.headers[name] = value;
     },
-    setStatus(code) {
+    setStatus(code: number) {
       this.statusCode = code;
       this.statusSet = true;
     },
@@ -145,9 +148,92 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
-  it('throws when otel provider is requested', () => {
-    expect(() => MetricsModule.forRoot({ provider: 'otel' })).toThrow(
-      'MetricsModule provider "otel" is not implemented yet. Use provider "prometheus".',
+  it('normalizes HTTP metric path labels through module-level http options', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: true,
+          path: '/metrics/:resourceId',
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const firstResponse = createResponse();
+    await app.dispatch(createRequest('/metrics/123'), firstResponse);
+    expect(firstResponse.statusCode).toBe(200);
+
+    const secondResponse = createResponse();
+    await app.dispatch(createRequest('/metrics/456'), secondResponse);
+
+    const metricsText = String(secondResponse.body);
+
+    expect(secondResponse.statusCode).toBe(200);
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics/:resourceId",status="200"} 1');
+
+    await app.close();
+  });
+
+  it('binds prometheus provider by default and for explicit provider option', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({ defaultMetrics: false }),
+        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-explicit', provider: 'prometheus' }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const meterProvider = await app.container.resolve(METER_PROVIDER);
+
+    expect(meterProvider).toBeInstanceOf(PrometheusMeterProvider);
+    expect((meterProvider as PrometheusMeterProvider).type).toBe('prometheus');
+
+    await app.close();
+  });
+
+  it('uses equivalent duplicate-name behavior across MetricsService and MeterProvider APIs', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const meterProvider = await app.container.resolve(METER_PROVIDER) as PrometheusMeterProvider;
+
+    metricsService.counter({
+      help: 'dup check service first',
+      name: 'metrics_duplicate_name_contract_total',
+    });
+
+    expect(() => {
+      meterProvider.createCounter('metrics_duplicate_name_contract_total', 'dup check provider second');
+    }).toThrow('A metric with the name metrics_duplicate_name_contract_total has already been registered.');
+
+    await app.close();
+  });
+
+  it('rejects unsupported providers at runtime', () => {
+    expect(() => MetricsModule.forRoot({ provider: 'otel' as unknown as 'prometheus' })).toThrow(
+      'MetricsModule provider "otel" is not supported. Use provider "prometheus".',
     );
   });
 });
