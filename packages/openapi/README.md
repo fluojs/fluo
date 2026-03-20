@@ -78,6 +78,7 @@ Registers two HTTP endpoints and returns a `ModuleType` to import into any modul
 interface OpenApiModuleOptions {
   title: string;
   version: string;
+  defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
   descriptors?: readonly HandlerDescriptor[];  // handler descriptors from createHandlerMapping()
   sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
   ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
@@ -208,6 +209,8 @@ The generated document follows OpenAPI 3.1.0:
 - Request DTOs decorated with `@konekti/dto-validator` are emitted as `components.schemas` entries and linked through `requestBody`.
 - Cookie-bound DTO fields are emitted as `in: cookie` parameters.
 - Request bodies are only marked `required: true` when at least one body-bound DTO field is required.
+- Default error responses (`400`, `401`, `403`, `404`, `500`) are injected by default and can be disabled with `defaultErrorResponsesPolicy: 'omit'`.
+- Non-body parameter fields are emitted as runtime-compatible scalar/array shapes; nested object refs are not emitted for query/header/cookie/path params.
 
 ---
 
@@ -223,6 +226,7 @@ Builds the OpenAPI document directly from handler descriptors without mounting a
 
 ```typescript
 interface BuildOpenApiDocumentOptions {
+  defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
   descriptors: readonly HandlerDescriptor[];
   title: string;
   version: string;

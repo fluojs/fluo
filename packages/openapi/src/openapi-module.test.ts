@@ -684,6 +684,63 @@ describe('OpenApiModule', () => {
     expect((response.body as { paths: Record<string, { post?: { requestBody?: { required?: boolean } } }> }).paths['/partial/users']?.post?.requestBody?.required).toBeUndefined();
   });
 
+  it('omits requestBody when request DTO has no body-bound fields', async () => {
+    class SearchRequest {
+      @FromQuery('q')
+      @IsString()
+      query = '';
+
+      @IsString()
+      unboundHint = '';
+    }
+
+    @Controller('/implicit')
+    class ImplicitController {
+      @RequestDto(SearchRequest)
+      @Post('/search')
+      search() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: ImplicitController }],
+      title: 'Implicit DTO API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ImplicitController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      paths: Record<string, { post?: { parameters?: unknown[]; requestBody?: unknown } }>;
+    };
+
+    expect(document.paths['/implicit/search']?.post?.parameters).toEqual([
+      {
+        in: 'query',
+        name: 'q',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ]);
+    expect(document.paths['/implicit/search']?.post?.requestBody).toBeUndefined();
+  });
+
   it('emits correct response schemas when mapped DTO helpers are used with @ApiResponse', async () => {
     class UserResponseDto {
       @IsString()
@@ -824,7 +881,7 @@ describe('OpenApiModule', () => {
     );
   });
 
-  it('keeps nested parameter schema refs at field level', async () => {
+  it('does not emit nested parameter refs that runtime binding cannot consume', async () => {
     class FilterDto {
       @IsString()
       term = '';
@@ -869,11 +926,6 @@ describe('OpenApiModule', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual(
       expect.objectContaining({
-        components: expect.objectContaining({
-          schemas: expect.objectContaining({
-            FilterDto: expect.any(Object),
-          }),
-        }),
         paths: expect.objectContaining({
           '/search': {
             get: expect.objectContaining({
@@ -883,7 +935,7 @@ describe('OpenApiModule', () => {
                   name: 'filter',
                   required: true,
                   schema: {
-                    $ref: '#/components/schemas/FilterDto',
+                    type: 'string',
                   },
                 },
               ],
@@ -892,6 +944,12 @@ describe('OpenApiModule', () => {
         }),
       }),
     );
+
+    const document = response.body as {
+      components?: { schemas?: Record<string, unknown> };
+    };
+
+    expect(document.components?.schemas?.FilterDto).toBeUndefined();
   });
 
   it('adds default error responses when @ApiResponse is absent', async () => {
@@ -932,11 +990,40 @@ describe('OpenApiModule', () => {
             ErrorResponse: {
               additionalProperties: false,
               properties: {
-                error: { type: 'string' },
-                message: { type: 'string' },
-                statusCode: { type: 'integer' },
+                error: {
+                  additionalProperties: false,
+                  properties: {
+                    code: { type: 'string' },
+                    details: {
+                      items: {
+                        additionalProperties: false,
+                        properties: {
+                          code: { type: 'string' },
+                          field: { type: 'string' },
+                          message: { type: 'string' },
+                          source: {
+                            enum: ['path', 'query', 'header', 'cookie', 'body'],
+                            type: 'string',
+                          },
+                        },
+                        required: ['code', 'message'],
+                        type: 'object',
+                      },
+                      type: 'array',
+                    },
+                    message: { type: 'string' },
+                    meta: {
+                      additionalProperties: true,
+                      type: 'object',
+                    },
+                    requestId: { type: 'string' },
+                    status: { type: 'integer' },
+                  },
+                  required: ['code', 'status', 'message'],
+                  type: 'object',
+                },
               },
-              required: ['statusCode', 'message', 'error'],
+              required: ['error'],
               type: 'object',
             },
           }),
@@ -964,6 +1051,50 @@ describe('OpenApiModule', () => {
         }),
       }),
     );
+  });
+
+  it('omits default error response injection when policy is set to omit', async () => {
+    @Controller('/errors')
+    class ErrorsController {
+      @Get('/default')
+      defaultHandler() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      defaultErrorResponsesPolicy: 'omit',
+      sources: [{ controllerToken: ErrorsController }],
+      title: 'Errors API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ErrorsController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      components?: { schemas?: Record<string, unknown> };
+      paths: Record<string, { get?: { responses?: Record<string, unknown> } }>;
+    };
+
+    expect(document.paths['/errors/default']?.get?.responses).toEqual({
+      '200': { description: 'OK' },
+    });
+    expect(document.components?.schemas?.ErrorResponse).toBeUndefined();
   });
 
   it('preserves explicit @ApiResponse and fills missing default error responses', async () => {

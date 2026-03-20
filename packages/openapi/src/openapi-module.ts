@@ -11,9 +11,10 @@ import { Inject, type AsyncModuleOptions, type MaybePromise, type Token } from '
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
-import { buildOpenApiDocument, type OpenApiDocument } from './schema-builder.js';
+import { buildOpenApiDocument, type DefaultErrorResponsesPolicy, type OpenApiDocument } from './schema-builder.js';
 
 export interface OpenApiModuleOptions {
+  defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   title: string;
   version: string;
   ui?: boolean;
@@ -138,6 +139,7 @@ export class OpenApiModule {
             registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
 
             return buildOpenApiDocument({
+              defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
               descriptors: registry.getDescriptors(),
               title: options.title,
               version: options.version,

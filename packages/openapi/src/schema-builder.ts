@@ -85,10 +85,13 @@ export interface OpenApiDocument {
 }
 
 export interface BuildOpenApiDocumentOptions {
+  defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   descriptors: readonly HandlerDescriptor[];
   title: string;
   version: string;
 }
+
+export type DefaultErrorResponsesPolicy = 'inject' | 'omit';
 
 function expressPathToOpenApi(path: string): string {
   return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
@@ -379,18 +382,8 @@ function createParameters(
     const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
     const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' as const };
-    const schema = applyValidationConstraints(inferred, rules);
+    const schema = alignParameterSchemaWithRuntimeBindingContract(applyValidationConstraints(inferred, rules));
     const isRequired = source === 'path' ? true : isPropertyRequired(entry.binding, entry.validation);
-
-    if ('$ref' in schema) {
-      const nestedRule = rules.find(
-        (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
-      );
-
-      if (nestedRule) {
-        ensureComponentSchema(resolveNestedDto(nestedRule.dto), componentSchemas);
-      }
-    }
 
     return {
       in: source,
@@ -408,11 +401,40 @@ function ensureErrorResponseSchema(componentSchemas: Record<string, OpenApiSchem
     componentSchemas[schemaName] = {
       additionalProperties: false,
       properties: {
-        error: { type: 'string' },
-        message: { type: 'string' },
-        statusCode: { type: 'integer' },
+        error: {
+          additionalProperties: false,
+          properties: {
+            code: { type: 'string' },
+            details: {
+              items: {
+                additionalProperties: false,
+                properties: {
+                  code: { type: 'string' },
+                  field: { type: 'string' },
+                  message: { type: 'string' },
+                  source: {
+                    enum: ['path', 'query', 'header', 'cookie', 'body'],
+                    type: 'string',
+                  },
+                },
+                required: ['code', 'message'],
+                type: 'object',
+              },
+              type: 'array',
+            },
+            message: { type: 'string' },
+            meta: {
+              additionalProperties: true,
+              type: 'object',
+            },
+            requestId: { type: 'string' },
+            status: { type: 'integer' },
+          },
+          required: ['code', 'status', 'message'],
+          type: 'object',
+        },
       },
-      required: ['statusCode', 'message', 'error'],
+      required: ['error'],
       type: 'object',
     };
   }
@@ -457,7 +479,7 @@ function createRequestBody(
     return undefined;
   }
 
-  const entries = collectDtoEntries(dto).filter((entry) => entry.binding?.metadata.source === 'body' || entry.binding === undefined);
+  const entries = collectDtoEntries(dto).filter((entry) => entry.binding?.metadata.source === 'body');
 
   if (entries.length === 0) {
     return undefined;
@@ -474,6 +496,27 @@ function createRequestBody(
     },
     ...(entries.some((entry) => isPropertyRequired(entry.binding, entry.validation)) ? { required: true } : {}),
   };
+}
+
+function alignParameterSchemaWithRuntimeBindingContract(schema: OpenApiSchemaObject): OpenApiSchemaObject {
+  if (schema.$ref !== undefined) {
+    return { type: 'string' };
+  }
+
+  if (schema.type === 'object') {
+    return { type: 'string' };
+  }
+
+  if (schema.type === 'array' && schema.items) {
+    if (schema.items.$ref !== undefined || schema.items.type === 'object') {
+      return {
+        ...schema,
+        items: { type: 'string' },
+      };
+    }
+  }
+
+  return schema;
 }
 
 function createResponseObject(
@@ -504,6 +547,7 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
   const paths: Record<string, OpenApiPathItemObject> = {};
   const componentSchemas: Record<string, OpenApiSchemaObject> = {};
   let hasBearerAuth = false;
+  const defaultErrorResponsesPolicy = options.defaultErrorResponsesPolicy ?? 'inject';
 
   for (const descriptor of options.descriptors) {
     const openApiPath = expressPathToOpenApi(descriptor.route.path);
@@ -523,7 +567,9 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
       responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
     }
 
-    addDefaultErrorResponses(responses, componentSchemas);
+    if (defaultErrorResponsesPolicy === 'inject') {
+      addDefaultErrorResponses(responses, componentSchemas);
+    }
 
     const security: OpenApiSecurityRequirementObject[] | undefined =
       methodMeta?.security && methodMeta.security.length > 0
