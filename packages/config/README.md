@@ -46,7 +46,7 @@ const config = loadConfig({
 const service = new ConfigService(config);
 service.get('DATABASE_URL');          // throws if missing
 service.getOptional('REDIS_URL');     // returns undefined if missing
-service.snapshot();                   // returns a copy of all values
+service.snapshot();                   // returns a deep-cloned snapshot
 ```
 
 In practice you use `bootstrapApplication()` from `@konekti/runtime`, which calls `loadConfig()` for you and registers the resulting `ConfigService` as a bootstrap-level provider.
@@ -64,6 +64,23 @@ In practice you use `bootstrapApplication()` from `@konekti/runtime`, which call
 | `processEnv` | `NodeJS.ProcessEnv` | Override the source used instead of the live `process.env` |
 | `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
 | `validate` | `(raw) => T` | Throws on invalid config, returns typed dictionary |
+| `watch` | `boolean` | Used by `createConfigReloader(options)` to enable env file watch reloads |
+
+### `createConfigReloader(options)`
+
+```typescript
+type ConfigReloadReason = 'manual' | 'watch';
+
+type ConfigReloader = {
+  current(): ConfigDictionary;
+  reload(): ConfigDictionary;
+  subscribe(listener: (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void): { unsubscribe(): void };
+  subscribeError(listener: (error: unknown, reason: ConfigReloadReason) => void): { unsubscribe(): void };
+  close(): void;
+};
+```
+
+Use `createConfigReloader()` when you need explicit reload hooks. Reload notifications and errors are delivered via `subscribe(...)` and `subscribeError(...)`; no global process event side-effects are used.
 
 ### `ConfigService`
 
@@ -71,7 +88,7 @@ In practice you use `bootstrapApplication()` from `@konekti/runtime`, which call
 class ConfigService {
   get<T>(key: string): T              // required — throws if missing
   getOptional<T>(key: string): T | undefined
-  snapshot(): ConfigDictionary        // returns current normalized values copy
+  snapshot(): ConfigDictionary        // returns deep-cloned normalized values
 }
 ```
 
@@ -93,9 +110,16 @@ bootstrapApplication(options)
       → ConfigDictionary
   → new ConfigService(values)
   → register as bootstrap-level provider
+
+createConfigReloader(options)
+  → load + validate snapshot
+  → subscribe(listener) / subscribeError(listener)
+  → reload() for manual refresh
+  → watch env file when `watch: true`
+  → close() to stop watching and clear subscriptions
 ```
 
-`ConfigService` is intentionally read-only after bootstrap — no dynamic reload, no namespace API.
+`ConfigService` remains intentionally read-only after bootstrap. Dynamic reload is an explicit opt-in flow through `createConfigReloader()`.
 
 ## File reading order (for contributors)
 

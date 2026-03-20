@@ -4,8 +4,26 @@ import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig } from './load.js';
+import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigService } from './service.js';
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error('Timed out waiting for condition.');
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 describe('loadConfig', () => {
   it('merges defaults, env file, process env, and runtime overrides in order', () => {
@@ -102,6 +120,137 @@ describe('loadConfig', () => {
 
     expect(loaded['KEY']).toBe('value');
   });
+
+  it('emits reload notifications through explicit subscriptions', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-reload-subscribe-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+    });
+
+    try {
+      const updates: Array<{ port: string; reason: string }> = [];
+      const subscription = reloader.subscribe((snapshot, reason) => {
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push({ port, reason });
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      const reloaded = reloader.reload();
+      expect(reloaded['PORT']).toBe('4100');
+      expect(updates).toHaveLength(1);
+      expect(updates[0]?.reason).toBe('manual');
+      expect(updates[0]?.port).toBe('4100');
+
+      subscription.unsubscribe();
+      writeFileSync(envPath, 'PORT=4200\n');
+      reloader.reload();
+      expect(updates).toHaveLength(1);
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('keeps last valid snapshot and reports validation failures in watch mode', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-watch-validation-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      validate: (raw) => {
+        const port = raw['PORT'];
+
+        if (typeof port !== 'string' || !/^\d+$/.test(port)) {
+          throw new Error('PORT must be numeric');
+        }
+
+        return raw;
+      },
+      watch: true,
+    });
+
+    try {
+      const updates: string[] = [];
+      const errors: string[] = [];
+      const updateSubscription = reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          updates.push(port);
+        }
+      });
+      const errorSubscription = reloader.subscribeError((error, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(message);
+      });
+
+      await delay(100);
+      writeFileSync(envPath, 'PORT=oops\n');
+      await waitForCondition(() => errors.length > 0);
+      expect(reloader.current()['PORT']).toBe('4000');
+
+      await delay(100);
+      writeFileSync(envPath, 'PORT=4300\n');
+      await waitForCondition(() => updates.includes('4300'));
+      expect(reloader.current()['PORT']).toBe('4300');
+
+      updateSubscription.unsubscribe();
+      errorSubscription.unsubscribe();
+    } finally {
+      reloader.close();
+    }
+  });
+
+  it('stops watch notifications after close', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-watch-close-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      watch: true,
+    });
+
+    const updates: string[] = [];
+    reloader.subscribe((snapshot, reason) => {
+      if (reason !== 'watch') {
+        return;
+      }
+
+      const port = snapshot['PORT'];
+      if (typeof port === 'string') {
+        updates.push(port);
+      }
+    });
+
+    reloader.close();
+
+    writeFileSync(envPath, 'PORT=4400\n');
+    await delay(150);
+
+    expect(updates).toHaveLength(0);
+  });
 });
 
 describe('ConfigService', () => {
@@ -156,5 +305,39 @@ describe('ConfigService', () => {
 
     expect(port).toBe('3000');
     expect(dbUrl).toBe('postgres://localhost');
+  });
+
+  it('returns deep-cloned snapshots', () => {
+    const service = new ConfigService({
+      db: { host: 'localhost' },
+      features: { flags: ['alpha'] },
+    });
+
+    const snapshot = service.snapshot() as {
+      db: { host: string };
+      features: { flags: string[] };
+    };
+
+    snapshot.db.host = 'remote';
+    snapshot.features.flags.push('beta');
+
+    const latest = service.snapshot() as {
+      db: { host: string };
+      features: { flags: string[] };
+    };
+
+    expect(latest.db.host).toBe('localhost');
+    expect(latest.features.flags).toEqual(['alpha']);
+  });
+
+  it('isolates internal state from caller mutations', () => {
+    const source = {
+      db: { host: 'localhost' },
+    };
+
+    const service = new ConfigService(source);
+    source.db.host = 'mutated';
+
+    expect(service.get('db.host')).toBe('localhost');
   });
 });

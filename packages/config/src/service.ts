@@ -1,5 +1,6 @@
 import { KonektiError } from '@konekti/core';
 
+import { cloneConfigDictionary } from './clone.js';
 import type { ConfigDictionary, DotPaths, DotValue } from './types.js';
 
 function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
@@ -7,7 +8,11 @@ function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
 }
 
 export class ConfigService<T extends Record<string, unknown> = ConfigDictionary> {
-  constructor(private readonly values: T) {}
+  private readonly values: T;
+
+  constructor(values: T) {
+    this.values = cloneConfigDictionary(values);
+  }
 
   get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {
     const value = this._resolve(key as string);
@@ -24,7 +29,7 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
   }
 
   snapshot(): ConfigDictionary {
-    return { ...this.values };
+    return cloneConfigDictionary(this.values);
   }
 
   private _resolve(key: string): unknown {
