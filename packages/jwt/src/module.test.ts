@@ -18,6 +18,10 @@ class NoopRefreshTokenStore implements RefreshTokenStore {
   async revoke(_: string): Promise<void> {}
 
   async revokeBySubject(_: string): Promise<void> {}
+
+  async consume(): Promise<'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch'> {
+    return 'not_found';
+  }
 }
 
 @Inject([DefaultJwtSigner, DefaultJwtVerifier])

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { DefaultJwtSigner } from './signer.js';
 import type { JwtClaims } from './types.js';
 import { DefaultJwtVerifier } from './verifier.js';
@@ -10,7 +10,17 @@ export interface RefreshTokenStore {
   find(tokenId: string): Promise<RefreshTokenRecord | undefined>;
   revoke(tokenId: string): Promise<void>;
   revokeBySubject(subject: string): Promise<void>;
+  consume?(input: RefreshTokenConsumeInput): Promise<RefreshTokenConsumeResult>;
 }
+
+export interface RefreshTokenConsumeInput {
+  tokenId: string;
+  subject: string;
+  family: string;
+  now: Date;
+}
+
+export type RefreshTokenConsumeResult = 'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch';
 
 export interface RefreshTokenRecord {
   id: string;
@@ -39,7 +49,13 @@ export class RefreshTokenService {
     private readonly options: RefreshTokenOptions,
     private readonly signer: DefaultJwtSigner,
     private readonly verifier: DefaultJwtVerifier,
-  ) {}
+  ) {
+    if (this.options.rotation && typeof this.options.store.consume !== 'function') {
+      throw new JwtConfigurationError(
+        'Refresh token rotation requires an atomic store.consume() implementation.',
+      );
+    }
+  }
 
   async issueRefreshToken(subject: string): Promise<string> {
     const family = randomUUID();
@@ -49,6 +65,44 @@ export class RefreshTokenService {
 
   async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
     const claims = await this.verifyRefreshClaims(currentToken);
+
+    if (this.options.rotation) {
+      if (!this.options.store.consume) {
+        throw new JwtConfigurationError(
+          'Refresh token rotation requires an atomic store.consume() implementation.',
+        );
+      }
+
+      const consumeResult = await this.options.store.consume({
+        family: claims.family,
+        now: new Date(),
+        subject: claims.sub,
+        tokenId: claims.jti,
+      });
+
+      if (consumeResult === 'consumed') {
+        const refreshToken = await this.issueRefreshTokenWithFamily(claims.sub, claims.family);
+        const accessToken = await this.signer.signAccessToken({ sub: claims.sub });
+
+        return { accessToken, refreshToken };
+      }
+
+      if (consumeResult === 'already_used') {
+        await this.options.store.revokeBySubject(claims.sub);
+        throw new JwtInvalidTokenError('Refresh token reuse detected.');
+      }
+
+      if (consumeResult === 'expired') {
+        throw new JwtExpiredTokenError('Refresh token has expired.');
+      }
+
+      if (consumeResult === 'not_found') {
+        throw new JwtInvalidTokenError('Refresh token record was not found.');
+      }
+
+      throw new JwtInvalidTokenError('Refresh token record does not match token claims.');
+    }
+
     const record = await this.options.store.find(claims.jti);
 
     if (!record) {
@@ -66,14 +120,6 @@ export class RefreshTokenService {
     if (record.used) {
       await this.options.store.revokeBySubject(record.subject);
       throw new JwtInvalidTokenError('Refresh token reuse detected.');
-    }
-
-    if (this.options.rotation) {
-      await this.options.store.save({ ...record, used: true });
-      const refreshToken = await this.issueRefreshTokenWithFamily(record.subject, record.family);
-      const accessToken = await this.signer.signAccessToken({ sub: record.subject });
-
-      return { accessToken, refreshToken };
     }
 
     const accessToken = await this.signer.signAccessToken({ sub: record.subject });
@@ -111,11 +157,11 @@ export class RefreshTokenService {
       type: 'refresh',
     };
 
-    return this.signer.signAccessToken(claims);
+    return this.signer.signRefreshToken(claims);
   }
 
   private async verifyRefreshClaims(token: string): Promise<RefreshTokenClaims & { sub: string }> {
-    const principal = await this.verifier.verifyAccessToken(token);
+    const principal = await this.verifier.verifyRefreshToken(token);
     const claims = principal.claims;
 
     if (claims.type !== 'refresh') {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { RefreshTokenService, type RefreshTokenRecord, type RefreshTokenStore } from './refresh-token.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
@@ -26,6 +26,33 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
         this.records.delete(id);
       }
     }
+  }
+
+  async consume(input: { tokenId: string; subject: string; family: string; now: Date }): Promise<'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch'> {
+    const record = this.records.get(input.tokenId);
+
+    if (!record) {
+      return 'not_found';
+    }
+
+    if (record.subject !== input.subject || record.family !== input.family) {
+      return 'mismatch';
+    }
+
+    if (record.expiresAt.getTime() <= input.now.getTime()) {
+      return 'expired';
+    }
+
+    if (record.used) {
+      return 'already_used';
+    }
+
+    this.records.set(input.tokenId, {
+      ...record,
+      used: true,
+    });
+
+    return 'consumed';
   }
 
   countBySubject(subject: string): number {
@@ -59,21 +86,38 @@ function readTokenPayload(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as Record<string, unknown>;
 }
 
+function createService(
+  store: RefreshTokenStore,
+  options: { expiresInSeconds?: number; rotation?: boolean; refreshSecret?: string } = {},
+): { service: RefreshTokenService; verifier: DefaultJwtVerifier } {
+  const refreshOptions = {
+    expiresInSeconds: options.expiresInSeconds ?? 3600,
+    rotation: options.rotation ?? true,
+    secret: options.refreshSecret ?? 'refresh-secret',
+    store,
+  };
+
+  const signer = new DefaultJwtSigner({
+    algorithms: ['HS256'],
+    refreshToken: refreshOptions,
+    secret: 'access-secret',
+  });
+  const verifier = new DefaultJwtVerifier({
+    algorithms: ['HS256'],
+    refreshToken: refreshOptions,
+    secret: 'access-secret',
+  });
+
+  return {
+    service: new RefreshTokenService(refreshOptions, signer, verifier),
+    verifier,
+  };
+}
+
 describe('RefreshTokenService', () => {
   it('issues a refresh token with expected claims', async () => {
     const store = new InMemoryRefreshTokenStore();
-    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const service = new RefreshTokenService(
-      {
-        expiresInSeconds: 3600,
-        rotation: true,
-        secret: 'refresh-secret',
-        store,
-      },
-      signer,
-      verifier,
-    );
+    const { service } = createService(store);
 
     const refreshToken = await service.issueRefreshToken('user-1');
     const payload = readTokenPayload(refreshToken);
@@ -86,18 +130,7 @@ describe('RefreshTokenService', () => {
 
   it('rotates refresh token and marks previous token as used', async () => {
     const store = new InMemoryRefreshTokenStore();
-    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const service = new RefreshTokenService(
-      {
-        expiresInSeconds: 3600,
-        rotation: true,
-        secret: 'refresh-secret',
-        store,
-      },
-      signer,
-      verifier,
-    );
+    const { service } = createService(store);
     const firstToken = await service.issueRefreshToken('user-1');
     const firstPayload = readTokenPayload(firstToken);
     const firstRecord = await store.find(firstPayload.jti as string);
@@ -117,18 +150,7 @@ describe('RefreshTokenService', () => {
 
   it('detects refresh token reuse and revokes all tokens for the subject', async () => {
     const store = new InMemoryRefreshTokenStore();
-    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const service = new RefreshTokenService(
-      {
-        expiresInSeconds: 3600,
-        rotation: true,
-        secret: 'refresh-secret',
-        store,
-      },
-      signer,
-      verifier,
-    );
+    const { service } = createService(store);
     const token = await service.issueRefreshToken('user-1');
 
     await service.rotateRefreshToken(token);
@@ -138,18 +160,7 @@ describe('RefreshTokenService', () => {
 
   it('revokeAllForSubject removes all subject tokens', async () => {
     const store = new InMemoryRefreshTokenStore();
-    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const service = new RefreshTokenService(
-      {
-        expiresInSeconds: 3600,
-        rotation: true,
-        secret: 'refresh-secret',
-        store,
-      },
-      signer,
-      verifier,
-    );
+    const { service } = createService(store);
 
     await service.issueRefreshToken('user-1');
     await service.issueRefreshToken('user-1');
@@ -161,23 +172,68 @@ describe('RefreshTokenService', () => {
 
   it('rejects expired refresh token records', async () => {
     const store = new InMemoryRefreshTokenStore();
-    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'refresh-secret' });
-    const service = new RefreshTokenService(
-      {
-        expiresInSeconds: 3600,
-        rotation: true,
-        secret: 'refresh-secret',
-        store,
-      },
-      signer,
-      verifier,
-    );
+    const { service } = createService(store);
     const token = await service.issueRefreshToken('user-1');
     const payload = readTokenPayload(token);
 
     store.markExpired(payload.jti as string);
 
     await expect(service.rotateRefreshToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
+  });
+
+  it('uses refreshToken.secret to sign and verify refresh tokens', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const { service, verifier } = createService(store, { refreshSecret: 'refresh-secret' });
+    const token = await service.issueRefreshToken('user-1');
+
+    await expect(verifier.verifyRefreshToken(token)).resolves.toMatchObject({ subject: 'user-1' });
+    await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('allows only one successful rotation under concurrent requests', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const { service } = createService(store);
+    const token = await service.issueRefreshToken('user-1');
+
+    const [first, second] = await Promise.allSettled([
+      service.rotateRefreshToken(token),
+      service.rotateRefreshToken(token),
+    ]);
+
+    const fulfilled = [first, second].filter((result): result is PromiseFulfilledResult<{ accessToken: string; refreshToken: string }> => result.status === 'fulfilled');
+    const rejected = [first, second].filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('fails fast when rotation is enabled with a legacy store lacking consume()', () => {
+    const legacyStore: RefreshTokenStore = {
+      async save(_token: RefreshTokenRecord): Promise<void> {},
+      async find(_tokenId: string): Promise<RefreshTokenRecord | undefined> {
+        return undefined;
+      },
+      async revoke(_tokenId: string): Promise<void> {},
+      async revokeBySubject(_subject: string): Promise<void> {},
+    };
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: true,
+      secret: 'refresh-secret',
+      store: legacyStore,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+
+    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
   });
 });

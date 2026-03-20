@@ -132,6 +132,38 @@ export class DefaultJwtVerifier {
   }
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
+    return this.verifyToken(token, this.options, this.jwksClient);
+  }
+
+  async verifyRefreshToken(token: string): Promise<JwtPrincipal> {
+    return this.verifyToken(token, this.resolveRefreshVerificationOptions(), undefined);
+  }
+
+  private resolveRefreshVerificationOptions(): JwtVerifierOptions {
+    const refreshToken = this.options.refreshToken;
+
+    if (!refreshToken) {
+      throw new JwtConfigurationError('JWT refresh token options are not configured.');
+    }
+
+    return {
+      ...this.options,
+      algorithms: this.options.algorithms.filter((algorithm) => algorithm in HMAC_HASH),
+      jwksUri: undefined,
+      keys: undefined,
+      privateKey: undefined,
+      publicKey: undefined,
+      requireExp: true,
+      secret: refreshToken.secret,
+      secretOrKeyProvider: undefined,
+    };
+  }
+
+  private async verifyToken(
+    token: string,
+    options: JwtVerifierOptions,
+    jwksClient: JwksClient | undefined,
+  ): Promise<JwtPrincipal> {
     const segments = token.split('.');
 
     if (segments.length !== 3) {
@@ -141,7 +173,7 @@ export class DefaultJwtVerifier {
     const [headerSegment, payloadSegment, signatureSegment] = segments;
     const header = parseJwtPart<{ [key: string]: unknown; alg?: string; kid?: string; typ?: string }>(headerSegment);
     const payload = parseJwtPart<JwtClaims>(payloadSegment);
-    const algorithms = this.options.algorithms;
+    const algorithms = options.algorithms;
 
     if (!isAllowedAlgorithm(header.alg, algorithms)) {
       throw new JwtInvalidTokenError('JWT algorithm is not allowed.');
@@ -150,8 +182,8 @@ export class DefaultJwtVerifier {
     const signingInput = `${headerSegment}.${payloadSegment}`;
 
     if (header.alg in HMAC_HASH) {
-      const providerKey = this.options.secretOrKeyProvider
-        ? await this.options.secretOrKeyProvider({ alg: header.alg, ...header })
+      const providerKey = options.secretOrKeyProvider
+        ? await options.secretOrKeyProvider({ alg: header.alg, ...header })
         : undefined;
 
       if (providerKey !== undefined && typeof providerKey !== 'string') {
@@ -161,8 +193,8 @@ export class DefaultJwtVerifier {
       const secret =
         providerKey ??
         ((header.kid !== undefined && header.kid !== ''
-          ? this.options.keys?.find((k) => k.kid === header.kid)?.secret
-          : undefined) ?? this.options.secret);
+          ? options.keys?.find((k) => k.kid === header.kid)?.secret
+          : undefined) ?? options.secret);
 
       if (!secret) {
         throw new JwtConfigurationError('JWT secret is not configured.');
@@ -170,16 +202,16 @@ export class DefaultJwtVerifier {
 
       verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
     } else {
-      const providerKey = this.options.secretOrKeyProvider
-        ? await this.options.secretOrKeyProvider({ alg: header.alg, ...header })
+      const providerKey = options.secretOrKeyProvider
+        ? await options.secretOrKeyProvider({ alg: header.alg, ...header })
         : undefined;
       const publicKey =
         providerKey ??
-        (this.jwksClient
-          ? await this.resolveJwksPublicKey(header.kid)
+        (jwksClient
+          ? await this.resolveJwksPublicKey(header.kid, jwksClient)
           : ((header.kid !== undefined && header.kid !== ''
-              ? this.options.keys?.find((k) => k.kid === header.kid)?.publicKey
-              : undefined) ?? this.options.publicKey));
+              ? options.keys?.find((k) => k.kid === header.kid)?.publicKey
+              : undefined) ?? options.publicKey));
 
       if (!publicKey) {
         throw new JwtConfigurationError('JWT public key is not configured.');
@@ -189,13 +221,13 @@ export class DefaultJwtVerifier {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const clockSkew = this.options.clockSkewSeconds ?? 0;
+    const clockSkew = options.clockSkewSeconds ?? 0;
 
-    if (this.options.requireExp !== false && typeof payload.exp !== 'number') {
+    if (options.requireExp !== false && typeof payload.exp !== 'number') {
       throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
     }
 
-    if (typeof this.options.maxAge === 'number' && typeof payload.iat === 'number' && now - payload.iat > this.options.maxAge) {
+    if (typeof options.maxAge === 'number' && typeof payload.iat === 'number' && now - payload.iat > options.maxAge) {
       throw new JwtExpiredTokenError('JWT exceeds maxAge.');
     }
 
@@ -207,12 +239,12 @@ export class DefaultJwtVerifier {
       throw new JwtInvalidTokenError('JWT is not active yet.');
     }
 
-    if (this.options.issuer && payload.iss !== this.options.issuer) {
+    if (options.issuer && payload.iss !== options.issuer) {
       throw new JwtInvalidTokenError('JWT issuer does not match.');
     }
 
-    if (this.options.audience) {
-      const expectedAudience = Array.isArray(this.options.audience) ? this.options.audience : [this.options.audience];
+    if (options.audience) {
+      const expectedAudience = Array.isArray(options.audience) ? options.audience : [options.audience];
       const actualAudience = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
 
       if (!expectedAudience.some((audience) => actualAudience.includes(audience))) {
@@ -223,15 +255,11 @@ export class DefaultJwtVerifier {
     return normalizePrincipal(payload);
   }
 
-  private async resolveJwksPublicKey(kid: string | undefined): Promise<KeyObject> {
-    if (!this.jwksClient) {
-      throw new JwtConfigurationError('JWKS client is not configured.');
-    }
-
+  private async resolveJwksPublicKey(kid: string | undefined, jwksClient: JwksClient): Promise<KeyObject> {
     if (typeof kid !== 'string' || kid.length === 0) {
       throw new JwtInvalidTokenError('JWT is missing key id (kid) for JWKS resolution.');
     }
 
-    return this.jwksClient.getSigningKey(kid);
+    return jwksClient.getSigningKey(kid);
   }
 }
