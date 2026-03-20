@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope, defineControllerMetadata } from '@konekti/core';
 import { REDIS_CLIENT } from '@konekti/redis';
@@ -49,6 +49,8 @@ const bullmqState = vi.hoisted(() => {
   >();
 
   let sequence = 0;
+  const failQueueCreation = new Set<string>();
+  const failWorkerCreation = new Set<string>();
 
   function attemptsFor(job: MockQueueJob): number {
     if (typeof job.opts.attempts === 'number' && Number.isFinite(job.opts.attempts) && job.opts.attempts > 0) {
@@ -102,6 +104,8 @@ const bullmqState = vi.hoisted(() => {
     clear() {
       queues.clear();
       workers.clear();
+      failQueueCreation.clear();
+      failWorkerCreation.clear();
       sequence = 0;
     },
     createQueue(name: string) {
@@ -139,6 +143,8 @@ const bullmqState = vi.hoisted(() => {
       sequence += 1;
       return String(sequence);
     },
+    failQueueCreation,
+    failWorkerCreation,
     queues,
     workers,
     async dispatch(name: string, job: MockQueueJob) {
@@ -152,6 +158,10 @@ vi.mock('bullmq', () => ({
     private readonly queue;
 
     constructor(private readonly name: string, _options: { connection: MockRedisConnection }) {
+      if (bullmqState.failQueueCreation.has(name)) {
+        throw new Error(`queue construct fail:${name}`);
+      }
+
       this.queue = bullmqState.createQueue(name);
     }
 
@@ -185,6 +195,10 @@ vi.mock('bullmq', () => ({
         limiter?: { duration: number; max: number };
       },
     ) {
+      if (bullmqState.failWorkerCreation.has(name)) {
+        throw new Error(`worker construct fail:${name}`);
+      }
+
       this.worker = bullmqState.createWorker(name, processor, options);
     }
 
@@ -216,6 +230,7 @@ import type { Queue } from './types.js';
 
 class MockRedisClient {
   private duplicateSequence = 0;
+  failConnectOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
   readonly duplicates: MockRedisConnection[] = [];
@@ -223,8 +238,13 @@ class MockRedisClient {
   duplicate(): MockRedisConnection {
     this.duplicateSequence += 1;
     const id = `dup-${this.duplicateSequence}`;
+    const duplicateIndex = this.duplicateSequence;
     const connection: MockRedisConnection = {
       connect: async () => {
+        if (this.failConnectOnDuplicate === duplicateIndex) {
+          throw new Error(`connect fail:${id}`);
+        }
+
         connection.status = 'ready';
       },
       disconnect: () => {
@@ -282,6 +302,10 @@ function createDeferred<T = void>() {
 describe('@konekti/queue', () => {
   beforeEach(() => {
     bullmqState.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('writes queue worker metadata from @QueueWorker() using standard decorators', () => {
@@ -583,6 +607,124 @@ describe('@konekti/queue', () => {
 
     const deadLetters = redis.deadLetters.get('konekti:queue:dead-letter:shutdown-failing-job') ?? [];
     expect(deadLetters).toHaveLength(1);
+  });
+
+  it('rolls back partially initialized workers, queues, and connections when startup fails', async () => {
+    class StartupFirstJob {
+      constructor(public readonly id: string) {}
+    }
+
+    class StartupSecondJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(StartupFirstJob)
+    class StartupFirstWorker {
+      async handle(_job: StartupFirstJob): Promise<void> {}
+    }
+
+    @QueueWorker(StartupSecondJob)
+    class StartupSecondWorker {
+      async handle(_job: StartupSecondJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [StartupFirstWorker, StartupSecondWorker],
+    });
+
+    bullmqState.failWorkerCreation.add('StartupSecondJob');
+
+    const redis = new MockRedisClient();
+
+    await expect(
+      bootstrapApplication({
+        mode: 'test',
+        providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('worker construct fail:StartupSecondJob');
+
+    expect(bullmqState.queues.get('StartupFirstJob')?.closeCalls).toBe(1);
+    expect(bullmqState.workers.get('StartupFirstJob')?.closeCalls).toBe(1);
+    expect(redis.duplicates.length).toBe(4);
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+  });
+
+  it('returns deterministic state-aware errors for enqueue after shutdown', async () => {
+    class ShutdownStateJob {
+      constructor(public readonly value: string) {}
+    }
+
+    @QueueWorker(ShutdownStateJob)
+    class ShutdownStateWorker {
+      async handle(_job: ShutdownStateJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [ShutdownStateWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const queue = await app.container.resolve<Queue>(QUEUE);
+
+    await app.close();
+
+    await expect(queue.enqueue(new ShutdownStateJob('x'))).rejects.toThrow('Queue lifecycle state is stopped.');
+  });
+
+  it('times out dead-letter drain writes during shutdown and logs once', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+
+    class TimeoutFailingJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(TimeoutFailingJob, { attempts: 1, jobName: 'timeout-failing-job' })
+    class TimeoutFailingWorker {
+      async handle(_job: TimeoutFailingJob): Promise<void> {
+        throw new Error('timeout failure');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [TimeoutFailingWorker],
+    });
+
+    const redis = new MockRedisClient();
+    redis.rpush = () => new Promise<number>(() => undefined);
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+
+    await queue.enqueue(new TimeoutFailingJob('job-1'));
+
+    const closePromise = app.close();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await closePromise;
+
+    expect(
+      loggerEvents.filter((event) =>
+        event.includes('error:QueueLifecycleService:Dead-letter write did not complete within shutdown timeout.'),
+      ),
+    ).toHaveLength(1);
   });
 
   it('passes rate limiter options from @QueueWorker() to Bull worker configuration', async () => {
