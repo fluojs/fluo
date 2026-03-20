@@ -1,22 +1,10 @@
-export interface GeneratedFile {
-  content: string;
-  path: string;
-}
+import type { GeneratorKind as ManifestGeneratorKind } from './generators/manifest.js';
 
-export type GeneratorKind = 'controller' | 'guard' | 'interceptor' | 'middleware' | 'module' | 'repo' | 'request-dto' | 'response-dto' | 'service';
+export type { GenerateOptions, GeneratedFile, GeneratorFactory, GeneratorRegistration } from './generator-types.js';
 
-export interface GenerateOptions {
-  force?: boolean;
-}
+export type GeneratorKind = ManifestGeneratorKind;
 
 export interface ModuleRegistration {
   className: string;
   kind: 'controller' | 'provider';
-}
-
-export type GeneratorFactory = (name: string, options?: GenerateOptions) => GeneratedFile[];
-
-export interface GeneratorRegistration {
-  factory: GeneratorFactory;
-  description?: string;
 }

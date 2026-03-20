@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { runGenerateCommand } from './commands/generate.js';
 import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
+import { generatorManifest, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 
@@ -55,15 +56,12 @@ type TopLevelCommandHelpEntry = {
 };
 
 const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
-  { aliases: ['co'], description: 'Generate a controller and register it in the module controllers array.', kind: 'controller', schematic: 'controller' },
-  { aliases: ['gu'], description: 'Generate a guard and register it as a provider.', kind: 'guard', schematic: 'guard' },
-  { aliases: ['in'], description: 'Generate an interceptor and register it as a provider.', kind: 'interceptor', schematic: 'interceptor' },
-  { aliases: ['mi'], description: 'Generate a middleware and register it in the module middleware array.', kind: 'middleware', schematic: 'middleware' },
-  { aliases: ['mo'], description: 'Generate a module.', kind: 'module', schematic: 'module' },
-  { aliases: ['repo'], description: 'Generate a repository.', kind: 'repo', schematic: 'repository' },
-  { aliases: ['req'], description: 'Generate a request DTO with body binding and validation.', kind: 'request-dto', schematic: 'request-dto' },
-  { aliases: ['res'], description: 'Generate a response DTO for typed response payloads.', kind: 'response-dto', schematic: 'response-dto' },
-  { aliases: ['s'], description: 'Generate a service and register it as a provider.', kind: 'service', schematic: 'service' },
+  ...generatorManifest.map((entry) => ({
+    aliases: [...entry.aliases],
+    description: entry.description,
+    kind: entry.kind,
+    schematic: entry.schematic,
+  })),
 ];
 
 const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
@@ -79,12 +77,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
 ];
 
 function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const entry = GENERATE_KIND_HELP.find((item) => item.kind === value || item.schematic === value || item.aliases.includes(value));
-  return entry?.kind;
+  return resolveGeneratorKind(value);
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -159,25 +152,41 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
     throw new Error(generateUsage());
   }
 
+  if (name.startsWith('-')) {
+    throw new Error(`Invalid resource name "${name}": names cannot start with "-".`);
+  }
+
   const parsedOptions: GenerateOptions = {};
   let targetDirectory: string | undefined;
+  let seenForce = false;
+  let seenTargetDirectory = false;
 
   for (let index = 0; index < optionArgs.length; index += 1) {
     const option = optionArgs[index];
     const next = optionArgs[index + 1];
 
     if (option === '--target-directory' || option === '-o') {
-      if (!next) {
-        throw new Error('Expected --target-directory to have a value.');
+      if (seenTargetDirectory) {
+        throw new Error('Duplicate --target-directory option.');
+      }
+
+      if (!next || next.startsWith('-')) {
+        throw new Error('Expected --target-directory to have a path value.');
       }
 
       targetDirectory = next;
+      seenTargetDirectory = true;
       index += 1;
       continue;
     }
 
     if (option === '--force' || option === '-f') {
+      if (seenForce) {
+        throw new Error('Duplicate --force option.');
+      }
+
       parsedOptions.force = true;
+      seenForce = true;
       continue;
     }
 
