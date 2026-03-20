@@ -50,6 +50,14 @@ export class RefreshTokenService {
     private readonly signer: DefaultJwtSigner,
     private readonly verifier: DefaultJwtVerifier,
   ) {
+    if (typeof this.options.secret !== 'string' || this.options.secret.length === 0) {
+      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
+    }
+
+    if (!Number.isFinite(this.options.expiresInSeconds) || this.options.expiresInSeconds <= 0) {
+      throw new JwtConfigurationError('JWT refresh token expiresInSeconds must be a positive finite number.');
+    }
+
     if (this.options.rotation && typeof this.options.store.consume !== 'function') {
       throw new JwtConfigurationError(
         'Refresh token rotation requires an atomic store.consume() implementation.',

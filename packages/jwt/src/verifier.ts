@@ -5,7 +5,7 @@ import { Inject } from '@konekti/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { JwksClient } from './jwks.js';
-import type { JwtAlgorithm, JwtClaims, JwtPrincipal, JwtVerifierOptions } from './types.js';
+import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from './types.js';
 
 export const JWT_OPTIONS = Symbol.for('konekti.jwt.options');
 
@@ -26,6 +26,85 @@ export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
 
 function isAllowedAlgorithm(alg: string | undefined, allowed: JwtAlgorithm[]): alg is JwtAlgorithm {
   return typeof alg === 'string' && (allowed as string[]).includes(alg) && (alg in HMAC_HASH || alg in ASYMMETRIC_HASH);
+}
+
+function isFiniteNumericDate(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function resolveHmacSecret(options: JwtVerifierOptions, kid: string | undefined): string | undefined {
+  const keys = options.keys;
+
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return options.secret;
+  }
+
+  if (typeof kid === 'string' && kid.length > 0) {
+    const matchingKey = keys.find((entry) => entry.kid === kid);
+
+    if (!matchingKey) {
+      throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
+    }
+
+    if (typeof matchingKey.secret !== 'string' || matchingKey.secret.length === 0) {
+      throw new JwtConfigurationError(`JWT key "${kid}" does not provide an HMAC secret.`);
+    }
+
+    return matchingKey.secret;
+  }
+
+  const hmacKeys = keys.filter(
+    (entry): entry is JwtKeyEntry & { secret: string } => typeof entry.secret === 'string' && entry.secret.length > 0,
+  );
+
+  if (hmacKeys.length > 1) {
+    throw new JwtInvalidTokenError('JWT is missing key id (kid) for multi-key HMAC verification.');
+  }
+
+  if (hmacKeys.length === 1) {
+    return hmacKeys[0].secret;
+  }
+
+  return options.secret;
+}
+
+function resolveStaticPublicKey(
+  options: JwtVerifierOptions,
+  kid: string | undefined,
+): string | KeyObject | undefined {
+  const keys = options.keys;
+
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return options.publicKey;
+  }
+
+  if (typeof kid === 'string' && kid.length > 0) {
+    const matchingKey = keys.find((entry) => entry.kid === kid);
+
+    if (!matchingKey) {
+      throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
+    }
+
+    if (matchingKey.publicKey === undefined) {
+      throw new JwtConfigurationError(`JWT key "${kid}" does not provide a public key.`);
+    }
+
+    return matchingKey.publicKey;
+  }
+
+  const publicKeys = keys.filter(
+    (entry): entry is JwtKeyEntry & { publicKey: string | KeyObject } => entry.publicKey !== undefined,
+  );
+
+  if (publicKeys.length > 1) {
+    throw new JwtInvalidTokenError('JWT is missing key id (kid) for multi-key public key verification.');
+  }
+
+  if (publicKeys.length === 1) {
+    return publicKeys[0].publicKey;
+  }
+
+  return options.publicKey;
 }
 
 function verifyHmacSignature(
@@ -146,16 +225,20 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('JWT refresh token options are not configured.');
     }
 
+    if (typeof refreshToken.secret !== 'string' || refreshToken.secret.length === 0) {
+      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
+    }
+
+    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH);
+
     return {
-      ...this.options,
-      algorithms: this.options.algorithms.filter((algorithm) => algorithm in HMAC_HASH),
-      jwksUri: undefined,
-      keys: undefined,
-      privateKey: undefined,
-      publicKey: undefined,
+      algorithms,
+      audience: this.options.audience,
+      clockSkewSeconds: this.options.clockSkewSeconds,
+      issuer: this.options.issuer,
+      maxAge: this.options.maxAge,
       requireExp: true,
       secret: refreshToken.secret,
-      secretOrKeyProvider: undefined,
     };
   }
 
@@ -190,11 +273,7 @@ export class DefaultJwtVerifier {
         throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
       }
 
-      const secret =
-        providerKey ??
-        ((header.kid !== undefined && header.kid !== ''
-          ? options.keys?.find((k) => k.kid === header.kid)?.secret
-          : undefined) ?? options.secret);
+      const secret = providerKey ?? resolveHmacSecret(options, header.kid);
 
       if (!secret) {
         throw new JwtConfigurationError('JWT secret is not configured.');
@@ -209,9 +288,7 @@ export class DefaultJwtVerifier {
         providerKey ??
         (jwksClient
           ? await this.resolveJwksPublicKey(header.kid, jwksClient)
-          : ((header.kid !== undefined && header.kid !== ''
-              ? options.keys?.find((k) => k.kid === header.kid)?.publicKey
-              : undefined) ?? options.publicKey));
+          : resolveStaticPublicKey(options, header.kid));
 
       if (!publicKey) {
         throw new JwtConfigurationError('JWT public key is not configured.');
@@ -227,8 +304,22 @@ export class DefaultJwtVerifier {
       throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
     }
 
-    if (typeof options.maxAge === 'number' && typeof payload.iat === 'number' && now - payload.iat > options.maxAge) {
-      throw new JwtExpiredTokenError('JWT exceeds maxAge.');
+    if (typeof options.maxAge === 'number') {
+      if (!Number.isFinite(options.maxAge) || options.maxAge < 0) {
+        throw new JwtConfigurationError('JWT maxAge must be a non-negative finite number.');
+      }
+
+      if (!isFiniteNumericDate(payload.iat)) {
+        throw new JwtInvalidTokenError('JWT iat claim must be a finite numeric date when maxAge is configured.');
+      }
+
+      if (payload.iat - clockSkew > now) {
+        throw new JwtInvalidTokenError('JWT iat claim cannot be in the future.');
+      }
+
+      if (now - payload.iat > options.maxAge + clockSkew) {
+        throw new JwtExpiredTokenError('JWT exceeds maxAge.');
+      }
     }
 
     if (typeof payload.exp === 'number' && payload.exp + clockSkew < now) {

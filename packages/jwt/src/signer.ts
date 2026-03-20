@@ -3,7 +3,7 @@ import { createHmac, createSign } from 'node:crypto';
 import { Inject } from '@konekti/core';
 
 import { JwtConfigurationError } from './errors.js';
-import type { JwtAlgorithm, JwtClaims, JwtVerifierOptions } from './types.js';
+import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from './types.js';
 import { ASYMMETRIC_HASH, HMAC_HASH, JWT_OPTIONS } from './verifier.js';
 
 function encodeBase64Url(value: Buffer | string): string {
@@ -12,6 +12,20 @@ function encodeBase64Url(value: Buffer | string): string {
     .replace(/=/g, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
+}
+
+function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgorithm): JwtKeyEntry | undefined {
+  const keys = options.keys;
+
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return undefined;
+  }
+
+  if (algorithm in HMAC_HASH) {
+    return keys.find((entry) => typeof entry.secret === 'string' && entry.secret.length > 0);
+  }
+
+  return keys.find((entry) => entry.privateKey !== undefined);
 }
 
 @Inject([JWT_OPTIONS])
@@ -34,12 +48,21 @@ export class DefaultJwtSigner {
       throw new JwtConfigurationError('JWT refresh token options are not configured.');
     }
 
+    if (typeof refreshToken.secret !== 'string' || refreshToken.secret.length === 0) {
+      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
+    }
+
+    if (!Number.isFinite(refreshToken.expiresInSeconds) || refreshToken.expiresInSeconds <= 0) {
+      throw new JwtConfigurationError('JWT refresh token expiresInSeconds must be a positive finite number.');
+    }
+
+    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH);
+
     return {
-      ...this.options,
+      audience: this.options.audience,
       accessTokenTtlSeconds: refreshToken.expiresInSeconds,
-      algorithms: this.options.algorithms.filter((algorithm) => algorithm in HMAC_HASH),
-      keys: undefined,
-      privateKey: undefined,
+      algorithms,
+      issuer: this.options.issuer,
       secret: refreshToken.secret,
     };
   }
@@ -77,7 +100,7 @@ export class DefaultJwtSigner {
       iss: claims.iss ?? options.issuer,
     };
 
-    const activeKey = options.keys?.[0];
+    const activeKey = resolveSigningKeyEntry(options, algorithm);
     const header: Record<string, string> = {
       alg: algorithm,
       typ: 'JWT',
