@@ -10,6 +10,7 @@ import {
   getControllerMetadata,
   getDtoBindingSchema,
   getDtoFieldBindingMetadata,
+  getInheritedClassDiMetadata,
   getModuleMetadata,
   getOwnClassDiMetadata,
   getRouteMetadata,
@@ -34,6 +35,43 @@ describe('metadata helpers', () => {
       middleware: ['LoggingMiddleware'],
       providers: ['LoggerProvider'],
       controllers: undefined,
+    });
+  });
+
+  it('preserves prior module collections across partial writes and returns clones', () => {
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      imports: ['SharedModule'],
+      providers: ['LoggerProvider'],
+    });
+    defineModuleMetadata(ExampleModule, {
+      global: true,
+      middleware: ['LoggingMiddleware'],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+
+    expect(metadata).toEqual({
+      controllers: undefined,
+      exports: undefined,
+      global: true,
+      imports: ['SharedModule'],
+      middleware: ['LoggingMiddleware'],
+      providers: ['LoggerProvider'],
+    });
+
+    if (metadata?.imports) {
+      (metadata.imports as unknown as unknown[]).push('MutatedModule');
+    }
+
+    expect(getModuleMetadata(ExampleModule)).toEqual({
+      controllers: undefined,
+      exports: undefined,
+      global: true,
+      imports: ['SharedModule'],
+      middleware: ['LoggingMiddleware'],
+      providers: ['LoggerProvider'],
     });
   });
 
@@ -123,6 +161,62 @@ describe('metadata helpers', () => {
 
     expect(getOwnClassDiMetadata(ExampleService)).toEqual({
       inject: ['LOGGER'],
+      scope: 'request',
+    });
+  });
+
+  it('falls back to inherited DI metadata while keeping own lookups explicit', () => {
+    class BaseService {}
+
+    defineClassDiMetadata(BaseService, {
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+
+    class ChildService extends BaseService {}
+
+    expect(getOwnClassDiMetadata(ChildService)).toBeUndefined();
+    expect(getInheritedClassDiMetadata(ChildService)).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+    expect(getClassDiMetadata(ChildService)).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+  });
+
+  it('merges child DI metadata with inherited fallback and clones returned arrays', () => {
+    class BaseService {}
+
+    defineClassDiMetadata(BaseService, {
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+
+    class ChildService extends BaseService {}
+
+    defineClassDiMetadata(ChildService, {
+      inject: ['CACHE'],
+    });
+
+    const metadata = getInheritedClassDiMetadata(ChildService);
+
+    expect(getOwnClassDiMetadata(ChildService)).toEqual({
+      inject: ['CACHE'],
+      scope: undefined,
+    });
+    expect(metadata).toEqual({
+      inject: ['CACHE'],
+      scope: 'request',
+    });
+
+    if (metadata?.inject) {
+      (metadata.inject as unknown as unknown[]).push('MUTATED');
+    }
+
+    expect(getInheritedClassDiMetadata(ChildService)).toEqual({
+      inject: ['CACHE'],
       scope: 'request',
     });
   });
