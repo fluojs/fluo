@@ -79,6 +79,52 @@ describe('@konekti/testing', () => {
 
     expect(service.logger).toEqual({ name: 'fake-logger' });
   });
+
+  it('treats direct function mocks in overrideProvider as useValue', async () => {
+    const FUNCTION_TOKEN = Symbol('function-token');
+    const mockFn = vi.fn().mockReturnValue('ok');
+
+    const testingModule = await createTestingModule({
+      rootModule: AppModule,
+    })
+      .overrideProvider(FUNCTION_TOKEN, mockFn)
+      .compile();
+
+    const resolved = await testingModule.resolve<typeof mockFn>(FUNCTION_TOKEN);
+
+    expect(resolved).toBe(mockFn);
+    expect(resolved()).toBe('ok');
+    expect(mockFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports class constructor overrides via overrideProvider', async () => {
+    class Logger {
+      readonly name: string = 'logger';
+    }
+
+    class FakeLogger {
+      readonly name: string = 'fake-logger';
+    }
+
+    @Inject([Logger])
+    class UserService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    @Module({
+      providers: [Logger, UserService],
+    })
+    class ServiceModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(Logger, FakeLogger)
+      .compile();
+
+    const service = await testingModule.resolve(UserService);
+
+    expect(service.logger).toBeInstanceOf(FakeLogger);
+    expect(service.logger.name).toBe('fake-logger');
+  });
 });
 
 describe('createMock', () => {

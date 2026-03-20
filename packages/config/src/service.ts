@@ -2,6 +2,10 @@ import { KonektiError } from '@konekti/core';
 
 import type { ConfigDictionary, DotPaths, DotValue } from './types.js';
 
+function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && Object.hasOwn(value, key);
+}
+
 export class ConfigService<T extends Record<string, unknown> = ConfigDictionary> {
   constructor(private readonly values: T) {}
 
@@ -24,16 +28,16 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
   }
 
   private _resolve(key: string): unknown {
-    if (key in this.values) {
+    if (hasOwn(this.values, key)) {
       return this.values[key];
     }
     const parts = key.split('.');
     let current: unknown = this.values;
     for (const part of parts) {
-      if (current === null || typeof current !== 'object' || !(part in (current as Record<string, unknown>))) {
+      if (!hasOwn(current, part)) {
         return undefined;
       }
-      current = (current as Record<string, unknown>)[part];
+      current = current[part];
     }
     return current;
   }
