@@ -636,6 +636,78 @@ describe('dispatcher runtime', () => {
     ]);
   });
 
+  it('isolates request start and handler matched observer failures from request execution', async () => {
+    const events: string[] = [];
+
+    const observer = {
+      onHandlerMatched() {
+        events.push('match');
+        throw new Error('match observer failed');
+      },
+      onRequestFinish() {
+        events.push('finish');
+      },
+      onRequestStart() {
+        events.push('start');
+        throw new Error('start observer failed');
+      },
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        events.push('handler');
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(HealthController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: HealthController }]),
+      observers: [observer],
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/health', 'GET', { 'x-request-id': 'req-observer-isolation' }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(events).toEqual(['start', 'match', 'handler', 'finish']);
+  });
+
+  it('passes matched handler metadata to request error observers', async () => {
+    const events: string[] = [];
+
+    class RequestLogger {
+      onRequestError(context: RequestObservationContext) {
+        events.push(`error:${context.handler?.methodName ?? 'none'}`);
+      }
+    }
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/boom')
+      fail() {
+        throw new Error('boom');
+      }
+    }
+
+    const root = new Container().register(RequestLogger, HealthController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: HealthController }]),
+      observers: [RequestLogger],
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/health/boom', 'GET', { 'x-request-id': 'req-observer-handler' }), response);
+
+    expect(response.statusCode).toBe(500);
+    expect(events).toEqual(['error:fail']);
+  });
+
   it('returns a canonical 403 response when a guard denies the request', async () => {
     class DenyGuard {
       canActivate() {
