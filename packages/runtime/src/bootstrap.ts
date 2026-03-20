@@ -426,6 +426,7 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
     container.register(...options.providers);
   }
 
+  const runtimeProviderTokens = createRuntimeTokenSet(options.providers);
   const registeredProviderTokens = new Map<string | symbol | Function, string>();
 
   for (const compiledModule of modules) {
@@ -435,18 +436,30 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
       const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
       const existing = registeredProviderTokens.get(tokenKey);
 
-      if (existing !== undefined && policy !== 'ignore') {
+      if (runtimeProviderTokens.has(token)) {
+        registeredProviderTokens.set(tokenKey, compiledModule.type.name);
+        container.override(provider);
+        continue;
+      }
+
+      if (existing !== undefined) {
         const message = `Duplicate provider token "${tokenLabel}" registered in module "${compiledModule.type.name}". Previously registered in module "${existing}".`;
 
         if (policy === 'throw') {
           throw new DuplicateProviderError(message);
-        } else {
+        }
+
+        if (policy === 'warn') {
           options.logger?.warn(message, 'BootstrapModule');
         }
-      } else {
+
         registeredProviderTokens.set(tokenKey, compiledModule.type.name);
+
+        container.override(provider);
+        continue;
       }
 
+      registeredProviderTokens.set(tokenKey, compiledModule.type.name);
       container.register(provider);
     }
 
@@ -459,6 +472,10 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
         const token = (mw as { middleware: unknown; routes: unknown }).middleware;
 
         if (typeof token === 'function') {
+          if (container.has(token as Token)) {
+            continue;
+          }
+
           container.register(token as Parameters<typeof container.register>[0]);
         }
 
@@ -466,6 +483,10 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
       }
 
       if (typeof mw === 'function') {
+        if (container.has(mw as Token)) {
+          continue;
+        }
+
         container.register(mw as Parameters<typeof container.register>[0]);
         continue;
       }
@@ -561,6 +582,7 @@ class KonektiApplication implements Application {
     this.closingPromise = (async () => {
       await runShutdownHooks(this.lifecycleInstances, signal);
       await this.adapter.close(signal);
+      await this.container.dispose();
       this.closed = true;
       this.applicationState = 'closed';
     })();
@@ -693,6 +715,7 @@ function logRouteMappings(
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
   let lifecycleInstances: unknown[] = [];
+  let bootstrappedContainer: Container | undefined;
   const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
 
   try {
@@ -730,6 +753,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
         useValue: bootstrapped.modules,
       },
     );
+    bootstrappedContainer = bootstrapped.container;
     resetReadinessState(bootstrapped.modules);
     const lifecycleProviders = [
       ...runtimeProviders,
@@ -771,6 +795,10 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     if (lifecycleInstances.length > 0) {
       await runShutdownHooks(lifecycleInstances, 'bootstrap-failed');
+    }
+
+    if (bootstrappedContainer) {
+      await bootstrappedContainer.dispose();
     }
 
     throw error;

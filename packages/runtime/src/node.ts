@@ -481,7 +481,7 @@ async function createFrameworkRequest(
     method: request.method ?? 'GET',
     params: {},
     path: url.pathname,
-    query: Object.fromEntries(url.searchParams.entries()),
+    query: parseQueryParams(url.searchParams),
     raw: request,
     signal,
     url: url.pathname + url.search,
@@ -496,6 +496,28 @@ async function createFrameworkRequest(
   }
 
   return frameworkRequest;
+}
+
+function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {};
+
+  for (const [key, value] of searchParams.entries()) {
+    const current = query[key];
+
+    if (current === undefined) {
+      query[key] = value;
+      continue;
+    }
+
+    if (Array.isArray(current)) {
+      current.push(value);
+      continue;
+    }
+
+    query[key] = [current, value];
+  }
+
+  return query;
 }
 
 function createNodeMiddleware(options: BootstrapNodeApplicationOptions): MiddlewareLike[] {

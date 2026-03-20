@@ -257,6 +257,31 @@ describe('bootstrapApplication', () => {
     expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
   });
 
+  it('disposes container-managed instances when the application closes', async () => {
+    class DisposableResource {
+      destroyed = false;
+
+      onDestroy() {
+        this.destroyed = true;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [DisposableResource],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const resource = await app.container.resolve(DisposableResource);
+
+    await app.close('SIGTERM');
+
+    expect(resource.destroyed).toBe(true);
+  });
+
   it('injects real runtime tokens before OnModuleInit runs', async () => {
     const adapter: HttpApplicationAdapter = {
       async close() {},
@@ -354,6 +379,40 @@ describe('bootstrapApplication', () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ name: 'Ada' });
+
+    await app.close();
+  });
+
+  it('parses repeated query parameters as arrays in Node requests', async () => {
+    @Controller('/search')
+    class SearchController {
+      @Get('/')
+      list(_input: undefined, context: RequestContext) {
+        return context.request.query;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SearchController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/search?page=1&tag=a&tag=b&tag=c`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      page: '1',
+      tag: ['a', 'b', 'c'],
+    });
 
     await app.close();
   });
