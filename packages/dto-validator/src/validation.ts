@@ -558,7 +558,7 @@ async function applyPropertyRules(
 
   for (const rule of rules) {
     if (rule.kind === 'validateIf' || rule.kind === 'optional') continue;
-    if (conditionallySkip && rule.kind !== 'defined' && rule.kind !== 'notEmpty') continue;
+    if (conditionallySkip) continue;
     if ((value === undefined || value === null) && rule.kind !== 'defined' && rule.kind !== 'notEmpty' && rule.kind !== 'empty') continue;
     issues.push(...(await evaluateRule(rule, value, dto, propertyKey, fieldPath, source)));
   }

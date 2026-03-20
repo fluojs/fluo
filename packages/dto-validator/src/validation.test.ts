@@ -173,18 +173,7 @@ describe('DefaultValidator', () => {
     });
   });
 
-  it.each([
-    {
-      expectedIssues: [{ field: 'note', message: 'note must not be empty' }],
-      input: { code: 'x', enabled: false, note: '' },
-      name: 'skips dependent validators when the condition is false',
-    },
-    {
-      expectedIssues: [{ field: 'code', message: 'code must have length at least 3' }],
-      input: { code: 'x', enabled: true, note: 'ok' },
-      name: 'runs dependent validators when the condition is true',
-    },
-  ])('applies ValidateIf conditions and $name', async ({ input, expectedIssues }) => {
+  it('skips dependent validators when the ValidateIf condition is false', async () => {
     class ConditionalDto {
       enabled = false;
 
@@ -200,9 +189,43 @@ describe('DefaultValidator', () => {
     const validator = new DefaultValidator();
 
     await expect(
-      validator.validate(Object.assign(new ConditionalDto(), input), ConditionalDto),
+      validator.validate(
+        Object.assign(new ConditionalDto(), {
+          code: 'x',
+          enabled: false,
+          note: '',
+        }),
+        ConditionalDto,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('runs dependent validators when the ValidateIf condition is true', async () => {
+    class ConditionalDto {
+      enabled = false;
+
+      @ValidateIf((dto) => (dto as ConditionalDto).enabled)
+      @MinLength(3, { message: 'code must have length at least 3' })
+      code = '';
+
+      @ValidateIf(() => false)
+      @IsNotEmpty({ message: 'note must not be empty' })
+      note = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ConditionalDto(), {
+          code: 'x',
+          enabled: true,
+          note: 'ok',
+        }),
+        ConditionalDto,
+      ),
     ).rejects.toMatchObject({
-      issues: expectedIssues,
+      issues: [{ field: 'code', message: 'code must have length at least 3' }],
     });
   });
 
