@@ -5,7 +5,7 @@ import {
   handlerMetadataSymbol,
   resolverMetadataSymbol,
 } from './metadata.js';
-import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
+import type { ArgFieldMetadata, GraphqlScalarTypeName, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
@@ -16,6 +16,8 @@ export interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
   topics?: string | string[];
+  argTypes?: Record<string, GraphqlScalarTypeName>;
+  outputType?: GraphqlScalarTypeName;
 }
 
 type ClassDecoratorLike = StandardClassDecoratorFn;
@@ -53,8 +55,10 @@ function normalizeMethodMetadata(
   }
 
   return {
+    argTypes: fieldNameOrOptions.argTypes,
     fieldName: fieldNameOrOptions.fieldName?.trim() || undefined,
     inputClass: fieldNameOrOptions.input,
+    outputType: fieldNameOrOptions.outputType,
     topics: fieldNameOrOptions.topics,
     type,
   };
@@ -73,8 +77,10 @@ function defineStandardHandlerMetadata(metadata: unknown, propertyKey: string | 
   const map = current ?? new Map<string | symbol, ResolverHandlerMetadata>();
 
   map.set(propertyKey, {
+    argTypes: handlerMetadata.argTypes,
     fieldName: handlerMetadata.fieldName,
     inputClass: handlerMetadata.inputClass,
+    outputType: handlerMetadata.outputType,
     topics: handlerMetadata.topics,
     type: handlerMetadata.type,
   });
