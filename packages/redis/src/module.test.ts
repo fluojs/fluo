@@ -152,4 +152,31 @@ describe('@konekti/redis', () => {
 
     await app.close();
   });
+
+  it('returns raw string when stored value is not JSON', async () => {
+    @Inject([REDIS_SERVICE])
+    class CacheFacade {
+      constructor(readonly redisService: RedisService) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [CacheFacade],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const cacheFacade = await app.container.resolve(CacheFacade);
+    const rawClient = cacheFacade.redisService.getRawClient();
+
+    await rawClient.set('raw:key', 'plain-string');
+
+    await expect(cacheFacade.redisService.get<string>('raw:key')).resolves.toBe('plain-string');
+
+    await app.close();
+  });
 });

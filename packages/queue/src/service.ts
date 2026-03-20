@@ -20,6 +20,7 @@ import type {
   Queue,
   QueueBackoffOptions,
   QueueJobType,
+  QueueRateLimiterOptions,
   QueueWorkerDescriptor,
 } from './types.js';
 
@@ -118,6 +119,17 @@ function toBullBackoff(backoff: QueueBackoffOptions | undefined): JobsOptions['b
 
 function deadLetterKey(jobName: string): string {
   return `konekti:queue:dead-letter:${jobName}`;
+}
+
+function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | undefined): QueueRateLimiterOptions | undefined {
+  if (!rateLimiter) {
+    return undefined;
+  }
+
+  return {
+    duration: normalizePositiveInteger(rateLimiter.duration, 1_000),
+    max: normalizePositiveInteger(rateLimiter.max, 1),
+  };
 }
 
 async function closeConnection(connection: QueueOwnedConnection): Promise<void> {
@@ -267,7 +279,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         jobName,
         jobType,
         moduleName: candidate.moduleName,
-        rateLimiter: metadata.options.rateLimiter ?? this.options.defaultRateLimiter,
+        rateLimiter: normalizeRateLimiter(metadata.options.rateLimiter ?? this.options.defaultRateLimiter),
         token: candidate.token,
         workerName: candidate.targetType.name,
       });

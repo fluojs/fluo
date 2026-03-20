@@ -619,6 +619,74 @@ describe('@konekti/queue', () => {
     await app.close();
   });
 
+  it('normalizes invalid decorator rate limiter values before creating Bull worker', async () => {
+    class InvalidRateLimitedJob {
+      constructor(public readonly value: string) {}
+    }
+
+    @QueueWorker(InvalidRateLimitedJob, { rateLimiter: { duration: -500, max: 0 } })
+    class InvalidRateLimitedWorker {
+      async handle(_job: InvalidRateLimitedJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [InvalidRateLimitedWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await app.container.resolve<Queue>(QUEUE);
+
+    const worker = bullmqState.workers.get('InvalidRateLimitedJob');
+    expect(worker?.workerOpts.limiter).toEqual({
+      duration: 1_000,
+      max: 1,
+    });
+
+    await app.close();
+  });
+
+  it('normalizes invalid module defaultRateLimiter values before creating Bull worker', async () => {
+    class DefaultRateLimitedJob {
+      constructor(public readonly value: string) {}
+    }
+
+    @QueueWorker(DefaultRateLimitedJob)
+    class DefaultRateLimitedWorker {
+      async handle(_job: DefaultRateLimitedJob): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule({ defaultRateLimiter: { duration: Number.NaN, max: -3 } })],
+      providers: [DefaultRateLimitedWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await app.container.resolve<Queue>(QUEUE);
+
+    const worker = bullmqState.workers.get('DefaultRateLimitedJob');
+    expect(worker?.workerOpts.limiter).toEqual({
+      duration: 1_000,
+      max: 1,
+    });
+
+    await app.close();
+  });
+
   it('applies module defaults for attempts/concurrency and shuts down idempotently', async () => {
     class DefaultedJob {
       constructor(public readonly value: string) {}
