@@ -301,6 +301,35 @@ describe('Container', () => {
 
       expect(await container.resolve(token)).toBe('overridden');
     });
+
+    it('invalidates singleton cache when overriding a previously resolved provider', async () => {
+      const token = Symbol('cache-token');
+      const container = new Container().register({ provide: token, useValue: { value: 'first' } });
+
+      const first = await container.resolve<{ value: string }>(token);
+
+      container.override({ provide: token, useValue: { value: 'second' } });
+
+      const second = await container.resolve<{ value: string }>(token);
+
+      expect(first).toEqual({ value: 'first' });
+      expect(second).toEqual({ value: 'second' });
+      expect(first).not.toBe(second);
+    });
+
+    it('replaces existing multi providers when overriding a token', async () => {
+      const token = Symbol('plugins');
+      const container = new Container().register(
+        { provide: token, useValue: 'a', multi: true },
+        { provide: token, useValue: 'b', multi: true },
+      );
+
+      expect(await container.resolve<string[]>(token)).toEqual(['a', 'b']);
+
+      container.override({ provide: token, useValue: 'single' });
+
+      expect(await container.resolve<string>(token)).toBe('single');
+    });
   });
 
   describe('optional injection', () => {
@@ -501,6 +530,34 @@ describe('Container', () => {
       await container.resolve(SecondService);
 
       await expect(container.dispose()).rejects.toThrow('first failed');
+      expect(events).toEqual(['second', 'first']);
+    });
+
+    it('disposes stale overridden singleton instances exactly once', async () => {
+      const events: string[] = [];
+
+      class FirstService {
+        onDestroy() {
+          events.push('first');
+        }
+      }
+
+      class SecondService {
+        onDestroy() {
+          events.push('second');
+        }
+      }
+
+      const token = Symbol('disposable-token');
+      const container = new Container()
+        .register({ provide: token, useClass: FirstService });
+
+      await container.resolve(token);
+      container.override({ provide: token, useClass: SecondService });
+      await container.resolve(token);
+
+      await container.dispose();
+
       expect(events).toEqual(['second', 'first']);
     });
   });

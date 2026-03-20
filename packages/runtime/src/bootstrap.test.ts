@@ -267,6 +267,32 @@ describe('bootstrapModule duplicate provider detection', () => {
     expect(warnFn.mock.calls[0]![0]).toContain('SharedService');
   });
 
+  it('keeps the latest provider registration when policy is "warn"', async () => {
+    const SHARED = Symbol('shared-token');
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [{ provide: SHARED, useValue: 'from-a' }],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [{ provide: SHARED, useValue: 'from-b' }],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+    const result = bootstrapModule(RootModule, { duplicateProviderPolicy: 'warn', logger });
+
+    await expect(result.container.resolve<string>(SHARED)).resolves.toBe('from-b');
+    expect(warnFn).toHaveBeenCalledOnce();
+  });
+
   it('warns when no policy is specified (default is "warn")', () => {
     class SharedService {}
 
@@ -342,6 +368,32 @@ describe('bootstrapModule duplicate provider detection', () => {
     const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
 
     expect(() => bootstrapModule(RootModule, { duplicateProviderPolicy: 'ignore', logger })).not.toThrow();
+    expect(warnFn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the latest provider registration when policy is "ignore"', async () => {
+    const SHARED = Symbol('shared-token');
+
+    class ModuleA {}
+    defineModuleMetadata(ModuleA, {
+      providers: [{ provide: SHARED, useValue: 'from-a' }],
+    });
+
+    class ModuleB {}
+    defineModuleMetadata(ModuleB, {
+      providers: [{ provide: SHARED, useValue: 'from-b' }],
+    });
+
+    class RootModule {}
+    defineModuleMetadata(RootModule, {
+      imports: [ModuleA, ModuleB],
+    });
+
+    const warnFn = vi.fn();
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: warnFn };
+    const result = bootstrapModule(RootModule, { duplicateProviderPolicy: 'ignore', logger });
+
+    await expect(result.container.resolve<string>(SHARED)).resolves.toBe('from-b');
     expect(warnFn).not.toHaveBeenCalled();
   });
 

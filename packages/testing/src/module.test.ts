@@ -125,6 +125,40 @@ describe('@konekti/testing', () => {
     expect(service.logger).toBeInstanceOf(FakeLogger);
     expect(service.logger.name).toBe('fake-logger');
   });
+
+  it('throws when overrideProvider token and provider.provide do not match', () => {
+    const EXPECTED = Symbol('expected-token');
+    const OTHER = Symbol('other-token');
+
+    expect(() =>
+      createTestingModule({ rootModule: AppModule }).overrideProvider(EXPECTED, {
+        provide: OTHER,
+        useValue: 'value',
+      }),
+    ).toThrow('overrideProvider token mismatch');
+  });
+
+  it('supports useExisting provider descriptors in overrideProvider', async () => {
+    const SOURCE = Symbol('source-token');
+    const TARGET = Symbol('target-token');
+
+    @Module({
+      providers: [
+        { provide: SOURCE, useValue: 'source-value' },
+        { provide: TARGET, useValue: 'target-value' },
+      ],
+    })
+    class AliasModule {}
+
+    const testingModule = await createTestingModule({ rootModule: AliasModule })
+      .overrideProvider(TARGET, {
+        provide: TARGET,
+        useExisting: SOURCE,
+      })
+      .compile();
+
+    await expect(testingModule.resolve<string>(TARGET)).resolves.toBe('source-value');
+  });
 });
 
 describe('createMock', () => {
@@ -362,6 +396,49 @@ describe('TestingModuleRef.dispatch', () => {
       headers: { 'x-test-id': 'dispatch' },
       query: { scope: 'all' },
     });
+  });
+
+  it('shares singleton state between resolve() and dispatch()', async () => {
+    class CounterService {
+      count = 0;
+
+      next() {
+        this.count += 1;
+        return this.count;
+      }
+    }
+
+    @Inject([CounterService])
+    @Controller('/counter')
+    class CounterController {
+      constructor(private readonly counter: CounterService) {}
+
+      @Get('/')
+      read() {
+        return { count: this.counter.next() };
+      }
+    }
+
+    @Module({
+      controllers: [CounterController],
+      providers: [CounterService],
+    })
+    class CounterModule {}
+
+    const testingModule = await createTestingModule({ rootModule: CounterModule }).compile();
+    const service = await testingModule.resolve<CounterService>(CounterService);
+
+    expect(service.count).toBe(0);
+
+    const first = await testingModule.dispatch({ method: 'GET', path: '/counter' });
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ count: 1 });
+    expect(service.count).toBe(1);
+
+    const second = await testingModule.dispatch({ method: 'GET', path: '/counter' });
+    expect(second.status).toBe(200);
+    expect(second.body).toEqual({ count: 2 });
+    expect(service.count).toBe(2);
   });
 });
 
