@@ -230,7 +230,7 @@ function selectResponseFormatter(
   const acceptTokens = parseAcceptHeader(acceptHeader);
 
   if (!acceptTokens.length) {
-    return defaultFormatter;
+    throw new NotAcceptableException('No acceptable response representation found.');
   }
 
   for (const token of acceptTokens) {

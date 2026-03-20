@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createRateLimitMiddleware } from './rate-limit.js';
+import { createMemoryRateLimitStore, createRateLimitMiddleware } from './rate-limit.js';
 import type { MiddlewareContext } from './types.js';
 
 function createContext(remoteAddress = '127.0.0.1') {
@@ -160,5 +160,20 @@ describe('createRateLimitMiddleware', () => {
 
     expect(context.response.statusCode).toBe(200);
     expect(next).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps eviction active after an initial empty sweep', async () => {
+    const store = createMemoryRateLimitStore();
+    const now = Date.now();
+
+    await store.evict(now);
+    await store.set('client-1', {
+      count: 1,
+      resetAt: now - 1,
+    });
+
+    await store.evict(now + 1);
+
+    expect(store.get('client-1')).toBeUndefined();
   });
 });
