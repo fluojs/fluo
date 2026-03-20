@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@konekti/core';
+import { IsInt, MinLength } from '@konekti/dto-validator';
 import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 
@@ -57,7 +58,14 @@ class ResolverState {
 
 class EchoInput {
   @Arg('value')
+  @MinLength(3)
   value = '';
+}
+
+class IncrementInput {
+  @Arg('count')
+  @IsInt()
+  count = 0;
 }
 
 @Inject([ResolverState])
@@ -68,6 +76,11 @@ class GraphqlResolver {
   @Query({ input: EchoInput })
   echo(input: EchoInput): string {
     return input.value;
+  }
+
+  @Query({ input: IncrementInput, outputType: 'int' })
+  increment(input: IncrementInput): number {
+    return input.count + 1;
   }
 
   @Mutation({ input: EchoInput })
@@ -114,6 +127,12 @@ describe('@konekti/graphql', () => {
       },
     });
 
+    await expect(postGraphql(port, '{ increment(count: 2) }')).resolves.toEqual({
+      data: {
+        increment: 3,
+      },
+    });
+
     await expect(postGraphql(port, 'mutation { setValue(value: "world") }')).resolves.toEqual({
       data: {
         setValue: 'world',
@@ -125,6 +144,25 @@ describe('@konekti/graphql', () => {
         value: 'world',
       },
     });
+
+    const invalidResult = (await postGraphql(port, '{ echo(value: "hi") }')) as {
+      data: Record<string, unknown>;
+      errors: Array<{ extensions?: { code?: string; issues?: Array<{ field?: string }> }; message: string }>;
+    };
+
+    expect(invalidResult.errors[0]?.message).toBe('Validation failed.');
+    expect(invalidResult.errors[0]?.extensions?.code).toBe('BAD_USER_INPUT');
+    expect(invalidResult.errors[0]?.extensions?.issues?.[0]?.field).toBe('value');
+    expect(invalidResult.data.echo).toBeNull();
+
+    const missingArgResult = (await postGraphql(port, '{ echo }')) as {
+      data: Record<string, unknown>;
+      errors: Array<{ extensions?: { code?: string; issues?: Array<{ field?: string }> }; message: string }>;
+    };
+
+    expect(missingArgResult.errors[0]?.message).toBe('Validation failed.');
+    expect(missingArgResult.errors[0]?.extensions?.code).toBe('BAD_USER_INPUT');
+    expect(missingArgResult.data.echo).toBeNull();
 
     await app.close();
   });
