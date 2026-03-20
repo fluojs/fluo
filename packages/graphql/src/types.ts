@@ -19,11 +19,15 @@ export interface ResolverMetadata {
 
 export type ResolverHandlerType = 'query' | 'mutation' | 'subscription';
 
+export type GraphqlScalarTypeName = 'string' | 'int' | 'float' | 'boolean' | 'id';
+
 export interface ResolverHandlerMetadata {
   type: ResolverHandlerType;
   fieldName?: string;
   topics?: string | string[];
   inputClass?: Function;
+  argTypes?: Record<string, GraphqlScalarTypeName>;
+  outputType?: GraphqlScalarTypeName;
 }
 
 export interface ArgFieldMetadata {
@@ -39,6 +43,8 @@ export interface ResolverHandlerDescriptor {
   topics?: string | string[];
   inputClass?: Function;
   argFields: ArgFieldMetadata[];
+  argTypes?: Record<string, GraphqlScalarTypeName>;
+  outputType?: GraphqlScalarTypeName;
 }
 
 export interface ResolverDescriptor {

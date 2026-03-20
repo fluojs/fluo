@@ -34,6 +34,7 @@
   "dependencies": {
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
+    "@konekti/dto-validator": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/runtime": "workspace:*",
     "graphql": "^16.13.1",

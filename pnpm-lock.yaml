@@ -141,6 +141,9 @@ importers:
       '@konekti/di':
         specifier: workspace:*
         version: link:../di
+      '@konekti/dto-validator':
+        specifier: workspace:*
+        version: link:../dto-validator
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
