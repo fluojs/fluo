@@ -48,6 +48,13 @@ export class AppModule {}
 - `@OnConnect()` - handles accepted socket connections
 - `@OnDisconnect()` - handles socket close events
 
+### Module options
+
+`createWebSocketModule(options)` and `createWebSocketProviders(options)` accept:
+
+- `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
+- `shutdown.timeoutMs` (default: `5000`)
+
 ## Runtime behavior
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
@@ -56,7 +63,8 @@ export class AppModule {}
 - Gateway path matching is exact and normalized (`/chat` != `/notifications`)
 - Non-singleton gateways are skipped with warnings
 - Shutdown removes the shared upgrade listener and terminates all active clients
-- `message` and `close` listeners are registered only after all `@OnConnect()` handlers have resolved, so messages or disconnects that arrive before `onConnect` completes are not delivered to gateway handlers
+- `message` and `close` events are buffered until `@OnConnect()` handlers complete, then replayed in order so connect-phase events are not silently dropped
+- Attachment server shutdown is timeout-aware and logs close timeout failures instead of hanging indefinitely
 
 ## Provider registration constraints
 

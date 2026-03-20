@@ -52,6 +52,13 @@ type ParsedWebSocketMessage = {
   payload: unknown;
 };
 
+type BufferedDisconnectEvent = {
+  code: number;
+  reason: Buffer;
+};
+
+const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
+
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
@@ -256,6 +263,63 @@ export class WebSocketGatewayLifecycleService
     this.socketRegistry.set(socketId, socket);
 
     const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
+    const bufferedMessages: RawData[] = [];
+    let bufferedDisconnect: BufferedDisconnectEvent | undefined;
+    let handlersReady = false;
+    let handlerQueue = Promise.resolve();
+
+    const queueMessage = (data: RawData): void => {
+      handlerQueue = handlerQueue
+        .then(async () => {
+          await this.handleMessage(resolved, socket, request, data);
+        })
+        .catch((error) => {
+          this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
+        });
+    };
+
+    const queueDisconnect = (disconnectEvent: BufferedDisconnectEvent): void => {
+      handlerQueue = handlerQueue
+        .then(async () => {
+          await this.handleDisconnect(
+            resolved,
+            socket,
+            disconnectEvent.code,
+            disconnectEvent.reason,
+            socketId,
+          );
+        })
+        .catch((error) => {
+          this.logger.error('WebSocket gateway disconnect dispatch failed.', error, 'WebSocketGatewayLifecycleService');
+        });
+    };
+
+    socket.on('message', (data: RawData) => {
+      if (!handlersReady) {
+        bufferedMessages.push(data);
+        return;
+      }
+
+      queueMessage(data);
+    });
+
+    socket.on('pong', () => {
+      this.pingPending.delete(socketId);
+      this.pingSentAt.delete(socketId);
+    });
+
+    socket.on('close', (code: number, reason: Buffer) => {
+      this.unregisterSocket(socketId);
+
+      const disconnectEvent: BufferedDisconnectEvent = { code, reason };
+
+      if (!handlersReady) {
+        bufferedDisconnect = disconnectEvent;
+        return;
+      }
+
+      queueDisconnect(disconnectEvent);
+    });
 
     for (const descriptor of descriptors) {
       const instance = await this.resolveGatewayInstance(descriptor);
@@ -271,24 +335,19 @@ export class WebSocketGatewayLifecycleService
       }),
     );
 
-    if (socket.readyState !== WebSocket.OPEN) {
-      this.unregisterSocket(socketId);
-      return;
+    handlersReady = true;
+
+    for (const message of bufferedMessages) {
+      queueMessage(message);
     }
 
-    socket.on('message', (data: RawData) => {
-      void this.handleMessage(resolved, socket, request, data);
-    });
-
-    socket.on('pong', () => {
-      this.pingPending.delete(socketId);
-      this.pingSentAt.delete(socketId);
-    });
-
-    socket.on('close', (code: number, reason: Buffer) => {
+    if (bufferedDisconnect) {
+      queueDisconnect(bufferedDisconnect);
+    } else if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
       this.unregisterSocket(socketId);
-      void this.handleDisconnect(resolved, socket, code, reason, socketId);
-    });
+    }
+
+    await handlerQueue;
   }
 
   private async handleMessage(
@@ -460,6 +519,50 @@ export class WebSocketGatewayLifecycleService
     return candidates;
   }
 
+  private resolveShutdownTimeoutMs(): number {
+    const configured = this.moduleOptions.shutdown?.timeoutMs;
+
+    if (typeof configured !== 'number' || !Number.isFinite(configured) || configured <= 0) {
+      return DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS;
+    }
+
+    return Math.floor(configured);
+  }
+
+  private closeServerWithTimeout(attachment: GatewayAttachment, timeoutMs: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(
+          new Error(
+            `Timed out while closing websocket server for path "${attachment.path}" after ${String(timeoutMs)}ms.`,
+          ),
+        );
+      }, timeoutMs);
+
+      attachment.server.close((error?: Error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
   private async shutdown(): Promise<void> {
     if (this.shutdownPromise) {
       await this.shutdownPromise;
@@ -480,6 +583,7 @@ export class WebSocketGatewayLifecycleService
       this.upgradeListener = undefined;
 
       const attachments = this.attachments.splice(0);
+      const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
       await Promise.all(
         attachments.map(async (attachment) => {
@@ -487,9 +591,15 @@ export class WebSocketGatewayLifecycleService
             client.terminate();
           }
 
-          await new Promise<void>((resolve) => {
-            attachment.server.close(() => resolve());
-          });
+          try {
+            await this.closeServerWithTimeout(attachment, shutdownTimeoutMs);
+          } catch (error) {
+            this.logger.error(
+              `Failed to close websocket server for path ${attachment.path} within ${String(shutdownTimeoutMs)}ms.`,
+              error,
+              'WebSocketGatewayLifecycleService',
+            );
+          }
         }),
       );
 
