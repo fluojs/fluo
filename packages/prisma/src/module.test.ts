@@ -4,7 +4,7 @@ import { Inject } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 import { Global, Module } from '@konekti/core';
 
-import { createPrismaModule, createPrismaModuleAsync, PrismaService } from './index.js';
+import { PRISMA_CLIENT, PRISMA_OPTIONS, createPrismaModule, createPrismaModuleAsync, PrismaService } from './index.js';
 
 describe('@konekti/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
@@ -161,6 +161,104 @@ describe('@konekti/prisma', () => {
       'disconnect',
     ]);
   });
+
+  it('runs nested request and service transactions through a single transaction boundary', async () => {
+    let transactionCalls = 0;
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionClient);
+      },
+    };
+
+    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+
+    await expect(
+      prisma.requestTransaction(async () => prisma.transaction(async () => 'ok')),
+    ).resolves.toBe('ok');
+    expect(transactionCalls).toBe(1);
+
+    await app.close();
+  });
+
+  it('falls back when transaction client is unsupported and strictTransactions is false', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const PrismaModule = createPrismaModule<typeof client>({
+      client,
+      strictTransactions: false,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const prisma = await app.container.resolve(PrismaService<typeof client>);
+
+    await expect(prisma.transaction(async () => 'fallback-transaction')).resolves.toBe('fallback-transaction');
+    await expect(prisma.requestTransaction(async () => 'fallback-request')).resolves.toBe('fallback-request');
+
+    await app.close();
+  });
+
+  it('throws when transaction client is unsupported and strictTransactions is true', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const PrismaModule = createPrismaModule<typeof client>({
+      client,
+      strictTransactions: true,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const prisma = await app.container.resolve(PrismaService<typeof client>);
+
+    await expect(prisma.transaction(async () => 'never')).rejects.toThrow(
+      'Transaction not supported: Prisma client does not implement $transaction.',
+    );
+    await expect(prisma.requestTransaction(async () => 'never')).rejects.toThrow(
+      'Transaction not supported: Prisma client does not implement $transaction.',
+    );
+
+    await app.close();
+  });
 });
 
 describe('createPrismaModuleAsync', () => {
@@ -184,11 +282,11 @@ describe('createPrismaModuleAsync', () => {
         return callback(transactionClient);
       },
     };
-    return { client, events };
+    return { client, events, transactionClient };
   }
 
   it('factory receives injected token and resolves PrismaService', async () => {
-    const { client, events } = makeFakeClient();
+    const { client, events, transactionClient } = makeFakeClient();
 
     class ConfigService {
       readonly url = 'postgres://localhost/test';
@@ -200,7 +298,7 @@ describe('createPrismaModuleAsync', () => {
 
     const factory = vi.fn().mockResolvedValue({ client });
 
-    const PrismaModule = createPrismaModuleAsync({
+    const PrismaModule = createPrismaModuleAsync<typeof client, typeof transactionClient>({
       inject: [ConfigService],
       useFactory: factory,
     });
@@ -213,9 +311,13 @@ describe('createPrismaModuleAsync', () => {
 
     const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService);
+    const rawClient = await app.container.resolve(PRISMA_CLIENT);
+    const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
     expect(factory).toHaveBeenCalledOnce();
     expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+    expect(rawClient).toBe(client);
+    expect(moduleOptions).toEqual({ strictTransactions: false });
     expect(events).toEqual(['connect']);
 
     await app.close();
@@ -225,9 +327,9 @@ describe('createPrismaModuleAsync', () => {
   });
 
   it('factory returning a promise resolves the client correctly', async () => {
-    const { client } = makeFakeClient();
+    const { client, transactionClient } = makeFakeClient();
 
-    const PrismaModule = createPrismaModuleAsync({
+    const PrismaModule = createPrismaModuleAsync<typeof client, typeof transactionClient>({
       useFactory: () => Promise.resolve({ client }),
     });
 
@@ -239,6 +341,30 @@ describe('createPrismaModuleAsync', () => {
     const prisma = await app.container.resolve(PrismaService);
 
     expect(prisma).toBeInstanceOf(PrismaService);
+
+    await app.close();
+  });
+
+  it('applies strictTransactions from async options for unsupported clients', async () => {
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+    };
+
+    const PrismaModule = createPrismaModuleAsync({
+      useFactory: () => Promise.resolve({ client, strictTransactions: true }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [PrismaModule] });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const prisma = await app.container.resolve(PrismaService<typeof client>);
+
+    await expect(prisma.transaction(async () => 'never')).rejects.toThrow(
+      'Transaction not supported: Prisma client does not implement $transaction.',
+    );
 
     await app.close();
   });
