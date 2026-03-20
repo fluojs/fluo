@@ -59,4 +59,7 @@ export interface WebSocketModuleOptions {
     intervalMs?: number;
     timeoutMs?: number;
   };
+  shutdown?: {
+    timeoutMs?: number;
+  };
 }
