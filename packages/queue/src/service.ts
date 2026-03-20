@@ -1,5 +1,5 @@
-import { Inject, getClassDiMetadata, type Token } from '@konekti/core';
-import type { Container, Provider } from '@konekti/di';
+import { Inject } from '@konekti/core';
+import type { Container } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import {
   APPLICATION_LOGGER,
@@ -14,27 +14,27 @@ import {
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { getQueueWorkerMetadata } from './metadata.js';
+import {
+  collectDiscoveryCandidates,
+  normalizePositiveInteger,
+  normalizeRateLimiter,
+  withTimeout,
+  type DiscoveryCandidate,
+} from './helpers.js';
 import { QUEUE_OPTIONS } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
   Queue,
   QueueBackoffOptions,
   QueueJobType,
-  QueueRateLimiterOptions,
   QueueWorkerDescriptor,
 } from './types.js';
 
-type Scope = 'request' | 'singleton' | 'transient';
 type QueuePayload = Record<string, unknown>;
 type QueueInstance = BullQueue;
 type WorkerInstance = BullWorker;
 
-interface DiscoveryCandidate {
-  moduleName: string;
-  scope: Scope;
-  targetType: Function;
-  token: Token;
-}
+type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
 
 interface QueueOwnedConnection {
   connect(): Promise<unknown>;
@@ -46,36 +46,6 @@ interface QueueOwnedConnection {
 interface QueueRedisClient {
   duplicate(): QueueOwnedConnection;
   rpush(key: string, value: string): Promise<unknown>;
-}
-
-function scopeFromProvider(provider: Provider): Scope {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
-}
-
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function normalizePositiveInteger(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  const normalized = Math.trunc(value);
-
-  if (normalized < 1) {
-    return fallback;
-  }
-
-  return normalized;
 }
 
 function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
@@ -121,17 +91,6 @@ function deadLetterKey(jobName: string): string {
   return `konekti:queue:dead-letter:${jobName}`;
 }
 
-function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | undefined): QueueRateLimiterOptions | undefined {
-  if (!rateLimiter) {
-    return undefined;
-  }
-
-  return {
-    duration: normalizePositiveInteger(rateLimiter.duration, 1_000),
-    max: normalizePositiveInteger(rateLimiter.max, 1),
-  };
-}
-
 async function closeConnection(connection: QueueOwnedConnection): Promise<void> {
   if (connection.status === 'end') {
     return;
@@ -155,7 +114,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   private readonly workersByJobName = new Map<string, WorkerInstance>();
   private readonly ownedConnections: QueueOwnedConnection[] = [];
   private readonly pendingDeadLetterWrites = new Set<Promise<void>>();
-  private started = false;
+  private lifecycleState: QueueLifecycleState = 'idle';
   private startPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;
 
@@ -203,25 +162,34 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private async ensureStarted(): Promise<void> {
-    if (this.started) {
+    if (this.lifecycleState === 'started') {
       return;
     }
 
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+      throw new Error(`Queue lifecycle state is ${this.lifecycleState}.`);
+    }
+
     if (!this.startPromise) {
+      this.lifecycleState = 'starting';
       this.startPromise = (async () => {
         const redis = this.getRedisClient();
         this.discoverWorkers();
         await this.initializeWorkers(redis);
-        this.started = true;
+        this.lifecycleState = 'started';
       })();
     }
 
     try {
       await this.startPromise;
     } catch (error) {
+      await this.closeInitializedResources();
+      this.lifecycleState = 'idle';
       this.startPromise = undefined;
       throw error;
     }
+
+    this.startPromise = undefined;
   }
 
   private getRedisClient(): QueueRedisClient {
@@ -287,88 +255,84 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private discoveryCandidates(): DiscoveryCandidate[] {
-    const candidates: DiscoveryCandidate[] = [];
-
-    for (const compiledModule of this.compiledModules) {
-      for (const provider of compiledModule.definition.providers ?? []) {
-        if (typeof provider === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider,
-            token: provider,
-          });
-          continue;
-        }
-
-        if (isClassProvider(provider)) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider.useClass,
-            token: provider.provide,
-          });
-        }
-      }
-
-      for (const controller of compiledModule.definition.controllers ?? []) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(controller),
-          targetType: controller,
-          token: controller,
-        });
-      }
-    }
-
-    return candidates;
+    return collectDiscoveryCandidates(this.compiledModules);
   }
 
   private async initializeWorkers(redis: QueueRedisClient): Promise<void> {
     for (const descriptor of this.descriptorsByJobType.values()) {
-      const queueConnection = await this.createOwnedConnection(redis);
-      const workerConnection = await this.createOwnedConnection(redis);
-      const queue = new BullQueue(descriptor.jobName, {
-        connection: queueConnection as unknown as ConnectionOptions,
-      });
-      const worker = new BullWorker(
-        descriptor.jobName,
-        async (job: BullJob) => {
-          await this.executeWorker(descriptor, job);
-        },
-        {
-          concurrency: descriptor.concurrency,
-          connection: workerConnection as unknown as ConnectionOptions,
-          ...(descriptor.rateLimiter
-            ? {
-                limiter: {
-                  duration: descriptor.rateLimiter.duration,
-                  max: descriptor.rateLimiter.max,
-                },
-              }
-            : {}),
-        },
-      );
+      let queueConnection: QueueOwnedConnection | undefined;
+      let workerConnection: QueueOwnedConnection | undefined;
+      let queue: QueueInstance | undefined;
+      let worker: WorkerInstance | undefined;
 
-      worker.on('failed', (job: BullJob | undefined, error: Error) => {
-        const pendingWrite = this.handleFailedJob(descriptor, job, error);
-        this.pendingDeadLetterWrites.add(pendingWrite);
-        pendingWrite.finally(() => {
-          this.pendingDeadLetterWrites.delete(pendingWrite);
+      try {
+        queueConnection = await this.createOwnedConnection(redis);
+        workerConnection = await this.createOwnedConnection(redis);
+        queue = new BullQueue(descriptor.jobName, {
+          connection: queueConnection as unknown as ConnectionOptions,
         });
-      });
+        worker = new BullWorker(
+          descriptor.jobName,
+          async (job: BullJob) => {
+            await this.executeWorker(descriptor, job);
+          },
+          {
+            concurrency: descriptor.concurrency,
+            connection: workerConnection as unknown as ConnectionOptions,
+            ...(descriptor.rateLimiter
+              ? {
+                  limiter: {
+                    duration: descriptor.rateLimiter.duration,
+                    max: descriptor.rateLimiter.max,
+                  },
+                }
+              : {}),
+          },
+        );
 
-      this.queuesByJobName.set(descriptor.jobName, queue);
-      this.workersByJobName.set(descriptor.jobName, worker);
+        worker.on('failed', (job: BullJob | undefined, error: Error) => {
+          const pendingWrite = this.handleFailedJob(descriptor, job, error);
+          this.pendingDeadLetterWrites.add(pendingWrite);
+          pendingWrite.finally(() => {
+            this.pendingDeadLetterWrites.delete(pendingWrite);
+          });
+        });
+
+        this.queuesByJobName.set(descriptor.jobName, queue);
+        this.workersByJobName.set(descriptor.jobName, worker);
+        this.ownedConnections.push(queueConnection, workerConnection);
+      } catch (error) {
+        if (worker) {
+          await this.tryCloseWorker(worker);
+        }
+
+        if (queue) {
+          await this.tryCloseQueue(queue);
+        }
+
+        if (workerConnection) {
+          await this.tryCloseOwnedConnection(workerConnection);
+        }
+
+        if (queueConnection) {
+          await this.tryCloseOwnedConnection(queueConnection);
+        }
+
+        throw error;
+      }
     }
   }
 
   private async createOwnedConnection(redis: QueueRedisClient): Promise<QueueOwnedConnection> {
     const connection = redis.duplicate();
-    this.ownedConnections.push(connection);
 
-    if (connection.status === 'wait' || connection.status === 'reconnecting') {
-      await connection.connect();
+    try {
+      if (connection.status === 'wait' || connection.status === 'reconnecting') {
+        await connection.connect();
+      }
+    } catch (error) {
+      await this.tryCloseOwnedConnection(connection);
+      throw error;
     }
 
     return connection;
@@ -450,64 +414,89 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       return;
     }
 
+    if (this.lifecycleState === 'stopped') {
+      return;
+    }
+
+    this.lifecycleState = 'stopping';
+
     this.shutdownPromise = (async () => {
-      const workers = Array.from(this.workersByJobName.values());
-      this.workersByJobName.clear();
+      await this.closeInitializedResources();
+      await this.drainDeadLetterWrites();
+      this.lifecycleState = 'stopped';
+      this.startPromise = undefined;
+    })().finally(() => {
+      this.shutdownPromise = undefined;
+    });
 
-      for (const worker of workers) {
-        try {
-          await worker.close();
-        } catch (error) {
-          this.logger.error('Failed to close queue worker during shutdown.', error, 'QueueLifecycleService');
-        }
-      }
+    await this.shutdownPromise;
+  }
 
-      const queues = Array.from(this.queuesByJobName.values());
-      this.queuesByJobName.clear();
+  private async closeInitializedResources(): Promise<void> {
+    const workers = Array.from(this.workersByJobName.values());
+    const queues = Array.from(this.queuesByJobName.values());
+    const ownedConnections = this.ownedConnections.splice(0);
 
-      for (const queue of queues) {
-        try {
-          await queue.close();
-        } catch (error) {
-          this.logger.error('Failed to close queue during shutdown.', error, 'QueueLifecycleService');
-        }
-      }
+    this.workersByJobName.clear();
+    this.queuesByJobName.clear();
 
-      const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
+    for (const worker of workers) {
+      await this.tryCloseWorker(worker);
+    }
 
-      while (this.pendingDeadLetterWrites.size > 0) {
-        const writes = Array.from(this.pendingDeadLetterWrites).map((write) =>
-          Promise.race([
-            write,
-            new Promise<void>((_, reject) =>
-              setTimeout(
-                () => reject(new Error('dead-letter write timed out')),
-                DEAD_LETTER_DRAIN_TIMEOUT_MS,
-              ),
-            ),
-          ]).catch((error) => {
+    for (const queue of queues) {
+      await this.tryCloseQueue(queue);
+    }
+
+    for (const connection of ownedConnections) {
+      await this.tryCloseOwnedConnection(connection);
+    }
+  }
+
+  private async drainDeadLetterWrites(): Promise<void> {
+    const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
+
+    while (this.pendingDeadLetterWrites.size > 0) {
+      const writes = Array.from(this.pendingDeadLetterWrites);
+
+      await Promise.allSettled(
+        writes.map(async (write) => {
+          try {
+            await withTimeout(write, DEAD_LETTER_DRAIN_TIMEOUT_MS, () => new Error('dead-letter write timed out'));
+          } catch (error) {
+            this.pendingDeadLetterWrites.delete(write);
             this.logger.error(
               'Dead-letter write did not complete within shutdown timeout.',
               error,
               'QueueLifecycleService',
             );
-          }),
-        );
+          }
+        }),
+      );
+    }
+  }
 
-        await Promise.allSettled(writes);
-      }
+  private async tryCloseWorker(worker: WorkerInstance): Promise<void> {
+    try {
+      await worker.close();
+    } catch (error) {
+      this.logger.error('Failed to close queue worker during shutdown.', error, 'QueueLifecycleService');
+    }
+  }
 
-      const ownedConnections = this.ownedConnections.splice(0);
+  private async tryCloseQueue(queue: QueueInstance): Promise<void> {
+    try {
+      await queue.close();
+    } catch (error) {
+      this.logger.error('Failed to close queue during shutdown.', error, 'QueueLifecycleService');
+    }
+  }
 
-      for (const connection of ownedConnections) {
-        try {
-          await closeConnection(connection);
-        } catch (error) {
-          this.logger.error('Failed to close queue-owned Redis connection during shutdown.', error, 'QueueLifecycleService');
-        }
-      }
-    })();
-
-    await this.shutdownPromise;
+  private async tryCloseOwnedConnection(connection: QueueOwnedConnection): Promise<void> {
+    try {
+      await closeConnection(connection);
+    } catch (error) {
+      this.logger.error('Failed to close queue-owned Redis connection during shutdown.', error, 'QueueLifecycleService');
+    }
   }
 }
