@@ -62,7 +62,7 @@ export function createMemoryRateLimitStore(): RateLimitStore {
         next = Math.min(next, entry.resetAt);
       }
 
-      nextSweepAt = next;
+      nextSweepAt = Number.isFinite(next) ? next : 0;
     },
   };
 }

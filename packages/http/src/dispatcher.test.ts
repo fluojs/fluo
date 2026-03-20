@@ -181,6 +181,57 @@ describe('dispatcher runtime', () => {
     });
   });
 
+  it('returns 406 when Accept tokens are all q=0', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Produces('application/json', 'text/plain')
+      @Get('/q-zero')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation/q-zero', 'GET', { accept: 'application/json;q=0, text/plain;q=0' }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({
+      error: {
+        code: 'NOT_ACCEPTABLE',
+        details: undefined,
+        message: 'No acceptable response representation found.',
+        meta: undefined,
+        requestId: undefined,
+        status: 406,
+      },
+    });
+  });
+
   it('falls back to default formatter for wildcard Accept header', async () => {
     @Controller('/negotiation')
     class NegotiationController {
