@@ -17,6 +17,19 @@ export interface EventHandlerDescriptor {
   token: Token;
 }
 
+export interface EventPublishOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  waitForHandlers?: boolean;
+}
+
+export interface EventBusModuleOptions {
+  publish?: {
+    timeoutMs?: number;
+    waitForHandlers?: boolean;
+  };
+}
+
 export interface EventBus {
-  publish(event: object): Promise<void>;
+  publish(event: object, options?: EventPublishOptions): Promise<void>;
 }

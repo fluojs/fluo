@@ -10,13 +10,38 @@ import {
 } from '@konekti/runtime';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
-import type { EventBus, EventHandlerDescriptor, EventType } from './types.js';
+import { EVENT_BUS_OPTIONS } from './tokens.js';
+import type {
+  EventBus,
+  EventBusModuleOptions,
+  EventHandlerDescriptor,
+  EventPublishOptions,
+  EventType,
+} from './types.js';
 
 interface DiscoveryCandidate {
   moduleName: string;
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
+}
+
+interface ResolvedPublishOptions {
+  signal: AbortSignal | undefined;
+  timeoutMs: number | undefined;
+  waitForHandlers: boolean;
+}
+
+class EventPublishTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`Event publish timed out after ${String(timeoutMs)}ms.`);
+  }
+}
+
+class EventPublishAbortError extends Error {
+  constructor() {
+    super('Event publish was aborted.');
+  }
 }
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
@@ -39,38 +64,55 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS])
 export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap {
   private descriptors: EventHandlerDescriptor[] = [];
+  private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private readonly handlerInstances = new Map<Token, Promise<unknown>>();
 
   constructor(
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
+    private readonly moduleOptions: EventBusModuleOptions,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    this.discoverHandlers();
+    await this.ensureDiscovered();
   }
 
-  async publish(event: object): Promise<void> {
-    this.ensureDiscovered();
+  async publish(event: object, options?: EventPublishOptions): Promise<void> {
+    await this.ensureDiscovered();
     const matchingDescriptors = this.descriptors.filter((descriptor) => event instanceof descriptor.eventType);
 
     if (matchingDescriptors.length === 0) {
       return;
     }
 
-    await Promise.allSettled(
-      matchingDescriptors.map(async (descriptor) => {
-        await this.invokeHandler(descriptor, event);
-      }),
+    const publishOptions = this.resolvePublishOptions(options);
+    const invocationTasks = matchingDescriptors.map((descriptor) =>
+      this.invokeHandlerWithBounds(descriptor, event, publishOptions),
     );
+
+    if (!publishOptions.waitForHandlers) {
+      for (const task of invocationTasks) {
+        void task;
+      }
+
+      return;
+    }
+
+    await Promise.allSettled(invocationTasks);
   }
 
-  private ensureDiscovered(): void {
+  private async ensureDiscovered(): Promise<void> {
     if (this.discovered) {
+      return;
+    }
+
+    if (this.discoveryPromise) {
+      await this.discoveryPromise;
       return;
     }
 
@@ -81,16 +123,149 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       );
     }
 
-    this.discoverHandlers();
+    this.discoveryPromise = this.discoverHandlers();
+    await this.discoveryPromise;
   }
 
-  private discoverHandlers(): void {
-    this.descriptors = this.discoverHandlerDescriptors();
-    this.discovered = true;
+  private resolvePublishOptions(options?: EventPublishOptions): ResolvedPublishOptions {
+    const defaults = this.moduleOptions.publish;
+    const timeoutMs = this.normalizeTimeoutMs(options?.timeoutMs ?? defaults?.timeoutMs);
+    const waitForHandlers = options?.waitForHandlers ?? defaults?.waitForHandlers ?? true;
+
+    return {
+      signal: options?.signal,
+      timeoutMs,
+      waitForHandlers,
+    };
+  }
+
+  private normalizeTimeoutMs(timeoutMs: number | undefined): number | undefined {
+    if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return undefined;
+    }
+
+    return Math.floor(timeoutMs);
+  }
+
+  private async discoverHandlers(): Promise<void> {
+    try {
+      this.descriptors = this.discoverHandlerDescriptors();
+      this.handlerInstances.clear();
+      await this.preloadHandlerInstances(this.descriptors);
+      this.discovered = true;
+    } finally {
+      this.discoveryPromise = undefined;
+    }
+  }
+
+  private async preloadHandlerInstances(descriptors: EventHandlerDescriptor[]): Promise<void> {
+    for (const descriptor of descriptors) {
+      if (this.handlerInstances.has(descriptor.token)) {
+        continue;
+      }
+
+      await this.resolveHandlerInstance(descriptor);
+    }
+  }
+
+  private async invokeHandlerWithBounds(
+    descriptor: EventHandlerDescriptor,
+    event: object,
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<void> {
+    if (publishOptions.signal?.aborted) {
+      this.logger.warn(
+        `Event publish was cancelled before dispatching handler ${descriptor.targetName}.${descriptor.methodName}.`,
+        'EventBusLifecycleService',
+      );
+      return;
+    }
+
+    const invocation = this.invokeHandler(descriptor, event);
+
+    try {
+      await this.awaitInvocationBounds(invocation, publishOptions);
+    } catch (error) {
+      if (error instanceof EventPublishTimeoutError) {
+        this.logger.warn(
+          `Event handler ${descriptor.targetName}.${descriptor.methodName} exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
+          'EventBusLifecycleService',
+        );
+        return;
+      }
+
+      if (error instanceof EventPublishAbortError) {
+        this.logger.warn(
+          `Event publish was cancelled while waiting for handler ${descriptor.targetName}.${descriptor.methodName}.`,
+          'EventBusLifecycleService',
+        );
+        return;
+      }
+
+      this.logger.error(
+        `Event handler ${descriptor.targetName}.${descriptor.methodName} failed while applying publish bounds.`,
+        error,
+        'EventBusLifecycleService',
+      );
+    }
+  }
+
+  private async awaitInvocationBounds(
+    invocation: Promise<void>,
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<void> {
+    const timeoutMs = publishOptions.timeoutMs;
+    const signal = publishOptions.signal;
+
+    if (timeoutMs === undefined && !signal) {
+      await invocation;
+      return;
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
+    const bounds: Array<Promise<never>> = [];
+
+    if (timeoutMs !== undefined) {
+      bounds.push(
+        new Promise<never>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new EventPublishTimeoutError(timeoutMs));
+          }, timeoutMs);
+        }),
+      );
+    }
+
+    if (signal) {
+      if (signal.aborted) {
+        throw new EventPublishAbortError();
+      }
+
+      bounds.push(
+        new Promise<never>((_resolve, reject) => {
+          abortListener = () => {
+            reject(new EventPublishAbortError());
+          };
+          signal.addEventListener('abort', abortListener, { once: true });
+        }),
+      );
+    }
+
+    try {
+      await Promise.race([invocation, ...bounds]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      if (signal && abortListener) {
+        signal.removeEventListener('abort', abortListener);
+      }
+    }
   }
 
   private discoverHandlerDescriptors(): EventHandlerDescriptor[] {
-    const seen = new Set<string>();
+    const seen = new WeakMap<Function, Map<MetadataPropertyKey, Set<EventType>>>();
     const descriptors: EventHandlerDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
@@ -110,13 +285,25 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       for (const entry of entries) {
         const methodName = methodKeyToName(entry.propertyKey);
         const eventType = entry.metadata.eventType;
-        const dedupKey = `${candidate.targetType.name}::${methodName}::${String(eventType)}`;
+        let methodsByKey = seen.get(candidate.targetType);
 
-        if (seen.has(dedupKey)) {
+        if (!methodsByKey) {
+          methodsByKey = new Map<MetadataPropertyKey, Set<EventType>>();
+          seen.set(candidate.targetType, methodsByKey);
+        }
+
+        let seenEventTypes = methodsByKey.get(entry.propertyKey);
+
+        if (!seenEventTypes) {
+          seenEventTypes = new Set<EventType>();
+          methodsByKey.set(entry.propertyKey, seenEventTypes);
+        }
+
+        if (seenEventTypes.has(eventType)) {
           continue;
         }
 
-        seen.add(dedupKey);
+        seenEventTypes.add(eventType);
 
         descriptors.push({
           eventType,
@@ -171,16 +358,9 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private async invokeHandler(descriptor: EventHandlerDescriptor, event: object): Promise<void> {
-    let instance: unknown;
+    const instance = await this.resolveHandlerInstance(descriptor);
 
-    try {
-      instance = await this.runtimeContainer.resolve(descriptor.token);
-    } catch (error) {
-      this.logger.error(
-        `Failed to resolve event handler target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
-        error,
-        'EventBusLifecycleService',
-      );
+    if (instance === undefined) {
       return;
     }
 
@@ -202,6 +382,29 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
         error,
         'EventBusLifecycleService',
       );
+    }
+  }
+
+  private async resolveHandlerInstance(descriptor: EventHandlerDescriptor): Promise<unknown | undefined> {
+    const cached = this.handlerInstances.get(descriptor.token);
+
+    if (cached) {
+      return await cached;
+    }
+
+    const resolving = this.runtimeContainer.resolve(descriptor.token);
+    this.handlerInstances.set(descriptor.token, resolving);
+
+    try {
+      return await resolving;
+    } catch (error) {
+      this.handlerInstances.delete(descriptor.token);
+      this.logger.error(
+        `Failed to resolve event handler target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+        error,
+        'EventBusLifecycleService',
+      );
+      return undefined;
     }
   }
 }
