@@ -89,6 +89,36 @@ class LockLossOnRenewRedisClient {
   }
 }
 
+class RenewalErrorOnRenewRedisClient {
+  private readonly locks = new Map<string, string>();
+
+  async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
+    if (this.locks.has(key)) {
+      return null;
+    }
+
+    this.locks.set(key, value);
+    return 'OK';
+  }
+
+  async eval(script: string, _keysLength: number, key: string, owner: string, _ttl?: string): Promise<number> {
+    if (script.includes('PEXPIRE')) {
+      throw new Error('renew failed');
+    }
+
+    if (!script.includes('DEL')) {
+      return 0;
+    }
+
+    if (this.locks.get(key) !== owner) {
+      return 0;
+    }
+
+    this.locks.delete(key);
+    return 1;
+  }
+}
+
 function createDeferred<T = void>(): Deferred<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -293,6 +323,45 @@ describe('@konekti/cron', () => {
     await app.close();
 
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back partially scheduled jobs when startup fails', async () => {
+    const firstStop = vi.fn();
+    let scheduleCount = 0;
+    const scheduler: CronScheduler = (_expression, _options, _callback) => {
+      scheduleCount += 1;
+
+      if (scheduleCount === 1) {
+        return {
+          stop: firstStop,
+        };
+      }
+
+      throw new Error('scheduler boom');
+    };
+
+    class PartialScheduleTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'partial-schedule-1' })
+      runOne() {}
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'partial-schedule-2' })
+      runTwo() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler })],
+      providers: [PartialScheduleTaskService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        mode: 'test',
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('scheduler boom');
+
+    expect(firstStop).toHaveBeenCalledTimes(1);
   });
 
   it('warns when @Cron() is declared on a non-singleton provider and skips scheduling', async () => {
@@ -544,10 +613,9 @@ describe('@konekti/cron', () => {
     await closePromise;
     await secondScheduler.records[0]!.tick();
 
-    const firstStore = await appOne.container.resolve(SharedStore);
     const secondStore = await appTwo.container.resolve(SharedStore);
 
-    expect(firstStore.count + secondStore.count).toBe(2);
+    expect(secondStore.count).toBe(1);
 
     await appTwo.close();
   });
@@ -720,6 +788,49 @@ describe('@konekti/cron', () => {
     await app.close();
   });
 
+  it('keeps afterRun deterministic when onError throws', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+    const loggerEvents: string[] = [];
+
+    class OnErrorThrowingTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        beforeRun: () => {
+          events.push('before');
+          throw new Error('before boom');
+        },
+        name: 'on-error-throwing-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+          throw new Error('onError boom');
+        },
+      })
+      run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [OnErrorThrowingTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    await expect(scheduled.records[0]!.tick()).resolves.toBeUndefined();
+
+    expect(events).toEqual(['before', 'error:before boom', 'after']);
+    expect(loggerEvents.some((event) => event.includes('Cron onError hook on-error-throwing-task failed.'))).toBe(true);
+
+    await app.close();
+  });
+
   it('treats lock ownership loss during renewal as a failed tick', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
@@ -782,6 +893,74 @@ describe('@konekti/cron', () => {
     expect(events).toEqual([
       'run',
       'error:Distributed cron lock ownership lost for lock-loss-task.',
+      'after',
+    ]);
+
+    await app.close();
+  });
+
+  it('treats lock renewal errors as a failed tick', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const redis = new RenewalErrorOnRenewRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        distributed: true,
+        lockTtlMs: 2_000,
+        name: 'lock-renew-error-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      async run() {
+        events.push('run');
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-renew-error',
+            lockTtlMs: 2_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    release.resolve();
+    await tickPromise;
+
+    expect(events).toEqual([
+      'run',
+      'error:Distributed cron lock renewal failed for lock-renew-error-task.',
       'after',
     ]);
 
