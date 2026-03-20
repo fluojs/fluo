@@ -280,12 +280,17 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
 
     const renewalIntervalMs = Math.max(1_000, Math.floor(descriptor.lockTtlMs / 2));
+    let lockOwnershipError: Error | undefined;
     const renewalTimer = setInterval(() => {
-      void this.renewLock(descriptor);
+      void this.renewLock(descriptor).then((renewed) => {
+        if (!renewed && !lockOwnershipError) {
+          lockOwnershipError = new Error(`Distributed cron lock ownership lost for ${descriptor.taskName}.`);
+        }
+      });
     }, renewalIntervalMs);
 
     try {
-      await this.executeTask(descriptor);
+      await this.executeTask(descriptor, () => lockOwnershipError);
     } finally {
       clearInterval(renewalTimer);
       await this.releaseLock(descriptor);
@@ -298,7 +303,10 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
   }
 
-  private async executeTask(descriptor: CronTaskDescriptor): Promise<void> {
+  private async executeTask(
+    descriptor: CronTaskDescriptor,
+    postRunErrorProvider?: () => Error | undefined,
+  ): Promise<void> {
     let instance: unknown;
 
     try {
@@ -322,12 +330,19 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
       return;
     }
 
-    if (descriptor.beforeRun) {
-      await Promise.resolve(descriptor.beforeRun());
-    }
-
     try {
+      if (descriptor.beforeRun) {
+        await Promise.resolve(descriptor.beforeRun());
+      }
+
       await Promise.resolve((value as (this: unknown) => Promise<void>).call(instance));
+
+      const postRunError = postRunErrorProvider?.();
+
+      if (postRunError) {
+        throw postRunError;
+      }
+
       if (descriptor.onSuccess) {
         await Promise.resolve(descriptor.onSuccess());
       }
@@ -378,27 +393,38 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
   }
 
-  private async renewLock(descriptor: CronTaskDescriptor): Promise<void> {
+  private async renewLock(descriptor: CronTaskDescriptor): Promise<boolean> {
     const redis = this.redisClient;
 
     if (!redis) {
-      return;
+      return true;
     }
 
     try {
-      await redis.eval(
+      const result = await redis.eval(
         RENEW_LOCK_SCRIPT,
         1,
         descriptor.lockKey,
         this.options.distributed.ownerId,
         String(descriptor.lockTtlMs),
       );
+
+      if (typeof result === 'number' && result <= 0) {
+        this.logger.warn(
+          `Distributed cron lock ownership was lost for ${descriptor.taskName}.`,
+          'CronLifecycleService',
+        );
+        return false;
+      }
+
+      return true;
     } catch (error) {
       this.logger.error(
         `Failed to renew distributed cron lock for ${descriptor.taskName}.`,
         error,
         'CronLifecycleService',
       );
+      return false;
     }
   }
 

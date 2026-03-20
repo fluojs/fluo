@@ -104,4 +104,50 @@ describe('MetricsModule', () => {
     await firstApp.close();
     await secondApp.close();
   });
+
+  it('records thrown middleware errors with 500 status labels', async () => {
+    let failNextRequest = true;
+
+    const failingMiddleware = {
+      async handle(_context: unknown, next: () => Promise<void>): Promise<void> {
+        if (failNextRequest) {
+          failNextRequest = false;
+          throw new Error('metrics route boom');
+        }
+
+        await next();
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, middleware: [failingMiddleware] })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const errorResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), errorResponse);
+    expect(errorResponse.statusCode).toBe(500);
+
+    const metricsResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), metricsResponse);
+
+    const metricsText = String(metricsResponse.body);
+
+    expect(metricsResponse.statusCode).toBe(200);
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="500"} 1');
+    expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="500"} 1');
+
+    await app.close();
+  });
+
+  it('throws when otel provider is requested', () => {
+    expect(() => MetricsModule.forRoot({ provider: 'otel' })).toThrow(
+      'MetricsModule provider "otel" is not implemented yet. Use provider "prometheus".',
+    );
+  });
 });
