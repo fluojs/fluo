@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 import { Controller, Get, IntersectionType, OmitType, PartialType, PickType, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
-import { FromBody, FromCookie, FromQuery, RequestDto } from '@konekti/http';
+import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag } from './decorators.js';
@@ -950,6 +950,91 @@ describe('OpenApiModule', () => {
     };
 
     expect(document.components?.schemas?.FilterDto).toBeUndefined();
+  });
+
+  it('uses source-aware scalar schemas for path and cookie parameters', async () => {
+    class SearchRequest {
+      @FromPath('id')
+      @IsArray()
+      id: string[] = [];
+
+      @FromCookie('session')
+      @IsArray()
+      session: string[] = [];
+
+      @FromQuery('tags')
+      @IsArray()
+      tags: string[] = [];
+
+      @FromHeader('x-tags')
+      @IsArray()
+      headerTags: string[] = [];
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @Get('/:id')
+      @RequestDto(SearchRequest)
+      search() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: SearchController }],
+      title: 'Search API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [SearchController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      paths: Record<string, { get?: { parameters?: Array<{ in: string; name: string; schema: { type?: string } }> } }>;
+    };
+
+    expect(document.paths['/search/{id}']?.get?.parameters).toEqual(
+      expect.arrayContaining([
+        {
+          in: 'path',
+          name: 'id',
+          required: true,
+          schema: { type: 'string' },
+        },
+        {
+          in: 'cookie',
+          name: 'session',
+          required: true,
+          schema: { type: 'string' },
+        },
+        {
+          in: 'query',
+          name: 'tags',
+          required: true,
+          schema: { items: {}, type: 'array' },
+        },
+        {
+          in: 'header',
+          name: 'x-tags',
+          required: true,
+          schema: { items: {}, type: 'array' },
+        },
+      ]),
+    );
   });
 
   it('adds default error responses when @ApiResponse is absent', async () => {

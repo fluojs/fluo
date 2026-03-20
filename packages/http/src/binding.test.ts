@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FromBody,
+  FromQuery,
   FromPath,
   Optional,
 } from './decorators.js';
@@ -77,7 +78,6 @@ function createContext(request: FrameworkRequest): ArgumentResolverContext {
     },
     requestContext: {
       container: {
-        async dispose() {},
         resolve() {
           throw new Error('not used');
         },
@@ -217,6 +217,7 @@ describe('HttpDtoValidationAdapter', () => {
       @IsString()
       nickname?: string;
 
+      @FromBody('enabled')
       enabled = false;
     }
 
@@ -248,6 +249,51 @@ describe('HttpDtoValidationAdapter', () => {
           field: 'password',
           message: 'password must have length at least 8',
           source: 'body',
+        },
+      ],
+      status: 400,
+    });
+  });
+
+  it('validates only bound DTO properties in HTTP RequestDto flow', async () => {
+    class SearchRequest {
+      @FromQuery('q')
+      @IsString()
+      @MinLength(1, { code: 'QUERY_REQUIRED', message: 'q is required' })
+      query = '';
+
+      @IsString()
+      @MinLength(1, { code: 'UNBOUND_REQUIRED', message: 'unbound hint is required' })
+      unboundHint = '';
+    }
+
+    const validator = new HttpDtoValidationAdapter();
+
+    await expect(
+      validator.validate(
+        Object.assign(new SearchRequest(), {
+          query: 'konekti',
+          unboundHint: '',
+        }),
+        SearchRequest,
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(
+        Object.assign(new SearchRequest(), {
+          query: '',
+          unboundHint: '',
+        }),
+        SearchRequest,
+      ),
+    ).rejects.toMatchObject({
+      details: [
+        {
+          code: 'QUERY_REQUIRED',
+          field: 'query',
+          message: 'q is required',
+          source: 'query',
         },
       ],
       status: 400,
