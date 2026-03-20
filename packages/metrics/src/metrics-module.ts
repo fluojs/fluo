@@ -3,15 +3,26 @@ import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
-import { HttpMetricsMiddleware } from './http-metrics-middleware.js';
+import {
+  HttpMetricsMiddleware,
+  type HttpMetricsMiddlewareOptions,
+  type HttpMetricsPathLabelMode,
+  type HttpMetricsPathLabelNormalizer,
+} from './http-metrics-middleware.js';
 import { METER_PROVIDER } from './meter-provider.js';
 import { METRICS_SERVICE, MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
+export interface MetricsHttpOptions {
+  pathLabelMode?: HttpMetricsPathLabelMode;
+  pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
+  unknownPathLabel?: string;
+}
+
 export interface MetricsModuleOptions {
-  http?: boolean;
+  http?: boolean | MetricsHttpOptions;
   path?: string;
-  provider?: 'prometheus' | 'otel';
+  provider?: 'prometheus';
   defaultMetrics?: boolean;
   middleware?: MiddlewareLike[];
 }
@@ -20,10 +31,12 @@ export class MetricsModule {
   private static registeredRegistries = new WeakSet<Registry>();
 
   static forRoot(options: MetricsModuleOptions = {}): ModuleType {
-    if (options.provider === 'otel') {
-      throw new Error('MetricsModule provider "otel" is not implemented yet. Use provider "prometheus".');
+    const provider = options.provider ?? 'prometheus';
+    if (provider !== 'prometheus') {
+      throw new Error(`MetricsModule provider "${provider}" is not supported. Use provider "prometheus".`);
     }
 
+    const httpOptions = resolveHttpOptions(options.http);
     const metricsPath = options.path ?? '/metrics';
     const registry = new Registry();
     const metricsService = new MetricsService(registry);
@@ -34,7 +47,9 @@ export class MetricsModule {
       collectDefaultMetrics({ register: registry });
     }
 
-    const middleware = options.http === true ? [new HttpMetricsMiddleware(registry), ...(options.middleware ?? [])] : (options.middleware ?? []);
+    const middleware = httpOptions
+      ? [new HttpMetricsMiddleware(registry, httpOptions), ...(options.middleware ?? [])]
+      : (options.middleware ?? []);
 
     const providers: Provider[] = [
       {
@@ -66,4 +81,20 @@ export class MetricsModule {
 
     return MetricsRuntimeModule;
   }
+}
+
+function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMiddlewareOptions | undefined {
+  if (!http) {
+    return undefined;
+  }
+
+  if (http === true) {
+    return {};
+  }
+
+  return {
+    pathLabelMode: http.pathLabelMode,
+    pathLabelNormalizer: http.pathLabelNormalizer,
+    unknownPathLabel: http.unknownPathLabel,
+  };
 }
