@@ -1,17 +1,9 @@
 import type { Constructor } from '@konekti/core';
 import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/dto-validator';
 
-import { BadRequestException, type HttpExceptionDetail } from './exceptions.js';
+import { BadRequestException } from './exceptions.js';
+import { toInputErrorDetail } from './input-error-detail.js';
 import type { ValidationIssue, Validator } from './types.js';
-
-function toDetail(issue: ValidationIssue): HttpExceptionDetail {
-  return {
-    code: issue.code,
-    field: issue.field,
-    message: issue.message,
-    source: issue.source,
-  };
-}
 
 export class HttpDtoValidationAdapter implements Validator {
   private readonly validator = new BaseDefaultValidator();
@@ -22,7 +14,7 @@ export class HttpDtoValidationAdapter implements Validator {
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         throw new BadRequestException(error.message, {
-          details: error.issues.map(toDetail),
+          details: error.issues.map((issue: ValidationIssue) => toInputErrorDetail(issue)),
         });
       }
 
@@ -36,7 +28,7 @@ export class HttpDtoValidationAdapter implements Validator {
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         throw new BadRequestException(error.message, {
-          details: error.issues.map(toDetail),
+          details: error.issues.map((issue: ValidationIssue) => toInputErrorDetail(issue)),
         });
       }
 

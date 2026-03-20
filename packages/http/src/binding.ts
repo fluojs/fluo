@@ -1,6 +1,7 @@
 import { getDtoBindingSchema, type Constructor, type MetadataPropertyKey, type MetadataSource } from '@konekti/core';
 
 import { BadRequestException, type HttpExceptionDetail } from './exceptions.js';
+import { toInputErrorDetail } from './input-error-detail.js';
 import type { ArgumentResolverContext, Binder, Converter, ConverterTarget, FrameworkRequest } from './types.js';
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -17,15 +18,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
-}
-
-function toDetail(code: string, message: string, field?: string, source?: MetadataSource): HttpExceptionDetail {
-  return {
-    code,
-    field,
-    message,
-    source,
-  };
 }
 
 function resolveSourceKey(propertyKey: MetadataPropertyKey, key?: string): string {
@@ -73,7 +65,7 @@ function validateBodyKeys(
 
   if (!isPlainObject(request.body)) {
     throw new BadRequestException('Request body must be a plain object.', {
-      details: [toDetail('INVALID_BODY', 'Request body must be a plain object.', undefined, 'body')],
+      details: [toInputErrorDetail({ code: 'INVALID_BODY', message: 'Request body must be a plain object.', source: 'body' })],
     });
   }
 
@@ -81,12 +73,12 @@ function validateBodyKeys(
 
   for (const key of Object.keys(request.body)) {
     if (DANGEROUS_KEYS.has(key)) {
-      details.push(toDetail('DANGEROUS_KEY', `Dangerous body key ${key} is not allowed.`, key, 'body'));
+      details.push(toInputErrorDetail({ code: 'DANGEROUS_KEY', field: key, message: `Dangerous body key ${key} is not allowed.`, source: 'body' }));
       continue;
     }
 
     if (!bodyKeys.has(key)) {
-      details.push(toDetail('UNKNOWN_FIELD', `Unknown body field ${key}.`, key, 'body'));
+      details.push(toInputErrorDetail({ code: 'UNKNOWN_FIELD', field: key, message: `Unknown body field ${key}.`, source: 'body' }));
     }
   }
 
@@ -112,11 +104,12 @@ export class DefaultBinder implements Binder {
 
   async bind(dto: Constructor, context: ArgumentResolverContext): Promise<unknown> {
     const schema = getDtoBindingSchema(dto);
+    type BindingSchemaEntry = (typeof schema)[number];
     const value = new dto() as Record<string | symbol, unknown>;
-    const bodyKeys = new Set(
+    const bodyKeys = new Set<string>(
       schema
-        .filter((entry) => entry.metadata.source === 'body')
-        .map((entry) => resolveSourceKey(entry.propertyKey, entry.metadata.key)),
+        .filter((entry: BindingSchemaEntry) => entry.metadata.source === 'body')
+        .map((entry: BindingSchemaEntry) => resolveSourceKey(entry.propertyKey, entry.metadata.key)),
     );
 
     validateBodyKeys(context.requestContext.request, bodyKeys);
@@ -137,12 +130,12 @@ export class DefaultBinder implements Binder {
         }
 
         details.push(
-          toDetail(
-            'MISSING_FIELD',
-            `Missing required ${entry.metadata.source} field ${resolveSourceKey(entry.propertyKey, entry.metadata.key)}.`,
-            toFieldName(entry.propertyKey),
-            entry.metadata.source,
-          ),
+          toInputErrorDetail({
+            code: 'MISSING_FIELD',
+            field: toFieldName(entry.propertyKey),
+            message: `Missing required ${entry.metadata.source} field ${resolveSourceKey(entry.propertyKey, entry.metadata.key)}.`,
+            source: entry.metadata.source,
+          }),
         );
         continue;
       }
