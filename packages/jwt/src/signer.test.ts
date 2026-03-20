@@ -9,6 +9,11 @@ function encodeBase64Url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
 }
 
+function decodeJwtHeader(token: string): Record<string, unknown> {
+  const [headerSegment] = token.split('.');
+  return JSON.parse(Buffer.from(headerSegment, 'base64url').toString('utf8')) as Record<string, unknown>;
+}
+
 describe('DefaultJwtSigner', () => {
   it('creates an access token that the verifier accepts (HS256)', async () => {
     const signer = new DefaultJwtSigner({
@@ -90,6 +95,52 @@ describe('DefaultJwtSigner', () => {
     await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
       subject: 'user-first-alg',
     });
+  });
+
+  it('uses the first compatible HMAC key entry when a non-HMAC key appears first', async () => {
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      keys: [
+        { kid: 'rsa-key', privateKey },
+        { kid: 'hmac-key', secret: 'hmac-secret' },
+      ],
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      keys: [{ kid: 'hmac-key', secret: 'hmac-secret' }],
+    });
+
+    const token = await signer.signAccessToken({ sub: 'user-hmac-key-selection' });
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'user-hmac-key-selection',
+    });
+    expect(decodeJwtHeader(token)).toMatchObject({ alg: 'HS256', kid: 'hmac-key' });
+  });
+
+  it('uses the first compatible asymmetric key entry when an HMAC key appears first', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const signer = new DefaultJwtSigner({
+      algorithms: ['RS256', 'HS256'],
+      issuer: 'tests',
+      keys: [
+        { kid: 'hmac-key', secret: 'hmac-secret' },
+        { kid: 'rsa-key', privateKey, publicKey },
+      ],
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['RS256'],
+      issuer: 'tests',
+      keys: [{ kid: 'rsa-key', publicKey }],
+    });
+
+    const token = await signer.signAccessToken({ sub: 'user-rsa-key-selection' });
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'user-rsa-key-selection',
+    });
+    expect(decodeJwtHeader(token)).toMatchObject({ alg: 'RS256', kid: 'rsa-key' });
   });
 
   it('sign + verify roundtrip with RS256', async () => {
