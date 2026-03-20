@@ -382,7 +382,7 @@ function createParameters(
     const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
     const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' as const };
-    const schema = alignParameterSchemaWithRuntimeBindingContract(applyValidationConstraints(inferred, rules));
+    const schema = alignParameterSchemaWithRuntimeBindingContract(applyValidationConstraints(inferred, rules), source);
     const isRequired = source === 'path' ? true : isPropertyRequired(entry.binding, entry.validation);
 
     return {
@@ -498,25 +498,46 @@ function createRequestBody(
   };
 }
 
-function alignParameterSchemaWithRuntimeBindingContract(schema: OpenApiSchemaObject): OpenApiSchemaObject {
-  if (schema.$ref !== undefined) {
+function scalarizeArraySchemaItems(items: OpenApiSchemaObject | undefined): OpenApiSchemaObject {
+  if (!items || items.$ref !== undefined || items.type === undefined || items.type === 'array' || items.type === 'object') {
     return { type: 'string' };
   }
 
-  if (schema.type === 'object') {
-    return { type: 'string' };
+  return {
+    type: items.type,
+    ...(items.format !== undefined && { format: items.format }),
+    ...(items.enum !== undefined && { enum: items.enum }),
+  };
+}
+
+function alignParameterSchemaWithRuntimeBindingContract(
+  schema: OpenApiSchemaObject,
+  source: 'cookie' | 'header' | 'path' | 'query',
+): OpenApiSchemaObject {
+  let aligned = schema;
+
+  if (aligned.$ref !== undefined) {
+    aligned = { type: 'string' };
   }
 
-  if (schema.type === 'array' && schema.items) {
-    if (schema.items.$ref !== undefined || schema.items.type === 'object') {
-      return {
-        ...schema,
+  if (aligned.type === 'object') {
+    aligned = { type: 'string' };
+  }
+
+  if (aligned.type === 'array' && aligned.items) {
+    if (aligned.items.$ref !== undefined || aligned.items.type === 'object') {
+      aligned = {
+        ...aligned,
         items: { type: 'string' },
       };
     }
   }
 
-  return schema;
+  if ((source === 'path' || source === 'cookie') && aligned.type === 'array') {
+    return scalarizeArraySchemaItems(aligned.items);
+  }
+
+  return aligned;
 }
 
 function createResponseObject(
