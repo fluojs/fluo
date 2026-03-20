@@ -28,6 +28,17 @@ function createLogger(events: string[]): ApplicationLogger {
   };
 }
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 class UserCreatedEvent {
   constructor(public readonly userId: string) {}
 }
@@ -161,6 +172,157 @@ describe('@konekti/event-bus', () => {
 
     expect(store.successCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.handle failed.'))).toBe(true);
+
+    await app.close();
+  });
+
+  it('keeps publish bounded and predictable with mixed success, failure, and hanging handlers', async () => {
+    const loggerEvents: string[] = [];
+    const gate = createDeferred<void>();
+
+    class EventStore {
+      successCalls = 0;
+    }
+
+    @Inject([EventStore])
+    class SuccessHandler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(_event: UserCreatedEvent) {
+        this.store.successCalls += 1;
+      }
+    }
+
+    class FailingHandler {
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(_event: UserCreatedEvent) {
+        throw new Error('handler failed');
+      }
+    }
+
+    class HangingHandler {
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        await gate.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule({ publish: { timeoutMs: 20 } })],
+      providers: [EventStore, SuccessHandler, FailingHandler, HangingHandler],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+
+    await expect(eventBus.publish(new UserCreatedEvent('user-2-timeout'))).resolves.toBeUndefined();
+
+    expect(store.successCalls).toBe(1);
+    expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.onUserCreated failed.'))).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('exceeded publish timeout of 20ms.'))).toBe(true);
+
+    gate.resolve();
+    await app.close();
+  });
+
+  it('supports non-blocking publish option without waiting for handler completion', async () => {
+    const gate = createDeferred<void>();
+
+    class EventStore {
+      completedCalls = 0;
+      startedCalls = 0;
+    }
+
+    @Inject([EventStore])
+    class SlowHandler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        this.store.startedCalls += 1;
+        await gate.promise;
+        this.store.completedCalls += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule()],
+      providers: [EventStore, SlowHandler],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+
+    await expect(
+      eventBus.publish(new UserCreatedEvent('user-non-blocking'), { waitForHandlers: false }),
+    ).resolves.toBeUndefined();
+
+    await Promise.resolve();
+
+    expect(store.startedCalls).toBe(1);
+    expect(store.completedCalls).toBe(0);
+
+    gate.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.completedCalls).toBe(1);
+
+    await app.close();
+  });
+
+  it('supports publish cancellation signal before handler dispatch', async () => {
+    const loggerEvents: string[] = [];
+
+    class EventStore {
+      calls = 0;
+    }
+
+    @Inject([EventStore])
+    class Handler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(UserCreatedEvent)
+      onUserCreated(_event: UserCreatedEvent) {
+        this.store.calls += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule()],
+      providers: [EventStore, Handler],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+    const controller = new AbortController();
+
+    controller.abort();
+
+    await expect(
+      eventBus.publish(new UserCreatedEvent('user-cancelled'), { signal: controller.signal }),
+    ).resolves.toBeUndefined();
+
+    expect(store.calls).toBe(0);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Event publish was cancelled before dispatching handler Handler.onUserCreated.'),
+      ),
+    ).toBe(true);
 
     await app.close();
   });
@@ -397,7 +559,7 @@ describe('@konekti/event-bus', () => {
     const loggerEvents: string[] = [];
     const logger = createLogger(loggerEvents);
     const container = new Container();
-    const service = new EventBusLifecycleService(container, [], logger);
+    const service = new EventBusLifecycleService(container, [], logger, {});
 
     await service.publish(new UserCreatedEvent('user-9'));
 
@@ -443,6 +605,58 @@ describe('@konekti/event-bus', () => {
     await eventBus.publish(new UserCreatedEvent('user-10'));
 
     expect(store.calls).toBe(1);
+
+    await app.close();
+  });
+
+  it('keeps distinct handlers with colliding class and method names', async () => {
+    class EventStore {
+      firstCalls = 0;
+      secondCalls = 0;
+    }
+
+    const FirstCollidingHandler = (() => {
+      @Inject([EventStore])
+      class CollidingHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.firstCalls += 1;
+        }
+      }
+
+      return CollidingHandler;
+    })();
+
+    const SecondCollidingHandler = (() => {
+      @Inject([EventStore])
+      class CollidingHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.secondCalls += 1;
+        }
+      }
+
+      return CollidingHandler;
+    })();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule()],
+      providers: [EventStore, FirstCollidingHandler, SecondCollidingHandler],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+
+    await eventBus.publish(new UserCreatedEvent('user-11'));
+
+    expect(store.firstCalls).toBe(1);
+    expect(store.secondCalls).toBe(1);
 
     await app.close();
   });

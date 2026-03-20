@@ -51,15 +51,22 @@ export class AppModule {}
 - `createEventBusModule()` - registers global `EVENT_BUS` and lifecycle discovery service
 - `createEventBusProviders()` - returns raw providers for manual composition
 - `EVENT_BUS` - DI token for the application event bus instance
-- `EventBus` - interface with `publish(event)`
+- `EventBus` - interface with `publish(event, options?)`
 - `@OnEvent(EventClass)` - marks provider/controller methods as event handlers
+
+### Module options
+
+`createEventBusModule(options)` and `createEventBusProviders(options)` accept:
+
+- `publish.timeoutMs` - bounds how long `publish()` waits per handler before moving on
+- `publish.waitForHandlers` - default waiting mode (`true` waits, `false` dispatches non-blocking)
 
 ## Runtime behavior
 
 - Handler discovery runs during application bootstrap using `COMPILED_MODULES`
-- Handler instances are resolved from `RUNTIME_CONTAINER` when events are published
+- Handler instances are pre-resolved from `RUNTIME_CONTAINER` during bootstrap and reused on publish
 - Events are matched by class using `instanceof`, so base-class handlers receive derived events
-- Publishing dispatches to every matching handler and waits for completion without throwing handler errors
+- Publishing dispatches to every matching handler and supports timeout, cancellation signal, and non-blocking dispatch options
 - Handler failures are isolated and logged through `ApplicationLogger`
 - Request/transient scoped classes with `@OnEvent()` are ignored with a warning
 
