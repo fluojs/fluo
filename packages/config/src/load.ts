@@ -19,11 +19,18 @@ function parseEnvContent(content: string, processEnv: NodeJS.ProcessEnv, customP
   return result.parsed ?? {};
 }
 
+function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
+
 export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   const cwd = options.cwd ?? process.cwd();
   const envFile = options.envFile ?? join(cwd, `.env.${options.mode}`);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? process.env;
+  const safeProcessEnv = sanitizeProcessEnv(processEnv);
   const runtimeOverrides = options.runtimeOverrides ?? {};
 
   const envFileValues = existsSync(envFile)
@@ -33,7 +40,7 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   const merged: ConfigDictionary = {
     ...defaults,
     ...envFileValues,
-    ...processEnv,
+    ...safeProcessEnv,
     ...runtimeOverrides,
   };
 
@@ -55,7 +62,7 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
         const mergedReloaded: ConfigDictionary = {
           ...defaults,
           ...reloaded,
-          ...processEnv,
+          ...safeProcessEnv,
           ...runtimeOverrides,
         };
         const result = options.validate ? options.validate(mergedReloaded) : mergedReloaded;

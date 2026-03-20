@@ -28,6 +28,22 @@ describe('loadConfig', () => {
     });
   });
 
+  it('does not let undefined process env values overwrite file/default values', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-undefined-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const loaded = loadConfig({
+      cwd,
+      defaults: { PORT: '3000' },
+      mode: 'dev',
+      processEnv: { PORT: undefined },
+    });
+
+    expect(loaded).toMatchObject({ PORT: '4000' });
+  });
+
   it('fails when validation rejects the merged config', () => {
     expect(() =>
       loadConfig({
@@ -113,6 +129,22 @@ describe('ConfigService', () => {
     const service = new ConfigService({ db: { host: 'localhost' } });
 
     expect(service.getOptional('db.missing' as never)).toBeUndefined();
+  });
+
+  it('does not resolve inherited top-level keys', () => {
+    const values = Object.create({ PORT: '3000' }) as Record<string, unknown>;
+    const service = new ConfigService(values);
+
+    expect(service.getOptional('PORT' as never)).toBeUndefined();
+    expect(() => service.get('PORT' as never)).toThrow('Missing config key');
+  });
+
+  it('does not resolve inherited nested keys', () => {
+    const db = Object.create({ host: 'localhost' }) as Record<string, unknown>;
+    const service = new ConfigService({ db });
+
+    expect(service.getOptional('db.host' as never)).toBeUndefined();
+    expect(() => service.get('db.host' as never)).toThrow('Missing config key');
   });
 
   it('provides typed get/getOptional for generic ConfigService', () => {
