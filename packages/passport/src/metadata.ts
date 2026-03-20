@@ -1,5 +1,6 @@
 import { metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
 
+import { mergeAuthRequirements, normalizeDeclaredScopes } from './scope.js';
 import type { AuthRequirement } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
@@ -16,21 +17,8 @@ function cloneRequirement(requirement: AuthRequirement | undefined): AuthRequire
   }
 
   return {
-    scopes: requirement.scopes ? [...requirement.scopes] : undefined,
+    scopes: normalizeDeclaredScopes(requirement.scopes),
     strategy: requirement.strategy,
-  };
-}
-
-function mergeRequirements(base: AuthRequirement | undefined, extra: AuthRequirement | undefined): AuthRequirement | undefined {
-  if (!base && !extra) {
-    return undefined;
-  }
-
-  const scopes = [...(base?.scopes ?? []), ...(extra?.scopes ?? [])];
-
-  return {
-    scopes: scopes.length > 0 ? scopes : undefined,
-    strategy: extra?.strategy ?? base?.strategy,
   };
 }
 
@@ -69,10 +57,10 @@ export function defineAuthRequirement(target: Function | object, requirement: Au
 
 export function getOwnAuthRequirement(target: Function | object, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
   if (propertyKey === undefined) {
-    return mergeRequirements(cloneRequirement(classRequirementStore.get(target as Function)), getStandardClassRequirement(target as Function));
+    return mergeAuthRequirements(cloneRequirement(classRequirementStore.get(target as Function)), getStandardClassRequirement(target as Function));
   }
 
-  return mergeRequirements(cloneRequirement(methodRequirementStore.get(target)?.get(propertyKey)), getStandardMethodRequirement(target, propertyKey));
+  return mergeAuthRequirements(cloneRequirement(methodRequirementStore.get(target)?.get(propertyKey)), getStandardMethodRequirement(target, propertyKey));
 }
 
 export function getAuthRequirement(controllerType: Function, propertyKey?: MetadataPropertyKey): AuthRequirement | undefined {
@@ -80,7 +68,7 @@ export function getAuthRequirement(controllerType: Function, propertyKey?: Metad
     return getOwnAuthRequirement(controllerType);
   }
 
-  return mergeRequirements(
+  return mergeAuthRequirements(
     getOwnAuthRequirement(controllerType),
     getOwnAuthRequirement(controllerType.prototype, propertyKey),
   );

@@ -34,7 +34,7 @@ function signToken(payload: Record<string, unknown>, secret: string): string {
   return `${headerSegment}.${payloadSegment}.${signature}`;
 }
 
-function createContext(authorization?: string): GuardContext {
+function createContext(authorization?: string | string[]): GuardContext {
   return {
     handler: {
       controllerToken: class TestController {},
@@ -110,6 +110,43 @@ describe('JwtStrategy', () => {
     const strategy = new JwtStrategy(new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'starter-secret' }));
 
     await expect(strategy.authenticate(createContext())).rejects.toBeInstanceOf(AuthenticationRequiredError);
+  });
+
+  it('accepts bearer headers with case and whitespace variance', async () => {
+    const strategy = new JwtStrategy(
+      new DefaultJwtVerifier({
+        algorithms: ['HS256'],
+        audience: 'starter-app',
+        issuer: 'starter-app',
+        secret: 'starter-secret',
+      }),
+    );
+    const token = signToken(
+      {
+        aud: 'starter-app',
+        exp: Math.floor(Date.now() / 1000) + 60,
+        iss: 'starter-app',
+        sub: 'starter-user',
+      },
+      'starter-secret',
+    );
+
+    await expect(strategy.authenticate(createContext(`   bearer\t${token}   `))).resolves.toMatchObject({
+      subject: 'starter-user',
+    });
+    await expect(strategy.authenticate(createContext([`Bearer ${token}`]))).resolves.toMatchObject({
+      subject: 'starter-user',
+    });
+  });
+
+  it('rejects malformed bearer headers deterministically', async () => {
+    const strategy = new JwtStrategy(new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'starter-secret' }));
+
+    await expect(strategy.authenticate(createContext('Bearer'))).rejects.toBeInstanceOf(AuthenticationRequiredError);
+    await expect(strategy.authenticate(createContext('Bearer too many parts'))).rejects.toBeInstanceOf(
+      AuthenticationRequiredError,
+    );
+    await expect(strategy.authenticate(createContext('Token abc'))).rejects.toBeInstanceOf(AuthenticationRequiredError);
   });
 
   it('maps expired and invalid JWTs to passport auth errors', async () => {
