@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Shared Redis connection layer for Konekti. Register it once, inject the raw `ioredis` client anywhere.
+Shared Redis connection layer for Konekti. Register it once, inject either the raw `ioredis` client or the optional Redis facade.
 
 ## See also
 
@@ -14,7 +14,7 @@ Shared Redis connection layer for Konekti. Register it once, inject the raw `ior
 
 `@konekti/redis` owns the app-scoped Redis client lifecycle for Konekti. It creates a singleton `ioredis` client, exposes it through the `REDIS_CLIENT` DI token, connects it during module initialization, and closes it during application shutdown.
 
-The package does **not** wrap Redis commands behind another abstraction. You still use the raw `ioredis` client API.
+The package also exposes `RedisService` via `REDIS_SERVICE` for JSON-friendly `get`/`set`/`del` usage while still allowing direct raw `ioredis` access.
 
 ## Installation
 
@@ -66,13 +66,22 @@ export class CacheService {
 | `createRedisModule(options)` | `src/module.ts` | Registers a global singleton Redis client module |
 | `createRedisProviders(options)` | `src/module.ts` | Returns the raw provider list for manual composition |
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
+| `REDIS_SERVICE` | `src/redis-service.ts` | DI token for the Redis facade service |
+| `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers |
 | `RedisModuleOptions` | `src/types.ts` | `ioredis` options without `lazyConnect` |
+
+## RedisService codec behavior
+
+- `get(key)` returns `null` when the key does not exist.
+- `get(key)` returns parsed JSON for valid JSON payloads.
+- `get(key)` returns the raw stored string for non-JSON or malformed JSON payloads.
+- `set(key, value)` always stores `JSON.stringify(value)` and uses Redis `EX` when `ttlSeconds > 0`.
 
 ## Lifecycle behavior
 
 - `createRedisModule()` always creates the client with `lazyConnect: true`.
-- `onModuleInit()` calls `connect()` when the client is still in `wait` state, so bootstrap fails early if Redis is required.
-- `onApplicationShutdown()` prefers `quit()` for graceful shutdown and falls back to `disconnect()` if `quit()` fails.
+- `onModuleInit()` calls `connect()` only in `wait` state, so bootstrap fails early if Redis is required and connect fails.
+- `onApplicationShutdown()` skips work when already `end`, disconnects directly for non-quittable states, and otherwise prefers `quit()` with `disconnect()` fallback.
 
 ## Architecture
 
@@ -82,8 +91,8 @@ createRedisModule(options)
   -> registers lifecycle provider that manages connect/quit
 
 service/repository code
-  -> @Inject([REDIS_CLIENT])
-  -> raw ioredis client
+  -> @Inject([REDIS_CLIENT]) or @Inject([REDIS_SERVICE])
+  -> raw client or facade codec helpers
 
 app bootstrap
   -> onModuleInit()

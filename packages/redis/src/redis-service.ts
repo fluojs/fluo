@@ -5,21 +5,25 @@ import { REDIS_CLIENT } from './tokens.js';
 
 export const REDIS_SERVICE = Symbol.for('konekti.redis.service');
 
+function decodeRedisValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 @Inject([REDIS_CLIENT])
 export class RedisService {
   constructor(private readonly client: Redis) {}
 
-  async get<T>(key: string): Promise<T | null> {
+  async get<T>(key: string): Promise<T | string | null> {
     const raw = await this.client.get(key);
     if (raw === null) {
       return null;
     }
 
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return raw as T;
-    }
+    return decodeRedisValue(raw) as T | string;
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {

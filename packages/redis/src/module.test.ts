@@ -6,12 +6,17 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 interface MockRedisInstance {
   options: Record<string, unknown>;
   status: string;
+  connect(): Promise<void>;
+  disconnect(): void;
+  quit(): Promise<'OK'>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ...args: unknown[]): Promise<'OK'>;
   del(key: string): Promise<number>;
 }
 
 const mockRedisState = vi.hoisted(() => ({
+  connectError: undefined as Error | undefined,
+  disconnectLeavesOpen: false,
   events: [] as string[],
   instances: [] as MockRedisInstance[],
   quitError: undefined as Error | undefined,
@@ -30,12 +35,19 @@ vi.mock('ioredis', () => ({
 
     async connect(): Promise<void> {
       mockRedisState.events.push('connect');
+
+      if (mockRedisState.connectError) {
+        throw mockRedisState.connectError;
+      }
+
       this.status = 'ready';
     }
 
     disconnect(): void {
       mockRedisState.events.push('disconnect');
-      this.status = 'end';
+      if (!mockRedisState.disconnectLeavesOpen) {
+        this.status = 'end';
+      }
     }
 
     async quit(): Promise<'OK'> {
@@ -69,9 +81,24 @@ import { createRedisModule, REDIS_CLIENT, REDIS_SERVICE, RedisService } from './
 
 describe('@konekti/redis', () => {
   beforeEach(() => {
+    mockRedisState.connectError = undefined;
+    mockRedisState.disconnectLeavesOpen = false;
     mockRedisState.events.length = 0;
     mockRedisState.instances.length = 0;
     mockRedisState.quitError = undefined;
+  });
+
+  it('fails bootstrap when connect throws and disconnects wait-state client', async () => {
+    mockRedisState.connectError = new Error('connect failed');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('connect failed');
+
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
   });
 
   it('registers a global Redis client, connects on bootstrap, and quits on shutdown', async () => {
@@ -119,6 +146,61 @@ describe('@konekti/redis', () => {
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('rethrows quit failures when disconnect does not close the client', async () => {
+    mockRedisState.disconnectLeavesOpen = true;
+    mockRedisState.quitError = new Error('quit failed');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+    await expect(app.close()).rejects.toThrow('quit failed');
+    expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('disconnects directly on shutdown when client is still waiting', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const instance = mockRedisState.instances[0];
+
+    expect(instance).toBeDefined();
+    if (!instance) {
+      throw new Error('Expected a Redis instance to be created.');
+    }
+
+    instance.status = 'wait';
+
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
+  });
+
+  it('skips shutdown work when client is already closed', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const instance = mockRedisState.instances[0];
+
+    expect(instance).toBeDefined();
+    if (!instance) {
+      throw new Error('Expected a Redis instance to be created.');
+    }
+
+    instance.status = 'end';
+
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(mockRedisState.events).toEqual(['connect']);
   });
 
   it('provides a typed RedisService facade with get/set/del operations', async () => {
@@ -176,6 +258,33 @@ describe('@konekti/redis', () => {
     await rawClient.set('raw:key', 'plain-string');
 
     await expect(cacheFacade.redisService.get<string>('raw:key')).resolves.toBe('plain-string');
+
+    await app.close();
+  });
+
+  it('returns malformed JSON payload as raw string', async () => {
+    @Inject([REDIS_SERVICE])
+    class CacheFacade {
+      constructor(readonly redisService: RedisService) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [CacheFacade],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const cacheFacade = await app.container.resolve(CacheFacade);
+    const rawClient = cacheFacade.redisService.getRawClient();
+
+    await rawClient.set('malformed:key', '{"id": "u1"');
+
+    await expect(cacheFacade.redisService.get('malformed:key')).resolves.toBe('{"id": "u1"');
 
     await app.close();
   });

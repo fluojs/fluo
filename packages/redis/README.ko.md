@@ -3,7 +3,7 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, 어디서든 raw `ioredis` client를 주입받아 사용합니다.
+Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, raw `ioredis` client 또는 선택적 Redis facade를 주입받아 사용합니다.
 
 ## 관련 문서
 
@@ -14,7 +14,7 @@ Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, 
 
 `@konekti/redis`는 Konekti에서 앱 범위 Redis client lifecycle을 담당합니다. singleton `ioredis` client를 만들고, `REDIS_CLIENT` DI 토큰으로 노출하며, 모듈 초기화 시 연결하고, 애플리케이션 종료 시 정리합니다.
 
-이 패키지는 Redis 명령을 다른 추상화 뒤로 숨기지 **않습니다**. 그대로 raw `ioredis` API를 사용합니다.
+또한 `REDIS_SERVICE`로 노출되는 `RedisService`를 제공해 JSON 친화적인 `get`/`set`/`del` 사용을 지원하면서, 필요하면 raw `ioredis` 접근도 그대로 유지합니다.
 
 ## 설치
 
@@ -66,13 +66,22 @@ export class CacheService {
 | `createRedisModule(options)` | `src/module.ts` | global singleton Redis client 모듈 등록 |
 | `createRedisProviders(options)` | `src/module.ts` | 수동 조합을 위한 raw provider 목록 반환 |
 | `REDIS_CLIENT` | `src/tokens.ts` | 공유 raw `ioredis` client용 DI 토큰 |
+| `REDIS_SERVICE` | `src/redis-service.ts` | Redis facade 서비스용 DI 토큰 |
+| `RedisService` | `src/redis-service.ts` | JSON codec 기반 `get`/`set`/`del` facade |
 | `RedisModuleOptions` | `src/types.ts` | `lazyConnect`를 제외한 `ioredis` 옵션 |
+
+## RedisService codec 동작
+
+- `get(key)`는 키가 없으면 `null`을 반환합니다.
+- `get(key)`는 유효한 JSON payload를 파싱해서 반환합니다.
+- `get(key)`는 non-JSON 또는 malformed JSON payload라면 저장된 raw 문자열을 그대로 반환합니다.
+- `set(key, value)`는 항상 `JSON.stringify(value)`로 저장하고, `ttlSeconds > 0`이면 Redis `EX`를 사용합니다.
 
 ## 라이프사이클 동작
 
 - `createRedisModule()`은 항상 `lazyConnect: true`로 client를 생성합니다.
-- `onModuleInit()`은 client가 아직 `wait` 상태이면 `connect()`를 호출해서 Redis가 필수인 경우 bootstrap 단계에서 바로 실패하게 합니다.
-- `onApplicationShutdown()`은 graceful shutdown을 위해 `quit()`을 우선 시도하고, 실패하면 `disconnect()`로 폴백합니다.
+- `onModuleInit()`은 `wait` 상태에서만 `connect()`를 호출하므로, Redis가 필수인 경우 connect 실패를 bootstrap 단계에서 바로 드러냅니다.
+- `onApplicationShutdown()`은 이미 `end`면 종료 작업을 건너뛰고, `quit` 불가능 상태에서는 `disconnect()`를 직접 호출하며, 그 외에는 `quit()` 우선 + 실패 시 `disconnect()` 폴백을 사용합니다.
 
 ## 구조
 
@@ -82,8 +91,8 @@ createRedisModule(options)
   -> connect/quit를 관리하는 lifecycle provider 등록
 
 service/repository 코드
-  -> @Inject([REDIS_CLIENT])
-  -> raw ioredis client
+  -> @Inject([REDIS_CLIENT]) 또는 @Inject([REDIS_SERVICE])
+  -> raw client 또는 facade codec helper
 
 app bootstrap
   -> onModuleInit()
