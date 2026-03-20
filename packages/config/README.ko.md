@@ -46,7 +46,7 @@ const config = loadConfig({
 const service = new ConfigService(config);
 service.get('DATABASE_URL');          // 없으면 throw
 service.getOptional('REDIS_URL');     // 없으면 undefined 반환
-service.snapshot();                   // 현재 값 복사본 반환
+service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 ```
 
 실제로는 `@konekti/runtime`의 `bootstrapApplication()`이 `loadConfig()`를 호출하고, 결과 `ConfigService`를 bootstrap-level provider로 등록합니다.
@@ -64,6 +64,23 @@ service.snapshot();                   // 현재 값 복사본 반환
 | `processEnv` | `NodeJS.ProcessEnv` | 실제 `process.env` 대신 사용할 소스 |
 | `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
 | `validate` | `(raw) => T` | 유효하지 않으면 throw, 타입 딕셔너리 반환 |
+| `watch` | `boolean` | `createConfigReloader(options)`에서 env 파일 watch 리로드를 활성화할 때 사용 |
+
+### `createConfigReloader(options)`
+
+```typescript
+type ConfigReloadReason = 'manual' | 'watch';
+
+type ConfigReloader = {
+  current(): ConfigDictionary;
+  reload(): ConfigDictionary;
+  subscribe(listener: (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void): { unsubscribe(): void };
+  subscribeError(listener: (error: unknown, reason: ConfigReloadReason) => void): { unsubscribe(): void };
+  close(): void;
+};
+```
+
+리로드 알림과 에러는 `subscribe(...)`, `subscribeError(...)`를 통해 명시적으로 전달됩니다. 전역 process 이벤트 사이드이펙트는 사용하지 않습니다.
 
 ### `ConfigService`
 
@@ -71,7 +88,7 @@ service.snapshot();                   // 현재 값 복사본 반환
 class ConfigService {
   get<T>(key: string): T              // 필수 — 없으면 throw
   getOptional<T>(key: string): T | undefined
-  snapshot(): ConfigDictionary        // 현재 정규화된 값 복사본 반환
+  snapshot(): ConfigDictionary        // 현재 정규화된 값을 deep clone으로 반환
 }
 ```
 
@@ -93,9 +110,16 @@ bootstrapApplication(options)
       → ConfigDictionary
   → new ConfigService(values)
   → bootstrap-level provider로 등록
+
+createConfigReloader(options)
+  → 스냅샷 로드 + 검증
+  → subscribe(listener) / subscribeError(listener)
+  → reload()로 수동 리로드
+  → `watch: true`면 env 파일 감시
+  → close()로 감시 중단 + 구독 정리
 ```
 
-`ConfigService`는 부트스트랩 이후 의도적으로 읽기 전용입니다 — 동적 리로드 없음, namespace API 없음.
+`ConfigService`는 부트스트랩 이후 의도적으로 읽기 전용입니다. 동적 리로드가 필요하면 `createConfigReloader()`를 명시적으로 사용합니다.
 
 ## 파일 읽기 순서 (기여자용)
 

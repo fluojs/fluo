@@ -33,8 +33,6 @@ export interface ConfigModuleOptions {
   /** Supply a custom file parser (e.g. for YAML or TOML). Receives raw file content,
    *  returns a flat key-value record. Defaults to dotenv parsing. */
   parse?: (content: string) => Record<string, string>;
-  /** When true, watch the env file for changes and emit CONFIG_RELOADED on the
-   *  internal event bus whenever the file is modified. */
   watch?: boolean;
 }
 
@@ -42,4 +40,22 @@ export interface ConfigLoadOptions extends ConfigModuleOptions {
   cwd?: string;
   processEnv?: NodeJS.ProcessEnv;
   runtimeOverrides?: ConfigDictionary;
+}
+
+export type ConfigReloadReason = 'manual' | 'watch';
+
+export type ConfigReloadListener = (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void;
+
+export type ConfigReloadErrorListener = (error: unknown, reason: ConfigReloadReason) => void;
+
+export interface ConfigReloadSubscription {
+  unsubscribe(): void;
+}
+
+export interface ConfigReloader {
+  current(): ConfigDictionary;
+  reload(): ConfigDictionary;
+  subscribe(listener: ConfigReloadListener): ConfigReloadSubscription;
+  subscribeError(listener: ConfigReloadErrorListener): ConfigReloadSubscription;
+  close(): void;
 }
