@@ -1,11 +1,31 @@
 import { existsSync, readFileSync, watch } from 'node:fs';
+import type { FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 
 import { KonektiError } from '@konekti/core';
 import { parse as dotenvParse } from 'dotenv';
 import { expand as dotenvExpand } from 'dotenv-expand';
 
-import type { ConfigDictionary, ConfigLoadOptions } from './types.js';
+import { cloneConfigDictionary } from './clone.js';
+import type {
+  ConfigDictionary,
+  ConfigLoadOptions,
+  ConfigReloadErrorListener,
+  ConfigReloader,
+  ConfigReloadListener,
+  ConfigReloadReason,
+  ConfigReloadSubscription,
+} from './types.js';
+
+interface NormalizedLoadOptions {
+  envFile: string;
+  defaults: ConfigDictionary;
+  processEnv: NodeJS.ProcessEnv;
+  safeProcessEnv: Record<string, string>;
+  runtimeOverrides: ConfigDictionary;
+  parse?: (content: string) => Record<string, string>;
+  validate?: (raw: ConfigDictionary) => ConfigDictionary;
+}
 
 function parseEnvContent(content: string, processEnv: NodeJS.ProcessEnv, customParser?: (content: string) => Record<string, string>): Record<string, string> {
   if (customParser) {
@@ -25,7 +45,7 @@ function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, strin
   );
 }
 
-export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
+function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   const cwd = options.cwd ?? process.cwd();
   const envFile = options.envFile ?? join(cwd, `.env.${options.mode}`);
   const defaults = options.defaults ?? {};
@@ -33,45 +53,124 @@ export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
   const runtimeOverrides = options.runtimeOverrides ?? {};
 
-  const envFileValues = existsSync(envFile)
-    ? parseEnvContent(readFileSync(envFile, 'utf8'), processEnv, options.parse)
-    : {};
-
-  const merged: ConfigDictionary = {
-    ...defaults,
-    ...envFileValues,
-    ...safeProcessEnv,
-    ...runtimeOverrides,
+  return {
+    defaults,
+    envFile,
+    parse: options.parse,
+    processEnv,
+    runtimeOverrides,
+    safeProcessEnv,
+    validate: options.validate,
   };
+}
 
-  let validated: ConfigDictionary;
+function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
+  if (!existsSync(options.envFile)) {
+    return {};
+  }
 
+  return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.processEnv, options.parse);
+}
+
+function buildMergedConfig(options: NormalizedLoadOptions): ConfigDictionary {
+  const envFileValues = readEnvFileValues(options);
+
+  return {
+    ...options.defaults,
+    ...envFileValues,
+    ...options.safeProcessEnv,
+    ...options.runtimeOverrides,
+  };
+}
+
+function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary): ConfigDictionary {
   try {
-    validated = options.validate ? options.validate(merged) : merged;
+    return options.validate ? options.validate(merged) : merged;
   } catch (error: unknown) {
     throw new KonektiError('Invalid configuration.', {
       code: 'INVALID_CONFIG',
       cause: error,
     });
   }
+}
 
-  if (options.watch && existsSync(envFile)) {
-    watch(envFile, { persistent: false }, () => {
+function resolveConfig(options: NormalizedLoadOptions): ConfigDictionary {
+  return validateConfig(options, buildMergedConfig(options));
+}
+
+function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubscription {
+  listeners.add(listener);
+
+  return {
+    unsubscribe(): void {
+      listeners.delete(listener);
+    },
+  };
+}
+
+export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
+  const normalized = normalizeLoadOptions(options);
+  let current = resolveConfig(normalized);
+  let watcher: FSWatcher | undefined;
+  const listeners = new Set<ConfigReloadListener>();
+  const errorListeners = new Set<ConfigReloadErrorListener>();
+
+  const notifyReload = (snapshot: ConfigDictionary, reason: ConfigReloadReason): void => {
+    const clonedSnapshot = cloneConfigDictionary(snapshot);
+
+    for (const listener of listeners) {
+      listener(clonedSnapshot, reason);
+    }
+  };
+
+  const notifyError = (error: unknown, reason: ConfigReloadReason): void => {
+    for (const listener of errorListeners) {
+      listener(error, reason);
+    }
+  };
+
+  const applyReload = (reason: ConfigReloadReason): ConfigDictionary => {
+    const next = resolveConfig(normalized);
+    current = next;
+    notifyReload(next, reason);
+    return cloneConfigDictionary(next);
+  };
+
+  if (options.watch && existsSync(normalized.envFile)) {
+    watcher = watch(normalized.envFile, { persistent: false }, () => {
       try {
-        const reloaded = parseEnvContent(readFileSync(envFile, 'utf8'), processEnv, options.parse);
-        const mergedReloaded: ConfigDictionary = {
-          ...defaults,
-          ...reloaded,
-          ...safeProcessEnv,
-          ...runtimeOverrides,
-        };
-        const result = options.validate ? options.validate(mergedReloaded) : mergedReloaded;
-        process.emit('CONFIG_RELOADED' as never, result as never);
-      } catch {
-        // silently skip reload errors — watch mode is best-effort
+        applyReload('watch');
+      } catch (error: unknown) {
+        notifyError(error, 'watch');
       }
     });
   }
 
-  return validated;
+  return {
+    close(): void {
+      if (watcher) {
+        watcher.close();
+        watcher = undefined;
+      }
+
+      listeners.clear();
+      errorListeners.clear();
+    },
+    current(): ConfigDictionary {
+      return cloneConfigDictionary(current);
+    },
+    reload(): ConfigDictionary {
+      return applyReload('manual');
+    },
+    subscribe(listener: ConfigReloadListener): ConfigReloadSubscription {
+      return createSubscription(listeners, listener);
+    },
+    subscribeError(listener: ConfigReloadErrorListener): ConfigReloadSubscription {
+      return createSubscription(errorListeners, listener);
+    },
+  };
+}
+
+export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
+  return cloneConfigDictionary(resolveConfig(normalizeLoadOptions(options)));
 }
