@@ -54,6 +54,41 @@ class InMemoryLockRedisClient {
   }
 }
 
+class LockLossOnRenewRedisClient {
+  private readonly locks = new Map<string, string>();
+
+  async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
+    if (this.locks.has(key)) {
+      return null;
+    }
+
+    this.locks.set(key, value);
+    return 'OK';
+  }
+
+  async eval(script: string, _keysLength: number, key: string, owner: string, _ttl?: string): Promise<number> {
+    if (script.includes('PEXPIRE')) {
+      if (this.locks.get(key) !== owner) {
+        return 0;
+      }
+
+      this.locks.delete(key);
+      return 0;
+    }
+
+    if (!script.includes('DEL')) {
+      return 0;
+    }
+
+    if (this.locks.get(key) !== owner) {
+      return 0;
+    }
+
+    this.locks.delete(key);
+    return 1;
+  }
+}
+
 function createDeferred<T = void>(): Deferred<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -640,6 +675,115 @@ describe('@konekti/cron', () => {
     await scheduled.records[0]!.tick();
 
     expect(events).toEqual(['before', 'run', 'error:hook boom', 'after']);
+
+    await app.close();
+  });
+
+  it('runs onError and afterRun when beforeRun throws', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class BeforeRunFailingTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        beforeRun: () => {
+          events.push('before');
+          throw new Error('before boom');
+        },
+        name: 'before-run-failing-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      run() {
+        events.push('run');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [BeforeRunFailingTaskService],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+    await scheduled.records[0]!.tick();
+
+    expect(events).toEqual(['before', 'error:before boom', 'after']);
+
+    await app.close();
+  });
+
+  it('treats lock ownership loss during renewal as a failed tick', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const redis = new LockLossOnRenewRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        distributed: true,
+        lockTtlMs: 2_000,
+        name: 'lock-loss-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      async run() {
+        events.push('run');
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-loss',
+            lockTtlMs: 2_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    release.resolve();
+    await tickPromise;
+
+    expect(events).toEqual([
+      'run',
+      'error:Distributed cron lock ownership lost for lock-loss-task.',
+      'after',
+    ]);
 
     await app.close();
   });

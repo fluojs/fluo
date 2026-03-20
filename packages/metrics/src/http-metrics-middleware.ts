@@ -7,6 +7,26 @@ type HttpMetricLabels = {
   status: string;
 };
 
+function readErrorStatusCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
+  }
+
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const fromStatus = typeof candidate.status === 'number' ? candidate.status : undefined;
+  const fromStatusCode = typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined;
+
+  if (fromStatus !== undefined && Number.isFinite(fromStatus)) {
+    return fromStatus;
+  }
+
+  if (fromStatusCode !== undefined && Number.isFinite(fromStatusCode)) {
+    return fromStatusCode;
+  }
+
+  return undefined;
+}
+
 export class HttpMetricsMiddleware implements Middleware {
   private readonly requestsTotal: Counter<string>;
   private readonly errorsTotal: Counter<string>;
@@ -37,19 +57,28 @@ export class HttpMetricsMiddleware implements Middleware {
     const start = performance.now();
     const method = context.request.method;
     const path = context.request.path;
+    let requestError: unknown;
 
     try {
       await next();
+    } catch (error) {
+      requestError = error;
+      throw error;
     } finally {
-      const status = String(context.response.statusCode ?? 200);
+      const responseStatusCode = context.response.statusCode;
+      const statusCode =
+        responseStatusCode
+        ?? (requestError
+          ? (readErrorStatusCode(requestError) ?? 500)
+          : 200);
+      const status = String(statusCode);
       const durationSeconds = (performance.now() - start) / 1000;
       const labels: HttpMetricLabels = { method, path, status };
 
       this.requestsTotal.inc(labels);
       this.requestDuration.observe(labels, durationSeconds);
 
-      const statusCode = Number(status);
-      if (statusCode >= 400) {
+      if (statusCode >= 400 || requestError !== undefined) {
         this.errorsTotal.inc(labels);
       }
     }

@@ -20,12 +20,14 @@ export class MetricsModule {
   private static registeredRegistries = new WeakSet<Registry>();
 
   static forRoot(options: MetricsModuleOptions = {}): ModuleType {
+    if (options.provider === 'otel') {
+      throw new Error('MetricsModule provider "otel" is not implemented yet. Use provider "prometheus".');
+    }
+
     const metricsPath = options.path ?? '/metrics';
     const registry = new Registry();
     const metricsService = new MetricsService(registry);
-    const meterProvider = options.provider === 'otel'
-      ? new PrometheusMeterProvider(registry)
-      : new PrometheusMeterProvider(registry);
+    const meterProvider = new PrometheusMeterProvider(registry);
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       MetricsModule.registeredRegistries.add(registry);
