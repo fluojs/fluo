@@ -6,6 +6,7 @@ import {
   getDtoValidationSchema,
   type ClassValidationRule,
   type Constructor,
+  type DtoFieldBindingMetadata,
   type DtoFieldValidationRule,
   type MetadataPropertyKey,
   type ValidationIssueMetadata,
@@ -89,9 +90,223 @@ function prefixIssues(
   return issues.map((issue) => ({ ...issue, field: joinFieldPath(fieldPrefix, issue.field), source: issue.source ?? source }));
 }
 
+type RuleKind = DtoFieldValidationRule['kind'];
+type NonCustomRule = Exclude<DtoFieldValidationRule, { kind: 'custom' | 'nested' }>;
+type RuleHandler<K extends RuleKind> = {
+  defaultCode: string;
+  describe: (field: string, rule: Extract<DtoFieldValidationRule, { kind: K }>) => string;
+  validate: (rule: Extract<DtoFieldValidationRule, { kind: K }>, value: unknown) => boolean;
+};
+
+function getRuleHandler<K extends RuleKind>(rule: Extract<DtoFieldValidationRule, { kind: K }>): RuleHandler<K> {
+  return RULE_HANDLERS[rule.kind] as RuleHandler<K>;
+}
+
+const RULE_HANDLERS: { [K in RuleKind]: RuleHandler<K> } = {
+  validateIf: {
+    defaultCode: 'VALIDATE_IF',
+    describe: (field) => `${field} is conditionally invalid.`,
+    validate: () => true,
+  },
+  defined: {
+    defaultCode: 'REQUIRED',
+    describe: (field) => `${field} is required.`,
+    validate: () => true,
+  },
+  optional: {
+    defaultCode: 'OPTIONAL',
+    describe: (field) => `${field} is optional.`,
+    validate: () => true,
+  },
+  equals: {
+    defaultCode: 'EQUALS',
+    describe: (field, rule) => `${field} must equal ${String(rule.value)}.`,
+    validate: (rule, value) => value === rule.value,
+  },
+  notEquals: {
+    defaultCode: 'NOT_EQUALS',
+    describe: (field, rule) => `${field} must not equal ${String(rule.value)}.`,
+    validate: (rule, value) => value !== rule.value,
+  },
+  empty: {
+    defaultCode: 'EMPTY',
+    describe: (field) => `${field} must be empty.`,
+    validate: (_rule, value) => isEmptyValue(value),
+  },
+  notEmpty: {
+    defaultCode: 'NOT_EMPTY',
+    describe: (field) => `${field} should not be empty.`,
+    validate: (_rule, value) => !isEmptyValue(value),
+  },
+  in: {
+    defaultCode: 'IN',
+    describe: (field) => `${field} must be one of the allowed values.`,
+    validate: (rule, value) => rule.values.includes(value),
+  },
+  notIn: {
+    defaultCode: 'NOT_IN',
+    describe: (field) => `${field} contains a forbidden value.`,
+    validate: (rule, value) => !rule.values.includes(value),
+  },
+  string: {
+    defaultCode: 'INVALID_STRING',
+    describe: (field) => `${field} must be a string.`,
+    validate: (_rule, value) => typeof value === 'string',
+  },
+  number: {
+    defaultCode: 'INVALID_NUMBER',
+    describe: (field) => `${field} must be a number.`,
+    validate: (rule, value) => typeof value === 'number' && (rule.allowNaN || !Number.isNaN(value)),
+  },
+  boolean: {
+    defaultCode: 'INVALID_BOOLEAN',
+    describe: (field) => `${field} must be a boolean.`,
+    validate: (_rule, value) => typeof value === 'boolean',
+  },
+  date: {
+    defaultCode: 'INVALID_DATE',
+    describe: (field) => `${field} must be a Date instance.`,
+    validate: (_rule, value) => value instanceof Date && !Number.isNaN(value.getTime()),
+  },
+  array: {
+    defaultCode: 'INVALID_ARRAY',
+    describe: (field) => `${field} must be an array.`,
+    validate: (_rule, value) => Array.isArray(value),
+  },
+  object: {
+    defaultCode: 'INVALID_OBJECT',
+    describe: (field) => `${field} must be an object.`,
+    validate: (_rule, value) => isPlainObject(value),
+  },
+  enum: {
+    defaultCode: 'INVALID_ENUM',
+    describe: (field) => `${field} must be a supported enum value.`,
+    validate: (rule, value) => rule.values.includes(value),
+  },
+  int: {
+    defaultCode: 'INVALID_INT',
+    describe: (field) => `${field} must be an integer.`,
+    validate: (_rule, value) => typeof value === 'number' && Number.isInteger(value),
+  },
+  divisibleBy: {
+    defaultCode: 'DIVISIBLE_BY',
+    describe: (field, rule) => `${field} must be divisible by ${String(rule.value)}.`,
+    validate: (rule, value) => typeof value === 'number' && !Number.isNaN(value) && value % rule.value === 0,
+  },
+  positive: {
+    defaultCode: 'POSITIVE',
+    describe: (field) => `${field} must be positive.`,
+    validate: (_rule, value) => typeof value === 'number' && value > 0,
+  },
+  negative: {
+    defaultCode: 'NEGATIVE',
+    describe: (field) => `${field} must be negative.`,
+    validate: (_rule, value) => typeof value === 'number' && value < 0,
+  },
+  min: {
+    defaultCode: 'MIN',
+    describe: (field, rule) => `${field} must be greater than or equal to ${String(rule.value)}.`,
+    validate: (rule, value) => typeof value === 'number' && !Number.isNaN(value) && value >= rule.value,
+  },
+  max: {
+    defaultCode: 'MAX',
+    describe: (field, rule) => `${field} must be less than or equal to ${String(rule.value)}.`,
+    validate: (rule, value) => typeof value === 'number' && !Number.isNaN(value) && value <= rule.value,
+  },
+  minDate: {
+    defaultCode: 'MIN_DATE',
+    describe: (field, rule) => `${field} must be on or after ${rule.value.toISOString()}.`,
+    validate: (rule, value) => value instanceof Date && !Number.isNaN(value.getTime()) && value.getTime() >= rule.value.getTime(),
+  },
+  maxDate: {
+    defaultCode: 'MAX_DATE',
+    describe: (field, rule) => `${field} must be on or before ${rule.value.toISOString()}.`,
+    validate: (rule, value) => value instanceof Date && !Number.isNaN(value.getTime()) && value.getTime() <= rule.value.getTime(),
+  },
+  contains: {
+    defaultCode: 'CONTAINS',
+    describe: (field, rule) => `${field} must contain ${rule.value}.`,
+    validate: (rule, value) => typeof value === 'string' && value.includes(rule.value),
+  },
+  notContains: {
+    defaultCode: 'NOT_CONTAINS',
+    describe: (field, rule) => `${field} must not contain ${rule.value}.`,
+    validate: (rule, value) => typeof value === 'string' && !value.includes(rule.value),
+  },
+  length: {
+    defaultCode: 'LENGTH',
+    describe: (field) => `${field} must have a valid length.`,
+    validate: (rule, value) => typeof value === 'string' && value.length >= rule.min && (rule.max === undefined || value.length <= rule.max),
+  },
+  minLength: {
+    defaultCode: 'MIN_LENGTH',
+    describe: (field, rule) => `${field} must have length at least ${String(rule.value)}.`,
+    validate: (rule, value) => typeof value === 'string' && value.length >= rule.value,
+  },
+  maxLength: {
+    defaultCode: 'MAX_LENGTH',
+    describe: (field, rule) => `${field} must have length at most ${String(rule.value)}.`,
+    validate: (rule, value) => typeof value === 'string' && value.length <= rule.value,
+  },
+  nested: {
+    defaultCode: 'INVALID_NESTED',
+    describe: (field) => `${field} contains invalid nested data.`,
+    validate: () => true,
+  },
+  validatorjs: {
+    defaultCode: 'INVALID_FIELD',
+    describe: (field) => `${field} is invalid.`,
+    validate: (rule, value) => typeof value === 'string' && runValidatorJs(rule, value),
+  },
+  arrayContains: {
+    defaultCode: 'ARRAY_CONTAINS',
+    describe: (field) => `${field} must contain the required values.`,
+    validate: (rule, value) => Array.isArray(value) && rule.values.every((expected: unknown) => value.includes(expected)),
+  },
+  arrayNotContains: {
+    defaultCode: 'ARRAY_NOT_CONTAINS',
+    describe: (field) => `${field} contains forbidden values.`,
+    validate: (rule, value) => Array.isArray(value) && rule.values.every((expected: unknown) => !value.includes(expected)),
+  },
+  arrayNotEmpty: {
+    defaultCode: 'ARRAY_NOT_EMPTY',
+    describe: (field) => `${field} must not be an empty array.`,
+    validate: (_rule, value) => Array.isArray(value) && value.length > 0,
+  },
+  arrayMinSize: {
+    defaultCode: 'ARRAY_MIN_SIZE',
+    describe: (field, rule) => `${field} must contain at least ${String(rule.value)} items.`,
+    validate: (rule, value) => Array.isArray(value) && value.length >= rule.value,
+  },
+  arrayMaxSize: {
+    defaultCode: 'ARRAY_MAX_SIZE',
+    describe: (field, rule) => `${field} must contain at most ${String(rule.value)} items.`,
+    validate: (rule, value) => Array.isArray(value) && value.length <= rule.value,
+  },
+  arrayUnique: {
+    defaultCode: 'ARRAY_UNIQUE',
+    describe: (field) => `${field} must contain unique values.`,
+    validate: (rule, value) => {
+      if (!Array.isArray(value)) return false;
+      const seen = new Set<unknown>();
+      for (const entry of value) {
+        const key = rule.selector ? rule.selector(entry) : entry;
+        if (seen.has(key)) return false;
+        seen.add(key);
+      }
+      return true;
+    },
+  },
+  custom: {
+    defaultCode: 'INVALID_FIELD',
+    describe: (field) => `${field} is invalid.`,
+    validate: () => true,
+  },
+};
+
 function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): T {
   if (rawValue instanceof target) {
-    return rawValue;
+    return rawValue as T;
   }
 
   const instance = new target() as Record<PropertyKey, unknown>;
@@ -102,21 +317,12 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
 
   Object.assign(instance, rawValue);
 
-  const bindingMap = new Map(getDtoBindingSchema(target).map((entry) => [entry.propertyKey, entry.metadata]));
-  const keys = new Set<MetadataPropertyKey>([
-    ...bindingMap.keys(),
-    ...getDtoValidationSchema(target).map((entry) => entry.propertyKey),
-  ]);
-
-  for (const propertyKey of keys) {
-    const sourceKey = bindingMap.get(propertyKey)?.key;
-    if (!sourceKey) continue;
-    instance[propertyKey] = rawValue[sourceKey];
-  }
+  const bindingMap = getDtoBindingMap(target);
+  applyBindingValues(instance, rawValue, collectBoundAndValidatedPropertyKeys(target, bindingMap), bindingMap);
 
   for (const entry of getDtoValidationSchema(target)) {
     const nestedRule = entry.rules.find(
-      (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
+      (rule: DtoFieldValidationRule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
     );
 
     if (!nestedRule) {
@@ -129,82 +335,78 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
     }
 
     const resolvedDto = resolveNestedDto(nestedRule.dto);
-
-    if (nestedRule.each) {
-      if (Array.isArray(currentValue)) {
-        instance[entry.propertyKey] = currentValue.map((item) =>
-          item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
-        );
-        continue;
-      }
-
-      if (currentValue instanceof Set) {
-        instance[entry.propertyKey] = new Set(
-          Array.from(currentValue.values(), (item) =>
-            item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
-          ),
-        );
-        continue;
-      }
-
-      if (currentValue instanceof Map) {
-        instance[entry.propertyKey] = new Map(
-          Array.from(currentValue.entries(), ([key, item]) => [
-            key,
-            item === undefined || item === null ? item : createNestedDtoInstance(resolvedDto, item),
-          ]),
-        );
-        continue;
-      }
-    }
-
-    instance[entry.propertyKey] = createNestedDtoInstance(resolvedDto, currentValue);
+    instance[entry.propertyKey] = nestedRule.each
+      ? transformNestedEachValue(currentValue, resolvedDto)
+      : transformNestedValue(currentValue, resolvedDto);
   }
 
   return instance as T;
 }
 
-function describeValidator(rule: DtoFieldValidationRule, field: string): { code: string; message: string } {
-  switch (rule.kind) {
-    case 'defined': return { code: rule.code ?? 'REQUIRED', message: rule.message ?? `${field} is required.` };
-    case 'optional': return { code: rule.code ?? 'OPTIONAL', message: rule.message ?? `${field} is optional.` };
-    case 'equals': return { code: rule.code ?? 'EQUALS', message: rule.message ?? `${field} must equal ${String(rule.value)}.` };
-    case 'notEquals': return { code: rule.code ?? 'NOT_EQUALS', message: rule.message ?? `${field} must not equal ${String(rule.value)}.` };
-    case 'empty': return { code: rule.code ?? 'EMPTY', message: rule.message ?? `${field} must be empty.` };
-    case 'notEmpty': return { code: rule.code ?? 'NOT_EMPTY', message: rule.message ?? `${field} should not be empty.` };
-    case 'in': return { code: rule.code ?? 'IN', message: rule.message ?? `${field} must be one of the allowed values.` };
-    case 'notIn': return { code: rule.code ?? 'NOT_IN', message: rule.message ?? `${field} contains a forbidden value.` };
-    case 'string': return { code: rule.code ?? 'INVALID_STRING', message: rule.message ?? `${field} must be a string.` };
-    case 'number': return { code: rule.code ?? 'INVALID_NUMBER', message: rule.message ?? `${field} must be a number.` };
-    case 'boolean': return { code: rule.code ?? 'INVALID_BOOLEAN', message: rule.message ?? `${field} must be a boolean.` };
-    case 'date': return { code: rule.code ?? 'INVALID_DATE', message: rule.message ?? `${field} must be a Date instance.` };
-    case 'array': return { code: rule.code ?? 'INVALID_ARRAY', message: rule.message ?? `${field} must be an array.` };
-    case 'object': return { code: rule.code ?? 'INVALID_OBJECT', message: rule.message ?? `${field} must be an object.` };
-    case 'enum': return { code: rule.code ?? 'INVALID_ENUM', message: rule.message ?? `${field} must be a supported enum value.` };
-    case 'int': return { code: rule.code ?? 'INVALID_INT', message: rule.message ?? `${field} must be an integer.` };
-    case 'divisibleBy': return { code: rule.code ?? 'DIVISIBLE_BY', message: rule.message ?? `${field} must be divisible by ${String(rule.value)}.` };
-    case 'positive': return { code: rule.code ?? 'POSITIVE', message: rule.message ?? `${field} must be positive.` };
-    case 'negative': return { code: rule.code ?? 'NEGATIVE', message: rule.message ?? `${field} must be negative.` };
-    case 'min': return { code: rule.code ?? 'MIN', message: rule.message ?? `${field} must be greater than or equal to ${String(rule.value)}.` };
-    case 'max': return { code: rule.code ?? 'MAX', message: rule.message ?? `${field} must be less than or equal to ${String(rule.value)}.` };
-    case 'minDate': return { code: rule.code ?? 'MIN_DATE', message: rule.message ?? `${field} must be on or after ${rule.value.toISOString()}.` };
-    case 'maxDate': return { code: rule.code ?? 'MAX_DATE', message: rule.message ?? `${field} must be on or before ${rule.value.toISOString()}.` };
-    case 'contains': return { code: rule.code ?? 'CONTAINS', message: rule.message ?? `${field} must contain ${rule.value}.` };
-    case 'notContains': return { code: rule.code ?? 'NOT_CONTAINS', message: rule.message ?? `${field} must not contain ${rule.value}.` };
-    case 'length': return { code: rule.code ?? 'LENGTH', message: rule.message ?? `${field} must have a valid length.` };
-    case 'minLength': return { code: rule.code ?? 'MIN_LENGTH', message: rule.message ?? `${field} must have length at least ${String(rule.value)}.` };
-    case 'maxLength': return { code: rule.code ?? 'MAX_LENGTH', message: rule.message ?? `${field} must have length at most ${String(rule.value)}.` };
-    case 'nested': return { code: rule.code ?? 'INVALID_NESTED', message: rule.message ?? `${field} contains invalid nested data.` };
-    case 'validatorjs': return { code: rule.code ?? rule.validator.toUpperCase(), message: rule.message ?? `${field} is invalid.` };
-    case 'arrayContains': return { code: rule.code ?? 'ARRAY_CONTAINS', message: rule.message ?? `${field} must contain the required values.` };
-    case 'arrayNotContains': return { code: rule.code ?? 'ARRAY_NOT_CONTAINS', message: rule.message ?? `${field} contains forbidden values.` };
-    case 'arrayNotEmpty': return { code: rule.code ?? 'ARRAY_NOT_EMPTY', message: rule.message ?? `${field} must not be an empty array.` };
-    case 'arrayMinSize': return { code: rule.code ?? 'ARRAY_MIN_SIZE', message: rule.message ?? `${field} must contain at least ${String(rule.value)} items.` };
-    case 'arrayMaxSize': return { code: rule.code ?? 'ARRAY_MAX_SIZE', message: rule.message ?? `${field} must contain at most ${String(rule.value)} items.` };
-    case 'arrayUnique': return { code: rule.code ?? 'ARRAY_UNIQUE', message: rule.message ?? `${field} must contain unique values.` };
-    case 'custom': return { code: rule.code ?? 'INVALID_FIELD', message: rule.message ?? `${field} is invalid.` };
-    case 'validateIf': return { code: rule.code ?? 'VALIDATE_IF', message: rule.message ?? `${field} is conditionally invalid.` };
+function getDtoBindingMap(target: Constructor): Map<MetadataPropertyKey, DtoFieldBindingMetadata> {
+  return new Map(
+    getDtoBindingSchema(target).map((entry: { propertyKey: MetadataPropertyKey; metadata: DtoFieldBindingMetadata }) => [entry.propertyKey, entry.metadata]),
+  );
+}
+
+function collectBoundAndValidatedPropertyKeys(
+  target: Constructor,
+  bindingMap: Map<MetadataPropertyKey, DtoFieldBindingMetadata>,
+): Set<MetadataPropertyKey> {
+  return new Set<MetadataPropertyKey>([
+    ...bindingMap.keys(),
+    ...getDtoValidationSchema(target).map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey),
+  ]);
+}
+
+function applyBindingValues(
+  instance: Record<PropertyKey, unknown>,
+  rawValue: Record<PropertyKey, unknown>,
+  keys: Set<MetadataPropertyKey>,
+  bindingMap: Map<MetadataPropertyKey, DtoFieldBindingMetadata>,
+): void {
+  for (const propertyKey of keys) {
+    const sourceKey = bindingMap.get(propertyKey)?.key;
+    if (!sourceKey) continue;
+    instance[propertyKey] = rawValue[sourceKey];
   }
+}
+
+function transformNestedValue(value: unknown, target: Constructor): unknown {
+  return value === undefined || value === null ? value : createNestedDtoInstance(target, value);
+}
+
+function transformNestedEachValue(value: unknown, target: Constructor): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => transformNestedValue(item, target));
+  }
+
+  if (value instanceof Set) {
+    return new Set(Array.from(value.values(), (item) => transformNestedValue(item, target)));
+  }
+
+  if (value instanceof Map) {
+    return new Map(Array.from(value.entries(), ([key, item]) => [key, transformNestedValue(item, target)]));
+  }
+
+  return transformNestedValue(value, target);
+}
+
+function describeValidator(rule: DtoFieldValidationRule, field: string): { code: string; message: string } {
+  if (rule.kind === 'validatorjs') {
+    const handler = getRuleHandler(rule);
+    return {
+      code: rule.code ?? rule.validator.toUpperCase(),
+      message: rule.message ?? handler.describe(field, rule),
+    };
+  }
+
+  const handler = getRuleHandler(rule);
+
+  return {
+    code: rule.code ?? handler.defaultCode,
+    message: rule.message ?? handler.describe(field, rule),
+  };
 }
 
 function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>, value: string): boolean {
@@ -247,61 +449,23 @@ function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validator
     case 'latitude': { const number = Number(value); return !Number.isNaN(number) && number >= -90 && number <= 90; }
     case 'longitude': { const number = Number(value); return !Number.isNaN(number) && number >= -180 && number <= 180; }
     case 'latLong': return validator.isLatLong(value);
+    default: return false;
   }
 }
 
 function validateSingleRule(rule: DtoFieldValidationRule, value: unknown): boolean {
-  switch (rule.kind) {
-    case 'validateIf':
-    case 'defined':
-    case 'optional':
-      return true;
-    case 'equals': return value === rule.value;
-    case 'notEquals': return value !== rule.value;
-    case 'empty': return isEmptyValue(value);
-    case 'notEmpty': return !isEmptyValue(value);
-    case 'in': return rule.values.includes(value);
-    case 'notIn': return !rule.values.includes(value);
-    case 'string': return typeof value === 'string';
-    case 'number': return typeof value === 'number' && (rule.allowNaN || !Number.isNaN(value));
-    case 'boolean': return typeof value === 'boolean';
-    case 'date': return value instanceof Date && !Number.isNaN(value.getTime());
-    case 'array': return Array.isArray(value);
-    case 'object': return isPlainObject(value);
-    case 'enum': return rule.values.includes(value);
-    case 'int': return typeof value === 'number' && Number.isInteger(value);
-    case 'divisibleBy': return typeof value === 'number' && !Number.isNaN(value) && value % rule.value === 0;
-    case 'positive': return typeof value === 'number' && value > 0;
-    case 'negative': return typeof value === 'number' && value < 0;
-    case 'min': return typeof value === 'number' && !Number.isNaN(value) && value >= rule.value;
-    case 'max': return typeof value === 'number' && !Number.isNaN(value) && value <= rule.value;
-    case 'minDate': return value instanceof Date && !Number.isNaN(value.getTime()) && value.getTime() >= rule.value.getTime();
-    case 'maxDate': return value instanceof Date && !Number.isNaN(value.getTime()) && value.getTime() <= rule.value.getTime();
-    case 'contains': return typeof value === 'string' && value.includes(rule.value);
-    case 'notContains': return typeof value === 'string' && !value.includes(rule.value);
-    case 'length': return typeof value === 'string' && value.length >= rule.min && (rule.max === undefined || value.length <= rule.max);
-    case 'minLength': return typeof value === 'string' && value.length >= rule.value;
-    case 'maxLength': return typeof value === 'string' && value.length <= rule.value;
-    case 'nested': return true;
-    case 'validatorjs': return typeof value === 'string' && runValidatorJs(rule, value);
-    case 'arrayContains': return Array.isArray(value) && rule.values.every((expected) => value.includes(expected));
-    case 'arrayNotContains': return Array.isArray(value) && rule.values.every((expected) => !value.includes(expected));
-    case 'arrayNotEmpty': return Array.isArray(value) && value.length > 0;
-    case 'arrayMinSize': return Array.isArray(value) && value.length >= rule.value;
-    case 'arrayMaxSize': return Array.isArray(value) && value.length <= rule.value;
-    case 'arrayUnique': {
-      if (!Array.isArray(value)) return false;
-      const seen = new Set<unknown>();
-      for (const entry of value) {
-        const key = rule.selector ? rule.selector(entry) : entry;
-        if (seen.has(key)) return false;
-        seen.add(key);
-      }
-      return true;
-    }
-    case 'custom':
-      return true;
+  if (rule.kind === 'custom' || rule.kind === 'nested') {
+    return true;
   }
+
+  return runRulePredicate(rule, value);
+}
+
+function runRulePredicate<K extends NonCustomRule['kind']>(
+  rule: Extract<NonCustomRule, { kind: K }>,
+  value: unknown,
+): boolean {
+  return getRuleHandler(rule).validate(rule, value);
 }
 
 async function validateNestedRule(
@@ -418,7 +582,7 @@ async function collectValidationIssuesInternal<T>(
   value: T,
   context: { fieldPrefix?: string; inheritedSource?: ValidationIssue['source'] },
 ): Promise<readonly ValidationIssue[]> {
-  const bindingMetadata = new Map(getDtoBindingSchema(target).map((entry) => [entry.propertyKey, entry.metadata]));
+  const bindingMetadata = getDtoBindingMap(target);
   const issues: ValidationIssue[] = [];
 
   for (const entry of getDtoValidationSchema(target)) {
@@ -451,6 +615,6 @@ export class DefaultValidator implements Validator {
       throw new DtoValidationError('Validation failed.', issues);
     }
 
-    return instance;
+    return instance as T;
   }
 }

@@ -277,6 +277,7 @@ export function ArrayUnique(
 export function Validate(validate: CustomFieldValidator, options?: CustomValidationDecoratorOptions): FieldDecoratorLike {
   return createValidationDecorator(() => ({
     code: options?.code,
+    each: options?.each,
     kind: 'custom',
     message: options?.message,
     source: options?.source,
