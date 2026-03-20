@@ -29,8 +29,13 @@ function createTestingDispatcher(bootstrapped: BootstrapResult): ReturnType<type
   });
 }
 
-function isProviderDescriptor<T>(value: Provider<T> | T): value is Provider<T> {
-  return typeof value === 'object' && value !== null && ('useClass' in value || 'useFactory' in value || 'useValue' in value);
+function isProviderDescriptor<T>(value: Provider<T> | T): value is Exclude<Provider<T>, ClassType<T>> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'provide' in value &&
+    ('useClass' in value || 'useFactory' in value || 'useValue' in value || 'useExisting' in value)
+  );
 }
 
 function isClassConstructor<T>(value: Provider<T> | T): value is ClassType<T> {
@@ -44,6 +49,12 @@ function isClassConstructor<T>(value: Provider<T> | T): value is ClassType<T> {
 
 function normalizeOverride<T>(token: Token<T>, value: Provider<T> | T): Provider<T> {
   if (isProviderDescriptor(value)) {
+    if (value.provide !== token) {
+      throw new Error(
+        `overrideProvider token mismatch: expected ${String(token)} but received provider for ${String(value.provide)}.`,
+      );
+    }
+
     return { ...value, provide: token } as Provider<T>;
   }
 

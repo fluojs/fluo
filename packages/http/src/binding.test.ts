@@ -77,6 +77,7 @@ function createContext(request: FrameworkRequest): ArgumentResolverContext {
     },
     requestContext: {
       container: {
+        async dispose() {},
         resolve() {
           throw new Error('not used');
         },

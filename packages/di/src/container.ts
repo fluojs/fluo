@@ -112,6 +112,7 @@ export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
+  private readonly staleCache = new Map<Token, Promise<unknown>>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
@@ -147,6 +148,15 @@ export class Container {
   override(...providers: Provider[]): this {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
+
+      this.registrations.delete(normalized.provide);
+      this.multiRegistrations.delete(normalized.provide);
+      this.invalidateCachedEntry(normalized.provide);
+
+      if (normalized.multi) {
+        this.multiRegistrations.set(normalized.provide, [normalized]);
+        continue;
+      }
 
       this.registrations.set(normalized.provide, normalized);
     }
@@ -319,29 +329,31 @@ export class Container {
 
   private disposalCacheEntries(): Array<[Token, Promise<unknown>]> {
     if (this.parent) {
-      return Array.from(this.requestCache.entries());
+      return [...Array.from(this.staleCache.entries()), ...Array.from(this.requestCache.entries())];
     }
 
-    return Array.from(this.singletonCache.entries());
+    return [...Array.from(this.staleCache.entries()), ...Array.from(this.singletonCache.entries())];
   }
 
   private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
-    const disposables = new Map<Token, Disposable>();
+    const disposables: Disposable[] = [];
+    const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
 
-    for (const [token, instancePromise] of entries) {
+    for (const [, instancePromise] of entries) {
       try {
         const instance = await instancePromise;
 
-        if (this.isDisposable(instance)) {
-          disposables.set(token, instance);
+        if (this.isDisposable(instance) && !seenInstances.has(instance)) {
+          seenInstances.add(instance);
+          disposables.push(instance);
         }
       } catch (error) {
         errors.push(error);
       }
     }
 
-    for (const instance of Array.from(disposables.values()).reverse()) {
+    for (const instance of [...disposables].reverse()) {
       try {
         await instance.onDestroy();
       } catch (error) {
@@ -351,8 +363,10 @@ export class Container {
 
     if (this.parent) {
       this.requestCache.clear();
+      this.staleCache.clear();
     } else {
       this.singletonCache.clear();
+      this.staleCache.clear();
     }
 
     if (errors.length === 1) {
@@ -411,6 +425,30 @@ export class Container {
       }
       default:
         throw new InvariantError('Unknown provider type.');
+    }
+  }
+
+  private invalidateCachedEntry(token: Token): void {
+    if (this.requestCache.has(token)) {
+      const cached = this.requestCache.get(token);
+
+      if (cached) {
+        this.staleCache.set(token, cached);
+      }
+
+      this.requestCache.delete(token);
+    }
+
+    const singletonCache = this.root().singletonCache;
+
+    if (singletonCache.has(token)) {
+      const cached = singletonCache.get(token);
+
+      if (cached) {
+        this.root().staleCache.set(token, cached);
+      }
+
+      singletonCache.delete(token);
     }
   }
 }
