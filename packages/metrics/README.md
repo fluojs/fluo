@@ -42,7 +42,17 @@ Registers a Prometheus metrics endpoint and returns a `ModuleType` to import int
 
 ```typescript
 interface MetricsModuleOptions {
+  http?: boolean | {
+    pathLabelMode?: 'raw' | 'template';
+    pathLabelNormalizer?: (context: {
+      method: string;
+      path: string;
+      params: Readonly<Record<string, string>>;
+    }) => string;
+    unknownPathLabel?: string;
+  };
   path?: string;              // scrape path (default: '/metrics')
+  provider?: 'prometheus';    // only supported provider at this time
   defaultMetrics?: boolean;   // collect Node.js default metrics (default: true)
   middleware?: MiddlewareLike[];
 }
@@ -86,6 +96,40 @@ MetricsModule.forRoot({
   middleware: [ipAllowlistMiddleware],
 })
 ```
+
+### HTTP label normalization
+
+When `http` metrics are enabled, path labels default to template-style normalization using request params (for example `/users/123` -> `/users/:id`) to reduce cardinality drift.
+
+```typescript
+MetricsModule.forRoot({
+  http: {
+    pathLabelMode: 'template',
+  },
+})
+```
+
+You can override the label strategy with a custom normalizer:
+
+```typescript
+MetricsModule.forRoot({
+  http: {
+    pathLabelNormalizer: ({ path }) => (path.startsWith('/internal/') ? '/internal/:resource' : path),
+  },
+})
+```
+
+Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality labels.
+
+### Provider contract
+
+`MetricsModule` currently supports only the Prometheus meter provider. Passing any non-prometheus provider value throws at runtime.
+
+### MetricsService vs MeterProvider
+
+- `MetricsService` is the Prometheus-native API and returns `prom-client` metric instances.
+- `METER_PROVIDER` exposes the portable meter abstraction API.
+- Both use the same module registry, so duplicate metric-name behavior is equivalent across both creation paths.
 
 ---
 
