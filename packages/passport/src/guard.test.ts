@@ -217,6 +217,53 @@ describe('AuthGuard', () => {
     expect(response.body).toEqual({ subject: 'google-user-1' });
   });
 
+  it('normalizes Passport.js scope claims using jwt-compatible scope semantics', async () => {
+    class PassportLikeGoogleStrategy {
+      success?: (user: unknown, info?: unknown) => void;
+
+      authenticate() {
+        this.success?.({
+          email: 'google@example.com',
+          id: 'google-user-1',
+          scope: 'profile:read   profile:write',
+        });
+      }
+    }
+
+    const googleBridge = createPassportJsStrategyBridge('google', PassportLikeGoogleStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google')
+      getProfile(_input: unknown, ctx: { principal?: { scopes?: string[]; subject: string } }) {
+        return {
+          scopes: ctx.principal?.scopes,
+          subject: ctx.principal?.subject,
+        };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeGoogleStrategy,
+      ...googleBridge.providers,
+      ...createPassportProviders({ defaultStrategy: 'google' }, [googleBridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile'), response);
+
+    expect(response.body).toEqual({
+      scopes: ['profile:read', 'profile:write'],
+      subject: 'google-user-1',
+    });
+  });
+
   it('supports Passport.js redirect flow without executing the protected handler', async () => {
     let handlerCalled = false;
 
