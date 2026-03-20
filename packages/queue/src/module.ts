@@ -3,7 +3,7 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { QueueLifecycleService } from './service.js';
 import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
-import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
+import type { NormalizedQueueModuleOptions, QueueModuleOptions, QueueRateLimiterOptions } from './types.js';
 
 function normalizePositiveInteger(value: number | undefined, fallback: number): number {
   if (value === undefined) {
@@ -24,6 +24,8 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
 }
 
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {
+  const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
+
   return {
     defaultAttempts: normalizePositiveInteger(options.defaultAttempts, 1),
     defaultBackoff: options.defaultBackoff
@@ -33,7 +35,18 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
         }
       : undefined,
     defaultConcurrency: normalizePositiveInteger(options.defaultConcurrency, 1),
-    defaultRateLimiter: options.defaultRateLimiter,
+    defaultRateLimiter,
+  };
+}
+
+function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | undefined): QueueRateLimiterOptions | undefined {
+  if (!rateLimiter) {
+    return undefined;
+  }
+
+  return {
+    duration: normalizePositiveInteger(rateLimiter.duration, 1_000),
+    max: normalizePositiveInteger(rateLimiter.max, 1),
   };
 }
 
