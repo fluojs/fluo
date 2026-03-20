@@ -4,10 +4,12 @@ export interface PrismaTransactionClient {
   [key: string]: unknown;
 }
 
+export type PrismaTransactionCallback<TTransactionClient, TResult> = (client: TTransactionClient) => Promise<TResult>;
+
 export interface PrismaClientLike<TTransactionClient = PrismaTransactionClient> {
   $connect?(): MaybePromise<void>;
   $disconnect?(): MaybePromise<void>;
-  $transaction?<T>(callback: (client: TTransactionClient) => Promise<T>): Promise<T>;
+  $transaction?<T>(callback: PrismaTransactionCallback<TTransactionClient, T>): Promise<T>;
 }
 
 export interface PrismaModuleOptions<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient> {

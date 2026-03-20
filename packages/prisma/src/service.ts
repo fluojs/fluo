@@ -30,6 +30,25 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
     return this.transactions.getStore() ?? this.client;
   }
 
+  private async runWithTransactionClient<T>(
+    fn: () => Promise<T>,
+    run: (callback: (transactionClient: TTransactionClient) => Promise<T>) => Promise<T>,
+  ): Promise<T> {
+    if (this.transactions.getStore()) {
+      return fn();
+    }
+
+    if (typeof this.client.$transaction !== 'function') {
+      if (this.serviceOptions.strictTransactions) {
+        throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
+      }
+
+      return fn();
+    }
+
+    return run((transactionClient) => this.transactions.run(transactionClient, fn));
+  }
+
   async onModuleInit(): Promise<void> {
     if (typeof this.client.$connect === 'function') {
       await this.client.$connect();
@@ -49,36 +68,10 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
   }
 
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    const current = this.transactions.getStore();
-
-    if (current) {
-      return fn();
-    }
-
-    if (typeof this.client.$transaction !== 'function') {
-      if (this.serviceOptions.strictTransactions) {
-        throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
-      }
-      return fn();
-    }
-
-    return this.client.$transaction((transactionClient) => this.transactions.run(transactionClient, fn));
+    return this.runWithTransactionClient(fn, (callback) => this.client.$transaction!(callback));
   }
 
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const current = this.transactions.getStore();
-
-    if (current) {
-      return fn();
-    }
-
-    if (typeof this.client.$transaction !== 'function') {
-      if (this.serviceOptions.strictTransactions) {
-        throw new Error('Transaction not supported: Prisma client does not implement $transaction.');
-      }
-      return fn();
-    }
-
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(signal?.reason);
 
@@ -98,8 +91,9 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
     this.activeRequestTransactions.add(active);
 
     try {
-      return await this.client.$transaction((transactionClient) =>
-        this.transactions.run(transactionClient, () => raceWithAbort(fn, controller.signal)),
+      return await this.runWithTransactionClient(
+        () => raceWithAbort(fn, controller.signal),
+        (callback) => this.client.$transaction!(callback),
       );
     } finally {
       signal?.removeEventListener('abort', forwardAbort);

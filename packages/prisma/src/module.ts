@@ -5,23 +5,54 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 import { PrismaService } from './service.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import { PrismaTransactionInterceptor } from './transaction.js';
-import type { PrismaClientLike, PrismaModuleOptions, PrismaTransactionClient } from './types.js';
+import type { PrismaClientLike, PrismaModuleOptions } from './types.js';
 
-export function createPrismaProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
+interface NormalizedPrismaModuleOptions<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient> {
+  client: TClient;
+  strictTransactions: boolean;
+}
+
+const PRISMA_NORMALIZED_OPTIONS = Symbol('konekti.prisma.normalized-options');
+const PRISMA_MODULE_EXPORTS = [PrismaService, PrismaTransactionInterceptor];
+
+function normalizePrismaModuleOptions<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient>(
   options: PrismaModuleOptions<TClient, TTransactionClient>,
+): NormalizedPrismaModuleOptions<TClient, TTransactionClient> {
+  return {
+    client: options.client,
+    strictTransactions: options.strictTransactions ?? false,
+  };
+}
+
+function createPrismaRuntimeProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient>(
+  normalizedOptionsProvider: Provider,
 ): Provider[] {
   return [
+    normalizedOptionsProvider,
     {
+      inject: [PRISMA_NORMALIZED_OPTIONS],
       provide: PRISMA_CLIENT,
-      useValue: options.client,
+      useFactory: (options: unknown) => (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient>).client,
     },
     {
+      inject: [PRISMA_NORMALIZED_OPTIONS],
       provide: PRISMA_OPTIONS,
-      useValue: { strictTransactions: options.strictTransactions ?? false },
+      useFactory: (options: unknown) => ({
+        strictTransactions: (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient>).strictTransactions,
+      }),
     },
     PrismaService,
     PrismaTransactionInterceptor,
   ];
+}
+
+export function createPrismaProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
+  options: PrismaModuleOptions<TClient, TTransactionClient>,
+): Provider[] {
+  return createPrismaRuntimeProviders({
+    provide: PRISMA_NORMALIZED_OPTIONS,
+    useValue: normalizePrismaModuleOptions(options),
+  });
 }
 
 export function createPrismaModule<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
@@ -30,49 +61,36 @@ export function createPrismaModule<TClient extends PrismaClientLike<TTransaction
   class PrismaModule {}
 
   return defineModule(PrismaModule, {
-    exports: [PrismaService, PrismaTransactionInterceptor],
+    exports: PRISMA_MODULE_EXPORTS,
     providers: createPrismaProviders(options),
   });
 }
 
 export function createPrismaModuleAsync<
   TClient extends PrismaClientLike<TTransactionClient>,
-  TTransactionClient = PrismaTransactionClient,
+  TTransactionClient = TClient,
 >(options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient>>): ModuleType {
   class PrismaAsyncModule {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<PrismaModuleOptions<TClient, TTransactionClient>>;
 
-  let cachedResult: Promise<PrismaModuleOptions<TClient, TTransactionClient>> | undefined;
-  const memoizedFactory = (...deps: unknown[]): Promise<PrismaModuleOptions<TClient, TTransactionClient>> => {
+  let cachedResult: Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient>> | undefined;
+  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient>> => {
     if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps));
+      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizePrismaModuleOptions(resolved));
     }
     return cachedResult;
   };
 
-  const clientProvider = {
+  const normalizedOptionsProvider = {
     inject: options.inject,
-    provide: PRISMA_CLIENT,
+    provide: PRISMA_NORMALIZED_OPTIONS,
     scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolved = await memoizedFactory(...deps);
-      return resolved.client;
-    },
-  };
-
-  const optionsProvider = {
-    inject: options.inject,
-    provide: PRISMA_OPTIONS,
-    scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolved = await memoizedFactory(...deps);
-      return { strictTransactions: resolved.strictTransactions ?? false };
-    },
+    useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
   };
 
   return defineModule(PrismaAsyncModule, {
-    exports: [PrismaService, PrismaTransactionInterceptor],
-    providers: [clientProvider, optionsProvider, PrismaService, PrismaTransactionInterceptor],
+    exports: PRISMA_MODULE_EXPORTS,
+    providers: createPrismaRuntimeProviders(normalizedOptionsProvider),
   });
 }
