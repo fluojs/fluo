@@ -100,13 +100,16 @@ These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/r
 | Helper pair | Purpose |
 |---|---|
 | `defineModuleMetadata()` / `getModuleMetadata()` | Module imports/exports/providers |
-| `defineClassDiMetadata()` / `getClassDiMetadata()` | DI injection tokens and scope |
+| `defineClassDiMetadata()` / `getClassDiMetadata()` | Effective DI injection tokens and scope, including inherited fallback |
+| `getOwnClassDiMetadata()` / `getInheritedClassDiMetadata()` | Explicit DI own-only vs inherited/effective reads |
 | `defineControllerMetadata()` / `getControllerMetadata()` | HTTP controller base path |
 | `defineRouteMetadata()` / `getRouteMetadata()` | Route method/path/guards |
 | `defineDtoFieldBindingMetadata()` / `getDtoBindingSchema()` | Request DTO field binding |
 | `defineInjectionMetadata()` / `getInjectionSchema()` | Injection metadata schema |
 
 All metadata is stored in a WeakMap keyed by class/prototype, so it's scoped to the object's lifetime and doesn't pollute a global registry.
+
+For DI metadata, `getOwnClassDiMetadata()` returns only metadata written on the current class, while `getInheritedClassDiMetadata()` and `getClassDiMetadata()` return the effective inherited view used by runtime and DI normalization.
 
 `@konekti/core` also re-exports additional metadata helpers and types from `src/metadata.ts`; treat this table as the most important helpers, not the full public surface.
 

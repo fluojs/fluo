@@ -137,6 +137,51 @@ describe('bootstrapModule', () => {
     expect(() => bootstrapModule(BillingModule)).not.toThrow();
   });
 
+  it('allows subclasses to inherit @Inject metadata for dependency validation', () => {
+    class Logger {}
+
+    @Inject([Logger])
+    class BaseBillingService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    class BillingService extends BaseBillingService {}
+
+    class BillingModule {}
+    defineModuleMetadata(BillingModule, {
+      providers: [Logger, BillingService],
+    });
+
+    expect(() => bootstrapModule(BillingModule)).not.toThrow();
+  });
+
+  it('still enforces own @Inject metadata for subclass-only constructor parameters', () => {
+    class Logger {}
+    class Metrics {}
+
+    @Inject([Logger])
+    class BaseBillingService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    class BillingService extends BaseBillingService {
+      constructor(
+        logger: Logger,
+        readonly metrics: Metrics,
+      ) {
+        super(logger);
+      }
+    }
+
+    class BillingModule {}
+    defineModuleMetadata(BillingModule, {
+      providers: [Logger, Metrics, BillingService],
+    });
+
+    expect(() => bootstrapModule(BillingModule)).toThrow(ModuleInjectionMetadataError);
+    expect(() => bootstrapModule(BillingModule)).toThrow('constructor parameter #1');
+  });
+
   it('allows exported providers from a global module without direct imports', () => {
     class Logger {}
 

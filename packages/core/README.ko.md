@@ -100,13 +100,16 @@ class InvariantError extends KonektiError {}
 | 헬퍼 쌍 | 목적 |
 |---|---|
 | `defineModuleMetadata()` / `getModuleMetadata()` | 모듈 imports/exports/providers |
-| `defineClassDiMetadata()` / `getClassDiMetadata()` | DI 주입 토큰 및 스코프 |
+| `defineClassDiMetadata()` / `getClassDiMetadata()` | 상속 fallback을 포함한 최종 DI 주입 토큰 및 스코프 |
+| `getOwnClassDiMetadata()` / `getInheritedClassDiMetadata()` | DI own-only 조회와 상속 포함 최종 조회를 명시적으로 구분 |
 | `defineControllerMetadata()` / `getControllerMetadata()` | HTTP 컨트롤러 기본 경로 |
 | `defineRouteMetadata()` / `getRouteMetadata()` | 라우트 method/path/guards |
 | `defineDtoFieldBindingMetadata()` / `getDtoBindingSchema()` | 요청 DTO 필드 바인딩 |
 | `defineInjectionMetadata()` / `getInjectionSchema()` | 주입 메타데이터 스키마 |
 
 모든 메타데이터는 class/prototype을 키로 하는 WeakMap에 저장되므로 객체의 lifetime에 맞게 스코프가 지정되고 전역 레지스트리를 오염시키지 않습니다.
+
+DI 메타데이터에서는 `getOwnClassDiMetadata()`가 현재 클래스에 직접 기록된 값만 반환하고, `getInheritedClassDiMetadata()`와 `getClassDiMetadata()`는 runtime/DI 정규화에서 사용하는 상속 포함 최종 뷰를 반환합니다.
 
 `@konekti/core`는 `src/metadata.ts`의 추가 메타데이터 헬퍼와 타입도 함께 re-export합니다. 위 표는 가장 중요한 헬퍼 요약이지 전체 public surface 목록은 아닙니다.
 
