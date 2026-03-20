@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { generateControllerFiles } from './generators/controller.js';
 import { generateGuardFiles } from './generators/guard.js';
 import { generateInterceptorFiles } from './generators/interceptor.js';
+import { generatorManifest } from './generators/manifest.js';
 import { generateMiddlewareFiles } from './generators/middleware.js';
-import { generateModuleFiles, registerInModule } from './generators/module.js';
+import { ensureModuleImport, generateModuleFiles, registerInModule } from './generators/module.js';
 import { generateRepoFiles } from './generators/repository.js';
 import { generateRequestDtoFiles } from './generators/request-dto.js';
 import { generateResponseDtoFiles } from './generators/response-dto.js';
@@ -153,14 +154,52 @@ describe('CLI generators', () => {
       const result = registerInModule(withMiddlewareArray, 'middleware', 'AuthMiddleware');
       expect(result).toMatch(/middleware:\s*\[[\s\S]*AuthMiddleware/);
     });
+
+    it('throws when target metadata property is not an array', () => {
+      const malformedModule = baseModule.replace('providers: []', 'providers: UserService');
+      expect(() => registerInModule(malformedModule, 'providers', 'UserRepo')).toThrow('"providers" must be an array');
+    });
+  });
+
+  describe('ensureModuleImport', () => {
+    it('inserts a new import after the last import declaration', () => {
+      const source = `import { Module } from '@konekti/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
+      const result = ensureModuleImport(source, 'UserService', 'user.service');
+
+      expect(result).toContain('import { UserService } from "./user.service";');
+      expect(result.indexOf('import { UserService } from "./user.service";')).toBeGreaterThan(result.indexOf("import { Module } from '@konekti/core';"));
+      expect(result.indexOf('@Module({')).toBeGreaterThan(result.indexOf('import { UserService } from "./user.service";'));
+    });
+
+    it('appends a class to an existing import from the same module path', () => {
+      const source = `import { ExistingService } from './user.service';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
+      const result = ensureModuleImport(source, 'UserRepo', 'user.service');
+
+      expect(result).toContain('import { ExistingService, UserRepo } from');
+      expect(result).toContain('./user.service');
+    });
+
+    it('does not duplicate an existing named import', () => {
+      const source = `import { UserService } from './user.service';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
+      const result = ensureModuleImport(source, 'UserService', 'user.service');
+      const occurrences = (result.match(/UserService/g) ?? []).length;
+
+      expect(occurrences).toBe(1);
+    });
   });
 });
 
 describe('GeneratorRegistry', () => {
   it('resolves all built-in generator kinds from defaultRegistry', () => {
-    const kinds = ['controller', 'guard', 'interceptor', 'middleware', 'module', 'repository', 'repo', 'request-dto', 'response-dto', 'service'] as const;
-    for (const kind of kinds) {
-      expect(defaultRegistry.has(kind), `expected defaultRegistry to have kind: ${kind}`).toBe(true);
+    for (const entry of generatorManifest) {
+      expect(defaultRegistry.has(entry.kind), `expected defaultRegistry to have kind: ${entry.kind}`).toBe(true);
+
+      const aliases = 'registryAliases' in entry ? entry.registryAliases : undefined;
+      if (aliases) {
+        for (const alias of aliases) {
+          expect(defaultRegistry.has(alias), `expected defaultRegistry to have alias: ${alias}`).toBe(true);
+        }
+      }
     }
   });
 

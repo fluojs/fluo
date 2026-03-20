@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCli } from './cli.js';
+import { generatorManifest } from './generators/manifest.js';
 
 const createdDirectories: string[] = [];
 
@@ -149,15 +150,13 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Description\s+\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*controller\s*\|\s*co\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*guard\s*\|\s*gu\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*interceptor\s*\|\s*in\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*middleware\s*\|\s*mi\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*module\s*\|\s*mo\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*response-dto\s*\|\s*res\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
+
+    for (const entry of generatorManifest) {
+      expect(stdoutBuffer.join('')).toContain(entry.schematic);
+      expect(stdoutBuffer.join('')).toContain(entry.aliases.join(', '));
+      expect(stdoutBuffer.join('')).toContain(entry.description);
+    }
+
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
     expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
   });
@@ -173,8 +172,10 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
-    expect(stdoutBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
+
+    for (const entry of generatorManifest) {
+      expect(stdoutBuffer.join('')).toContain(entry.schematic);
+    }
   });
 
   it('places generated files under a domain subdirectory and auto-creates the module', async () => {
@@ -200,7 +201,7 @@ describe('CLI command runner', () => {
 
     const moduleContent = readFileSync(join(workspaceDirectory, 'src', 'posts', 'post.module.ts'), 'utf8');
     expect(moduleContent).toContain('PostService');
-    expect(moduleContent).toContain("from './post.service'");
+    expect(moduleContent).toContain('post.service');
   });
 
   it('accepts `repo` as the repository generator kind', async () => {
@@ -371,7 +372,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     const moduleContent = readFileSync(join(domainDir, 'order.module.ts'), 'utf8');
     expect(moduleContent).toContain('OrderController');
-    expect(moduleContent).toContain("from './order.controller'");
+    expect(moduleContent).toContain('order.controller');
   });
 
   it('creates a new starter project through the CLI', async () => {
@@ -486,6 +487,58 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(1);
     expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
+  });
+
+  it('rejects malformed generate names that start with a hyphen', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'service', '-bad-name'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('names cannot start with "-"');
+  });
+
+  it('rejects duplicate --force flags', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'service', 'User', '--force', '--force'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Duplicate --force option.');
+  });
+
+  it('rejects duplicate --target-directory flags', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'service', 'User', '--target-directory', 'src', '--target-directory', 'lib'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Duplicate --target-directory option.');
+  });
+
+  it('rejects --target-directory values that look like options', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'service', 'User', '--target-directory', '--force'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Expected --target-directory to have a path value.');
   });
 
   it('resolves mi alias to middleware', async () => {
