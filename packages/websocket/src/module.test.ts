@@ -1,15 +1,19 @@
 import { createConnection, createServer } from 'node:net';
+import type { IncomingMessage } from 'node:http';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@konekti/core';
+import { Container } from '@konekti/di';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger, HTTP_APPLICATION_ADAPTER } from '@konekti/runtime';
 import type { HttpApplicationAdapter } from '@konekti/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
 import { createWebSocketModule } from './module.js';
+import { WebSocketGatewayLifecycleService } from './service.js';
+import type { WebSocketModuleOptions } from './types.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -99,6 +103,75 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function createTestLifecycleService(
+  options: WebSocketModuleOptions = {},
+  loggerEvents: string[] = [],
+): WebSocketGatewayLifecycleService {
+  const adapter: HttpApplicationAdapter = {
+    async close() {},
+    getServer() {
+      return {
+        off() {
+          return this;
+        },
+        on() {
+          return this;
+        },
+      };
+    },
+    async listen() {},
+  };
+
+  return new WebSocketGatewayLifecycleService(new Container(), [], createLogger(loggerEvents), adapter, options);
+}
+
+type MockSocketListeners = {
+  close?: (code: number, reason: Buffer) => void;
+  message?: (data: unknown) => void;
+  pong?: () => void;
+};
+
+function createMockSocket(): {
+  emitClose: (code?: number, reason?: Buffer) => void;
+  emitPong: () => void;
+  ping: ReturnType<typeof vi.fn>;
+  socket: WebSocket;
+  terminate: ReturnType<typeof vi.fn>;
+} {
+  const listeners: MockSocketListeners = {};
+  const ping = vi.fn();
+  const terminate = vi.fn();
+
+  const socketObject = {
+    on(event: 'close' | 'message' | 'pong', listener: (...args: unknown[]) => void) {
+      if (event === 'close') {
+        listeners.close = listener as (code: number, reason: Buffer) => void;
+      } else if (event === 'message') {
+        listeners.message = listener as (data: unknown) => void;
+      } else {
+        listeners.pong = listener as () => void;
+      }
+
+      return this;
+    },
+    ping,
+    readyState: WebSocket.OPEN,
+    terminate,
+  } as unknown as WebSocket;
+
+  return {
+    emitClose(code = 1000, reason = Buffer.alloc(0)) {
+      listeners.close?.(code, reason);
+    },
+    emitPong() {
+      listeners.pong?.();
+    },
+    ping,
+    socket: socketObject,
+    terminate,
+  };
 }
 
 describe('@konekti/websocket', () => {
@@ -329,7 +402,7 @@ describe('@konekti/websocket', () => {
     await app.close();
   });
 
-  it('does not deliver messages or disconnects that arrive before async onConnect completes', async () => {
+  it('buffers messages and disconnects that arrive before async onConnect completes', async () => {
     const connected = createDeferred<void>();
 
     class GatewayState {
@@ -375,8 +448,6 @@ describe('@konekti/websocket', () => {
     await app.listen();
 
     // Connect, send a message, then close — all before onConnect resolves.
-    // message and close listeners are registered only after onConnect completes,
-    // so these events are not delivered to the gateway handlers.
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/async-connect`);
     await onceOpen(socket);
     socket.send(JSON.stringify({ event: 'ping', data: 'early' }));
@@ -386,8 +457,8 @@ describe('@konekti/websocket', () => {
     connected.resolve();
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    expect(state.messages).toEqual([]);
-    expect(state.disconnects).toBe(0);
+    expect(state.messages).toEqual(['early']);
+    expect(state.disconnects).toBe(1);
 
     await app.close();
   });
@@ -454,6 +525,107 @@ describe('@konekti/websocket', () => {
     expect(state.disconnects).toBe(1);
 
     await app.close();
+  });
+
+  it('clears heartbeat pending markers when pong is received', async () => {
+    const service = createTestLifecycleService();
+    const { emitPong, socket } = createMockSocket();
+    const bindConnectionHandlers = Reflect.get(service, 'bindConnectionHandlers') as (
+      descriptors: unknown[],
+      socket: WebSocket,
+      request: IncomingMessage,
+    ) => Promise<void>;
+
+    await bindConnectionHandlers.call(service, [], socket, {} as IncomingMessage);
+
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const socketId = Array.from(socketRegistry.keys())[0];
+
+    if (!socketId) {
+      throw new Error('Expected socket to be registered for heartbeat tracking.');
+    }
+
+    const pingPending = Reflect.get(service, 'pingPending') as Set<string>;
+    const pingSentAt = Reflect.get(service, 'pingSentAt') as Map<string, number>;
+    pingPending.add(socketId);
+    pingSentAt.set(socketId, Date.now());
+
+    emitPong();
+
+    expect(pingPending.has(socketId)).toBe(false);
+    expect(pingSentAt.has(socketId)).toBe(false);
+
+    const shutdown = Reflect.get(service, 'shutdown') as () => Promise<void>;
+    await shutdown.call(service);
+  });
+
+  it('terminates sockets when pong timeout is missed and clears heartbeat state', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const service = createTestLifecycleService();
+      const { ping, socket, terminate } = createMockSocket();
+      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+      socketRegistry.set('socket-1', socket);
+
+      const startHeartbeat = Reflect.get(service, 'startHeartbeat') as (intervalMs: number, timeoutMs: number) => void;
+      startHeartbeat.call(service, 100, 150);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(ping).toHaveBeenCalledTimes(1);
+
+      const pingPending = Reflect.get(service, 'pingPending') as Set<string>;
+      const pingSentAt = Reflect.get(service, 'pingSentAt') as Map<string, number>;
+      expect(pingPending.has('socket-1')).toBe(true);
+      expect(pingSentAt.has('socket-1')).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(terminate).toHaveBeenCalledTimes(1);
+      expect(socketRegistry.has('socket-1')).toBe(false);
+      expect(pingPending.has('socket-1')).toBe(false);
+      expect(pingSentAt.has('socket-1')).toBe(false);
+
+      const shutdown = Reflect.get(service, 'shutdown') as () => Promise<void>;
+      await shutdown.call(service);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logs and continues shutdown when websocket server close exceeds timeout', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const loggerEvents: string[] = [];
+      const service = createTestLifecycleService({ shutdown: { timeoutMs: 25 } }, loggerEvents);
+      const hangingServer = {
+        clients: new Set<WebSocket>(),
+        close(_callback?: (error?: Error) => void) {},
+      };
+
+      Reflect.set(service, 'attachments', [
+        {
+          descriptors: [],
+          path: '/hang',
+          server: hangingServer,
+        },
+      ]);
+
+      const shutdown = Reflect.get(service, 'shutdown') as () => Promise<void>;
+      const shutdownPromise = shutdown.call(service);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await shutdownPromise;
+
+      expect(
+        loggerEvents.some((event) =>
+          event.includes('error:WebSocketGatewayLifecycleService:Failed to close websocket server for path /hang within 25ms.'),
+        ),
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects websocket upgrade requests for unmatched gateway paths', async () => {
