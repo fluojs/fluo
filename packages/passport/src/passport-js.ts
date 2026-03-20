@@ -3,6 +3,7 @@ import type { GuardContext, Principal } from '@konekti/http';
 import type { Provider } from '@konekti/di';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
+import { normalizePrincipalScopes } from './scope.js';
 import type { AuthHandledResult, AuthStrategy, AuthStrategyRegistration } from './types.js';
 
 interface PassportJsActionBindings {
@@ -89,7 +90,7 @@ function defaultPrincipalMapper(input: PassportJsPrincipalMapperInput): Principa
     claims,
     issuer,
     roles: toStringArray(claims.roles),
-    scopes: toStringArray(claims.scopes),
+    scopes: normalizePrincipalScopes(claims),
     subject,
   };
 }
