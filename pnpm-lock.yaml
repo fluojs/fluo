@@ -38,15 +38,16 @@ importers:
 
   packages/cli:
     dependencies:
-      '@types/ejs':
-        specifier: ^3.1.5
-        version: 3.1.5
       ejs:
         specifier: ^3.1.10
         version: 3.1.10
       tsx:
         specifier: ^4.20.4
         version: 4.21.0
+    devDependencies:
+      '@types/ejs':
+        specifier: ^3.1.5
+        version: 3.1.5
 
   packages/config:
     dependencies:

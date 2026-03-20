@@ -8,6 +8,7 @@ import { generateModuleFiles, registerInModule } from './generators/module.js';
 import { generateRepoFiles } from './generators/repository.js';
 import { generateRequestDtoFiles } from './generators/request-dto.js';
 import { generateResponseDtoFiles } from './generators/response-dto.js';
+import { renderTemplate } from './generators/render.js';
 import { generateServiceFiles } from './generators/service.js';
 import { GeneratorRegistry, defaultRegistry } from './registry.js';
 
@@ -95,6 +96,18 @@ describe('CLI generators', () => {
   it('generates middleware that registers into middleware array', () => {
     const content = generateMiddlewareFiles('Auth')[0]?.content ?? '';
     expect(content).toContain('handle(context: MiddlewareContext, next: Next)');
+  });
+
+  it('renders templates through ejs', () => {
+    const rendered = renderTemplate('service.ts.ejs', {
+      kebab: 'user',
+      pascal: 'UserService',
+      repo: 'UserRepo',
+      resource: 'User',
+    });
+
+    expect(rendered).toContain("import { UserRepo } from './user.repo';");
+    expect(rendered).toContain('export class UserService');
   });
 
   describe('registerInModule', () => {
