@@ -236,4 +236,48 @@ describe('RefreshTokenService', () => {
 
     expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
   });
+
+  it('fails fast when refresh secret is empty', () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: false,
+      secret: '',
+      store,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+
+    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
+  });
+
+  it('fails fast when refresh expiresInSeconds is non-positive', () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 0,
+      rotation: false,
+      secret: 'refresh-secret',
+      store,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+
+    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
+  });
 });
