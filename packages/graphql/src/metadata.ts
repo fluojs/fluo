@@ -30,8 +30,10 @@ function cloneResolverMetadata(metadata: ResolverMetadata): ResolverMetadata {
 
 function cloneHandlerMetadata(metadata: ResolverHandlerMetadata): ResolverHandlerMetadata {
   return {
+    argTypes: metadata.argTypes,
     fieldName: metadata.fieldName,
     inputClass: metadata.inputClass,
+    outputType: metadata.outputType,
     topics: metadata.topics,
     type: metadata.type,
   };
