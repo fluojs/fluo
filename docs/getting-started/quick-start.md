@@ -5,6 +5,12 @@
 
 This guide describes the current public bootstrap path for Konekti.
 
+> [!NOTE]
+> Konekti uses TC39 standard decorators (TypeScript 5.0+). Starter apps should not enable legacy decorator flags in `tsconfig.json`:
+> - do not set `"experimentalDecorators": true`
+> - do not set `"emitDecoratorMetadata": true`
+> Standard configuration is enough (`"experimentalDecorators": false` or omitting it).
+
 ## canonical bootstrap path
 
 ```sh
