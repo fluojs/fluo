@@ -120,6 +120,12 @@ importers:
       '@types/validator':
         specifier: ^13.15.10
         version: 13.15.10
+      valibot:
+        specifier: ^0.42.1
+        version: 0.42.1(typescript@5.9.3)
+      zod:
+        specifier: ^4.1.11
+        version: 4.3.6
 
   packages/event-bus:
     dependencies:
@@ -223,9 +229,6 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/jwt':
-        specifier: workspace:*
-        version: link:../jwt
 
   packages/prisma:
     dependencies:
@@ -1736,6 +1739,14 @@ packages:
     resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
     hasBin: true
 
+  valibot@0.42.1:
+    resolution: {integrity: sha512-3keXV29Ar5b//Hqi4MbSdV7lfVp6zuYLZuA9V1PvQUsXqogr+u5lvLPLk3A4f74VUXDnf/JfWMN6sB+koJ/FFw==}
+    peerDependencies:
+      typescript: '>=5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   validator@13.15.26:
     resolution: {integrity: sha512-spH26xU080ydGggxRyR1Yhcbgx+j3y5jbNXk/8L+iRvdIEQ4uTRH2Sgf2dokud6Q4oAtsbNvJ1Ft+9xmm6IZcA==}
     engines: {node: '>= 0.10'}
@@ -1835,6 +1846,9 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
+
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
 
@@ -3067,6 +3081,10 @@ snapshots:
 
   uuid@11.1.0: {}
 
+  valibot@0.42.1(typescript@5.9.3):
+    optionalDependencies:
+      typescript: 5.9.3
+
   validator@13.15.26: {}
 
   vite-node@3.2.4(@types/node@22.19.15)(tsx@4.21.0):
@@ -3154,3 +3172,5 @@ snapshots:
   ws@8.19.0: {}
 
   yallist@3.1.1: {}
+
+  zod@4.3.6: {}

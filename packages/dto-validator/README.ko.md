@@ -5,7 +5,7 @@
 
 데코레이터 기반 TypeScript DTO 검증. 클래스 필드에 검증 규칙을 선언적으로 적고 구조화된 타입 에러를 얻습니다 — 별도 스키마 파일도, 수동 검사도 없습니다.
 
-현재 공개 계약은 decorator-first입니다. schema-object validation과 더 풍부한 validation-adapter 계약은 현재 지원되는 public surface에 포함되지 않습니다.
+이제 Zod, Valibot, 커스텀 스키마 엔진을 같은 `DtoValidationError` 이슈 형태로 연결하는 schema validation 확장 surface도 제공합니다.
 
 ## 관련 문서
 
@@ -92,6 +92,47 @@ interface Validator {
 ```
 
 커스텀 검증 전략을 제공하려면 이 인터페이스를 구현하면 됩니다.
+
+### 스키마 어댑터 (`@konekti/dto-validator/schema`)
+
+`emitDecoratorMetadata` 없이 스키마 기반 검증을 사용하면서 동일한 `DtoValidationError` 계약을 유지할 수 있습니다.
+
+```typescript
+import { z } from 'zod';
+import { object, pipe, safeParse, string, email } from 'valibot';
+import {
+  createSchemaValidator,
+  createValibotSchemaValidator,
+  createZodSchemaValidator,
+  type SchemaValidator,
+} from '@konekti/dto-validator/schema';
+
+const zodValidator = createZodSchemaValidator(
+  z.object({
+    email: z.string().email(),
+  }),
+);
+
+const valibotValidator = createValibotSchemaValidator(
+  object({
+    email: pipe(string(), email()),
+  }),
+  safeParse,
+);
+
+const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
+  parse(value) {
+    if (typeof (value as { name?: unknown }).name === 'string') {
+      return { success: true, value: { name: (value as { name: string }).name } };
+    }
+
+    return {
+      success: false,
+      issues: [{ code: 'REQUIRED', field: 'name', message: 'name is required' }],
+    };
+  },
+});
+```
 
 ---
 
