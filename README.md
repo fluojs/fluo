@@ -5,6 +5,14 @@
 
 Konekti is a **standard-decorator-based** TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
 
+## Why standard decorators?
+
+- Legacy decorators (`"experimentalDecorators": true`, `"emitDecoratorMetadata": true`) are TypeScript-specific pre-standard behavior. NestJS currently depends on this model.
+- Standard decorators (TC39 Stage 3, shipped in TypeScript 5.0+) are the JavaScript language direction and do not require those legacy decorator flags.
+- NestJS has publicly stated it will not support TC39 decorators: https://github.com/nestjs/nest/issues/10676.
+- This creates a long-term divergence from the JavaScript standard for NestJS apps, while Konekti apps stay on the standard decorator model.
+- Konekti apps run with standard TypeScript configuration (`"experimentalDecorators": false` or omitting the flag) and without `emitDecoratorMetadata`.
+
 ## Quick Start
 
 Create a starter app with the canonical public bootstrap path:
