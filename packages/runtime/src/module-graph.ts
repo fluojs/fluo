@@ -1,5 +1,5 @@
 import type { Provider } from '@konekti/di';
-import { getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import type { MiddlewareLike } from '@konekti/http';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
@@ -18,6 +18,40 @@ type InjectionToken = Token | ForwardRefFn | OptionalToken;
 type ForwardRefFn = { __forwardRef__: true; forwardRef: () => Token };
 type OptionalToken = { __optional__: true; token: Token };
 
+type ClassDiMetadataView = {
+  inject?: readonly InjectionToken[];
+};
+
+function getClassMetadataLineage(target: Function): Function[] {
+  const lineage: Function[] = [];
+  let current: unknown = target;
+
+  while (typeof current === 'function' && current !== Function.prototype) {
+    lineage.unshift(current);
+    current = Object.getPrototypeOf(current);
+  }
+
+  return lineage;
+}
+
+function getEffectiveClassDiMetadata(target: Function): ClassDiMetadataView | undefined {
+  let effective: ClassDiMetadataView | undefined;
+
+  for (const constructor of getClassMetadataLineage(target)) {
+    const metadata = getOwnClassDiMetadata(constructor);
+
+    if (!metadata) {
+      continue;
+    }
+
+    effective = {
+      inject: metadata.inject ? [...metadata.inject] as readonly InjectionToken[] : effective?.inject,
+    };
+  }
+
+  return effective;
+}
+
 function isForwardRef(value: unknown): value is ForwardRefFn {
   return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefFn).__forwardRef__ === true;
 }
@@ -34,7 +68,7 @@ function resolveInjectionToken(t: InjectionToken): Token {
 
 function providerDependencies(provider: Provider): InjectionToken[] {
   if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.inject ?? [];
+    return [...(getEffectiveClassDiMetadata(provider)?.inject ?? [])];
   }
 
   if ('useFactory' in provider) {
@@ -42,14 +76,14 @@ function providerDependencies(provider: Provider): InjectionToken[] {
   }
 
   if ('useClass' in provider) {
-    return provider.inject ?? getClassDiMetadata(provider.useClass)?.inject ?? [];
+    return provider.inject ?? [...(getEffectiveClassDiMetadata(provider.useClass)?.inject ?? [])];
   }
 
   return [];
 }
 
-function controllerDependencies(controller: ModuleType): Token[] {
-  return getClassDiMetadata(controller)?.inject ?? [];
+function controllerDependencies(controller: ModuleType): InjectionToken[] {
+  return [...(getEffectiveClassDiMetadata(controller)?.inject ?? [])];
 }
 
 export function createRuntimeTokenSet(providers: Provider[] = []): Set<Token> {
@@ -96,13 +130,13 @@ function validateClassInjectionMetadata(
 
 function validateProviderInjectionMetadata(provider: Provider, scope: string): void {
   if (typeof provider === 'function') {
-    validateClassInjectionMetadata(
-      `Provider ${provider.name || '<anonymous>'}`,
-      provider,
-      getClassDiMetadata(provider)?.inject ?? [],
-      scope,
-      '@Inject([...]) metadata',
-    );
+      validateClassInjectionMetadata(
+        `Provider ${provider.name || '<anonymous>'}`,
+        provider,
+        getEffectiveClassDiMetadata(provider)?.inject ?? [],
+        scope,
+        '@Inject([...]) metadata',
+      );
     return;
   }
 
@@ -113,13 +147,13 @@ function validateProviderInjectionMetadata(provider: Provider, scope: string): v
       ? `Provider ${implementationName}`
       : `Provider ${providedName} (${implementationName})`;
 
-    validateClassInjectionMetadata(
-      subject,
-      provider.useClass,
-      provider.inject ?? getClassDiMetadata(provider.useClass)?.inject ?? [],
-      scope,
-      provider.inject ? 'provider.inject entries' : '@Inject([...]) metadata or provider.inject entries',
-    );
+      validateClassInjectionMetadata(
+        subject,
+        provider.useClass,
+        provider.inject ?? getEffectiveClassDiMetadata(provider.useClass)?.inject ?? [],
+        scope,
+        provider.inject ? 'provider.inject entries' : '@Inject([...]) metadata or provider.inject entries',
+      );
   }
 }
 
@@ -127,10 +161,25 @@ function validateControllerInjectionMetadata(controller: ModuleType, scope: stri
   validateClassInjectionMetadata(
     `Controller ${controller.name || '<anonymous>'}`,
     controller,
-    getClassDiMetadata(controller)?.inject ?? [],
+    getEffectiveClassDiMetadata(controller)?.inject ?? [],
     scope,
     '@Inject([...]) metadata',
   );
+}
+
+function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getModuleMetadata>): ModuleDefinition {
+  if (!rawDefinition) {
+    return {};
+  }
+
+  return {
+    global: rawDefinition.global ?? false,
+    imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
+    providers: (rawDefinition.providers as Provider[] | undefined) ?? [],
+    controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
+    exports: (rawDefinition.exports as Token[] | undefined) ?? [],
+    middleware: (rawDefinition.middleware as MiddlewareLike[] | undefined) ?? [],
+  };
 }
 
 function compileModule(
@@ -154,17 +203,7 @@ function compileModule(
 
   visiting.add(moduleType);
 
-  const rawDefinition = getModuleMetadata(moduleType);
-  const definition: ModuleDefinition = rawDefinition
-    ? {
-      global: rawDefinition.global ?? false,
-      imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
-      providers: (rawDefinition.providers as Provider[] | undefined) ?? [],
-      controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
-      exports: (rawDefinition.exports as Token[] | undefined) ?? [],
-      middleware: (rawDefinition.middleware as MiddlewareLike[] | undefined) ?? [],
-    }
-    : {};
+  const definition = normalizeModuleDefinition(getModuleMetadata(moduleType));
 
   for (const imported of definition.imports ?? []) {
     compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered);
@@ -184,6 +223,106 @@ function compileModule(
   ordered.push(compiledModule);
 
   return compiledModule;
+}
+
+function resolveImportedModules(
+  compiledModule: CompiledModule,
+  compiledByType: Map<ModuleType, CompiledModule>,
+): CompiledModule[] {
+  return (compiledModule.definition.imports ?? []).map((imported) => {
+    const importedModule = compiledByType.get(imported);
+
+    if (!importedModule) {
+      throw new ModuleGraphError(`Imported module ${imported.name} was not compiled.`);
+    }
+
+    return importedModule;
+  });
+}
+
+function createImportedExportedTokenSet(importedModules: CompiledModule[]): Set<Token> {
+  return new Set<Token>(
+    importedModules.flatMap((imported) => Array.from(imported.exportedTokens)),
+  );
+}
+
+function createAccessibleTokenSet(
+  runtimeProviderTokens: Set<Token>,
+  moduleProviderTokens: Set<Token>,
+  importedExportedTokens: Set<Token>,
+  globalExportedTokens: Set<Token>,
+): Set<Token> {
+  return new Set<Token>([
+    ...runtimeProviderTokens,
+    ...moduleProviderTokens,
+    ...importedExportedTokens,
+    ...globalExportedTokens,
+  ]);
+}
+
+function validateProviderVisibility(
+  compiledModule: CompiledModule,
+  scope: string,
+  accessibleTokens: Set<Token>,
+): void {
+  for (const provider of compiledModule.definition.providers ?? []) {
+    validateProviderInjectionMetadata(provider, scope);
+
+    for (const rawToken of providerDependencies(provider)) {
+      const token = resolveInjectionToken(rawToken);
+
+      if (!accessibleTokens.has(token)) {
+        throw new ModuleVisibilityError(
+          `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
+            token,
+          )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+        );
+      }
+    }
+  }
+}
+
+function validateControllerVisibility(
+  compiledModule: CompiledModule,
+  scope: string,
+  accessibleTokens: Set<Token>,
+): void {
+  for (const controller of compiledModule.definition.controllers ?? []) {
+    validateControllerInjectionMetadata(controller, scope);
+
+    for (const rawToken of controllerDependencies(controller)) {
+      const token = resolveInjectionToken(rawToken);
+
+      if (!accessibleTokens.has(token)) {
+        throw new ModuleVisibilityError(
+          `Controller ${controller.name} in module ${compiledModule.type.name} cannot access token ${String(
+            token,
+          )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+        );
+      }
+    }
+  }
+}
+
+function createExportedTokenSet(
+  compiledModule: CompiledModule,
+  importedExportedTokens: Set<Token>,
+): Set<Token> {
+  const exportedTokens = new Set<Token>();
+
+  for (const token of compiledModule.definition.exports ?? []) {
+    if (!compiledModule.providerTokens.has(token) && !importedExportedTokens.has(token)) {
+      throw new ModuleVisibilityError(
+        `Module ${compiledModule.type.name} cannot export token ${String(
+          token,
+        )} because it is neither local nor re-exported from an imported module.`,
+      );
+    }
+
+    exportedTokens.add(token);
+  }
+
+  return exportedTokens;
 }
 
 function validateCompiledModules(
@@ -210,70 +349,18 @@ function validateCompiledModules(
 
   for (const compiledModule of modules) {
     const scope = `module ${compiledModule.type.name}`;
-    const importedModules = (compiledModule.definition.imports ?? []).map((imported) => {
-      const importedModule = compiledByType.get(imported);
-
-      if (!importedModule) {
-        throw new ModuleGraphError(`Imported module ${imported.name} was not compiled.`);
-      }
-
-      return importedModule;
-    });
-    const importedExportedTokens = new Set<Token>(
-      importedModules.flatMap((imported) => Array.from(imported.exportedTokens)),
+    const importedModules = resolveImportedModules(compiledModule, compiledByType);
+    const importedExportedTokens = createImportedExportedTokenSet(importedModules);
+    const accessibleTokens = createAccessibleTokenSet(
+      runtimeProviderTokens,
+      compiledModule.providerTokens,
+      importedExportedTokens,
+      globalExportedTokens,
     );
-    const accessibleTokens = new Set<Token>([
-      ...runtimeProviderTokens,
-      ...compiledModule.providerTokens,
-      ...importedExportedTokens,
-      ...globalExportedTokens,
-    ]);
 
-    for (const provider of compiledModule.definition.providers ?? []) {
-      validateProviderInjectionMetadata(provider, scope);
-
-      for (const rawToken of providerDependencies(provider)) {
-        const token = resolveInjectionToken(rawToken);
-
-        if (!accessibleTokens.has(token)) {
-          throw new ModuleVisibilityError(
-            `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
-              token,
-            )} because it is not local, not exported by an imported module, and not visible through a global module.`,
-          );
-        }
-      }
-    }
-
-    for (const controller of compiledModule.definition.controllers ?? []) {
-      validateControllerInjectionMetadata(controller, scope);
-
-      for (const token of controllerDependencies(controller)) {
-        if (!accessibleTokens.has(token)) {
-          throw new ModuleVisibilityError(
-            `Controller ${controller.name} in module ${compiledModule.type.name} cannot access token ${String(
-              token,
-            )} because it is not local, not exported by an imported module, and not visible through a global module.`,
-          );
-        }
-      }
-    }
-
-    const exportedTokens = new Set<Token>();
-
-    for (const token of compiledModule.definition.exports ?? []) {
-      if (!compiledModule.providerTokens.has(token) && !importedExportedTokens.has(token)) {
-        throw new ModuleVisibilityError(
-          `Module ${compiledModule.type.name} cannot export token ${String(
-            token,
-          )} because it is neither local nor re-exported from an imported module.`,
-        );
-      }
-
-      exportedTokens.add(token);
-    }
-
-    compiledModule.exportedTokens = exportedTokens;
+    validateProviderVisibility(compiledModule, scope, accessibleTokens);
+    validateControllerVisibility(compiledModule, scope, accessibleTokens);
+    compiledModule.exportedTokens = createExportedTokenSet(compiledModule, importedExportedTokens);
   }
 }
 

@@ -75,16 +75,12 @@ function providerScope(provider: Provider): 'singleton' | 'request' | 'transient
   return 'singleton';
 }
 
-function overrideProvider(container: Container, provider: Provider): void {
-  const candidate = container as Container & { override: (...providers: Provider[]) => Container };
-
-  candidate.override(provider);
-}
-
 async function disposeContainer(container: Container): Promise<void> {
-  const candidate = container as Container & { dispose: () => Promise<void> };
+  if (!hasMethod(container, 'dispose')) {
+    return;
+  }
 
-  await candidate.dispose();
+  await container.dispose();
 }
 
 function hasMethod<TName extends string>(
@@ -140,6 +136,103 @@ function markReadinessState(modules: CompiledModule[]): void {
   }
 }
 
+type DuplicateProviderPolicy = Exclude<BootstrapModuleOptions['duplicateProviderPolicy'], undefined>;
+
+interface SelectedProviderEntry {
+  moduleName: string;
+  provider: Provider;
+  source: 'module' | 'runtime';
+  token: Token;
+}
+
+function createDuplicateProviderMessage(token: Token, moduleName: string, existingModuleName: string): string {
+  const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
+  return `Duplicate provider token "${tokenLabel}" registered in module "${moduleName}". Previously registered in module "${existingModuleName}".`;
+}
+
+function collectProvidersForContainer(
+  modules: CompiledModule[],
+  runtimeProviders: Provider[] | undefined,
+  policy: DuplicateProviderPolicy,
+  logger?: ApplicationLogger,
+): Provider[] {
+  const selectedProviders = new Map<Token, SelectedProviderEntry>();
+
+  for (const runtimeProvider of runtimeProviders ?? []) {
+    const token = providerToken(runtimeProvider);
+    selectedProviders.set(token, {
+      moduleName: '<runtime>',
+      provider: runtimeProvider,
+      source: 'runtime',
+      token,
+    });
+  }
+
+  for (const compiledModule of modules) {
+    for (const provider of compiledModule.definition.providers ?? []) {
+      const token = providerToken(provider);
+      const existing = selectedProviders.get(token);
+
+      if (existing && existing.source === 'module') {
+        const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
+
+        if (policy === 'throw') {
+          throw new DuplicateProviderError(message);
+        }
+
+        if (policy === 'warn') {
+          logger?.warn(message, 'BootstrapModule');
+        }
+      }
+
+      selectedProviders.set(token, {
+        moduleName: compiledModule.type.name,
+        provider,
+        source: 'module',
+        token,
+      });
+    }
+  }
+
+  return [...selectedProviders.values()].map((entry) => entry.provider);
+}
+
+function registerControllers(container: Container, modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    for (const controller of compiledModule.definition.controllers ?? []) {
+      container.register(controller);
+    }
+  }
+}
+
+function registerMiddlewareToken(container: Container, middlewareToken: Function): void {
+  if (container.has(middlewareToken as Token)) {
+    return;
+  }
+
+  container.register(middlewareToken as Parameters<typeof container.register>[0]);
+}
+
+function registerModuleMiddleware(container: Container, modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    for (const middleware of compiledModule.definition.middleware ?? []) {
+      if (typeof middleware === 'object' && middleware !== null && 'middleware' in middleware && 'routes' in middleware) {
+        const middlewareToken = (middleware as { middleware: unknown; routes: unknown }).middleware;
+
+        if (typeof middlewareToken === 'function') {
+          registerMiddlewareToken(container, middlewareToken);
+        }
+
+        continue;
+      }
+
+      if (typeof middleware === 'function') {
+        registerMiddlewareToken(container, middleware);
+      }
+    }
+  }
+}
+
 /**
  * Associates module metadata with a module type.
  */
@@ -155,79 +248,23 @@ export function defineModule<T extends ModuleType>(moduleType: T, definition: Mo
 export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
   const modules = compileModuleGraph(rootModule, options);
   const container = new Container();
-  const policy = options.duplicateProviderPolicy ?? 'warn';
+  const policy: DuplicateProviderPolicy = options.duplicateProviderPolicy ?? 'warn';
 
-  if (options.providers?.length) {
-    container.register(...options.providers);
+  const runtimeProviders = options.providers ?? [];
+  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
+  const moduleProviders = collectProvidersForContainer(modules, runtimeProviders, policy, options.logger)
+    .filter((provider) => !runtimeProviderTokens.has(providerToken(provider)));
+
+  if (runtimeProviders.length > 0) {
+    container.register(...runtimeProviders);
   }
 
-  const runtimeProviderTokens = createRuntimeTokenSet(options.providers);
-  const registeredProviderTokens = new Map<string | symbol | Function, string>();
-
-  for (const compiledModule of modules) {
-    for (const provider of compiledModule.definition.providers ?? []) {
-      const token = providerToken(provider);
-      const tokenKey = typeof token === 'function' ? token : token;
-      const tokenLabel = typeof token === 'function' ? token.name || '<anonymous>' : String(token);
-      const existing = registeredProviderTokens.get(tokenKey);
-
-      if (runtimeProviderTokens.has(token)) {
-        registeredProviderTokens.set(tokenKey, compiledModule.type.name);
-        overrideProvider(container, provider);
-        continue;
-      }
-
-      if (existing !== undefined) {
-        const message = `Duplicate provider token "${tokenLabel}" registered in module "${compiledModule.type.name}". Previously registered in module "${existing}".`;
-
-        if (policy === 'throw') {
-          throw new DuplicateProviderError(message);
-        }
-
-        if (policy === 'warn') {
-          options.logger?.warn(message, 'BootstrapModule');
-        }
-
-        registeredProviderTokens.set(tokenKey, compiledModule.type.name);
-
-        overrideProvider(container, provider);
-        continue;
-      }
-
-      registeredProviderTokens.set(tokenKey, compiledModule.type.name);
-      container.register(provider);
-    }
-
-    for (const controller of compiledModule.definition.controllers ?? []) {
-      container.register(controller);
-    }
-
-    for (const mw of compiledModule.definition.middleware ?? []) {
-      if (typeof mw === 'object' && mw !== null && 'middleware' in mw && 'routes' in mw) {
-        const token = (mw as { middleware: unknown; routes: unknown }).middleware;
-
-        if (typeof token === 'function') {
-          if (container.has(token as Token)) {
-            continue;
-          }
-
-          container.register(token as Parameters<typeof container.register>[0]);
-        }
-
-        continue;
-      }
-
-      if (typeof mw === 'function') {
-        if (container.has(mw as Token)) {
-          continue;
-        }
-
-        container.register(mw as Parameters<typeof container.register>[0]);
-        continue;
-      }
-
-    }
+  if (moduleProviders.length > 0) {
+    container.register(...moduleProviders);
   }
+
+  registerControllers(container, modules);
+  registerModuleMiddleware(container, modules);
 
   return {
     container,
@@ -339,7 +376,9 @@ async function resolveLifecycleInstances(container: Container, providers: Provid
   const seen = new Set<Token>();
 
   for (const provider of providers) {
-    if (providerScope(provider) === 'request' || providerScope(provider) === 'transient') {
+    const scope = providerScope(provider);
+
+    if (scope === 'request' || scope === 'transient') {
       continue;
     }
 
@@ -443,6 +482,126 @@ function logRouteMappings(
   }
 }
 
+function createRuntimeProviders(
+  options: BootstrapApplicationOptions,
+  config: ConfigService,
+  logger: ApplicationLogger,
+): Provider[] {
+  return [
+    ...(options.providers ?? []),
+    {
+      provide: ConfigService,
+      useValue: config,
+    },
+    {
+      provide: APPLICATION_LOGGER,
+      useValue: logger,
+    },
+  ];
+}
+
+function registerRuntimeBootstrapTokens(bootstrapped: BootstrapResult, adapter: HttpApplicationAdapter): void {
+  bootstrapped.container.register(
+    {
+      provide: HTTP_APPLICATION_ADAPTER,
+      useValue: adapter,
+    },
+    {
+      provide: RUNTIME_CONTAINER,
+      useValue: bootstrapped.container,
+    },
+    {
+      provide: COMPILED_MODULES,
+      useValue: bootstrapped.modules,
+    },
+  );
+}
+
+async function resolveBootstrapLifecycleInstances(
+  bootstrapped: BootstrapResult,
+  runtimeProviders: Provider[],
+): Promise<unknown[]> {
+  const lifecycleProviders = [
+    ...runtimeProviders,
+    ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
+  ];
+
+  return resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
+}
+
+async function runBootstrapLifecycle(
+  modules: CompiledModule[],
+  lifecycleInstances: unknown[],
+  logger: ApplicationLogger,
+): Promise<void> {
+  resetReadinessState(modules);
+  await runBootstrapHooks(lifecycleInstances);
+  markReadinessState(modules);
+  logCompiledModules(logger, modules);
+}
+
+type DispatcherOptions = Parameters<typeof createDispatcher>[0];
+type ErrorHandler = (
+  error: unknown,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  requestId?: string,
+) => Promise<boolean>;
+
+type ErrorAwareDispatcherOptions = DispatcherOptions & {
+  onError?: ErrorHandler;
+};
+
+function createFilterErrorHandler(
+  filters: readonly ExceptionFilterHandler[] | undefined,
+): ErrorHandler | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined;
+  }
+
+  return async (error, request, response, requestId) =>
+    runExceptionFilters(filters, error, request, response, requestId);
+}
+
+function createRuntimeDispatcherOptions(
+  bootstrapped: BootstrapResult,
+  options: BootstrapApplicationOptions,
+  handlerMapping: ReturnType<typeof createHandlerMapping>,
+  errorHandler: ErrorHandler | undefined,
+): ErrorAwareDispatcherOptions {
+  const dispatcherOptions: ErrorAwareDispatcherOptions = {
+    appMiddleware: options.middleware ?? [],
+    handlerMapping,
+    observers: options.observers ?? [],
+    rootContainer: bootstrapped.container,
+  };
+
+  if (errorHandler) {
+    dispatcherOptions.onError = errorHandler;
+  }
+
+  return dispatcherOptions;
+}
+
+function createRuntimeDispatcher(
+  bootstrapped: BootstrapResult,
+  options: BootstrapApplicationOptions,
+  logger: ApplicationLogger,
+): Dispatcher {
+  const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules));
+  logRouteMappings(logger, handlerMapping.descriptors);
+
+  const errorHandler = createFilterErrorHandler(options.filters);
+  const dispatcherOptions = createRuntimeDispatcherOptions(
+    bootstrapped,
+    options,
+    handlerMapping,
+    errorHandler,
+  );
+
+  return createDispatcher(dispatcherOptions);
+}
+
 /**
  * config 로딩, bootstrap-level provider 등록, 모듈 부트스트랩, lifecycle hook 실행까지를 묶어
  * 런타임 애플리케이션 셸을 만든다.
@@ -457,61 +616,21 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting Konekti application...', 'KonektiFactory');
     const configValues = loadConfig(options);
     const config = new ConfigService(configValues);
-    const runtimeProviders: Provider[] = [
-      ...(options.providers ?? []),
-      {
-        provide: ConfigService,
-        useValue: config,
-      },
-      {
-        provide: APPLICATION_LOGGER,
-        useValue: logger,
-      },
-    ];
+    const runtimeProviders = createRuntimeProviders(options, config, logger);
+
     const bootstrapped = bootstrapModule(options.rootModule, {
       duplicateProviderPolicy: options.duplicateProviderPolicy,
       logger,
       providers: runtimeProviders,
       validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
     });
-    bootstrapped.container.register(
-      {
-        provide: HTTP_APPLICATION_ADAPTER,
-        useValue: adapter,
-      },
-      {
-        provide: RUNTIME_CONTAINER,
-        useValue: bootstrapped.container,
-      },
-      {
-        provide: COMPILED_MODULES,
-        useValue: bootstrapped.modules,
-      },
-    );
+    registerRuntimeBootstrapTokens(bootstrapped, adapter);
+
     bootstrappedContainer = bootstrapped.container;
-    resetReadinessState(bootstrapped.modules);
-    const lifecycleProviders = [
-      ...runtimeProviders,
-      ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
-    ];
-    lifecycleInstances = await resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
+    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
-    await runBootstrapHooks(lifecycleInstances);
-    markReadinessState(bootstrapped.modules);
-    logCompiledModules(logger, bootstrapped.modules);
-
-    const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules));
-    logRouteMappings(logger, handlerMapping.descriptors);
-
-    const dispatcher = createDispatcher({
-      appMiddleware: options.middleware ?? [],
-      handlerMapping,
-      onError: options.filters && options.filters.length > 0
-        ? async (error, request, response, requestId) => runExceptionFilters(options.filters ?? [], error, request, response, requestId)
-        : undefined,
-      observers: options.observers ?? [],
-      rootContainer: bootstrapped.container,
-    });
+    const dispatcher = createRuntimeDispatcher(bootstrapped, options, logger);
 
     return new KonektiApplication(
       config,

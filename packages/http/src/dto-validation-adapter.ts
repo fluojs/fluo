@@ -12,6 +12,12 @@ type TransformCapableValidator = {
 export class HttpDtoValidationAdapter implements Validator {
   private readonly validator = new BaseDefaultValidator();
 
+  private throwBadRequestForValidationError(error: DtoValidationError): never {
+    throw new BadRequestException(error.message, {
+      details: error.issues.map((issue: ValidationIssue) => toInputErrorDetail(issue)),
+    });
+  }
+
   private filterUnboundRequestDtoFields(value: unknown, target: Constructor): unknown {
     if (typeof value !== 'object' || value === null) {
       return value;
@@ -35,9 +41,7 @@ export class HttpDtoValidationAdapter implements Validator {
       await this.validator.validate(filteredValue, target);
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
-        throw new BadRequestException(error.message, {
-          details: error.issues.map((issue: ValidationIssue) => toInputErrorDetail(issue)),
-        });
+        this.throwBadRequestForValidationError(error);
       }
 
       throw error;
@@ -50,9 +54,7 @@ export class HttpDtoValidationAdapter implements Validator {
       return await validator.transform(value, target);
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
-        throw new BadRequestException(error.message, {
-          details: error.issues.map((issue: ValidationIssue) => toInputErrorDetail(issue)),
-        });
+        this.throwBadRequestForValidationError(error);
       }
 
       throw error;

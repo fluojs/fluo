@@ -1,17 +1,12 @@
 import { createServer as createHttpServer, type RequestListener } from 'node:http';
 import { createServer as createHttpsServer, type ServerOptions as HttpsServerOptions } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
-import { URL } from 'node:url';
 
 import {
-  BadRequestException,
   createCorsMiddleware,
   createErrorResponse,
   createSecurityHeadersMiddleware,
-  HttpException,
-  InternalServerException,
   NotFoundException,
-  PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
   type FrameworkRequest,
@@ -22,14 +17,25 @@ import {
 } from '@konekti/http';
 
 import { bootstrapApplication } from './bootstrap.js';
-import { compressResponse } from './compression.js';
 import { createConsoleApplicationLogger } from './logger.js';
-import { parseMultipart, type MultipartOptions, type UploadedFile } from './multipart.js';
+import {
+  createFrameworkRequest,
+  createRequestSignal,
+  resolveRequestIdFromHeaders,
+} from './node-request.js';
+import {
+  createFrameworkResponse,
+  type MutableFrameworkResponse,
+  writeNodeAdapterErrorResponse,
+} from './node-response.js';
+import { registerShutdownSignals } from './node-shutdown.js';
+import type { MultipartOptions, UploadedFile } from './multipart.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
+    rawBody?: Uint8Array;
   }
 }
 
@@ -74,11 +80,16 @@ export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptio
   shutdownSignals?: false | readonly NodeApplicationSignal[];
 }
 
-type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
-
 interface NodeListenTarget {
   bindTarget: string;
   url: string;
+}
+
+interface NodeListenRetryOptions {
+  host: string | undefined;
+  port: number;
+  retryDelayMs: number;
+  retryLimit: number;
 }
 
 type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
@@ -123,36 +134,11 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.dispatcher = dispatcher;
-    const server = this.server;
-
-    await new Promise<void>((resolve, reject) => {
-      const tryListen = (attempt: number) => {
-        const onError = (error: NodeJS.ErrnoException) => {
-          server.off('listening', onListening);
-
-          if (error.code === 'EADDRINUSE' && attempt < this.retryLimit) {
-            server.close(() => {
-              setTimeout(() => {
-                tryListen(attempt + 1);
-              }, this.retryDelayMs);
-            });
-            return;
-          }
-
-          reject(error);
-        };
-
-        const onListening = () => {
-          server.off('error', onError);
-          resolve();
-        };
-
-        server.once('error', onError);
-        server.once('listening', onListening);
-        server.listen({ host: this.host, port: this.port });
-      };
-
-      tryListen(0);
+    await listenNodeServerWithRetry(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
     });
   }
 
@@ -164,34 +150,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => {
-        forceCloseConnections(server, this.sockets);
-      }, this.shutdownTimeoutMs);
-
-      const finish = (error?: Error | null) => {
-        if (settled) {
-          return;
-        }
-
-        settled = true;
-        clearTimeout(timeout);
-
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      };
-
-      server.close((error) => {
-        finish(error);
-      });
-
-      closeIdleConnections(server);
-    });
+    await closeNodeServerWithDrain(server, this.sockets, this.shutdownTimeoutMs);
 
     this.dispatcher = undefined;
   }
@@ -202,34 +161,52 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   ): Promise<void> {
     const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
     const signal = createRequestSignal(response);
-    let frameworkRequest: FrameworkRequest | undefined;
 
     try {
-      frameworkRequest = await createFrameworkRequest(
-        request,
-        signal,
-        this.multipartOptions,
-        this.maxBodySize,
-        this.preserveRawBody,
-      );
-
-      if (!this.dispatcher) {
-        throw new Error('Node HTTP adapter received a request before dispatcher binding completed.');
-      }
-
-      await this.dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-      if (!frameworkResponse.committed) {
-        await frameworkResponse.send(undefined);
-      }
+      await this.dispatchRequest(request, signal, frameworkResponse);
     } catch (error: unknown) {
-      if (signal.aborted || frameworkResponse.committed) {
-        return;
-      }
-
-      const requestId = resolveRequestIdFromHeaders(request.headers);
-      await writeNodeAdapterErrorResponse(error, frameworkResponse, requestId);
+      await this.handleRequestError(error, request, signal, frameworkResponse);
     }
+  }
+
+  private async dispatchRequest(
+    request: import('node:http').IncomingMessage,
+    signal: AbortSignal,
+    frameworkResponse: MutableFrameworkResponse,
+  ): Promise<void> {
+    const frameworkRequest = await createFrameworkRequest(
+      request,
+      signal,
+      this.multipartOptions,
+      this.maxBodySize,
+      this.preserveRawBody,
+    );
+
+    const dispatcher = this.dispatcher;
+
+    if (!dispatcher) {
+      throw new Error('Node HTTP adapter received a request before dispatcher binding completed.');
+    }
+
+    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
+
+    if (!frameworkResponse.committed) {
+      await frameworkResponse.send(undefined);
+    }
+  }
+
+  private async handleRequestError(
+    error: unknown,
+    request: import('node:http').IncomingMessage,
+    signal: AbortSignal,
+    frameworkResponse: MutableFrameworkResponse,
+  ): Promise<void> {
+    if (shouldSkipNodeAdapterErrorResponse(signal, frameworkResponse)) {
+      return;
+    }
+
+    const requestId = resolveRequestIdFromHeaders(request.headers);
+    await writeNodeAdapterErrorResponse(error, frameworkResponse, requestId);
   }
 }
 
@@ -302,6 +279,86 @@ function createNodeServer(
   return httpsOptions ? createHttpsServer(httpsOptions, handler) : createHttpServer(handler);
 }
 
+function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const tryListen = (attempt: number) => {
+      const onError = (error: NodeJS.ErrnoException) => {
+        server.off('listening', onListening);
+
+        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
+          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
+          return;
+        }
+
+        reject(error);
+      };
+
+      const onListening = () => {
+        server.off('error', onError);
+        resolve();
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen({ host: options.host, port: options.port });
+    };
+
+    tryListen(0);
+  });
+}
+
+function scheduleNodeListenRetry(
+  server: NodeServer,
+  attempt: number,
+  retryDelayMs: number,
+  tryListen: (attempt: number) => void,
+): void {
+  server.close(() => {
+    setTimeout(() => {
+      tryListen(attempt + 1);
+    }, retryDelayMs);
+  });
+}
+
+function closeNodeServerWithDrain(
+  server: NodeServer,
+  sockets: ReadonlySet<Socket>,
+  shutdownTimeoutMs: number,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      forceCloseConnections(server, sockets);
+    }, shutdownTimeoutMs);
+
+    const finish = (error?: Error | null) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    };
+
+    server.close((error) => {
+      finish(error);
+    });
+
+    closeIdleConnections(server);
+  });
+}
+
+function shouldSkipNodeAdapterErrorResponse(signal: AbortSignal, frameworkResponse: FrameworkResponse): boolean {
+  return signal.aborted || frameworkResponse.committed;
+}
+
 function formatListenMessage(target: NodeListenTarget): string {
   return target.url.endsWith(target.bindTarget)
     ? `Listening on ${target.url}`
@@ -334,190 +391,6 @@ function isWildcardHost(host: string): boolean {
 
 function formatHostForAuthority(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
-}
-
-function createFrameworkResponse(response: import('node:http').ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {
-  const frameworkResponse: MutableFrameworkResponse & { raw: import('node:http').ServerResponse } = {
-    committed: response.headersSent || response.writableEnded,
-    headers: {},
-    raw: response,
-    redirect(status: number, location: string) {
-      this.setStatus(status);
-      this.setHeader('Location', location);
-      void this.send(undefined);
-    },
-    send(body: unknown) {
-      if (response.writableEnded) {
-        this.committed = true;
-        return;
-      }
-
-      const existingContentType = response.getHeader('Content-Type');
-      const serialized = serializeResponseBody(
-        body,
-        typeof existingContentType === 'string' ? existingContentType : undefined,
-      );
-
-      if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
-        response.setHeader('Content-Type', serialized.defaultContentType);
-      }
-
-      const contentType = response.getHeader('Content-Type') as string | undefined;
-      const payload = typeof serialized.payload === 'string'
-        ? Buffer.from(serialized.payload, 'utf8')
-        : serialized.payload;
-
-      if (acceptEncoding && payload.byteLength >= 256) {
-        this.committed = true;
-
-        compressResponse(response, payload, acceptEncoding, contentType).catch(() => {
-          if (!response.writableEnded) {
-            response.end();
-          }
-        });
-
-        return;
-      }
-
-      response.end(payload);
-      this.committed = true;
-    },
-    setHeader(name: string, value: string) {
-      response.setHeader(name, value);
-      this.headers[name] = value;
-    },
-    setStatus(code: number) {
-      response.statusCode = code;
-      this.statusCode = code;
-      this.statusSet = true;
-    },
-    statusCode: undefined,
-    statusSet: false,
-  };
-
-  return frameworkResponse;
-}
-
-function serializeResponseBody(
-  body: unknown,
-  contentType?: string,
-): { defaultContentType?: string; payload: Buffer | string } {
-  if (body === undefined) {
-    return { payload: '' };
-  }
-
-  if (Buffer.isBuffer(body)) {
-    return {
-      defaultContentType: 'application/octet-stream',
-      payload: body,
-    };
-  }
-
-  if (body instanceof Uint8Array) {
-    return {
-      defaultContentType: 'application/octet-stream',
-      payload: Buffer.from(body),
-    };
-  }
-
-  if (body instanceof ArrayBuffer) {
-    return {
-      defaultContentType: 'application/octet-stream',
-      payload: Buffer.from(body),
-    };
-  }
-
-  if (typeof body === 'string') {
-    return {
-      defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
-      payload: isJsonContentType(contentType) ? JSON.stringify(body) : body,
-    };
-  }
-
-  return {
-    defaultContentType: 'application/json; charset=utf-8',
-    payload: JSON.stringify(body),
-  };
-}
-
-function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
-}
-
-async function createFrameworkRequest(
-  request: import('node:http').IncomingMessage,
-  signal: AbortSignal,
-  multipartOptions?: MultipartOptions,
-  maxBodySize = 1 * 1024 * 1024,
-  preserveRawBody = false,
-): Promise<FrameworkRequest> {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  const headers = Object.fromEntries(
-    Object.entries(request.headers).map(([name, value]) => [name, Array.isArray(value) ? value.join(', ') : value]),
-  );
-
-  const contentType = headers['content-type'];
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
-
-  let body: unknown;
-  let files: UploadedFile[] | undefined;
-  let rawBody: Uint8Array | undefined;
-
-  if (isMultipart) {
-    const result = await parseMultipart(request, multipartOptions);
-
-    body = result.fields;
-    files = result.files;
-  } else {
-    const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
-    body = bodyResult.body;
-    rawBody = bodyResult.rawBody;
-  }
-
-  const frameworkRequest: FrameworkRequest = {
-    body,
-    cookies: parseCookieHeader(headers['cookie']),
-    headers,
-    method: request.method ?? 'GET',
-    params: {},
-    path: url.pathname,
-    query: parseQueryParams(url.searchParams),
-    raw: request,
-    signal,
-    url: url.pathname + url.search,
-  };
-
-  if (files) {
-    frameworkRequest.files = files;
-  }
-
-  if (rawBody) {
-    frameworkRequest.rawBody = rawBody;
-  }
-
-  return frameworkRequest;
-}
-
-function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
-  const query: Record<string, string | string[]> = {};
-
-  for (const [key, value] of searchParams.entries()) {
-    const current = query[key];
-
-    if (current === undefined) {
-      query[key] = value;
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      current.push(value);
-      continue;
-    }
-
-    query[key] = [current, value];
-  }
-
-  return query;
 }
 
 function createNodeMiddleware(options: BootstrapNodeApplicationOptions): MiddlewareLike[] {
@@ -650,47 +523,6 @@ function resolveCorsOptions(cors: Exclude<CorsInput, false> | undefined, default
   return { ...defaults, ...cors };
 }
 
-function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
-  if (!cookieHeader) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    cookieHeader
-      .split(';')
-      .map((pair) => pair.trim())
-      .filter(Boolean)
-      .map((pair) => {
-        const index = pair.indexOf('=');
-
-        if (index === -1) {
-          return [pair.trim(), ''] as [string, string];
-        }
-
-        return [pair.slice(0, index).trim(), decodeURIComponent(pair.slice(index + 1).trim())] as [string, string];
-      }),
-  );
-}
-
-function createRequestSignal(
-  response: import('node:http').ServerResponse,
-): AbortSignal {
-  const controller = new AbortController();
-  const abort = (reason: string) => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error(reason));
-    }
-  };
-
-  response.once('close', () => {
-    if (!response.writableEnded) {
-      abort('Response closed before response commit.');
-    }
-  });
-
-  return controller.signal;
-}
-
 function closeIdleConnections(server: import('node:http').Server): void {
   server.closeIdleConnections?.();
 }
@@ -706,116 +538,8 @@ function forceCloseConnections(server: import('node:http').Server, sockets: Read
   }
 }
 
-function resolveRequestIdFromHeaders(headers: import('node:http').IncomingHttpHeaders): string | undefined {
-  const requestId = headers['x-request-id'] ?? headers['x-correlation-id'];
-
-  return Array.isArray(requestId) ? requestId[0] : requestId;
-}
-
-function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
-    return error;
-  }
-
-  return new InternalServerException('Internal server error.', {
-    cause: error,
-  });
-}
-
-async function writeNodeAdapterErrorResponse(
-  error: unknown,
-  response: FrameworkResponse,
-  requestId?: string,
-): Promise<void> {
-  const httpError = toHttpException(error);
-
-  response.setStatus(httpError.status);
-  await response.send(createErrorResponse(httpError, requestId));
-}
-
 function defaultShutdownSignals(mode: RunNodeApplicationOptions['mode']): false | readonly NodeApplicationSignal[] {
   return mode === 'test' ? false : ['SIGINT', 'SIGTERM'];
-}
-
-function registerShutdownSignals(
-  app: Application,
-  logger: ApplicationLogger,
-  signals: false | readonly NodeApplicationSignal[],
-): void {
-  if (signals === false) {
-    return;
-  }
-
-  for (const signal of signals) {
-    process.once(signal, () => {
-      void closeFromSignal(app, logger, signal);
-    });
-  }
-}
-
-async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeApplicationSignal): Promise<void> {
-  if (app.state === 'closed') {
-    process.exitCode = 0;
-    return;
-  }
-
-  try {
-    await app.close(signal);
-    process.exitCode = 0;
-  } catch (error: unknown) {
-    logger.error('Failed to shut down the application cleanly.', error, 'KonektiFactory');
-    process.exitCode = 1;
-  }
-}
-
-async function readRequestBody(
-  request: import('node:http').IncomingMessage,
-  contentType: string | string[] | undefined,
-  maxBodySize = 1 * 1024 * 1024,
-  preserveRawBody = false,
-): Promise<{ body: unknown; rawBody?: Uint8Array }> {
-  const chunks: Uint8Array[] = [];
-  let totalSize = 0;
-
-  for await (const chunk of request) {
-    const buf: Uint8Array = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
-    totalSize += buf.byteLength;
-
-    if (totalSize > maxBodySize) {
-      throw new PayloadTooLargeException('Request body exceeds the size limit.');
-    }
-
-    chunks.push(buf);
-  }
-
-  if (chunks.length === 0) {
-    return { body: undefined };
-  }
-
-  const rawBody = Buffer.concat(chunks);
-  const bodyText = rawBody.toString('utf8');
-
-  if (bodyText.length === 0) {
-    return { body: undefined, rawBody: preserveRawBody ? rawBody : undefined };
-  }
-
-  const primaryContentType = Array.isArray(contentType) ? contentType[0] : contentType;
-
-  if (typeof primaryContentType === 'string' && primaryContentType.includes('application/json')) {
-    try {
-      return {
-        body: JSON.parse(bodyText) as unknown,
-        rawBody: preserveRawBody ? rawBody : undefined,
-      };
-    } catch {
-      throw new BadRequestException('Request body contains invalid JSON.');
-    }
-  }
-
-  return {
-    body: bodyText,
-    rawBody: preserveRawBody ? rawBody : undefined,
-  };
 }
 
 function resolveNodePort(value: number | undefined): number {

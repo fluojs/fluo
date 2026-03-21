@@ -104,6 +104,18 @@ async function notifyObservers(
   }
 }
 
+async function notifyObserversSafely(
+  observers: RequestObserverLike[],
+  requestContext: RequestContext,
+  callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
+  handler?: HandlerDescriptor,
+): Promise<void> {
+  try {
+    await notifyObservers(observers, requestContext, callback, handler);
+  } catch {
+  }
+}
+
 async function dispatchMatchedHandler(
   handler: HandlerDescriptor,
   requestContext: RequestContext,
@@ -135,17 +147,110 @@ async function dispatchMatchedHandler(
     await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation);
   }
 
-  try {
-    await notifyObservers(
-      observers,
-      requestContext,
-      async (observer, context) => {
-        await observer.onRequestSuccess?.(context, result);
-      },
-      handler,
-    );
-  } catch {
+  await notifyObserversSafely(
+    observers,
+    requestContext,
+    async (observer, context) => {
+      await observer.onRequestSuccess?.(context, result);
+    },
+    handler,
+  );
+}
+
+interface DispatchPhaseContext {
+  contentNegotiation: ResolvedContentNegotiation | undefined;
+  matchedHandler?: HandlerDescriptor;
+  observers: RequestObserverLike[];
+  options: CreateDispatcherOptions;
+  requestContext: RequestContext;
+  response: FrameworkResponse;
+}
+
+async function notifyRequestStart(context: DispatchPhaseContext): Promise<void> {
+  await notifyObserversSafely(context.observers, context.requestContext, async (observer, observationContext) => {
+    await observer.onRequestStart?.(observationContext);
+  });
+}
+
+async function notifyHandlerMatched(context: DispatchPhaseContext, descriptor: HandlerDescriptor): Promise<void> {
+  await notifyObserversSafely(
+    context.observers,
+    context.requestContext,
+    async (observer, observationContext) => {
+      await observer.onHandlerMatched?.(observationContext);
+    },
+    descriptor,
+  );
+}
+
+async function notifyRequestError(context: DispatchPhaseContext, error: unknown): Promise<void> {
+  await notifyObserversSafely(
+    context.observers,
+    context.requestContext,
+    async (observer, observationContext) => {
+      await observer.onRequestError?.(observationContext, error);
+    },
+    context.matchedHandler,
+  );
+}
+
+async function notifyRequestFinish(context: DispatchPhaseContext): Promise<void> {
+  await notifyObserversSafely(
+    context.observers,
+    context.requestContext,
+    async (observer, observationContext) => {
+      await observer.onRequestFinish?.(observationContext);
+    },
+    context.matchedHandler,
+  );
+}
+
+async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
+  ensureRequestNotAborted(context.requestContext.request);
+
+  await runMiddlewareChain(context.options.appMiddleware ?? [], {
+    request: context.requestContext.request,
+    requestContext: context.requestContext,
+    response: context.response,
+  }, async () => {
+    if (context.response.committed) {
+      return;
+    }
+
+    const match = matchHandlerOrThrow(context.options.handlerMapping, context.requestContext.request);
+    context.matchedHandler = match.descriptor;
+    updateRequestParams(context.requestContext, match.params);
+    await notifyHandlerMatched(context, match.descriptor);
+
+    await runMiddlewareChain(match.descriptor.metadata.moduleMiddleware ?? [], {
+      request: context.requestContext.request,
+      requestContext: context.requestContext,
+      response: context.response,
+    }, async () => {
+      await dispatchMatchedHandler(match.descriptor, context.requestContext, context.observers, context.contentNegotiation);
+    });
+  });
+}
+
+async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {
+  if (error instanceof RequestAbortedError || context.requestContext.request.signal?.aborted) {
+    return;
   }
+
+  await notifyRequestError(context, error);
+
+  const handled = await context.options.onError?.(
+    error,
+    context.requestContext.request,
+    context.response,
+    context.requestContext.requestId,
+  );
+
+  if (handled) {
+    return;
+  }
+
+  await writeErrorResponse(error, context.response, context.requestContext.requestId);
 }
 
 export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
@@ -153,83 +258,22 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 
   return {
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
-      const requestContext = createDispatchContext(createDispatchRequest(request), response, options.rootContainer);
-      const observers = options.observers ?? [];
-      let matchedHandler: HandlerDescriptor | undefined;
+      const phaseContext: DispatchPhaseContext = {
+        contentNegotiation,
+        observers: options.observers ?? [],
+        options,
+        requestContext: createDispatchContext(createDispatchRequest(request), response, options.rootContainer),
+        response,
+      };
 
-      await runWithRequestContext(requestContext, async () => {
+      await runWithRequestContext(phaseContext.requestContext, async () => {
         try {
-          try {
-            await notifyObservers(observers, requestContext, async (observer, context) => {
-              await observer.onRequestStart?.(context);
-            });
-          } catch {
-          }
-
-          ensureRequestNotAborted(requestContext.request);
-          await runMiddlewareChain(options.appMiddleware ?? [], {
-            request: requestContext.request,
-            requestContext,
-            response,
-          }, async () => {
-            if (response.committed) {
-              return;
-            }
-
-            const match = matchHandlerOrThrow(options.handlerMapping, requestContext.request);
-            matchedHandler = match.descriptor;
-            updateRequestParams(requestContext, match.params);
-            try {
-              await notifyObservers(
-                observers,
-                requestContext,
-                async (observer, context) => {
-                  await observer.onHandlerMatched?.(context);
-                },
-                match.descriptor,
-              );
-            } catch {
-            }
-
-            await runMiddlewareChain(match.descriptor.metadata.moduleMiddleware ?? [], {
-              request: requestContext.request,
-              requestContext,
-              response,
-            }, async () => {
-              await dispatchMatchedHandler(match.descriptor, requestContext, observers, contentNegotiation);
-            });
-          });
+          await notifyRequestStart(phaseContext);
+          await runDispatchPipeline(phaseContext);
         } catch (error: unknown) {
-          if (error instanceof RequestAbortedError || requestContext.request.signal?.aborted) {
-            return;
-          }
-
-          try {
-            await notifyObservers(
-              observers,
-              requestContext,
-              async (observer, context) => {
-                await observer.onRequestError?.(context, error);
-              },
-              matchedHandler,
-            );
-          } catch {
-          }
-
-          const handled = await options.onError?.(error, requestContext.request, response, requestContext.requestId);
-
-          if (handled) {
-            return;
-          }
-
-          await writeErrorResponse(error, response, requestContext.requestId);
+          await handleDispatchError(phaseContext, error);
         } finally {
-          try {
-            await notifyObservers(observers, requestContext, async (observer, context) => {
-              await observer.onRequestFinish?.(context);
-            }, matchedHandler);
-          } catch {
-          }
+          await notifyRequestFinish(phaseContext);
         }
       });
     },

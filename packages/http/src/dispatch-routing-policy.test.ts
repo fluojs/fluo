@@ -74,6 +74,9 @@ describe('dispatch routing policy', () => {
   it('updates request params in request context without mutating unrelated fields', () => {
     const context: RequestContext = {
       container: {
+        async dispose() {
+          return undefined;
+        },
         resolve() {
           throw new Error('not used');
         },
