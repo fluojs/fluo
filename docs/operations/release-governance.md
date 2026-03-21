@@ -7,24 +7,32 @@ This file describes the current public release and governance expectations for K
 
 ## intended publish surface
 
-These packages are the intended public release surface once the repository leaves its current private-workspace state:
+These packages are the current intended public release surface for the 0.x line:
 
 - `@konekti/core`
 - `@konekti/config`
+- `@konekti/dto-validator`
 - `@konekti/http`
+- `@konekti/di`
+- `@konekti/runtime`
 - `@konekti/jwt`
-- `@konekti/openapi`
-- `@konekti/metrics`
 - `@konekti/passport`
+- `@konekti/openapi`
+- `@konekti/graphql`
+- `@konekti/metrics`
+- `@konekti/cron`
+- `@konekti/event-bus`
+- `@konekti/websocket`
+- `@konekti/queue`
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
-- `@konekti/di`
-- `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
 
-The current public release boundary is package-first: the supported public bootstrap contract is `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
+The public bootstrap contract remains package-first: `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
+
+This package list must stay identical to `../reference/package-surface.md`.
 
 Toolchain workspaces under `tooling/` remain internal support artifacts unless a future issue explicitly promotes one into the public package surface.
 
