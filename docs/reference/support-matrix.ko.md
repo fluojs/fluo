@@ -24,6 +24,7 @@
 | Runtime | 등급 | 비고 |
 | --- | --- | --- |
 | Node.js | official | 첫 번째 공식 runtime |
+| Fastify adapter | preview | `@konekti/platform-fastify` adapter가 host/HTTPS/CORS/multipart/rawBody 옵션 형태 동등성을 제공 |
 | Bun | preview | core 계약이 이 runtime으로 승격 가능해야 함 |
 | Fetch-style adapter | preview | 더 좁은 보장 범위를 가진 adapter가 존재할 수 있음 |
 | Deno | experimental | 이후 후보 |

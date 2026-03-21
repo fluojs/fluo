@@ -1,0 +1,41 @@
+{
+  "name": "@konekti/platform-fastify",
+  "version": "0.0.0",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/konektijs/konekti.git",
+    "directory": "packages/platform-fastify"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^9.2.1",
+    "@konekti/http": "workspace:*",
+    "@konekti/runtime": "workspace:*",
+    "fastify": "^5.6.1",
+    "fastify-raw-body": "^5.0.0"
+  }
+}

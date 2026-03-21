@@ -24,6 +24,7 @@ This file is the compact reference table for current support policy.
 | Runtime | Tier | Note |
 | --- | --- | --- |
 | Node.js | official | first official runtime |
+| Fastify adapter | preview | `@konekti/platform-fastify` adapter with Node-runtime option parity for host/HTTPS/CORS/multipart/rawBody |
 | Bun | preview | core contracts should remain promotable to this runtime |
 | Fetch-style adapter | preview | adapter may exist with narrower guarantees |
 | Deno | experimental | later candidate only |

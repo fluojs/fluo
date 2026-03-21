@@ -15,6 +15,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/platform-fastify`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`
