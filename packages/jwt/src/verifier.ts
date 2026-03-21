@@ -247,13 +247,7 @@ export class DefaultJwtVerifier {
     options: JwtVerifierOptions,
     jwksClient: JwksClient | undefined,
   ): Promise<JwtPrincipal> {
-    const segments = token.split('.');
-
-    if (segments.length !== 3) {
-      throw new JwtInvalidTokenError();
-    }
-
-    const [headerSegment, payloadSegment, signatureSegment] = segments;
+    const [headerSegment, payloadSegment, signatureSegment] = this.parseTokenSegments(token);
     const header = parseJwtPart<{ [key: string]: unknown; alg?: string; kid?: string; typ?: string }>(headerSegment);
     const payload = parseJwtPart<JwtClaims>(payloadSegment);
     const algorithms = options.algorithms;
@@ -264,39 +258,95 @@ export class DefaultJwtVerifier {
 
     const signingInput = `${headerSegment}.${payloadSegment}`;
 
-    if (header.alg in HMAC_HASH) {
-      const providerKey = options.secretOrKeyProvider
-        ? await options.secretOrKeyProvider({ alg: header.alg, ...header })
-        : undefined;
+    await this.verifyTokenSignature(
+      { ...header, alg: header.alg },
+      signingInput,
+      signatureSegment,
+      options,
+      jwksClient,
+    );
+    this.validateTokenClaims(payload, options);
 
-      if (providerKey !== undefined && typeof providerKey !== 'string') {
-        throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
-      }
+    return normalizePrincipal(payload);
+  }
 
-      const secret = providerKey ?? resolveHmacSecret(options, header.kid);
+  private parseTokenSegments(token: string): [string, string, string] {
+    const segments = token.split('.');
 
-      if (!secret) {
-        throw new JwtConfigurationError('JWT secret is not configured.');
-      }
-
-      verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
-    } else {
-      const providerKey = options.secretOrKeyProvider
-        ? await options.secretOrKeyProvider({ alg: header.alg, ...header })
-        : undefined;
-      const publicKey =
-        providerKey ??
-        (jwksClient
-          ? await this.resolveJwksPublicKey(header.kid, jwksClient)
-          : resolveStaticPublicKey(options, header.kid));
-
-      if (!publicKey) {
-        throw new JwtConfigurationError('JWT public key is not configured.');
-      }
-
-      verifyAsymmetricSignature(header.alg, publicKey, signingInput, signatureSegment);
+    if (segments.length !== 3) {
+      throw new JwtInvalidTokenError();
     }
 
+    return segments as [string, string, string];
+  }
+
+  private async verifyTokenSignature(
+    header: { [key: string]: unknown; alg: JwtAlgorithm; kid?: string },
+    signingInput: string,
+    signatureSegment: string,
+    options: JwtVerifierOptions,
+    jwksClient: JwksClient | undefined,
+  ): Promise<void> {
+    if (header.alg in HMAC_HASH) {
+      await this.verifyHmacTokenSignature(header, signingInput, signatureSegment, options);
+      return;
+    }
+
+    await this.verifyAsymmetricTokenSignature(header, signingInput, signatureSegment, options, jwksClient);
+  }
+
+  private async verifyHmacTokenSignature(
+    header: { [key: string]: unknown; alg: JwtAlgorithm; kid?: string },
+    signingInput: string,
+    signatureSegment: string,
+    options: JwtVerifierOptions,
+  ): Promise<void> {
+    const providerKey = await this.resolveProviderKey(options, header);
+
+    if (providerKey !== undefined && typeof providerKey !== 'string') {
+      throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
+    }
+
+    const secret = providerKey ?? resolveHmacSecret(options, header.kid);
+
+    if (!secret) {
+      throw new JwtConfigurationError('JWT secret is not configured.');
+    }
+
+    verifyHmacSignature(header.alg, secret, signingInput, signatureSegment);
+  }
+
+  private async verifyAsymmetricTokenSignature(
+    header: { [key: string]: unknown; alg: JwtAlgorithm; kid?: string },
+    signingInput: string,
+    signatureSegment: string,
+    options: JwtVerifierOptions,
+    jwksClient: JwksClient | undefined,
+  ): Promise<void> {
+    const providerKey = await this.resolveProviderKey(options, header);
+    const publicKey =
+      providerKey ??
+      (jwksClient ? await this.resolveJwksPublicKey(header.kid, jwksClient) : resolveStaticPublicKey(options, header.kid));
+
+    if (!publicKey) {
+      throw new JwtConfigurationError('JWT public key is not configured.');
+    }
+
+    verifyAsymmetricSignature(header.alg, publicKey, signingInput, signatureSegment);
+  }
+
+  private async resolveProviderKey(
+    options: JwtVerifierOptions,
+    header: { [key: string]: unknown; alg: JwtAlgorithm },
+  ): Promise<string | KeyObject | undefined> {
+    if (!options.secretOrKeyProvider) {
+      return undefined;
+    }
+
+    return options.secretOrKeyProvider({ ...header });
+  }
+
+  private validateTokenClaims(payload: JwtClaims, options: JwtVerifierOptions): void {
     const now = Math.floor(Date.now() / 1000);
     const clockSkew = options.clockSkewSeconds ?? 0;
 
@@ -304,23 +354,7 @@ export class DefaultJwtVerifier {
       throw new JwtInvalidTokenError('JWT is missing a required expiration claim.');
     }
 
-    if (typeof options.maxAge === 'number') {
-      if (!Number.isFinite(options.maxAge) || options.maxAge < 0) {
-        throw new JwtConfigurationError('JWT maxAge must be a non-negative finite number.');
-      }
-
-      if (!isFiniteNumericDate(payload.iat)) {
-        throw new JwtInvalidTokenError('JWT iat claim must be a finite numeric date when maxAge is configured.');
-      }
-
-      if (payload.iat - clockSkew > now) {
-        throw new JwtInvalidTokenError('JWT iat claim cannot be in the future.');
-      }
-
-      if (now - payload.iat > options.maxAge + clockSkew) {
-        throw new JwtExpiredTokenError('JWT exceeds maxAge.');
-      }
-    }
+    this.validateMaxAgeClaims(payload, options.maxAge, clockSkew, now);
 
     if (typeof payload.exp === 'number' && payload.exp + clockSkew < now) {
       throw new JwtExpiredTokenError();
@@ -330,20 +364,51 @@ export class DefaultJwtVerifier {
       throw new JwtInvalidTokenError('JWT is not active yet.');
     }
 
+    this.validateIssuerAndAudience(payload, options);
+  }
+
+  private validateMaxAgeClaims(
+    payload: JwtClaims,
+    maxAge: number | undefined,
+    clockSkew: number,
+    now: number,
+  ): void {
+    if (typeof maxAge !== 'number') {
+      return;
+    }
+
+    if (!Number.isFinite(maxAge) || maxAge < 0) {
+      throw new JwtConfigurationError('JWT maxAge must be a non-negative finite number.');
+    }
+
+    if (!isFiniteNumericDate(payload.iat)) {
+      throw new JwtInvalidTokenError('JWT iat claim must be a finite numeric date when maxAge is configured.');
+    }
+
+    if (payload.iat - clockSkew > now) {
+      throw new JwtInvalidTokenError('JWT iat claim cannot be in the future.');
+    }
+
+    if (now - payload.iat > maxAge + clockSkew) {
+      throw new JwtExpiredTokenError('JWT exceeds maxAge.');
+    }
+  }
+
+  private validateIssuerAndAudience(payload: JwtClaims, options: JwtVerifierOptions): void {
     if (options.issuer && payload.iss !== options.issuer) {
       throw new JwtInvalidTokenError('JWT issuer does not match.');
     }
 
-    if (options.audience) {
-      const expectedAudience = Array.isArray(options.audience) ? options.audience : [options.audience];
-      const actualAudience = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
-
-      if (!expectedAudience.some((audience) => actualAudience.includes(audience))) {
-        throw new JwtInvalidTokenError('JWT audience does not match.');
-      }
+    if (!options.audience) {
+      return;
     }
 
-    return normalizePrincipal(payload);
+    const expectedAudience = Array.isArray(options.audience) ? options.audience : [options.audience];
+    const actualAudience = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
+
+    if (!expectedAudience.some((audience) => actualAudience.includes(audience))) {
+      throw new JwtInvalidTokenError('JWT audience does not match.');
+    }
   }
 
   private async resolveJwksPublicKey(kid: string | undefined, jwksClient: JwksClient): Promise<KeyObject> {

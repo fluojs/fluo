@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -29,6 +29,19 @@ const PUBLISHED_DEV_DEPENDENCIES = {
   vite: '^6.2.1',
   vitest: '^3.0.8',
 } as const;
+
+type LocalPackageName = keyof typeof PACKAGE_DIRECTORY_BY_NAME;
+
+const LOCAL_PACKAGE_NAMES: readonly LocalPackageName[] = [
+  '@konekti/cli',
+  '@konekti/config',
+  '@konekti/core',
+  '@konekti/dto-validator',
+  '@konekti/di',
+  '@konekti/http',
+  '@konekti/runtime',
+  '@konekti/testing',
+];
 
 function packageRootFromImportMeta(importMetaUrl: string): string {
   return resolve(dirname(fileURLToPath(importMetaUrl)), '..', '..');
@@ -460,6 +473,41 @@ function createEnvFile(): string {
 `;
 }
 
+type ScaffoldFile = {
+  content: string;
+  path: string;
+};
+
+function buildScaffoldFiles(
+  options: BootstrapOptions,
+  releaseVersion: string,
+  packageSpecs: Record<string, string>,
+): ScaffoldFile[] {
+  return [
+    { content: createProjectPackageJson(options, releaseVersion, packageSpecs), path: 'package.json' },
+    { content: createProjectReadme(options), path: 'README.md' },
+    { content: createProjectTsconfig(), path: 'tsconfig.json' },
+    { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
+    { content: createBabelConfig(), path: 'babel.config.cjs' },
+    { content: createVitestConfig(), path: 'vitest.config.ts' },
+    { content: createGitignore(), path: '.gitignore' },
+    { content: createEnvFile(), path: '.env.dev' },
+    { content: createEnvFile(), path: '.env.test' },
+    { content: createEnvFile(), path: '.env.prod' },
+    { content: createAppFile(), path: 'src/app.ts' },
+    { content: createMainFile(), path: 'src/main.ts' },
+    { content: createHealthResponseDtoFile(), path: 'src/health/health.response.dto.ts' },
+    { content: createHealthRepoFile(options.projectName), path: 'src/health/health.repo.ts' },
+    { content: createHealthRepoTestFile(), path: 'src/health/health.repo.test.ts' },
+    { content: createHealthServiceFile(), path: 'src/health/health.service.ts' },
+    { content: createHealthServiceTestFile(), path: 'src/health/health.service.test.ts' },
+    { content: createHealthControllerFile(), path: 'src/health/health.controller.ts' },
+    { content: createHealthControllerTestFile(), path: 'src/health/health.controller.test.ts' },
+    { content: createHealthModuleFile(), path: 'src/health/health.module.ts' },
+    { content: createAppTestFile(), path: 'src/app.test.ts' },
+  ];
+}
+
 export async function scaffoldBootstrapApp(
   options: BootstrapOptions,
   importMetaUrl = import.meta.url,
@@ -470,27 +518,9 @@ export async function scaffoldBootstrapApp(
 
   mkdirSync(targetDirectory, { recursive: true });
 
-  writeTextFile(join(targetDirectory, 'package.json'), createProjectPackageJson(options, releaseVersion, packageSpecs));
-  writeTextFile(join(targetDirectory, 'README.md'), createProjectReadme(options));
-  writeTextFile(join(targetDirectory, 'tsconfig.json'), createProjectTsconfig());
-  writeTextFile(join(targetDirectory, 'tsconfig.build.json'), createProjectTsconfigBuild());
-  writeTextFile(join(targetDirectory, 'babel.config.cjs'), createBabelConfig());
-  writeTextFile(join(targetDirectory, 'vitest.config.ts'), createVitestConfig());
-  writeTextFile(join(targetDirectory, '.gitignore'), createGitignore());
-  writeTextFile(join(targetDirectory, '.env.dev'), createEnvFile());
-  writeTextFile(join(targetDirectory, '.env.test'), createEnvFile());
-  writeTextFile(join(targetDirectory, '.env.prod'), createEnvFile());
-  writeTextFile(join(targetDirectory, 'src/app.ts'), createAppFile());
-  writeTextFile(join(targetDirectory, 'src/main.ts'), createMainFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.response.dto.ts'), createHealthResponseDtoFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.repo.ts'), createHealthRepoFile(options.projectName));
-  writeTextFile(join(targetDirectory, 'src/health/health.repo.test.ts'), createHealthRepoTestFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.service.ts'), createHealthServiceFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.service.test.ts'), createHealthServiceTestFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.controller.ts'), createHealthControllerFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.controller.test.ts'), createHealthControllerTestFile());
-  writeTextFile(join(targetDirectory, 'src/health/health.module.ts'), createHealthModuleFile());
-  writeTextFile(join(targetDirectory, 'src/app.test.ts'), createAppTestFile());
+  for (const file of buildScaffoldFiles(options, releaseVersion, packageSpecs)) {
+    writeTextFile(join(targetDirectory, file.path), file.content);
+  }
 
   if (!options.skipInstall) {
     await installDependencies(targetDirectory, options.packageManager);
@@ -539,13 +569,138 @@ function expectedTarballName(packageName: string, version: string): string {
   return `${packageName.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
 }
 
+function readLocalPackageVersion(repoRoot: string, packageName: LocalPackageName): string {
+  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+  const packageJson = JSON.parse(
+    readFileSync(join(repoRoot, 'packages', packageDirectory, 'package.json'), 'utf8'),
+  ) as { version: string };
+
+  return packageJson.version;
+}
+
+function collectLocalPackageVersions(repoRoot: string, packageNames: readonly LocalPackageName[]): Map<LocalPackageName, string> {
+  const packageVersions = new Map<LocalPackageName, string>();
+
+  for (const packageName of packageNames) {
+    packageVersions.set(packageName, readLocalPackageVersion(repoRoot, packageName));
+  }
+
+  return packageVersions;
+}
+
+function getPackageVersionOrThrow(
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+  packageName: LocalPackageName,
+): string {
+  const packageVersion = packageVersions.get(packageName);
+
+  if (!packageVersion) {
+    throw new Error(`Unable to determine version for ${packageName}.`);
+  }
+
+  return packageVersion;
+}
+
+function latestModifiedTimeMs(path: string): number {
+  const stats = statSync(path);
+
+  if (!stats.isDirectory()) {
+    return stats.mtimeMs;
+  }
+
+  let latest = stats.mtimeMs;
+
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const entryPath = join(path, entry.name);
+    latest = Math.max(latest, latestModifiedTimeMs(entryPath));
+  }
+
+  return latest;
+}
+
+function packageHasOutdatedBuildOutput(repoRoot: string, packageName: LocalPackageName): boolean {
+  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+  const packageRoot = join(repoRoot, 'packages', packageDirectory);
+  const distDirectory = join(packageRoot, 'dist');
+
+  if (!existsSync(distDirectory)) {
+    return true;
+  }
+
+  const sourceCandidates = [
+    join(packageRoot, 'src'),
+    join(packageRoot, 'package.json'),
+    join(packageRoot, 'tsconfig.json'),
+    join(packageRoot, 'tsconfig.build.json'),
+  ];
+  let latestSource = 0;
+
+  for (const sourceCandidate of sourceCandidates) {
+    if (!existsSync(sourceCandidate)) {
+      continue;
+    }
+
+    latestSource = Math.max(latestSource, latestModifiedTimeMs(sourceCandidate));
+  }
+
+  const latestDist = latestModifiedTimeMs(distDirectory);
+  return latestDist < latestSource;
+}
+
+function shouldRunWorkspaceBuild(repoRoot: string, packageNames: readonly LocalPackageName[]): boolean {
+  return packageNames.some((packageName) => packageHasOutdatedBuildOutput(repoRoot, packageName));
+}
+
+async function ensureWorkspaceBuildOutput(repoRoot: string, packageNames: readonly LocalPackageName[]): Promise<void> {
+  if (shouldRunWorkspaceBuild(repoRoot, packageNames)) {
+    await runWorkspaceBuild(repoRoot);
+  }
+}
+
+async function packLocalPackages(
+  repoRoot: string,
+  outputDirectory: string,
+  packageNames: readonly LocalPackageName[],
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+): Promise<void> {
+  for (const packageName of packageNames) {
+    const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
+
+    await runPackCommand(repoRoot, PACKAGE_DIRECTORY_BY_NAME[packageName], outputDirectory);
+    await normalizePackedPackageManifest(outputDirectory, expectedTarballName(packageName, packageVersion), packageVersions);
+  }
+}
+
+function createLocalTarballSpecs(
+  targetDirectory: string,
+  outputDirectory: string,
+  packageNames: readonly LocalPackageName[],
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+): Record<string, string> {
+  const packedFiles = new Set(readdirSync(outputDirectory));
+  const tarballs = new Map<string, string>();
+
+  for (const packageName of packageNames) {
+    const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
+    const tarball = expectedTarballName(packageName, packageVersion);
+
+    if (!packedFiles.has(tarball)) {
+      throw new Error(`Unable to locate packed tarball for ${packageName}.`);
+    }
+
+    tarballs.set(packageName, `file:${relative(targetDirectory, join(outputDirectory, tarball))}`);
+  }
+
+  return Object.fromEntries(tarballs);
+}
+
 function rewriteWorkspaceProtocolDependencies(
   manifest: {
     dependencies?: Record<string, string>;
     optionalDependencies?: Record<string, string>;
     peerDependencies?: Record<string, string>;
   },
-  packageVersions: Map<string, string>,
+  packageVersions: ReadonlyMap<string, string>,
 ): void {
   for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies'] as const) {
     const dependencies = manifest[section];
@@ -592,7 +747,7 @@ function runTarCommand(args: string[], cwd: string): Promise<void> {
 async function normalizePackedPackageManifest(
   outputDirectory: string,
   tarballName: string,
-  packageVersions: Map<string, string>,
+  packageVersions: ReadonlyMap<string, string>,
 ): Promise<void> {
   const tarballPath = join(outputDirectory, tarballName);
   const temporaryDirectory = join(outputDirectory, `.tmp-${tarballName.replace(/\.tgz$/, '')}`);
@@ -626,65 +781,13 @@ async function resolvePackageSpecs(targetDirectory: string, options: BootstrapOp
   const outputDirectory = join(targetDirectory, '.konekti', 'packages');
   mkdirSync(outputDirectory, { recursive: true });
 
-  const packageNames = [
-    '@konekti/cli',
-    '@konekti/config',
-    '@konekti/core',
-    '@konekti/dto-validator',
-    '@konekti/di',
-    '@konekti/http',
-    '@konekti/runtime',
-    '@konekti/testing',
-  ] as const;
+  const packageNames = LOCAL_PACKAGE_NAMES;
+  const packageVersions = collectLocalPackageVersions(repoRoot, packageNames);
 
-  const packageVersions = new Map<string, string>();
+  await ensureWorkspaceBuildOutput(repoRoot, packageNames);
+  await packLocalPackages(repoRoot, outputDirectory, packageNames, packageVersions);
 
-  for (const packageName of packageNames) {
-    const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
-    const packageVersion = JSON.parse(
-      readFileSync(join(repoRoot, 'packages', packageDirectory, 'package.json'), 'utf8'),
-    ) as { version: string };
-
-    packageVersions.set(packageName, packageVersion.version);
-  }
-
-  const missingBuildOutput = packageNames.some((packageName) => !existsSync(join(repoRoot, 'packages', PACKAGE_DIRECTORY_BY_NAME[packageName], 'dist')));
-
-  if (missingBuildOutput) {
-    await runWorkspaceBuild(repoRoot);
-  }
-
-  for (const packageName of packageNames) {
-    const packageVersion = packageVersions.get(packageName);
-
-    if (!packageVersion) {
-      throw new Error(`Unable to determine version for ${packageName}.`);
-    }
-
-    await runPackCommand(repoRoot, PACKAGE_DIRECTORY_BY_NAME[packageName], outputDirectory);
-    await normalizePackedPackageManifest(outputDirectory, expectedTarballName(packageName, packageVersion), packageVersions);
-  }
-
-  const tarballs = new Map<string, string>();
-  const packedFiles = new Set(readdirSync(outputDirectory));
-
-  for (const packageName of packageNames) {
-    const packageVersion = packageVersions.get(packageName);
-
-    if (!packageVersion) {
-      throw new Error(`Unable to determine version for ${packageName}.`);
-    }
-
-    const tarball = expectedTarballName(packageName, packageVersion);
-
-    if (!packedFiles.has(tarball)) {
-      throw new Error(`Unable to locate packed tarball for ${packageName}.`);
-    }
-
-    tarballs.set(packageName, `file:${relative(targetDirectory, join(outputDirectory, tarball))}`);
-  }
-
-  return Object.fromEntries(tarballs);
+  return createLocalTarballSpecs(targetDirectory, outputDirectory, packageNames, packageVersions);
 }
 
 export const scaffoldKonektiApp = scaffoldBootstrapApp;

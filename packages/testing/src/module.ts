@@ -99,16 +99,28 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   async compile(): Promise<TestingModuleRef> {
+    const bootstrapped = this.bootstrapTestingModule();
+
+    this.applyOverrides(bootstrapped);
+
+    return this.createTestingModuleRef(bootstrapped);
+  }
+
+  private bootstrapTestingModule(): BootstrapResult {
     const rootModule = this._applyModuleReplacements(this.options.rootModule);
 
-    const bootstrapped = bootstrapModule(rootModule, {
+    return bootstrapModule(rootModule, {
       providers: this.options.providers,
     });
+  }
 
+  private applyOverrides(bootstrapped: BootstrapResult): void {
     if (this.overrides.length > 0) {
       bootstrapped.container.override(...this.overrides);
     }
+  }
 
+  private createTestingModuleRef(bootstrapped: BootstrapResult): TestingModuleRef {
     const dispatcher = createTestingDispatcher(bootstrapped);
 
     return {
@@ -134,9 +146,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       return module;
     }
 
-    const rewrittenImports = (metadata.imports as ModuleType[]).map(
-      (imp) => this._applyModuleReplacements(imp),
-    );
+    const rewrittenImports = this.rewriteModuleImports(metadata.imports as ModuleType[]);
     const hasChange = rewrittenImports.some(
       (imp, i) => imp !== (metadata.imports as ModuleType[])[i],
     );
@@ -152,6 +162,10 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     });
 
     return PatchedModule as unknown as ModuleType;
+  }
+
+  private rewriteModuleImports(imports: ModuleType[]): ModuleType[] {
+    return imports.map((moduleImport) => this._applyModuleReplacements(moduleImport));
   }
 }
 

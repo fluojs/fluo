@@ -19,6 +19,17 @@ type ActiveRequestTransaction = {
   settled: Promise<void>;
 };
 
+type RequestAbortContext = {
+  controller: AbortController;
+  cleanup(): void;
+  signal: AbortSignal;
+};
+
+type ActiveRequestTransactionHandle = {
+  active: ActiveRequestTransaction;
+  settle(): void;
+};
+
 @Inject([DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS])
 export class DrizzleDatabase<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
@@ -89,19 +100,46 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
   ): Promise<T> {
+    const abortContext = this.createRequestAbortContext(signal);
+    const active = this.trackActiveRequestTransaction(abortContext.controller);
+
+    try {
+      return await transactionRunner(
+        (transactionDatabase) => this.transactions.run(transactionDatabase, () => raceWithAbort(fn, abortContext.signal)),
+        options,
+      );
+    } finally {
+      abortContext.cleanup();
+      this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private createRequestAbortContext(signal?: AbortSignal): RequestAbortContext {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(signal?.reason);
+
     if (signal?.aborted) {
       forwardAbort();
     } else {
       signal?.addEventListener('abort', forwardAbort, { once: true });
     }
 
+    return {
+      controller,
+      cleanup: () => {
+        signal?.removeEventListener('abort', forwardAbort);
+      },
+      signal: controller.signal,
+    };
+  }
+
+  private trackActiveRequestTransaction(controller: AbortController): ActiveRequestTransactionHandle {
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => {
       settle = resolve;
     });
-    const active = {
+
+    const active: ActiveRequestTransaction = {
       abort(reason?: unknown) {
         controller.abort(reason);
       },
@@ -110,16 +148,12 @@ export class DrizzleDatabase<
 
     this.activeRequestTransactions.add(active);
 
-    try {
-      return await transactionRunner(
-        (transactionDatabase) => this.transactions.run(transactionDatabase, () => raceWithAbort(fn, controller.signal)),
-        options,
-      );
-    } finally {
-      signal?.removeEventListener('abort', forwardAbort);
-      this.activeRequestTransactions.delete(active);
-      settle();
-    }
+    return { active, settle };
+  }
+
+  private untrackActiveRequestTransaction(handle: ActiveRequestTransactionHandle): void {
+    this.activeRequestTransactions.delete(handle.active);
+    handle.settle();
   }
 
   private resolveTransactionRunner(): DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> | undefined {

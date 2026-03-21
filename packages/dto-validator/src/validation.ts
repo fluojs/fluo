@@ -453,6 +453,52 @@ function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validator
   }
 }
 
+function buildIssue(fallback: { code: string; message: string }, field: string, source: ValidationIssue['source']): ValidationIssue {
+  return {
+    code: fallback.code,
+    field,
+    message: fallback.message,
+    source,
+  };
+}
+
+function getRuleValues(value: unknown): unknown[] {
+  return getIterableValues(value) ?? [value];
+}
+
+function shouldSkipRuleForMissingValue(rule: DtoFieldValidationRule, value: unknown): boolean {
+  return (value === undefined || value === null) && rule.kind !== 'defined' && rule.kind !== 'notEmpty' && rule.kind !== 'empty';
+}
+
+async function evaluateCustomRule(
+  rule: Extract<DtoFieldValidationRule, { kind: 'custom' }>,
+  value: unknown,
+  dto: unknown,
+  propertyKey: MetadataPropertyKey,
+  fieldPath: string,
+  source: ValidationIssue['source'],
+  fallback: { code: string; message: string },
+): Promise<ValidationIssue[]> {
+  if (!rule.each) {
+    return normalizeResult(await rule.validate(value, { dto, propertyKey }), fieldPath, rule.source ?? source, fallback);
+  }
+
+  const issues: ValidationIssue[] = [];
+
+  for (const [index, entry] of getRuleValues(value).entries()) {
+    const result = await rule.validate(entry, { dto, propertyKey });
+    issues.push(
+      ...prefixIssues(
+        normalizeResult(result, undefined, rule.source ?? source, fallback),
+        `${fieldPath}[${String(index)}]`,
+        source,
+      ),
+    );
+  }
+
+  return issues;
+}
+
 function validateSingleRule(rule: DtoFieldValidationRule, value: unknown): boolean {
   if (rule.kind === 'custom' || rule.kind === 'nested') {
     return true;
@@ -499,16 +545,7 @@ async function evaluateRule(
   const fallback = describeValidator(rule, fieldPath);
 
   if (rule.kind === 'custom') {
-    if (rule.each) {
-      const values = getIterableValues(value) ?? [value];
-      const issues: ValidationIssue[] = [];
-      for (const [index, entry] of values.entries()) {
-        const resultAtIndex = await rule.validate(entry, { dto, propertyKey });
-        issues.push(...prefixIssues(normalizeResult(resultAtIndex, undefined, rule.source ?? source, fallback), `${fieldPath}[${String(index)}]`, source));
-      }
-      return issues;
-    }
-    return normalizeResult(await rule.validate(value, { dto, propertyKey }), fieldPath, rule.source ?? source, fallback);
+    return evaluateCustomRule(rule, value, dto, propertyKey, fieldPath, source, fallback);
   }
 
   if (rule.kind === 'nested') {
@@ -516,18 +553,19 @@ async function evaluateRule(
   }
 
   if (rule.each) {
-    const values = getIterableValues(value) ?? [value];
     const issues: ValidationIssue[] = [];
-    for (const [index, entry] of values.entries()) {
+
+    for (const [index, entry] of getRuleValues(value).entries()) {
       if (!validateSingleRule(rule, entry)) {
-        issues.push({ code: fallback.code, field: `${fieldPath}[${String(index)}]`, message: fallback.message, source });
+        issues.push(buildIssue(fallback, `${fieldPath}[${String(index)}]`, source));
       }
     }
+
     return issues;
   }
 
   if (!validateSingleRule(rule, value)) {
-    return [{ code: fallback.code, field: fieldPath, message: fallback.message, source }];
+    return [buildIssue(fallback, fieldPath, source)];
   }
 
   return [];
@@ -541,14 +579,15 @@ async function applyPropertyRules(
   fieldPath: string,
   source: ValidationIssue['source'],
 ): Promise<ValidationIssue[]> {
-  let conditionallySkip = false;
-
-  for (const rule of rules) {
-    if (rule.kind === 'validateIf' && !(await rule.validateIf(dto, value))) {
-      conditionallySkip = true;
-      break;
+  const conditionallySkip = await (async () => {
+    for (const rule of rules) {
+      if (rule.kind === 'validateIf' && !(await rule.validateIf(dto, value))) {
+        return true;
+      }
     }
-  }
+
+    return false;
+  })();
 
   if (rules.some((rule) => rule.kind === 'optional') && (value === undefined || value === null)) {
     return [];
@@ -559,7 +598,7 @@ async function applyPropertyRules(
   for (const rule of rules) {
     if (rule.kind === 'validateIf' || rule.kind === 'optional') continue;
     if (conditionallySkip) continue;
-    if ((value === undefined || value === null) && rule.kind !== 'defined' && rule.kind !== 'notEmpty' && rule.kind !== 'empty') continue;
+    if (shouldSkipRuleForMissingValue(rule, value)) continue;
     issues.push(...(await evaluateRule(rule, value, dto, propertyKey, fieldPath, source)));
   }
 

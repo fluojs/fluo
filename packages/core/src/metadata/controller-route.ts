@@ -81,6 +81,37 @@ export function defineRouteMetadata(
   getOrCreatePropertyMap(routeMetadataStore, target).set(propertyKey, cloneRouteMetadata(metadata));
 }
 
+function resolveRequiredRouteFields(
+  stored: RouteMetadata | undefined,
+  standard: RouteMetadata | undefined,
+  propertyKey: MetadataPropertyKey,
+): Pick<RouteMetadata, 'method' | 'path'> {
+  const method = stored?.method ?? standard?.method;
+  const path = stored?.path ?? standard?.path;
+
+  if (method === undefined || path === undefined) {
+    throw new Error(`Route metadata for property key "${String(propertyKey)}" is missing required "method" or "path".`);
+  }
+
+  return { method, path };
+}
+
+function mergeRouteMetadata(
+  stored: RouteMetadata | undefined,
+  standard: RouteMetadata | undefined,
+  required: Pick<RouteMetadata, 'method' | 'path'>,
+): RouteMetadata {
+  return {
+    guards: mergeUnique(stored?.guards, standard?.guards),
+    interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
+    method: required.method,
+    path: required.path,
+    request: stored?.request ?? standard?.request,
+    successStatus: stored?.successStatus ?? standard?.successStatus,
+    version: stored?.version ?? standard?.version,
+  };
+}
+
 export function getRouteMetadata(target: object, propertyKey: MetadataPropertyKey): RouteMetadata | undefined {
   const stored = routeMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardRouteMetadata(target, propertyKey);
@@ -89,20 +120,7 @@ export function getRouteMetadata(target: object, propertyKey: MetadataPropertyKe
     return undefined;
   }
 
-  const method = stored?.method ?? standard?.method;
-  const path = stored?.path ?? standard?.path;
+  const required = resolveRequiredRouteFields(stored, standard, propertyKey);
 
-  if (method === undefined || path === undefined) {
-    throw new Error(`Route metadata for property key "${String(propertyKey)}" is missing required "method" or "path".`);
-  }
-
-  return {
-    guards: mergeUnique(stored?.guards, standard?.guards),
-    interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
-    method,
-    path,
-    request: stored?.request ?? standard?.request,
-    successStatus: stored?.successStatus ?? standard?.successStatus,
-    version: stored?.version ?? standard?.version,
-  };
+  return mergeRouteMetadata(stored, standard, required);
 }

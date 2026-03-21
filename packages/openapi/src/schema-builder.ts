@@ -1,6 +1,11 @@
 import { getDtoBindingSchema, getDtoValidationSchema, type Constructor, type DtoFieldValidationRule } from '@konekti/core';
 import type { HandlerDescriptor, HttpMethod } from '@konekti/http';
-import { getControllerTags, getMethodApiMetadata, type ApiResponseMetadata } from './decorators.js';
+import {
+  getControllerTags,
+  getMethodApiMetadata,
+  type ApiResponseMetadata,
+  type MethodApiMetadata,
+} from './decorators.js';
 
 type OpenApiOperationMethod = Lowercase<HttpMethod>;
 
@@ -119,11 +124,17 @@ function normalizeOperationId(descriptor: HandlerDescriptor): string {
 type DtoBindingEntry = ReturnType<typeof getDtoBindingSchema>[number];
 type DtoValidationEntry = ReturnType<typeof getDtoValidationSchema>[number];
 
+interface CollectedDtoEntry {
+  binding: DtoBindingEntry | undefined;
+  name: string;
+  validation: DtoValidationEntry | undefined;
+}
+
 function propertyName(propertyKey: string | number | symbol): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
 }
 
-function collectDtoEntries(dto: Constructor) {
+function collectDtoEntries(dto: Constructor): CollectedDtoEntry[] {
   const bindingEntries = getDtoBindingSchema(dto);
   const validationEntries = getDtoValidationSchema(dto);
   const bindingMap = new Map(bindingEntries.map((entry) => [entry.propertyKey, entry]));
@@ -151,6 +162,41 @@ function resolveNestedDto(dto: Constructor | (() => Constructor)): Constructor {
   return (dto as () => Constructor)();
 }
 
+function inferEnumValueType(value: unknown): 'boolean' | 'number' | 'string' {
+  if (typeof value === 'number') {
+    return 'number';
+  }
+
+  if (typeof value === 'boolean') {
+    return 'boolean';
+  }
+
+  return 'string';
+}
+
+function createEnumSchema(values: readonly unknown[]): OpenApiSchemaObject {
+  return {
+    enum: [...values],
+    type: inferEnumValueType(values[0]),
+  };
+}
+
+function inferNestedSchema(
+  nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined,
+): OpenApiSchemaObject | undefined {
+  if (!nestedRule) {
+    return undefined;
+  }
+
+  const resolvedDto = resolveNestedDto(nestedRule.dto);
+
+  if (nestedRule.each) {
+    return { items: createSchemaRef(resolvedDto.name), type: 'array' };
+  }
+
+  return createSchemaRef(resolvedDto.name);
+}
+
 function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): OpenApiSchemaObject | undefined {
   const hasRule = <TKind extends DtoFieldValidationRule['kind']>(kind: TKind) =>
     rules.find((rule): rule is Extract<DtoFieldValidationRule, { kind: TKind }> => rule.kind === kind);
@@ -165,14 +211,10 @@ function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): 
   const stringRule = hasRule('string');
   const enumRule = hasRule('enum');
 
-  if (nestedRule && nestedRule.each) {
-    const resolvedDto = resolveNestedDto(nestedRule.dto);
-    return { items: createSchemaRef(resolvedDto.name), type: 'array' };
-  }
+  const nestedSchema = inferNestedSchema(nestedRule);
 
-  if (nestedRule) {
-    const resolvedDto = resolveNestedDto(nestedRule.dto);
-    return createSchemaRef(resolvedDto.name);
+  if (nestedSchema) {
+    return nestedSchema;
   }
 
   if (arrayRule) {
@@ -180,12 +222,7 @@ function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): 
   }
 
   if (enumRule) {
-    const first = enumRule.values[0];
-    const inferredType = typeof first === 'number' ? 'number' : typeof first === 'boolean' ? 'boolean' : 'string';
-    return {
-      enum: [...enumRule.values],
-      type: inferredType,
-    };
+    return createEnumSchema(enumRule.values);
   }
 
   if (intRule) {
@@ -230,11 +267,7 @@ function inferEachItemSchema(rules: readonly DtoFieldValidationRule[]): OpenApiS
   );
 
   if (enumRule) {
-    const first = enumRule.values[0];
-    return {
-      enum: [...enumRule.values],
-      type: typeof first === 'number' ? 'number' : typeof first === 'boolean' ? 'boolean' : 'string',
-    };
+    return createEnumSchema(enumRule.values);
   }
 
   if (rules.some((rule) => rule.kind === 'string' || ((rule.kind === 'minLength' || rule.kind === 'maxLength') && rule.each))) {
@@ -312,7 +345,7 @@ function isPropertyRequired(binding: DtoBindingEntry | undefined, validation: Dt
 
 function ensureComponentSchemaFromEntries(
   schemaName: string,
-  entries: ReturnType<typeof collectDtoEntries>,
+  entries: readonly CollectedDtoEntry[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
 ): OpenApiSchemaObject {
   if (componentSchemas[schemaName]) {
@@ -325,25 +358,7 @@ function ensureComponentSchemaFromEntries(
     type: 'object',
   };
 
-  const properties: Record<string, OpenApiSchemaObject> = {};
-  const required: string[] = [];
-
-  for (const entry of entries) {
-    const rules = entry.validation?.rules ?? [];
-
-    for (const rule of rules) {
-      if (rule.kind === 'nested') {
-        ensureComponentSchema(resolveNestedDto(rule.dto), componentSchemas);
-      }
-    }
-
-    const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' };
-    properties[entry.name] = applyValidationConstraints(inferred, rules);
-
-    if (isPropertyRequired(entry.binding, entry.validation)) {
-      required.push(entry.name);
-    }
-  }
+  const { properties, required } = buildComponentSchemaShape(entries, componentSchemas);
 
   componentSchemas[schemaName] = {
     additionalProperties: false,
@@ -355,6 +370,42 @@ function ensureComponentSchemaFromEntries(
   return createSchemaRef(schemaName);
 }
 
+function ensureNestedSchemasFromRules(
+  rules: readonly DtoFieldValidationRule[],
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+): void {
+  for (const rule of rules) {
+    if (rule.kind === 'nested') {
+      ensureComponentSchema(resolveNestedDto(rule.dto), componentSchemas);
+    }
+  }
+}
+
+function buildComponentSchemaShape(
+  entries: readonly CollectedDtoEntry[],
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+): {
+  properties: Record<string, OpenApiSchemaObject>;
+  required: string[];
+} {
+  const properties: Record<string, OpenApiSchemaObject> = {};
+  const required: string[] = [];
+
+  for (const entry of entries) {
+    const rules = entry.validation?.rules ?? [];
+    ensureNestedSchemasFromRules(rules, componentSchemas);
+
+    const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' };
+    properties[entry.name] = applyValidationConstraints(inferred, rules);
+
+    if (isPropertyRequired(entry.binding, entry.validation)) {
+      required.push(entry.name);
+    }
+  }
+
+  return { properties, required };
+}
+
 function ensureComponentSchema(
   dto: Constructor,
   componentSchemas: Record<string, OpenApiSchemaObject>,
@@ -364,7 +415,6 @@ function ensureComponentSchema(
 
 function createParameters(
   dto: Constructor | undefined,
-  componentSchemas: Record<string, OpenApiSchemaObject>,
 ): OpenApiParameterObject[] {
   if (!dto) {
     return [];
@@ -479,13 +529,14 @@ function createRequestBody(
     return undefined;
   }
 
-  const entries = collectDtoEntries(dto).filter((entry) => entry.binding?.metadata.source === 'body');
+  const dtoEntries = collectDtoEntries(dto);
+  const entries = dtoEntries.filter((entry) => entry.binding?.metadata.source === 'body');
 
   if (entries.length === 0) {
     return undefined;
   }
 
-  const schemaName = entries.length === collectDtoEntries(dto).length ? dto.name : `${dto.name}RequestBody`;
+  const schemaName = entries.length === dtoEntries.length ? dto.name : `${dto.name}RequestBody`;
   ensureComponentSchemaFromEntries(schemaName, entries, componentSchemas);
 
   return {
@@ -564,65 +615,103 @@ function createResponseObject(
   };
 }
 
-export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
-  const paths: Record<string, OpenApiPathItemObject> = {};
-  const componentSchemas: Record<string, OpenApiSchemaObject> = {};
-  let hasBearerAuth = false;
-  const defaultErrorResponsesPolicy = options.defaultErrorResponsesPolicy ?? 'inject';
+function createOperationResponses(
+  descriptor: HandlerDescriptor,
+  methodMeta: MethodApiMetadata | undefined,
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+  defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
+): Record<string, OpenApiResponseObject> {
+  const responses: Record<string, OpenApiResponseObject> = {};
 
-  for (const descriptor of options.descriptors) {
-    const openApiPath = expressPathToOpenApi(descriptor.route.path);
-    const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
-    const pathItem = paths[openApiPath] ?? {};
-
-    const tags = resolveControllerTags(descriptor);
-    const methodMeta = getMethodApiMetadata(descriptor.controllerToken, descriptor.methodName);
-
-    const responses: Record<string, OpenApiResponseObject> = {};
-
-    if (methodMeta?.responses && methodMeta.responses.length > 0) {
-      for (const resp of methodMeta.responses) {
-        responses[String(resp.status)] = createResponseObject(resp, componentSchemas);
-      }
-    } else {
-      responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
+  if (methodMeta?.responses && methodMeta.responses.length > 0) {
+    for (const response of methodMeta.responses) {
+      responses[String(response.status)] = createResponseObject(response, componentSchemas);
     }
-
-    if (defaultErrorResponsesPolicy === 'inject') {
-      addDefaultErrorResponses(responses, componentSchemas);
-    }
-
-    const security: OpenApiSecurityRequirementObject[] | undefined =
-      methodMeta?.security && methodMeta.security.length > 0
-        ? methodMeta.security.map((scheme) => ({ [scheme]: [] }))
-        : undefined;
-
-    if (security?.some((requirement) => Object.keys(requirement).includes('bearerAuth'))) {
-      hasBearerAuth = true;
-    }
-
-    const operation: OpenApiOperationObject = {
-      operationId: normalizeOperationId(descriptor),
-      responses,
-      tags,
-      ...(methodMeta?.operation?.summary !== undefined && { summary: methodMeta.operation.summary }),
-      ...(methodMeta?.operation?.description !== undefined && { description: methodMeta.operation.description }),
-      ...(() => {
-        const parameters = createParameters(descriptor.route.request, componentSchemas);
-        return parameters.length > 0 ? { parameters } : {};
-      })(),
-      ...(() => {
-        const requestBody = createRequestBody(descriptor.route.request, componentSchemas);
-        return requestBody !== undefined ? { requestBody } : {};
-      })(),
-      ...(security !== undefined && { security }),
-    };
-
-    pathItem[method] = operation;
-    paths[openApiPath] = pathItem;
+  } else {
+    responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
   }
 
-  const components: OpenApiComponentsObject = {
+  if (defaultErrorResponsesPolicy === 'inject') {
+    addDefaultErrorResponses(responses, componentSchemas);
+  }
+
+  return responses;
+}
+
+function createOperationSecurity(
+  methodMeta: MethodApiMetadata | undefined,
+): OpenApiSecurityRequirementObject[] | undefined {
+  if (!methodMeta?.security || methodMeta.security.length === 0) {
+    return undefined;
+  }
+
+  return methodMeta.security.map((scheme) => ({ [scheme]: [] }));
+}
+
+function hasBearerAuthRequirement(security: OpenApiSecurityRequirementObject[] | undefined): boolean {
+  return Boolean(security?.some((requirement) => Object.keys(requirement).includes('bearerAuth')));
+}
+
+function createOperationObject(
+  descriptor: HandlerDescriptor,
+  methodMeta: MethodApiMetadata | undefined,
+  responses: Record<string, OpenApiResponseObject>,
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+  security: OpenApiSecurityRequirementObject[] | undefined,
+): OpenApiOperationObject {
+  const parameters = createParameters(descriptor.route.request);
+  const requestBody = createRequestBody(descriptor.route.request, componentSchemas);
+
+  return {
+    operationId: normalizeOperationId(descriptor),
+    responses,
+    tags: resolveControllerTags(descriptor),
+    ...(methodMeta?.operation?.summary !== undefined && { summary: methodMeta.operation.summary }),
+    ...(methodMeta?.operation?.description !== undefined && { description: methodMeta.operation.description }),
+    ...(parameters.length > 0 && { parameters }),
+    ...(requestBody !== undefined && { requestBody }),
+    ...(security !== undefined && { security }),
+  };
+}
+
+interface BuiltOperationEntry {
+  method: OpenApiOperationMethod;
+  openApiPath: string;
+  operation: OpenApiOperationObject;
+  requiresBearerAuth: boolean;
+}
+
+function buildOperationEntry(
+  descriptor: HandlerDescriptor,
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+  defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
+): BuiltOperationEntry {
+  const openApiPath = expressPathToOpenApi(descriptor.route.path);
+  const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
+  const methodMeta = getMethodApiMetadata(descriptor.controllerToken, descriptor.methodName);
+
+  const responses = createOperationResponses(
+    descriptor,
+    methodMeta,
+    componentSchemas,
+    defaultErrorResponsesPolicy,
+  );
+  const security = createOperationSecurity(methodMeta);
+  const operation = createOperationObject(descriptor, methodMeta, responses, componentSchemas, security);
+
+  return {
+    method,
+    openApiPath,
+    operation,
+    requiresBearerAuth: hasBearerAuthRequirement(security),
+  };
+}
+
+function createOpenApiComponents(
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+  hasBearerAuth: boolean,
+): OpenApiComponentsObject {
+  return {
     ...(Object.keys(componentSchemas).length > 0 && { schemas: componentSchemas }),
     ...(hasBearerAuth
       ? {
@@ -636,6 +725,31 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
         }
       : {}),
   };
+}
+
+export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
+  const paths: Record<string, OpenApiPathItemObject> = {};
+  const componentSchemas: Record<string, OpenApiSchemaObject> = {};
+  let hasBearerAuth = false;
+  const defaultErrorResponsesPolicy = options.defaultErrorResponsesPolicy ?? 'inject';
+
+  for (const descriptor of options.descriptors) {
+    const { method, openApiPath, operation, requiresBearerAuth } = buildOperationEntry(
+      descriptor,
+      componentSchemas,
+      defaultErrorResponsesPolicy,
+    );
+
+    if (requiresBearerAuth) {
+      hasBearerAuth = true;
+    }
+
+    const pathItem = paths[openApiPath] ?? {};
+    pathItem[method] = operation;
+    paths[openApiPath] = pathItem;
+  }
+
+  const components = createOpenApiComponents(componentSchemas, hasBearerAuth);
 
   return {
     ...(Object.keys(components).length > 0 && { components }),

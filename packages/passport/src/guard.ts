@@ -37,6 +37,14 @@ function hasRequiredScopes(principal: { scopes?: string[] }, scopes: string[]): 
   return scopes.every((scope) => principal.scopes?.includes(scope));
 }
 
+function isAuthenticationFailure(error: unknown): boolean {
+  return (
+    error instanceof AuthenticationRequiredError
+    || error instanceof AuthenticationExpiredError
+    || error instanceof AuthenticationFailedError
+  );
+}
+
 @Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])
 export class AuthGuard implements AuthGuardContract {
   constructor(
@@ -89,15 +97,7 @@ export class AuthGuard implements AuthGuardContract {
       context.requestContext.principal = principal;
       return true;
     } catch (error: unknown) {
-      if (error instanceof AuthenticationRequiredError) {
-        throw new UnauthorizedException('Authentication required.', { cause: error });
-      }
-
-      if (error instanceof AuthenticationExpiredError) {
-        throw new UnauthorizedException('Authentication required.', { cause: error });
-      }
-
-      if (error instanceof AuthenticationFailedError) {
+      if (isAuthenticationFailure(error)) {
         throw new UnauthorizedException('Authentication required.', { cause: error });
       }
 

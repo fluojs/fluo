@@ -100,6 +100,27 @@ function getOrCreateArgFieldMetadataMap(target: object): Map<MetadataPropertyKey
   return map;
 }
 
+function getMergedMetadataEntries<T>(
+  target: object,
+  stored: Map<MetadataPropertyKey, T> | undefined,
+  standard: Map<MetadataPropertyKey, T> | undefined,
+  resolve: (target: object, propertyKey: MetadataPropertyKey) => T | undefined,
+): Array<{ metadata: T; propertyKey: MetadataPropertyKey }> {
+  const storedMap = stored ?? new Map<MetadataPropertyKey, T>();
+  const standardMap = standard ?? new Map<MetadataPropertyKey, T>();
+  const keys = new Set<MetadataPropertyKey>([...storedMap.keys(), ...standardMap.keys()]);
+
+  return Array.from(keys)
+    .map((propertyKey) => ({
+      metadata: resolve(target, propertyKey),
+      propertyKey,
+    }))
+    .filter(
+      (entry): entry is { metadata: T; propertyKey: MetadataPropertyKey } =>
+        entry.metadata !== undefined,
+    );
+}
+
 export function defineResolverMetadata(target: object, metadata: ResolverMetadata): void {
   resolverMetadataStore.set(target, cloneResolverMetadata(metadata));
 }
@@ -140,19 +161,12 @@ export function getResolverHandlerMetadata(
 export function getResolverHandlerMetadataEntries(
   target: object,
 ): Array<{ metadata: ResolverHandlerMetadata; propertyKey: MetadataPropertyKey }> {
-  const stored = handlerMetadataStore.get(target) ?? new Map<MetadataPropertyKey, ResolverHandlerMetadata>();
-  const standard = getStandardHandlerMap(target) ?? new Map<MetadataPropertyKey, ResolverHandlerMetadata>();
-  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
-
-  return Array.from(keys)
-    .map((propertyKey) => ({
-      metadata: getResolverHandlerMetadata(target, propertyKey),
-      propertyKey,
-    }))
-    .filter(
-      (entry): entry is { metadata: ResolverHandlerMetadata; propertyKey: MetadataPropertyKey } =>
-        entry.metadata !== undefined,
-    );
+  return getMergedMetadataEntries(
+    target,
+    handlerMetadataStore.get(target),
+    getStandardHandlerMap(target),
+    getResolverHandlerMetadata,
+  );
 }
 
 export function defineArgFieldMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: ArgFieldMetadata): void {
@@ -173,19 +187,7 @@ export function getArgFieldMetadata(target: object, propertyKey: MetadataPropert
 export function getArgFieldMetadataEntries(
   target: object,
 ): Array<{ metadata: ArgFieldMetadata; propertyKey: MetadataPropertyKey }> {
-  const stored = argFieldMetadataStore.get(target) ?? new Map<MetadataPropertyKey, ArgFieldMetadata>();
-  const standard = getStandardArgFieldMap(target) ?? new Map<MetadataPropertyKey, ArgFieldMetadata>();
-  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
-
-  return Array.from(keys)
-    .map((propertyKey) => ({
-      metadata: getArgFieldMetadata(target, propertyKey),
-      propertyKey,
-    }))
-    .filter(
-      (entry): entry is { metadata: ArgFieldMetadata; propertyKey: MetadataPropertyKey } =>
-        entry.metadata !== undefined,
-    );
+  return getMergedMetadataEntries(target, argFieldMetadataStore.get(target), getStandardArgFieldMap(target), getArgFieldMetadata);
 }
 
 export const resolverMetadataSymbol = standardResolverMetadataKey;
