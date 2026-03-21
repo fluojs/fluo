@@ -53,6 +53,7 @@ export interface ResolverDescriptor {
   token: Token;
   targetName: string;
   moduleName: string;
+  scope: 'singleton' | 'request' | 'transient';
 }
 
 export interface GraphqlModuleOptions {

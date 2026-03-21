@@ -2,7 +2,7 @@ import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
 import { IsInt, MinLength } from '@konekti/dto-validator';
 import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
@@ -253,6 +253,123 @@ describe('@konekti/graphql', () => {
         hello: 'schema-first',
       },
     });
+
+    await app.close();
+  });
+});
+
+describe('@konekti/graphql — provider scopes', () => {
+  it('request-scoped resolver receives a fresh instance per operation', async () => {
+    @Inject([])
+    @Scope('request')
+    class RequestCounter {
+      count = 0;
+    }
+
+    @Inject([RequestCounter])
+    @Scope('request')
+    @Resolver('ScopedResolver')
+    class RequestScopedResolver {
+      constructor(private readonly counter: RequestCounter) {}
+
+      @Query({ outputType: 'int' })
+      tick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule({ resolvers: [RequestScopedResolver] })],
+      providers: [RequestCounter, RequestScopedResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const r1 = await postGraphql(port, '{ tick }');
+    const r2 = await postGraphql(port, '{ tick }');
+
+    expect(r1).toEqual({ data: { tick: 1 } });
+    expect(r2).toEqual({ data: { tick: 1 } });
+
+    await app.close();
+  });
+
+  it('transient resolver receives a fresh instance per operation', async () => {
+    @Inject([])
+    @Scope('transient')
+    class TransientCounter {
+      count = 0;
+    }
+
+    @Inject([TransientCounter])
+    @Scope('transient')
+    @Resolver('TransientResolver')
+    class TransientScopedResolver {
+      constructor(private readonly counter: TransientCounter) {}
+
+      @Query({ outputType: 'int' })
+      transientTick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule({ resolvers: [TransientScopedResolver] })],
+      providers: [TransientCounter, TransientScopedResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const r1 = await postGraphql(port, '{ transientTick }');
+    const r2 = await postGraphql(port, '{ transientTick }');
+
+    expect(r1).toEqual({ data: { transientTick: 1 } });
+    expect(r2).toEqual({ data: { transientTick: 1 } });
+
+    await app.close();
+  });
+
+  it('singleton resolver shares state across operations', async () => {
+    @Inject([])
+    class SingletonCounter {
+      count = 0;
+    }
+
+    @Inject([SingletonCounter])
+    @Resolver('SingletonResolver')
+    class SingletonScopedResolver {
+      constructor(private readonly counter: SingletonCounter) {}
+
+      @Query({ outputType: 'int' })
+      singletonTick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule({ resolvers: [SingletonScopedResolver] })],
+      providers: [SingletonCounter, SingletonScopedResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const r1 = await postGraphql(port, '{ singletonTick }');
+    const r2 = await postGraphql(port, '{ singletonTick }');
+
+    expect(r1).toEqual({ data: { singletonTick: 1 } });
+    expect(r2).toEqual({ data: { singletonTick: 2 } });
 
     await app.close();
   });
