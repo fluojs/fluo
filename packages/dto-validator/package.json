@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
     }
   },
   "main": "./dist/index.js",
@@ -35,7 +39,21 @@
     "@konekti/core": "workspace:*",
     "validator": "^13.15.26"
   },
+  "peerDependencies": {
+    "valibot": "^0.42.1",
+    "zod": "^3.23.8 || ^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "valibot": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/validator": "^13.15.10"
+    "@types/validator": "^13.15.10",
+    "valibot": "^0.42.1",
+    "zod": "^4.1.11"
   }
 }
