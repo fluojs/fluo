@@ -47,6 +47,16 @@ class UserService {
 }
 ```
 
+## explicit token model vs reflection DI
+
+Konekti resolves dependencies from explicit token metadata, not from runtime type reflection metadata.
+
+- Konekti uses declared DI tokens (`@Inject([...])`) as the source of truth.
+- Konekti does not require `"emitDecoratorMetadata": true`.
+- Konekti does not rely on reflection-based constructor type autowiring.
+
+This keeps DI behavior explicit: what is declared in injection metadata is what the container resolves.
+
 ## token ownership rules
 
 - tokens are part of the public contract when they cross module or package boundaries
