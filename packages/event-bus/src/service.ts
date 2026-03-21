@@ -32,6 +32,11 @@ interface ResolvedPublishOptions {
   waitForHandlers: boolean;
 }
 
+interface InvocationBound {
+  cleanup(): void;
+  promise: Promise<never>;
+}
+
 class EventPublishTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`Event publish timed out after ${String(timeoutMs)}ms.`);
@@ -84,26 +89,62 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
-    const matchingDescriptors = this.descriptors.filter((descriptor) => event instanceof descriptor.eventType);
+    const matchingDescriptors = this.matchEventDescriptors(event);
 
     if (matchingDescriptors.length === 0) {
       return;
     }
 
     const publishOptions = this.resolvePublishOptions(options);
-    const invocationTasks = matchingDescriptors.map((descriptor) =>
-      this.invokeHandlerWithBounds(descriptor, event, publishOptions),
-    );
-
     if (!publishOptions.waitForHandlers) {
-      for (const task of invocationTasks) {
-        void task;
-      }
+      const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
+      this.runInvocationTasksInBackground(backgroundTasks);
 
       return;
     }
 
+    const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, publishOptions);
+
     await Promise.allSettled(invocationTasks);
+  }
+
+  private matchEventDescriptors(event: object): EventHandlerDescriptor[] {
+    return this.descriptors.filter((descriptor) => event instanceof descriptor.eventType);
+  }
+
+  private createInvocationTasks(
+    descriptors: EventHandlerDescriptor[],
+    event: object,
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<void>[] {
+    return descriptors.map((descriptor) => this.invokeHandlerWithBounds(descriptor, event, publishOptions));
+  }
+
+  private createBackgroundInvocationTasks(
+    descriptors: EventHandlerDescriptor[],
+    event: object,
+    signal: AbortSignal | undefined,
+  ): Promise<void>[] {
+    return descriptors.map((descriptor) => this.invokeHandlerInBackground(descriptor, event, signal));
+  }
+
+  private runInvocationTasksInBackground(invocationTasks: Promise<void>[]): void {
+    for (const task of invocationTasks) {
+      void task;
+    }
+  }
+
+  private async invokeHandlerInBackground(
+    descriptor: EventHandlerDescriptor,
+    event: object,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    if (signal?.aborted) {
+      this.logPublishCancelledBeforeDispatch(descriptor);
+      return;
+    }
+
+    await this.invokeHandler(descriptor, event);
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -174,10 +215,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     publishOptions: ResolvedPublishOptions,
   ): Promise<void> {
     if (publishOptions.signal?.aborted) {
-      this.logger.warn(
-        `Event publish was cancelled before dispatching handler ${descriptor.targetName}.${descriptor.methodName}.`,
-        'EventBusLifecycleService',
-      );
+      this.logPublishCancelledBeforeDispatch(descriptor);
       return;
     }
 
@@ -186,28 +224,39 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     try {
       await this.awaitInvocationBounds(invocation, publishOptions);
     } catch (error) {
-      if (error instanceof EventPublishTimeoutError) {
-        this.logger.warn(
-          `Event handler ${descriptor.targetName}.${descriptor.methodName} exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
-          'EventBusLifecycleService',
-        );
-        return;
-      }
+      this.logBoundedInvocationError(descriptor, error);
+    }
+  }
 
-      if (error instanceof EventPublishAbortError) {
-        this.logger.warn(
-          `Event publish was cancelled while waiting for handler ${descriptor.targetName}.${descriptor.methodName}.`,
-          'EventBusLifecycleService',
-        );
-        return;
-      }
+  private logPublishCancelledBeforeDispatch(descriptor: EventHandlerDescriptor): void {
+    this.logger.warn(
+      `Event publish was cancelled before dispatching handler ${descriptor.targetName}.${descriptor.methodName}.`,
+      'EventBusLifecycleService',
+    );
+  }
 
-      this.logger.error(
-        `Event handler ${descriptor.targetName}.${descriptor.methodName} failed while applying publish bounds.`,
-        error,
+  private logBoundedInvocationError(descriptor: EventHandlerDescriptor, error: unknown): void {
+    if (error instanceof EventPublishTimeoutError) {
+      this.logger.warn(
+        `Event handler ${descriptor.targetName}.${descriptor.methodName} exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
         'EventBusLifecycleService',
       );
+      return;
     }
+
+    if (error instanceof EventPublishAbortError) {
+      this.logger.warn(
+        `Event publish was cancelled while waiting for handler ${descriptor.targetName}.${descriptor.methodName}.`,
+        'EventBusLifecycleService',
+      );
+      return;
+    }
+
+    this.logger.error(
+      `Event handler ${descriptor.targetName}.${descriptor.methodName} failed while applying publish bounds.`,
+      error,
+      'EventBusLifecycleService',
+    );
   }
 
   private async awaitInvocationBounds(
@@ -222,18 +271,25 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       return;
     }
 
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let abortListener: (() => void) | undefined;
-    const bounds: Array<Promise<never>> = [];
+    const bounds = this.createInvocationBounds(timeoutMs, signal);
+
+    try {
+      await Promise.race([invocation, ...bounds.map((bound) => bound.promise)]);
+    } finally {
+      for (const bound of bounds) {
+        bound.cleanup();
+      }
+    }
+  }
+
+  private createInvocationBounds(
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+  ): InvocationBound[] {
+    const bounds: InvocationBound[] = [];
 
     if (timeoutMs !== undefined) {
-      bounds.push(
-        new Promise<never>((_resolve, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(new EventPublishTimeoutError(timeoutMs));
-          }, timeoutMs);
-        }),
-      );
+      bounds.push(this.createTimeoutBound(timeoutMs));
     }
 
     if (signal) {
@@ -241,27 +297,46 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
         throw new EventPublishAbortError();
       }
 
-      bounds.push(
-        new Promise<never>((_resolve, reject) => {
-          abortListener = () => {
-            reject(new EventPublishAbortError());
-          };
-          signal.addEventListener('abort', abortListener, { once: true });
-        }),
-      );
+      bounds.push(this.createAbortBound(signal));
     }
 
-    try {
-      await Promise.race([invocation, ...bounds]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+    return bounds;
+  }
 
-      if (signal && abortListener) {
-        signal.removeEventListener('abort', abortListener);
-      }
-    }
+  private createTimeoutBound(timeoutMs: number): InvocationBound {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    return {
+      cleanup(): void {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      },
+      promise: new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new EventPublishTimeoutError(timeoutMs));
+        }, timeoutMs);
+      }),
+    };
+  }
+
+  private createAbortBound(signal: AbortSignal): InvocationBound {
+    let abortListener: (() => void) | undefined;
+
+    return {
+      cleanup(): void {
+        if (abortListener) {
+          signal.removeEventListener('abort', abortListener);
+        }
+      },
+      promise: new Promise<never>((_resolve, reject) => {
+        abortListener = () => {
+          reject(new EventPublishAbortError());
+        };
+
+        signal.addEventListener('abort', abortListener, { once: true });
+      }),
+    };
   }
 
   private discoverHandlerDescriptors(): EventHandlerDescriptor[] {
@@ -271,52 +346,80 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     for (const candidate of this.discoveryCandidates()) {
       const entries = getEventHandlerMetadataEntries(candidate.targetType.prototype);
 
-      if (candidate.scope !== 'singleton') {
-        if (entries.length > 0) {
-          this.logger.warn(
-            `${candidate.targetType.name} in module ${candidate.moduleName} declares @OnEvent() methods but is registered with ${candidate.scope} scope. Event handlers are registered only for singleton providers.`,
-            'EventBusLifecycleService',
-          );
-        }
-
+      if (this.shouldSkipNonSingletonCandidate(candidate, entries.length)) {
         continue;
       }
 
       for (const entry of entries) {
-        const methodName = methodKeyToName(entry.propertyKey);
         const eventType = entry.metadata.eventType;
-        let methodsByKey = seen.get(candidate.targetType);
 
-        if (!methodsByKey) {
-          methodsByKey = new Map<MetadataPropertyKey, Set<EventType>>();
-          seen.set(candidate.targetType, methodsByKey);
-        }
-
-        let seenEventTypes = methodsByKey.get(entry.propertyKey);
-
-        if (!seenEventTypes) {
-          seenEventTypes = new Set<EventType>();
-          methodsByKey.set(entry.propertyKey, seenEventTypes);
-        }
-
-        if (seenEventTypes.has(eventType)) {
+        if (this.isDuplicateHandlerRegistration(seen, candidate.targetType, entry.propertyKey, eventType)) {
           continue;
         }
 
-        seenEventTypes.add(eventType);
-
-        descriptors.push({
-          eventType,
-          methodKey: entry.propertyKey,
-          methodName,
-          moduleName: candidate.moduleName,
-          targetName: candidate.targetType.name,
-          token: candidate.token,
-        });
+        descriptors.push(this.createHandlerDescriptor(candidate, entry.propertyKey, eventType));
       }
     }
 
     return descriptors;
+  }
+
+  private shouldSkipNonSingletonCandidate(candidate: DiscoveryCandidate, entryCount: number): boolean {
+    if (candidate.scope === 'singleton') {
+      return false;
+    }
+
+    if (entryCount > 0) {
+      this.logger.warn(
+        `${candidate.targetType.name} in module ${candidate.moduleName} declares @OnEvent() methods but is registered with ${candidate.scope} scope. Event handlers are registered only for singleton providers.`,
+        'EventBusLifecycleService',
+      );
+    }
+
+    return true;
+  }
+
+  private isDuplicateHandlerRegistration(
+    seen: WeakMap<Function, Map<MetadataPropertyKey, Set<EventType>>>,
+    targetType: Function,
+    methodKey: MetadataPropertyKey,
+    eventType: EventType,
+  ): boolean {
+    let methodsByKey = seen.get(targetType);
+
+    if (!methodsByKey) {
+      methodsByKey = new Map<MetadataPropertyKey, Set<EventType>>();
+      seen.set(targetType, methodsByKey);
+    }
+
+    let seenEventTypes = methodsByKey.get(methodKey);
+
+    if (!seenEventTypes) {
+      seenEventTypes = new Set<EventType>();
+      methodsByKey.set(methodKey, seenEventTypes);
+    }
+
+    if (seenEventTypes.has(eventType)) {
+      return true;
+    }
+
+    seenEventTypes.add(eventType);
+    return false;
+  }
+
+  private createHandlerDescriptor(
+    candidate: DiscoveryCandidate,
+    methodKey: MetadataPropertyKey,
+    eventType: EventType,
+  ): EventHandlerDescriptor {
+    return {
+      eventType,
+      methodKey,
+      methodName: methodKeyToName(methodKey),
+      moduleName: candidate.moduleName,
+      targetName: candidate.targetType.name,
+      token: candidate.token,
+    };
   }
 
   private discoveryCandidates(): DiscoveryCandidate[] {

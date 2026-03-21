@@ -279,6 +279,49 @@ describe('@konekti/event-bus', () => {
     await app.close();
   });
 
+  it('does not apply timeout bounds when publish is non-blocking', async () => {
+    const loggerEvents: string[] = [];
+    const gate = createDeferred<void>();
+
+    class EventStore {
+      startedCalls = 0;
+    }
+
+    @Inject([EventStore])
+    class SlowHandler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(UserCreatedEvent)
+      async onUserCreated(_event: UserCreatedEvent) {
+        this.store.startedCalls += 1;
+        await gate.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule({ publish: { timeoutMs: 10, waitForHandlers: false } })],
+      providers: [EventStore, SlowHandler],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+
+    await expect(eventBus.publish(new UserCreatedEvent('user-non-blocking-timeout'))).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(store.startedCalls).toBe(1);
+    expect(loggerEvents.some((event) => event.includes('exceeded publish timeout'))).toBe(false);
+
+    gate.resolve();
+    await app.close();
+  });
+
   it('supports publish cancellation signal before handler dispatch', async () => {
     const loggerEvents: string[] = [];
 

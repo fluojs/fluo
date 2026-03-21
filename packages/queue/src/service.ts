@@ -33,6 +33,7 @@ import type {
 type QueuePayload = Record<string, unknown>;
 type QueueInstance = BullQueue;
 type WorkerInstance = BullWorker;
+const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
 
 type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
 
@@ -46,6 +47,27 @@ interface QueueOwnedConnection {
 interface QueueRedisClient {
   duplicate(): QueueOwnedConnection;
   rpush(key: string, value: string): Promise<unknown>;
+}
+
+interface WorkerInitializationResources {
+  queue?: QueueInstance;
+  queueConnection?: QueueOwnedConnection;
+  worker?: WorkerInstance;
+  workerConnection?: QueueOwnedConnection;
+}
+
+interface InitializedWorkerResources {
+  queue: QueueInstance;
+  queueConnection: QueueOwnedConnection;
+  worker: WorkerInstance;
+  workerConnection: QueueOwnedConnection;
+}
+
+type QueueWorkerMetadata = NonNullable<ReturnType<typeof getQueueWorkerMetadata>>;
+
+interface ResolvedWorkerHandler {
+  handler: (this: unknown, payload: object) => Promise<void>;
+  instance: unknown;
 }
 
 function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
@@ -172,23 +194,29 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
     if (!this.startPromise) {
       this.lifecycleState = 'starting';
-      this.startPromise = (async () => {
-        const redis = this.getRedisClient();
-        this.discoverWorkers();
-        await this.initializeWorkers(redis);
-        this.lifecycleState = 'started';
-      })();
+      this.startPromise = this.startLifecycle();
     }
 
     try {
       await this.startPromise;
     } catch (error) {
-      await this.closeInitializedResources();
-      this.lifecycleState = 'idle';
-      this.startPromise = undefined;
+      await this.handleStartupFailure();
       throw error;
     }
 
+    this.startPromise = undefined;
+  }
+
+  private async startLifecycle(): Promise<void> {
+    const redis = this.getRedisClient();
+    this.discoverWorkers();
+    await this.initializeWorkers(redis);
+    this.lifecycleState = 'started';
+  }
+
+  private async handleStartupFailure(): Promise<void> {
+    await this.closeInitializedResources();
+    this.lifecycleState = 'idle';
     this.startPromise = undefined;
   }
 
@@ -211,47 +239,79 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         continue;
       }
 
-      if (candidate.scope !== 'singleton') {
-        this.logger.warn(
-          `${candidate.targetType.name} in module ${candidate.moduleName} declares @QueueWorker() but is registered with ${candidate.scope} scope. Queue workers are registered only for singleton providers.`,
-          'QueueLifecycleService',
-        );
+      if (this.shouldSkipNonSingletonWorker(candidate)) {
         continue;
       }
 
       const jobType = metadata.jobType;
 
-      if (this.descriptorsByJobType.has(jobType)) {
-        this.logger.warn(
-          `Duplicate @QueueWorker() registration for job type ${jobType.name} was ignored in ${candidate.moduleName}.`,
-          'QueueLifecycleService',
-        );
+      if (this.isDuplicateWorkerRegistration(jobType, candidate.moduleName)) {
         continue;
       }
 
       const jobName = metadata.options.jobName ?? jobType.name;
 
-      if (seenJobNames.has(jobName)) {
-        this.logger.warn(
-          `Duplicate queue job name ${jobName} was ignored in ${candidate.moduleName}.`,
-          'QueueLifecycleService',
-        );
+      if (this.isDuplicateJobName(jobName, candidate.moduleName, seenJobNames)) {
         continue;
       }
 
       seenJobNames.add(jobName);
-      this.descriptorsByJobType.set(jobType, {
-        attempts: normalizePositiveInteger(metadata.options.attempts, this.options.defaultAttempts),
-        backoff: metadata.options.backoff ?? this.options.defaultBackoff,
-        concurrency: normalizePositiveInteger(metadata.options.concurrency, this.options.defaultConcurrency),
-        jobName,
-        jobType,
-        moduleName: candidate.moduleName,
-        rateLimiter: normalizeRateLimiter(metadata.options.rateLimiter ?? this.options.defaultRateLimiter),
-        token: candidate.token,
-        workerName: candidate.targetType.name,
-      });
+      this.descriptorsByJobType.set(jobType, this.createWorkerDescriptor(candidate, metadata, jobName));
     }
+  }
+
+  private shouldSkipNonSingletonWorker(candidate: DiscoveryCandidate): boolean {
+    if (candidate.scope === 'singleton') {
+      return false;
+    }
+
+    this.logger.warn(
+      `${candidate.targetType.name} in module ${candidate.moduleName} declares @QueueWorker() but is registered with ${candidate.scope} scope. Queue workers are registered only for singleton providers.`,
+      'QueueLifecycleService',
+    );
+    return true;
+  }
+
+  private isDuplicateWorkerRegistration(jobType: QueueJobType, moduleName: string): boolean {
+    if (!this.descriptorsByJobType.has(jobType)) {
+      return false;
+    }
+
+    this.logger.warn(
+      `Duplicate @QueueWorker() registration for job type ${jobType.name} was ignored in ${moduleName}.`,
+      'QueueLifecycleService',
+    );
+    return true;
+  }
+
+  private isDuplicateJobName(jobName: string, moduleName: string, seenJobNames: Set<string>): boolean {
+    if (!seenJobNames.has(jobName)) {
+      return false;
+    }
+
+    this.logger.warn(
+      `Duplicate queue job name ${jobName} was ignored in ${moduleName}.`,
+      'QueueLifecycleService',
+    );
+    return true;
+  }
+
+  private createWorkerDescriptor(
+    candidate: DiscoveryCandidate,
+    metadata: QueueWorkerMetadata,
+    jobName: string,
+  ): QueueWorkerDescriptor {
+    return {
+      attempts: normalizePositiveInteger(metadata.options.attempts, this.options.defaultAttempts),
+      backoff: metadata.options.backoff ?? this.options.defaultBackoff,
+      concurrency: normalizePositiveInteger(metadata.options.concurrency, this.options.defaultConcurrency),
+      jobName,
+      jobType: metadata.jobType,
+      moduleName: candidate.moduleName,
+      rateLimiter: normalizeRateLimiter(metadata.options.rateLimiter ?? this.options.defaultRateLimiter),
+      token: candidate.token,
+      workerName: candidate.targetType.name,
+    };
   }
 
   private discoveryCandidates(): DiscoveryCandidate[] {
@@ -260,66 +320,131 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private async initializeWorkers(redis: QueueRedisClient): Promise<void> {
     for (const descriptor of this.descriptorsByJobType.values()) {
-      let queueConnection: QueueOwnedConnection | undefined;
-      let workerConnection: QueueOwnedConnection | undefined;
-      let queue: QueueInstance | undefined;
-      let worker: WorkerInstance | undefined;
+      const resources = await this.initializeWorkerResources(redis, descriptor);
+      this.registerInitializedWorker(descriptor, resources);
+    }
+  }
 
-      try {
-        queueConnection = await this.createOwnedConnection(redis);
-        workerConnection = await this.createOwnedConnection(redis);
-        queue = new BullQueue(descriptor.jobName, {
-          connection: queueConnection as unknown as ConnectionOptions,
-        });
-        worker = new BullWorker(
-          descriptor.jobName,
-          async (job: BullJob) => {
-            await this.executeWorker(descriptor, job);
-          },
-          {
-            concurrency: descriptor.concurrency,
-            connection: workerConnection as unknown as ConnectionOptions,
-            ...(descriptor.rateLimiter
-              ? {
-                  limiter: {
-                    duration: descriptor.rateLimiter.duration,
-                    max: descriptor.rateLimiter.max,
-                  },
-                }
-              : {}),
-          },
-        );
+  private async initializeWorkerResources(
+    redis: QueueRedisClient,
+    descriptor: QueueWorkerDescriptor,
+  ): Promise<InitializedWorkerResources> {
+    const resources: WorkerInitializationResources = {};
 
-        worker.on('failed', (job: BullJob | undefined, error: Error) => {
-          const pendingWrite = this.handleFailedJob(descriptor, job, error);
-          this.pendingDeadLetterWrites.add(pendingWrite);
-          pendingWrite.finally(() => {
-            this.pendingDeadLetterWrites.delete(pendingWrite);
-          });
-        });
+    try {
+      resources.queueConnection = await this.createOwnedConnection(redis);
+      resources.workerConnection = await this.createOwnedConnection(redis);
+      resources.queue = this.createQueueInstance(descriptor, resources.queueConnection);
+      resources.worker = this.createWorkerInstance(descriptor, resources.workerConnection);
+      this.attachWorkerFailureHandler(descriptor, resources.worker);
 
-        this.queuesByJobName.set(descriptor.jobName, queue);
-        this.workersByJobName.set(descriptor.jobName, worker);
-        this.ownedConnections.push(queueConnection, workerConnection);
-      } catch (error) {
-        if (worker) {
-          await this.tryCloseWorker(worker);
-        }
+      return {
+        queue: resources.queue,
+        queueConnection: resources.queueConnection,
+        worker: resources.worker,
+        workerConnection: resources.workerConnection,
+      };
+    } catch (error) {
+      await this.cleanupWorkerInitializationFailure(resources);
+      throw error;
+    }
+  }
 
-        if (queue) {
-          await this.tryCloseQueue(queue);
-        }
+  private createQueueInstance(
+    descriptor: QueueWorkerDescriptor,
+    queueConnection: QueueOwnedConnection,
+  ): QueueInstance {
+    return new BullQueue(descriptor.jobName, {
+      connection: queueConnection as unknown as ConnectionOptions,
+    });
+  }
 
-        if (workerConnection) {
-          await this.tryCloseOwnedConnection(workerConnection);
-        }
+  private createWorkerInstance(
+    descriptor: QueueWorkerDescriptor,
+    workerConnection: QueueOwnedConnection,
+  ): WorkerInstance {
+    return new BullWorker(
+      descriptor.jobName,
+      async (job: BullJob) => {
+        await this.executeWorker(descriptor, job);
+      },
+      this.createWorkerOptions(descriptor, workerConnection),
+    );
+  }
 
-        if (queueConnection) {
-          await this.tryCloseOwnedConnection(queueConnection);
-        }
+  private createWorkerOptions(
+    descriptor: QueueWorkerDescriptor,
+    workerConnection: QueueOwnedConnection,
+  ): {
+    concurrency: number;
+    connection: ConnectionOptions;
+    limiter?: {
+      duration: number;
+      max: number;
+    };
+  } {
+    return {
+      concurrency: descriptor.concurrency,
+      connection: workerConnection as unknown as ConnectionOptions,
+      ...this.createWorkerLimiterOptions(descriptor),
+    };
+  }
 
-        throw error;
-      }
+  private createWorkerLimiterOptions(descriptor: QueueWorkerDescriptor): {
+    limiter?: {
+      duration: number;
+      max: number;
+    };
+  } {
+    if (!descriptor.rateLimiter) {
+      return {};
+    }
+
+    return {
+      limiter: {
+        duration: descriptor.rateLimiter.duration,
+        max: descriptor.rateLimiter.max,
+      },
+    };
+  }
+
+  private attachWorkerFailureHandler(
+    descriptor: QueueWorkerDescriptor,
+    worker: WorkerInstance,
+  ): void {
+    worker.on('failed', (job: BullJob | undefined, error: Error) => {
+      const pendingWrite = this.handleFailedJob(descriptor, job, error);
+      this.pendingDeadLetterWrites.add(pendingWrite);
+      pendingWrite.finally(() => {
+        this.pendingDeadLetterWrites.delete(pendingWrite);
+      });
+    });
+  }
+
+  private registerInitializedWorker(
+    descriptor: QueueWorkerDescriptor,
+    resources: InitializedWorkerResources,
+  ): void {
+    this.queuesByJobName.set(descriptor.jobName, resources.queue);
+    this.workersByJobName.set(descriptor.jobName, resources.worker);
+    this.ownedConnections.push(resources.queueConnection, resources.workerConnection);
+  }
+
+  private async cleanupWorkerInitializationFailure(resources: WorkerInitializationResources): Promise<void> {
+    if (resources.worker) {
+      await this.tryCloseWorker(resources.worker);
+    }
+
+    if (resources.queue) {
+      await this.tryCloseQueue(resources.queue);
+    }
+
+    if (resources.workerConnection) {
+      await this.tryCloseOwnedConnection(resources.workerConnection);
+    }
+
+    if (resources.queueConnection) {
+      await this.tryCloseOwnedConnection(resources.queueConnection);
     }
   }
 
@@ -339,6 +464,13 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private async executeWorker(descriptor: QueueWorkerDescriptor, job: BullJob): Promise<void> {
+    const resolvedWorker = await this.resolveWorkerHandler(descriptor);
+    const rehydratedPayload = this.rehydrateWorkerPayload(descriptor, job);
+
+    await Promise.resolve(resolvedWorker.handler.call(resolvedWorker.instance, rehydratedPayload));
+  }
+
+  private async resolveWorkerHandler(descriptor: QueueWorkerDescriptor): Promise<ResolvedWorkerHandler> {
     let instance: unknown;
 
     try {
@@ -357,13 +489,18 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       throw new Error(`Queue worker ${descriptor.workerName} must implement handle(job).`);
     }
 
+    return {
+      handler: handler as (this: unknown, payload: object) => Promise<void>,
+      instance,
+    };
+  }
+
+  private rehydrateWorkerPayload(descriptor: QueueWorkerDescriptor, job: BullJob): object {
     if (!isQueuePayload(job.data)) {
       throw new Error(`Queue worker ${descriptor.workerName} received a non-object payload.`);
     }
 
-    const rehydrated = rehydrateJobPayload(descriptor.jobType, job.data);
-
-    await Promise.resolve((handler as (this: unknown, payload: object) => Promise<void>).call(instance, rehydrated));
+    return rehydrateJobPayload(descriptor.jobType, job.data);
   }
 
   private async handleFailedJob(
@@ -454,24 +591,24 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private async drainDeadLetterWrites(): Promise<void> {
-    const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
-
     while (this.pendingDeadLetterWrites.size > 0) {
-      const writes = Array.from(this.pendingDeadLetterWrites);
+      await this.drainDeadLetterWriteBatch(Array.from(this.pendingDeadLetterWrites));
+    }
+  }
 
-      await Promise.allSettled(
-        writes.map(async (write) => {
-          try {
-            await withTimeout(write, DEAD_LETTER_DRAIN_TIMEOUT_MS, () => new Error('dead-letter write timed out'));
-          } catch (error) {
-            this.pendingDeadLetterWrites.delete(write);
-            this.logger.error(
-              'Dead-letter write did not complete within shutdown timeout.',
-              error,
-              'QueueLifecycleService',
-            );
-          }
-        }),
+  private async drainDeadLetterWriteBatch(writes: readonly Promise<void>[]): Promise<void> {
+    await Promise.allSettled(writes.map(async (write) => this.awaitDeadLetterWriteWithTimeout(write)));
+  }
+
+  private async awaitDeadLetterWriteWithTimeout(write: Promise<void>): Promise<void> {
+    try {
+      await withTimeout(write, DEAD_LETTER_DRAIN_TIMEOUT_MS, () => new Error('dead-letter write timed out'));
+    } catch (error) {
+      this.pendingDeadLetterWrites.delete(write);
+      this.logger.error(
+        'Dead-letter write did not complete within shutdown timeout.',
+        error,
+        'QueueLifecycleService',
       );
     }
   }

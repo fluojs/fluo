@@ -40,6 +40,15 @@ interface GatewayAttachment {
   server: WebSocketServer;
 }
 
+interface ConnectionHandlerState {
+  bufferedDisconnect: BufferedDisconnectEvent | undefined;
+  bufferedMessages: RawData[];
+  handlerQueue: Promise<void>;
+  handlersReady: boolean;
+  resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>;
+  socketId: string;
+}
+
 interface NodeUpgradeServer {
   off(event: 'upgrade', listener: NodeUpgradeListener): this;
   on(event: 'upgrade', listener: NodeUpgradeListener): this;
@@ -177,7 +186,42 @@ export class WebSocketGatewayLifecycleService
       return;
     }
 
+    const attachmentsByPath = this.prepareGatewayAttachments(descriptors);
+    this.attachUpgradeServerListener(attachmentsByPath);
+    this.startHeartbeatIfEnabled();
+  }
+
+  private prepareGatewayAttachments(
+    descriptors: WebSocketGatewayDescriptor[],
+  ): Map<string, GatewayAttachment> {
+    const attachmentsByPath = this.buildGatewayAttachments(descriptors);
+    this.attachConnectionHandlersToServers(attachmentsByPath);
+    return attachmentsByPath;
+  }
+
+  private attachUpgradeServerListener(attachmentsByPath: Map<string, GatewayAttachment>): void {
     const upgradeServer = this.resolveUpgradeServer();
+    const listener = this.createUpgradeListener(attachmentsByPath);
+
+    upgradeServer.on('upgrade', listener);
+    this.upgradeServer = upgradeServer;
+    this.upgradeListener = listener;
+    this.attachments = Array.from(attachmentsByPath.values());
+  }
+
+  private startHeartbeatIfEnabled(): void {
+    if (this.moduleOptions.heartbeat?.enabled !== true) {
+      return;
+    }
+
+    const intervalMs = this.moduleOptions.heartbeat.intervalMs ?? 30_000;
+    const timeoutMs = this.moduleOptions.heartbeat.timeoutMs ?? intervalMs;
+    this.startHeartbeat(intervalMs, timeoutMs);
+  }
+
+  private buildGatewayAttachments(
+    descriptors: WebSocketGatewayDescriptor[],
+  ): Map<string, GatewayAttachment> {
     const attachmentsByPath = new Map<string, GatewayAttachment>();
 
     for (const descriptor of descriptors) {
@@ -195,13 +239,19 @@ export class WebSocketGatewayLifecycleService
       });
     }
 
+    return attachmentsByPath;
+  }
+
+  private attachConnectionHandlersToServers(attachmentsByPath: Map<string, GatewayAttachment>): void {
     for (const attachment of attachmentsByPath.values()) {
       attachment.server.on('connection', (socket: WebSocket, request: IncomingMessage) => {
         void this.bindConnectionHandlers(attachment.descriptors, socket, request);
       });
     }
+  }
 
-    const listener: NodeUpgradeListener = (request, socket, head) => {
+  private createUpgradeListener(attachmentsByPath: Map<string, GatewayAttachment>): NodeUpgradeListener {
+    return (request, socket, head) => {
       const url = new URL(request.url ?? '/', 'http://localhost');
       const targetPath = normalizeGatewayPath(url.pathname);
       const attachment = attachmentsByPath.get(targetPath);
@@ -215,17 +265,6 @@ export class WebSocketGatewayLifecycleService
         attachment.server.emit('connection', websocket, request);
       });
     };
-
-    upgradeServer.on('upgrade', listener);
-    this.upgradeServer = upgradeServer;
-    this.upgradeListener = listener;
-    this.attachments = Array.from(attachmentsByPath.values());
-
-    if (this.moduleOptions.heartbeat?.enabled === true) {
-      const intervalMs = this.moduleOptions.heartbeat.intervalMs ?? 30_000;
-      const timeoutMs = this.moduleOptions.heartbeat.timeoutMs ?? intervalMs;
-      this.startHeartbeat(intervalMs, timeoutMs);
-    }
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -259,95 +298,154 @@ export class WebSocketGatewayLifecycleService
     socket: WebSocket,
     request: IncomingMessage,
   ): Promise<void> {
-    const socketId = randomUUID();
-    this.socketRegistry.set(socketId, socket);
+    const state = this.createConnectionHandlerState();
 
-    const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
-    const bufferedMessages: RawData[] = [];
-    let bufferedDisconnect: BufferedDisconnectEvent | undefined;
-    let handlersReady = false;
-    let handlerQueue = Promise.resolve();
+    this.registerSocketConnection(state, socket);
+    this.attachConnectionListeners(state, socket, request);
 
-    const queueMessage = (data: RawData): void => {
-      handlerQueue = handlerQueue
-        .then(async () => {
-          await this.handleMessage(resolved, socket, request, data);
-        })
-        .catch((error) => {
-          this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
-        });
+    await this.resolveConnectionGateways(descriptors, state);
+    await this.runConnectHandlers(state, socket, request);
+    await this.finalizeConnectionBinding(state, socket, request);
+  }
+
+  private registerSocketConnection(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+  ): void {
+    this.socketRegistry.set(state.socketId, socket);
+  }
+
+  private async finalizeConnectionBinding(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+  ): Promise<void> {
+    state.handlersReady = true;
+    this.replayBufferedConnectionEvents(state, socket, request);
+    await state.handlerQueue;
+  }
+
+  private createConnectionHandlerState(): ConnectionHandlerState {
+    return {
+      bufferedDisconnect: undefined,
+      bufferedMessages: [],
+      handlerQueue: Promise.resolve(),
+      handlersReady: false,
+      resolved: [],
+      socketId: randomUUID(),
     };
+  }
 
-    const queueDisconnect = (disconnectEvent: BufferedDisconnectEvent): void => {
-      handlerQueue = handlerQueue
-        .then(async () => {
-          await this.handleDisconnect(
-            resolved,
-            socket,
-            disconnectEvent.code,
-            disconnectEvent.reason,
-            socketId,
-          );
-        })
-        .catch((error) => {
-          this.logger.error('WebSocket gateway disconnect dispatch failed.', error, 'WebSocketGatewayLifecycleService');
-        });
-    };
+  private enqueueMessageDispatch(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+    data: RawData,
+  ): void {
+    state.handlerQueue = state.handlerQueue
+      .then(async () => {
+        await this.handleMessage(state.resolved, socket, request, data);
+      })
+      .catch((error) => {
+        this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
+      });
+  }
 
+  private enqueueDisconnectDispatch(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    disconnectEvent: BufferedDisconnectEvent,
+  ): void {
+    state.handlerQueue = state.handlerQueue
+      .then(async () => {
+        await this.handleDisconnect(
+          state.resolved,
+          socket,
+          disconnectEvent.code,
+          disconnectEvent.reason,
+          state.socketId,
+        );
+      })
+      .catch((error) => {
+        this.logger.error('WebSocket gateway disconnect dispatch failed.', error, 'WebSocketGatewayLifecycleService');
+      });
+  }
+
+  private attachConnectionListeners(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+  ): void {
     socket.on('message', (data: RawData) => {
-      if (!handlersReady) {
-        bufferedMessages.push(data);
+      if (!state.handlersReady) {
+        state.bufferedMessages.push(data);
         return;
       }
 
-      queueMessage(data);
+      this.enqueueMessageDispatch(state, socket, request, data);
     });
 
     socket.on('pong', () => {
-      this.pingPending.delete(socketId);
-      this.pingSentAt.delete(socketId);
+      this.pingPending.delete(state.socketId);
+      this.pingSentAt.delete(state.socketId);
     });
 
     socket.on('close', (code: number, reason: Buffer) => {
-      this.unregisterSocket(socketId);
+      this.unregisterSocket(state.socketId);
 
       const disconnectEvent: BufferedDisconnectEvent = { code, reason };
 
-      if (!handlersReady) {
-        bufferedDisconnect = disconnectEvent;
+      if (!state.handlersReady) {
+        state.bufferedDisconnect = disconnectEvent;
         return;
       }
 
-      queueDisconnect(disconnectEvent);
+      this.enqueueDisconnectDispatch(state, socket, disconnectEvent);
     });
+  }
 
+  private async resolveConnectionGateways(
+    descriptors: WebSocketGatewayDescriptor[],
+    state: ConnectionHandlerState,
+  ): Promise<void> {
     for (const descriptor of descriptors) {
       const instance = await this.resolveGatewayInstance(descriptor);
 
       if (instance !== undefined) {
-        resolved.push({ descriptor, instance });
+        state.resolved.push({ descriptor, instance });
       }
     }
+  }
 
+  private async runConnectHandlers(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+  ): Promise<void> {
     await Promise.all(
-      resolved.map(async ({ descriptor, instance }) => {
-        await this.runHandlers(instance, descriptor, 'connect', socket, request, socketId);
+      state.resolved.map(async ({ descriptor, instance }) => {
+        await this.runHandlers(instance, descriptor, 'connect', socket, request, state.socketId);
       }),
     );
+  }
 
-    handlersReady = true;
-
-    for (const message of bufferedMessages) {
-      queueMessage(message);
+  private replayBufferedConnectionEvents(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+  ): void {
+    for (const message of state.bufferedMessages) {
+      this.enqueueMessageDispatch(state, socket, request, message);
     }
 
-    if (bufferedDisconnect) {
-      queueDisconnect(bufferedDisconnect);
-    } else if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
-      this.unregisterSocket(socketId);
+    if (state.bufferedDisconnect) {
+      this.enqueueDisconnectDispatch(state, socket, state.bufferedDisconnect);
+      return;
     }
 
-    await handlerQueue;
+    if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
+      this.unregisterSocket(state.socketId);
+    }
   }
 
   private async handleMessage(
@@ -360,16 +458,23 @@ export class WebSocketGatewayLifecycleService
 
     await Promise.all(
       resolved.map(async ({ descriptor, instance }) => {
-        const handlers = descriptor.handlers.filter(
-          (handler) =>
-            handler.type === 'message' &&
-            (handler.event === undefined || handler.event === parsed.event),
-        );
+        const handlers = this.selectMessageHandlers(descriptor, parsed.event);
 
         for (const handler of handlers) {
           await this.invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request]);
         }
       }),
+    );
+  }
+
+  private selectMessageHandlers(
+    descriptor: WebSocketGatewayDescriptor,
+    event: string | undefined,
+  ): WebSocketGatewayHandlerDescriptor[] {
+    return descriptor.handlers.filter(
+      (handler) =>
+        handler.type === 'message' &&
+        (handler.event === undefined || handler.event === event),
     );
   }
 
@@ -451,34 +556,42 @@ export class WebSocketGatewayLifecycleService
         continue;
       }
 
-      if (candidate.scope !== 'singleton') {
-        this.logger.warn(
-          `${candidate.targetType.name} in module ${candidate.moduleName} declares @WebSocketGateway() but is registered with ${candidate.scope} scope. WebSocket gateways are registered only for singleton providers.`,
-          'WebSocketGatewayLifecycleService',
-        );
-        continue;
-      }
-
-      if (seenTargets.has(candidate.targetType)) {
+      if (this.shouldSkipGatewayCandidate(candidate, seenTargets)) {
         continue;
       }
 
       seenTargets.add(candidate.targetType);
-      descriptors.push({
-        handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
-          event: entry.metadata.event,
-          methodKey: entry.propertyKey,
-          methodName: methodKeyToName(entry.propertyKey),
-          type: entry.metadata.type,
-        })),
-        moduleName: candidate.moduleName,
-        path: normalizeGatewayPath(gatewayMetadata.path),
-        targetName: candidate.targetType.name,
-        token: candidate.token,
-      });
+      descriptors.push(this.createGatewayDescriptor(candidate, gatewayMetadata.path));
     }
 
     return descriptors;
+  }
+
+  private shouldSkipGatewayCandidate(candidate: DiscoveryCandidate, seenTargets: Set<Function>): boolean {
+    if (candidate.scope !== 'singleton') {
+      this.logger.warn(
+        `${candidate.targetType.name} in module ${candidate.moduleName} declares @WebSocketGateway() but is registered with ${candidate.scope} scope. WebSocket gateways are registered only for singleton providers.`,
+        'WebSocketGatewayLifecycleService',
+      );
+      return true;
+    }
+
+    return seenTargets.has(candidate.targetType);
+  }
+
+  private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
+    return {
+      handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
+        event: entry.metadata.event,
+        methodKey: entry.propertyKey,
+        methodName: methodKeyToName(entry.propertyKey),
+        type: entry.metadata.type,
+      })),
+      moduleName: candidate.moduleName,
+      path: normalizeGatewayPath(path),
+      targetName: candidate.targetType.name,
+      token: candidate.token,
+    };
   }
 
   private discoveryCandidates(): DiscoveryCandidate[] {
@@ -569,48 +682,79 @@ export class WebSocketGatewayLifecycleService
       return;
     }
 
-    this.shutdownPromise = (async () => {
-      if (this.heartbeatTimer) {
-        clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = undefined;
-      }
-
-      if (this.upgradeServer && this.upgradeListener) {
-        this.upgradeServer.off('upgrade', this.upgradeListener);
-      }
-
-      this.upgradeServer = undefined;
-      this.upgradeListener = undefined;
-
-      const attachments = this.attachments.splice(0);
-      const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
-
-      await Promise.all(
-        attachments.map(async (attachment) => {
-          for (const client of attachment.server.clients) {
-            client.terminate();
-          }
-
-          try {
-            await this.closeServerWithTimeout(attachment, shutdownTimeoutMs);
-          } catch (error) {
-            this.logger.error(
-              `Failed to close websocket server for path ${attachment.path} within ${String(shutdownTimeoutMs)}ms.`,
-              error,
-              'WebSocketGatewayLifecycleService',
-            );
-          }
-        }),
-      );
-
-      this.socketRegistry.clear();
-      this.socketRooms.clear();
-      this.roomSockets.clear();
-      this.pingPending.clear();
-      this.pingSentAt.clear();
-    })();
+    this.shutdownPromise = this.runShutdownLifecycle();
 
     await this.shutdownPromise;
+  }
+
+  private async runShutdownLifecycle(): Promise<void> {
+    this.stopHeartbeat();
+    this.detachUpgradeServerListener();
+
+    const attachments = this.attachments.splice(0);
+    const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
+
+    await this.closeGatewayAttachments(attachments, shutdownTimeoutMs);
+    this.clearConnectionTrackingState();
+  }
+
+  private stopHeartbeat(): void {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = undefined;
+  }
+
+  private detachUpgradeServerListener(): void {
+    if (this.upgradeServer && this.upgradeListener) {
+      this.upgradeServer.off('upgrade', this.upgradeListener);
+    }
+
+    this.upgradeServer = undefined;
+    this.upgradeListener = undefined;
+  }
+
+  private async closeGatewayAttachments(
+    attachments: readonly GatewayAttachment[],
+    shutdownTimeoutMs: number,
+  ): Promise<void> {
+    await Promise.all(
+      attachments.map(async (attachment) => {
+        this.terminateAttachmentClients(attachment);
+        await this.closeGatewayAttachment(attachment, shutdownTimeoutMs);
+      }),
+    );
+  }
+
+  private terminateAttachmentClients(attachment: GatewayAttachment): void {
+    for (const client of attachment.server.clients) {
+      client.terminate();
+    }
+  }
+
+  private async closeGatewayAttachment(
+    attachment: GatewayAttachment,
+    shutdownTimeoutMs: number,
+  ): Promise<void> {
+    try {
+      await this.closeServerWithTimeout(attachment, shutdownTimeoutMs);
+    } catch (error) {
+      this.logger.error(
+        `Failed to close websocket server for path ${attachment.path} within ${String(shutdownTimeoutMs)}ms.`,
+        error,
+        'WebSocketGatewayLifecycleService',
+      );
+    }
+  }
+
+  private clearConnectionTrackingState(): void {
+    this.socketRegistry.clear();
+    this.socketRooms.clear();
+    this.roomSockets.clear();
+    this.pingPending.clear();
+    this.pingSentAt.clear();
   }
 
   joinRoom(socketId: string, room: string): void {
