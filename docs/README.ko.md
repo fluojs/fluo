@@ -12,26 +12,27 @@
 1. `getting-started/quick-start.md`
 2. `getting-started/bootstrap-paths.md`
 3. `getting-started/generator-workflow.md`
-4. `concepts/architecture-overview.md`
-5. `concepts/http-runtime.md`
-6. `concepts/di-and-modules.md`
-7. `concepts/decorators-and-metadata.md`
-8. `concepts/config-and-environments.md`
-9. `concepts/lifecycle-and-shutdown.md`
-10. `concepts/auth-and-jwt.md`
-11. `concepts/openapi.md`
-12. `concepts/observability.md`
-13. `concepts/security-middleware.md`
-14. `concepts/transactions.md`
-15. `concepts/error-responses.md`
-16. `reference/package-surface.md`
-17. `reference/support-matrix.md`
-18. `reference/glossary-and-mental-model.md`
-19. `reference/toolchain-contract-matrix.md`
-20. `reference/workspace-topology.md`
-21. `operations/testing-guide.md`
-22. `operations/release-governance.md`
-23. `operations/open-issues.md`
+4. `getting-started/migrate-from-nestjs.md`
+5. `concepts/architecture-overview.md`
+6. `concepts/http-runtime.md`
+7. `concepts/di-and-modules.md`
+8. `concepts/decorators-and-metadata.md`
+9. `concepts/config-and-environments.md`
+10. `concepts/lifecycle-and-shutdown.md`
+11. `concepts/auth-and-jwt.md`
+12. `concepts/openapi.md`
+13. `concepts/observability.md`
+14. `concepts/security-middleware.md`
+15. `concepts/transactions.md`
+16. `concepts/error-responses.md`
+17. `reference/package-surface.md`
+18. `reference/support-matrix.md`
+19. `reference/glossary-and-mental-model.md`
+20. `reference/toolchain-contract-matrix.md`
+21. `reference/workspace-topology.md`
+22. `operations/testing-guide.md`
+23. `operations/release-governance.md`
+24. `operations/open-issues.md`
 
 ## 섹션 (Sections)
 
