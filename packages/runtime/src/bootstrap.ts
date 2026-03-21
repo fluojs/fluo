@@ -646,7 +646,9 @@ function createRuntimeDispatcher(
   options: BootstrapApplicationOptions,
   logger: ApplicationLogger,
 ): Dispatcher {
-  const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules));
+  const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules), {
+    versioning: options.versioning,
+  });
   logRouteMappings(logger, handlerMapping.descriptors);
 
   const errorHandler = createFilterErrorHandler(options.filters);

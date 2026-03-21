@@ -12,6 +12,8 @@ import {
   FromCookie,
   Get,
   Post,
+  Version,
+  VersioningType,
   SseResponse,
   createSecurityHeadersMiddleware,
   type RequestContext,
@@ -751,6 +753,190 @@ describe('bootstrapApplication', () => {
         status: 413,
       },
     });
+
+    await app.close();
+  });
+
+  it('defaults to URI versioning when no versioning option is provided', async () => {
+    @Version('1')
+    @Controller('/users')
+    class UsersController {
+      @Get('/')
+      listUsers() {
+        return { version: 'v1' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [versioned, unversioned] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/v1/users`),
+      fetch(`http://127.0.0.1:${String(port)}/users`),
+    ]);
+
+    expect(versioned.status).toBe(200);
+    await expect(versioned.json()).resolves.toEqual({ version: 'v1' });
+    expect(unversioned.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('supports header-based versioning in bootstrap options', async () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return { version: 'v1' };
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return { version: 'v2' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      versioning: {
+        header: 'X-API-Version',
+        type: VersioningType.HEADER,
+      },
+    });
+
+    await app.listen();
+
+    const [v1, v2, missing] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/users`, {
+        headers: { 'x-api-version': '1' },
+      }),
+      fetch(`http://127.0.0.1:${String(port)}/users`, {
+        headers: { 'X-API-Version': '2' },
+      }),
+      fetch(`http://127.0.0.1:${String(port)}/users`),
+    ]);
+
+    expect(v1.status).toBe(200);
+    await expect(v1.json()).resolves.toEqual({ version: 'v1' });
+    expect(v2.status).toBe(200);
+    await expect(v2.json()).resolves.toEqual({ version: 'v2' });
+    expect(missing.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('supports media-type versioning in bootstrap options', async () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return { version: 'v1' };
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return { version: 'v2' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      versioning: {
+        key: 'v=',
+        type: VersioningType.MEDIA_TYPE,
+      },
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+      headers: {
+        accept: 'application/json;v=2',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ version: 'v2' });
+
+    await app.close();
+  });
+
+  it('supports custom version extractors in bootstrap options', async () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return { version: 'v1' };
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return { version: 'v2' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UsersController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+      versioning: {
+        extractor: (request) => {
+          const raw = request.headers['x-custom-version'];
+          return Array.isArray(raw) ? raw[0] : raw;
+        },
+        type: VersioningType.CUSTOM,
+      },
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+      headers: {
+        'x-custom-version': '2',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ version: 'v2' });
 
     await app.close();
   });

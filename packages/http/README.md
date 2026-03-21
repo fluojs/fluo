@@ -104,14 +104,14 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
 | `@Version(value)` | Applies URI versioning such as `/v1/...`; handler-level version overrides controller-level version |
 
-### URI versioning
+### Versioning strategies
 
-Konekti currently supports URI versioning only.
+`@Version()` on controllers and handlers stays the same. The active strategy is selected by `@konekti/runtime` bootstrap options.
 
 ```typescript
 @Version('1')
 @Controller('/users')
-class UsersV1Controller {
+class UsersController {
   @Get('/')
   listUsers() {
     return [];
@@ -125,9 +125,12 @@ class UsersV1Controller {
 }
 ```
 
-- controller-level `@Version('1')` produces routes such as `/v1/users`
-- handler-level `@Version('2')` overrides the controller version for that specific route
-- unversioned controllers keep their normal paths
+- `VersioningType.URI` (default): `/v1/users`
+- `VersioningType.HEADER`: version from a configured request header such as `X-API-Version: 1`
+- `VersioningType.MEDIA_TYPE`: version extracted from `Accept` using a key such as `v=` (`Accept: application/json;v=1`)
+- `VersioningType.CUSTOM`: user-supplied extractor function
+
+URI behavior remains the default when no runtime `versioning` option is provided.
 
 ### Mapped DTO helpers
 

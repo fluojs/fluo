@@ -191,10 +191,10 @@ await bootstrapApplication({
 
 `duplicateProviderPolicy` controls what happens when multiple modules register the same provider token during bootstrap. Use `'warn'` to log and continue, `'throw'` to fail fast with `DuplicateProviderError`, or `'ignore'` to preserve the existing last-registration-wins behavior.
 
-### URI versioning
+### Versioning strategies
 
 ```typescript
-import { Controller, Get, Version } from '@konekti/http';
+import { Controller, Get, Version, VersioningType } from '@konekti/http';
 
 @Version('1')
 @Controller('/users')
@@ -204,9 +204,24 @@ class UsersController {
     return [];
   }
 }
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  versioning: {
+    header: 'X-API-Version',
+    type: VersioningType.HEADER,
+  },
+});
 ```
 
-Konekti currently supports URI versioning only. `@Version('1')` turns `/users` into `/v1/users`, and handler-level versions override controller-level versions for specific routes.
+Runtime supports four versioning strategies:
+
+- `VersioningType.URI` (default): `/v1/users`
+- `VersioningType.HEADER`: read from a configured header
+- `VersioningType.MEDIA_TYPE`: parse `Accept` using a key such as `v=`
+- `VersioningType.CUSTOM`: use a custom extractor function
+
+`@Version()` decorator usage does not change across strategies. If `versioning` is omitted, URI versioning remains the default (no breaking change).
 
 ### Module with imports and exports
 

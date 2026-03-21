@@ -4,6 +4,13 @@ export type { ValidationIssue, Validator } from '@konekti/dto-validator';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
 
+export enum VersioningType {
+  URI = 'URI',
+  HEADER = 'HEADER',
+  MEDIA_TYPE = 'MEDIA_TYPE',
+  CUSTOM = 'CUSTOM',
+}
+
 export interface FrameworkRequest {
   method: HttpMethod | string;
   path: string;
@@ -112,6 +119,26 @@ export interface HandlerSource {
   moduleMiddleware?: MiddlewareLike[];
   moduleType?: Constructor;
 }
+
+export type VersioningExtractorResult = string | readonly string[] | undefined;
+export type VersioningExtractor = (request: FrameworkRequest) => VersioningExtractorResult;
+
+export type VersioningOptions =
+  | {
+      type?: VersioningType.URI;
+    }
+  | {
+      type: VersioningType.HEADER;
+      header: string;
+    }
+  | {
+      type: VersioningType.MEDIA_TYPE;
+      key?: string;
+    }
+  | {
+      type: VersioningType.CUSTOM;
+      extractor: VersioningExtractor;
+    };
 
 export interface Dispatcher {
   dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void>;

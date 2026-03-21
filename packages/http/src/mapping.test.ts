@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Controller, Get, Version } from './decorators.js';
 import { RouteConflictError } from './errors.js';
 import { createHandlerMapping } from './mapping.js';
+import { VersioningType } from './types.js';
 
 describe('handler mapping', () => {
   it('normalizes paths and extracts path params', () => {
@@ -146,5 +147,147 @@ describe('handler mapping', () => {
       params: { id: '42' },
     });
     expect(unversionedMatch).toBeUndefined();
+  });
+
+  it('resolves versions from configured request headers', () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return [{ id: '1' }];
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return [{ id: '2' }];
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: UsersController }],
+      { versioning: { header: 'x-api-version', type: VersioningType.HEADER } },
+    );
+
+    const v1Match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: { 'x-api-version': '1' },
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    const v2Match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: { 'X-API-Version': '2' },
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    const missingVersionMatch = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    expect(v1Match?.descriptor.methodName).toBe('listV1');
+    expect(v2Match?.descriptor.methodName).toBe('listV2');
+    expect(missingVersionMatch).toBeUndefined();
+  });
+
+  it('resolves versions from Accept media type parameters', () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return [{ id: '1' }];
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return [{ id: '2' }];
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: UsersController }],
+      { versioning: { key: 'v=', type: VersioningType.MEDIA_TYPE } },
+    );
+
+    const v2Match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: { accept: 'application/json;v=2' },
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    expect(v2Match?.descriptor.methodName).toBe('listV2');
+  });
+
+  it('resolves versions from custom extractor functions', () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return [{ id: '1' }];
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return [{ id: '2' }];
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: UsersController }],
+      {
+        versioning: {
+          extractor: (request) => {
+            const raw = request.headers['x-custom-version'];
+            return Array.isArray(raw) ? raw[0] : raw;
+          },
+          type: VersioningType.CUSTOM,
+        },
+      },
+    );
+
+    const v1Match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: { 'x-custom-version': '1' },
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    expect(v1Match?.descriptor.methodName).toBe('listV1');
   });
 });

@@ -2,6 +2,7 @@ import { getControllerMetadata, getRouteMetadata, type Constructor, type Metadat
 
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { VersioningType } from './types.js';
 import type {
   FrameworkRequest,
   GuardLike,
@@ -11,7 +12,18 @@ import type {
   HandlerSource,
   InterceptorLike,
   HttpMethod,
+  VersioningExtractor,
+  VersioningOptions,
 } from './types.js';
+
+interface ResolvedVersioning {
+  extractor: VersioningExtractor;
+  type: VersioningType;
+}
+
+interface CreateHandlerMappingOptions {
+  versioning?: VersioningOptions;
+}
 
 function normalizePath(path: string): string {
   const segments = path.split('/').filter(Boolean);
@@ -36,6 +48,136 @@ function applyVersionPrefix(path: string, version: string | undefined): string {
   }
 
   return joinPaths(`/${normalizeVersionSegment(version)}`, path);
+}
+
+function normalizeVersionValue(version: string): string {
+  return version.trim().replace(/^v/i, '');
+}
+
+function readHeaderValue(request: FrameworkRequest, headerName: string): string | undefined {
+  const normalizedHeaderName = headerName.trim().toLowerCase();
+
+  if (!normalizedHeaderName) {
+    return undefined;
+  }
+
+  for (const [key, raw] of Object.entries(request.headers)) {
+    if (key.toLowerCase() !== normalizedHeaderName) {
+      continue;
+    }
+
+    const values = Array.isArray(raw) ? raw : [raw];
+
+    for (const value of values) {
+      const normalized = value?.trim();
+
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractVersionFromMediaType(request: FrameworkRequest, key: string): string | undefined {
+  const accept = readHeaderValue(request, 'accept');
+
+  if (!accept) {
+    return undefined;
+  }
+
+  const escapedKey = escapeRegExp(key);
+  const matcher = new RegExp(`${escapedKey}([^;,+\\s]+)`, 'i');
+  const mediaTypes = accept.split(',').map((value) => value.trim()).filter(Boolean);
+
+  for (const mediaType of mediaTypes) {
+    const match = mediaType.match(matcher);
+    const extracted = match?.[1]?.trim();
+
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveVersioning(options: CreateHandlerMappingOptions | undefined): ResolvedVersioning {
+  const versioning = options?.versioning;
+
+  if (!versioning || versioning.type === undefined || versioning.type === VersioningType.URI) {
+    return {
+      extractor: () => undefined,
+      type: VersioningType.URI,
+    };
+  }
+
+  if (versioning.type === VersioningType.HEADER) {
+    return {
+      extractor: (request) => readHeaderValue(request, versioning.header),
+      type: VersioningType.HEADER,
+    };
+  }
+
+  if (versioning.type === VersioningType.MEDIA_TYPE) {
+    return {
+      extractor: (request) => extractVersionFromMediaType(request, versioning.key ?? 'v='),
+      type: VersioningType.MEDIA_TYPE,
+    };
+  }
+
+  if (versioning.type === VersioningType.CUSTOM) {
+    return {
+      extractor: versioning.extractor,
+      type: VersioningType.CUSTOM,
+    };
+  }
+
+  return {
+    extractor: () => undefined,
+    type: VersioningType.URI,
+  };
+}
+
+function resolveRequestVersion(request: FrameworkRequest, versioning: ResolvedVersioning): string | undefined {
+  const raw = versioning.extractor(request);
+  const values = Array.isArray(raw) ? raw : [raw];
+
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const normalized = normalizeVersionValue(value);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function matchesRouteVersion(
+  descriptor: HandlerDescriptor,
+  requestVersion: string | undefined,
+): boolean {
+  const routeVersion = descriptor.route.version;
+
+  if (!routeVersion) {
+    return requestVersion === undefined;
+  }
+
+  if (!requestVersion) {
+    return false;
+  }
+
+  return normalizeVersionValue(routeVersion) === requestVersion;
 }
 
 function getControllerMethodNames(controllerToken: Constructor): MetadataPropertyKey[] {
@@ -76,7 +218,7 @@ function matchPath(registeredPath: string, incomingPath: string): Readonly<Recor
   return params;
 }
 
-function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
+function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVersioning): HandlerDescriptor[] {
   const controllerMetadata = getControllerMetadata(source.controllerToken) ?? { basePath: '' };
   const descriptors: HandlerDescriptor[] = [];
 
@@ -88,7 +230,8 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
     }
 
     const effectiveVersion = routeMetadata.version ?? controllerMetadata.version;
-    const effectivePath = applyVersionPrefix(joinPaths(controllerMetadata.basePath, routeMetadata.path), effectiveVersion);
+    const routePath = joinPaths(controllerMetadata.basePath, routeMetadata.path);
+    const effectivePath = versioning.type === VersioningType.URI ? applyVersionPrefix(routePath, effectiveVersion) : routePath;
     const produces = getRouteProducesMetadata(source.controllerToken, propertyKey);
 
     descriptors.push({
@@ -122,12 +265,12 @@ function createHandlerDescriptors(source: HandlerSource): HandlerDescriptor[] {
   return descriptors;
 }
 
-function buildDescriptorList(sources: HandlerSource[]): HandlerDescriptor[] {
-  const descriptors = sources.flatMap((source) => createHandlerDescriptors(source));
+function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersioning): HandlerDescriptor[] {
+  const descriptors = sources.flatMap((source) => createHandlerDescriptors(source, versioning));
   const seen = new Set<string>();
 
   for (const descriptor of descriptors) {
-    const routeKey = `${descriptor.route.method}:${descriptor.route.path}`;
+    const routeKey = `${descriptor.route.method}:${descriptor.route.path}:${descriptor.route.version ?? '<none>'}`;
 
     if (seen.has(routeKey)) {
       throw new RouteConflictError(`Duplicate route registration detected for ${routeKey}.`);
@@ -139,13 +282,16 @@ function buildDescriptorList(sources: HandlerSource[]): HandlerDescriptor[] {
   return descriptors;
 }
 
-export function createHandlerMapping(sources: HandlerSource[]): HandlerMapping {
-  const descriptors = buildDescriptorList(sources);
+export function createHandlerMapping(sources: HandlerSource[], options?: CreateHandlerMappingOptions): HandlerMapping {
+  const versioning = resolveVersioning(options);
+  const descriptors = buildDescriptorList(sources, versioning);
 
   return {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase() as HttpMethod;
+      const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
+      const matchedDescriptors: Array<{ descriptor: HandlerDescriptor; params: Readonly<Record<string, string>> }> = [];
 
       for (const descriptor of descriptors) {
         if (descriptor.route.method !== method) {
@@ -158,10 +304,38 @@ export function createHandlerMapping(sources: HandlerSource[]): HandlerMapping {
           continue;
         }
 
-        return {
-          descriptor,
-          params,
-        };
+        matchedDescriptors.push({ descriptor, params });
+
+        if (versioning.type === VersioningType.URI) {
+          return {
+            descriptor,
+            params,
+          };
+        }
+      }
+
+      if (versioning.type !== VersioningType.URI) {
+        for (const match of matchedDescriptors) {
+          if (!matchesRouteVersion(match.descriptor, requestVersion)) {
+            continue;
+          }
+
+          return {
+            descriptor: match.descriptor,
+            params: match.params,
+          };
+        }
+
+        for (const match of matchedDescriptors) {
+          if (match.descriptor.route.version !== undefined) {
+            continue;
+          }
+
+          return {
+            descriptor: match.descriptor,
+            params: match.params,
+          };
+        }
       }
 
       return undefined;
