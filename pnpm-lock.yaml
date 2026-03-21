@@ -330,6 +330,28 @@ importers:
         specifier: workspace:*
         version: link:../runtime
 
+  packages/throttler:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+    devDependencies:
+      ioredis:
+        specifier: ^5.10.0
+        version: 5.10.0
+
   packages/websocket:
     dependencies:
       '@konekti/core':
