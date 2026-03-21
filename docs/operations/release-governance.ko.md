@@ -16,6 +16,7 @@
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`

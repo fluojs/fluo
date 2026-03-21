@@ -33,11 +33,11 @@ Each item notes its current Konekti state and what closing the gap requires.
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })` runs a non-HTTP message consumer. The `@MessagePattern` and `@EventPattern` decorators bind handlers to transport messages instead of HTTP routes.
 
-**Konekti now**: `@konekti/event-bus` handles in-process events only. `@konekti/queue` handles Redis-backed background jobs. There is no TCP/Kafka/NATS consumer surface, no shared transport abstraction, and no `createMicroservice` equivalent.
+**Konekti now**: `@konekti/microservices` ships a transport abstraction with TCP and Redis Pub/Sub adapters, `@MessagePattern` / `@EventPattern` decorators, and runtime `KonektiFactory.createMicroservice()` support. `@konekti/event-bus` remains in-process event publishing, and `@konekti/queue` remains a Redis job queue.
 
-**Gap**: Requires a transport abstraction layer (`@konekti/microservices` or equivalent) with at minimum a Redis Pub/Sub and TCP transport, `@MessagePattern` / `@EventPattern` decorators, and a hybrid application mode that runs both HTTP and a microservice transport in the same process.
+**Remaining gap**: Transport breadth beyond TCP/Redis (Kafka/NATS/RabbitMQ), production-grade delivery guarantees, and first-class HTTP+microservice shared-container hybrid composition are still pending.
 
-**Scope**: New package. Significant design surface.
+**Scope**: Keep in `@konekti/microservices` and runtime integration tests.
 
 ---
 
@@ -189,7 +189,7 @@ Each item notes its current Konekti state and what closing the gap requires.
 
 The following are explicitly deferred and out of scope for the current Konekti runtime boundary:
 
-- Non-HTTP transports (see A2 above)
+- Advanced non-HTTP transports and hybrid hardening (see A2 above)
 - Fastify adapter (see A3 above)
 - Cluster-aware rate limiting (see A7 above)
 

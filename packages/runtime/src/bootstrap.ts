@@ -12,7 +12,6 @@ import {
   type HttpApplicationAdapter,
   type Dispatcher,
   type HandlerSource,
-  type MiddlewareLike,
 } from '@konekti/http';
 
 import { DuplicateProviderError } from './errors.js';
@@ -23,6 +22,8 @@ import type {
   ApplicationContext,
   Application,
   ApplicationLogger,
+  MicroserviceApplication,
+  MicroserviceRuntime,
   ApplicationState,
   BootstrapApplicationOptions,
   BootstrapModuleOptions,
@@ -30,6 +31,7 @@ import type {
   CompiledModule,
   CreateApplicationOptions,
   CreateApplicationContextOptions,
+  CreateMicroserviceOptions,
   ExceptionFilterHandler,
   ModuleDefinition,
   ModuleType,
@@ -38,6 +40,8 @@ import type {
   OnModuleDestroy,
   OnModuleInit,
 } from './types.js';
+
+const DEFAULT_MICROSERVICE_TOKEN = Symbol.for('konekti.microservices.service') as Token<MicroserviceRuntime>;
 
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
@@ -120,6 +124,10 @@ function hasReadinessStateMethods(value: unknown): value is { markReady(): void;
   const readinessAware = value as Function & { markReady?: unknown; markStarting?: unknown };
 
   return typeof readinessAware.markReady === 'function' && typeof readinessAware.markStarting === 'function';
+}
+
+function isMicroserviceRuntime(value: unknown): value is MicroserviceRuntime {
+  return hasMethod(value, 'listen');
 }
 
 function resetReadinessState(modules: CompiledModule[]): void {
@@ -402,6 +410,104 @@ class KonektiApplicationContext implements ApplicationContext {
       await runShutdownHooks(this.lifecycleInstances, signal);
       await disposeContainer(this.container);
       this.closed = true;
+    })();
+
+    try {
+      await this.closingPromise;
+    } catch (error) {
+      this.closingPromise = undefined;
+      throw error;
+    }
+  }
+}
+
+class KonektiMicroserviceApplication implements MicroserviceApplication {
+  private closed = false;
+  private closingPromise: Promise<void> | undefined;
+  private microserviceState: ApplicationState = 'bootstrapped';
+
+  constructor(
+    private readonly context: ApplicationContext,
+    private readonly logger: ApplicationLogger,
+    private readonly runtime: MicroserviceRuntime,
+  ) {}
+
+  get config(): ConfigService {
+    return this.context.config;
+  }
+
+  get container(): Container {
+    return this.context.container;
+  }
+
+  get envFile(): string {
+    return this.context.envFile;
+  }
+
+  get mode(): BootstrapApplicationOptions['mode'] {
+    return this.context.mode;
+  }
+
+  get modules(): CompiledModule[] {
+    return this.context.modules;
+  }
+
+  get rootModule(): ModuleType {
+    return this.context.rootModule;
+  }
+
+  get state(): ApplicationState {
+    return this.microserviceState;
+  }
+
+  async get<T>(token: Token<T>): Promise<T> {
+    return this.context.get(token);
+  }
+
+  async listen(): Promise<void> {
+    if (this.microserviceState === 'closed') {
+      throw new InvariantError('Microservice cannot listen after it has been closed.');
+    }
+
+    if (this.microserviceState === 'ready') {
+      return;
+    }
+
+    await this.runtime.listen();
+    this.microserviceState = 'ready';
+    this.logger.log('Konekti microservice successfully started.', 'KonektiFactory');
+  }
+
+  async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
+    if (!this.runtime.send) {
+      throw new InvariantError('Resolved microservice runtime does not implement send().');
+    }
+
+    return await this.runtime.send(pattern, payload, signal);
+  }
+
+  async emit(pattern: string, payload: unknown): Promise<void> {
+    if (!this.runtime.emit) {
+      throw new InvariantError('Resolved microservice runtime does not implement emit().');
+    }
+
+    await this.runtime.emit(pattern, payload);
+  }
+
+  async close(signal?: string): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
+    if (this.closingPromise) {
+      await this.closingPromise;
+      return;
+    }
+
+    this.closingPromise = (async () => {
+      await this.context.close(signal);
+      this.closed = true;
+      this.microserviceState = 'closed';
     })();
 
     try {
@@ -785,6 +891,29 @@ export class KonektiFactory {
         await disposeContainer(bootstrappedContainer);
       }
 
+      throw error;
+    }
+  }
+
+  static async createMicroservice(
+    rootModule: ModuleType,
+    options: CreateMicroserviceOptions = {},
+  ): Promise<MicroserviceApplication> {
+    const logger = options.logger ?? createConsoleApplicationLogger();
+    const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
+    const context = await KonektiFactory.createApplicationContext(rootModule, options);
+
+    try {
+      const runtime = await context.get<unknown>(microserviceToken);
+
+      if (!isMicroserviceRuntime(runtime)) {
+        throw new InvariantError('Resolved microservice token does not implement listen().');
+      }
+
+      return new KonektiMicroserviceApplication(context, logger, runtime);
+    } catch (error) {
+      await context.close('bootstrap-failed');
+      logger.error('Failed to bootstrap microservice context.', error, 'KonektiFactory');
       throw error;
     }
   }

@@ -14,6 +14,7 @@ This file lists the current public package family at a glance.
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/redis`
@@ -37,6 +38,7 @@ This file lists the current public package family at a glance.
 - `@konekti/http` -> HTTP execution, binding, exceptions, route metadata
 - `@konekti/runtime` -> app bootstrap and runtime orchestration
 - `@konekti/platform-fastify` -> Fastify-based HTTP adapter for runtime bootstrap/listen flow
+- `@konekti/microservices` -> transport abstraction, pattern decorators, and microservice runtime module
 - `@konekti/dto-validator` -> validation decorators and validation engine
 - `@konekti/jwt` -> token-core logic
 - `@konekti/passport` -> auth strategy registry and generic auth guard wiring

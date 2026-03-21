@@ -114,6 +114,16 @@ export interface CreateApplicationContextOptions
   mode?: ConfigMode;
 }
 
+export interface MicroserviceRuntime {
+  emit?(pattern: string, payload: unknown): MaybePromise<void>;
+  listen(): MaybePromise<void>;
+  send?(pattern: string, payload: unknown, signal?: AbortSignal): MaybePromise<unknown>;
+}
+
+export interface CreateMicroserviceOptions extends CreateApplicationContextOptions {
+  microserviceToken?: Token<MicroserviceRuntime>;
+}
+
 export interface ApplicationContext {
   readonly config: ConfigService;
   readonly container: Container;
@@ -140,4 +150,12 @@ export interface Application {
   dispatch: Dispatcher['dispatch'];
   listen(): Promise<void>;
   ready(): Promise<void>;
+}
+
+export interface MicroserviceApplication extends ApplicationContext {
+  readonly state: ApplicationState;
+
+  emit(pattern: string, payload: unknown): Promise<void>;
+  listen(): Promise<void>;
+  send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown>;
 }

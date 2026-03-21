@@ -33,11 +33,11 @@
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })`으로 HTTP가 아닌 메시지 컨슈머를 실행. `@MessagePattern`과 `@EventPattern` 데코레이터가 핸들러를 HTTP 라우트 대신 트랜스포트 메시지에 바인딩함.
 
-**현재 Konekti**: `@konekti/event-bus`는 인프라-프로세스 이벤트만 처리. `@konekti/queue`는 Redis 기반 백그라운드 잡만 처리. TCP/Kafka/NATS 컨슈머 표면, 공유 트랜스포트 추상화, `createMicroservice` 상당의 API가 없음.
+**현재 Konekti**: `@konekti/microservices`가 TCP/Redis Pub/Sub 트랜스포트 어댑터, `@MessagePattern` / `@EventPattern` 데코레이터, 런타임 `KonektiFactory.createMicroservice()`를 제공함. `@konekti/event-bus`는 인프로세스 이벤트 발행, `@konekti/queue`는 Redis 잡 처리로 각자 역할이 분리됨.
 
-**격차**: 트랜스포트 추상화 계층(`@konekti/microservices` 또는 동등물) 신규 개발 필요. 최소한 Redis Pub/Sub과 TCP 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, HTTP와 마이크로서비스 트랜스포트를 같은 프로세스에서 동시에 실행하는 하이브리드 애플리케이션 모드가 포함되어야 함.
+**남은 격차**: TCP/Redis를 넘어선 트랜스포트(Kafka/NATS/RabbitMQ), 전달 보장 수준 강화, HTTP+마이크로서비스를 하나의 공유 컨테이너로 조합하는 1급 하이브리드 구성은 아직 미완.
 
-**범위**: 신규 패키지. 상당한 설계 표면 필요.
+**범위**: `@konekti/microservices` 및 런타임 통합 테스트를 중심으로 확장.
 
 ---
 
@@ -189,7 +189,7 @@
 
 다음 항목들은 명시적으로 연기되어 현재 Konekti 런타임 경계 외에 있음:
 
-- HTTP 외 트랜스포트 (위 A2 참조)
+- 고급 HTTP 외 트랜스포트 및 하이브리드 고도화 (위 A2 참조)
 - Fastify 어댑터 (위 A3 참조)
 - 클러스터 인식 속도 제한 (위 A7 참조)
 

@@ -217,6 +217,7 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Node용 bootstrap + listen + shutdown wiring |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 bootstrap만 (listen 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 범용 bootstrap — `Application` 반환 |
+| `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | transport 기반 microservice runtime을 부트스트랩하고 `listen()`/`close()`를 제공 |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | 하위 레벨: module graph 컴파일 + container 구성 |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | 데코레이터 없이 module 메타데이터를 붙이는 하위 레벨 helper |
 | `Application` | `src/types.ts` | 인터페이스: `config`, `container`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
