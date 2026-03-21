@@ -98,14 +98,6 @@ export function discoverResolverDescriptors(
       continue;
     }
 
-    if (candidate.scope !== 'singleton') {
-      logger.warn(
-        `${candidate.targetType.name} in module ${candidate.moduleName} declares @Resolver() but is registered with ${candidate.scope} scope. GraphQL resolvers are registered only for singleton providers.`,
-        'GraphqlLifecycleService',
-      );
-      continue;
-    }
-
     if (seenTargets.has(candidate.targetType)) {
       continue;
     }
@@ -129,6 +121,7 @@ export function discoverResolverDescriptors(
         };
       }),
       moduleName: candidate.moduleName,
+      scope: candidate.scope,
       targetName: candidate.targetType.name,
       token: candidate.token,
       typeName: resolverMetadata.typeName,

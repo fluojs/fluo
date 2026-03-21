@@ -213,10 +213,23 @@ function createResolverInvoker(
     args: Record<string, unknown>,
     contextValue: GraphQLContext,
   ): Promise<unknown> => {
-    const instance = await runtimeContainer.resolve(descriptor.token);
-    const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
-    const input = await createResolverInput(deps, handler, args);
-    return resolverMethod.call(instance, input, contextValue);
+    if (descriptor.scope === 'singleton') {
+      const instance = await runtimeContainer.resolve(descriptor.token);
+      const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
+      const input = await createResolverInput(deps, handler, args);
+      return resolverMethod.call(instance, input, contextValue);
+    }
+
+    const operationContainer = runtimeContainer.createRequestScope();
+
+    try {
+      const instance = await operationContainer.resolve(descriptor.token);
+      const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
+      const input = await createResolverInput(deps, handler, args);
+      return await resolverMethod.call(instance, input, contextValue);
+    } finally {
+      await operationContainer.dispose();
+    }
   };
 }
 

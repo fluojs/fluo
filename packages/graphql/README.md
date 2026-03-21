@@ -131,9 +131,36 @@ Maps DTO fields to GraphQL argument names for input binding.
 - Transport: Konekti request/response is bridged to GraphQL Yoga Fetch API.
 - Context: each resolver receives `request` and optional `principal`; custom context is merged in.
 - Discovery: resolvers are discovered from compiled modules during bootstrap.
-- Scope rule: only singleton resolvers are registered; request/transient resolvers are skipped with warnings.
+- Scope model: singleton, request, and transient scopes are all supported in GraphQL resolvers.
 - Registration rule: class providers and controllers are discoverable; `useValue`/`useFactory` providers are not.
 - Shutdown: Yoga state is released during application shutdown.
+
+## Provider Scopes in Resolvers
+
+GraphQL resolvers respect the same `@Scope()` semantics as HTTP providers.
+
+- **Singleton** (default): one instance shared across all operations. Use for stateless resolvers and shared services.
+- **Request**: a fresh instance per GraphQL operation. The GraphQL module creates a per-operation child DI container, resolves the resolver from it, and disposes the container after the operation completes.
+- **Transient**: a fresh instance on every resolution. Each GraphQL operation also gets its own child container, so transient resolvers behave identically to request scope at the operation boundary.
+
+```typescript
+import { Inject, Scope } from '@konekti/core';
+import { Resolver, Query } from '@konekti/graphql';
+
+@Inject([RequestIdService])
+@Scope('request')
+@Resolver('RequestScopedResolver')
+class RequestScopedResolver {
+  constructor(private readonly requestId: RequestIdService) {}
+
+  @Query()
+  currentRequestId(): string {
+    return this.requestId.id;
+  }
+}
+```
+
+When a resolver is declared with `@Scope('request')`, all its dependencies must also use `'request'` or `'transient'` scope. The DI container enforces this at bootstrap and throws `ScopeMismatchError` if a request-scoped provider depends on a singleton.
 
 ## Validation and Errors
 
