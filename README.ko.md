@@ -5,6 +5,14 @@
 
 Konekti는 **표준 데코레이터 문법**을 기반으로 하며, 명시적인 DI(의존성 주입), 예측 가능한 HTTP 런타임, 패키지 단위의 통합, 그리고 CLI 중심의 부트스트랩 흐름을 중심으로 구축된 TypeScript 백엔드 프레임워크입니다.
 
+## 왜 표준 데코레이터를 사용하나요?
+
+- 레거시 데코레이터(`"experimentalDecorators": true`, `"emitDecoratorMetadata": true`)는 TC39 표준화 이전에 만들어진 TypeScript 전용 동작이며, NestJS는 현재 이 모델에 의존합니다.
+- 표준 데코레이터(TC39 Stage 3, TypeScript 5.0+ 지원)는 JavaScript 표준 방향이며 위 레거시 플래그가 필요하지 않습니다.
+- NestJS는 TC39 데코레이터를 지원하지 않겠다고 공개적으로 밝혔습니다: https://github.com/nestjs/nest/issues/10676.
+- 따라서 NestJS 앱은 장기적으로 JavaScript 표준과 다른 데코레이터 모델을 유지하게 되고, Konekti 앱은 표준 모델에 그대로 맞춰집니다.
+- Konekti 앱은 표준 TypeScript 설정(`"experimentalDecorators": false` 또는 플래그 생략)과 `emitDecoratorMetadata` 없이 동작합니다.
+
 ## 빠른 시작 (Quick Start)
 
 표준 공개 부트스트랩 경로를 사용하여 시작 앱을 생성하세요.
