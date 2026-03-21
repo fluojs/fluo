@@ -7,6 +7,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const summaryPath = join(scriptDirectory, 'release-candidate-summary.md');
 const summaryKoPath = join(scriptDirectory, 'release-candidate-summary.ko.md');
+const changelogPath = join(repoRoot, 'CHANGELOG.md');
 
 function languageToggle(current) {
   const english = current === 'en' ? '<strong><kbd>English</kbd></strong>' : '<a href="./release-candidate-summary.md"><kbd>English</kbd></a>';
@@ -112,6 +113,7 @@ function writeSummary(checks) {
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
     '- Commands executed: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- Side effects: `CHANGELOG.md` draft release-candidate section updated',
   ].join('\n');
   const summaryKo = [
     '# 릴리즈 후보 검증 요약',
@@ -121,14 +123,56 @@ function writeSummary(checks) {
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
     '- 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- 부수 효과: `CHANGELOG.md` 릴리즈 후보 드래프트 섹션 갱신',
   ].join('\n');
 
   writeFileSync(summaryPath, `${summary}\n`, 'utf8');
   writeFileSync(summaryKoPath, `${summaryKo}\n`, 'utf8');
 }
 
+function upsertReleaseCandidateDraft() {
+  if (!existsSync(changelogPath)) {
+    throw new Error('Release candidate check failed: CHANGELOG.md is missing at the repository root.');
+  }
+
+  const changelog = readFileSync(changelogPath, 'utf8');
+  const draftDate = new Date().toISOString().slice(0, 10);
+  const startMarker = '<!-- release-candidate-draft:start -->';
+  const endMarker = '<!-- release-candidate-draft:end -->';
+  const draftBlock = [
+    startMarker,
+    `### Draft release candidate entry (${draftDate})`,
+    '',
+    '- Breaking changes:',
+    '  - _Describe public contract changes and include migration notes._',
+    '- New features by package:',
+    '  - _List package-level additions (for example `@konekti/http`, `@konekti/cli`)._',
+    '- Bug fixes:',
+    '  - _List notable fixes by package._',
+    '- Deprecations:',
+    '  - _List newly deprecated APIs and removal timelines._',
+    endMarker,
+  ].join('\n');
+
+  if (!changelog.includes('## [Unreleased]')) {
+    throw new Error('Release candidate check failed: CHANGELOG.md must define an `## [Unreleased]` section.');
+  }
+
+  const blockRegex = /<!-- release-candidate-draft:start -->[\s\S]*?<!-- release-candidate-draft:end -->/;
+  let next = changelog;
+
+  if (blockRegex.test(changelog)) {
+    next = changelog.replace(blockRegex, draftBlock);
+  } else {
+    next = changelog.replace('## [Unreleased]', `## [Unreleased]\n\n${draftBlock}`);
+  }
+
+  writeFileSync(changelogPath, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
+}
+
 const checks = [];
 
+upsertReleaseCandidateDraft();
 run('pnpm', ['typecheck']);
 run('pnpm', ['build']);
 run('pnpm', ['test']);
@@ -140,6 +184,7 @@ const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
 const cliReadme = read('packages/cli/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
+const changelog = read('CHANGELOG.md');
 const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
 const packageSurfaceList = sorted(parsePackageListFromSection(packageSurface, 'public package family'));
 const workspacePackages = workspacePackageNames();
@@ -205,6 +250,12 @@ assertCheck(
   'Root OSS license file',
   existsSync(join(repoRoot, 'LICENSE')) || existsSync(join(repoRoot, 'LICENSE.md')),
   'A repository-level OSS license file exists at the root.',
+);
+assertCheck(
+  checks,
+  'Public changelog baseline',
+  changelog.includes('# Changelog') && changelog.includes('## [Unreleased]') && changelog.includes('## [0.0.0]'),
+  'CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.',
 );
 assertCheck(
   checks,

@@ -44,6 +44,20 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 - coordinated workspace releases happen when public package contracts move together
 - internal workspace version bumps follow the public release train but are not public API promises on their own
 
+## stability contract
+
+- `0.x`: public API is still stabilizing; breaking changes are allowed in minor releases and must include migration notes.
+- `1.0+`: public contract is stable; breaking changes require a major version bump and a published migration guide.
+
+### `1.0` graduation criteria
+
+`1.0` is only cut when all of the following are true:
+
+- stable public API surface is documented and validated against `docs/reference/package-surface.md`
+- migration guides exist for every breaking change introduced during `0.x`
+- full test coverage for public package contracts exists across unit/integration/CLI smoke checks and passes in CI
+- release and support policy is publicly documented (changelog + GitHub Releases + release governance docs)
+
 ## current extension boundary
 
 - framework-owned metadata categories are the only documented public metadata contract today
@@ -54,12 +68,16 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 - every public release should capture package-level changes and migration notes
 - deprecations must be announced before removal unless the package is still explicitly experimental/preview
 - docs and scaffold output should be updated in the same release window as surface changes
+- root `CHANGELOG.md` is the public source of release history and follows Keep a Changelog structure
+- `pnpm verify:release-candidate` updates the `CHANGELOG.md` draft release-candidate entry in `## [Unreleased]`
 
 ## release checklist
 
 1. `pnpm verify:release-candidate`
 2. confirm docs match the current package surface and bootstrap contract
 3. confirm any manifest decision note still matches benchmark evidence
+4. confirm release tag has a matching GitHub Release body derived from `CHANGELOG.md`
+5. attach `tooling/release/release-candidate-summary.md` to the GitHub Release
 
 ## release-candidate gate
 
@@ -74,3 +92,9 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 The command also writes `tooling/release/release-candidate-summary.md`, and CI publishes that summary as both a workflow summary and an artifact.
 
 The matching CI entry lives at `.github/workflows/release-candidate.yml`.
+
+## GitHub Releases
+
+- tag-based releases use `.github/workflows/github-release.yml`
+- each `v*` tag creates a GitHub Release whose body is extracted from the matching `CHANGELOG.md` section
+- each GitHub Release uploads `tooling/release/release-candidate-summary.md` as a release asset

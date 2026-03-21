@@ -105,6 +105,11 @@ Start here:
 - `docs/concepts/architecture-overview.md`
 - `docs/reference/package-surface.md`
 
+Release history:
+
+- `CHANGELOG.md`
+- `https://github.com/konektijs/konekti/releases`
+
 Package-level docs:
 
 - `packages/cli/README.md`
