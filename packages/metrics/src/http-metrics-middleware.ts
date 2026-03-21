@@ -107,22 +107,42 @@ export class HttpMetricsMiddleware implements Middleware {
       requestError = error;
       throw error;
     } finally {
-      const responseStatusCode = context.response.statusCode;
-      const statusCode =
-        responseStatusCode
-        ?? (requestError
-          ? (readErrorStatusCode(requestError) ?? 500)
-          : 200);
-      const status = String(statusCode);
       const durationSeconds = (performance.now() - start) / 1000;
-      const labels: HttpMetricLabels = { method, path, status };
 
-      this.requestsTotal.inc(labels);
-      this.requestDuration.observe(labels, durationSeconds);
+      this.recordRequestMetrics(method, path, this.resolveStatusCode(context.response.statusCode, requestError), durationSeconds, requestError);
+    }
+  }
 
-      if (statusCode >= 400 || requestError !== undefined) {
-        this.errorsTotal.inc(labels);
-      }
+  private resolveStatusCode(responseStatusCode: number | undefined, requestError: unknown): number {
+    if (responseStatusCode !== undefined) {
+      return responseStatusCode;
+    }
+
+    if (requestError === undefined) {
+      return 200;
+    }
+
+    return readErrorStatusCode(requestError) ?? 500;
+  }
+
+  private recordRequestMetrics(
+    method: string,
+    path: string,
+    statusCode: number,
+    durationSeconds: number,
+    requestError: unknown,
+  ): void {
+    const labels: HttpMetricLabels = {
+      method,
+      path,
+      status: String(statusCode),
+    };
+
+    this.requestsTotal.inc(labels);
+    this.requestDuration.observe(labels, durationSeconds);
+
+    if (statusCode >= 400 || requestError !== undefined) {
+      this.errorsTotal.inc(labels);
     }
   }
 }

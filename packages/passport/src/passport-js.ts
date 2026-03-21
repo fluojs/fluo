@@ -124,62 +124,93 @@ export class PassportJsAuthStrategy implements AuthStrategy {
     const mapPrincipal = this.options.mapPrincipal ?? defaultPrincipalMapper;
 
     return new Promise((resolve, reject) => {
-      let settled = false;
-      const settle = (handler: () => void) => {
-        if (settled) {
-          return;
-        }
+      const settle = this.createSettleGuard();
 
-        settled = true;
-        handler();
-      };
-
-      strategy.success = (user, info) => {
-        settle(() => {
-          try {
-            resolve(mapPrincipal({ context, info, user }));
-          } catch (error: unknown) {
-            reject(error);
-          }
-        });
-      };
-      strategy.fail = (challenge, status) => {
-        settle(() => {
-          const message = extractChallengeMessage(challenge) ?? 'Authentication required.';
-
-          if (status === 401 || status === undefined) {
-            reject(new AuthenticationRequiredError(message));
-            return;
-          }
-
-          reject(new AuthenticationFailedError(message));
-        });
-      };
-      strategy.redirect = (url, status = 302) => {
-        settle(() => {
-          response.redirect(status, url);
-          resolve({ handled: true });
-        });
-      };
-      strategy.pass = () => {
-        settle(() => {
-          reject(new AuthenticationRequiredError());
-        });
-      };
-      strategy.error = (error) => {
-        settle(() => {
-          reject(error);
-        });
-      };
+      this.bindStrategyActions(strategy, {
+        context,
+        mapPrincipal,
+        reject,
+        resolve,
+        response,
+        settle,
+      });
 
       try {
         strategy.authenticate(request, this.options.authenticateOptions);
       } catch (error: unknown) {
-        settle(() => {
-          reject(error);
-        });
+        settle(() => reject(error));
       }
     });
+  }
+
+  private createSettleGuard(): (handler: () => void) => void {
+    let settled = false;
+
+    return (handler: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      handler();
+    };
+  }
+
+  private bindStrategyActions(
+    strategy: PassportJsExecutableStrategy,
+    state: {
+      context: GuardContext;
+      mapPrincipal: PassportJsPrincipalMapper;
+      reject: (reason?: unknown) => void;
+      resolve: (value: Principal | AuthHandledResult) => void;
+      response: GuardContext['requestContext']['response'];
+      settle: (handler: () => void) => void;
+    },
+  ): void {
+    strategy.success = (user, info) => {
+      state.settle(() => {
+        try {
+          state.resolve(state.mapPrincipal({ context: state.context, info, user }));
+        } catch (error: unknown) {
+          state.reject(error);
+        }
+      });
+    };
+
+    strategy.fail = (challenge, status) => {
+      state.settle(() => {
+        state.reject(this.createFailureError(challenge, status));
+      });
+    };
+
+    strategy.redirect = (url, status = 302) => {
+      state.settle(() => {
+        state.response.redirect(status, url);
+        state.resolve({ handled: true });
+      });
+    };
+
+    strategy.pass = () => {
+      state.settle(() => {
+        state.reject(new AuthenticationRequiredError());
+      });
+    };
+
+    strategy.error = (error) => {
+      state.settle(() => {
+        state.reject(error);
+      });
+    };
+  }
+
+  private createFailureError(challenge: unknown, status: number | undefined): Error {
+    const message = extractChallengeMessage(challenge) ?? 'Authentication required.';
+
+    if (status === 401 || status === undefined) {
+      return new AuthenticationRequiredError(message);
+    }
+
+    return new AuthenticationFailedError(message);
   }
 }
 

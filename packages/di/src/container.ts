@@ -216,56 +216,101 @@ export class Container {
   }
 
   private async resolveWithChain<T>(token: Token<T>, chain: Token[], allowForwardRef = false): Promise<T> {
-    if (chain.includes(token)) {
-      if (allowForwardRef) {
-        // A forwardRef dep is in the chain — return the partially-initialized
-        // instance from the singleton cache if it is already being constructed.
-        const cache = this.singletonCacheFor(token);
+    const cachedForwardRef = this.resolveForwardRefCircularDependency(token, chain, allowForwardRef);
 
-        if (cache?.has(token)) {
-          return (await cache.get(token)) as T;
-        }
-      }
-
-      throw new CircularDependencyError([...chain, token]);
+    if (cachedForwardRef !== undefined) {
+      return (await cachedForwardRef) as T;
     }
 
+    return await this.resolveFromRegisteredProviders(token, chain);
+  }
+
+  private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[]): Promise<T> {
     const multiProviders = this.collectMultiProviders(token);
 
     if (multiProviders.length > 0) {
-      const instances = await Promise.all(
-        multiProviders.map((p) => this.instantiate(p, [...chain, token])),
-      );
+      const instances = await this.resolveMultiProviderInstances(multiProviders, chain, token);
 
       return instances as unknown as T;
     }
 
-    const provider = this.lookupProvider(token);
+    const provider = this.requireProvider(token);
+    const existingTarget = this.resolveExistingProviderTarget(provider);
 
-    if (!provider) {
-      throw new ContainerResolutionError(`No provider registered for token ${String(token)}.`);
-    }
-
-    if (provider.type === 'existing') {
-      const target = provider.useExisting!;
-
-      return this.resolveWithChain(target as Token<T>, [...chain, token]);
+    if (existingTarget !== undefined) {
+      return await this.resolveAliasTarget(existingTarget as Token<T>, token, chain);
     }
 
     if (provider.scope === 'transient') {
       return (await this.instantiate(provider, [...chain, token])) as T;
     }
 
+    return (await this.resolveScopedOrSingletonInstance(provider, [...chain, token])) as T;
+  }
+
+  private requireProvider(token: Token): NormalizedProvider {
+    const provider = this.lookupProvider(token);
+
+    if (!provider) {
+      throw new ContainerResolutionError(`No provider registered for token ${String(token)}.`);
+    }
+
+    return provider;
+  }
+
+  private async resolveAliasTarget<T>(existingTarget: Token<T>, token: Token, chain: Token[]): Promise<T> {
+    return await this.resolveWithChain(existingTarget, [...chain, token]);
+  }
+
+  private resolveForwardRefCircularDependency(
+    token: Token,
+    chain: Token[],
+    allowForwardRef: boolean,
+  ): Promise<unknown> | undefined {
+    if (!chain.includes(token)) {
+      return undefined;
+    }
+
+    if (allowForwardRef) {
+      // A forwardRef dep is in the chain — return the partially-initialized
+      // instance from the singleton cache if it is already being constructed.
+      const cache = this.singletonCacheFor(token);
+
+      if (cache?.has(token)) {
+        return cache.get(token);
+      }
+    }
+
+    throw new CircularDependencyError([...chain, token]);
+  }
+
+  private async resolveMultiProviderInstances(
+    providers: readonly NormalizedProvider[],
+    chain: Token[],
+    token: Token,
+  ): Promise<unknown[]> {
+    return Promise.all(providers.map((provider) => this.instantiate(provider, [...chain, token])));
+  }
+
+  private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
+    if (provider.type !== 'existing') {
+      return undefined;
+    }
+
+    return provider.useExisting;
+  }
+
+  private async resolveScopedOrSingletonInstance(provider: NormalizedProvider, chain: Token[]): Promise<unknown> {
     const cache = this.cacheFor(provider.scope, provider.provide);
 
     if (!cache.has(provider.provide)) {
-      const promise = this.instantiate(provider, [...chain, token]);
+      const promise = this.instantiate(provider, chain);
 
       cache.set(provider.provide, promise);
       promise.catch(() => cache.delete(provider.provide));
     }
 
-    return (await cache.get(provider.provide)) as T;
+    return cache.get(provider.provide);
   }
 
   private singletonCacheFor(token: Token): Map<Token, Promise<unknown>> | undefined {
@@ -336,6 +381,17 @@ export class Container {
   }
 
   private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
+    const { disposables, errors } = await this.collectDisposableInstances(entries);
+
+    errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
+
+    this.clearDisposalCaches();
+    this.throwDisposalErrors(errors);
+  }
+
+  private async collectDisposableInstances(
+    entries: Array<[Token, Promise<unknown>]>,
+  ): Promise<{ disposables: Disposable[]; errors: unknown[] }> {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
@@ -353,6 +409,12 @@ export class Container {
       }
     }
 
+    return { disposables, errors };
+  }
+
+  private async disposeInstancesInReverseOrder(disposables: readonly Disposable[]): Promise<unknown[]> {
+    const errors: unknown[] = [];
+
     for (const instance of [...disposables].reverse()) {
       try {
         await instance.onDestroy();
@@ -361,14 +423,21 @@ export class Container {
       }
     }
 
+    return errors;
+  }
+
+  private clearDisposalCaches(): void {
     if (this.parent) {
       this.requestCache.clear();
       this.staleCache.clear();
-    } else {
-      this.singletonCache.clear();
-      this.staleCache.clear();
+      return;
     }
 
+    this.singletonCache.clear();
+    this.staleCache.clear();
+  }
+
+  private throwDisposalErrors(errors: unknown[]): void {
     if (errors.length === 1) {
       throw errors[0];
     }
@@ -383,24 +452,7 @@ export class Container {
   }
 
   private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[]): Promise<T> {
-    if (provider.scope === 'singleton') {
-      for (const depEntry of provider.inject) {
-        const depToken = isForwardRef(depEntry)
-          ? depEntry.forwardRef()
-          : isOptionalToken(depEntry)
-            ? depEntry.token
-            : (depEntry as Token);
-
-        const depProvider = this.lookupProvider(depToken);
-
-        if (depProvider?.scope === 'request') {
-          throw new ScopeMismatchError(
-            `Singleton provider ${String(provider.provide)} depends on request-scoped provider ${String(depToken)}. ` +
-              'Singleton providers cannot depend on request-scoped providers.',
-          );
-        }
-      }
-    }
+    this.assertSingletonDependencyScopes(provider);
 
     switch (provider.type) {
       case 'value':
@@ -410,7 +462,7 @@ export class Container {
           throw new InvariantError('Factory provider is missing useFactory.');
         }
 
-        const deps = await Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
+        const deps = await this.resolveProviderDeps(provider, chain);
 
         return provider.useFactory(...deps);
       }
@@ -419,13 +471,47 @@ export class Container {
           throw new InvariantError('Class provider is missing useClass.');
         }
 
-        const deps = await Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
+        const deps = await this.resolveProviderDeps(provider, chain);
 
         return new provider.useClass(...deps) as T;
       }
       default:
         throw new InvariantError('Unknown provider type.');
     }
+  }
+
+  private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
+    if (provider.scope !== 'singleton') {
+      return;
+    }
+
+    for (const depEntry of provider.inject) {
+      const depToken = this.resolveProviderDependencyToken(depEntry);
+      const depProvider = this.lookupProvider(depToken);
+
+      if (depProvider?.scope === 'request') {
+        throw new ScopeMismatchError(
+          `Singleton provider ${String(provider.provide)} depends on request-scoped provider ${String(depToken)}. ` +
+            'Singleton providers cannot depend on request-scoped providers.',
+        );
+      }
+    }
+  }
+
+  private resolveProviderDependencyToken(depEntry: Token | ForwardRefFn | OptionalToken): Token {
+    if (isForwardRef(depEntry)) {
+      return depEntry.forwardRef();
+    }
+
+    if (isOptionalToken(depEntry)) {
+      return depEntry.token;
+    }
+
+    return depEntry as Token;
+  }
+
+  private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[]): Promise<unknown[]> {
+    return Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
   }
 
   private invalidateCachedEntry(token: Token): void {

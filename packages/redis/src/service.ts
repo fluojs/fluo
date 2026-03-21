@@ -28,7 +28,7 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
   constructor(private readonly client: Redis) {}
 
   async onModuleInit(): Promise<void> {
-    if (!isConnectable(this.client.status)) {
+    if (!this.shouldConnectOnInit()) {
       return;
     }
 
@@ -43,19 +43,30 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
     }
 
     if (!isQuittable(status)) {
-      if (isDisconnectable(status)) {
-        this.client.disconnect();
-      }
+      this.disconnectIfPossible(status);
 
       return;
     }
 
+    await this.quitWithDisconnectFallback();
+  }
+
+  private shouldConnectOnInit(): boolean {
+    return isConnectable(this.client.status);
+  }
+
+  private disconnectIfPossible(status: string): void {
+    if (isDisconnectable(status)) {
+      this.client.disconnect();
+    }
+  }
+
+  private async quitWithDisconnectFallback(): Promise<void> {
     try {
       await this.client.quit();
+      return;
     } catch (error: unknown) {
-      if (isDisconnectable(this.client.status)) {
-        this.client.disconnect();
-      }
+      this.disconnectIfPossible(this.client.status);
 
       if (!isClosed(this.client.status)) {
         throw error;

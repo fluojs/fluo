@@ -11,15 +11,28 @@ interface PrismaServiceOptions {
   strictTransactions: boolean;
 }
 
+type RequestAbortContext = {
+  controller: AbortController;
+  cleanup(): void;
+  signal: AbortSignal;
+};
+
+type ActiveRequestTransaction = {
+  abort(reason?: unknown): void;
+  settled: Promise<void>;
+};
+
+type ActiveRequestTransactionHandle = {
+  active: ActiveRequestTransaction;
+  settle(): void;
+};
+
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>
   implements PrismaHandleProvider<TClient, TTransactionClient>, OnModuleInit, OnApplicationShutdown
 {
   private readonly transactions = new AsyncLocalStorage<TTransactionClient>();
-  private readonly activeRequestTransactions = new Set<{
-    abort(reason?: unknown): void;
-    settled: Promise<void>;
-  }>();
+  private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
 
   constructor(
     private readonly client: TClient,
@@ -72,16 +85,46 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
   }
 
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const abortContext = this.createRequestAbortContext(signal);
+    const active = this.trackActiveRequestTransaction(abortContext.controller);
+
+    try {
+      return await this.runWithTransactionClient(
+        () => raceWithAbort(fn, abortContext.signal),
+        (callback) => this.client.$transaction!(callback),
+      );
+    } finally {
+      abortContext.cleanup();
+      this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private createRequestAbortContext(signal?: AbortSignal): RequestAbortContext {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(signal?.reason);
 
-    signal?.addEventListener('abort', forwardAbort, { once: true });
+    if (signal?.aborted) {
+      forwardAbort();
+    } else {
+      signal?.addEventListener('abort', forwardAbort, { once: true });
+    }
 
+    return {
+      controller,
+      cleanup: () => {
+        signal?.removeEventListener('abort', forwardAbort);
+      },
+      signal: controller.signal,
+    };
+  }
+
+  private trackActiveRequestTransaction(controller: AbortController): ActiveRequestTransactionHandle {
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => {
       settle = resolve;
     });
-    const active = {
+
+    const active: ActiveRequestTransaction = {
       abort(reason?: unknown) {
         controller.abort(reason);
       },
@@ -90,15 +133,11 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
 
     this.activeRequestTransactions.add(active);
 
-    try {
-      return await this.runWithTransactionClient(
-        () => raceWithAbort(fn, controller.signal),
-        (callback) => this.client.$transaction!(callback),
-      );
-    } finally {
-      signal?.removeEventListener('abort', forwardAbort);
-      this.activeRequestTransactions.delete(active);
-      settle();
-    }
+    return { active, settle };
+  }
+
+  private untrackActiveRequestTransaction(handle: ActiveRequestTransactionHandle): void {
+    this.activeRequestTransactions.delete(handle.active);
+    handle.settle();
   }
 }

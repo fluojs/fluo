@@ -108,59 +108,101 @@ function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubs
   };
 }
 
+type ReloaderState = {
+  current: ConfigDictionary;
+  watcher: FSWatcher | undefined;
+};
+
+function notifyReloadListeners(
+  listeners: ReadonlySet<ConfigReloadListener>,
+  snapshot: ConfigDictionary,
+  reason: ConfigReloadReason,
+): void {
+  const clonedSnapshot = cloneConfigDictionary(snapshot);
+
+  for (const listener of listeners) {
+    listener(clonedSnapshot, reason);
+  }
+}
+
+function notifyReloadErrorListeners(
+  listeners: ReadonlySet<ConfigReloadErrorListener>,
+  error: unknown,
+  reason: ConfigReloadReason,
+): void {
+  for (const listener of listeners) {
+    listener(error, reason);
+  }
+}
+
+function applyReload(
+  normalized: NormalizedLoadOptions,
+  state: ReloaderState,
+  listeners: ReadonlySet<ConfigReloadListener>,
+  reason: ConfigReloadReason,
+): ConfigDictionary {
+  const next = resolveConfig(normalized);
+
+  state.current = next;
+  notifyReloadListeners(listeners, next, reason);
+
+  return cloneConfigDictionary(next);
+}
+
+function startReloaderWatcher(
+  normalized: NormalizedLoadOptions,
+  options: ConfigLoadOptions,
+  state: ReloaderState,
+  listeners: ReadonlySet<ConfigReloadListener>,
+  errorListeners: ReadonlySet<ConfigReloadErrorListener>,
+): FSWatcher | undefined {
+  if (!options.watch || !existsSync(normalized.envFile)) {
+    return undefined;
+  }
+
+  return watch(normalized.envFile, { persistent: false }, () => {
+    try {
+      applyReload(normalized, state, listeners, 'watch');
+    } catch (error: unknown) {
+      notifyReloadErrorListeners(errorListeners, error, 'watch');
+    }
+  });
+}
+
+function closeReloader(
+  state: ReloaderState,
+  listeners: Set<ConfigReloadListener>,
+  errorListeners: Set<ConfigReloadErrorListener>,
+): void {
+  if (state.watcher) {
+    state.watcher.close();
+    state.watcher = undefined;
+  }
+
+  listeners.clear();
+  errorListeners.clear();
+}
+
 export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
   const normalized = normalizeLoadOptions(options);
-  let current = resolveConfig(normalized);
-  let watcher: FSWatcher | undefined;
+  const state: ReloaderState = {
+    current: resolveConfig(normalized),
+    watcher: undefined,
+  };
   const listeners = new Set<ConfigReloadListener>();
   const errorListeners = new Set<ConfigReloadErrorListener>();
 
-  const notifyReload = (snapshot: ConfigDictionary, reason: ConfigReloadReason): void => {
-    const clonedSnapshot = cloneConfigDictionary(snapshot);
-
-    for (const listener of listeners) {
-      listener(clonedSnapshot, reason);
-    }
-  };
-
-  const notifyError = (error: unknown, reason: ConfigReloadReason): void => {
-    for (const listener of errorListeners) {
-      listener(error, reason);
-    }
-  };
-
-  const applyReload = (reason: ConfigReloadReason): ConfigDictionary => {
-    const next = resolveConfig(normalized);
-    current = next;
-    notifyReload(next, reason);
-    return cloneConfigDictionary(next);
-  };
-
-  if (options.watch && existsSync(normalized.envFile)) {
-    watcher = watch(normalized.envFile, { persistent: false }, () => {
-      try {
-        applyReload('watch');
-      } catch (error: unknown) {
-        notifyError(error, 'watch');
-      }
-    });
-  }
+  state.watcher = startReloaderWatcher(normalized, options, state, listeners, errorListeners);
 
   return {
     close(): void {
-      if (watcher) {
-        watcher.close();
-        watcher = undefined;
-      }
-
-      listeners.clear();
-      errorListeners.clear();
+      closeReloader(state, listeners, errorListeners);
     },
     current(): ConfigDictionary {
-      return cloneConfigDictionary(current);
+      return cloneConfigDictionary(state.current);
     },
     reload(): ConfigDictionary {
-      return applyReload('manual');
+      return applyReload(normalized, state, listeners, 'manual');
     },
     subscribe(listener: ConfigReloadListener): ConfigReloadSubscription {
       return createSubscription(listeners, listener);
