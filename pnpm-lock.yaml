@@ -206,6 +206,21 @@ importers:
         specifier: ^22.0.0
         version: 22.19.15
 
+  packages/microservices:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      ioredis:
+        specifier: ^5.0.0
+        version: 5.10.0
+
   packages/openapi:
     dependencies:
       '@konekti/core':

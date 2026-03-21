@@ -14,6 +14,7 @@
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/redis`
@@ -37,6 +38,7 @@
 - `@konekti/http` -> HTTP 실행, 바인딩, 예외, 라우트 메타데이터
 - `@konekti/runtime` -> 앱 부트스트랩 및 런타임 오케스트레이션
 - `@konekti/platform-fastify` -> Fastify 기반 HTTP adapter와 runtime bootstrap/listen 흐름 연동
+- `@konekti/microservices` -> transport 추상화, 패턴 데코레이터, microservice runtime 모듈
 - `@konekti/dto-validator` -> 유효성 검사 데코레이터 및 검사 엔진
 - `@konekti/jwt` -> 토큰 핵심 로직
 - `@konekti/passport` -> 인증 전략 레지스트리 및 범용 인증 가드 연결

@@ -68,6 +68,7 @@ Generated apps include:
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/event-bus`
+- `@konekti/microservices`
 - `@konekti/websocket`
 - `@konekti/queue`
 
@@ -122,6 +123,7 @@ Package-level docs:
 - `packages/metrics/README.md`
 - `packages/cron/README.md`
 - `packages/event-bus/README.md`
+- `packages/microservices/README.md`
 - `packages/websocket/README.md`
 - `packages/queue/README.md`
 
