@@ -138,6 +138,9 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+      ioredis:
+        specifier: ^5.0.0
+        version: 5.10.0
 
   packages/graphql:
     dependencies:

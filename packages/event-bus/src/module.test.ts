@@ -9,7 +9,7 @@ import { getEventHandlerMetadataEntries } from './metadata.js';
 import { createEventBusModule } from './module.js';
 import { EventBusLifecycleService } from './service.js';
 import { EVENT_BUS } from './tokens.js';
-import type { EventBus } from './types.js';
+import type { EventBus, EventBusTransport } from './types.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -702,5 +702,169 @@ describe('@konekti/event-bus', () => {
     expect(store.secondCalls).toBe(1);
 
     await app.close();
+  });
+
+  describe('transport', () => {
+    function createMockTransport(): EventBusTransport & {
+      published: Array<{ channel: string; payload: unknown }>;
+      subscribed: Array<{ channel: string; handler: (payload: unknown) => Promise<void> }>;
+      closeCalls: number;
+    } {
+      const published: Array<{ channel: string; payload: unknown }> = [];
+      const subscribed: Array<{ channel: string; handler: (payload: unknown) => Promise<void> }> = [];
+      let closeCalls = 0;
+
+      return {
+        published,
+        subscribed,
+        get closeCalls() {
+          return closeCalls;
+        },
+        async publish(channel, payload) {
+          published.push({ channel, payload });
+        },
+        async subscribe(channel, handler) {
+          subscribed.push({ channel, handler });
+        },
+        async close() {
+          closeCalls += 1;
+        },
+      };
+    }
+
+    it('fans out to transport.publish() when transport is configured', async () => {
+      const transport = createMockTransport();
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+      await eventBus.publish(new UserCreatedEvent('transport-user-1'));
+
+      expect(transport.published).toHaveLength(1);
+      expect(transport.published[0]!.channel).toBe('UserCreatedEvent');
+      expect((transport.published[0]!.payload as { userId: string }).userId).toBe('transport-user-1');
+
+      await app.close();
+    });
+
+    it('subscribes to a channel per discovered local handler event type on bootstrap', async () => {
+      const transport = createMockTransport();
+
+      class HandlerA {
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {}
+      }
+
+      class HandlerB {
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {}
+      }
+
+      class HandlerC {
+        @OnEvent(PasswordResetEvent)
+        onPasswordReset(_event: PasswordResetEvent) {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [HandlerA, HandlerB, HandlerC],
+      });
+
+      await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+      const subscribedChannels = transport.subscribed.map((s) => s.channel).sort();
+      expect(subscribedChannels).toEqual(['PasswordResetEvent', 'UserCreatedEvent']);
+    });
+
+    it('dispatches incoming transport messages to local handlers', async () => {
+      const transport = createMockTransport();
+
+      class EventStore {
+        received: UserCreatedEvent | undefined;
+      }
+
+      @Inject([EventStore])
+      class TransportHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(event: UserCreatedEvent) {
+          this.store.received = event;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, TransportHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const store = await app.container.resolve(EventStore);
+
+      const incomingSubscription = transport.subscribed.find((s) => s.channel === 'UserCreatedEvent');
+      expect(incomingSubscription).toBeDefined();
+
+      await incomingSubscription!.handler({ userId: 'transport-user-2' });
+
+      expect(store.received).toBeDefined();
+      expect(store.received).toBeInstanceOf(UserCreatedEvent);
+      expect(store.received!.userId).toBe('transport-user-2');
+
+      await app.close();
+    });
+
+    it('calls transport.close() on application shutdown', async () => {
+      const transport = createMockTransport();
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+
+      expect(transport.closeCalls).toBe(0);
+      await app.close();
+      expect(transport.closeCalls).toBe(1);
+    });
+
+    it('does not call transport when no transport is configured (backward compat)', async () => {
+      class EventStore {
+        calls = 0;
+      }
+
+      @Inject([EventStore])
+      class LocalHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.calls += 1;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule()],
+        providers: [EventStore, LocalHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const store = await app.container.resolve(EventStore);
+
+      await eventBus.publish(new UserCreatedEvent('local-user'));
+
+      expect(store.calls).toBe(1);
+
+      await app.close();
+    });
   });
 });

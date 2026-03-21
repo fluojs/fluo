@@ -7,6 +7,7 @@ import {
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
+  type OnApplicationShutdown,
 } from '@konekti/runtime';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
@@ -14,6 +15,7 @@ import { EVENT_BUS_OPTIONS } from './tokens.js';
 import type {
   EventBus,
   EventBusModuleOptions,
+  EventBusTransport,
   EventHandlerDescriptor,
   EventPublishOptions,
   EventType,
@@ -70,28 +72,45 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
 }
 
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS])
-export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap {
+export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
+  private readonly transport: EventBusTransport | undefined;
 
   constructor(
     private readonly runtimeContainer: Container,
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly moduleOptions: EventBusModuleOptions,
-  ) {}
+  ) {
+    this.transport = moduleOptions.transport;
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     await this.ensureDiscovered();
+    await this.subscribeTransportChannels();
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    if (this.transport) {
+      try {
+        await this.transport.close();
+      } catch (error) {
+        this.logger.error('EventBusTransport failed to close.', error, 'EventBusLifecycleService');
+      }
+    }
   }
 
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
 
+    const transportPublish = this.publishToTransport(event);
+
     if (matchingDescriptors.length === 0) {
+      await transportPublish;
       return;
     }
 
@@ -99,13 +118,14 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     if (!publishOptions.waitForHandlers) {
       const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
       this.runInvocationTasksInBackground(backgroundTasks);
+      this.runInvocationTasksInBackground([transportPublish]);
 
       return;
     }
 
     const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, publishOptions);
 
-    await Promise.allSettled(invocationTasks);
+    await Promise.allSettled([...invocationTasks, transportPublish]);
   }
 
   private matchEventDescriptors(event: object): EventHandlerDescriptor[] {
@@ -196,6 +216,75 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       this.discovered = true;
     } finally {
       this.discoveryPromise = undefined;
+    }
+  }
+
+  private channelFromEventType(eventType: EventType): string {
+    return eventType.name;
+  }
+
+  private async publishToTransport(event: object): Promise<void> {
+    if (!this.transport) {
+      return;
+    }
+
+    const channel = this.channelFromEventType(event.constructor as EventType);
+
+    try {
+      await this.transport.publish(channel, event);
+    } catch (error) {
+      this.logger.error(
+        `EventBusTransport failed to publish to channel "${channel}".`,
+        error,
+        'EventBusLifecycleService',
+      );
+    }
+  }
+
+  private async subscribeTransportChannels(): Promise<void> {
+    if (!this.transport) {
+      return;
+    }
+
+    const subscribedChannels = new Set<string>();
+
+    for (const descriptor of this.descriptors) {
+      const channel = this.channelFromEventType(descriptor.eventType);
+
+      if (subscribedChannels.has(channel)) {
+        continue;
+      }
+
+      subscribedChannels.add(channel);
+
+      await this.subscribeTransportChannel(channel, descriptor.eventType);
+    }
+  }
+
+  private async subscribeTransportChannel(channel: string, eventType: EventType): Promise<void> {
+    try {
+      await this.transport!.subscribe(channel, async (payload) => {
+        const event = Object.assign(Object.create(eventType.prototype) as object, payload);
+        const matchingDescriptors = this.matchEventDescriptors(event);
+
+        if (matchingDescriptors.length === 0) {
+          return;
+        }
+
+        const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, {
+          signal: undefined,
+          timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
+          waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
+        });
+
+        await Promise.allSettled(invocationTasks);
+      });
+    } catch (error) {
+      this.logger.error(
+        `EventBusTransport failed to subscribe to channel "${channel}".`,
+        error,
+        'EventBusLifecycleService',
+      );
     }
   }
 

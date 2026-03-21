@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./redis": {
+      "types": "./dist/redis-transport.d.ts",
+      "import": "./dist/redis-transport.js"
     }
   },
   "main": "./dist/index.js",
@@ -36,5 +40,13 @@
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
   }
 }
