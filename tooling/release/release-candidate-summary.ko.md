@@ -9,5 +9,8 @@
 - [x] Toolchain contract lock — The toolchain contract matrix is locked with public/generated/internal statuses.
 - [x] Manifest benchmark evidence — Release docs still point at the benchmark-backed manifest decision snapshot.
 - [x] Dist-based package entrypoints — CLI manifest and bin prove a dist-backed public entrypoint.
+- [x] Root OSS license file — A repository-level OSS license file exists at the root.
+- [x] Public package surface docs are synchronized — release-governance and package-surface docs declare the same @konekti public package list.
+- [x] Documented public packages exist in workspace — Every documented public package maps to an existing workspace package manifest.
 
 - 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`

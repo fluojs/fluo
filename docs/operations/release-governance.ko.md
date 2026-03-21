@@ -7,24 +7,32 @@
 
 ## 배포 대상 패키지
 
-이 패키지들은 저장소가 현재의 프라이빗 워크스페이스 상태를 벗어난 후 공개 릴리스될 대상입니다:
+이 패키지들은 0.x 라인의 현재 공개 릴리스 대상 패키지입니다:
 
 - `@konekti/core`
 - `@konekti/config`
+- `@konekti/dto-validator`
 - `@konekti/http`
+- `@konekti/di`
+- `@konekti/runtime`
 - `@konekti/jwt`
-- `@konekti/openapi`
-- `@konekti/metrics`
 - `@konekti/passport`
+- `@konekti/openapi`
+- `@konekti/graphql`
+- `@konekti/metrics`
+- `@konekti/cron`
+- `@konekti/event-bus`
+- `@konekti/websocket`
+- `@konekti/queue`
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
-- `@konekti/di`
-- `@konekti/runtime`
 - `@konekti/testing`
 - `@konekti/cli`
 
 현재 공개 릴리스 경계는 package-first입니다. 지원되는 공개 bootstrap 계약은 `pnpm add -g @konekti/cli` 후 `konekti new`이며, 공개 릴리스 표면은 출판되는 `@konekti/*` 패키지 제품군까지만 포함합니다.
+
+이 패키지 목록은 `../reference/package-surface.md`와 항상 동일해야 합니다.
 
 `tooling/` 아래의 toolchain 워크스페이스는 향후 별도 이슈를 통해 공개 패키지로 승격되기 전까지 internal support artifact로 유지됩니다.
 

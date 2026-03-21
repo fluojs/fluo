@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +38,70 @@ function assertCheck(checks, label, condition, detail) {
   }
 }
 
+function parsePackageListFromSection(markdown, sectionTitle) {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+
+  if (start < 0) {
+    return [];
+  }
+
+  const packages = [];
+
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+
+    if (line.startsWith('## ')) {
+      break;
+    }
+
+    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+
+    if (match) {
+      packages.push(match[1]);
+    }
+  }
+
+  return packages;
+}
+
+function sorted(values) {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function areSameStringArrays(left, right) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function workspacePackageNames() {
+  const packagesDirectory = join(repoRoot, 'packages');
+  const names = [];
+
+  for (const entry of readdirSync(packagesDirectory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const packageJsonPath = join(packagesDirectory, entry.name, 'package.json');
+
+    if (!existsSync(packageJsonPath)) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+
+    if (typeof manifest.name === 'string') {
+      names.push(manifest.name);
+    }
+  }
+
+  return sorted(names);
+}
+
 function writeSummary(checks) {
   mkdirSync(scriptDirectory, { recursive: true });
   const summary = [
@@ -71,10 +135,14 @@ run('pnpm', ['test']);
 
 const quickStart = read('docs/getting-started/quick-start.md');
 const releaseGovernance = read('docs/operations/release-governance.md');
+const packageSurface = read('docs/reference/package-surface.md');
 const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
 const cliReadme = read('packages/cli/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
+const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
+const packageSurfaceList = sorted(parsePackageListFromSection(packageSurface, 'public package family'));
+const workspacePackages = workspacePackageNames();
 
 assertCheck(
   checks,
@@ -131,6 +199,26 @@ assertCheck(
     cliPackage.main === './dist/index.js' &&
     cliReadme.includes('canonical CLI'),
   'CLI manifest and bin prove a dist-backed public entrypoint.',
+);
+assertCheck(
+  checks,
+  'Root OSS license file',
+  existsSync(join(repoRoot, 'LICENSE')) || existsSync(join(repoRoot, 'LICENSE.md')),
+  'A repository-level OSS license file exists at the root.',
+);
+assertCheck(
+  checks,
+  'Public package surface docs are synchronized',
+  governancePackageList.length > 0 &&
+    packageSurfaceList.length > 0 &&
+    areSameStringArrays(governancePackageList, packageSurfaceList),
+  'release-governance and package-surface docs declare the same @konekti public package list.',
+);
+assertCheck(
+  checks,
+  'Documented public packages exist in workspace',
+  governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
+  'Every documented public package maps to an existing workspace package manifest.',
 );
 
 writeSummary(checks);

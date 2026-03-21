@@ -39,6 +39,7 @@ Generated apps include:
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`
+- `@konekti/graphql`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/event-bus`
@@ -87,6 +88,7 @@ Package-level docs:
 - `packages/redis/README.md`
 - `packages/passport/README.md`
 - `packages/openapi/README.md`
+- `packages/graphql/README.md`
 - `packages/metrics/README.md`
 - `packages/cron/README.md`
 - `packages/event-bus/README.md`
