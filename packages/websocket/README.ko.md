@@ -48,6 +48,13 @@ export class AppModule {}
 - `@OnConnect()`
 - `@OnDisconnect()`
 
+### 모듈 옵션
+
+`createWebSocketModule(options)`와 `createWebSocketProviders(options)`는 아래 옵션을 받습니다.
+
+- `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
+- `shutdown.timeoutMs` (기본값: `5000`)
+
 ## 런타임 동작
 
 - `onApplicationBootstrap()`에서 `COMPILED_MODULES`를 기준으로 게이트웨이 탐색
@@ -56,7 +63,8 @@ export class AppModule {}
 - 게이트웨이 경로는 정규화 후 정확히 일치해야 연결 처리
 - `request`/`transient` 스코프 게이트웨이는 경고 후 제외
 - 종료 시 업그레이드 리스너 제거 및 활성 소켓 정리
-- `message` 및 `close` 리스너는 `@OnConnect()` 핸들러가 모두 완료된 후에 등록되므로, `onConnect` 완료 이전에 도착한 메시지나 연결 종료 이벤트는 게이트웨이 핸들러에 전달되지 않습니다
+- `message`/`close` 이벤트는 `@OnConnect()` 핸들러가 끝날 때까지 버퍼링되며, 이후 순서대로 재생되어 connect 단계 이벤트가 조용히 유실되지 않습니다
+- attachment server 종료는 timeout 인지 방식으로 처리되며, 제한 시간 안에 close가 끝나지 않으면 무기한 대기하지 않고 로그를 남깁니다
 
 ## 프로바이더 등록 제약
 

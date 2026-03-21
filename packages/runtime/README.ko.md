@@ -74,6 +74,35 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Raw webhook body (opt-in)
+
+```typescript
+import { Controller, Post, type RequestContext } from '@konekti/http';
+import { runNodeApplication } from '@konekti/runtime';
+
+@Controller('/webhooks')
+class WebhookController {
+  @Post('/stripe')
+  verify(_input: undefined, context: RequestContext) {
+    const rawBody = context.request.rawBody;
+
+    if (!rawBody) {
+      throw new Error('rawBody must be enabled for signature verification.');
+    }
+
+    const signature = context.request.headers['stripe-signature'];
+    return verifyStripeSignature(rawBody, signature);
+  }
+}
+
+await runNodeApplication(AppModule, {
+  mode: 'prod',
+  rawBody: true,
+});
+```
+
+`rawBody`는 opt-in이며 파싱된 `request.body`와 함께 원본 request 바이트를 보존합니다. 현재 Node adapter는 JSON, text 같은 non-multipart body에서만 이를 적용하고, 옵션이 꺼져 있거나 multipart parsing을 사용하는 요청에서는 `request.rawBody`를 설정하지 않습니다.
+
 ### Host 바인딩과 HTTPS
 
 ```typescript
@@ -105,6 +134,43 @@ await runNodeApplication(AppModule, {
 `globalPrefix`는 runtime-owned HTTP app의 애플리케이션 라우트에 적용되므로, `/app/info` 같은 controller route는 `/api/app/info`로 노출됩니다. 기본적으로 runtime-owned 운영 엔드포인트인 `/health`, `/ready`, `/openapi.json`, `/docs`, `/metrics`는 prefix 없이 유지되고, `/api/health` 같은 prefixed 경로는 의도적으로 `404`를 반환합니다. `globalPrefixExclude`는 이 기본 exclusion 집합 위에 추가로 unprefixed path pattern을 더합니다.
 
 `globalPrefixExclude`는 `/internal/ping` 같은 exact path와 `/internal/*` 같은 trailing `/*` pattern만 지원합니다. 런타임은 매칭 전에 중복 슬래시와 trailing slash를 정규화하며, `globalPrefix: '/'`는 no-op으로 취급합니다.
+
+### 전역 예외 필터
+
+```typescript
+import type { ExceptionFilterHandler } from '@konekti/runtime';
+
+class DomainExceptionFilter implements ExceptionFilterHandler {
+  catch(error, context) {
+    if (error instanceof UserNotFoundError) {
+      context.response.setStatus(404);
+      void context.response.send({ message: error.message });
+      return true;
+    }
+
+    return undefined;
+  }
+}
+
+await runNodeApplication(AppModule, {
+  filters: [new DomainExceptionFilter()],
+  mode: 'prod',
+});
+```
+
+`filters`는 handler, guard, interceptor, middleware에서 예외가 발생했을 때 순서대로 실행되는 전역 exception filter를 등록합니다. 응답을 작성한 뒤 `true`를 반환하면 체인이 중단되고, `undefined`를 반환하면 다음 filter 및 내장 HTTP exception serializer로 계속 진행합니다.
+
+### 중복 provider 진단
+
+```typescript
+await bootstrapApplication({
+  duplicateProviderPolicy: 'throw',
+  mode: 'prod',
+  rootModule: AppModule,
+});
+```
+
+`duplicateProviderPolicy`는 bootstrap 중 여러 모듈이 같은 provider token을 등록했을 때의 동작을 제어합니다. `'warn'`은 로그 후 계속 진행, `'throw'`는 `DuplicateProviderError`로 즉시 실패, `'ignore'`는 기존 last-registration-wins 동작을 유지합니다.
 
 ### URI 버저닝
 
@@ -213,6 +279,8 @@ Request-scoped provider와 transient provider는 lifecycle hook 대상에서 제
 - Startup 로그
 - `SIGTERM`/`SIGINT` → `app.close()` wiring
 - Request abort signal → `FrameworkRequest.signal` bridge
+
+Node adapter는 종료 시 새 연결 수락을 중단하고, 제한된 시간 동안 시작된 요청을 drain한 뒤, idle keep-alive 연결을 닫고, timeout이 지나면 남은 연결을 강제로 종료합니다. 기본 drain 윈도는 10초이며 Node bootstrap 옵션의 `shutdownTimeoutMs`로 조정할 수 있습니다.
 
 ## 파일 읽기 순서 (기여자용)
 

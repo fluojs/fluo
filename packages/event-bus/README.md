@@ -58,15 +58,16 @@ export class AppModule {}
 
 `createEventBusModule(options)` and `createEventBusProviders(options)` accept:
 
-- `publish.timeoutMs` - bounds how long `publish()` waits per handler before moving on
-- `publish.waitForHandlers` - default waiting mode (`true` waits, `false` dispatches non-blocking)
+- `publish.timeoutMs` - per-handler wait bound used when `publish()` waits for handlers (`waitForHandlers: true`)
+- `publish.waitForHandlers` - default waiting mode (`true` waits and applies timeout bounds, `false` dispatches fire-and-forget)
 
 ## Runtime behavior
 
 - Handler discovery runs during application bootstrap using `COMPILED_MODULES`
 - Handler instances are pre-resolved from `RUNTIME_CONTAINER` during bootstrap and reused on publish
 - Events are matched by class using `instanceof`, so base-class handlers receive derived events
-- Publishing dispatches to every matching handler and supports timeout, cancellation signal, and non-blocking dispatch options
+- Publishing dispatches to every matching handler and supports cancellation signals in both modes
+- Timeout bounds apply only when waiting mode is enabled (`waitForHandlers: true`); non-blocking mode (`false`) dispatches without waiting
 - Handler failures are isolated and logged through `ApplicationLogger`
 - Request/transient scoped classes with `@OnEvent()` are ignored with a warning
 

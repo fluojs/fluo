@@ -33,17 +33,27 @@ export class AppModule {}
 
 ## 분산 락(선택)
 
-분산 모드를 활성화하면 `REDIS_CLIENT`를 통해 락을 획득한 인스턴스만 락이 유지되는 동안 해당 tick의 작업을 실행합니다. 이 보장은 `lockTtlMs` 범위 안에서만 유효하므로, 오래 걸리는 작업은 예상 실행 시간보다 더 긴 TTL을 설정해야 합니다.
-
 ```typescript
+import { Module } from '@konekti/core';
+import { createRedisModule } from '@konekti/redis';
+import { createCronModule } from '@konekti/cron';
+
+@Module({
+  imports: [
+    createRedisModule({ host: '127.0.0.1', port: 6379 }),
 createCronModule({
   distributed: {
     enabled: true,
     keyPrefix: 'konekti:cron:lock',
     lockTtlMs: 30_000,
   },
-});
+}),
+  ],
+})
+export class AppModule {}
 ```
+
+분산 모드를 실제로 사용하려면 `createRedisModule(...)`로 `REDIS_CLIENT`를 함께 등록해야 합니다. 이때만 락을 획득한 인스턴스가 tick 작업을 실행하며, 실행 중에는 락 갱신을 시도합니다. `REDIS_CLIENT`가 없으면 런타임은 경고를 남기고 인프로세스 스케줄링으로 fallback합니다.
 
 ## API
 

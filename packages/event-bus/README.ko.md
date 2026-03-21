@@ -54,11 +54,19 @@ export class AppModule {}
 - `EventBus`
 - `@OnEvent(EventClass)`
 
+### 모듈 옵션
+
+`createEventBusModule(options)`와 `createEventBusProviders(options)`는 아래 옵션을 받습니다.
+
+- `publish.timeoutMs` - `waitForHandlers: true`일 때 `publish()`가 핸들러별로 대기하는 최대 시간(ms)
+- `publish.waitForHandlers` - 기본 대기 모드 (`true`는 대기 + timeout 적용, `false`는 비차단 fire-and-forget 디스패치)
+
 ## 런타임 동작
 
 - 애플리케이션 부트스트랩에서 `COMPILED_MODULES` 기반 핸들러 탐색
 - 이벤트 발행 시 `RUNTIME_CONTAINER`에서 핸들러 인스턴스 해석
 - `instanceof` 기반 클래스 매칭으로 상속 이벤트까지 처리
-- 모든 매칭 핸들러를 비동기로 실행하고 핸들러 오류는 외부로 전파하지 않음
+- 모든 매칭 핸들러에 디스패치하며, 두 모드 모두 cancellation signal을 지원
+- timeout 경계는 `waitForHandlers: true`일 때만 적용되며, `false`일 때는 대기 없이 디스패치
 - 핸들러 오류는 `ApplicationLogger`로 격리 로깅
 - `request`/`transient` 스코프의 `@OnEvent()` 핸들러는 경고 후 제외
