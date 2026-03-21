@@ -44,6 +44,20 @@
 - 공개 패키지 계약이 함께 변경될 때 조정된 워크스페이스 릴리스를 진행함
 - 내부 워크스페이스 버전 상향은 공개 릴리스 주기를 따르지만, 그 자체로 공개 API 보장을 의미하지는 않음
 
+## 안정성 계약 (stability contract)
+
+- `0.x`: 공개 API는 안정화 단계이며, 마이너 릴리스에서 breaking change가 가능하고 반드시 마이그레이션 노트를 포함해야 함
+- `1.0+`: 공개 계약은 안정 상태이며, breaking change는 메이저 버전 상향과 공개 마이그레이션 가이드를 요구함
+
+### `1.0` 승격 기준
+
+다음 조건이 모두 충족될 때만 `1.0`을 릴리스합니다:
+
+- 안정적인 공개 API 표면이 문서화되어 있고 `docs/reference/package-surface.md`와 검증됨
+- `0.x`에서 발생한 모든 breaking change에 대한 마이그레이션 가이드가 존재함
+- 공개 패키지 계약에 대한 전체 테스트 커버리지(단위/통합/CLI 스모크)가 CI에서 통과함
+- 릴리스/지원 정책이 공개 문서(CHANGELOG + GitHub Releases + release governance 문서)로 정리됨
+
 ## 현재 extension 경계
 
 - framework-owned metadata category만이 현재 문서화된 공개 metadata 계약입니다.
@@ -54,12 +68,16 @@
 - 모든 공개 릴리스는 패키지 단위의 변경 사항과 마이그레이션 노트를 포함해야 함
 - 패키지가 명시적으로 실험적/프리뷰 상태가 아닌 이상, 기능 제거 전 지원 중단을 먼저 공지해야 함
 - 패키지 인터페이스 변경이 있는 동일한 릴리스 주기에 문서와 스캐폴드 출력을 업데이트해야 함
+- 루트 `CHANGELOG.md`를 공개 릴리스 히스토리의 기준으로 사용하며 Keep a Changelog 형식을 따름
+- `pnpm verify:release-candidate`는 `CHANGELOG.md`의 `## [Unreleased]`에 릴리스 후보 드래프트 항목을 갱신함
 
 ## 릴리스 체크리스트
 
 1. `pnpm verify:release-candidate` 실행
 2. 문서가 현재 패키지 인터페이스 및 부트스트랩 계약과 일치하는지 확인
 3. 매니페스트 결정 노트가 여전히 벤치마크 증거와 일치하는지 확인
+4. 릴리스 태그에 대응되는 GitHub Release 본문이 `CHANGELOG.md`에서 생성되는지 확인
+5. GitHub Release에 `tooling/release/release-candidate-summary.md`를 첨부했는지 확인
 
 ## 릴리스 후보(Release-Candidate) 게이트
 
@@ -74,3 +92,9 @@
 또한 이 명령은 `tooling/release/release-candidate-summary.md`를 작성하며, CI는 이 요약본을 워크플로 요약 및 아티팩트로 게시합니다.
 
 관련 CI 항목은 `.github/workflows/release-candidate.yml`에 위치합니다.
+
+## GitHub Releases
+
+- 태그 기반 릴리스는 `.github/workflows/github-release.yml`을 사용함
+- 각 `v*` 태그는 `CHANGELOG.md`의 해당 섹션을 본문으로 사용하는 GitHub Release를 생성함
+- 각 GitHub Release는 `tooling/release/release-candidate-summary.md`를 릴리스 에셋으로 업로드함

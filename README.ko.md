@@ -105,6 +105,11 @@ pnpm dev
 - `docs/concepts/architecture-overview.md`
 - `docs/reference/package-surface.md`
 
+릴리스 히스토리:
+
+- `CHANGELOG.md`
+- `https://github.com/konektijs/konekti/releases`
+
 패키지 수준 문서:
 
 - `packages/cli/README.md`
