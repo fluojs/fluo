@@ -5,7 +5,7 @@
 
 Decorator-based DTO validation for TypeScript. Declare validation rules directly on class fields and get structured, typed errors — no schema files, no manual checks.
 
-The current public contract is decorator-first. Schema-object validation and richer validation-adapter contracts are not part of the supported public surface today.
+The package now also includes a schema validation extension surface so Zod, Valibot, or custom schema engines can map into the same `DtoValidationError` issue shape.
 
 ## See also
 
@@ -92,6 +92,46 @@ interface Validator {
 ```
 
 Implement this interface to supply a custom validation strategy.
+
+### Schema adapters (`@konekti/dto-validator/schema`)
+
+Use schema-based validation without `emitDecoratorMetadata` while keeping the same `DtoValidationError` contract.
+
+```typescript
+import { z } from 'zod';
+import { object, pipe, safeParse, string, email } from 'valibot';
+import {
+  createSchemaValidator,
+  createValibotSchemaValidator,
+  createZodSchemaValidator,
+  type SchemaValidator,
+} from '@konekti/dto-validator/schema';
+
+const zodSchema = z.object({
+  email: z.string().email(),
+});
+
+const zodValidator = createZodSchemaValidator(zodSchema);
+
+const valibotSchema = object({
+  email: pipe(string(), email()),
+});
+
+const valibotValidator = createValibotSchemaValidator(valibotSchema, safeParse);
+
+const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
+  parse(value) {
+    if (typeof (value as { name?: unknown }).name === 'string') {
+      return { success: true, value: { name: (value as { name: string }).name } };
+    }
+
+    return {
+      success: false,
+      issues: [{ code: 'REQUIRED', field: 'name', message: 'name is required' }],
+    };
+  },
+});
+```
 
 ---
 
