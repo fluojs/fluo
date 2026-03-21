@@ -119,6 +119,45 @@ class RenewalErrorOnRenewRedisClient {
   }
 }
 
+class OverlappingRenewalRedisClient {
+  private readonly locks = new Map<string, string>();
+  private renewalCalls = 0;
+
+  constructor(private readonly firstRenewalResult: Deferred<number>) {}
+
+  async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
+    if (this.locks.has(key)) {
+      return null;
+    }
+
+    this.locks.set(key, value);
+    return 'OK';
+  }
+
+  async eval(script: string, _keysLength: number, key: string, owner: string, _ttl?: string): Promise<number> {
+    if (script.includes('PEXPIRE')) {
+      this.renewalCalls += 1;
+
+      if (this.renewalCalls === 1) {
+        return await this.firstRenewalResult.promise;
+      }
+
+      return this.locks.get(key) === owner ? 1 : 0;
+    }
+
+    if (!script.includes('DEL')) {
+      return 0;
+    }
+
+    if (this.locks.get(key) !== owner) {
+      return 0;
+    }
+
+    this.locks.delete(key);
+    return 1;
+  }
+}
+
 function createDeferred<T = void>(): Deferred<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -961,6 +1000,145 @@ describe('@konekti/cron', () => {
     expect(events).toEqual([
       'run',
       'error:Distributed cron lock renewal failed for lock-renew-error-task.',
+      'after',
+    ]);
+
+    await app.close();
+  });
+
+  it('awaits in-flight lock renewal attempts before deciding task success', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const firstRenewalResult = createDeferred<number>();
+    const redis = new OverlappingRenewalRedisClient(firstRenewalResult);
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        distributed: true,
+        lockTtlMs: 2_000,
+        name: 'lock-overlap-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      async run() {
+        events.push('run');
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-overlap',
+            lockTtlMs: 2_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    release.resolve();
+    firstRenewalResult.resolve(0);
+    await tickPromise;
+
+    expect(events).toEqual([
+      'run',
+      'error:Distributed cron lock ownership lost for lock-overlap-task.',
+      'after',
+    ]);
+
+    await app.close();
+  });
+
+  it('evaluates due lock renewal even when interval callback has not fired yet', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const redis = new LockLossOnRenewRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        distributed: true,
+        lockTtlMs: 2_000,
+        name: 'lock-due-renewal-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      async run() {
+        events.push('run');
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-due-renewal',
+            lockTtlMs: 2_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    vi.setSystemTime(new Date('2026-03-20T00:00:01.000Z'));
+    release.resolve();
+    await tickPromise;
+
+    expect(events).toEqual([
+      'run',
+      'error:Distributed cron lock ownership lost for lock-due-renewal-task.',
       'after',
     ]);
 
