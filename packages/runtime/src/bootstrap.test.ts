@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Global, Inject, Module, defineModuleMetadata } from '@konekti/core';
 
-import { bootstrapModule } from './bootstrap.js';
+import { bootstrapModule, KonektiFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleInjectionMetadataError } from './errors.js';
+import { HTTP_APPLICATION_ADAPTER } from './tokens.js';
 
 describe('bootstrapModule', () => {
   it('boots a simple module graph deterministically', () => {
@@ -496,5 +497,69 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
     });
 
     expect(() => bootstrapModule(AppModule)).not.toThrow();
+  });
+});
+
+describe('KonektiFactory.createApplicationContext', () => {
+  it('boots providers without creating the HTTP application adapter', async () => {
+    class AppService {
+      readonly marker = 'ok';
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await KonektiFactory.createApplicationContext(AppModule, {
+      mode: 'test',
+    });
+
+    await expect(context.get(AppService)).resolves.toBeInstanceOf(AppService);
+    await expect(context.get(HTTP_APPLICATION_ADAPTER)).rejects.toThrow('No provider registered');
+
+    await context.close();
+  });
+
+  it('runs startup and shutdown lifecycle hooks around close()', async () => {
+    const events: string[] = [];
+
+    class AppService {
+      onApplicationBootstrap() {
+        events.push('app:bootstrap');
+      }
+
+      onApplicationShutdown(signal?: string) {
+        events.push(`app:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+
+      onModuleInit() {
+        events.push('module:init');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await KonektiFactory.createApplicationContext(AppModule, {
+      mode: 'test',
+    });
+
+    expect(events).toEqual(['module:init', 'app:bootstrap']);
+    await context.close('SIGTERM');
+    await context.close('SIGTERM');
+
+    expect(events).toEqual([
+      'module:init',
+      'app:bootstrap',
+      'module:destroy',
+      'app:shutdown:SIGTERM',
+    ]);
   });
 });

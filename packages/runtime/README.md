@@ -74,6 +74,24 @@ await app.dispatch(req, res);
 await app.close();
 ```
 
+### Standalone application context (no HTTP adapter)
+
+```typescript
+import { KonektiFactory } from '@konekti/runtime';
+
+const context = await KonektiFactory.createApplicationContext(AppModule, {
+  mode: 'prod',
+});
+
+const service = await context.get(UserService);
+
+// ...run CLI task, migration, seed, or worker logic
+
+await context.close();
+```
+
+`createApplicationContext()` bootstraps the module graph and lifecycle hooks without creating the HTTP dispatcher/adapter. Use it for CLI scripts, background workers, migrations, and tests that only need DI.
+
 ### Raw webhook body (opt-in)
 
 ```typescript
@@ -218,6 +236,7 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap + listen + shutdown wiring for Node |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
+| `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | Lower-level: compile module graph + build container |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | Low-level helper to attach module metadata without decorator |
 | `Application` | `src/types.ts` | Interface: `config`, `container`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |

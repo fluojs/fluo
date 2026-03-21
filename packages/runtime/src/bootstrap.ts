@@ -20,6 +20,7 @@ import { createConsoleApplicationLogger } from './logger.js';
 import { compileModuleGraph, createRuntimeTokenSet, providerToken } from './module-graph.js';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
 import type {
+  ApplicationContext,
   Application,
   ApplicationLogger,
   ApplicationState,
@@ -28,6 +29,7 @@ import type {
   BootstrapResult,
   CompiledModule,
   CreateApplicationOptions,
+  CreateApplicationContextOptions,
   ExceptionFilterHandler,
   ModuleDefinition,
   ModuleType,
@@ -368,6 +370,49 @@ class KonektiApplication implements Application {
   }
 }
 
+class KonektiApplicationContext implements ApplicationContext {
+  private closed = false;
+  private closingPromise: Promise<void> | undefined;
+
+  constructor(
+    readonly config: ConfigService,
+    readonly container: Container,
+    readonly envFile: string,
+    readonly mode: BootstrapApplicationOptions['mode'],
+    readonly modules: CompiledModule[],
+    readonly rootModule: ModuleType,
+    private readonly lifecycleInstances: unknown[],
+  ) {}
+
+  async get<T>(token: Token<T>): Promise<T> {
+    return this.container.resolve(token);
+  }
+
+  async close(signal?: string): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
+    if (this.closingPromise) {
+      await this.closingPromise;
+      return;
+    }
+
+    this.closingPromise = (async () => {
+      await runShutdownHooks(this.lifecycleInstances, signal);
+      await disposeContainer(this.container);
+      this.closed = true;
+    })();
+
+    try {
+      await this.closingPromise;
+    } catch (error) {
+      this.closingPromise = undefined;
+      throw error;
+    }
+  }
+}
+
 /**
  * lifecycle hook이 있는 singleton provider 인스턴스를 미리 해석해 둔다.
  */
@@ -506,6 +551,19 @@ function registerRuntimeBootstrapTokens(bootstrapped: BootstrapResult, adapter: 
       provide: HTTP_APPLICATION_ADAPTER,
       useValue: adapter,
     },
+    {
+      provide: RUNTIME_CONTAINER,
+      useValue: bootstrapped.container,
+    },
+    {
+      provide: COMPILED_MODULES,
+      useValue: bootstrapped.modules,
+    },
+  );
+}
+
+function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult): void {
+  bootstrapped.container.register(
     {
       provide: RUNTIME_CONTAINER,
       useValue: bootstrapped.container,
@@ -665,5 +723,67 @@ export class KonektiFactory {
       ...options,
       rootModule,
     });
+  }
+
+  static async createApplicationContext(
+    rootModule: ModuleType,
+    options: CreateApplicationContextOptions = {},
+  ): Promise<ApplicationContext> {
+    const mode = options.mode ?? 'prod';
+    const logger = options.logger ?? createConsoleApplicationLogger();
+    let lifecycleInstances: unknown[] = [];
+    let bootstrappedContainer: Container | undefined;
+
+    try {
+      logger.log('Starting Konekti application context...', 'KonektiFactory');
+      const configValues = loadConfig({
+        ...options,
+        mode,
+      });
+      const config = new ConfigService(configValues);
+      const runtimeProviders = createRuntimeProviders({
+        ...options,
+        mode,
+        rootModule,
+      }, config, logger);
+
+      const bootstrapped = bootstrapModule(rootModule, {
+        duplicateProviderPolicy: options.duplicateProviderPolicy,
+        logger,
+        providers: runtimeProviders,
+        validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
+      });
+      registerRuntimeApplicationContextTokens(bootstrapped);
+
+      bootstrappedContainer = bootstrapped.container;
+      lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
+
+      return new KonektiApplicationContext(
+        config,
+        bootstrapped.container,
+        resolveEnvFile({
+          ...options,
+          mode,
+          rootModule,
+        }),
+        mode,
+        bootstrapped.modules,
+        rootModule,
+        lifecycleInstances,
+      );
+    } catch (error: unknown) {
+      logger.error('Failed to bootstrap application context.', error, 'KonektiFactory');
+
+      if (lifecycleInstances.length > 0) {
+        await runShutdownHooks(lifecycleInstances, 'bootstrap-failed');
+      }
+
+      if (bootstrappedContainer) {
+        await disposeContainer(bootstrappedContainer);
+      }
+
+      throw error;
+    }
   }
 }

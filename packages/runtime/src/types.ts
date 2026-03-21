@@ -100,6 +100,23 @@ export interface BootstrapApplicationOptions extends ConfigLoadOptions {
 
 export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'rootModule'>;
 
+export interface CreateApplicationContextOptions
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'filters' | 'middleware' | 'mode' | 'observers' | 'rootModule'> {
+  mode?: ConfigMode;
+}
+
+export interface ApplicationContext {
+  readonly config: ConfigService;
+  readonly container: Container;
+  readonly envFile: string;
+  readonly mode: ConfigMode;
+  readonly modules: CompiledModule[];
+  readonly rootModule: ModuleType;
+
+  close(signal?: string): Promise<void>;
+  get<T>(token: Token<T>): Promise<T>;
+}
+
 export interface Application {
   readonly config: ConfigService;
   readonly container: Container;
