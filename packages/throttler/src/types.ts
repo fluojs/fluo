@@ -5,11 +5,13 @@ export interface ThrottlerStoreEntry {
   resetAt: number;
 }
 
+export interface ThrottlerConsumeInput {
+  now: number;
+  ttlSeconds: number;
+}
+
 export interface ThrottlerStore {
-  get(key: string): ThrottlerStoreEntry | undefined | Promise<ThrottlerStoreEntry | undefined>;
-  set(key: string, entry: ThrottlerStoreEntry): void | Promise<void>;
-  increment(key: string): number | Promise<number>;
-  evict(now: number): void | Promise<void>;
+  consume(key: string, input: ThrottlerConsumeInput): ThrottlerStoreEntry | Promise<ThrottlerStoreEntry>;
 }
 
 export interface ThrottlerHandlerOptions {

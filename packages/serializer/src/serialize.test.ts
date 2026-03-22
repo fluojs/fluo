@@ -101,4 +101,26 @@ describe('serialize', () => {
 
     expect(serialize(plain)).toEqual(plain);
   });
+
+  it('serializes cyclic object graphs into JSON-safe output', () => {
+    class NodeView {
+      @Expose()
+      name: string;
+
+      @Expose()
+      next?: NodeView;
+
+      constructor(name: string) {
+        this.name = name;
+      }
+    }
+
+    const root = new NodeView('root');
+    root.next = root;
+    const serialized = serialize(root) as { name: string; next?: unknown };
+
+    expect(serialized.name).toBe('root');
+    expect(serialized.next).toBeUndefined();
+    expect(() => JSON.stringify(serialized)).not.toThrow();
+  });
 });

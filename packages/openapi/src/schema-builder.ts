@@ -1,4 +1,4 @@
-import { getDtoBindingSchema, getDtoValidationSchema, type Constructor, type DtoFieldValidationRule } from '@konekti/core';
+import { getDtoBindingSchema, getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
 import type { HandlerDescriptor, HttpMethod } from '@konekti/http';
 import {
   getControllerTags,
@@ -130,22 +130,68 @@ interface CollectedDtoEntry {
   validation: DtoValidationEntry | undefined;
 }
 
+interface BuildSchemaContext {
+  dtoEntries: WeakMap<Constructor, CollectedDtoEntry[]>;
+  dtoSchemaNames: WeakMap<Constructor, Map<string, string>>;
+  usedSchemaNames: Set<string>;
+}
+
 function propertyName(propertyKey: string | number | symbol): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
 }
 
-function collectDtoEntries(dto: Constructor): CollectedDtoEntry[] {
+function collectDtoEntries(dto: Constructor, context: BuildSchemaContext): CollectedDtoEntry[] {
+  const cachedEntries = context.dtoEntries.get(dto);
+
+  if (cachedEntries) {
+    return cachedEntries;
+  }
+
   const bindingEntries = getDtoBindingSchema(dto);
   const validationEntries = getDtoValidationSchema(dto);
-  const bindingMap = new Map(bindingEntries.map((entry) => [entry.propertyKey, entry]));
-  const validationMap = new Map(validationEntries.map((entry) => [entry.propertyKey, entry]));
-  const propertyKeys = new Set([...bindingMap.keys(), ...validationMap.keys()]);
+  const bindingMap = new Map(bindingEntries.map((entry: DtoBindingEntry) => [entry.propertyKey, entry]));
+  const validationMap = new Map(validationEntries.map((entry: DtoValidationEntry) => [entry.propertyKey, entry]));
+  const propertyKeys = new Set<MetadataPropertyKey>([
+    ...(Array.from(bindingMap.keys()) as MetadataPropertyKey[]),
+    ...(Array.from(validationMap.keys()) as MetadataPropertyKey[]),
+  ]);
 
-  return Array.from(propertyKeys).map((propertyKey) => ({
+  const entries = Array.from(propertyKeys).map((propertyKey) => ({
     binding: bindingMap.get(propertyKey),
     name: propertyName(propertyKey),
     validation: validationMap.get(propertyKey),
   }));
+
+  context.dtoEntries.set(dto, entries);
+  return entries;
+}
+
+function getDtoSchemaName(dto: Constructor, context: BuildSchemaContext, suffix = ''): string {
+  let perDto = context.dtoSchemaNames.get(dto);
+
+  if (!perDto) {
+    perDto = new Map<string, string>();
+    context.dtoSchemaNames.set(dto, perDto);
+  }
+
+  const cached = perDto.get(suffix);
+
+  if (cached) {
+    return cached;
+  }
+
+  const baseName = `${dto.name || 'AnonymousDto'}${suffix}`;
+  let candidate = baseName;
+  let index = 2;
+
+  while (context.usedSchemaNames.has(candidate)) {
+    candidate = `${baseName}_${String(index)}`;
+    index++;
+  }
+
+  context.usedSchemaNames.add(candidate);
+  perDto.set(suffix, candidate);
+  return candidate;
 }
 
 function createSchemaRef(name: string): OpenApiSchemaObject {
@@ -183,21 +229,26 @@ function createEnumSchema(values: readonly unknown[]): OpenApiSchemaObject {
 
 function inferNestedSchema(
   nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined,
+  context: BuildSchemaContext,
 ): OpenApiSchemaObject | undefined {
   if (!nestedRule) {
     return undefined;
   }
 
   const resolvedDto = resolveNestedDto(nestedRule.dto);
+  const schemaName = getDtoSchemaName(resolvedDto, context);
 
   if (nestedRule.each) {
-    return { items: createSchemaRef(resolvedDto.name), type: 'array' };
+    return { items: createSchemaRef(schemaName), type: 'array' };
   }
 
-  return createSchemaRef(resolvedDto.name);
+  return createSchemaRef(schemaName);
 }
 
-function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): OpenApiSchemaObject | undefined {
+function inferPrimitiveTypeFromRules(
+  rules: readonly DtoFieldValidationRule[],
+  context: BuildSchemaContext,
+): OpenApiSchemaObject | undefined {
   const hasRule = <TKind extends DtoFieldValidationRule['kind']>(kind: TKind) =>
     rules.find((rule): rule is Extract<DtoFieldValidationRule, { kind: TKind }> => rule.kind === kind);
 
@@ -211,14 +262,14 @@ function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): 
   const stringRule = hasRule('string');
   const enumRule = hasRule('enum');
 
-  const nestedSchema = inferNestedSchema(nestedRule);
+  const nestedSchema = inferNestedSchema(nestedRule, context);
 
   if (nestedSchema) {
     return nestedSchema;
   }
 
   if (arrayRule) {
-    return { items: inferEachItemSchema(rules) ?? {}, type: 'array' };
+    return { items: inferEachItemSchema(rules, context) ?? {}, type: 'array' };
   }
 
   if (enumRule) {
@@ -252,14 +303,17 @@ function inferPrimitiveTypeFromRules(rules: readonly DtoFieldValidationRule[]): 
   return undefined;
 }
 
-function inferEachItemSchema(rules: readonly DtoFieldValidationRule[]): OpenApiSchemaObject | undefined {
+function inferEachItemSchema(
+  rules: readonly DtoFieldValidationRule[],
+  context: BuildSchemaContext,
+): OpenApiSchemaObject | undefined {
   const nestedRule = rules.find(
     (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested' && Boolean(rule.each),
   );
 
   if (nestedRule) {
     const resolvedDto = resolveNestedDto(nestedRule.dto);
-    return createSchemaRef(resolvedDto.name);
+    return createSchemaRef(getDtoSchemaName(resolvedDto, context));
   }
 
   const enumRule = rules.find(
@@ -336,7 +390,7 @@ function isPropertyRequired(binding: DtoBindingEntry | undefined, validation: Dt
     return false;
   }
 
-  if (validation?.rules.some((rule) => rule.kind === 'optional')) {
+  if (validation?.rules.some((rule: DtoFieldValidationRule) => rule.kind === 'optional')) {
     return false;
   }
 
@@ -347,6 +401,7 @@ function ensureComponentSchemaFromEntries(
   schemaName: string,
   entries: readonly CollectedDtoEntry[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): OpenApiSchemaObject {
   if (componentSchemas[schemaName]) {
     return createSchemaRef(schemaName);
@@ -358,7 +413,7 @@ function ensureComponentSchemaFromEntries(
     type: 'object',
   };
 
-  const { properties, required } = buildComponentSchemaShape(entries, componentSchemas);
+  const { properties, required } = buildComponentSchemaShape(entries, componentSchemas, context);
 
   componentSchemas[schemaName] = {
     additionalProperties: false,
@@ -373,10 +428,11 @@ function ensureComponentSchemaFromEntries(
 function ensureNestedSchemasFromRules(
   rules: readonly DtoFieldValidationRule[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): void {
   for (const rule of rules) {
     if (rule.kind === 'nested') {
-      ensureComponentSchema(resolveNestedDto(rule.dto), componentSchemas);
+      ensureComponentSchema(resolveNestedDto(rule.dto), componentSchemas, context);
     }
   }
 }
@@ -384,6 +440,7 @@ function ensureNestedSchemasFromRules(
 function buildComponentSchemaShape(
   entries: readonly CollectedDtoEntry[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): {
   properties: Record<string, OpenApiSchemaObject>;
   required: string[];
@@ -393,9 +450,9 @@ function buildComponentSchemaShape(
 
   for (const entry of entries) {
     const rules = entry.validation?.rules ?? [];
-    ensureNestedSchemasFromRules(rules, componentSchemas);
+    ensureNestedSchemasFromRules(rules, componentSchemas, context);
 
-    const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' };
+    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? { type: 'string' };
     properties[entry.name] = applyValidationConstraints(inferred, rules);
 
     if (isPropertyRequired(entry.binding, entry.validation)) {
@@ -409,18 +466,21 @@ function buildComponentSchemaShape(
 function ensureComponentSchema(
   dto: Constructor,
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): OpenApiSchemaObject {
-  return ensureComponentSchemaFromEntries(dto.name, collectDtoEntries(dto), componentSchemas);
+  const schemaName = getDtoSchemaName(dto, context);
+  return ensureComponentSchemaFromEntries(schemaName, collectDtoEntries(dto, context), componentSchemas, context);
 }
 
 function createParameters(
   dto: Constructor | undefined,
+  context: BuildSchemaContext,
 ): OpenApiParameterObject[] {
   if (!dto) {
     return [];
   }
 
-  const entries = collectDtoEntries(dto).filter(
+  const entries = collectDtoEntries(dto, context).filter(
     (entry): entry is typeof entry & { binding: DtoBindingEntry } =>
       entry.binding?.metadata.source === 'path'
       || entry.binding?.metadata.source === 'query'
@@ -431,7 +491,7 @@ function createParameters(
   return entries.map((entry) => {
     const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
-    const inferred = inferPrimitiveTypeFromRules(rules) ?? { type: 'string' as const };
+    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? { type: 'string' as const };
     const schema = alignParameterSchemaWithRuntimeBindingContract(applyValidationConstraints(inferred, rules), source);
     const isRequired = source === 'path' ? true : isPropertyRequired(entry.binding, entry.validation);
 
@@ -524,20 +584,23 @@ function addDefaultErrorResponses(
 function createRequestBody(
   dto: Constructor | undefined,
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): OpenApiRequestBodyObject | undefined {
   if (!dto) {
     return undefined;
   }
 
-  const dtoEntries = collectDtoEntries(dto);
+  const dtoEntries = collectDtoEntries(dto, context);
   const entries = dtoEntries.filter((entry) => entry.binding?.metadata.source === 'body');
 
   if (entries.length === 0) {
     return undefined;
   }
 
-  const schemaName = entries.length === dtoEntries.length ? dto.name : `${dto.name}RequestBody`;
-  ensureComponentSchemaFromEntries(schemaName, entries, componentSchemas);
+  const schemaName = entries.length === dtoEntries.length
+    ? getDtoSchemaName(dto, context)
+    : getDtoSchemaName(dto, context, 'RequestBody');
+  ensureComponentSchemaFromEntries(schemaName, entries, componentSchemas, context);
 
   return {
     content: {
@@ -594,11 +657,12 @@ function alignParameterSchemaWithRuntimeBindingContract(
 function createResponseObject(
   response: ApiResponseMetadata,
   componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
 ): OpenApiResponseObject {
   const schema = response.schema
     ? response.schema
     : response.type
-      ? ensureComponentSchema(response.type, componentSchemas)
+      ? ensureComponentSchema(response.type, componentSchemas, context)
       : undefined;
 
   return {
@@ -620,12 +684,13 @@ function createOperationResponses(
   methodMeta: MethodApiMetadata | undefined,
   componentSchemas: Record<string, OpenApiSchemaObject>,
   defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
+  context: BuildSchemaContext,
 ): Record<string, OpenApiResponseObject> {
   const responses: Record<string, OpenApiResponseObject> = {};
 
   if (methodMeta?.responses && methodMeta.responses.length > 0) {
     for (const response of methodMeta.responses) {
-      responses[String(response.status)] = createResponseObject(response, componentSchemas);
+      responses[String(response.status)] = createResponseObject(response, componentSchemas, context);
     }
   } else {
     responses[String(descriptor.route.successStatus ?? 200)] = { description: 'OK' };
@@ -658,9 +723,10 @@ function createOperationObject(
   responses: Record<string, OpenApiResponseObject>,
   componentSchemas: Record<string, OpenApiSchemaObject>,
   security: OpenApiSecurityRequirementObject[] | undefined,
+  context: BuildSchemaContext,
 ): OpenApiOperationObject {
-  const parameters = createParameters(descriptor.route.request);
-  const requestBody = createRequestBody(descriptor.route.request, componentSchemas);
+  const parameters = createParameters(descriptor.route.request, context);
+  const requestBody = createRequestBody(descriptor.route.request, componentSchemas, context);
 
   return {
     operationId: normalizeOperationId(descriptor),
@@ -685,6 +751,7 @@ function buildOperationEntry(
   descriptor: HandlerDescriptor,
   componentSchemas: Record<string, OpenApiSchemaObject>,
   defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
+  context: BuildSchemaContext,
 ): BuiltOperationEntry {
   const openApiPath = expressPathToOpenApi(descriptor.route.path);
   const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
@@ -695,9 +762,10 @@ function buildOperationEntry(
     methodMeta,
     componentSchemas,
     defaultErrorResponsesPolicy,
+    context,
   );
   const security = createOperationSecurity(methodMeta);
-  const operation = createOperationObject(descriptor, methodMeta, responses, componentSchemas, security);
+  const operation = createOperationObject(descriptor, methodMeta, responses, componentSchemas, security, context);
 
   return {
     method,
@@ -730,14 +798,20 @@ function createOpenApiComponents(
 export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
   const paths: Record<string, OpenApiPathItemObject> = {};
   const componentSchemas: Record<string, OpenApiSchemaObject> = {};
-  let hasBearerAuth = false;
   const defaultErrorResponsesPolicy = options.defaultErrorResponsesPolicy ?? 'inject';
+  const context: BuildSchemaContext = {
+    dtoEntries: new WeakMap(),
+    dtoSchemaNames: new WeakMap(),
+    usedSchemaNames: new Set(defaultErrorResponsesPolicy === 'inject' ? ['ErrorResponse'] : []),
+  };
+  let hasBearerAuth = false;
 
   for (const descriptor of options.descriptors) {
     const { method, openApiPath, operation, requiresBearerAuth } = buildOperationEntry(
       descriptor,
       componentSchemas,
       defaultErrorResponsesPolicy,
+      context,
     );
 
     if (requiresBearerAuth) {

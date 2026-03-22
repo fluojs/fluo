@@ -1,51 +1,63 @@
 import type Redis from 'ioredis';
 
-import type { ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+
+const CONSUME_LUA = [
+  "local key = KEYS[1]",
+  "local now = tonumber(ARGV[1])",
+  "local ttlMs = tonumber(ARGV[2])",
+  "local raw = redis.call('GET', key)",
+  "local count",
+  "local resetAt",
+  'if not raw then',
+  '  count = 1',
+  '  resetAt = now + ttlMs',
+  'else',
+  '  local decoded = cjson.decode(raw)',
+  "  count = tonumber(decoded['count']) or 0",
+  "  resetAt = tonumber(decoded['resetAt']) or (now + ttlMs)",
+  '  if now >= resetAt then',
+  '    count = 1',
+  '    resetAt = now + ttlMs',
+  '  else',
+  '    count = count + 1',
+  '  end',
+  'end',
+  'local ttlMsLeft = resetAt - now',
+  "if ttlMsLeft > 0 then",
+  '  local ttlSeconds = math.floor((ttlMsLeft + 999) / 1000)',
+  "  redis.call('SET', key, cjson.encode({ count = count, resetAt = resetAt }), 'EX', ttlSeconds)",
+  'end',
+  'return {count, resetAt}',
+].join('\n');
+
+function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
+  if (!Array.isArray(result) || result.length < 2) {
+    throw new Error('Redis throttler consume script returned an invalid response.');
+  }
+
+  const count = Number(result[0]);
+  const resetAt = Number(result[1]);
+
+  if (!Number.isFinite(count) || !Number.isFinite(resetAt)) {
+    throw new Error('Redis throttler consume script returned non-numeric counters.');
+  }
+
+  return { count, resetAt };
+}
 
 export class RedisThrottlerStore implements ThrottlerStore {
   constructor(private readonly client: Redis) {}
 
-  async get(key: string): Promise<ThrottlerStoreEntry | undefined> {
-    const raw = await this.client.get(key);
+  async consume(key: string, input: ThrottlerConsumeInput): Promise<ThrottlerStoreEntry> {
+    const result = await this.client.eval(
+      CONSUME_LUA,
+      1,
+      key,
+      String(input.now),
+      String(input.ttlSeconds * 1000),
+    );
 
-    if (raw === null) {
-      return undefined;
-    }
-
-    return JSON.parse(raw) as ThrottlerStoreEntry;
-  }
-
-  async set(key: string, entry: ThrottlerStoreEntry): Promise<void> {
-    const ttlMs = entry.resetAt - Date.now();
-    const ttlSeconds = Math.ceil(ttlMs / 1000);
-
-    if (ttlSeconds <= 0) {
-      return;
-    }
-
-    await this.client.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
-  }
-
-  async increment(key: string): Promise<number> {
-    const raw = await this.client.get(key);
-
-    if (raw === null) {
-      return 0;
-    }
-
-    const entry = JSON.parse(raw) as ThrottlerStoreEntry;
-    entry.count++;
-    const ttlMs = entry.resetAt - Date.now();
-    const ttlSeconds = Math.ceil(ttlMs / 1000);
-
-    if (ttlSeconds > 0) {
-      await this.client.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
-    }
-
-    return entry.count;
-  }
-
-  async evict(_now: number): Promise<void> {
-    // Redis handles TTL-based expiry natively; no manual eviction needed.
+    return parseConsumeResult(result);
   }
 }

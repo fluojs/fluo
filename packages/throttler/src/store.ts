@@ -1,29 +1,37 @@
-import type { ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+
+function consumeWindow(
+  entry: ThrottlerStoreEntry | undefined,
+  { now, ttlSeconds }: ThrottlerConsumeInput,
+): ThrottlerStoreEntry {
+  const resetAt = now + ttlSeconds * 1000;
+
+  if (!entry || now >= entry.resetAt) {
+    return {
+      count: 1,
+      resetAt,
+    };
+  }
+
+  return {
+    count: entry.count + 1,
+    resetAt: entry.resetAt,
+  };
+}
 
 export function createMemoryThrottlerStore(): ThrottlerStore {
   const map = new Map<string, ThrottlerStoreEntry>();
   let nextSweepAt = 0;
 
   return {
-    get(key) {
-      return map.get(key);
-    },
-    set(key, entry) {
-      map.set(key, entry);
-    },
-    increment(key) {
-      const entry = map.get(key);
+    consume(key, input) {
+      const { now } = input;
 
-      if (!entry) {
-        return 0;
-      }
-
-      entry.count++;
-      return entry.count;
-    },
-    evict(now) {
       if (now < nextSweepAt) {
-        return;
+        const nextEntry = consumeWindow(map.get(key), input);
+        map.set(key, nextEntry);
+        nextSweepAt = Math.min(nextSweepAt, nextEntry.resetAt);
+        return nextEntry;
       }
 
       let next = Number.POSITIVE_INFINITY;
@@ -38,6 +46,11 @@ export function createMemoryThrottlerStore(): ThrottlerStore {
       }
 
       nextSweepAt = Number.isFinite(next) ? next : 0;
+
+      const nextEntry = consumeWindow(map.get(key), input);
+      map.set(key, nextEntry);
+      nextSweepAt = nextSweepAt === 0 ? nextEntry.resetAt : Math.min(nextSweepAt, nextEntry.resetAt);
+      return nextEntry;
     },
   };
 }
