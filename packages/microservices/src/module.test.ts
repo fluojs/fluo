@@ -253,6 +253,57 @@ describe('@konekti/microservices', () => {
     await microservice.close();
   });
 
+  it('isolates payload mutations across event handlers and caller payloads', async () => {
+    class Store {
+      firstSeen = '';
+      secondSeen = '';
+    }
+
+    @Inject([Store])
+    class FirstHandler {
+      constructor(private readonly store: Store) {}
+
+      @EventPattern('audit.mutation')
+      onAudit(input: { meta: { role: string } }) {
+        this.store.firstSeen = input.meta.role;
+        input.meta.role = 'changed';
+      }
+    }
+
+    @Inject([Store])
+    class SecondHandler {
+      constructor(private readonly store: Store) {}
+
+      @EventPattern('audit.mutation')
+      onAudit(input: { meta: { role: string } }) {
+        this.store.secondSeen = input.meta.role;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [Store, FirstHandler, SecondHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, {
+      mode: 'test',
+    });
+    const payload = { meta: { role: 'original' } };
+
+    await microservice.listen();
+    await microservice.emit('audit.mutation', payload);
+
+    const store = await microservice.get(Store);
+    expect(store.firstSeen).toBe('original');
+    expect(store.secondSeen).toBe('original');
+    expect(payload.meta.role).toBe('original');
+
+    await microservice.close();
+  });
+
   it('shares singleton provider state in hybrid app + microservice composition', async () => {
     class SharedState {
       count = 0;
