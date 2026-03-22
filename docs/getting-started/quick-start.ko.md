@@ -26,9 +26,9 @@ pnpm dlx @konekti/cli new starter-app
 
 참고 항목:
 
-- `./bootstrap-paths.md`
-- `./generator-workflow.md`
-- `../reference/package-surface.md`
+- `./bootstrap-paths.ko.md`
+- `./generator-workflow.ko.md`
+- `../reference/package-surface.ko.md`
 
 ## 생성된 스타터 앱 구조
 

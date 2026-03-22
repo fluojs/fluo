@@ -5,7 +5,7 @@
 
 This directory is the cross-package documentation home for Konekti.
 
-Use it for framework-level truth that spans multiple packages. Package-local APIs, examples, and caveats belong in `packages/*/README.md` and `README.ko.md`.
+Use it for framework-level truth that spans multiple packages. Package-local APIs, examples, and caveats belong in `../packages/*/README.md` and `../packages/*/README.ko.md`.
 
 ## Read Order
 

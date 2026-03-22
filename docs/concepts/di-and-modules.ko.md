@@ -7,10 +7,10 @@
 
 함께 보기:
 
-- `./architecture-overview.md`
-- `./http-runtime.md`
-- `../../packages/di/README.md`
-- `../../packages/runtime/README.md`
+- `./architecture-overview.ko.md`
+- `./http-runtime.ko.md`
+- `../../packages/di/README.ko.md`
+- `../../packages/runtime/README.ko.md`
 
 ## DI principles
 

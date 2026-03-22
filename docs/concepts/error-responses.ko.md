@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `./http-runtime.md`
-- `./auth-and-jwt.md`
-- `../../packages/http/README.md`
+- `./http-runtime.ko.md`
+- `./auth-and-jwt.ko.md`
+- `../../packages/http/README.ko.md`
 
 ## 표준 에러 엔벨로프
 

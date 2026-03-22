@@ -493,8 +493,8 @@ const service = await moduleRef.resolve(UserService);
 
 ## 관련 문서
 
-- `./quick-start.md`
-- `./bootstrap-paths.md`
-- `../concepts/di-and-modules.md`
-- `../concepts/http-runtime.md`
-- `../operations/testing-guide.md`
+- `./quick-start.ko.md`
+- `./bootstrap-paths.ko.md`
+- `../concepts/di-and-modules.ko.md`
+- `../concepts/http-runtime.ko.md`
+- `../operations/testing-guide.ko.md`

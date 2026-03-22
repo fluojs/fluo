@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `./http-runtime.md`
-- `../../packages/openapi/README.md`
-- `../../packages/http/README.md`
+- `./http-runtime.ko.md`
+- `../../packages/openapi/README.ko.md`
+- `../../packages/http/README.ko.md`
 
 ## 모듈 등록
 

@@ -1,6 +1,6 @@
 # deployment
 
-<p><strong><kbd>English</kbd></strong> <a href="./deployment.md"><kbd>English</kbd></a></p>
+<p><a href="./deployment.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
 이 가이드는 Konekti 애플리케이션의 운영 배포를 위한 요구 사항과 패턴을 설명한다.

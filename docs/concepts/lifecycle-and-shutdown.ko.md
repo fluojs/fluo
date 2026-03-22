@@ -7,9 +7,9 @@
 
 참고 항목:
 
-- `./config-and-environments.md`
-- `./transactions.md`
-- `../../packages/runtime/README.md`
+- `./config-and-environments.ko.md`
+- `./transactions.ko.md`
+- `../../packages/runtime/README.ko.md`
 
 ## lifecycle 단계
 

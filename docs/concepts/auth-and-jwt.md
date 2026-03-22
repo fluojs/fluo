@@ -60,6 +60,6 @@ Those remain application-level policy choices. The current framework docs should
 
 ## related package docs
 
-- `packages/jwt/README.md`
-- `packages/passport/README.md`
-- `packages/http/README.md`
+- `../../packages/jwt/README.md`
+- `../../packages/passport/README.md`
+- `../../packages/http/README.md`

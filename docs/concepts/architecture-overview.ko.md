@@ -7,9 +7,9 @@ Konekti는 공개되는 인터페이스를 의도적으로 좁게 유지하며, 
 
 함께 보기:
 
-- `./http-runtime.md`
-- `./auth-and-jwt.md`
-- `../reference/package-surface.md`
+- `./http-runtime.ko.md`
+- `./auth-and-jwt.ko.md`
+- `../reference/package-surface.ko.md`
 
 ## public package families
 

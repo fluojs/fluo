@@ -43,7 +43,7 @@ pnpm verify:release-candidate
 - `packages/testing/src/app.ts`
 - `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
-- `packages/testing/README.md`
+- `../../packages/testing/README.ko.md`
 - `packages/testing/README.ko.md`
 
 ## 런타임 및 슬라이스 커버리지

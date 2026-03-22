@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `../../packages/prisma/README.md`
-- `../../packages/drizzle/README.md`
-- `./http-runtime.md`
+- `../../packages/prisma/README.ko.md`
+- `../../packages/drizzle/README.ko.md`
+- `./http-runtime.ko.md`
 
 ## 기본 규칙
 

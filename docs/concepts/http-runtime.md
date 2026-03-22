@@ -81,7 +81,7 @@ These items are deferred to protect dispatcher clarity and keep transport expans
 
 ## where to look next
 
-- package API details -> `packages/http/README.md`
-- runtime bootstrap -> `packages/runtime/README.md`
+- package API details -> `../../packages/http/README.md`
+- runtime bootstrap -> `../../packages/runtime/README.md`
 - auth strategy flow -> `./auth-and-jwt.md`
 - starter HTTP defaults -> `../getting-started/quick-start.md`

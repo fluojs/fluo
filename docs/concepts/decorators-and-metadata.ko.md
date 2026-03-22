@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `./http-runtime.md`
-- `./di-and-modules.md`
-- `../../packages/core/README.md`
+- `./http-runtime.ko.md`
+- `./di-and-modules.ko.md`
+- `../../packages/core/README.ko.md`
 
 ## current decorator stance
 

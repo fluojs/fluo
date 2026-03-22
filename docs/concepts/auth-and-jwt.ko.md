@@ -1,18 +1,18 @@
-# auth and jwt
+# 인증과 JWT
 
 <p><a href="./auth-and-jwt.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
 이 가이드는 현재 인증 스택이 Konekti 패키지들 사이에 어떻게 나뉘어 있는지 설명합니다.
 
-## package boundary
+## 패키지 경계
 
 - `@konekti/jwt`: JWT 토큰 핵심 규약, 서명, 검증, 클레임(claim) 유효성 검사 및 principal 정규화를 소유합니다.
 - `@konekti/passport`: strategy 등록 metadata, 범용 인증 guard 연결 및 strategy adapter 규약을 소유합니다.
 - `@konekti/http`: guard 오케스트레이션, `RequestContext` 및 runtime 실행 순서를 소유합니다.
 - `@konekti/config`: 키 자료(key material)와 issuer/audience 로딩을 소유합니다.
 
-## execution ownership
+## 실행 책임
 
 - 토큰 추출: strategy 소유의 adapter 로직
 - 서명 및 클레임 검증: `JwtVerifier`
@@ -21,7 +21,7 @@
 - `RequestContext`에 principal 첨부: passport guard 경로
 - HTTP 인증 에러 매핑: passport + HTTP 예외 레이어
 
-## current default request flow
+## 현재 기본 요청 흐름
 
 ```text
 HTTP 요청
@@ -32,18 +32,18 @@ HTTP 요청
 -> controller/service 실행
 ```
 
-## current stance
+## 현재 원칙
 
 - JWT는 하나의 strategy일 뿐, 전체 인증 모델이 아닙니다.
 - `@konekti/passport`는 현재 strategy에 구애받지 않습니다(generic).
 - `@konekti/jwt`는 전송 계층에 독립적(transport-agnostic)입니다.
 - 애플리케이션 코드는 가급적 원시 JWT 페이로드보다 정규화된 principal을 사용해야 합니다.
 
-## 공식 기본 auth story
+## 공식 기본 인증 스토리
 
 현재 공식 docs/examples 경로는 `Authorization: Bearer <token>` 헤더를 통한 bearer-token auth와 JWT verification입니다.
 
-현재 framework-wide 기본값으로 표준화하지 않는 항목:
+현재 프레임워크 전역 기본값으로 표준화하지 않는 항목:
 
 - 기본 공식 preset으로서의 HttpOnly cookie auth
 - refresh-token lifecycle 및 rotation 정책
@@ -52,8 +52,8 @@ HTTP 요청
 
 이 항목들은 제품이 더 넓은 공식 auth opinion을 정의하기 전까지 application-level policy choice로 남깁니다.
 
-## related package docs
+## 관련 패키지 문서
 
-- `packages/jwt/README.md`
-- `packages/passport/README.md`
-- `packages/http/README.md`
+- `../../packages/jwt/README.ko.md`
+- `../../packages/passport/README.ko.md`
+- `../../packages/http/README.ko.md`

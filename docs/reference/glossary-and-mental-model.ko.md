@@ -32,4 +32,4 @@
 
 - `../concepts/http-runtime.md`
 - `../concepts/decorators-and-metadata.md`
-- `./support-matrix.md`
+- `./support-matrix.ko.md`

@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `../../packages/config/README.md`
-- `./lifecycle-and-shutdown.md`
-- `../getting-started/bootstrap-paths.md`
+- `../../packages/config/README.ko.md`
+- `./lifecycle-and-shutdown.ko.md`
+- `../getting-started/bootstrap-paths.ko.md`
 
 ## ownership
 

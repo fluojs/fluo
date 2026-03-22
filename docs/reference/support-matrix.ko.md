@@ -56,7 +56,7 @@
 
 ## 관련 문서
 
-- `./package-surface.md`
-- `./toolchain-contract-matrix.md`
+- `./package-surface.ko.md`
+- `./toolchain-contract-matrix.ko.md`
 - `../concepts/transactions.md`
 - `../operations/release-governance.md`

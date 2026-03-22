@@ -75,6 +75,6 @@ pnpm dev
 
 ## 관련 문서
 
-- `./quick-start.md`
-- `./generator-workflow.md`
-- `../reference/naming-and-file-conventions.md`
+- `./quick-start.ko.md`
+- `./generator-workflow.ko.md`
+- `../reference/naming-and-file-conventions.ko.md`

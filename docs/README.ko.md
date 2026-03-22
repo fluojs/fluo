@@ -5,38 +5,38 @@
 
 이 디렉토리는 Konekti의 패키지 통합 문서 홈입니다.
 
-여러 패키지에 걸쳐 있는 프레임워크 수준의 정보는 이곳을 사용하세요. 패키지 로컬 API, 예제, 주의사항은 `packages/*/README.md` 및 `README.ko.md`에 속합니다.
+여러 패키지에 걸쳐 있는 프레임워크 수준의 정보는 이곳을 사용하세요. 패키지 로컬 API, 예제, 주의사항은 `../packages/*/README.md` 및 `../packages/*/README.ko.md`에 속합니다.
 
 ## 읽기 순서
 
-1. `getting-started/quick-start.md`
-2. `getting-started/bootstrap-paths.md`
-3. `getting-started/generator-workflow.md`
-4. `getting-started/migrate-from-nestjs.md`
-5. `concepts/architecture-overview.md`
-6. `concepts/http-runtime.md`
-7. `concepts/di-and-modules.md`
-8. `concepts/decorators-and-metadata.md`
-9. `concepts/config-and-environments.md`
-10. `concepts/lifecycle-and-shutdown.md`
-11. `concepts/auth-and-jwt.md`
-12. `concepts/openapi.md`
-13. `concepts/observability.md`
-14. `concepts/security-middleware.md`
-15. `concepts/transactions.md`
-16. `concepts/error-responses.md`
-17. `reference/package-surface.md`
-18. `reference/support-matrix.md`
-19. `reference/glossary-and-mental-model.md`
-20. `reference/toolchain-contract-matrix.md`
-21. `reference/naming-and-file-conventions.md`
-22. `operations/testing-guide.md`
-23. `operations/release-governance.md`
-24. `operations/deployment.md`
-25. `operations/third-party-extension-contract.md`
-26. `operations/nestjs-parity-gaps.md`
+1. `getting-started/quick-start.ko.md`
+2. `getting-started/bootstrap-paths.ko.md`
+3. `getting-started/generator-workflow.ko.md`
+4. `getting-started/migrate-from-nestjs.ko.md`
+5. `concepts/architecture-overview.ko.md`
+6. `concepts/http-runtime.ko.md`
+7. `concepts/di-and-modules.ko.md`
+8. `concepts/decorators-and-metadata.ko.md`
+9. `concepts/config-and-environments.ko.md`
+10. `concepts/lifecycle-and-shutdown.ko.md`
+11. `concepts/auth-and-jwt.ko.md`
+12. `concepts/openapi.ko.md`
+13. `concepts/observability.ko.md`
+14. `concepts/security-middleware.ko.md`
+15. `concepts/transactions.ko.md`
+16. `concepts/error-responses.ko.md`
+17. `reference/package-surface.ko.md`
+18. `reference/support-matrix.ko.md`
+19. `reference/glossary-and-mental-model.ko.md`
+20. `reference/toolchain-contract-matrix.ko.md`
+21. `reference/naming-and-file-conventions.ko.md`
+22. `operations/testing-guide.ko.md`
+23. `operations/release-governance.ko.md`
+24. `operations/deployment.ko.md`
+25. `operations/third-party-extension-contract.ko.md`
+26. `operations/nestjs-parity-gaps.ko.md`
 
-## 섹션 (Sections)
+## 섹션
 
 ### getting-started/
 

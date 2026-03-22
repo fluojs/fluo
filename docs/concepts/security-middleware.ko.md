@@ -7,8 +7,8 @@
 
 함께 보기:
 
-- `./http-runtime.md`
-- `../../packages/http/README.md`
+- `./http-runtime.ko.md`
+- `../../packages/http/README.ko.md`
 
 ## 현재 미들웨어 제품군
 

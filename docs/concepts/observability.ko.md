@@ -7,9 +7,9 @@
 
 함께 보기:
 
-- `./http-runtime.md`
-- `../../packages/runtime/README.md`
-- `../../packages/metrics/README.md`
+- `./http-runtime.ko.md`
+- `../../packages/runtime/README.ko.md`
+- `../../packages/metrics/README.ko.md`
 
 ## 로깅 규약 (logging contract)
 

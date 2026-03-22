@@ -50,6 +50,6 @@ konekti g <kind> <name>
 
 ## 관련 문서
 
-- `./quick-start.md`
-- `../reference/naming-and-file-conventions.md`
-- `../../packages/cli/README.md`
+- `./quick-start.ko.md`
+- `../reference/naming-and-file-conventions.ko.md`
+- `../../packages/cli/README.ko.md`
