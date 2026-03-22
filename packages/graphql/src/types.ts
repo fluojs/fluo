@@ -1,6 +1,9 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
+import type { Container } from '@konekti/di';
 import type { FrameworkRequest, Principal } from '@konekti/http';
 import type { GraphQLSchema } from 'graphql';
+
+export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('konekti.graphql.operation.container');
 
 export interface GraphqlRequestContext {
   request: FrameworkRequest;
@@ -10,6 +13,7 @@ export interface GraphqlRequestContext {
 export interface GraphQLContext {
   request: FrameworkRequest;
   principal?: Principal;
+  [GRAPHQL_OPERATION_CONTAINER]?: Container;
   [key: string]: unknown;
 }
 

@@ -95,4 +95,52 @@ describe('HttpMetricsMiddleware', () => {
 
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:id",status="200"} 1');
   });
+
+  it('passes immutable label snapshots to each metric recorder call', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry);
+
+    const calls: Array<{ sink: 'duration' | 'errors' | 'requests'; labels: Record<string, string> }> = [];
+    const requestsRecorder = {
+      inc(labels: Record<string, string>) {
+        labels.path = '/mutated-by-requests';
+        calls.push({ labels: { ...labels }, sink: 'requests' });
+      },
+    };
+    const durationRecorder = {
+      observe(labels: Record<string, string>, _value: number) {
+        calls.push({ labels: { ...labels }, sink: 'duration' });
+      },
+    };
+    const errorsRecorder = {
+      inc(labels: Record<string, string>) {
+        calls.push({ labels: { ...labels }, sink: 'errors' });
+      },
+    };
+
+    Reflect.set(middleware, 'requestsTotal', requestsRecorder);
+    Reflect.set(middleware, 'requestDuration', durationRecorder);
+    Reflect.set(middleware, 'errorsTotal', errorsRecorder);
+
+    const context = createContext('/users/123', { id: '123' });
+
+    await middleware.handle(context, async () => {
+      context.response.setStatus(500);
+    });
+
+    expect(calls).toEqual([
+      {
+        labels: { method: 'GET', path: '/mutated-by-requests', status: '500' },
+        sink: 'requests',
+      },
+      {
+        labels: { method: 'GET', path: '/users/:id', status: '500' },
+        sink: 'duration',
+      },
+      {
+        labels: { method: 'GET', path: '/users/:id', status: '500' },
+        sink: 'errors',
+      },
+    ]);
+  });
 });

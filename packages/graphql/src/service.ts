@@ -28,6 +28,7 @@ import { discoverResolverDescriptors } from './discovery.js';
 import { createCodeFirstSchema, resolveSchema } from './schema.js';
 import { GRAPHQL_LIFECYCLE_SERVICE, GRAPHQL_MODULE_OPTIONS } from './tokens.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport.js';
+import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 import type {
   GraphQLContext,
   GraphqlModuleOptions,
@@ -187,6 +188,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, GRAPHQL_MODULE_OPTIONS])
 export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private middlewareRegistered = false;
+  private readonly operationContainers = new WeakMap<Request, Container>();
   private yoga: YogaLike | undefined;
 
   private readonly middleware: Middleware = {
@@ -209,15 +211,19 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
       try {
         const fetchRequest = toFetchRequest(context.request);
-        const fetchResponse = await graphqlRequestContextStorage.run(
-          {
-            principal: context.requestContext.principal,
-            request: context.request,
-          },
-          () => yoga.fetch(fetchRequest),
-        );
+        try {
+          const fetchResponse = await graphqlRequestContextStorage.run(
+            {
+              principal: context.requestContext.principal,
+              request: context.request,
+            },
+            () => yoga.fetch(fetchRequest),
+          );
 
-        await writeFetchResponse(fetchResponse, context.response);
+          await writeFetchResponse(fetchResponse, context.response);
+        } finally {
+          await this.disposeOperationContainer(fetchRequest);
+        }
       } catch (error) {
         this.logger.error('Failed to process GraphQL request.', error, 'GraphqlLifecycleService');
 
@@ -317,11 +323,41 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
       request: storedContext?.request ?? fallbackRequest,
     };
     const customContext = this.options.context?.(requestContext) ?? {};
+    const operationContainer = this.getOrCreateOperationContainer(request);
 
     return {
+      [GRAPHQL_OPERATION_CONTAINER]: operationContainer,
       ...customContext,
       principal: requestContext.principal,
       request: requestContext.request,
     };
+  }
+
+  private getOrCreateOperationContainer(request: Request): Container {
+    const existing = this.operationContainers.get(request);
+
+    if (existing) {
+      return existing;
+    }
+
+    const created = this.runtimeContainer.createRequestScope();
+    this.operationContainers.set(request, created);
+    return created;
+  }
+
+  private async disposeOperationContainer(request: Request): Promise<void> {
+    const operationContainer = this.operationContainers.get(request);
+
+    if (!operationContainer) {
+      return;
+    }
+
+    this.operationContainers.delete(request);
+
+    try {
+      await operationContainer.dispose();
+    } catch (error) {
+      this.logger.error('Failed to dispose GraphQL operation container.', error, 'GraphqlLifecycleService');
+    }
   }
 }

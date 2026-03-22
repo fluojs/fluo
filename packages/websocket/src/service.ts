@@ -43,6 +43,7 @@ interface GatewayAttachment {
 interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: RawData[];
+  enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
   resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>;
@@ -67,6 +68,12 @@ type BufferedDisconnectEvent = {
 };
 
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
+const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
+const DEFAULT_MAX_BUFFERED_AMOUNT_BYTES = 1_048_576;
+
+function isFinitePositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && Number.isInteger(value);
+}
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
@@ -329,6 +336,7 @@ export class WebSocketGatewayLifecycleService
     return {
       bufferedDisconnect: undefined,
       bufferedMessages: [],
+      enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
       resolved: [],
@@ -342,9 +350,37 @@ export class WebSocketGatewayLifecycleService
     request: IncomingMessage,
     data: RawData,
   ): void {
+    const limit = isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
+      ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
+      : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
+    const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
+
+    if (state.enqueuedMessageCount >= limit) {
+      if (policy === 'close') {
+        socket.terminate();
+        this.unregisterSocket(state.socketId);
+        this.logger.warn(
+          `WebSocket connection ${state.socketId} exceeded ready-state message queue limit (${String(limit)}). Connection terminated.`,
+          'WebSocketGatewayLifecycleService',
+        );
+        return;
+      }
+
+      this.logger.warn(
+        `WebSocket connection ${state.socketId} dropped a ready-state message because queue limit (${String(limit)}) was reached.`,
+        'WebSocketGatewayLifecycleService',
+      );
+      return;
+    }
+
+    state.enqueuedMessageCount += 1;
+
     state.handlerQueue = state.handlerQueue
       .then(async () => {
         await this.handleMessage(state.resolved, socket, request, data);
+      })
+      .finally(() => {
+        state.enqueuedMessageCount = Math.max(0, state.enqueuedMessageCount - 1);
       })
       .catch((error) => {
         this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
@@ -378,7 +414,7 @@ export class WebSocketGatewayLifecycleService
   ): void {
     socket.on('message', (data: RawData) => {
       if (!state.handlersReady) {
-        state.bufferedMessages.push(data);
+        this.bufferIncomingMessage(state, socket, data);
         return;
       }
 
@@ -402,6 +438,46 @@ export class WebSocketGatewayLifecycleService
 
       this.enqueueDisconnectDispatch(state, socket, disconnectEvent);
     });
+  }
+
+  private bufferIncomingMessage(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    data: RawData,
+  ): void {
+    const limit = isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
+      ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
+      : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
+    const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
+
+    if (state.bufferedMessages.length < limit) {
+      state.bufferedMessages.push(data);
+      return;
+    }
+
+    if (policy === 'close') {
+      socket.terminate();
+      this.logger.warn(
+        `WebSocket connection ${state.socketId} exceeded pending message buffer limit (${String(limit)}). Connection terminated.`,
+        'WebSocketGatewayLifecycleService',
+      );
+      return;
+    }
+
+    if (policy === 'drop-newest') {
+      this.logger.warn(
+        `WebSocket connection ${state.socketId} dropped an incoming message due to pending buffer limit (${String(limit)}).`,
+        'WebSocketGatewayLifecycleService',
+      );
+      return;
+    }
+
+    state.bufferedMessages.shift();
+    state.bufferedMessages.push(data);
+    this.logger.warn(
+      `WebSocket connection ${state.socketId} dropped the oldest pending message due to buffer limit (${String(limit)}).`,
+      'WebSocketGatewayLifecycleService',
+    );
   }
 
   private async resolveConnectionGateways(
@@ -440,8 +516,12 @@ export class WebSocketGatewayLifecycleService
 
     if (state.bufferedDisconnect) {
       this.enqueueDisconnectDispatch(state, socket, state.bufferedDisconnect);
+      state.bufferedDisconnect = undefined;
+      state.bufferedMessages = [];
       return;
     }
+
+    state.bufferedMessages = [];
 
     if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
       this.unregisterSocket(state.socketId);
@@ -798,9 +878,32 @@ export class WebSocketGatewayLifecycleService
     }
 
     const message = JSON.stringify({ data, event });
+    const maxBufferedAmountBytes = isFinitePositiveInteger(this.moduleOptions.backpressure?.maxBufferedAmountBytes)
+      ? this.moduleOptions.backpressure.maxBufferedAmountBytes
+      : DEFAULT_MAX_BUFFERED_AMOUNT_BYTES;
+    const backpressurePolicy = this.moduleOptions.backpressure?.policy ?? 'drop';
+
     for (const socketId of socketIds) {
       const socket = this.socketRegistry.get(socketId);
       if (socket && socket.readyState === WebSocket.OPEN) {
+        if (socket.bufferedAmount > maxBufferedAmountBytes) {
+          if (backpressurePolicy === 'close') {
+            socket.terminate();
+            this.unregisterSocket(socketId);
+            this.logger.warn(
+              `WebSocket connection ${socketId} exceeded bufferedAmount threshold (${String(maxBufferedAmountBytes)} bytes). Connection terminated.`,
+              'WebSocketGatewayLifecycleService',
+            );
+            continue;
+          }
+
+          this.logger.warn(
+            `WebSocket connection ${socketId} exceeded bufferedAmount threshold (${String(maxBufferedAmountBytes)} bytes). Broadcast frame dropped.`,
+            'WebSocketGatewayLifecycleService',
+          );
+          continue;
+        }
+
         socket.send(message);
       }
     }

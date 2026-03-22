@@ -7,6 +7,14 @@ type HttpMetricLabels = {
   status: string;
 };
 
+type MetricCounterLike = {
+  inc(labels: Record<string, string>): void;
+};
+
+type MetricHistogramLike = {
+  observe(labels: Record<string, string>, value: number): void;
+};
+
 export type HttpMetricsPathLabelMode = 'raw' | 'template';
 
 export interface HttpMetricsPathLabelContext {
@@ -45,9 +53,9 @@ function readErrorStatusCode(error: unknown): number | undefined {
 }
 
 export class HttpMetricsMiddleware implements Middleware {
-  private readonly requestsTotal: Counter<string>;
-  private readonly errorsTotal: Counter<string>;
-  private readonly requestDuration: Histogram<string>;
+  private readonly requestsTotal: MetricCounterLike;
+  private readonly errorsTotal: MetricCounterLike;
+  private readonly requestDuration: MetricHistogramLike;
   private readonly pathLabelMode: HttpMetricsPathLabelMode;
   private readonly pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   private readonly unknownPathLabel: string;
@@ -132,17 +140,17 @@ export class HttpMetricsMiddleware implements Middleware {
     durationSeconds: number,
     requestError: unknown,
   ): void {
-    const labels: HttpMetricLabels = {
+    const labels: Readonly<HttpMetricLabels> = {
       method,
       path,
       status: String(statusCode),
     };
 
-    this.requestsTotal.inc(labels);
-    this.requestDuration.observe(labels, durationSeconds);
+    this.requestsTotal.inc({ ...labels });
+    this.requestDuration.observe({ ...labels }, durationSeconds);
 
     if (statusCode >= 400 || requestError !== undefined) {
-      this.errorsTotal.inc(labels);
+      this.errorsTotal.inc({ ...labels });
     }
   }
 }

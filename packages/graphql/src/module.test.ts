@@ -345,6 +345,51 @@ describe('@konekti/graphql — provider scopes', () => {
     await app.close();
   });
 
+  it('reuses one request scope across all resolver fields in the same operation', async () => {
+    @Inject([])
+    @Scope('request')
+    class OperationCounter {
+      count = 0;
+    }
+
+    @Inject([OperationCounter])
+    @Scope('request')
+    @Resolver('OperationScopedResolver')
+    class OperationScopedResolver {
+      constructor(private readonly counter: OperationCounter) {}
+
+      @Query({ outputType: 'int' })
+      firstTick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+
+      @Query({ outputType: 'int' })
+      secondTick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule({ resolvers: [OperationScopedResolver] })],
+      providers: [OperationCounter, OperationScopedResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const firstOperation = await postGraphql(port, '{ firstTick secondTick }');
+    const secondOperation = await postGraphql(port, '{ firstTick secondTick }');
+
+    expect(firstOperation).toEqual({ data: { firstTick: 1, secondTick: 2 } });
+    expect(secondOperation).toEqual({ data: { firstTick: 1, secondTick: 2 } });
+
+    await app.close();
+  });
+
   it('transient resolver receives a fresh instance per operation', async () => {
     @Inject([])
     @Scope('transient')

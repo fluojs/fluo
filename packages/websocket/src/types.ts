@@ -54,6 +54,14 @@ export interface WebSocketRoomService {
 }
 
 export interface WebSocketModuleOptions {
+  backpressure?: {
+    maxBufferedAmountBytes?: number;
+    policy?: 'close' | 'drop';
+  };
+  buffer?: {
+    maxPendingMessagesPerSocket?: number;
+    overflowPolicy?: 'close' | 'drop-newest' | 'drop-oldest';
+  };
   heartbeat?: {
     enabled?: boolean;
     intervalMs?: number;

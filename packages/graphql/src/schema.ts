@@ -10,7 +10,13 @@ import type {
 import { DtoValidationError } from '@konekti/dto-validator';
 
 import { createGraphqlInput, resolveArgScalarType, resolveOutputScalarType } from './input-pipeline.js';
-import type { GraphQLContext, ResolverDescriptor, ResolverHandlerDescriptor, ResolverHandlerType } from './types.js';
+import {
+  GRAPHQL_OPERATION_CONTAINER,
+  type GraphQLContext,
+  type ResolverDescriptor,
+  type ResolverHandlerDescriptor,
+  type ResolverHandlerType,
+} from './types.js';
 
 type YogaGraphqlDeps = {
   GraphQLError: typeof GraphQLErrorType;
@@ -220,7 +226,8 @@ function createResolverInvoker(
       return resolverMethod.call(instance, input, contextValue);
     }
 
-    const operationContainer = runtimeContainer.createRequestScope();
+    const operationContainer = contextValue[GRAPHQL_OPERATION_CONTAINER] ?? runtimeContainer.createRequestScope();
+    const disposeOperationContainer = contextValue[GRAPHQL_OPERATION_CONTAINER] === undefined;
 
     try {
       const instance = await operationContainer.resolve(descriptor.token);
@@ -228,7 +235,9 @@ function createResolverInvoker(
       const input = await createResolverInput(deps, handler, args);
       return await resolverMethod.call(instance, input, contextValue);
     } finally {
-      await operationContainer.dispose();
+      if (disposeOperationContainer) {
+        await operationContainer.dispose();
+      }
     }
   };
 }

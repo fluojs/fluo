@@ -137,11 +137,13 @@ function createMockSocket(): {
   emitClose: (code?: number, reason?: Buffer) => void;
   emitPong: () => void;
   ping: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
   socket: WebSocket;
   terminate: ReturnType<typeof vi.fn>;
 } {
   const listeners: MockSocketListeners = {};
   const ping = vi.fn();
+  const send = vi.fn();
   const terminate = vi.fn();
 
   const socketObject = {
@@ -158,6 +160,8 @@ function createMockSocket(): {
     },
     ping,
     readyState: WebSocket.OPEN,
+    send,
+    bufferedAmount: 0,
     terminate,
   } as unknown as WebSocket;
 
@@ -169,6 +173,7 @@ function createMockSocket(): {
       listeners.pong?.();
     },
     ping,
+    send,
     socket: socketObject,
     terminate,
   };
@@ -463,6 +468,68 @@ describe('@konekti/websocket', () => {
     await app.close();
   });
 
+  it('caps pre-ready buffered websocket messages with drop-oldest policy', async () => {
+    const connected = createDeferred<void>();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject([GatewayState])
+    @WebSocketGateway({ path: '/buffer-cap' })
+    class BufferedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await connected.promise;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createWebSocketModule({
+          buffer: {
+            maxPendingMessagesPerSocket: 2,
+            overflowPolicy: 'drop-oldest',
+          },
+        }),
+      ],
+      providers: [GatewayState, BufferedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/buffer-cap`);
+    await onceOpen(socket);
+    socket.send(JSON.stringify({ event: 'ping', data: 'a' }));
+    socket.send(JSON.stringify({ event: 'ping', data: 'b' }));
+    socket.send(JSON.stringify({ event: 'ping', data: 'c' }));
+    socket.close();
+    await onceClosed(socket);
+
+    connected.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.messages).toEqual(['b', 'c']);
+
+    await app.close();
+  });
+
   it('delivers messages and disconnects that arrive after async onConnect completes', async () => {
     const connected = createDeferred<void>();
 
@@ -559,6 +626,50 @@ describe('@konekti/websocket', () => {
     await shutdown.call(service);
   });
 
+  it('caps ready-state message queue and drops newest messages when saturated', async () => {
+    const service = createTestLifecycleService({
+      buffer: {
+        maxPendingMessagesPerSocket: 1,
+        overflowPolicy: 'drop-newest',
+      },
+    });
+    const { socket } = createMockSocket();
+    const enqueueMessageDispatch = Reflect.get(service, 'enqueueMessageDispatch') as (
+      state: {
+        enqueuedMessageCount: number;
+        handlerQueue: Promise<void>;
+        resolved: Array<{ descriptor: unknown; instance: unknown }>;
+        socketId: string;
+      },
+      socket: WebSocket,
+      request: IncomingMessage,
+      data: unknown,
+    ) => void;
+    const gate = createDeferred<void>();
+    const handledPayloads: unknown[] = [];
+
+    Reflect.set(service, 'handleMessage', async (_resolved: unknown, _socket: WebSocket, _request: IncomingMessage, data: unknown) => {
+      handledPayloads.push(data);
+      await gate.promise;
+    });
+
+    const state = {
+      enqueuedMessageCount: 0,
+      handlerQueue: Promise.resolve(),
+      resolved: [],
+      socketId: 'socket-ready-1',
+    };
+
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'first');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'second');
+
+    gate.resolve();
+    await state.handlerQueue;
+
+    expect(handledPayloads).toEqual(['first']);
+    expect(state.enqueuedMessageCount).toBe(0);
+  });
+
   it('terminates sockets when pong timeout is missed and clears heartbeat state', async () => {
     vi.useFakeTimers();
 
@@ -591,6 +702,49 @@ describe('@konekti/websocket', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('drops room broadcasts when socket bufferedAmount exceeds backpressure threshold', () => {
+    const service = createTestLifecycleService({
+      backpressure: {
+        maxBufferedAmountBytes: 1,
+        policy: 'drop',
+      },
+    });
+    const { send, socket, terminate } = createMockSocket();
+    (socket as unknown as { bufferedAmount: number }).bufferedAmount = 4;
+
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const roomSockets = Reflect.get(service, 'roomSockets') as Map<string, Set<string>>;
+    socketRegistry.set('socket-1', socket);
+    roomSockets.set('room-1', new Set(['socket-1']));
+
+    service.broadcastToRoom('room-1', 'event', { value: 'payload' });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it('terminates sockets on backpressure when policy is close', () => {
+    const service = createTestLifecycleService({
+      backpressure: {
+        maxBufferedAmountBytes: 1,
+        policy: 'close',
+      },
+    });
+    const { send, socket, terminate } = createMockSocket();
+    (socket as unknown as { bufferedAmount: number }).bufferedAmount = 4;
+
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    const roomSockets = Reflect.get(service, 'roomSockets') as Map<string, Set<string>>;
+    socketRegistry.set('socket-1', socket);
+    roomSockets.set('room-1', new Set(['socket-1']));
+
+    service.broadcastToRoom('room-1', 'event', { value: 'payload' });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(socketRegistry.has('socket-1')).toBe(false);
   });
 
   it('logs and continues shutdown when websocket server close exceeds timeout', async () => {
