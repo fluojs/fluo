@@ -1,6 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { raceWithAbort } from '@konekti/runtime';
+import {
+  createRequestAbortContext,
+  raceWithAbort,
+  trackActiveRequestTransaction,
+  untrackActiveRequestTransaction,
+} from '@konekti/runtime';
 import type { OnApplicationShutdown } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
@@ -17,12 +22,6 @@ const TRANSACTION_NOT_SUPPORTED_ERROR = 'Transaction not supported: Drizzle data
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
   settled: Promise<void>;
-};
-
-type RequestAbortContext = {
-  controller: AbortController;
-  cleanup(): void;
-  signal: AbortSignal;
 };
 
 type ActiveRequestTransactionHandle = {
@@ -100,7 +99,7 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
     signal?: AbortSignal,
   ): Promise<T> {
-    const abortContext = this.createRequestAbortContext(signal);
+    const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
@@ -114,46 +113,12 @@ export class DrizzleDatabase<
     }
   }
 
-  private createRequestAbortContext(signal?: AbortSignal): RequestAbortContext {
-    const controller = new AbortController();
-    const forwardAbort = () => controller.abort(signal?.reason);
-
-    if (signal?.aborted) {
-      forwardAbort();
-    } else {
-      signal?.addEventListener('abort', forwardAbort, { once: true });
-    }
-
-    return {
-      controller,
-      cleanup: () => {
-        signal?.removeEventListener('abort', forwardAbort);
-      },
-      signal: controller.signal,
-    };
-  }
-
   private trackActiveRequestTransaction(controller: AbortController): ActiveRequestTransactionHandle {
-    let settle!: () => void;
-    const settled = new Promise<void>((resolve) => {
-      settle = resolve;
-    });
-
-    const active: ActiveRequestTransaction = {
-      abort(reason?: unknown) {
-        controller.abort(reason);
-      },
-      settled,
-    };
-
-    this.activeRequestTransactions.add(active);
-
-    return { active, settle };
+    return trackActiveRequestTransaction(this.activeRequestTransactions, controller);
   }
 
   private untrackActiveRequestTransaction(handle: ActiveRequestTransactionHandle): void {
-    this.activeRequestTransactions.delete(handle.active);
-    handle.settle();
+    untrackActiveRequestTransaction(this.activeRequestTransactions, handle);
   }
 
   private resolveTransactionRunner(): DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> | undefined {
