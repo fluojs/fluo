@@ -118,10 +118,8 @@ function notifyReloadListeners(
   snapshot: ConfigDictionary,
   reason: ConfigReloadReason,
 ): void {
-  const clonedSnapshot = cloneConfigDictionary(snapshot);
-
   for (const listener of listeners) {
-    listener(clonedSnapshot, reason);
+    listener(cloneConfigDictionary(snapshot), reason);
   }
 }
 

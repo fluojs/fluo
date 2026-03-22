@@ -158,6 +158,41 @@ describe('loadConfig', () => {
     }
   });
 
+  it('isolates manual reload snapshots across listeners', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-reload-isolation-manual-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+    });
+
+    try {
+      let observedBySecondListener: string | undefined;
+
+      reloader.subscribe((snapshot) => {
+        snapshot['PORT'] = '9999';
+      });
+
+      reloader.subscribe((snapshot) => {
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          observedBySecondListener = port;
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      reloader.reload();
+
+      expect(observedBySecondListener).toBe('4100');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('keeps last valid snapshot and reports validation failures in watch mode', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-watch-validation-'));
     const envPath = join(cwd, '.env.dev');
@@ -250,6 +285,51 @@ describe('loadConfig', () => {
     await delay(150);
 
     expect(updates).toHaveLength(0);
+  });
+
+  it('isolates watch reload snapshots across listeners', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-reload-isolation-watch-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      let observedBySecondListener: string | undefined;
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        snapshot['PORT'] = '9999';
+      });
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
+          return;
+        }
+
+        const port = snapshot['PORT'];
+        if (typeof port === 'string') {
+          observedBySecondListener = port;
+        }
+      });
+
+      await delay(100);
+      writeFileSync(envPath, 'PORT=4500\n');
+      await waitForCondition(() => observedBySecondListener !== undefined);
+
+      expect(observedBySecondListener).toBe('4500');
+    } finally {
+      reloader.close();
+    }
   });
 });
 
