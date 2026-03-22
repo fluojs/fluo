@@ -258,22 +258,26 @@ describe('ThrottlerGuard — in-memory store', () => {
 });
 
 describe('ThrottlerGuard — Redis store mock', () => {
-  it('delegates get/set/increment/evict to the provided store', async () => {
+  it('delegates atomic consume calls to the provided store', async () => {
     const entries = new Map<string, ThrottlerStoreEntry>();
     const store: ThrottlerStore = {
-      evict: vi.fn(),
-      get: vi.fn((key: string) => entries.get(key)),
-      increment: vi.fn((key: string) => {
+      consume: vi.fn((key: string, input) => {
+        const now = input.now;
+        const ttlMs = input.ttlSeconds * 1000;
         const entry = entries.get(key);
-        if (!entry) {
-          return 0;
+
+        if (!entry || now >= entry.resetAt) {
+          const next = { count: 1, resetAt: now + ttlMs };
+          entries.set(key, next);
+          return next;
         }
 
-        entry.count++;
-        return entry.count;
-      }),
-      set: vi.fn((key: string, entry: ThrottlerStoreEntry) => {
-        entries.set(key, entry);
+        const next = {
+          count: entry.count + 1,
+          resetAt: entry.resetAt,
+        };
+        entries.set(key, next);
+        return next;
       }),
     };
 
@@ -287,9 +291,6 @@ describe('ThrottlerGuard — Redis store mock', () => {
     await guard.canActivate(createGuardContext(TestController, 'action', ctx));
     await guard.canActivate(createGuardContext(TestController, 'action', ctx));
 
-    expect(store.get).toHaveBeenCalled();
-    expect(store.set).toHaveBeenCalled();
-    expect(store.increment).toHaveBeenCalled();
-    expect(store.evict).toHaveBeenCalled();
+    expect(store.consume).toHaveBeenCalledTimes(2);
   });
 });

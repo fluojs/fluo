@@ -1249,6 +1249,152 @@ describe('OpenApiModule', () => {
     );
   });
 
+  it('avoids component schema key collisions for DTOs with identical constructor names', async () => {
+    const makeNamedRequestDto = (name: string) => {
+      const generated = {
+        [name]: class {
+          @FromBody('value')
+          @IsString()
+          value = '';
+        },
+      };
+
+      return generated[name] as unknown as new () => { value: string };
+    };
+
+    const makeNamedResponseDto = (name: string) => {
+      const generated = {
+        [name]: class {
+          @IsString()
+          id = '';
+        },
+      };
+
+      return generated[name] as unknown as new () => { id: string };
+    };
+
+    const SharedRequestDto = makeNamedRequestDto('SharedDto');
+    const SharedResponseDto = makeNamedResponseDto('SharedDto');
+
+    @Controller('/collision')
+    class CollisionController {
+      @RequestDto(SharedRequestDto)
+      @ApiResponse(201, { description: 'Created', type: SharedResponseDto })
+      @Post('/create')
+      create() {
+        return { id: '1' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: CollisionController }],
+      title: 'Collision API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [CollisionController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      components: { schemas: Record<string, unknown> };
+      paths: Record<string, { post?: { requestBody?: { content?: { 'application/json'?: { schema?: { $ref?: string } } } }; responses?: Record<string, { content?: { 'application/json'?: { schema?: { $ref?: string } } } }> } }>;
+    };
+
+    const requestSchemaRef = document.paths['/collision/create']?.post?.requestBody?.content?.['application/json']?.schema?.$ref;
+    const responseSchemaRef = document.paths['/collision/create']?.post?.responses?.['201']?.content?.['application/json']?.schema?.$ref;
+
+    expect(requestSchemaRef).toBeDefined();
+    expect(responseSchemaRef).toBeDefined();
+    expect(requestSchemaRef).not.toBe(responseSchemaRef);
+
+    const requestSchemaName = requestSchemaRef?.replace('#/components/schemas/', '');
+    const responseSchemaName = responseSchemaRef?.replace('#/components/schemas/', '');
+
+    expect(requestSchemaName).toBeDefined();
+    expect(responseSchemaName).toBeDefined();
+    expect(document.components.schemas[requestSchemaName as string]).toBeDefined();
+    expect(document.components.schemas[responseSchemaName as string]).toBeDefined();
+  });
+
+  it('keeps default ErrorResponse schema reserved when a DTO shares the same name', async () => {
+    const makeNamedRequestDto = (name: string) => {
+      const generated = {
+        [name]: class {
+          @FromBody('message')
+          @IsString()
+          message = '';
+        },
+      };
+
+      return generated[name] as unknown as new () => { message: string };
+    };
+
+    const ErrorResponseRequestDto = makeNamedRequestDto('ErrorResponse');
+
+    @Controller('/reserved')
+    class ReservedNameController {
+      @RequestDto(ErrorResponseRequestDto)
+      @Post('/create')
+      create() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: ReservedNameController }],
+      title: 'Reserved Name API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [ReservedNameController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      components: { schemas: Record<string, { properties?: Record<string, { type?: string }> }> };
+      paths: Record<string, { post?: { requestBody?: { content?: { 'application/json'?: { schema?: { $ref?: string } } } }; responses?: Record<string, { content?: { 'application/json'?: { schema?: { $ref?: string } } } }> } }>;
+    };
+
+    const requestSchemaRef = document.paths['/reserved/create']?.post?.requestBody?.content?.['application/json']?.schema?.$ref;
+    const defaultErrorSchemaRef = document.paths['/reserved/create']?.post?.responses?.['400']?.content?.['application/json']?.schema?.$ref;
+
+    expect(requestSchemaRef).toBeDefined();
+    expect(defaultErrorSchemaRef).toBe('#/components/schemas/ErrorResponse');
+    expect(requestSchemaRef).not.toBe(defaultErrorSchemaRef);
+
+    const requestSchemaName = requestSchemaRef?.replace('#/components/schemas/', '');
+    expect(requestSchemaName).toBeDefined();
+    expect(requestSchemaName).not.toBe('ErrorResponse');
+    expect(document.components.schemas[requestSchemaName as string]?.properties?.message?.type).toBe('string');
+  });
+
   it('resolves injected async options and serves the resulting document', async () => {
     const OPENAPI_TITLE = Symbol('openapi-title');
     const injectedTitles: string[] = [];

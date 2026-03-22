@@ -92,6 +92,42 @@ function prefixIssues(
 
 type RuleKind = DtoFieldValidationRule['kind'];
 type NonCustomRule = Exclude<DtoFieldValidationRule, { kind: 'custom' | 'nested' }>;
+type DtoValidationSchema = ReturnType<typeof getDtoValidationSchema>;
+
+interface CachedDtoMetadata {
+  bindingMap: Map<MetadataPropertyKey, DtoFieldBindingMetadata>;
+  classValidationRules: ReturnType<typeof getClassValidationRules>;
+  dtoValidationSchema: DtoValidationSchema;
+  mergedPropertyKeys: Set<MetadataPropertyKey>;
+}
+
+const dtoMetadataCache = new WeakMap<Constructor, CachedDtoMetadata>();
+
+function getCachedDtoMetadata(target: Constructor): CachedDtoMetadata {
+  const cached = dtoMetadataCache.get(target);
+
+  if (cached) {
+    return cached;
+  }
+
+  const bindingMap = getDtoBindingMap(target);
+  const dtoValidationSchema = getDtoValidationSchema(target);
+  const classValidationRules = getClassValidationRules(target);
+  const mergedPropertyKeys = new Set<MetadataPropertyKey>([
+    ...bindingMap.keys(),
+    ...dtoValidationSchema.map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey),
+  ]);
+  const next: CachedDtoMetadata = {
+    bindingMap,
+    classValidationRules,
+    dtoValidationSchema,
+    mergedPropertyKeys,
+  };
+
+  dtoMetadataCache.set(target, next);
+  return next;
+}
+
 type RuleHandler<K extends RuleKind> = {
   defaultCode: string;
   describe: (field: string, rule: Extract<DtoFieldValidationRule, { kind: K }>) => string;
@@ -317,10 +353,10 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
 
   Object.assign(instance, rawValue);
 
-  const bindingMap = getDtoBindingMap(target);
-  applyBindingValues(instance, rawValue, collectBoundAndValidatedPropertyKeys(target, bindingMap), bindingMap);
+  const metadata = getCachedDtoMetadata(target);
+  applyBindingValues(instance, rawValue, metadata.mergedPropertyKeys, metadata.bindingMap);
 
-  for (const entry of getDtoValidationSchema(target)) {
+  for (const entry of metadata.dtoValidationSchema) {
     const nestedRule = entry.rules.find(
       (rule: DtoFieldValidationRule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
     );
@@ -347,16 +383,6 @@ function getDtoBindingMap(target: Constructor): Map<MetadataPropertyKey, DtoFiel
   return new Map(
     getDtoBindingSchema(target).map((entry: { propertyKey: MetadataPropertyKey; metadata: DtoFieldBindingMetadata }) => [entry.propertyKey, entry.metadata]),
   );
-}
-
-function collectBoundAndValidatedPropertyKeys(
-  target: Constructor,
-  bindingMap: Map<MetadataPropertyKey, DtoFieldBindingMetadata>,
-): Set<MetadataPropertyKey> {
-  return new Set<MetadataPropertyKey>([
-    ...bindingMap.keys(),
-    ...getDtoValidationSchema(target).map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey),
-  ]);
 }
 
 function applyBindingValues(
@@ -621,17 +647,17 @@ async function collectValidationIssuesInternal<T>(
   value: T,
   context: { fieldPrefix?: string; inheritedSource?: ValidationIssue['source'] },
 ): Promise<readonly ValidationIssue[]> {
-  const bindingMetadata = getDtoBindingMap(target);
+  const metadata = getCachedDtoMetadata(target);
   const issues: ValidationIssue[] = [];
 
-  for (const entry of getDtoValidationSchema(target)) {
+  for (const entry of metadata.dtoValidationSchema) {
     const fieldValue = (value as Record<PropertyKey, unknown>)[entry.propertyKey];
-    const source = bindingMetadata.get(entry.propertyKey)?.source ?? context.inheritedSource;
+    const source = metadata.bindingMap.get(entry.propertyKey)?.source ?? context.inheritedSource;
     const fieldPath = context.fieldPrefix ? joinFieldPath(context.fieldPrefix, toFieldName(entry.propertyKey)) : toFieldName(entry.propertyKey);
     issues.push(...(await applyPropertyRules(entry.rules, fieldValue, value, entry.propertyKey, fieldPath, source)));
   }
 
-  for (const rule of getClassValidationRules(target)) {
+  for (const rule of metadata.classValidationRules) {
     const classIssues = await validateClassRule(rule, value);
     issues.push(...(context.fieldPrefix ? prefixIssues(classIssues, context.fieldPrefix, context.inheritedSource) : classIssues));
   }

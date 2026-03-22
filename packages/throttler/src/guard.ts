@@ -78,24 +78,17 @@ export class ThrottlerGuard implements Guard {
     const handlerKey = `${handler.controllerToken.name}.${handler.methodName}`;
     const storeKey = buildStoreKey(handlerKey, clientKey);
     const now = Date.now();
+    const entry = await this.store.consume(storeKey, {
+      now,
+      ttlSeconds,
+    });
 
-    await this.store.evict(now);
-
-    const entry = await this.store.get(storeKey);
-
-    if (!entry || now >= entry.resetAt) {
-      const resetAt = now + ttlSeconds * 1000;
-      await this.store.set(storeKey, { count: 1, resetAt });
-      return true;
-    }
-
-    if (entry.count >= limit) {
+    if (entry.count > limit) {
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
       requestContext.response.setHeader('Retry-After', String(retryAfter));
       throw new TooManyRequestsException('Too Many Requests', { meta: { retryAfter } });
     }
 
-    await this.store.increment(storeKey);
     return true;
   }
 }
