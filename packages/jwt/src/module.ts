@@ -28,14 +28,18 @@ function hasRefreshTokenOptions(
   return typeof value === 'object' && value !== null && 'refreshToken' in value && Boolean(value.refreshToken);
 }
 
-function createJwtModuleProviders(optionsProvider: JwtOptionsProvider, includeRefreshTokenService: boolean): Provider[] {
+function createJwtModuleProviders(
+  optionsProvider: JwtOptionsProvider,
+  includeRefreshTokenService: boolean,
+  refreshTokenServiceScope: 'singleton' | 'transient',
+): Provider[] {
   const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner];
 
   if (includeRefreshTokenService) {
     providers.push({
       inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
       provide: RefreshTokenService,
-      scope: 'singleton',
+      scope: refreshTokenServiceScope,
       useFactory: (...deps: unknown[]) => {
         const [options, signer, verifier] = deps;
 
@@ -60,7 +64,7 @@ export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] 
     provide: JWT_OPTIONS,
     scope: 'singleton',
     useValue: options,
-  }, Boolean(options.refreshToken));
+  }, Boolean(options.refreshToken), 'singleton');
 }
 
 export class JwtModule {
@@ -69,7 +73,7 @@ export class JwtModule {
       provide: JWT_OPTIONS,
       scope: 'singleton',
       useValue: options,
-    }, Boolean(options.refreshToken));
+    }, Boolean(options.refreshToken), 'singleton');
   }
 
   static forRootAsync(options: AsyncModuleOptions<JwtVerifierOptions>): ModuleType {
@@ -78,15 +82,19 @@ export class JwtModule {
       provide: JWT_OPTIONS,
       scope: 'singleton',
       useFactory: options.useFactory,
-    }, true);
+    }, true, 'transient');
   }
 
-  private static createModule(optionsProvider: JwtOptionsProvider, includeRefreshTokenService: boolean): ModuleType {
+  private static createModule(
+    optionsProvider: JwtOptionsProvider,
+    includeRefreshTokenService: boolean,
+    refreshTokenServiceScope: 'singleton' | 'transient',
+  ): ModuleType {
     class JwtRuntimeModule {}
 
     defineModuleMetadata(JwtRuntimeModule, {
       exports: [DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenService ? [RefreshTokenService] : [])],
-      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenService),
+      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenService, refreshTokenServiceScope),
     });
 
     return JwtRuntimeModule;
