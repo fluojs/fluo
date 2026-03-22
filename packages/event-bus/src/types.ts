@@ -2,6 +2,7 @@ import type { MetadataPropertyKey, Token } from '@konekti/core';
 
 export interface EventType<TEvent extends object = object> {
   new (...args: never[]): TEvent;
+  readonly eventKey?: string;
 }
 
 export interface EventHandlerMetadata {

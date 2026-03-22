@@ -882,6 +882,112 @@ describe('@konekti/event-bus', () => {
       await app.close();
     });
 
+    it('keeps inherited handler matching consistent for transport messages', async () => {
+      const transport = createMockTransport();
+
+      class EventStore {
+        baseCalls = 0;
+        derivedCalls = 0;
+      }
+
+      @Inject([EventStore])
+      class BaseHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onBase(_event: UserCreatedEvent) {
+          this.store.baseCalls += 1;
+        }
+      }
+
+      @Inject([EventStore])
+      class DerivedHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserPromotedEvent)
+        onDerived(_event: UserPromotedEvent) {
+          this.store.derivedCalls += 1;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, BaseHandler, DerivedHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const store = await app.container.resolve(EventStore);
+
+      await eventBus.publish(new UserPromotedEvent('transport-user-3', 'admin'));
+
+      const publishedChannels = transport.published.map((entry) => entry.channel).sort();
+      expect(publishedChannels).toEqual(['UserCreatedEvent', 'UserPromotedEvent']);
+
+      const baseSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
+      const derivedSubscription = transport.subscribed.find((entry) => entry.channel === 'UserPromotedEvent');
+
+      expect(baseSubscription).toBeDefined();
+      expect(derivedSubscription).toBeDefined();
+
+      await derivedSubscription!.handler({ userId: 'remote-derived', role: 'admin' });
+      await baseSubscription!.handler({ userId: 'remote-derived', role: 'admin' });
+
+      expect(store.baseCalls).toBe(2);
+      expect(store.derivedCalls).toBe(2);
+
+      await app.close();
+    });
+
+    it('uses explicit static eventKey values for transport channels', async () => {
+      const transport = createMockTransport();
+
+      class InventoryAdjustedEvent {
+        static readonly eventKey = 'inventory.adjusted.v1';
+
+        constructor(public readonly sku: string) {}
+      }
+
+      class EventStore {
+        receivedSku = '';
+      }
+
+      @Inject([EventStore])
+      class InventoryHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(InventoryAdjustedEvent)
+        onAdjusted(event: InventoryAdjustedEvent) {
+          this.store.receivedSku = event.sku;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, InventoryHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const store = await app.container.resolve(EventStore);
+
+      await eventBus.publish(new InventoryAdjustedEvent('sku-1'));
+
+      expect(transport.published).toHaveLength(1);
+      expect(transport.published[0]!.channel).toBe('inventory.adjusted.v1');
+
+      const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'inventory.adjusted.v1');
+      expect(incomingSubscription).toBeDefined();
+
+      await incomingSubscription!.handler({ sku: 'sku-2' });
+
+      expect(store.receivedSku).toBe('sku-2');
+
+      await app.close();
+    });
+
     it('isolates payload mutations between handlers for incoming transport messages', async () => {
       const transport = createMockTransport();
 
