@@ -2,37 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-
-Konekti is a **standard-decorator-based** TypeScript backend framework built around explicit DI, a predictable HTTP runtime, package-scoped integrations, and a CLI-first bootstrap flow.
-
-## Why standard decorators?
-
-- Legacy decorators (`"experimentalDecorators": true`, `"emitDecoratorMetadata": true`) are TypeScript-specific pre-standard behavior. NestJS currently depends on this model.
-- Standard decorators (TC39 Stage 3, shipped in TypeScript 5.0+) are the JavaScript language direction and do not require those legacy decorator flags.
-- NestJS has publicly stated it will not support TC39 decorators: https://github.com/nestjs/nest/issues/10676.
-- This creates a long-term divergence from the JavaScript standard for NestJS apps, while Konekti apps stay on the standard decorator model.
-- Konekti apps run with standard TypeScript configuration (`"experimentalDecorators": false` or omitting the flag) and without `emitDecoratorMetadata`.
-
-## What makes Konekti different
-
-- **No `emitDecoratorMetadata` dependency**: Konekti's DI does not require TypeScript runtime metadata emission.
-- **No reflection-based DI autowiring**: dependencies are declared explicitly with tokens (for example `@Inject([USER_REPOSITORY, LOGGER])`) instead of runtime type metadata magic.
-- **No legacy decorator flag requirement**: Konekti uses TC39 standard decorators and does not require `"experimentalDecorators": true`.
-- **Package-local integration boundaries**: integrations such as `@konekti/redis`, `@konekti/prisma`, and `@konekti/drizzle` are explicit package APIs instead of hidden platform wiring.
-
-Minimal tsconfig baseline for Konekti apps:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": false
-  }
-}
-```
+Konekti is a TypeScript backend framework built on **TC39 standard decorators**, explicit DI, and a predictable runtime path you can run in minutes.
 
 ## Quick Start
-
-Create a starter app with the canonical public bootstrap path:
 
 ```sh
 pnpm add -g @konekti/cli
@@ -41,101 +13,36 @@ cd starter-app
 pnpm dev
 ```
 
-Generated apps include:
+You get a runnable app with:
 
-- runtime-owned `src/main.ts` bootstrap
-- `/health`, `/ready`, and a minimal `health/` module example at `/health-info/`
-- `dev`, `build`, `typecheck`, and `test` commands out of the box
+- runtime-owned bootstrap in `src/main.ts`
+- `/health` and `/ready` endpoints out of the box
+- starter `health/` module example at `/health-info/`
+- ready-to-run `dev`, `build`, `typecheck`, and `test` scripts
 
-## What Konekti Includes
+## Why Teams Pick Konekti
 
-### Core framework packages
+- **Standard decorators, not legacy flags**: no `"experimentalDecorators": true`, no `emitDecoratorMetadata` requirement
+- **Explicit DI over reflection magic**: dependencies stay readable and auditable via tokens
+- **Composable package boundaries**: add auth, OpenAPI, metrics, queues, microservices, Redis, Prisma, Drizzle, and more when needed
+- **CLI-first onboarding**: create, generate, run, and verify with one consistent workflow
 
-- `@konekti/core`
-- `@konekti/config`
-- `@konekti/di`
-- `@konekti/http`
-- `@konekti/runtime`
-- `@konekti/testing`
+## Start Here (Docs-first)
 
-### Validation, auth, and docs packages
+- `docs/README.md` - full reading order and docs ownership map
+- `docs/getting-started/quick-start.md` - fastest path from install to running app
+- `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
+- `docs/reference/package-surface.md` - current public package surface
 
-- `@konekti/dto-validator`
-- `@konekti/jwt`
-- `@konekti/passport`
-- `@konekti/openapi`
-- `@konekti/graphql`
-- `@konekti/metrics`
-- `@konekti/cron`
-- `@konekti/event-bus`
-- `@konekti/microservices`
-- `@konekti/websocket`
-- `@konekti/queue`
+Need package-level API details? Jump to `packages/*/README.md` for each package's source of truth.
 
-### Data integration packages
-
-- `@konekti/redis`
-- `@konekti/prisma`
-- `@konekti/drizzle`
-
-### Tooling
-
-- `@konekti/cli`
-
-## Core Usage Flow
-
-1. Bootstrap a new app with `konekti new`
-2. Generate modules, controllers, services, repositories, middleware, and DTOs with `konekti g`
-3. Build request flow with explicit DTO binding and validation
-4. Compose auth, metrics, OpenAPI, and data adapters as package-level imports
-5. Run and verify with the runtime-owned HTTP/bootstrap path
-
-## Why It Is Shaped This Way
-
-- **CLI-first bootstrap** keeps the starter path consistent and documented.
-- **Package-local truth** lives in each package README instead of a separate plan repo.
-- **Cross-package contracts** live in `docs/` as architecture and reference guides.
-- **Planning lives in GitHub Issues**, not in phase-based docs inside the product repo.
-
-## Documentation
-
-Start here:
-
-- `docs/README.md`
-- `docs/getting-started/quick-start.md`
-- `docs/concepts/architecture-overview.md`
-- `docs/reference/package-surface.md`
-
-Release history:
+## Release History
 
 - `CHANGELOG.md`
 - `https://github.com/konektijs/konekti/releases`
 
-Package-level docs:
-
-- `packages/cli/README.md`
-- `packages/http/README.md`
-- `packages/runtime/README.md`
-- `packages/redis/README.md`
-- `packages/passport/README.md`
-- `packages/openapi/README.md`
-- `packages/graphql/README.md`
-- `packages/metrics/README.md`
-- `packages/cron/README.md`
-- `packages/event-bus/README.md`
-- `packages/microservices/README.md`
-- `packages/websocket/README.md`
-- `packages/queue/README.md`
-
-## Documentation Rules
-
-- root `README.md` is the project hub
-- `docs/` owns cross-package current truth
-- `packages/*/README*.md` own package-specific APIs and examples
-- future work and follow-ups belong in GitHub Issues
-
 ## Contributing
 
-- if you change a package surface, update the matching package README
-- if you change a cross-package contract, update the matching `docs/` guide
-- if you identify future work, open or update a GitHub Issue instead of writing phase status prose
+- update `docs/` when cross-package contracts change
+- update `packages/*/README*.md` when package API surface changes
+- track future work in GitHub Issues, not phase/status prose in the repo
