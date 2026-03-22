@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, getModuleMetadata, type Constructor, type Token } from '@konekti/core';
+import { Inject, getClassDiMetadata, getModuleMetadata, type Constructor, type Token } from '@konekti/core';
 import { Container, type Provider } from '@konekti/di';
 
 import { JwtModule } from './module.js';
@@ -47,6 +47,44 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   }
 
   return metadata.providers as Provider[];
+}
+
+function providerScope(provider: Provider): 'singleton' | 'request' | 'transient' {
+  if (typeof provider === 'function') {
+    return getClassDiMetadata(provider)?.scope ?? 'singleton';
+  }
+
+  if ('useValue' in provider) {
+    return 'singleton';
+  }
+
+  if ('useClass' in provider) {
+    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
+  }
+
+  if ('useFactory' in provider) {
+    return provider.scope ?? 'singleton';
+  }
+
+  return 'singleton';
+}
+
+function providerToken(provider: Provider): Token {
+  if (typeof provider === 'function') {
+    return provider;
+  }
+
+  return provider.provide;
+}
+
+async function resolveSingletonProviders(container: Container, providers: Provider[]): Promise<void> {
+  for (const provider of providers) {
+    if (providerScope(provider) !== 'singleton') {
+      continue;
+    }
+
+    await container.resolve(providerToken(provider));
+  }
 }
 
 describe('JwtModule', () => {
@@ -111,6 +149,43 @@ describe('JwtModule', () => {
     container.register(...moduleProviders(moduleType));
 
     await expect(container.resolve(DefaultJwtSigner)).rejects.toThrow('jwt async options failed');
+  });
+
+  it('does not fail singleton provider resolution when async options omit refreshToken', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.forRootAsync({
+      useFactory: async () => ({
+        algorithms: ['HS256'],
+        issuer: 'jwt-module-tests',
+        secret: 'async-secret-without-refresh',
+      }),
+    });
+
+    const providers = moduleProviders(moduleType);
+
+    container.register(...providers);
+
+    await expect(resolveSingletonProviders(container, providers)).resolves.toBeUndefined();
+  });
+
+  it('resolves refresh token service for async options when refreshToken is configured', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.forRootAsync({
+      useFactory: async () => ({
+        algorithms: ['HS256'],
+        refreshToken: {
+          expiresInSeconds: 60,
+          rotation: true,
+          secret: 'refresh-secret',
+          store: new NoopRefreshTokenStore(),
+        },
+        secret: 'jwt-secret',
+      }),
+    });
+
+    container.register(...moduleProviders(moduleType));
+
+    await expect(container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
   });
 
   it('registers refresh token service when refresh options are provided', async () => {
