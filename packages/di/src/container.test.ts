@@ -330,6 +330,30 @@ describe('Container', () => {
 
       expect(await container.resolve<string>(token)).toBe('single');
     });
+
+    it('keeps root singleton cache isolated when overriding in a request scope', async () => {
+      const token = Symbol('singleton-token');
+      const rootSingleton = { value: 'root' };
+      const requestOverride = { value: 'request' };
+
+      const root = new Container().register({ provide: token, useValue: rootSingleton });
+      const requestScope = root.createRequestScope();
+
+      const rootBeforeOverride = await root.resolve<{ value: string }>(token);
+
+      requestScope.override({ provide: token, useValue: requestOverride });
+
+      const requestResolved = await requestScope.resolve<{ value: string }>(token);
+      const rootAfterOverride = await root.resolve<{ value: string }>(token);
+      const secondRequestScope = root.createRequestScope();
+      const secondRequestResolved = await secondRequestScope.resolve<{ value: string }>(token);
+
+      expect(rootBeforeOverride).toBe(rootSingleton);
+      expect(rootAfterOverride).toBe(rootBeforeOverride);
+      expect(requestResolved).toBe(requestOverride);
+      expect(requestResolved).not.toBe(rootAfterOverride);
+      expect(secondRequestResolved).toBe(rootAfterOverride);
+    });
   });
 
   describe('optional injection', () => {

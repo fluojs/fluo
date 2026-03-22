@@ -148,10 +148,11 @@ export class Container {
   override(...providers: Provider[]): this {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
+      const existing = this.lookupProvider(normalized.provide);
 
       this.registrations.delete(normalized.provide);
       this.multiRegistrations.delete(normalized.provide);
-      this.invalidateCachedEntry(normalized.provide);
+      this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
 
       if (normalized.multi) {
         this.multiRegistrations.set(normalized.provide, [normalized]);
@@ -301,7 +302,7 @@ export class Container {
   }
 
   private async resolveScopedOrSingletonInstance(provider: NormalizedProvider, chain: Token[]): Promise<unknown> {
-    const cache = this.cacheFor(provider.scope, provider.provide);
+    const cache = this.cacheFor(provider);
 
     if (!cache.has(provider.provide)) {
       const promise = this.instantiate(provider, chain);
@@ -317,6 +318,10 @@ export class Container {
     const provider = this.lookupProvider(token);
 
     if (!provider || provider.scope !== 'singleton') return undefined;
+
+    if (this.requestScopeEnabled && this.registrations.has(token)) {
+      return this.requestCache;
+    }
 
     return this.root().singletonCache;
   }
@@ -358,14 +363,18 @@ export class Container {
     return this.parent?.lookupProvider(token);
   }
 
-  private cacheFor(scope: Scope, token: Token) {
-    if (scope === 'singleton') {
+  private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
+    if (provider.scope === 'singleton') {
+      if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
+        return this.requestCache;
+      }
+
       return this.root().singletonCache;
     }
 
     if (!this.requestScopeEnabled) {
       throw new RequestScopeResolutionError(
-        `Request-scoped provider ${String(token)} cannot be resolved outside request scope.`,
+        `Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`,
       );
     }
 
@@ -514,7 +523,7 @@ export class Container {
     return Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
   }
 
-  private invalidateCachedEntry(token: Token): void {
+  private invalidateCachedEntry(token: Token, scope: Scope): void {
     if (this.requestCache.has(token)) {
       const cached = this.requestCache.get(token);
 
@@ -525,13 +534,17 @@ export class Container {
       this.requestCache.delete(token);
     }
 
-    const singletonCache = this.root().singletonCache;
+    if (this.parent || scope !== 'singleton') {
+      return;
+    }
+
+    const singletonCache = this.singletonCache;
 
     if (singletonCache.has(token)) {
       const cached = singletonCache.get(token);
 
       if (cached) {
-        this.root().staleCache.set(token, cached);
+        this.staleCache.set(token, cached);
       }
 
       singletonCache.delete(token);
