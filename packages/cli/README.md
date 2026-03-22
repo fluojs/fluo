@@ -40,6 +40,8 @@ konekti new my-app
 #   --target-directory <path>
 ```
 
+`--target-directory` always wins over the positional project name, regardless of argument order.
+
 For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported.
 
 ### Generate a file inside an existing project

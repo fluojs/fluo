@@ -40,6 +40,8 @@ konekti new my-app
 #   --target-directory <path>
 ```
 
+`--target-directory`는 인자 순서와 무관하게 positional 프로젝트 이름보다 항상 우선합니다.
+
 한 번만 실행하는 zero-install 부트스트랩에는 `pnpm dlx @konekti/cli new my-app`도 계속 지원됩니다.
 
 ### 기존 프로젝트에 파일 생성
