@@ -264,6 +264,60 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('isolates Passport.js bridge request state across concurrent authentications', async () => {
+    let sequence = 0;
+
+    class PassportLikeConcurrentStrategy {
+      success?: (user: unknown, info?: unknown) => void;
+
+      authenticate() {
+        const current = ++sequence;
+        const delay = current === 1 ? 10 : 0;
+
+        setTimeout(() => {
+          this.success?.({
+            id: `google-user-${current}`,
+          });
+        }, delay);
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-concurrent', PassportLikeConcurrentStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-concurrent')
+      getProfile(_input: unknown, ctx: { principal?: { subject: string } }) {
+        return { subject: ctx.principal?.subject };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeConcurrentStrategy,
+      ...bridge.providers,
+      ...createPassportProviders({ defaultStrategy: 'google-concurrent' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+
+    const [firstResponse, secondResponse] = [createResponse(), createResponse()];
+
+    await Promise.all([
+      dispatcher.dispatch(createRequest('/oauth/profile'), firstResponse),
+      dispatcher.dispatch(createRequest('/oauth/profile'), secondResponse),
+    ]);
+
+    const subjects = [firstResponse.body, secondResponse.body]
+      .map((body) => (body as { subject?: string }).subject)
+      .sort();
+
+    expect(subjects).toEqual(['google-user-1', 'google-user-2']);
+  });
+
   it('supports Passport.js redirect flow without executing the protected handler', async () => {
     let handlerCalled = false;
 

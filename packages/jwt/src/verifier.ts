@@ -236,7 +236,7 @@ export class DefaultJwtVerifier {
       audience: this.options.audience,
       clockSkewSeconds: this.options.clockSkewSeconds,
       issuer: this.options.issuer,
-      maxAge: this.options.maxAge,
+      maxAge: refreshToken.verifyMaxAgeSeconds,
       requireExp: true,
       secret: refreshToken.secret,
     };

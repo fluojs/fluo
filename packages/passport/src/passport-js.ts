@@ -20,6 +20,15 @@ export interface PassportJsStrategyLike {
 
 type PassportJsExecutableStrategy = PassportJsStrategyLike & PassportJsActionBindings;
 
+interface PassportJsRequestState {
+  context: GuardContext;
+  mapPrincipal: PassportJsPrincipalMapper;
+  reject: (reason?: unknown) => void;
+  resolve: (value: Principal | AuthHandledResult) => void;
+  response: GuardContext['requestContext']['response'];
+  settled: boolean;
+}
+
 export interface PassportJsPrincipalMapperInput {
   context: GuardContext;
   info?: unknown;
@@ -112,6 +121,8 @@ function extractChallengeMessage(challenge: unknown): string | undefined {
 }
 
 export class PassportJsAuthStrategy implements AuthStrategy {
+  private readonly requestState = new WeakMap<PassportJsExecutableStrategy, PassportJsRequestState>();
+
   constructor(
     private readonly strategyTemplate: PassportJsStrategyLike,
     private readonly options: PassportJsAuthStrategyOptions = {},
@@ -124,51 +135,44 @@ export class PassportJsAuthStrategy implements AuthStrategy {
     const mapPrincipal = this.options.mapPrincipal ?? defaultPrincipalMapper;
 
     return new Promise((resolve, reject) => {
-      const settle = this.createSettleGuard();
-
-      this.bindStrategyActions(strategy, {
+      this.requestState.set(strategy, {
         context,
         mapPrincipal,
         reject,
         resolve,
         response,
-        settle,
+        settled: false,
       });
+
+      this.bindStrategyActions(strategy);
 
       try {
         strategy.authenticate(request, this.options.authenticateOptions);
       } catch (error: unknown) {
-        settle(() => reject(error));
+        this.settle(strategy, () => reject(error));
       }
     });
   }
 
-  private createSettleGuard(): (handler: () => void) => void {
-    let settled = false;
+  private settle(strategy: PassportJsExecutableStrategy, handler: (state: PassportJsRequestState) => void): void {
+    const state = this.requestState.get(strategy);
 
-    return (handler: () => void) => {
-      if (settled) {
-        return;
-      }
+    if (!state || state.settled) {
+      return;
+    }
 
-      settled = true;
-      handler();
-    };
+    state.settled = true;
+
+    try {
+      handler(state);
+    } finally {
+      this.requestState.delete(strategy);
+    }
   }
 
-  private bindStrategyActions(
-    strategy: PassportJsExecutableStrategy,
-    state: {
-      context: GuardContext;
-      mapPrincipal: PassportJsPrincipalMapper;
-      reject: (reason?: unknown) => void;
-      resolve: (value: Principal | AuthHandledResult) => void;
-      response: GuardContext['requestContext']['response'];
-      settle: (handler: () => void) => void;
-    },
-  ): void {
+  private bindStrategyActions(strategy: PassportJsExecutableStrategy): void {
     strategy.success = (user, info) => {
-      state.settle(() => {
+      this.settle(strategy, (state) => {
         try {
           state.resolve(state.mapPrincipal({ context: state.context, info, user }));
         } catch (error: unknown) {
@@ -178,26 +182,26 @@ export class PassportJsAuthStrategy implements AuthStrategy {
     };
 
     strategy.fail = (challenge, status) => {
-      state.settle(() => {
+      this.settle(strategy, (state) => {
         state.reject(this.createFailureError(challenge, status));
       });
     };
 
     strategy.redirect = (url, status = 302) => {
-      state.settle(() => {
+      this.settle(strategy, (state) => {
         state.response.redirect(status, url);
         state.resolve({ handled: true });
       });
     };
 
     strategy.pass = () => {
-      state.settle(() => {
+      this.settle(strategy, (state) => {
         state.reject(new AuthenticationRequiredError());
       });
     };
 
     strategy.error = (error) => {
-      state.settle(() => {
+      this.settle(strategy, (state) => {
         state.reject(error);
       });
     };
