@@ -20,9 +20,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./kafka": {
+      "types": "./dist/kafka-transport.d.ts",
+      "import": "./dist/kafka-transport.js"
+    },
+    "./nats": {
+      "types": "./dist/nats-transport.d.ts",
+      "import": "./dist/nats-transport.js"
+    },
     "./redis": {
       "types": "./dist/redis-transport.d.ts",
       "import": "./dist/redis-transport.js"
+    },
+    "./rabbitmq": {
+      "types": "./dist/rabbitmq-transport.d.ts",
+      "import": "./dist/rabbitmq-transport.js"
     },
     "./tcp": {
       "types": "./dist/tcp-transport.d.ts",
