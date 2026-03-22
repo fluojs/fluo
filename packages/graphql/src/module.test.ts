@@ -259,6 +259,53 @@ describe('@konekti/graphql', () => {
 });
 
 describe('@konekti/graphql — provider scopes', () => {
+  it('isolates request-scoped resolver instances across concurrent operations', async () => {
+    let issued = 0;
+
+    @Inject([])
+    @Scope('request')
+    class RequestIdentity {
+      readonly id = `req-${String(++issued)}`;
+    }
+
+    @Inject([RequestIdentity])
+    @Scope('request')
+    @Resolver('ConcurrentRequestResolver')
+    class ConcurrentRequestResolver {
+      constructor(private readonly identity: RequestIdentity) {}
+
+      @Query()
+      async requestId(): Promise<string> {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return this.identity.id;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule({ resolvers: [ConcurrentRequestResolver] })],
+      providers: [RequestIdentity, ConcurrentRequestResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const [op1, op2] = await Promise.all([
+      postGraphql(port, '{ requestId }'),
+      postGraphql(port, '{ requestId }'),
+    ]);
+
+    const id1 = (op1 as { data?: { requestId?: string } }).data?.requestId;
+    const id2 = (op2 as { data?: { requestId?: string } }).data?.requestId;
+
+    expect(typeof id1).toBe('string');
+    expect(typeof id2).toBe('string');
+    expect(id1).not.toBe(id2);
+
+    await app.close();
+  });
+
   it('request-scoped resolver receives a fresh instance per operation', async () => {
     @Inject([])
     @Scope('request')
