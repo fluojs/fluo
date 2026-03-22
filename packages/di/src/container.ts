@@ -112,7 +112,8 @@ export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
-  private readonly staleCache = new Map<Token, Promise<unknown>>();
+  private readonly staleDisposalTasks = new Set<Promise<void>>();
+  private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
@@ -383,14 +384,18 @@ export class Container {
 
   private disposalCacheEntries(): Array<[Token, Promise<unknown>]> {
     if (this.parent) {
-      return [...Array.from(this.staleCache.entries()), ...Array.from(this.requestCache.entries())];
+      return Array.from(this.requestCache.entries());
     }
 
-    return [...Array.from(this.staleCache.entries()), ...Array.from(this.singletonCache.entries())];
+    return Array.from(this.singletonCache.entries());
   }
 
   private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
+    await this.waitForStaleDisposalTasks();
+
     const { disposables, errors } = await this.collectDisposableInstances(entries);
+
+    errors.push(...this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length));
 
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
 
@@ -438,12 +443,36 @@ export class Container {
   private clearDisposalCaches(): void {
     if (this.parent) {
       this.requestCache.clear();
-      this.staleCache.clear();
       return;
     }
 
     this.singletonCache.clear();
-    this.staleCache.clear();
+  }
+
+  private async waitForStaleDisposalTasks(): Promise<void> {
+    while (this.staleDisposalTasks.size > 0) {
+      await Promise.all(Array.from(this.staleDisposalTasks));
+    }
+  }
+
+  private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
+    let task: Promise<void>;
+
+    task = (async () => {
+      try {
+        const instance = await instancePromise;
+
+        if (this.isDisposable(instance)) {
+          await instance.onDestroy();
+        }
+      } catch (error) {
+        this.staleDisposalErrors.push(error);
+      }
+    })().finally(() => {
+      this.staleDisposalTasks.delete(task);
+    });
+
+    this.staleDisposalTasks.add(task);
   }
 
   private throwDisposalErrors(errors: unknown[]): void {
@@ -528,7 +557,7 @@ export class Container {
       const cached = this.requestCache.get(token);
 
       if (cached) {
-        this.staleCache.set(token, cached);
+        this.scheduleStaleDisposal(cached);
       }
 
       this.requestCache.delete(token);
@@ -544,7 +573,7 @@ export class Container {
       const cached = singletonCache.get(token);
 
       if (cached) {
-        this.staleCache.set(token, cached);
+        this.scheduleStaleDisposal(cached);
       }
 
       singletonCache.delete(token);

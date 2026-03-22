@@ -95,6 +95,14 @@ The container separates **where to find a provider** from **where to cache its i
 
 A provider can be registered in the root but cached in the request child. This is the mechanism that makes request-scoped providers per-request without re-registering them.
 
+### Override cache invalidation policy
+
+When `override()` replaces a cached singleton/request provider, the previous cached instance is evicted and disposed immediately (if it implements `onDestroy()`).
+
+- stale overridden instances are not retained until container-wide `dispose()`
+- repeated overrides do not accumulate stale cache retention
+- container `dispose()` still disposes currently active cache entries in reverse creation order
+
 ### Why resolving request-scoped providers from root fails
 
 Resolving a `request`-scoped provider directly from the root container throws an error. This is an intentional safeguard — a request scope needs a request boundary, and allowing root resolution would let request dependencies silently behave like singletons.
