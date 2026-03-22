@@ -99,8 +99,10 @@ interface Validator {
 
 ```typescript
 import { z } from 'zod';
+import { type } from 'arktype';
 import { object, pipe, safeParse, string, email } from 'valibot';
 import {
+  createArkTypeAdapter,
   createSchemaValidator,
   createValibotSchemaValidator,
   createZodSchemaValidator,
@@ -118,6 +120,12 @@ const valibotValidator = createValibotSchemaValidator(
     email: pipe(string(), email()),
   }),
   safeParse,
+);
+
+const arkTypeValidator = createArkTypeAdapter(
+  type({
+    email: 'string.email',
+  }),
 );
 
 const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
