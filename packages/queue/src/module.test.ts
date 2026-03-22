@@ -508,6 +508,51 @@ describe('@konekti/queue', () => {
     await app.close();
   });
 
+  it('keeps dead-letter payload immutable when worker mutates nested payload fields', async () => {
+    class MutableFailingJob {
+      constructor(public readonly meta: { role: string }) {}
+    }
+
+    @QueueWorker(MutableFailingJob, {
+      attempts: 1,
+      jobName: 'mutable-failing-job',
+    })
+    class MutableFailingWorker {
+      async handle(job: MutableFailingJob): Promise<void> {
+        job.meta.role = 'mutated';
+        throw new Error('mutated and failed');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createQueueModule()],
+      providers: [MutableFailingWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+
+    await queue.enqueue(new MutableFailingJob({ role: 'original' }));
+
+    const deadLetters = redis.deadLetters.get('konekti:queue:dead-letter:mutable-failing-job') ?? [];
+    expect(deadLetters).toHaveLength(1);
+    expect(JSON.parse(deadLetters[0]!)).toMatchObject({
+      payload: {
+        meta: {
+          role: 'original',
+        },
+      },
+    });
+
+    await app.close();
+  });
+
   it('allows enqueue during another provider onApplicationBootstrap', async () => {
     class BootstrapJob {
       constructor(public readonly value: string) {}

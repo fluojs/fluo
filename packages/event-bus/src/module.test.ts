@@ -97,7 +97,7 @@ describe('@konekti/event-bus', () => {
     }).toThrow('@OnEvent() cannot be used on static methods.');
   });
 
-  it('dispatches a published event to a single provider handler with the exact event instance', async () => {
+  it('dispatches a published event to a single provider handler with a rehydrated event instance', async () => {
     class EventStore {
       received: UserCreatedEvent | undefined;
     }
@@ -125,7 +125,9 @@ describe('@konekti/event-bus', () => {
 
     await eventBus.publish(event);
 
-    expect(store.received).toBe(event);
+    expect(store.received).toBeInstanceOf(UserCreatedEvent);
+    expect(store.received).not.toBe(event);
+    expect(store.received?.userId).toBe(event.userId);
 
     await app.close();
   });
@@ -172,6 +174,66 @@ describe('@konekti/event-bus', () => {
 
     expect(store.successCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.handle failed.'))).toBe(true);
+
+    await app.close();
+  });
+
+  it('isolates payload mutations between local handlers and transport publish', async () => {
+    const transport = {
+      published: [] as Array<{ channel: string; payload: unknown }>,
+      async publish(channel: string, payload: unknown) {
+        this.published.push({ channel, payload });
+      },
+      async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      async close() {},
+    } satisfies EventBusTransport & { published: Array<{ channel: string; payload: unknown }> };
+
+    class MutableEvent {
+      constructor(public readonly meta: { role: string }) {}
+    }
+
+    class EventStore {
+      firstSeen = '';
+      secondSeen = '';
+    }
+
+    @Inject([EventStore])
+    class FirstHandler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(MutableEvent)
+      handle(event: MutableEvent) {
+        this.store.firstSeen = event.meta.role;
+        event.meta.role = 'mutated';
+      }
+    }
+
+    @Inject([EventStore])
+    class SecondHandler {
+      constructor(private readonly store: EventStore) {}
+
+      @OnEvent(MutableEvent)
+      handle(event: MutableEvent) {
+        this.store.secondSeen = event.meta.role;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createEventBusModule({ transport })],
+      providers: [EventStore, FirstHandler, SecondHandler],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const store = await app.container.resolve(EventStore);
+
+    await eventBus.publish(new MutableEvent({ role: 'original' }));
+
+    expect(store.firstSeen).toBe('original');
+    expect(store.secondSeen).toBe('original');
+    expect(transport.published).toHaveLength(1);
+    expect((transport.published[0]?.payload as { meta: { role: string } }).meta.role).toBe('original');
 
     await app.close();
   });
@@ -816,6 +878,58 @@ describe('@konekti/event-bus', () => {
       expect(store.received).toBeDefined();
       expect(store.received).toBeInstanceOf(UserCreatedEvent);
       expect(store.received!.userId).toBe('transport-user-2');
+
+      await app.close();
+    });
+
+    it('isolates payload mutations between handlers for incoming transport messages', async () => {
+      const transport = createMockTransport();
+
+      class MutableTransportEvent {
+        constructor(public readonly meta: { role: string }) {}
+      }
+
+      class EventStore {
+        firstSeen = '';
+        secondSeen = '';
+      }
+
+      @Inject([EventStore])
+      class FirstHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(MutableTransportEvent)
+        handle(event: MutableTransportEvent) {
+          this.store.firstSeen = event.meta.role;
+          event.meta.role = 'changed';
+        }
+      }
+
+      @Inject([EventStore])
+      class SecondHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(MutableTransportEvent)
+        handle(event: MutableTransportEvent) {
+          this.store.secondSeen = event.meta.role;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, FirstHandler, SecondHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const store = await app.container.resolve(EventStore);
+      const incomingSubscription = transport.subscribed.find((s) => s.channel === 'MutableTransportEvent');
+
+      expect(incomingSubscription).toBeDefined();
+      await incomingSubscription!.handler({ meta: { role: 'original' } });
+
+      expect(store.firstSeen).toBe('original');
+      expect(store.secondSeen).toBe('original');
 
       await app.close();
     });

@@ -39,6 +39,43 @@ interface InvocationBound {
   promise: Promise<never>;
 }
 
+function fallbackClone(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => fallbackClone(item));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const source = value as Record<string, unknown>;
+    const cloned: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(source)) {
+      cloned[key] = fallbackClone(item);
+    }
+
+    return cloned;
+  }
+
+  return value;
+}
+
+function cloneValue<T>(value: T): T {
+  try {
+    return structuredClone(value);
+  } catch {
+    return fallbackClone(value) as T;
+  }
+}
+
+function createIsolatedEvent<TEvent extends object>(eventType: EventType<TEvent>, source: unknown): TEvent {
+  const clonedPayload = cloneValue(source);
+
+  if (typeof clonedPayload !== 'object' || clonedPayload === null) {
+    return clonedPayload as TEvent;
+  }
+
+  return Object.assign(Object.create(eventType.prototype) as object, clonedPayload) as TEvent;
+}
+
 class EventPublishTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`Event publish timed out after ${String(timeoutMs)}ms.`);
@@ -107,7 +144,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
 
-    const transportPublish = this.publishToTransport(event);
+    const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
+    const transportPublish = this.publishToTransport(transportPayload);
 
     if (matchingDescriptors.length === 0) {
       await transportPublish;
@@ -137,7 +175,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     event: object,
     publishOptions: ResolvedPublishOptions,
   ): Promise<void>[] {
-    return descriptors.map((descriptor) => this.invokeHandlerWithBounds(descriptor, event, publishOptions));
+    return descriptors.map((descriptor) => {
+      const isolatedEvent = createIsolatedEvent(event.constructor as EventType, event);
+      return this.invokeHandlerWithBounds(descriptor, isolatedEvent, publishOptions);
+    });
   }
 
   private createBackgroundInvocationTasks(
@@ -145,7 +186,10 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     event: object,
     signal: AbortSignal | undefined,
   ): Promise<void>[] {
-    return descriptors.map((descriptor) => this.invokeHandlerInBackground(descriptor, event, signal));
+    return descriptors.map((descriptor) => {
+      const isolatedEvent = createIsolatedEvent(event.constructor as EventType, event);
+      return this.invokeHandlerInBackground(descriptor, isolatedEvent, signal);
+    });
   }
 
   private runInvocationTasksInBackground(invocationTasks: Promise<void>[]): void {
@@ -264,7 +308,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private async subscribeTransportChannel(channel: string, eventType: EventType): Promise<void> {
     try {
       await this.transport!.subscribe(channel, async (payload) => {
-        const event = Object.assign(Object.create(eventType.prototype) as object, payload);
+        const event = createIsolatedEvent(eventType, payload);
         const matchingDescriptors = this.matchEventDescriptors(event);
 
         if (matchingDescriptors.length === 0) {

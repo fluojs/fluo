@@ -94,8 +94,35 @@ function serializeJobPayload(job: object): QueuePayload {
   return serialized;
 }
 
+function fallbackClone(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => fallbackClone(item));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const source = value as Record<string, unknown>;
+    const cloned: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(source)) {
+      cloned[key] = fallbackClone(item);
+    }
+
+    return cloned;
+  }
+
+  return value;
+}
+
+function cloneQueuePayload(payload: QueuePayload): QueuePayload {
+  try {
+    return structuredClone(payload);
+  } catch {
+    return fallbackClone(payload) as QueuePayload;
+  }
+}
+
 function rehydrateJobPayload<TJob extends object>(jobType: QueueJobType<TJob>, payload: QueuePayload): TJob {
-  return Object.assign(Object.create(jobType.prototype), payload) as TJob;
+  return Object.assign(Object.create(jobType.prototype), cloneQueuePayload(payload)) as TJob;
 }
 
 function toBullBackoff(backoff: QueueBackoffOptions | undefined): JobsOptions['backoff'] {

@@ -28,6 +28,33 @@ interface DiscoveryCandidate {
   token: Token;
 }
 
+function fallbackClone(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => fallbackClone(item));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const source = value as Record<string, unknown>;
+    const cloned: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(source)) {
+      cloned[key] = fallbackClone(item);
+    }
+
+    return cloned;
+  }
+
+  return value;
+}
+
+function clonePayload<T>(payload: T): T {
+  try {
+    return structuredClone(payload);
+  } catch {
+    return fallbackClone(payload) as T;
+  }
+}
+
 function methodKeyToName(methodKey: MetadataPropertyKey): string {
   return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
 }
@@ -82,11 +109,11 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
-    return this.moduleOptions.transport.send(pattern, payload, signal);
+    return this.moduleOptions.transport.send(pattern, clonePayload(payload), signal);
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
-    await this.moduleOptions.transport.emit(pattern, payload);
+    await this.moduleOptions.transport.emit(pattern, clonePayload(payload));
   }
 
   private async dispatchPacket(packet: TransportPacket): Promise<unknown> {
@@ -100,10 +127,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         throw new Error(`No message handler registered for pattern "${packet.pattern}".`);
       }
 
-      return await this.invokeHandler(first, packet.payload);
+      return await this.invokeHandler(first, clonePayload(packet.payload));
     }
 
-    await Promise.allSettled(matches.map((descriptor) => this.invokeHandler(descriptor, packet.payload)));
+    await Promise.allSettled(matches.map((descriptor) => this.invokeHandler(descriptor, clonePayload(packet.payload))));
     return undefined;
   }
 
