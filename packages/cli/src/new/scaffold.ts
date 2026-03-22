@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 import { installDependencies } from './install.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
@@ -42,6 +44,15 @@ const LOCAL_PACKAGE_NAMES: readonly LocalPackageName[] = [
   '@konekti/runtime',
   '@konekti/testing',
 ];
+
+const LOCAL_PACKAGE_CACHE_DIR = join(tmpdir(), 'konekti-cli-local-packages');
+const LOCAL_PACKAGE_CACHE_STAMP_FILE = 'cache-stamp.json';
+
+type LocalPackageCacheStamp = {
+  dirtyFingerprint: string;
+  headCommit: string;
+  packageVersions: Record<LocalPackageName, string>;
+};
 
 function packageRootFromImportMeta(importMetaUrl: string): string {
   return resolve(dirname(fileURLToPath(importMetaUrl)), '..', '..');
@@ -514,7 +525,7 @@ export async function scaffoldBootstrapApp(
 ): Promise<void> {
   const targetDirectory = resolve(options.targetDirectory);
   const releaseVersion = readOwnPackageVersion(importMetaUrl);
-  const packageSpecs = await resolvePackageSpecs(targetDirectory, options);
+  const packageSpecs = await resolvePackageSpecs(options);
 
   mkdirSync(targetDirectory, { recursive: true });
 
@@ -601,6 +612,120 @@ function getPackageVersionOrThrow(
   return packageVersion;
 }
 
+function toPackageVersionRecord(
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+): Record<LocalPackageName, string> {
+  const packageVersionRecord = {} as Record<LocalPackageName, string>;
+
+  for (const packageName of LOCAL_PACKAGE_NAMES) {
+    packageVersionRecord[packageName] = getPackageVersionOrThrow(packageVersions, packageName);
+  }
+
+  return packageVersionRecord;
+}
+
+function runGitCommand(repoRoot: string, args: string[]): string | undefined {
+  try {
+    return execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function createPackagePathArguments(packageNames: readonly LocalPackageName[]): string[] {
+  const packagePaths = new Set<string>();
+
+  for (const packageName of packageNames) {
+    const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+    const packageRoot = join('packages', packageDirectory);
+    packagePaths.add(packageRoot);
+    packagePaths.add(join(packageRoot, 'src'));
+    packagePaths.add(join(packageRoot, 'package.json'));
+    packagePaths.add(join(packageRoot, 'tsconfig.json'));
+    packagePaths.add(join(packageRoot, 'tsconfig.build.json'));
+  }
+
+  return Array.from(packagePaths);
+}
+
+function computeLocalPackageCacheStamp(
+  repoRoot: string,
+  packageNames: readonly LocalPackageName[],
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+): LocalPackageCacheStamp | undefined {
+  const headCommit = runGitCommand(repoRoot, ['rev-parse', 'HEAD']);
+
+  if (!headCommit) {
+    return undefined;
+  }
+
+  const packagePaths = createPackagePathArguments(packageNames);
+  const dirtyFingerprint = runGitCommand(repoRoot, ['status', '--porcelain', '--', ...packagePaths]);
+
+  if (dirtyFingerprint === undefined) {
+    return undefined;
+  }
+
+  return {
+    dirtyFingerprint,
+    headCommit,
+    packageVersions: toPackageVersionRecord(packageVersions),
+  };
+}
+
+function readLocalPackageCacheStamp(stampPath: string): LocalPackageCacheStamp | undefined {
+  if (!existsSync(stampPath)) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(readFileSync(stampPath, 'utf8')) as LocalPackageCacheStamp;
+  } catch {
+    return undefined;
+  }
+}
+
+function cacheStampMatches(expected: LocalPackageCacheStamp, actual: LocalPackageCacheStamp | undefined): boolean {
+  if (!actual) {
+    return false;
+  }
+
+  if (actual.headCommit !== expected.headCommit || actual.dirtyFingerprint !== expected.dirtyFingerprint) {
+    return false;
+  }
+
+  for (const packageName of LOCAL_PACKAGE_NAMES) {
+    if (actual.packageVersions[packageName] !== expected.packageVersions[packageName]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function cacheContainsTarballs(
+  outputDirectory: string,
+  packageNames: readonly LocalPackageName[],
+  packageVersions: ReadonlyMap<LocalPackageName, string>,
+): boolean {
+  const packedFiles = new Set(readdirSync(outputDirectory));
+
+  return packageNames.every((packageName) => {
+    const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
+    const tarball = expectedTarballName(packageName, packageVersion);
+    return packedFiles.has(tarball);
+  });
+}
+
+function createLocalPackageCachePath(repoRoot: string): string {
+  const repoCacheKey = createHash('sha1').update(resolve(repoRoot)).digest('hex').slice(0, 12);
+  return join(LOCAL_PACKAGE_CACHE_DIR, repoCacheKey);
+}
+
 function latestModifiedTimeMs(path: string): number {
   const stats = statSync(path);
 
@@ -665,14 +790,14 @@ async function packLocalPackages(
 ): Promise<void> {
   for (const packageName of packageNames) {
     const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
+    const tarballName = expectedTarballName(packageName, packageVersion);
 
     await runPackCommand(repoRoot, PACKAGE_DIRECTORY_BY_NAME[packageName], outputDirectory);
-    await normalizePackedPackageManifest(outputDirectory, expectedTarballName(packageName, packageVersion), packageVersions);
+    await normalizePackedPackageManifest(outputDirectory, tarballName, packageVersions);
   }
 }
 
 function createLocalTarballSpecs(
-  targetDirectory: string,
   outputDirectory: string,
   packageNames: readonly LocalPackageName[],
   packageVersions: ReadonlyMap<LocalPackageName, string>,
@@ -688,7 +813,7 @@ function createLocalTarballSpecs(
       throw new Error(`Unable to locate packed tarball for ${packageName}.`);
     }
 
-    tarballs.set(packageName, `file:${relative(targetDirectory, join(outputDirectory, tarball))}`);
+    tarballs.set(packageName, `file:${join(outputDirectory, tarball)}`);
   }
 
   return Object.fromEntries(tarballs);
@@ -772,22 +897,37 @@ async function normalizePackedPackageManifest(
   rmSync(temporaryDirectory, { force: true, recursive: true });
 }
 
-async function resolvePackageSpecs(targetDirectory: string, options: BootstrapOptions): Promise<Record<string, string>> {
+async function resolvePackageSpecs(options: BootstrapOptions): Promise<Record<string, string>> {
   if (options.dependencySource !== 'local' || !options.repoRoot) {
     return {};
   }
 
   const repoRoot = resolve(options.repoRoot);
-  const outputDirectory = join(targetDirectory, '.konekti', 'packages');
+  const outputDirectory = createLocalPackageCachePath(repoRoot);
+  const cacheStampPath = join(outputDirectory, LOCAL_PACKAGE_CACHE_STAMP_FILE);
   mkdirSync(outputDirectory, { recursive: true });
 
   const packageNames = LOCAL_PACKAGE_NAMES;
   const packageVersions = collectLocalPackageVersions(repoRoot, packageNames);
+  const expectedCacheStamp = computeLocalPackageCacheStamp(repoRoot, packageNames, packageVersions);
+  const currentCacheStamp = readLocalPackageCacheStamp(cacheStampPath);
+  const canReuseCachedTarballs = expectedCacheStamp
+    ? cacheStampMatches(expectedCacheStamp, currentCacheStamp)
+      && cacheContainsTarballs(outputDirectory, packageNames, packageVersions)
+    : false;
 
-  await ensureWorkspaceBuildOutput(repoRoot, packageNames);
-  await packLocalPackages(repoRoot, outputDirectory, packageNames, packageVersions);
+  if (!canReuseCachedTarballs) {
+    await ensureWorkspaceBuildOutput(repoRoot, packageNames);
+    await packLocalPackages(repoRoot, outputDirectory, packageNames, packageVersions);
 
-  return createLocalTarballSpecs(targetDirectory, outputDirectory, packageNames, packageVersions);
+    if (expectedCacheStamp) {
+      writeFileSync(cacheStampPath, `${JSON.stringify(expectedCacheStamp, null, 2)}\n`, 'utf8');
+    } else {
+      rmSync(cacheStampPath, { force: true });
+    }
+  }
+
+  return createLocalTarballSpecs(outputDirectory, packageNames, packageVersions);
 }
 
 export const scaffoldKonektiApp = scaffoldBootstrapApp;
