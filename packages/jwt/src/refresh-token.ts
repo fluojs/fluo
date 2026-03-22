@@ -34,6 +34,7 @@ export interface RefreshTokenRecord {
 export interface RefreshTokenOptions {
   secret: string;
   expiresInSeconds: number;
+  verifyMaxAgeSeconds?: number;
   rotation: boolean;
   store: RefreshTokenStore;
 }

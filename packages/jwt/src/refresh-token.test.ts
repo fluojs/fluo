@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { RefreshTokenService, type RefreshTokenRecord, type RefreshTokenStore } from './refresh-token.js';
@@ -88,12 +88,19 @@ function readTokenPayload(token: string): Record<string, unknown> {
 
 function createService(
   store: RefreshTokenStore,
-  options: { expiresInSeconds?: number; rotation?: boolean; refreshSecret?: string } = {},
+  options: {
+    accessMaxAgeSeconds?: number;
+    expiresInSeconds?: number;
+    refreshSecret?: string;
+    refreshVerifyMaxAgeSeconds?: number;
+    rotation?: boolean;
+  } = {},
 ): { service: RefreshTokenService; verifier: DefaultJwtVerifier } {
   const refreshOptions = {
     expiresInSeconds: options.expiresInSeconds ?? 3600,
     rotation: options.rotation ?? true,
     secret: options.refreshSecret ?? 'refresh-secret',
+    verifyMaxAgeSeconds: options.refreshVerifyMaxAgeSeconds,
     store,
   };
 
@@ -104,6 +111,7 @@ function createService(
   });
   const verifier = new DefaultJwtVerifier({
     algorithms: ['HS256'],
+    maxAge: options.accessMaxAgeSeconds,
     refreshToken: refreshOptions,
     secret: 'access-secret',
   });
@@ -188,6 +196,41 @@ describe('RefreshTokenService', () => {
 
     await expect(verifier.verifyRefreshToken(token)).resolves.toMatchObject({ subject: 'user-1' });
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('does not apply access maxAge to refresh verification by default', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const store = new InMemoryRefreshTokenStore();
+      const { service, verifier } = createService(store, { accessMaxAgeSeconds: 1 });
+      const token = await service.issueRefreshToken('user-1');
+
+      vi.advanceTimersByTime(5_000);
+
+      await expect(verifier.verifyRefreshToken(token)).resolves.toMatchObject({ subject: 'user-1' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies refresh verifyMaxAgeSeconds independently from access maxAge', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const store = new InMemoryRefreshTokenStore();
+      const { service, verifier } = createService(store, {
+        accessMaxAgeSeconds: 600,
+        refreshVerifyMaxAgeSeconds: 1,
+      });
+      const token = await service.issueRefreshToken('user-1');
+
+      vi.advanceTimersByTime(5_000);
+
+      await expect(verifier.verifyRefreshToken(token)).rejects.toBeInstanceOf(JwtExpiredTokenError);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('allows only one successful rotation under concurrent requests', async () => {
