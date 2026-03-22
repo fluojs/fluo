@@ -143,6 +143,8 @@ GraphQL resolvers respect the same `@Scope()` semantics as HTTP providers.
 - **Request**: a fresh instance per GraphQL operation. The GraphQL module creates a per-operation child DI container, resolves the resolver from it, and disposes the container after the operation completes.
 - **Transient**: a fresh instance on every resolution. Each GraphQL operation also gets its own child container, so transient resolvers behave identically to request scope at the operation boundary.
 
+Concurrent operations are isolated from each other, so request-scoped resolver state and request-scoped dependencies are never shared across overlapping GraphQL requests.
+
 ```typescript
 import { Inject, Scope } from '@konekti/core';
 import { Resolver, Query } from '@konekti/graphql';
