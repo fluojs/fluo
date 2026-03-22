@@ -143,6 +143,8 @@ GraphQL resolver는 HTTP provider와 동일한 `@Scope()` 시맨틱을 따릅니
 - **Request**: GraphQL operation마다 새 인스턴스를 생성합니다. GraphQL 모듈은 operation별로 child DI 컨테이너를 만들고, 그 컨테이너에서 resolver를 resolve한 뒤 operation 완료 후 컨테이너를 dispose합니다.
 - **Transient**: resolve할 때마다 새 인스턴스를 생성합니다. 각 GraphQL operation에서 별도의 child 컨테이너가 사용되므로 operation 경계에서는 request scope와 동일하게 동작합니다.
 
+동시에 실행되는 operation도 서로 완전히 격리되므로 request-scoped resolver 상태와 request-scoped 의존성이 겹치는 요청 사이에서 공유되지 않습니다.
+
 ```typescript
 import { Inject, Scope } from '@konekti/core';
 import { Resolver, Query } from '@konekti/graphql';
