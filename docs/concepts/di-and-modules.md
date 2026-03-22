@@ -32,6 +32,12 @@ See also:
 - `request`
 - `transient`
 
+## override retention policy
+
+- `override()` invalidates cached singleton/request entries for the token being replaced
+- evicted stale instances are disposed immediately when disposable (`onDestroy()`)
+- stale overridden instances are not retained until global container `dispose()`
+
 ## app-facing injection strategy
 
 The current public path is decorator-authored metadata rather than ad hoc static properties.
