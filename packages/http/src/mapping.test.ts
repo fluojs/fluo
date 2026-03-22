@@ -290,4 +290,70 @@ describe('handler mapping', () => {
 
     expect(v1Match?.descriptor.methodName).toBe('listV1');
   });
+
+  it('falls back to unversioned routes when request version is missing', () => {
+    @Controller('/users')
+    class UsersController {
+      @Get('/')
+      listDefault() {
+        return [{ id: 'default' }];
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return [{ id: '2' }];
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: UsersController }],
+      { versioning: { header: 'x-api-version', type: VersioningType.HEADER } },
+    );
+
+    const fallbackMatch = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    expect(fallbackMatch?.descriptor.methodName).toBe('listDefault');
+  });
+
+  it('preserves registration order among same method and segment count routes', () => {
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      firstMatch() {
+        return { route: 'first' };
+      }
+
+      @Get('/:slug')
+      secondMatch() {
+        return { route: 'second' };
+      }
+    }
+
+    const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
+    const match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method: 'GET',
+      params: {},
+      path: '/users/42',
+      query: {},
+      raw: {},
+      url: '/users/42',
+    });
+
+    expect(match?.descriptor.methodName).toBe('firstMatch');
+    expect(match?.params).toEqual({ id: '42' });
+  });
 });
