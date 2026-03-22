@@ -43,6 +43,9 @@ await microservice.listen();
 - `@EventPattern(pattern)` - event handler registration
 - `TcpMicroserviceTransport` - TCP transport adapter
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub event transport adapter
+- `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
+- `KafkaMicroserviceTransport` - Kafka transport adapter (event, inbound message dispatch)
+- `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (event, inbound message dispatch)
 
 ## Runtime behavior
 
@@ -57,6 +60,8 @@ await microservice.listen();
 
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
 - `RedisPubSubMicroserviceTransport` supports `emit()` fan-out only. Use TCP transport for request/reply `send()` semantics.
+- `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
+- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` support `emit()` and inbound handler dispatch. For request/reply `send()`, use TCP or NATS transport.
 
 ## Hybrid mode
 
@@ -68,3 +73,5 @@ const microservice = await app.container.resolve(MICROSERVICE);
 
 await Promise.all([app.listen(), microservice.listen()]);
 ```
+
+The app and microservice runtime resolve handlers from the same container in this composition, so singleton providers are shared across HTTP and microservice flows.

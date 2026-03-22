@@ -34,9 +34,9 @@
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })`으로 HTTP가 아닌 메시지 컨슈머를 실행. `@MessagePattern`과 `@EventPattern` 데코레이터가 핸들러를 HTTP 라우트 대신 트랜스포트 메시지에 바인딩함.
 
-**현재 Konekti**: `@konekti/microservices`가 TCP/Redis Pub/Sub 트랜스포트 어댑터, `@MessagePattern` / `@EventPattern` 데코레이터, 런타임 `KonektiFactory.createMicroservice()`를 제공함. `@konekti/event-bus`는 인프로세스 이벤트 발행, `@konekti/queue`는 Redis 잡 처리로 각자 역할이 분리됨.
+**현재 Konekti**: `@konekti/microservices`가 TCP/Redis Pub/Sub/Kafka/NATS/RabbitMQ 트랜스포트 어댑터, `@MessagePattern` / `@EventPattern` 데코레이터, 런타임 `KonektiFactory.createMicroservice()`를 제공함. `@konekti/event-bus`는 인프로세스 이벤트 발행, `@konekti/queue`는 Redis 잡 처리로 각자 역할이 분리됨.
 
-**남은 격차**: TCP/Redis를 넘어선 트랜스포트(Kafka/NATS/RabbitMQ), 전달 보장 수준 강화, HTTP+마이크로서비스를 하나의 공유 컨테이너로 조합하는 1급 하이브리드 구성은 아직 미완.
+**남은 격차**: 전달 보장 수준 강화와 1급 하이브리드 오케스트레이션 API는 아직 미완. 공유 컨테이너 기반 수동 하이브리드 구성은 런타임/마이크로서비스 통합 테스트로 검증됨.
 
 **범위**: `@konekti/microservices` 및 런타임 통합 테스트를 중심으로 확장.
 
@@ -230,7 +230,7 @@
 3. **A7** — 응답 직렬화 (중, 마지막 주요 런타임 격차 해소)
 4. **B4** — 버전 안정성 (소, 운영/문서만)
 5. **C1 + C2** — 메시지 샤프닝 (극소, 즉각적인 신뢰도 향상)
-6. **A2 잔여** — 고급 HTTP 외 트랜스포트 및 하이브리드 고도화 (Kafka/NATS/RabbitMQ)
+6. **A2 잔여** — 전달 보장 수준 및 1급 하이브리드 오케스트레이션 API 고도화
 7. **C3** — 공개 채택 운영 (운영, 위 항목 중 어느 것과도 병렬 진행 가능)
 
 ---

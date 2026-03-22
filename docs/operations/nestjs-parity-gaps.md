@@ -46,9 +46,9 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })` runs a non-HTTP message consumer. The `@MessagePattern` and `@EventPattern` decorators bind handlers to transport messages instead of HTTP routes.
 
-**Konekti now**: `@konekti/microservices` ships a transport abstraction with TCP and Redis Pub/Sub adapters, `@MessagePattern` / `@EventPattern` decorators, and runtime `KonektiFactory.createMicroservice()` support. `@konekti/event-bus` remains in-process event publishing, and `@konekti/queue` remains a Redis job queue.
+**Konekti now**: `@konekti/microservices` ships a transport abstraction with TCP, Redis Pub/Sub, Kafka, NATS, and RabbitMQ adapters, `@MessagePattern` / `@EventPattern` decorators, and runtime `KonektiFactory.createMicroservice()` support. `@konekti/event-bus` remains in-process event publishing, and `@konekti/queue` remains a Redis job queue.
 
-**Remaining gap**: Transport breadth beyond TCP/Redis (Kafka/NATS/RabbitMQ), production-grade delivery guarantees, and first-class HTTP+microservice shared-container hybrid composition are still pending.
+**Remaining gap**: Production-grade delivery guarantees and first-class HTTP+microservice orchestration APIs are still pending. Manual shared-container hybrid composition is supported and covered by runtime+microservice integration tests.
 
 **Scope**: Keep in `@konekti/microservices` and runtime integration tests.
 
@@ -266,7 +266,7 @@ Start with items that unblock the most common single-process use cases first, th
 4. **A7** — response serializer (medium, closes the last major runtime gap)
 5. **B4** — version stability (small, ops/docs only)
 6. **C1 + C2** — messaging sharpening (tiny, immediate credibility boost)
-7. **A2 remaining** — advanced non-HTTP transports and hybrid hardening (Kafka/NATS/RabbitMQ)
+7. **A2 remaining** — production delivery guarantees and first-class hybrid orchestration API hardening
 8. **C3** — public adoption ops (ops, can run in parallel with any of the above)
 
 ---
@@ -278,7 +278,7 @@ The following items were previously listed as open gaps and have since been ship
 | Item | Resolution |
 |---|---|
 | A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)` is shipped in `@konekti/runtime`. Boots the module graph without an HTTP adapter, runs lifecycle hooks, and returns a typed `get<T>()` + `close()` context. |
-| A2. microservice / transport layer (initial) | `@konekti/microservices` ships TCP and Redis Pub/Sub transports, `@MessagePattern` / `@EventPattern` decorators, and `KonektiFactory.createMicroservice()`. Remaining gap: Kafka/NATS/RabbitMQ and hybrid hardening. |
+| A2. microservice / transport layer (initial) | `@konekti/microservices` ships TCP, Redis Pub/Sub, Kafka, NATS, and RabbitMQ transports, `@MessagePattern` / `@EventPattern` decorators, and `KonektiFactory.createMicroservice()`. Remaining gap: delivery guarantees and first-class hybrid orchestration APIs. |
 | A3. platform adapter breadth | `@konekti/platform-fastify` ships a Fastify adapter implementing `HttpApplicationAdapter` with full parity test suite. |
 | A4. HTTP versioning strategies beyond URI | All four strategies (URI, Header, Media type, Custom) are shipped in `@konekti/http` and `@konekti/runtime`. |
 | A7 (prev). Distributed rate limiting | `@konekti/throttler` ships with in-memory and Redis store adapters. |
