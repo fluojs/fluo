@@ -252,4 +252,44 @@ describe('@konekti/microservices', () => {
 
     await microservice.close();
   });
+
+  it('shares singleton provider state in hybrid app + microservice composition', async () => {
+    class SharedState {
+      count = 0;
+    }
+
+    @Inject([SharedState])
+    class HybridHandlers {
+      constructor(private readonly state: SharedState) {}
+
+      @EventPattern('hybrid.event')
+      onHybridEvent() {
+        this.state.count += 1;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [SharedState, HybridHandlers],
+    });
+
+    const app = await KonektiFactory.create(AppModule, {
+      mode: 'test',
+    });
+    const microservice = await app.container.resolve<{
+      emit(pattern: string, payload: unknown): Promise<void>;
+      listen(): Promise<void>;
+    }>(MICROSERVICE);
+
+    await Promise.all([app.listen(), microservice.listen()]);
+    await microservice.emit('hybrid.event', {});
+
+    const state = await app.container.resolve(SharedState);
+    expect(state.count).toBe(1);
+
+    await app.close();
+  });
 });
