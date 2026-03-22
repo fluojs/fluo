@@ -46,15 +46,32 @@ function createGuardContext(
   controllerToken: Function,
   methodName: string,
   requestContext: RequestContext,
+  options?: {
+    moduleType?: HandlerDescriptor['metadata']['moduleType'];
+    routeMethod?: HandlerDescriptor['route']['method'];
+    routePath?: string;
+    routeVersion?: string;
+  },
 ): GuardContext {
+  const routePath = options?.routePath ?? '/test';
+  const routeMethod = options?.routeMethod ?? 'GET';
+
   return {
     handler: {
       controllerToken: controllerToken as HandlerDescriptor['controllerToken'],
-      metadata: {} as HandlerDescriptor['metadata'],
+      metadata: {
+        controllerPath: '',
+        effectivePath: routePath,
+        effectiveVersion: options?.routeVersion,
+        moduleMiddleware: [],
+        moduleType: options?.moduleType,
+        pathParams: [],
+      },
       methodName,
       route: {
-        method: 'GET',
-        path: '/test',
+        method: routeMethod,
+        path: routePath,
+        version: options?.routeVersion,
       },
     },
     requestContext,
@@ -255,6 +272,42 @@ describe('ThrottlerGuard — in-memory store', () => {
 
     expect(true).toBe(true);
   });
+
+  it('separates throttling state for handlers with identical class and method names', async () => {
+    const AuthController = class DuplicateController {
+      action() {}
+    };
+    const AdminController = class DuplicateController {
+      action() {}
+    };
+    class AuthModule {}
+    class AdminModule {}
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const ctx = createRequestContext('10.0.0.1');
+
+    await expect(
+      guard.canActivate(
+        createGuardContext(AuthController, 'action', ctx, {
+          moduleType: AuthModule,
+          routeMethod: 'POST',
+          routePath: '/auth/login',
+          routeVersion: '1',
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    await expect(
+      guard.canActivate(
+        createGuardContext(AdminController, 'action', ctx, {
+          moduleType: AdminModule,
+          routeMethod: 'POST',
+          routePath: '/admin/login',
+          routeVersion: '1',
+        }),
+      ),
+    ).resolves.toBe(true);
+  });
 });
 
 describe('ThrottlerGuard — Redis store mock', () => {
@@ -292,5 +345,40 @@ describe('ThrottlerGuard — Redis store mock', () => {
     await guard.canActivate(createGuardContext(TestController, 'action', ctx));
 
     expect(store.consume).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds store keys from route and token identity context', async () => {
+    const store: ThrottlerStore = {
+      consume: vi.fn(async (_key: string, input) => ({
+        count: 1,
+        resetAt: input.now + input.ttlSeconds * 1000,
+      })),
+    };
+
+    const guard = new ThrottlerGuard({ limit: 2, store, ttl: 60 });
+    const ctx = createRequestContext('10.0.0.9');
+    class RateController {
+      hit() {}
+    }
+    class RateModule {}
+
+    await guard.canActivate(
+      createGuardContext(RateController, 'hit', ctx, {
+        moduleType: RateModule,
+        routeMethod: 'POST',
+        routePath: '/v1/rate-limit',
+        routeVersion: '1',
+      }),
+    );
+
+    const key = vi.mocked(store.consume).mock.calls[0]?.[0];
+
+    expect(key).toContain('method:POST');
+    expect(key).toContain('path:%2Fv1%2Frate-limit');
+    expect(key).toContain('version:1');
+    expect(key).toContain('handler:hit');
+    expect(key).toContain('module:');
+    expect(key).toContain('controller:');
+    expect(key).toContain(':10.0.0.9');
   });
 });
