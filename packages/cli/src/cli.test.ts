@@ -93,6 +93,44 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('pnpm dev');
   });
 
+  it('keeps explicit --target-directory when it appears before positional project name', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', '--target-directory', 'custom-app', 'starter-app'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'custom-app', 'package.json'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'starter-app', 'package.json'))).toBe(false);
+    expect(stdoutBuffer.join('')).toContain('cd custom-app');
+  });
+
+  it('keeps explicit --target-directory when it appears after positional project name', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--target-directory', 'custom-app'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'custom-app', 'package.json'))).toBe(true);
+    expect(existsSync(join(workspaceDirectory, 'starter-app', 'package.json'))).toBe(false);
+    expect(stdoutBuffer.join('')).toContain('cd custom-app');
+  });
+
   it('prints top-level usage for `help`', async () => {
     const stdoutBuffer: string[] = [];
 

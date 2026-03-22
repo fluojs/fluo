@@ -39,7 +39,7 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Write the new app to a custom target directory.',
+    description: 'Write the new app to a custom target directory (always overrides positional name path).',
     option: '--target-directory <path>',
   },
   {
@@ -51,6 +51,7 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
 
 function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
   const parsed: Partial<BootstrapAnswers> = {};
+  let hasExplicitTargetDirectory = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -67,12 +68,15 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
         break;
       case '--target-directory':
         parsed.targetDirectory = next;
+        hasExplicitTargetDirectory = true;
         index += 1;
         break;
       default:
         if (!arg.startsWith('-') && !parsed.projectName) {
           parsed.projectName = arg;
-          parsed.targetDirectory = `./${arg}`;
+          if (!hasExplicitTargetDirectory) {
+            parsed.targetDirectory = `./${arg}`;
+          }
         }
         break;
     }
