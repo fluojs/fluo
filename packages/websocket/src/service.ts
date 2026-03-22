@@ -910,7 +910,13 @@ export class WebSocketGatewayLifecycleService
   }
 
   getRooms(socketId: string): ReadonlySet<string> {
-    return this.socketRooms.get(socketId) ?? new Set<string>();
+    const rooms = this.socketRooms.get(socketId);
+
+    if (!rooms) {
+      return new Set<string>();
+    }
+
+    return new Set<string>(rooms);
   }
 
   private startHeartbeat(intervalMs: number, timeoutMs: number): void {

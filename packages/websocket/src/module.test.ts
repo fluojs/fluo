@@ -747,6 +747,21 @@ describe('@konekti/websocket', () => {
     expect(socketRegistry.has('socket-1')).toBe(false);
   });
 
+  it('returns room snapshots so external mutation cannot corrupt internal room indexes', () => {
+    const service = createTestLifecycleService();
+
+    service.joinRoom('socket-1', 'room-a');
+    service.joinRoom('socket-1', 'room-b');
+
+    const snapshot = service.getRooms('socket-1') as Set<string>;
+    snapshot.delete('room-a');
+    snapshot.add('room-c');
+
+    const nextSnapshot = service.getRooms('socket-1');
+
+    expect(Array.from(nextSnapshot).sort()).toEqual(['room-a', 'room-b']);
+  });
+
   it('logs and continues shutdown when websocket server close exceeds timeout', async () => {
     vi.useFakeTimers();
 

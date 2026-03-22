@@ -65,6 +65,7 @@ export class AppModule {}
 - Shutdown removes the shared upgrade listener and terminates all active clients
 - `message` and `close` events are buffered until `@OnConnect()` handlers complete, then replayed in order so connect-phase events are not silently dropped
 - Attachment server shutdown is timeout-aware and logs close timeout failures instead of hanging indefinitely
+- `getRooms(socketId)` returns a defensive snapshot (`ReadonlySet`) so callers cannot mutate internal room indexes
 
 ## Provider registration constraints
 
