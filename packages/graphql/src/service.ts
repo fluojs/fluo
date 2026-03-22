@@ -326,10 +326,10 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     const operationContainer = this.getOrCreateOperationContainer(request);
 
     return {
-      [GRAPHQL_OPERATION_CONTAINER]: operationContainer,
       ...customContext,
       principal: requestContext.principal,
       request: requestContext.request,
+      [GRAPHQL_OPERATION_CONTAINER]: operationContainer,
     };
   }
 

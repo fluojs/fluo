@@ -130,6 +130,7 @@ Maps DTO fields to GraphQL argument names for input binding.
 - Endpoint path: `/graphql` (and `/graphql/`) via GET/POST.
 - Transport: Konekti request/response is bridged to GraphQL Yoga Fetch API.
 - Context: each resolver receives `request` and optional `principal`; custom context is merged in.
+- Reserved internal context keys are protected; custom context cannot override the per-operation DI container symbol.
 - Discovery: resolvers are discovered from compiled modules during bootstrap.
 - Scope model: singleton, request, and transient scopes are all supported in GraphQL resolvers.
 - Registration rule: class providers and controllers are discoverable; `useValue`/`useFactory` providers are not.

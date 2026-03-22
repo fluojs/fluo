@@ -9,6 +9,7 @@ import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { createGraphqlModule } from './module.js';
+import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -251,6 +252,54 @@ describe('@konekti/graphql', () => {
     await expect(postGraphql(port, '{ hello }')).resolves.toEqual({
       data: {
         hello: 'schema-first',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('keeps internal operation container when custom context includes reserved symbol key', async () => {
+    const poisonedOperationContainer = {
+      async dispose() {},
+      async resolve() {
+        throw new Error('poisoned operation container should not be used');
+      },
+    };
+
+    @Inject([])
+    @Resolver('ReservedContextResolver')
+    class ReservedContextResolver {
+      @Query()
+      ping(): string {
+        return 'pong';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          context: () => ({
+            [GRAPHQL_OPERATION_CONTAINER]: poisonedOperationContainer,
+          }),
+          resolvers: [ReservedContextResolver],
+        }),
+      ],
+      providers: [ReservedContextResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, '{ ping }')).resolves.toEqual({
+      data: {
+        ping: 'pong',
       },
     });
 
