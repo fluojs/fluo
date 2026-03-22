@@ -6,7 +6,26 @@ import { describe, expect, it } from 'vitest';
 import { Controller, Get, Post, type RequestContext } from '@konekti/http';
 import { defineModule, type ApplicationLogger } from '@konekti/runtime';
 
-import { bootstrapFastifyApplication, runFastifyApplication } from './adapter.js';
+import {
+  bootstrapFastifyApplication,
+  FastifyHttpApplicationAdapter,
+  runFastifyApplication,
+} from './adapter.js';
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  reject: (reason?: unknown) => void;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -335,5 +354,37 @@ describe('@konekti/platform-fastify', () => {
     expect(loggerEvents).toContain(`log:KonektiFactory:Listening on https://127.0.0.1:${String(port)}`);
 
     await app.close();
+  });
+
+  it('clears dispatcher only after fastify close settles when timeout wins', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const app = {
+      close: () => Promise.resolve(),
+      server: {
+        listening: true,
+      },
+    };
+    const dispatcher = {
+      async dispatch() {},
+    };
+    const deferred = createDeferred<void>();
+    let closeCallCount = 0;
+
+    Reflect.set(adapter, 'app', app);
+    Reflect.set(adapter, 'dispatcher', dispatcher);
+    app.close = () => {
+      closeCallCount += 1;
+      return deferred.promise;
+    };
+
+    await adapter.close();
+
+    expect(closeCallCount).toBe(1);
+    expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+
+    deferred.resolve();
+    await Promise.resolve();
+
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 });

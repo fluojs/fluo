@@ -94,6 +94,7 @@ type FastifyFrameworkResponse = FrameworkResponse & {
 };
 
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
+  private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private pluginsReady = false;
   private readonly app: ReturnType<typeof fastify>;
@@ -132,13 +133,23 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
-    await Promise.race([
-      this.app.close(),
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, this.shutdownTimeoutMs);
-      }),
-    ]);
-    this.dispatcher = undefined;
+    if (!this.closeInFlight) {
+      const closePromise = this.app.close();
+      const closeInFlight = closePromise.finally(() => {
+        this.closeInFlight = undefined;
+        this.dispatcher = undefined;
+      });
+      this.closeInFlight = closeInFlight;
+      void closeInFlight.catch(() => {});
+    }
+
+    const closeInFlight = this.closeInFlight;
+
+    if (!closeInFlight) {
+      return;
+    }
+
+    await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
   }
 
   private async registerPluginsAndRoute(): Promise<void> {
@@ -805,6 +816,15 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
+  return Promise.race([
+    closePromise,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, timeoutMs);
+    }),
+  ]);
 }
 
 function mergeSetCookieHeader(
