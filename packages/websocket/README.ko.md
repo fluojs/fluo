@@ -65,6 +65,7 @@ export class AppModule {}
 - 종료 시 업그레이드 리스너 제거 및 활성 소켓 정리
 - `message`/`close` 이벤트는 `@OnConnect()` 핸들러가 끝날 때까지 버퍼링되며, 이후 순서대로 재생되어 connect 단계 이벤트가 조용히 유실되지 않습니다
 - attachment server 종료는 timeout 인지 방식으로 처리되며, 제한 시간 안에 close가 끝나지 않으면 무기한 대기하지 않고 로그를 남깁니다
+- `getRooms(socketId)`는 방 목록의 방어적 스냅샷(`ReadonlySet`)을 반환하므로 외부에서 내부 room 인덱스를 오염시킬 수 없습니다
 
 ## 프로바이더 등록 제약
 
