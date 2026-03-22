@@ -173,8 +173,8 @@ function upsertReleaseCandidateDraft() {
 const checks = [];
 
 upsertReleaseCandidateDraft();
-run('pnpm', ['typecheck']);
 run('pnpm', ['build']);
+run('pnpm', ['typecheck']);
 run('pnpm', ['test']);
 
 const quickStart = read('docs/getting-started/quick-start.md');
