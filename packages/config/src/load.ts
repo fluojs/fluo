@@ -72,15 +72,49 @@ function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
   return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.processEnv, options.parse);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeConfigEntries(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...target };
+
+  for (const [key, sourceValue] of Object.entries(source)) {
+    const targetValue = merged[key];
+
+    if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
+      merged[key] = mergeConfigEntries(targetValue, sourceValue);
+      continue;
+    }
+
+    merged[key] = cloneConfigDictionary(sourceValue);
+  }
+
+  return merged;
+}
+
+function mergeConfigSources(...sources: ConfigDictionary[]): ConfigDictionary {
+  let merged: Record<string, unknown> = {};
+
+  for (const source of sources) {
+    merged = mergeConfigEntries(merged, source);
+  }
+
+  return merged;
+}
+
 function buildMergedConfig(options: NormalizedLoadOptions): ConfigDictionary {
   const envFileValues = readEnvFileValues(options);
 
-  return {
-    ...options.defaults,
-    ...envFileValues,
-    ...options.safeProcessEnv,
-    ...options.runtimeOverrides,
-  };
+  return mergeConfigSources(
+    options.defaults,
+    envFileValues,
+    options.safeProcessEnv,
+    options.runtimeOverrides,
+  );
 }
 
 function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary): ConfigDictionary {

@@ -23,6 +23,12 @@ Sources, in merge order (lowest → highest precedence):
 
 Validation runs after merging. If validation fails, the app refuses to start.
 
+Merge policy:
+
+- plain object values are **deep merged** by key
+- non-object values (including arrays) use source precedence and replace earlier values
+- no silent nested subtree loss when only part of a nested object is overridden
+
 ## Installation
 
 ```bash

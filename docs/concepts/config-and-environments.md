@@ -45,6 +45,12 @@ Current precedence is total and deterministic:
 
 Application code reads the normalized merged result, not the winning source.
 
+Merge semantics are explicit:
+
+- plain object values are deep merged across sources
+- non-object values (including arrays) follow precedence and replace prior values
+- partial nested overrides must not silently drop sibling keys
+
 ## validation boundary
 
 - invalid config fails startup before listen

@@ -62,6 +62,42 @@ describe('loadConfig', () => {
     expect(loaded).toMatchObject({ PORT: '4000' });
   });
 
+  it('deep merges nested objects instead of replacing subtrees', () => {
+    const loaded = loadConfig({
+      defaults: {
+        db: {
+          host: 'localhost',
+          port: 5432,
+          credentials: {
+            user: 'app',
+            password: 'default-secret',
+          },
+        },
+      },
+      mode: 'test',
+      processEnv: {},
+      runtimeOverrides: {
+        db: {
+          host: 'db.internal',
+          credentials: {
+            password: 'runtime-secret',
+          },
+        },
+      },
+    });
+
+    expect(loaded).toEqual({
+      db: {
+        host: 'db.internal',
+        port: 5432,
+        credentials: {
+          user: 'app',
+          password: 'runtime-secret',
+        },
+      },
+    });
+  });
+
   it('fails when validation rejects the merged config', () => {
     expect(() =>
       loadConfig({
