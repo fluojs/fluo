@@ -73,6 +73,25 @@ interface EventBusTransport {
 
 Implement this interface to connect any external pub/sub system.
 
+### Event key convention
+
+Transport channels are resolved from event classes by the following rule:
+
+1. If the event class defines `static eventKey = 'domain.event.v1'`, that string is used.
+2. Otherwise, the fallback is the class constructor name (for backward compatibility).
+
+For multi-process deployments, prefer explicit, versioned keys:
+
+```typescript
+class UserRegisteredEvent {
+  static readonly eventKey = 'user.registered.v1';
+
+  constructor(public readonly userId: string) {}
+}
+```
+
+This avoids coupling transport contracts to class renames/minification and makes schema evolution explicit.
+
 ### Redis Pub/Sub adapter
 
 ```bash
@@ -104,9 +123,10 @@ Two separate Redis clients are required because a client in subscribe mode canno
 - Handler discovery runs during application bootstrap using `COMPILED_MODULES`
 - Handler instances are pre-resolved from `RUNTIME_CONTAINER` during bootstrap and reused on publish
 - Events are matched by class using `instanceof`, so base-class handlers receive derived events
-- Publishing dispatches to every matching local handler and, when a transport is configured, fans out to the transport in parallel
+- Publishing dispatches to every matching local handler and, when a transport is configured, fans out to transport channels for all matched handler event types in parallel
 - When a transport is configured, the event bus subscribes to one channel per discovered event type on bootstrap; incoming messages are deserialized with `JSON.parse` and dispatched to matching local handlers
-- The channel name for a given event type is the class constructor name (e.g. `UserRegisteredEvent`)
+- Incoming transport messages are dispatched only to handlers registered for that subscribed channel, keeping local/remote inheritance matching outcomes consistent
+- The channel name for a given event type uses `eventType.eventKey` when present, otherwise falls back to the class constructor name (e.g. `UserRegisteredEvent`)
 - Transport `close()` is called during `onApplicationShutdown`
 - Timeout bounds apply only when waiting mode is enabled (`waitForHandlers: true`); non-blocking mode (`false`) dispatches without waiting
 - Handler failures are isolated and logged through `ApplicationLogger`

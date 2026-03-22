@@ -145,7 +145,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     const matchingDescriptors = this.matchEventDescriptors(event);
 
     const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
-    const transportPublish = this.publishToTransport(transportPayload);
+    const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors);
 
     if (matchingDescriptors.length === 0) {
       await transportPublish;
@@ -264,25 +264,53 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private channelFromEventType(eventType: EventType): string {
+    if (typeof eventType.eventKey === 'string') {
+      const eventKey = eventType.eventKey.trim();
+
+      if (eventKey.length > 0) {
+        return eventKey;
+      }
+    }
+
     return eventType.name;
   }
 
-  private async publishToTransport(event: object): Promise<void> {
+  private channelsForTransportPublish(event: object, descriptors: EventHandlerDescriptor[]): string[] {
+    const channels = new Set<string>();
+
+    for (const descriptor of descriptors) {
+      channels.add(this.channelFromEventType(descriptor.eventType));
+    }
+
+    if (channels.size === 0) {
+      channels.add(this.channelFromEventType(event.constructor as EventType));
+    }
+
+    return Array.from(channels);
+  }
+
+  private async publishToTransport(event: object, descriptors: EventHandlerDescriptor[]): Promise<void> {
     if (!this.transport) {
       return;
     }
 
-    const channel = this.channelFromEventType(event.constructor as EventType);
+    const channels = this.channelsForTransportPublish(event, descriptors);
 
-    try {
-      await this.transport.publish(channel, event);
-    } catch (error) {
-      this.logger.error(
-        `EventBusTransport failed to publish to channel "${channel}".`,
-        error,
-        'EventBusLifecycleService',
-      );
-    }
+    const publishTasks = channels.map(async (channel) => {
+      const payload = createIsolatedEvent(event.constructor as EventType, event);
+
+      try {
+        await this.transport!.publish(channel, payload);
+      } catch (error) {
+        this.logger.error(
+          `EventBusTransport failed to publish to channel "${channel}".`,
+          error,
+          'EventBusLifecycleService',
+        );
+      }
+    });
+
+    await Promise.allSettled(publishTasks);
   }
 
   private async subscribeTransportChannels(): Promise<void> {
@@ -290,32 +318,39 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       return;
     }
 
-    const subscribedChannels = new Set<string>();
+    const descriptorsByChannel = new Map<string, EventHandlerDescriptor[]>();
 
     for (const descriptor of this.descriptors) {
       const channel = this.channelFromEventType(descriptor.eventType);
+      const channelDescriptors = descriptorsByChannel.get(channel) ?? [];
+      channelDescriptors.push(descriptor);
+      descriptorsByChannel.set(channel, channelDescriptors);
+    }
 
-      if (subscribedChannels.has(channel)) {
+    for (const [channel, channelDescriptors] of descriptorsByChannel) {
+      const eventType = channelDescriptors[0]?.eventType;
+
+      if (!eventType) {
         continue;
       }
 
-      subscribedChannels.add(channel);
-
-      await this.subscribeTransportChannel(channel, descriptor.eventType);
+      await this.subscribeTransportChannel(channel, eventType, channelDescriptors);
     }
   }
 
-  private async subscribeTransportChannel(channel: string, eventType: EventType): Promise<void> {
+  private async subscribeTransportChannel(
+    channel: string,
+    eventType: EventType,
+    channelDescriptors: EventHandlerDescriptor[],
+  ): Promise<void> {
     try {
       await this.transport!.subscribe(channel, async (payload) => {
         const event = createIsolatedEvent(eventType, payload);
-        const matchingDescriptors = this.matchEventDescriptors(event);
-
-        if (matchingDescriptors.length === 0) {
+        if (channelDescriptors.length === 0) {
           return;
         }
 
-        const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, {
+        const invocationTasks = this.createInvocationTasks(channelDescriptors, event, {
           signal: undefined,
           timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
           waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
