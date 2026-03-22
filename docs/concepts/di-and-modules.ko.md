@@ -32,6 +32,12 @@
 - `request`
 - `transient`
 
+## override 보존 정책
+
+- `override()`는 교체 대상 토큰의 singleton/request 캐시 엔트리를 무효화한다.
+- 축출된 stale 인스턴스가 `onDestroy()`를 구현했다면 즉시 정리한다.
+- override로 stale가 된 인스턴스를 전역 컨테이너 `dispose()` 시점까지 보관하지 않는다.
+
 ## app-facing injection strategy
 
 현재 공개되는 방식은 임시 static 프로퍼티가 아닌 데코레이터로 작성된 metadata입니다.

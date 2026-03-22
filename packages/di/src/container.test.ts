@@ -557,7 +557,7 @@ describe('Container', () => {
       expect(events).toEqual(['second', 'first']);
     });
 
-    it('disposes stale overridden singleton instances exactly once', async () => {
+    it('disposes stale overridden singleton instances immediately and exactly once', async () => {
       const events: string[] = [];
 
       class FirstService {
@@ -578,11 +578,50 @@ describe('Container', () => {
 
       await container.resolve(token);
       container.override({ provide: token, useClass: SecondService });
+      await Promise.resolve();
       await container.resolve(token);
 
       await container.dispose();
 
-      expect(events).toEqual(['second', 'first']);
+      expect(events).toEqual(['first', 'second']);
+    });
+
+    it('does not retain stale singleton instances across repeated overrides', async () => {
+      const events: string[] = [];
+      const token = Symbol('rotating-disposable-token');
+
+      class VersionedService {
+        constructor(private readonly name: string) {}
+
+        onDestroy() {
+          events.push(this.name);
+        }
+      }
+
+      const container = new Container().register({
+        provide: token,
+        useFactory: () => new VersionedService('v1'),
+      });
+
+      await container.resolve(token);
+
+      container.override({
+        provide: token,
+        useFactory: () => new VersionedService('v2'),
+      });
+      await Promise.resolve();
+      await container.resolve(token);
+
+      container.override({
+        provide: token,
+        useFactory: () => new VersionedService('v3'),
+      });
+      await Promise.resolve();
+      await container.resolve(token);
+
+      await container.dispose();
+
+      expect(events).toEqual(['v1', 'v2', 'v3']);
     });
   });
 });

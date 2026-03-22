@@ -95,6 +95,14 @@ const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
 
 provider는 root에 등록되지만 request child에 캐시될 수 있다. 이것이 request-scoped provider가 재등록 없이 요청마다 분리되는 메커니즘이다.
 
+### override 캐시 무효화 정책
+
+`override()`로 캐시된 singleton/request provider를 교체하면, 이전 캐시 인스턴스는 즉시 축출되고(`evict`) `onDestroy()`를 구현한 경우 즉시 정리된다.
+
+- override로 밀려난(stale) 인스턴스를 컨테이너 전체 `dispose()` 시점까지 보관하지 않는다.
+- 반복 override 시 stale 캐시 보존이 누적되지 않는다.
+- 컨테이너 `dispose()`는 여전히 현재 활성 캐시 엔트리를 생성 역순으로 정리한다.
+
 ### root에서 request-scoped provider를 resolve하면 왜 실패하나
 
 root 컨테이너에서 `request`-scoped provider를 직접 resolve하면 에러가 발생한다. 이것은 의도적인 안전장치다 — request scope에는 request boundary가 필요하고, root에서 resolve를 허용하면 request 의존성이 조용히 singleton처럼 동작하게 된다.
