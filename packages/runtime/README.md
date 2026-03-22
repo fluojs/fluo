@@ -92,6 +92,44 @@ await context.close();
 
 `createApplicationContext()` bootstraps the module graph and lifecycle hooks without creating the HTTP dispatcher/adapter. Use it for CLI scripts, background workers, migrations, and tests that only need DI.
 
+### Microservice factory (non-HTTP transport)
+
+```typescript
+import { Module } from '@konekti/core';
+import { KonektiFactory } from '@konekti/runtime';
+import { createMicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
+
+class MathHandler {
+  @MessagePattern('math.sum')
+  sum(input: { a: number; b: number }) {
+    return input.a + input.b;
+  }
+}
+
+@Module({
+  imports: [createMicroservicesModule({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
+  providers: [MathHandler],
+})
+class AppModule {}
+
+const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'prod' });
+await microservice.listen();
+```
+
+`createMicroservice()` bootstraps the module graph without the HTTP adapter, resolves the configured microservice runtime token, and exposes `listen()` + `close()` for transport lifecycle control.
+
+### Hybrid composition (HTTP + microservice in one process)
+
+```typescript
+import { KonektiFactory } from '@konekti/runtime';
+import { MICROSERVICE } from '@konekti/microservices';
+
+const app = await KonektiFactory.create(AppModule, { mode: 'prod' });
+const microservice = await app.container.resolve(MICROSERVICE);
+
+await Promise.all([app.listen(), microservice.listen()]);
+```
+
 ### Raw webhook body (opt-in)
 
 ```typescript
@@ -252,6 +290,7 @@ export class AppModule {}
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
+| `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context and attach a transport-backed microservice runtime |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | Lower-level: compile module graph + build container |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | Low-level helper to attach module metadata without decorator |
 | `Application` | `src/types.ts` | Interface: `config`, `container`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |

@@ -5,6 +5,7 @@ import { Global, Inject, Module, defineModuleMetadata } from '@konekti/core';
 import { bootstrapModule, KonektiFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleInjectionMetadataError } from './errors.js';
 import { HTTP_APPLICATION_ADAPTER } from './tokens.js';
+import type { MicroserviceRuntime } from './types.js';
 
 describe('bootstrapModule', () => {
   it('boots a simple module graph deterministically', () => {
@@ -561,5 +562,89 @@ describe('KonektiFactory.createApplicationContext', () => {
       'module:destroy',
       'app:shutdown:SIGTERM',
     ]);
+  });
+});
+
+describe('KonektiFactory.createMicroservice', () => {
+  it('resolves microservice runtime token and starts listen()', async () => {
+    const events: string[] = [];
+    const MICROSERVICE_TOKEN = Symbol.for('konekti.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async listen(): Promise<void> {
+        events.push('listen');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, {
+      mode: 'test',
+    });
+
+    await microservice.listen();
+    expect(events).toEqual(['listen']);
+
+    await microservice.close();
+  });
+
+  it('throws if resolved token does not implement listen()', async () => {
+    const MICROSERVICE_TOKEN = Symbol.for('konekti.microservices.service');
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useValue: {
+            noop: true,
+          },
+        },
+      ],
+    });
+
+    await expect(KonektiFactory.createMicroservice(AppModule, { mode: 'test' })).rejects.toThrow(
+      'Resolved microservice token does not implement listen().',
+    );
+  });
+
+  it('supports hybrid composition with KonektiFactory.create()', async () => {
+    const events: string[] = [];
+    const MICROSERVICE_TOKEN = Symbol.for('konekti.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async listen(): Promise<void> {
+        events.push('micro:listen');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const app = await KonektiFactory.create(AppModule, {
+      mode: 'test',
+    });
+    const microservice = await app.container.resolve<MicroserviceRuntime>(MICROSERVICE_TOKEN);
+
+    await Promise.all([app.listen(), microservice.listen()]);
+
+    expect(events).toEqual(['micro:listen']);
+
+    await app.close();
   });
 });

@@ -17,9 +17,8 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 | Gap | Tier | New package? | Effort |
 |---|---|---|---|
-| [A1. standalone context](#a1-standalone-application-context) | A | No | Small |
-| [A2. microservices transport](#a2-microservice--transport-layer) | A | Yes | Large |
-| [A3. platform-fastify](#a3-platform-adapter-breadth) | A | Yes | Medium |
+| [A2. microservices transport](#a2-microservice--transport-layer) | A | — | Remaining |
+| [A3. platform-fastify](#a3-platform-adapter-breadth) | A | — | Remaining |
 | [A5. ArkType validation adapter](#a5-schema-based-validation-zod--valibot--arktype) | A | No | Small |
 | [A6. GraphQL request scope](#a6-request--transient-provider-scopes-for-graphql-resolvers) | A | No | Small–Medium |
 | [A7. response serialization](#a7-response-serialization-layer) | A | Yes | Medium |
@@ -36,30 +35,11 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 **NestJS**: `NestFactory.createApplicationContext(module)` boots a module graph without an HTTP server. Used for CLI scripts, migrations, seed runners, workers, and test isolation.
 
-**Konekti now**: `bootstrapModule(module)` performs the same graph compilation and container build, but it is a low-level internal. There is no public standalone facade that exposes a typed `get(token)` API without constructing an HTTP adapter.
+**Konekti now**: `KonektiFactory.createApplicationContext(rootModule, options?)` is shipped. It boots the module graph without an HTTP adapter, runs all lifecycle hooks, and returns an `ApplicationContext` with a typed `get<T>(token)` method and a `close()` path.
 
-**Gap**: `KonektiFactory` needs a `createApplicationContext(rootModule, options?)` static method that calls `bootstrapModule`, registers no HTTP adapter, skips dispatcher creation, and returns a typed container shell with a `get<T>(token)` method.
+**Gap**: ~~Closed~~. `KonektiFactory.createApplicationContext` is shipped in `@konekti/runtime`.
 
-**New package needed**: No
-
-**Acceptance criteria**:
-- Compiles the module graph using `bootstrapModule` with no HTTP adapter registered.
-- Returns a typed shell with a `get<T>(token: Token<T>): T` method.
-- Runs all lifecycle hooks (`onModuleInit`, `onApplicationBootstrap`) on startup.
-- Runs `onModuleDestroy` and `onApplicationShutdown` on `context.close()`.
-- Works in test environments without a running HTTP server.
-
-**Files to touch**:
-- `packages/runtime/src/bootstrap.ts` — add `createApplicationContext` to `KonektiFactory`
-- `packages/runtime/src/index.ts` — export `createApplicationContext` and the returned context type
-- `packages/runtime/README.md` — document the standalone path
-- `docs/getting-started/bootstrap-paths.md` — add the standalone context section
-- `docs/getting-started/migrate-from-nestjs.md` — add a `NestFactory.createApplicationContext` → `KonektiFactory.createApplicationContext` mapping row
-
-**Tests to write**:
-- Unit: `createApplicationContext` resolves a provider from a simple module with no HTTP adapter
-- Unit: lifecycle hooks fire in correct order on start and `context.close()`
-- Unit: `get()` throws if a token is not registered
+> **Note**: This item was previously listed as an open gap. It has been resolved. See maintenance rule below.
 
 ---
 
@@ -67,40 +47,11 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })` runs a non-HTTP message consumer. The `@MessagePattern` and `@EventPattern` decorators bind handlers to transport messages instead of HTTP routes.
 
-**Konekti now**: `@konekti/event-bus` handles in-process events and Redis Pub/Sub transport. `@konekti/queue` handles Redis-backed background jobs. There is no TCP/Kafka/NATS consumer surface, no shared transport abstraction, and no `createMicroservice` equivalent.
+**Konekti now**: `@konekti/microservices` ships a transport abstraction with TCP and Redis Pub/Sub adapters, `@MessagePattern` / `@EventPattern` decorators, and runtime `KonektiFactory.createMicroservice()` support. `@konekti/event-bus` remains in-process event publishing, and `@konekti/queue` remains a Redis job queue.
 
-**Gap**: Requires a transport abstraction layer (`@konekti/microservices` or equivalent) with at minimum a Redis Pub/Sub and TCP transport, `@MessagePattern` / `@EventPattern` decorators, and a hybrid application mode that runs both HTTP and a microservice transport in the same process.
+**Remaining gap**: Transport breadth beyond TCP/Redis (Kafka/NATS/RabbitMQ), production-grade delivery guarantees, and first-class HTTP+microservice shared-container hybrid composition are still pending.
 
-**New package needed**: Yes — `@konekti/microservices`
-
-**Acceptance criteria**:
-- `KonektiFactory.createMicroservice(rootModule, { transport: 'redis' | 'tcp', ... })` starts a non-HTTP message consumer.
-- `@MessagePattern('cmd')` binds a handler method to an incoming message command.
-- `@EventPattern('evt')` binds a handler method to an incoming event pattern (fire-and-forget).
-- A hybrid application mode runs both an HTTP server and a microservice transport in the same process.
-- Redis Pub/Sub transport uses `@konekti/redis` as the client dependency.
-- TCP transport requires no external dependencies beyond Node's `net` module.
-
-**Files to create**:
-- `packages/microservices/src/decorators/message-pattern.ts`
-- `packages/microservices/src/decorators/event-pattern.ts`
-- `packages/microservices/src/transports/redis-transport.ts`
-- `packages/microservices/src/transports/tcp-transport.ts`
-- `packages/microservices/src/transport.interface.ts`
-- `packages/microservices/src/factory.ts` — `createMicroservice`
-- `packages/microservices/README.md`, `README.ko.md`
-
-**Files to update**:
-- `docs/reference/package-surface.md` — add `@konekti/microservices`
-- `docs/reference/package-surface.ko.md`
-- `docs/operations/release-governance.md` — add to intended publish surface
-- `docs/operations/release-governance.ko.md`
-
-**Tests to write**:
-- Integration: Redis transport sends and receives a `@MessagePattern` handler response
-- Integration: TCP transport sends and receives a `@MessagePattern` handler response
-- Integration: hybrid app serves HTTP routes and microservice handlers in one process
-- Unit: `@EventPattern` handler fires without awaiting a reply
+**Scope**: Keep in `@konekti/microservices` and runtime integration tests.
 
 ---
 
@@ -108,34 +59,11 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 **NestJS**: Official `@nestjs/platform-express` and `@nestjs/platform-fastify` adapters. Fastify gives ~2× throughput for high-concurrency workloads.
 
-**Konekti now**: Node's built-in `http`/`https` only via `@konekti/runtime`'s `createNodeHttpAdapter`. No Fastify equivalent.
+**Konekti now**: `@konekti/platform-fastify` ships a Fastify adapter implementing the `HttpApplicationAdapter` interface and passing the full HTTP integration test suite. Both Node and Fastify adapters are supported.
 
-**Gap**: A `@konekti/platform-fastify` adapter that implements the `HttpApplicationAdapter` interface and passes the same integration test suite as the Node adapter.
+**Gap**: ~~Closed~~. `@konekti/platform-fastify` is shipped.
 
-**New package needed**: Yes — `@konekti/platform-fastify`
-
-**Acceptance criteria**:
-- Implements `HttpApplicationAdapter.listen(dispatcher)` using Fastify's request lifecycle.
-- Bridges Fastify's `FastifyRequest` / `FastifyReply` to `FrameworkRequest` / `FrameworkResponse`.
-- Passes the same integration test suite used to validate `createNodeHttpAdapter`.
-- Exposes `getServer()` returning the underlying `FastifyInstance`.
-- Works as a drop-in replacement: `runNodeApplication(AppModule, { adapter: createFastifyAdapter() })`.
-
-**Files to create**:
-- `packages/platform-fastify/src/fastify-adapter.ts`
-- `packages/platform-fastify/src/bridge.ts` — request/response bridging
-- `packages/platform-fastify/README.md`, `README.ko.md`
-
-**Files to update**:
-- `docs/reference/package-surface.md` — add `@konekti/platform-fastify`
-- `docs/reference/package-surface.ko.md`
-- `docs/operations/release-governance.md`
-- `docs/operations/release-governance.ko.md`
-- `docs/operations/deployment.md` — add Fastify adapter usage example
-- `docs/operations/deployment.ko.md`
-
-**Tests to write**:
-- Parity test suite: run the full HTTP integration test suite against both `createNodeHttpAdapter` and `createFastifyAdapter` — all tests must pass for both
+> **Note**: This item was previously listed as an open gap. It has been resolved. See maintenance rule below.
 
 ---
 
@@ -332,17 +260,15 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 ## recommended execution order
 
-Start with items that unblock the most common single-process use cases first, then expand to new transport surfaces.
+Start with items that unblock the most common single-process use cases first, then expand to the remaining transport and serialization surface.
 
-1. **A1** — standalone context (small, high impact, single file)
-2. **A5** — ArkType adapter (small, completes schema validation parity)
+1. **A5** — ArkType adapter (small, completes schema validation parity)
 3. **A6** — GraphQL request scope (medium, completes GraphQL parity)
 4. **A7** — response serializer (medium, closes the last major runtime gap)
 5. **B4** — version stability (small, ops/docs only)
 6. **C1 + C2** — messaging sharpening (tiny, immediate credibility boost)
-7. **A3** — platform-fastify (medium, performance tier)
-8. **A2** — microservices transport (large, new surface — tackle last)
-9. **C3** — public adoption ops (ops, can run in parallel with any of the above)
+7. **A2 remaining** — advanced non-HTTP transports and hybrid hardening (Kafka/NATS/RabbitMQ)
+8. **C3** — public adoption ops (ops, can run in parallel with any of the above)
 
 ---
 
@@ -352,6 +278,9 @@ The following items were previously listed as open gaps and have since been ship
 
 | Item | Resolution |
 |---|---|
+| A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)` is shipped in `@konekti/runtime`. Boots the module graph without an HTTP adapter, runs lifecycle hooks, and returns a typed `get<T>()` + `close()` context. |
+| A2. microservice / transport layer (initial) | `@konekti/microservices` ships TCP and Redis Pub/Sub transports, `@MessagePattern` / `@EventPattern` decorators, and `KonektiFactory.createMicroservice()`. Remaining gap: Kafka/NATS/RabbitMQ and hybrid hardening. |
+| A3. platform adapter breadth | `@konekti/platform-fastify` ships a Fastify adapter implementing `HttpApplicationAdapter` with full parity test suite. |
 | A4. HTTP versioning strategies beyond URI | All four strategies (URI, Header, Media type, Custom) are shipped in `@konekti/http` and `@konekti/runtime`. |
 | A7 (prev). Distributed rate limiting | `@konekti/throttler` ships with in-memory and Redis store adapters. |
 | A8 (prev). External event bus transports | `@konekti/event-bus` ships with a Redis Pub/Sub transport adapter. |

@@ -17,9 +17,8 @@
 
 | 격차 | 티어 | 신규 패키지? | 작업량 |
 |---|---|---|---|
-| [A1. 독립형 컨텍스트](#a1-독립형-애플리케이션-컨텍스트-standalone-application-context) | A | 없음 | 소 |
-| [A2. 마이크로서비스 트랜스포트](#a2-마이크로서비스--트랜스포트-계층) | A | 있음 | 대 |
-| [A3. platform-fastify](#a3-플랫폼-어댑터-폭) | A | 있음 | 중 |
+| [A2. 마이크로서비스 트랜스포트](#a2-마이크로서비스--트랜스포트-계층) | A | — | 잔여 |
+| [A3. platform-fastify](#a3-플랫폼-어댑터-폭) | A | — | 잔여 |
 | [A5. ArkType 검증 어댑터](#a5-스키마-기반-유효성-검사-zod--valibot--arktype) | A | 없음 | 소 |
 | [A6. GraphQL request 스코프](#a6-graphql-리졸버의-request--transient-프로바이더-스코프) | A | 없음 | 소–중 |
 | [A7. 응답 직렬화](#a7-응답-직렬화-계층) | A | 있음 | 중 |
@@ -36,30 +35,11 @@
 
 **NestJS**: `NestFactory.createApplicationContext(module)`은 HTTP 서버 없이 모듈 그래프를 부팅함. CLI 스크립트, 마이그레이션, 시드 러너, 워커, 테스트 격리에 사용됨.
 
-**현재 Konekti**: `bootstrapModule(module)`이 동일한 그래프 컴파일과 컨테이너 빌드를 수행하지만 내부 저수준 API임. HTTP 어댑터 없이 타입이 지정된 `get(token)` API를 노출하는 공개 독립형 파사드가 없음.
+**현재 Konekti**: `KonektiFactory.createApplicationContext(rootModule, options?)`가 출하됨. HTTP 어댑터 없이 모듈 그래프를 부팅하고, 모든 라이프사이클 훅을 실행하며, 타입 지정 `get<T>(token)` 메서드와 `close()` 경로를 가진 `ApplicationContext`를 반환함.
 
-**격차**: `KonektiFactory`에 `createApplicationContext(rootModule, options?)` 정적 메서드 추가 필요. 이 메서드는 `bootstrapModule`을 호출하고, HTTP 어댑터를 등록하지 않으며, 디스패처 생성을 건너뛰고, 타입이 지정된 `get<T>(token)` 메서드를 가진 컨테이너 셸을 반환해야 함.
+**격차**: ~~해소됨~~. `KonektiFactory.createApplicationContext`가 `@konekti/runtime`에 출하됨.
 
-**신규 패키지 필요**: 없음
-
-**인수 기준**:
-- HTTP 어댑터 없이 `bootstrapModule`로 모듈 그래프를 컴파일함.
-- `get<T>(token: Token<T>): T` 메서드를 가진 타입 지정 셸을 반환함.
-- 시작 시 모든 라이프사이클 훅(`onModuleInit`, `onApplicationBootstrap`)을 실행함.
-- `context.close()` 시 `onModuleDestroy`와 `onApplicationShutdown`을 실행함.
-- HTTP 서버 없이 테스트 환경에서 동작함.
-
-**수정할 파일**:
-- `packages/runtime/src/bootstrap.ts` — `KonektiFactory`에 `createApplicationContext` 추가
-- `packages/runtime/src/index.ts` — `createApplicationContext`와 반환 컨텍스트 타입 export
-- `packages/runtime/README.md` — 독립형 경로 문서화
-- `docs/getting-started/bootstrap-paths.md` — 독립형 컨텍스트 섹션 추가
-- `docs/getting-started/migrate-from-nestjs.md` — `NestFactory.createApplicationContext` → `KonektiFactory.createApplicationContext` 매핑 행 추가
-
-**작성할 테스트**:
-- 단위: `createApplicationContext`가 HTTP 어댑터 없이 단순 모듈에서 프로바이더를 resolve함
-- 단위: 라이프사이클 훅이 시작 및 `context.close()` 시 올바른 순서로 실행됨
-- 단위: `get()`이 등록되지 않은 토큰에 대해 예외를 던짐
+> **참고**: 이 항목은 이전에 열린 격차로 등록되어 있었으나 해소되었습니다. 아래 유지 관리 규칙을 참조하세요.
 
 ---
 
@@ -67,40 +47,11 @@
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })`으로 HTTP가 아닌 메시지 컨슈머를 실행. `@MessagePattern`과 `@EventPattern` 데코레이터가 핸들러를 HTTP 라우트 대신 트랜스포트 메시지에 바인딩함.
 
-**현재 Konekti**: `@konekti/event-bus`는 인프로세스 이벤트 및 Redis Pub/Sub 트랜스포트를 처리함. `@konekti/queue`는 Redis 기반 백그라운드 잡을 처리함. TCP/Kafka/NATS 컨슈머 표면, 공유 트랜스포트 추상화, `createMicroservice` 상당의 API가 없음.
+**현재 Konekti**: `@konekti/microservices`가 TCP/Redis Pub/Sub 트랜스포트 어댑터, `@MessagePattern` / `@EventPattern` 데코레이터, 런타임 `KonektiFactory.createMicroservice()`를 제공함. `@konekti/event-bus`는 인프로세스 이벤트 발행, `@konekti/queue`는 Redis 잡 처리로 각자 역할이 분리됨.
 
-**격차**: 트랜스포트 추상화 계층(`@konekti/microservices`) 신규 개발 필요. 최소한 Redis Pub/Sub과 TCP 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, HTTP와 마이크로서비스 트랜스포트를 같은 프로세스에서 동시에 실행하는 하이브리드 애플리케이션 모드가 포함되어야 함.
+**남은 격차**: TCP/Redis를 넘어선 트랜스포트(Kafka/NATS/RabbitMQ), 전달 보장 수준 강화, HTTP+마이크로서비스를 하나의 공유 컨테이너로 조합하는 1급 하이브리드 구성은 아직 미완.
 
-**신규 패키지 필요**: 있음 — `@konekti/microservices`
-
-**인수 기준**:
-- `KonektiFactory.createMicroservice(rootModule, { transport: 'redis' | 'tcp', ... })`로 HTTP가 아닌 메시지 컨슈머를 시작함.
-- `@MessagePattern('cmd')`가 핸들러 메서드를 수신 메시지 커맨드에 바인딩함.
-- `@EventPattern('evt')`가 핸들러 메서드를 수신 이벤트 패턴(fire-and-forget)에 바인딩함.
-- 하이브리드 애플리케이션 모드가 동일한 프로세스에서 HTTP 서버와 마이크로서비스 트랜스포트를 함께 실행함.
-- Redis Pub/Sub 트랜스포트가 `@konekti/redis`를 클라이언트 의존성으로 사용함.
-- TCP 트랜스포트가 Node의 `net` 모듈 외 추가 의존성 없이 동작함.
-
-**생성할 파일**:
-- `packages/microservices/src/decorators/message-pattern.ts`
-- `packages/microservices/src/decorators/event-pattern.ts`
-- `packages/microservices/src/transports/redis-transport.ts`
-- `packages/microservices/src/transports/tcp-transport.ts`
-- `packages/microservices/src/transport.interface.ts`
-- `packages/microservices/src/factory.ts` — `createMicroservice`
-- `packages/microservices/README.md`, `README.ko.md`
-
-**수정할 파일**:
-- `docs/reference/package-surface.md` — `@konekti/microservices` 추가
-- `docs/reference/package-surface.ko.md`
-- `docs/operations/release-governance.md` — 배포 예정 패키지에 추가
-- `docs/operations/release-governance.ko.md`
-
-**작성할 테스트**:
-- 통합: Redis 트랜스포트가 `@MessagePattern` 핸들러 응답을 송수신함
-- 통합: TCP 트랜스포트가 `@MessagePattern` 핸들러 응답을 송수신함
-- 통합: 하이브리드 앱이 하나의 프로세스에서 HTTP 라우트와 마이크로서비스 핸들러를 함께 처리함
-- 단위: `@EventPattern` 핸들러가 응답 대기 없이 실행됨
+**범위**: `@konekti/microservices` 및 런타임 통합 테스트를 중심으로 확장.
 
 ---
 
@@ -108,34 +59,11 @@
 
 **NestJS**: `@nestjs/platform-express`와 `@nestjs/platform-fastify` 공식 어댑터 제공. Fastify는 고동시성 워크로드에서 약 2배의 처리량을 제공함.
 
-**현재 Konekti**: `@konekti/runtime`의 `createNodeHttpAdapter`를 통한 Node 내장 `http`/`https`만 지원. Fastify 상당의 어댑터 없음.
+**현재 Konekti**: `@konekti/platform-fastify`가 `HttpApplicationAdapter` 인터페이스를 구현하는 Fastify 어댑터를 제공하며 전체 HTTP 통합 테스트 스위트를 통과함. Node 어댑터와 Fastify 어댑터 모두 지원됨.
 
-**격차**: `HttpApplicationAdapter` 인터페이스를 구현하고 Node 어댑터와 동일한 통합 테스트 스위트를 통과하는 `@konekti/platform-fastify` 어댑터 패키지 필요.
+**격차**: ~~해소됨~~. `@konekti/platform-fastify`가 출하됨.
 
-**신규 패키지 필요**: 있음 — `@konekti/platform-fastify`
-
-**인수 기준**:
-- Fastify의 요청 라이프사이클을 사용해 `HttpApplicationAdapter.listen(dispatcher)`을 구현함.
-- Fastify의 `FastifyRequest` / `FastifyReply`를 `FrameworkRequest` / `FrameworkResponse`로 브리지함.
-- `createNodeHttpAdapter` 검증에 사용되는 것과 동일한 통합 테스트 스위트를 통과함.
-- 기저 `FastifyInstance`를 반환하는 `getServer()`를 노출함.
-- 드롭인 교체로 동작함: `runNodeApplication(AppModule, { adapter: createFastifyAdapter() })`.
-
-**생성할 파일**:
-- `packages/platform-fastify/src/fastify-adapter.ts`
-- `packages/platform-fastify/src/bridge.ts` — 요청/응답 브리징
-- `packages/platform-fastify/README.md`, `README.ko.md`
-
-**수정할 파일**:
-- `docs/reference/package-surface.md` — `@konekti/platform-fastify` 추가
-- `docs/reference/package-surface.ko.md`
-- `docs/operations/release-governance.md`
-- `docs/operations/release-governance.ko.md`
-- `docs/operations/deployment.md` — Fastify 어댑터 사용 예시 추가
-- `docs/operations/deployment.ko.md`
-
-**작성할 테스트**:
-- 동등성 테스트 스위트: `createNodeHttpAdapter`와 `createFastifyAdapter` 양쪽에 대해 전체 HTTP 통합 테스트 스위트를 실행 — 모든 테스트가 양쪽 모두 통과해야 함
+> **참고**: 이 항목은 이전에 열린 격차로 등록되어 있었으나 해소되었습니다. 아래 유지 관리 규칙을 참조하세요.
 
 ---
 
@@ -332,17 +260,15 @@
 
 ## 권장 실행 순서
 
-가장 일반적인 단일 프로세스 사용 사례부터 시작해 새로운 트랜스포트 표면으로 확장합니다.
+가장 일반적인 단일 프로세스 사용 사례부터 시작해 남은 트랜스포트/직렬화 표면으로 확장합니다.
 
-1. **A1** — 독립형 컨텍스트 (소, 높은 임팩트, 단일 파일)
-2. **A5** — ArkType 어댑터 (소, 스키마 검증 동등성 완성)
+1. **A5** — ArkType 어댑터 (소, 스키마 검증 동등성 완성)
 3. **A6** — GraphQL request 스코프 (중, GraphQL 동등성 완성)
 4. **A7** — 응답 직렬화 (중, 마지막 주요 런타임 격차 해소)
 5. **B4** — 버전 안정성 (소, 운영/문서만)
 6. **C1 + C2** — 메시지 샤프닝 (극소, 즉각적인 신뢰도 향상)
-7. **A3** — platform-fastify (중, 성능 티어)
-8. **A2** — 마이크로서비스 트랜스포트 (대, 새 표면 — 마지막에 처리)
-9. **C3** — 공개 채택 운영 (운영, 위 항목 중 어느 것과도 병렬 진행 가능)
+7. **A2 잔여** — 고급 HTTP 외 트랜스포트 및 하이브리드 고도화 (Kafka/NATS/RabbitMQ)
+8. **C3** — 공개 채택 운영 (운영, 위 항목 중 어느 것과도 병렬 진행 가능)
 
 ---
 
@@ -352,6 +278,9 @@
 
 | 항목 | 해소 내용 |
 |---|---|
+| A1. 독립형 애플리케이션 컨텍스트 | `KonektiFactory.createApplicationContext(rootModule, options?)`가 `@konekti/runtime`에 출하됨. HTTP 어댑터 없이 모듈 그래프를 부팅하고, 라이프사이클 훅을 실행하며, 타입 지정 `get<T>()` + `close()` 컨텍스트를 반환함. |
+| A2. 마이크로서비스 / 트랜스포트 계층 (초기) | `@konekti/microservices`가 TCP/Redis Pub/Sub 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`를 제공함. 잔여 격차: Kafka/NATS/RabbitMQ 및 하이브리드 고도화. |
+| A3. 플랫폼 어댑터 폭 | `@konekti/platform-fastify`가 `HttpApplicationAdapter`를 구현하는 Fastify 어댑터를 전체 패리티 테스트 스위트와 함께 출하됨. |
 | A4. URI 이외의 HTTP 버저닝 전략 | URI, 헤더, 미디어 타입, 커스텀 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하됨. |
 | A7 (구). 분산 속도 제한 | `@konekti/throttler`가 인메모리 및 Redis 스토어 어댑터와 함께 출하됨. |
 | A8 (구). 외부 이벤트 버스 트랜스포트 | `@konekti/event-bus`가 Redis Pub/Sub 트랜스포트 어댑터와 함께 출하됨. |

@@ -1,0 +1,55 @@
+{
+  "name": "@konekti/microservices",
+  "version": "0.0.0",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/konektijs/konekti.git",
+    "directory": "packages/microservices"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./redis": {
+      "types": "./dist/redis-transport.d.ts",
+      "import": "./dist/redis-transport.js"
+    },
+    "./tcp": {
+      "types": "./dist/tcp-transport.d.ts",
+      "import": "./dist/tcp-transport.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@konekti/core": "workspace:*",
+    "@konekti/di": "workspace:*",
+    "@konekti/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  }
+}
