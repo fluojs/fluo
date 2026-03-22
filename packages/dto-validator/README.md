@@ -99,8 +99,10 @@ Use schema-based validation without `emitDecoratorMetadata` while keeping the sa
 
 ```typescript
 import { z } from 'zod';
+import { type } from 'arktype';
 import { object, pipe, safeParse, string, email } from 'valibot';
 import {
+  createArkTypeAdapter,
   createSchemaValidator,
   createValibotSchemaValidator,
   createZodSchemaValidator,
@@ -118,6 +120,12 @@ const valibotSchema = object({
 });
 
 const valibotValidator = createValibotSchemaValidator(valibotSchema, safeParse);
+
+const arkTypeValidator = createArkTypeAdapter(
+  type({
+    email: 'string.email',
+  }),
+);
 
 const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
   parse(value) {
