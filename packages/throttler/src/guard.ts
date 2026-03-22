@@ -13,6 +13,9 @@ import type { ThrottlerModuleOptions, ThrottlerStore } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
+const functionIdentityMap = new WeakMap<Function, number>();
+let nextFunctionIdentity = 1;
+
 function getClassMetadataBag(target: object): MetadataBag | undefined {
   return (target as Record<symbol, MetadataBag | undefined>)[metadataSymbol];
 }
@@ -36,6 +39,37 @@ function defaultKeyGenerator(ctx: MiddlewareContext): string {
 
 function buildStoreKey(handlerKey: string, clientKey: string): string {
   return `throttler:${handlerKey}:${clientKey}`;
+}
+
+function getFunctionIdentity(value: Function): number {
+  const existing = functionIdentityMap.get(value);
+
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const assigned = nextFunctionIdentity;
+  nextFunctionIdentity += 1;
+  functionIdentityMap.set(value, assigned);
+
+  return assigned;
+}
+
+function buildHandlerKey(handler: GuardContext['handler']): string {
+  const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
+  const moduleIdentity = handler.metadata.moduleType
+    ? `module:${getFunctionIdentity(handler.metadata.moduleType)}`
+    : 'module:none';
+  const controllerIdentity = `controller:${getFunctionIdentity(handler.controllerToken)}`;
+
+  return [
+    `method:${handler.route.method}`,
+    `path:${encodeURIComponent(handler.route.path)}`,
+    `version:${encodeURIComponent(version)}`,
+    `handler:${encodeURIComponent(handler.methodName)}`,
+    moduleIdentity,
+    controllerIdentity,
+  ].join('|');
 }
 
 @Inject([THROTTLER_OPTIONS])
@@ -75,7 +109,7 @@ export class ThrottlerGuard implements Guard {
       ? this.options.keyGenerator(middlewareCtx)
       : defaultKeyGenerator(middlewareCtx);
 
-    const handlerKey = `${handler.controllerToken.name}.${handler.methodName}`;
+    const handlerKey = buildHandlerKey(handler);
     const storeKey = buildStoreKey(handlerKey, clientKey);
     const now = Date.now();
     const entry = await this.store.consume(storeKey, {
