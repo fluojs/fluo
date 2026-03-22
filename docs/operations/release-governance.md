@@ -5,6 +5,20 @@
 
 This file describes the current public release and governance expectations for Konekti.
 
+## stability contract
+
+- `0.x`: public API is still stabilizing; breaking changes are allowed in minor releases and must include migration notes.
+- `1.0+`: public contract is stable; breaking changes require a major version bump and a published migration guide.
+
+### `1.0` graduation criteria
+
+`1.0` is only cut when all of the following are true:
+
+- stable public API surface is documented and validated against `docs/reference/package-surface.md`
+- migration guides exist for every breaking change introduced during `0.x`
+- full test coverage for public package contracts exists across unit/integration/CLI smoke checks and passes in CI
+- release and support policy is publicly documented (changelog + GitHub Releases + release governance docs)
+
 ## intended publish surface
 
 These packages are the current intended public release surface for the 0.x line:
@@ -46,20 +60,6 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 - major releases may require app updates when a public contract moves; those releases must ship migration notes in the same window
 - coordinated workspace releases happen when public package contracts move together
 - internal workspace version bumps follow the public release train but are not public API promises on their own
-
-## stability contract
-
-- `0.x`: public API is still stabilizing; breaking changes are allowed in minor releases and must include migration notes.
-- `1.0+`: public contract is stable; breaking changes require a major version bump and a published migration guide.
-
-### `1.0` graduation criteria
-
-`1.0` is only cut when all of the following are true:
-
-- stable public API surface is documented and validated against `docs/reference/package-surface.md`
-- migration guides exist for every breaking change introduced during `0.x`
-- full test coverage for public package contracts exists across unit/integration/CLI smoke checks and passes in CI
-- release and support policy is publicly documented (changelog + GitHub Releases + release governance docs)
 
 ## current extension boundary
 

@@ -8,16 +8,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 <!-- release-candidate-draft:start -->
-### Draft release candidate entry (2026-03-21)
+### Added
 
-- Breaking changes:
-  - _Describe public contract changes and include migration notes._
-- New features by package:
-  - _List package-level additions (for example `@konekti/http`, `@konekti/cli`)._
-- Bug fixes:
-  - _List notable fixes by package._
-- Deprecations:
-  - _List newly deprecated APIs and removal timelines._
+- `@konekti/serializer`: response serialization decorators and runtime interceptor wiring.
+- `@konekti/dto-validator`: optional ArkType adapter support for schema validation.
+- `@konekti/microservices`: Kafka, NATS, and RabbitMQ transport adapters.
+
+### Changed
+
+- `@konekti/graphql`: request/transient resolver-scope behavior is now covered by integration tests across operation boundaries.
+- Root docs (`README.md`, `README.ko.md`, quick-start docs): clarified TC39 standard decorator positioning and verifiable TypeScript/DI differences.
+- Release candidate verification now runs workspace build before typecheck in the release flow.
+
+### Fixed
+
+- No additional post-release hotfix entries at this time.
+
+### Deprecated
+
+- None.
 <!-- release-candidate-draft:end -->
 
 ## [0.0.0] - 2026-03-11
