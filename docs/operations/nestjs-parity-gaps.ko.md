@@ -18,7 +18,6 @@
 | 격차 | 티어 | 신규 패키지? | 작업량 |
 |---|---|---|---|
 | [A2. 마이크로서비스 트랜스포트](#a2-마이크로서비스--트랜스포트-계층) | A | — | 잔여 |
-| [A3. platform-fastify](#a3-플랫폼-어댑터-폭) | A | — | 잔여 |
 | [A5. ArkType 검증 어댑터](#a5-스키마-기반-유효성-검사-zod--valibot--arktype) | A | 없음 | 소 |
 | [A6. GraphQL request 스코프](#a6-graphql-리졸버의-request--transient-프로바이더-스코프) | A | 없음 | 소–중 |
 | [A7. 응답 직렬화](#a7-응답-직렬화-계층) | A | 있음 | 중 |
@@ -31,18 +30,6 @@
 
 ## A 티어 — 하드 블로커
 
-### A1. 독립형 애플리케이션 컨텍스트 (Standalone Application Context)
-
-**NestJS**: `NestFactory.createApplicationContext(module)`은 HTTP 서버 없이 모듈 그래프를 부팅함. CLI 스크립트, 마이그레이션, 시드 러너, 워커, 테스트 격리에 사용됨.
-
-**현재 Konekti**: `KonektiFactory.createApplicationContext(rootModule, options?)`가 출하됨. HTTP 어댑터 없이 모듈 그래프를 부팅하고, 모든 라이프사이클 훅을 실행하며, 타입 지정 `get<T>(token)` 메서드와 `close()` 경로를 가진 `ApplicationContext`를 반환함.
-
-**격차**: ~~해소됨~~. `KonektiFactory.createApplicationContext`가 `@konekti/runtime`에 출하됨.
-
-> **참고**: 이 항목은 이전에 열린 격차로 등록되어 있었으나 해소되었습니다. 아래 유지 관리 규칙을 참조하세요.
-
----
-
 ### A2. 마이크로서비스 / 트랜스포트 계층
 
 **NestJS**: `NestFactory.createMicroservice(module, { transport: Transport.TCP | REDIS | KAFKA | ... })`으로 HTTP가 아닌 메시지 컨슈머를 실행. `@MessagePattern`과 `@EventPattern` 데코레이터가 핸들러를 HTTP 라우트 대신 트랜스포트 메시지에 바인딩함.
@@ -52,30 +39,6 @@
 **남은 격차**: TCP/Redis를 넘어선 트랜스포트(Kafka/NATS/RabbitMQ), 전달 보장 수준 강화, HTTP+마이크로서비스를 하나의 공유 컨테이너로 조합하는 1급 하이브리드 구성은 아직 미완.
 
 **범위**: `@konekti/microservices` 및 런타임 통합 테스트를 중심으로 확장.
-
----
-
-### A3. 플랫폼 어댑터 폭
-
-**NestJS**: `@nestjs/platform-express`와 `@nestjs/platform-fastify` 공식 어댑터 제공. Fastify는 고동시성 워크로드에서 약 2배의 처리량을 제공함.
-
-**현재 Konekti**: `@konekti/platform-fastify`가 `HttpApplicationAdapter` 인터페이스를 구현하는 Fastify 어댑터를 제공하며 전체 HTTP 통합 테스트 스위트를 통과함. Node 어댑터와 Fastify 어댑터 모두 지원됨.
-
-**격차**: ~~해소됨~~. `@konekti/platform-fastify`가 출하됨.
-
-> **참고**: 이 항목은 이전에 열린 격차로 등록되어 있었으나 해소되었습니다. 아래 유지 관리 규칙을 참조하세요.
-
----
-
-### A4. URI 이외의 HTTP 버저닝 전략
-
-**NestJS**: URI 버저닝(`/v1/users`), 헤더 버저닝(`X-API-Version: 1`), 미디어 타입 버저닝(`Accept: application/vnd.v1+json`), 함수 기반 커스텀 버저닝 지원.
-
-**현재 Konekti**: 4가지 버저닝 전략(URI, 헤더, 미디어 타입, 커스텀) 모두 `@Version` 데코레이터와 `runNodeApplication`의 `versioning` 옵션을 통해 지원됨.
-
-**격차**: ~~해소됨~~. NestJS의 4가지 버저닝 전략이 모두 출하됨.
-
-> **참고**: 이 항목은 이전에 열린 격차로 등록되어 있었으나 해소되었습니다. 아래 유지 관리 규칙을 참조하세요.
 
 ---
 
@@ -263,30 +226,12 @@
 가장 일반적인 단일 프로세스 사용 사례부터 시작해 남은 트랜스포트/직렬화 표면으로 확장합니다.
 
 1. **A5** — ArkType 어댑터 (소, 스키마 검증 동등성 완성)
-3. **A6** — GraphQL request 스코프 (중, GraphQL 동등성 완성)
-4. **A7** — 응답 직렬화 (중, 마지막 주요 런타임 격차 해소)
-5. **B4** — 버전 안정성 (소, 운영/문서만)
-6. **C1 + C2** — 메시지 샤프닝 (극소, 즉각적인 신뢰도 향상)
-7. **A2 잔여** — 고급 HTTP 외 트랜스포트 및 하이브리드 고도화 (Kafka/NATS/RabbitMQ)
-8. **C3** — 공개 채택 운영 (운영, 위 항목 중 어느 것과도 병렬 진행 가능)
-
----
-
-## 해소된 격차
-
-다음 항목들은 이전에 열린 격차로 등록되어 있었으며 현재 출하 완료된 상태입니다:
-
-| 항목 | 해소 내용 |
-|---|---|
-| A1. 독립형 애플리케이션 컨텍스트 | `KonektiFactory.createApplicationContext(rootModule, options?)`가 `@konekti/runtime`에 출하됨. HTTP 어댑터 없이 모듈 그래프를 부팅하고, 라이프사이클 훅을 실행하며, 타입 지정 `get<T>()` + `close()` 컨텍스트를 반환함. |
-| A2. 마이크로서비스 / 트랜스포트 계층 (초기) | `@konekti/microservices`가 TCP/Redis Pub/Sub 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`를 제공함. 잔여 격차: Kafka/NATS/RabbitMQ 및 하이브리드 고도화. |
-| A3. 플랫폼 어댑터 폭 | `@konekti/platform-fastify`가 `HttpApplicationAdapter`를 구현하는 Fastify 어댑터를 전체 패리티 테스트 스위트와 함께 출하됨. |
-| A4. URI 이외의 HTTP 버저닝 전략 | URI, 헤더, 미디어 타입, 커스텀 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하됨. |
-| A7 (구). 분산 속도 제한 | `@konekti/throttler`가 인메모리 및 Redis 스토어 어댑터와 함께 출하됨. |
-| A8 (구). 외부 이벤트 버스 트랜스포트 | `@konekti/event-bus`가 Redis Pub/Sub 트랜스포트 어댑터와 함께 출하됨. |
-| B1. NestJS에서의 마이그레이션 경로 | `docs/getting-started/migrate-from-nestjs.md`가 모듈, 데코레이터, 스코프, 부트스트랩, 테스트 매핑을 포함함. |
-| B2. 커뮤니티 플러그인 표면 | `docs/operations/third-party-extension-contract.md`가 메타데이터 확장, 플랫폼 어댑터, 모듈 작성 계약을 문서화함. |
-| B3. 프로덕션 배포 레퍼런스 | `docs/operations/deployment.md`가 Docker 멀티 스테이지 빌드, Kubernetes 프로브, 그레이스풀 셧다운, Docker Compose를 포함함. |
+2. **A6** — GraphQL request 스코프 (중, GraphQL 동등성 완성)
+3. **A7** — 응답 직렬화 (중, 마지막 주요 런타임 격차 해소)
+4. **B4** — 버전 안정성 (소, 운영/문서만)
+5. **C1 + C2** — 메시지 샤프닝 (극소, 즉각적인 신뢰도 향상)
+6. **A2 잔여** — 고급 HTTP 외 트랜스포트 및 하이브리드 고도화 (Kafka/NATS/RabbitMQ)
+7. **C3** — 공개 채택 운영 (운영, 위 항목 중 어느 것과도 병렬 진행 가능)
 
 ---
 
@@ -294,7 +239,7 @@
 
 이 파일은 현재 격차 상태를 문서화합니다. 격차가 해소되면:
 
-1. 해당 항목을 위의 **해소된 격차** 표로 이동하고 한 줄 해소 내용을 작성.
+1. 해당 항목을 이 문서에서 제거하고, 관련 문서(README/개념/레퍼런스)에 출하 상태를 반영.
 2. 영향받는 패키지 README와 `docs/` 개념 가이드 업데이트.
 3. 대응하는 GitHub Issue 닫거나 업데이트.
 4. 해소된 격차를 열린 상태로 두지 말 것 — 이 파일은 항상 출하된 상태를 반영해야 함.

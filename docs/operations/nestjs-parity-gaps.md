@@ -18,7 +18,6 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 | Gap | Tier | New package? | Effort |
 |---|---|---|---|
 | [A2. microservices transport](#a2-microservice--transport-layer) | A | — | Remaining |
-| [A3. platform-fastify](#a3-platform-adapter-breadth) | A | — | Remaining |
 | [A5. ArkType validation adapter](#a5-schema-based-validation-zod--valibot--arktype) | A | No | Small |
 | [A6. GraphQL request scope](#a6-request--transient-provider-scopes-for-graphql-resolvers) | A | No | Small–Medium |
 | [A7. response serialization](#a7-response-serialization-layer) | A | Yes | Medium |
