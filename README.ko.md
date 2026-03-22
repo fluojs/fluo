@@ -2,7 +2,69 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti는 **TC39 표준 데코레이터** 기반으로, 명시적 DI와 예측 가능한 런타임 흐름을 빠르게 시작할 수 있게 만든 TypeScript 백엔드 프레임워크입니다.
+Konekti는 **TC39 표준 데코레이터**를 전면 사용하는 TypeScript 백엔드 프레임워크로, NestJS의 레거시 데코레이터 경로와 명확히 구분됩니다.
+
+## 왜 표준 데코레이터인가?
+
+Konekti는 TypeScript의 현재 표준 데코레이터 모델을 기준으로 동작하므로, 스타터 앱에서 레거시 컴파일러 동작을 요구하지 않습니다.
+
+- `experimentalDecorators`: 레거시(표준 이전) 데코레이터 동작을 활성화하는 플래그입니다.
+- `emitDecoratorMetadata`: 리플렉션 기반 주입에 쓰이는 런타임 타입 메타데이터를 생성하는 플래그입니다.
+- NestJS: 암묵적 생성자 주입을 위해 레거시 데코레이터 + 메타데이터 생성이 필요합니다.
+- Konekti: 토큰 기반 명시적 주입을 사용하므로 메타데이터 생성에 의존하지 않습니다.
+
+즉, 프로젝트 `tsconfig.json`에서 표준 TypeScript 기본값을 유지하고 레거시 데코레이터 플래그를 피할 수 있습니다.
+
+## TypeScript-first, 검증 가능한 차이
+
+Konekti의 TypeScript-first는 마케팅 문구가 아니라, 레거시 데코레이터 플래그 불필요성과 명시적 DI라는 검증 가능한 동작 차이를 뜻합니다.
+
+### `tsconfig.json` 비교
+
+NestJS식 레거시 데코레이터 설정:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+Konekti 표준 데코레이터 설정:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": false
+  }
+}
+```
+
+Konekti 앱에서는 `experimentalDecorators`를 아예 생략해도 됩니다.
+
+### DI 스타일 비교
+
+NestJS 암묵적 메타데이터 주입:
+
+```ts
+@Injectable()
+export class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
+
+Konekti 명시적 토큰 주입:
+
+```ts
+const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
+
+@Inject([USERS_REPOSITORY])
+class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
 
 ## 빠른 시작
 

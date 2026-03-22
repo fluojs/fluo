@@ -2,7 +2,69 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti is a TypeScript backend framework built on **TC39 standard decorators**, explicit DI, and a predictable runtime path you can run in minutes.
+Konekti is a TypeScript backend framework built on **TC39 standard decorators** as an explicit alternative to NestJS legacy decorator mode.
+
+## Why Standard Decorators?
+
+Konekti ships on the current TypeScript standard decorator model, so starter apps do not need legacy compiler behavior.
+
+- `experimentalDecorators`: enables legacy (pre-standard) decorator emit and type behavior.
+- `emitDecoratorMetadata`: emits runtime design-type metadata for reflection-based injection.
+- NestJS: depends on legacy decorators plus emitted metadata for implicit constructor injection.
+- Konekti: does not require emitted metadata because dependencies are declared explicitly with tokens.
+
+For project config, that means you can keep standard TypeScript defaults and avoid legacy decorator flags.
+
+## TypeScript-first, with Verifiable Differences
+
+TypeScript-first in Konekti means no legacy decorator compiler flags and no reflection-driven DI.
+
+### `tsconfig.json` comparison
+
+NestJS-style legacy decorator setup:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+Konekti standard decorator setup:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": false
+  }
+}
+```
+
+You can also omit `experimentalDecorators` entirely in Konekti apps.
+
+### DI style comparison
+
+NestJS implicit metadata injection:
+
+```ts
+@Injectable()
+export class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
+
+Konekti explicit token injection:
+
+```ts
+const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
+
+@Inject([USERS_REPOSITORY])
+class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
 
 ## Quick Start
 

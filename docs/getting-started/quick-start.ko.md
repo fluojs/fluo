@@ -5,6 +5,14 @@
 
 이 가이드는 현재 Konekti의 공개 부트스트랩 경로를 설명합니다.
 
+> [!NOTE]
+> Konekti는 TC39 표준 데코레이터(TypeScript 5.0+)를 사용합니다.
+> 스타터 앱의 `tsconfig.json`에서 레거시 데코레이터 플래그를 켜지 마세요:
+> - `"experimentalDecorators": true`를 설정하지 마세요
+> - `"emitDecoratorMetadata": true`를 설정하지 마세요
+> NestJS는 현재 레거시 데코레이터 + 메타데이터 경로에 의존하지만, Konekti는 그렇지 않습니다.
+> Konekti에서는 표준 설정(`"experimentalDecorators": false` 또는 생략)만으로 충분합니다.
+
 ## 표준 부트스트랩 경로
 
 ```sh

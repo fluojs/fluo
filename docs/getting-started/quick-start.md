@@ -9,6 +9,7 @@ This guide describes the current public bootstrap path for Konekti.
 > Konekti uses TC39 standard decorators (TypeScript 5.0+). Starter apps should not enable legacy decorator flags in `tsconfig.json`:
 > - do not set `"experimentalDecorators": true`
 > - do not set `"emitDecoratorMetadata": true`
+> NestJS currently relies on the legacy decorator + metadata path; Konekti does not.
 > Standard configuration is enough (`"experimentalDecorators": false` or omitting it).
 
 ## canonical bootstrap path
