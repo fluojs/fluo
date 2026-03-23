@@ -7,14 +7,28 @@ export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('konekti.graphql.operation
 
 export interface GraphqlRequestContext {
   request: FrameworkRequest;
+  connectionParams?: Record<string, unknown>;
   principal?: Principal;
+  socket?: unknown;
 }
 
 export interface GraphQLContext {
   request: FrameworkRequest;
+  connectionParams?: Record<string, unknown>;
   principal?: Principal;
   [GRAPHQL_OPERATION_CONTAINER]?: Container;
   [key: string]: unknown;
+  socket?: unknown;
+}
+
+export interface GraphqlWebSocketSubscriptionsOptions {
+  connectionInitWaitTimeoutMs?: number;
+  enabled?: boolean;
+  keepAliveMs?: number;
+}
+
+export interface GraphqlSubscriptionsOptions {
+  websocket?: GraphqlWebSocketSubscriptionsOptions;
 }
 
 export interface ResolverMetadata {
@@ -65,4 +79,5 @@ export interface GraphqlModuleOptions {
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;
+  subscriptions?: GraphqlSubscriptionsOptions;
 }

@@ -165,9 +165,19 @@ importers:
       graphql:
         specifier: ^16.13.1
         version: 16.13.1
+      graphql-ws:
+        specifier: ^5.16.2
+        version: 5.16.2(graphql@16.13.1)
       graphql-yoga:
         specifier: ^5.18.1
         version: 5.18.1(graphql@16.13.1)
+      ws:
+        specifier: ^8.18.3
+        version: 8.19.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
 
   packages/http:
     dependencies:
@@ -1701,6 +1711,12 @@ packages:
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
+  graphql-ws@5.16.2:
+    resolution: {integrity: sha512-E1uccsZxt/96jH/OwmLPuXMACILs76pKF2i3W861LpKBCYtGIyPQGtWLuBLkND4ox1KHns70e83PS4te50nvPQ==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      graphql: '>=0.11 <=16'
 
   graphql-yoga@5.18.1:
     resolution: {integrity: sha512-GiDSlvibfY/vyurbkBOKMO+adF6bTCzKr80FYWta59s1Lx87oVo8T6Nu/0hrxrGv0SrAUkqUpcpr4Ee7XlYmBw==}
@@ -3384,6 +3400,10 @@ snapshots:
       minimatch: 3.1.5
       once: 1.4.0
       path-is-absolute: 1.0.1
+
+  graphql-ws@5.16.2(graphql@16.13.1):
+    dependencies:
+      graphql: 16.13.1
 
   graphql-yoga@5.18.1(graphql@16.13.1):
     dependencies:
