@@ -1,4 +1,5 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
+import type { Scope } from '@konekti/di';
 
 export type Pattern = RegExp | string;
 export type HandlerKind = 'event' | 'message';
@@ -14,6 +15,7 @@ export interface HandlerDescriptor {
   methodName: string;
   moduleName: string;
   pattern: Pattern;
+  scope: Scope;
   targetName: string;
   token: Token;
 }
