@@ -73,17 +73,28 @@ interface GraphqlModuleOptions {
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;
+  subscriptions?: {
+    websocket?: {
+      connectionInitWaitTimeoutMs?: number;
+      enabled?: boolean;
+      keepAliveMs?: number;
+    };
+  };
 }
 
 interface GraphqlRequestContext {
   request: FrameworkRequest;
+  connectionParams?: Record<string, unknown>;
   principal?: Principal;
+  socket?: unknown;
 }
 
 interface GraphQLContext {
   request: FrameworkRequest;
+  connectionParams?: Record<string, unknown>;
   principal?: Principal;
   [key: string]: unknown;
+  socket?: unknown;
 }
 ```
 
@@ -91,6 +102,9 @@ interface GraphQLContext {
 - `resolvers`: optional allowlist for code-first discovery.
 - `context`: adds custom GraphQL context values for each request.
 - `graphiql`: explicit GraphiQL toggle. Default is `true` unless `NODE_ENV === 'production'`.
+- `subscriptions.websocket.enabled`: enables `graphql-ws` transport on the shared Node HTTP server while keeping SSE support available on `/graphql`.
+- `subscriptions.websocket.keepAliveMs`: custom websocket ping interval for `graphql-ws` keepalive frames.
+- `subscriptions.websocket.connectionInitWaitTimeoutMs`: custom timeout for the initial `connection_init` message.
 
 ### Other exports
 
@@ -128,13 +142,13 @@ Maps DTO fields to GraphQL argument names for input binding.
 ## Runtime Behavior
 
 - Endpoint path: `/graphql` (and `/graphql/`) via GET/POST.
-- Transport: Konekti request/response is bridged to GraphQL Yoga Fetch API.
+- Transport: Konekti request/response is bridged to GraphQL Yoga Fetch API, and subscriptions can also use `graphql-ws` over the shared Node HTTP server when enabled.
 - Context: each resolver receives `request` and optional `principal`; custom context is merged in.
 - Reserved internal context keys are protected; custom context cannot override the per-operation DI container symbol.
 - Discovery: resolvers are discovered from compiled modules during bootstrap.
 - Scope model: singleton, request, and transient scopes are all supported in GraphQL resolvers.
 - Registration rule: class providers and controllers are discoverable; `useValue`/`useFactory` providers are not.
-- Shutdown: Yoga state is released during application shutdown.
+- Shutdown: Yoga state and any enabled GraphQL websocket listeners are released during application shutdown.
 
 ## Provider Scopes in Resolvers
 
@@ -176,6 +190,8 @@ When a resolver is declared with `@Scope('request')`, all its dependencies must 
 ## Subscriptions
 
 - Subscriptions are supported through GraphQL Yoga (SSE by default).
+- Set `createGraphqlModule({ subscriptions: { websocket: { enabled: true } } })` to enable the `graphql-ws` protocol on the shared Node HTTP adapter.
+- Websocket subscription context is still per GraphQL operation, so request-scoped resolvers and dependencies stay isolated across concurrent subscriptions.
 - `@Subscription()` resolvers must return an `AsyncIterable`; otherwise an error is thrown.
 
 ## Schema Modes
@@ -199,6 +215,7 @@ If `schema` is omitted, the module builds schema from discovered decorators. If 
 | Package | Role |
 |---------|------|
 | `graphql` | GraphQL schema/types |
+| `graphql-ws` | websocket subscription protocol runtime |
 | `graphql-yoga` | HTTP transport/runtime |
 | `@konekti/runtime` | module lifecycle, container, compiled modules |
 | `@konekti/http` | request/response bridge |
