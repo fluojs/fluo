@@ -64,6 +64,24 @@ await microservice.listen();
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
 - `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` are event-only transports: they support `emit()` plus inbound event dispatch. For request/reply `send()`, use TCP or NATS transport.
 
+### Kafka
+
+- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP or NATS instead.
+- Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
+- Ordering, offset commit policy, consumer group recovery, and broker-specific reconnect semantics are not guaranteed by Konekti itself; treat them as broker/client concerns unless a future guide says otherwise.
+
+### RabbitMQ
+
+- `RabbitMqMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP or NATS instead.
+- Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
+- Ack/nack, requeue, dead-letter, and channel recovery policies are not configured by this adapter today. Treat them as broker/client concerns unless a future guide says otherwise.
+
+### NATS
+
+- `NatsMicroserviceTransport` supports both `send()` and `emit()` by using separate request/reply and event subjects.
+- `send()` applies `requestTimeoutMs` and only propagates handler failures that the transport can serialize back as an error message.
+- Reconnect behavior, buffering, and responder availability remain client/server concerns; if request/reply guarantees matter operationally, validate them against your chosen NATS client/runtime setup.
+
 ## Hybrid mode
 
 Use runtime app bootstrap and resolve the microservice runtime from the same container:
