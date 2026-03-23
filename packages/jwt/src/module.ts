@@ -2,7 +2,7 @@ import { defineModuleMetadata, type AsyncModuleOptions, type Constructor, type M
 import type { Provider } from '@konekti/di';
 
 import { JwtConfigurationError } from './errors.js';
-import { RefreshTokenService } from './refresh-token.js';
+import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh-token.js';
 import type { JwtVerifierOptions } from './types.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier, JWT_OPTIONS } from './verifier.js';
@@ -22,10 +22,12 @@ type JwtOptionsProvider =
       useFactory: (...deps: unknown[]) => MaybePromise<JwtVerifierOptions>;
     };
 
-function hasRefreshTokenOptions(
-  value: unknown,
-): value is JwtVerifierOptions & { refreshToken: NonNullable<JwtVerifierOptions['refreshToken']> } {
-  return typeof value === 'object' && value !== null && 'refreshToken' in value && Boolean(value.refreshToken);
+function resolveRefreshTokenOptions(value: unknown): NonNullable<JwtVerifierOptions['refreshToken']> {
+  if (typeof value !== 'object' || value === null || !('refreshToken' in value)) {
+    throw new JwtConfigurationError('JWT refresh token options are not configured.');
+  }
+
+  return normalizeRefreshTokenOptions((value as JwtVerifierOptions).refreshToken);
 }
 
 function createJwtModuleProviders(
@@ -42,13 +44,10 @@ function createJwtModuleProviders(
       scope: refreshTokenServiceScope,
       useFactory: (...deps: unknown[]) => {
         const [options, signer, verifier] = deps;
-
-        if (!hasRefreshTokenOptions(options)) {
-          throw new JwtConfigurationError('JWT refresh token options are not configured.');
-        }
+        const refreshTokenOptions = resolveRefreshTokenOptions(options);
 
         return new RefreshTokenService(
-          options.refreshToken,
+          refreshTokenOptions,
           signer as DefaultJwtSigner,
           verifier as DefaultJwtVerifier,
         );
