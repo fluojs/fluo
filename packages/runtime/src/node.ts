@@ -454,9 +454,21 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
         return;
       }
 
-      context.request.path = strippedPath;
-      context.request.url = rewritePrefixedUrl(context.request.url, requestPath, strippedPath);
-      await next();
+      const originalRequest = context.requestContext.request;
+      const scopedRequest = {
+        ...originalRequest,
+        path: strippedPath,
+        url: rewritePrefixedUrl(originalRequest.url, requestPath, strippedPath),
+      };
+      context.request = scopedRequest;
+      context.requestContext.request = scopedRequest;
+
+      try {
+        await next();
+      } finally {
+        context.request = originalRequest;
+        context.requestContext.request = originalRequest;
+      }
     },
   };
 }

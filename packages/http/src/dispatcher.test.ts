@@ -13,6 +13,7 @@ import type {
 } from '@konekti/http';
 import {
   FromBody,
+  FromQuery,
   createDispatcher,
   createHandlerMapping,
   Controller,
@@ -1222,6 +1223,47 @@ describe('dispatcher runtime', () => {
         status: 400,
       },
     });
+  });
+
+  it('keeps single-element query arrays intact in RequestDto binding', async () => {
+    class SearchRequest {
+      @FromQuery('tag')
+      tags: string[] = [];
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @RequestDto(SearchRequest)
+      @Get('/')
+      search(input: SearchRequest) {
+        return input;
+      }
+    }
+
+    const root = new Container().register(SearchController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: SearchController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      {
+        body: undefined,
+        cookies: {},
+        headers: {},
+        method: 'GET',
+        params: {},
+        path: '/search',
+        query: { tag: ['one'] },
+        raw: {},
+        url: '/search?tag=one',
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ tags: ['one'] });
   });
 
   it('returns nested validation field paths through the canonical error envelope', async () => {

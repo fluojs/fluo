@@ -91,10 +91,6 @@ function validateBodyKeys(
 
 export class DefaultConverter implements Converter {
   convert(value: unknown, _target: ConverterTarget): unknown {
-    if (Array.isArray(value) && value.length === 1) {
-      return value[0];
-    }
-
     return value;
   }
 }
