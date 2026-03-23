@@ -307,4 +307,70 @@ describe('http decorators', () => {
       },
     ]);
   });
+
+  it('does not execute base DTO constructors while creating mapped DTO helpers', () => {
+    const constructorCalls: string[] = [];
+
+    class BaseRequest {
+      @FromBody('name')
+      @IsString()
+      name = '';
+
+      constructor() {
+        constructorCalls.push('base');
+      }
+    }
+
+    class SecondaryRequest {
+      @FromBody('city')
+      @IsString()
+      city = '';
+
+      constructor() {
+        constructorCalls.push('secondary');
+      }
+    }
+
+    const Picked = PickType(BaseRequest, ['name']);
+    const Omitted = OmitType(BaseRequest, []);
+    const Partial = PartialType(BaseRequest);
+    const Intersected = IntersectionType(BaseRequest, SecondaryRequest);
+
+    expect(constructorCalls).toEqual([]);
+
+    expect(new Picked()).toEqual({ name: undefined });
+    expect(new Omitted()).toEqual({ name: undefined });
+    expect(new Partial()).toEqual({ name: undefined });
+    expect(new Intersected()).toEqual({ city: undefined, name: undefined });
+  });
+
+  it('adds at most one optional validation rule per field in PartialType', () => {
+    class UpdateUserRequest {
+      @FromBody('name')
+      @IsString()
+      @Optional()
+      @MinLength(2)
+      name = '';
+    }
+
+    const PartialUpdateUserRequest = PartialType(UpdateUserRequest);
+    const schema = getDtoValidationSchema(PartialUpdateUserRequest);
+    let nameRules: Array<{ kind: string }> = [];
+
+    for (const entry of schema) {
+      if (entry.propertyKey === 'name') {
+        nameRules = entry.rules as Array<{ kind: string }>;
+        break;
+      }
+    }
+
+    const optionalRules: Array<{ kind: string }> = [];
+    for (const rule of nameRules) {
+      if (rule.kind === 'optional') {
+        optionalRules.push(rule);
+      }
+    }
+
+    expect(optionalRules).toHaveLength(1);
+  });
 });

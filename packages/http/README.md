@@ -179,6 +179,8 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 
 > Validation decorators (`@IsString`, `@IsEmail`, etc.) come from `@konekti/dto-validator`, not this package.
 
+Binding keeps source value shape explicit. For example, repeated query/header values remain arrays (including single-element arrays) unless you provide an explicit converter that normalizes them.
+
 ### Runtime helpers
 
 | Export | Location | Description |

@@ -159,6 +159,43 @@ describe('@konekti/testing', () => {
 
     await expect(testingModule.resolve<string>(TARGET)).resolves.toBe('source-value');
   });
+
+  it('applies provider overrides before first provider resolution side effects', async () => {
+    const TOKEN = Symbol('expensive-token');
+    let factoryCallCount = 0;
+
+    class ConsumerService {
+      constructor(readonly value: string) {}
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: TOKEN,
+          useFactory: () => {
+            factoryCallCount += 1;
+            return 'real';
+          },
+        },
+        {
+          provide: ConsumerService,
+          inject: [TOKEN],
+          useFactory: (value: string) => new ConsumerService(value),
+        },
+      ],
+    })
+    class ServiceModule {}
+
+    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(TOKEN, 'fake')
+      .compile();
+
+    expect(factoryCallCount).toBe(0);
+
+    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+    expect(consumer.value).toBe('fake');
+    expect(factoryCallCount).toBe(0);
+  });
 });
 
 describe('createMock', () => {

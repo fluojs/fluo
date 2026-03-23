@@ -61,7 +61,6 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const DEFAULT_GLOBAL_PREFIX_EXCLUDE = ['/health', '/ready', '/openapi.json', '/docs', '/metrics'] as const;
 
 export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
-  compression?: boolean;
   cors?: CorsInput;
   globalPrefix?: string;
   globalPrefixExclude?: readonly string[];
@@ -248,7 +247,6 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
 export function createFastifyAdapter(
   options: FastifyAdapterOptions = {},
-  _compression = false,
   multipartOptions?: MultipartOptions,
 ): HttpApplicationAdapter {
   return new FastifyHttpApplicationAdapter(
@@ -272,7 +270,7 @@ export async function bootstrapFastifyApplication(
 
   return bootstrapApplication({
     ...options,
-    adapter: createFastifyAdapter(options, options.compression ?? false, options.multipart),
+    adapter: createFastifyAdapter(options, options.multipart),
     logger,
     middleware: createFastifyMiddleware(options),
     rootModule,
@@ -284,7 +282,7 @@ export async function runFastifyApplication(
   options: RunFastifyApplicationOptions,
 ): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
-  const adapter = createFastifyAdapter(options, options.compression ?? false, options.multipart) as FastifyHttpApplicationAdapter;
+  const adapter = createFastifyAdapter(options, options.multipart) as FastifyHttpApplicationAdapter;
   const app = await bootstrapApplication({
     ...options,
     adapter,
@@ -630,9 +628,21 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
         return;
       }
 
-      context.request.path = strippedPath;
-      context.request.url = rewritePrefixedUrl(context.request.url, requestPath, strippedPath);
-      await next();
+      const originalRequest = context.requestContext.request;
+      const scopedRequest = {
+        ...originalRequest,
+        path: strippedPath,
+        url: rewritePrefixedUrl(originalRequest.url, requestPath, strippedPath),
+      };
+      context.request = scopedRequest;
+      context.requestContext.request = scopedRequest;
+
+      try {
+        await next();
+      } finally {
+        context.request = originalRequest;
+        context.requestContext.request = originalRequest;
+      }
     },
   };
 }

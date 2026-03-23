@@ -1207,6 +1207,48 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('does not leak global-prefix path rewrites to request observers', async () => {
+    const observedPaths: string[] = [];
+
+    class PathObserver {
+      onRequestFinish(context: { requestContext: { request: FrameworkRequest } }) {
+        observedPaths.push(context.requestContext.request.path);
+      }
+    }
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      mode: 'test',
+      observers: [new PathObserver()],
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/api/app/info`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+    expect(observedPaths).toEqual(['/api/app/info']);
+
+    await app.close();
+  });
+
   it('supports additional global prefix exclusion patterns', async () => {
     @Controller('/internal')
     class InternalController {

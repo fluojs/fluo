@@ -20,22 +20,18 @@ import type {
 interface NormalizedLoadOptions {
   envFile: string;
   defaults: ConfigDictionary;
-  processEnv: NodeJS.ProcessEnv;
   safeProcessEnv: Record<string, string>;
   runtimeOverrides: ConfigDictionary;
   parse?: (content: string) => Record<string, string>;
   validate?: (raw: ConfigDictionary) => ConfigDictionary;
 }
 
-function parseEnvContent(content: string, processEnv: NodeJS.ProcessEnv, customParser?: (content: string) => Record<string, string>): Record<string, string> {
+function parseEnvContent(content: string, safeProcessEnv: Record<string, string>, customParser?: (content: string) => Record<string, string>): Record<string, string> {
   if (customParser) {
     return customParser(content);
   }
   const parsed = dotenvParse(content);
-  const safeProcessEnv: Record<string, string> = Object.fromEntries(
-    Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  );
-  const result = dotenvExpand({ parsed, processEnv: safeProcessEnv });
+  const result = dotenvExpand({ parsed, processEnv: { ...safeProcessEnv } });
   return result.parsed ?? {};
 }
 
@@ -57,7 +53,6 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
     defaults,
     envFile,
     parse: options.parse,
-    processEnv,
     runtimeOverrides,
     safeProcessEnv,
     validate: options.validate,
@@ -69,7 +64,7 @@ function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
     return {};
   }
 
-  return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.processEnv, options.parse);
+  return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -175,8 +170,8 @@ function applyReload(
 ): ConfigDictionary {
   const next = resolveConfig(normalized);
 
-  state.current = next;
   notifyReloadListeners(listeners, next, reason);
+  state.current = next;
 
   return cloneConfigDictionary(next);
 }
