@@ -64,6 +64,24 @@ await microservice.listen();
 - `NatsMicroserviceTransport`는 NATS 요청/응답 및 pub/sub 주제를 통해 `send()`와 `emit()`을 모두 지원합니다.
 - `KafkaMicroserviceTransport`와 `RabbitMqMicroserviceTransport`는 이벤트 전용 트랜스포트입니다. `emit()`과 인바운드 이벤트 디스패치를 지원합니다. 요청/응답 `send()`가 필요한 경우 TCP 또는 NATS 트랜스포트를 사용하세요.
 
+### Kafka
+
+- `KafkaMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP 또는 NATS를 사용해야 합니다.
+- 인바운드 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
+- 순서 보장, 오프셋 커밋 정책, 컨슈머 그룹 복구, 브로커별 재연결 의미론은 현재 Konekti가 보장하지 않습니다. 별도 가이드가 나오기 전까지는 브로커/클라이언트 책임으로 취급하세요.
+
+### RabbitMQ
+
+- `RabbitMqMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP 또는 NATS를 사용해야 합니다.
+- 인바운드 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
+- ack/nack, 재큐잉(requeue), dead-letter, 채널 복구 정책은 현재 이 어댑터가 구성하지 않습니다. 별도 가이드가 나오기 전까지는 브로커/클라이언트 책임으로 취급하세요.
+
+### NATS
+
+- `NatsMicroserviceTransport`는 별도의 요청/응답 subject와 이벤트 subject를 사용해 `send()`와 `emit()`을 모두 지원합니다.
+- `send()`는 `requestTimeoutMs`를 적용하며, 트랜스포트가 에러 메시지로 직렬화해 되돌릴 수 있는 핸들러 실패만 호출자에게 전파합니다.
+- 재연결, 버퍼링, responder 가용성은 여전히 클라이언트/서버 책임입니다. 운영상 요청/응답 보장이 중요하다면 선택한 NATS 클라이언트/runtime 조합에서 별도로 검증해야 합니다.
+
 ## 하이브리드 모드
 
 런타임 앱 부트스트랩을 사용하고 동일한 컨테이너에서 마이크로서비스 런타임을 해결(resolve)합니다.
