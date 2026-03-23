@@ -5,12 +5,18 @@ export type StandardMetadataBag = Record<PropertyKey, unknown>;
 const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
 export const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
 
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
+export function ensureMetadataSymbol(): symbol {
+  if (!symbolWithMetadata.metadata) {
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: metadataSymbol,
+    });
+  }
+
+  return metadataSymbol;
 }
+
+void ensureMetadataSymbol();
 
 export const standardMetadataKeys = {
   classValidation: Symbol.for('konekti.standard.class-validation'),
@@ -56,9 +62,11 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
   }
 
   const merged = [...(existing ?? [])];
+  const seen = new Set(merged);
 
   for (const value of values ?? []) {
-    if (!merged.includes(value)) {
+    if (!seen.has(value)) {
+      seen.add(value);
       merged.push(value);
     }
   }
@@ -68,4 +76,69 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
 
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
   return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
+}
+
+export function getStandardConstructorMetadataBag(target: object): StandardMetadataBag | undefined {
+  const constructor = (target as { constructor?: Function }).constructor;
+
+  return constructor ? getStandardMetadataBag(constructor) : undefined;
+}
+
+export function getStandardConstructorMetadataRecord<T>(target: object, key: symbol): T | undefined {
+  return getStandardConstructorMetadataBag(target)?.[key] as T | undefined;
+}
+
+export function getStandardConstructorMetadataMap<T>(target: object, key: symbol): Map<MetadataPropertyKey, T> | undefined {
+  return getStandardConstructorMetadataRecord<Map<MetadataPropertyKey, T>>(target, key);
+}
+
+export function mergeMetadataPropertyKeys<TStored, TStandard>(
+  stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
+  standard: ReadonlyMap<MetadataPropertyKey, TStandard> | undefined,
+): MetadataPropertyKey[] {
+  const keys: MetadataPropertyKey[] = [];
+  const seen = new Set<MetadataPropertyKey>();
+
+  for (const source of [stored, standard]) {
+    if (!source) {
+      continue;
+    }
+
+    for (const key of source.keys()) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    }
+  }
+
+  return keys;
+}
+
+export function appendPropertyMapValue<T>(
+  store: WeakMap<object, Map<MetadataPropertyKey, T[]>>,
+  target: object,
+  propertyKey: MetadataPropertyKey,
+  value: T,
+): void {
+  const map = getOrCreatePropertyMap(store, target);
+  const existing = map.get(propertyKey);
+
+  if (existing) {
+    existing.push(value);
+    return;
+  }
+
+  map.set(propertyKey, [value]);
+}
+
+export function appendWeakMapValue<T>(store: WeakMap<Function, T[]>, target: Function, value: T): void {
+  const existing = store.get(target);
+
+  if (existing) {
+    existing.push(value);
+    return;
+  }
+
+  store.set(target, [value]);
 }

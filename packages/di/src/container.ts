@@ -130,15 +130,18 @@ export class Container {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
-      if (normalized.multi) {
-        const existing = this.multiRegistrations.get(normalized.provide) ?? [];
+      this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
-        this.multiRegistrations.set(normalized.provide, [...existing, normalized]);
-      } else {
-        if (this.registrations.has(normalized.provide)) {
-          throw new DuplicateProviderError(normalized.provide);
+      if (normalized.multi) {
+        const existing = this.multiRegistrations.get(normalized.provide);
+
+        if (existing) {
+          existing.push(normalized);
+          continue;
         }
 
+        this.multiRegistrations.set(normalized.provide, [normalized]);
+      } else {
         this.registrations.set(normalized.provide, normalized);
       }
     }
@@ -183,7 +186,7 @@ export class Container {
       throw new ContainerResolutionError('Container has been disposed and can no longer resolve providers.');
     }
 
-    return this.resolveWithChain(token, []);
+    return this.resolveWithChain(token, [], new Set<Token>());
   }
 
   async dispose(): Promise<void> {
@@ -210,28 +213,58 @@ export class Container {
     return this.parent?.hasMulti(token) ?? false;
   }
 
-  private collectMultiProviders(token: Token): NormalizedProvider[] {
-    const parentProviders = this.parent?.collectMultiProviders(token) ?? [];
-    const local = this.multiRegistrations.get(token) ?? [];
+  private assertNoRegistrationConflict(token: Token, multi: boolean): void {
+    if (multi) {
+      if (this.registrations.has(token)) {
+        throw new DuplicateProviderError(token);
+      }
 
-    return [...parentProviders, ...local];
+      return;
+    }
+
+    if (this.registrations.has(token) || this.multiRegistrations.has(token)) {
+      throw new DuplicateProviderError(token);
+    }
   }
 
-  private async resolveWithChain<T>(token: Token<T>, chain: Token[], allowForwardRef = false): Promise<T> {
-    const cachedForwardRef = this.resolveForwardRefCircularDependency(token, chain, allowForwardRef);
+  private collectMultiProviders(token: Token): NormalizedProvider[] {
+    const providers: NormalizedProvider[] = [];
+
+    if (this.parent) {
+      providers.push(...this.parent.collectMultiProviders(token));
+    }
+
+    const local = this.multiRegistrations.get(token);
+
+    if (local) {
+      providers.push(...local);
+    }
+
+    return providers;
+  }
+
+  private async resolveWithChain<T>(
+    token: Token<T>,
+    chain: Token[],
+    activeTokens: Set<Token>,
+    allowForwardRef = false,
+  ): Promise<T> {
+    const cachedForwardRef = this.resolveForwardRefCircularDependency(token, chain, activeTokens, allowForwardRef);
 
     if (cachedForwardRef !== undefined) {
       return (await cachedForwardRef) as T;
     }
 
-    return await this.resolveFromRegisteredProviders(token, chain);
+    return await this.resolveFromRegisteredProviders(token, chain, activeTokens);
   }
 
-  private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[]): Promise<T> {
+  private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     const multiProviders = this.collectMultiProviders(token);
 
     if (multiProviders.length > 0) {
-      const instances = await this.resolveMultiProviderInstances(multiProviders, chain, token);
+      const instances = await this.withTokenInChain(token, chain, activeTokens, async () =>
+        this.resolveMultiProviderInstances(multiProviders, chain, activeTokens),
+      );
 
       return instances as unknown as T;
     }
@@ -240,14 +273,16 @@ export class Container {
     const existingTarget = this.resolveExistingProviderTarget(provider);
 
     if (existingTarget !== undefined) {
-      return await this.resolveAliasTarget(existingTarget as Token<T>, token, chain);
+      return await this.resolveAliasTarget(existingTarget as Token<T>, token, chain, activeTokens);
     }
 
     if (provider.scope === 'transient') {
-      return (await this.instantiate(provider, [...chain, token])) as T;
+      return (await this.withTokenInChain(token, chain, activeTokens, async () => this.instantiate(provider, chain, activeTokens))) as T;
     }
 
-    return (await this.resolveScopedOrSingletonInstance(provider, [...chain, token])) as T;
+    return (await this.withTokenInChain(token, chain, activeTokens, async () =>
+      this.resolveScopedOrSingletonInstance(provider, chain, activeTokens),
+    )) as T;
   }
 
   private requireProvider(token: Token): NormalizedProvider {
@@ -260,16 +295,19 @@ export class Container {
     return provider;
   }
 
-  private async resolveAliasTarget<T>(existingTarget: Token<T>, token: Token, chain: Token[]): Promise<T> {
-    return await this.resolveWithChain(existingTarget, [...chain, token]);
+  private async resolveAliasTarget<T>(existingTarget: Token<T>, token: Token, chain: Token[], activeTokens: Set<Token>): Promise<T> {
+    return await this.withTokenInChain(token, chain, activeTokens, async () =>
+      this.resolveWithChain(existingTarget, chain, activeTokens),
+    );
   }
 
   private resolveForwardRefCircularDependency(
     token: Token,
     chain: Token[],
+    activeTokens: Set<Token>,
     allowForwardRef: boolean,
   ): Promise<unknown> | undefined {
-    if (!chain.includes(token)) {
+    if (!activeTokens.has(token)) {
       return undefined;
     }
 
@@ -289,9 +327,15 @@ export class Container {
   private async resolveMultiProviderInstances(
     providers: readonly NormalizedProvider[],
     chain: Token[],
-    token: Token,
+    activeTokens: Set<Token>,
   ): Promise<unknown[]> {
-    return Promise.all(providers.map((provider) => this.instantiate(provider, [...chain, token])));
+    const instances: unknown[] = [];
+
+    for (const provider of providers) {
+      instances.push(await this.instantiate(provider, chain, activeTokens));
+    }
+
+    return instances;
   }
 
   private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
@@ -302,11 +346,15 @@ export class Container {
     return provider.useExisting;
   }
 
-  private async resolveScopedOrSingletonInstance(provider: NormalizedProvider, chain: Token[]): Promise<unknown> {
+  private async resolveScopedOrSingletonInstance(
+    provider: NormalizedProvider,
+    chain: Token[],
+    activeTokens: Set<Token>,
+  ): Promise<unknown> {
     const cache = this.cacheFor(provider);
 
     if (!cache.has(provider.provide)) {
-      const promise = this.instantiate(provider, chain);
+      const promise = this.instantiate(provider, chain, activeTokens);
 
       cache.set(provider.provide, promise);
       promise.catch(() => cache.delete(provider.provide));
@@ -330,6 +378,7 @@ export class Container {
   private async resolveDepToken(
     depEntry: Token | ForwardRefFn | OptionalToken,
     chain: Token[],
+    activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (isOptionalToken(depEntry)) {
       const innerToken = depEntry.token;
@@ -338,16 +387,33 @@ export class Container {
         return undefined;
       }
 
-      return this.resolveWithChain(innerToken, chain);
+      return this.resolveWithChain(innerToken, chain, activeTokens);
     }
 
     if (isForwardRef(depEntry)) {
       const resolvedToken = depEntry.forwardRef();
 
-      return this.resolveWithChain(resolvedToken, chain, /* allowForwardRef */ true);
+      return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
     }
 
-    return this.resolveWithChain(depEntry as Token, chain);
+    return this.resolveWithChain(depEntry as Token, chain, activeTokens);
+  }
+
+  private async withTokenInChain<T>(
+    token: Token,
+    chain: Token[],
+    activeTokens: Set<Token>,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    chain.push(token);
+    activeTokens.add(token);
+
+    try {
+      return await run();
+    } finally {
+      activeTokens.delete(token);
+      chain.pop();
+    }
   }
 
   private root(): Container {
@@ -489,7 +555,7 @@ export class Container {
     return typeof value === 'object' && value !== null && 'onDestroy' in value && typeof value.onDestroy === 'function';
   }
 
-  private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[]): Promise<T> {
+  private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     this.assertSingletonDependencyScopes(provider);
 
     switch (provider.type) {
@@ -500,7 +566,7 @@ export class Container {
           throw new InvariantError('Factory provider is missing useFactory.');
         }
 
-        const deps = await this.resolveProviderDeps(provider, chain);
+          const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
 
         return provider.useFactory(...deps);
       }
@@ -509,7 +575,7 @@ export class Container {
           throw new InvariantError('Class provider is missing useClass.');
         }
 
-        const deps = await this.resolveProviderDeps(provider, chain);
+        const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
 
         return new provider.useClass(...deps) as T;
       }
@@ -548,8 +614,14 @@ export class Container {
     return depEntry as Token;
   }
 
-  private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[]): Promise<unknown[]> {
-    return Promise.all(provider.inject.map((entry) => this.resolveDepToken(entry, chain)));
+  private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[], activeTokens: Set<Token>): Promise<unknown[]> {
+    const deps: unknown[] = [];
+
+    for (const entry of provider.inject) {
+      deps.push(await this.resolveDepToken(entry, chain, activeTokens));
+    }
+
+    return deps;
   }
 
   private invalidateCachedEntry(token: Token, scope: Scope): void {

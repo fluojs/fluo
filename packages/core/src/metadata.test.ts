@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendDtoFieldValidationRule,
   defineClassDiMetadata,
   defineControllerMetadata,
   defineDtoFieldBindingMetadata,
+  defineInjectionMetadata,
   defineModuleMetadata,
   defineRouteMetadata,
+  ensureMetadataSymbol,
   getClassDiMetadata,
   getControllerMetadata,
   getDtoBindingSchema,
+  getDtoValidationSchema,
   getDtoFieldBindingMetadata,
   getInheritedClassDiMetadata,
+  getInjectionSchema,
   getModuleMetadata,
   getOwnClassDiMetadata,
   getRouteMetadata,
@@ -135,6 +140,68 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('round-trips injection schema metadata and returns fresh schema entries', () => {
+    class ExampleController {
+      service!: string;
+    }
+
+    defineInjectionMetadata(ExampleController.prototype, 'service', {
+      optional: true,
+      token: 'LOGGER',
+    });
+
+    const schema = getInjectionSchema(ExampleController.prototype);
+
+    expect(schema).toEqual([
+      {
+        propertyKey: 'service',
+        metadata: {
+          optional: true,
+          token: 'LOGGER',
+        },
+      },
+    ]);
+
+    schema[0]?.metadata && ((schema[0].metadata as unknown as { token: string }).token = 'MUTATED');
+
+    expect(getInjectionSchema(ExampleController.prototype)).toEqual([
+      {
+        propertyKey: 'service',
+        metadata: {
+          optional: true,
+          token: 'LOGGER',
+        },
+      },
+    ]);
+  });
+
+  it('preserves DTO validation append order while rebuilding fresh rule arrays', () => {
+    class ExampleDto {
+      name!: string;
+    }
+
+    appendDtoFieldValidationRule(ExampleDto.prototype, 'name', { kind: 'string' });
+    appendDtoFieldValidationRule(ExampleDto.prototype, 'name', { kind: 'minLength', value: 2 });
+
+    const schema = getDtoValidationSchema(ExampleDto);
+
+    expect(schema).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [{ kind: 'string' }, { kind: 'minLength', value: 2 }],
+      },
+    ]);
+
+    (schema[0]?.rules as unknown as Array<{ kind: string }>).push({ kind: 'mutated' });
+
+    expect(getDtoValidationSchema(ExampleDto)).toEqual([
+      {
+        propertyKey: 'name',
+        rules: [{ kind: 'string' }, { kind: 'minLength', value: 2 }],
+      },
+    ]);
+  });
+
   it('round-trips class DI metadata', () => {
     class ExampleService {}
 
@@ -219,5 +286,9 @@ describe('metadata helpers', () => {
       inject: ['CACHE'],
       scope: 'request',
     });
+  });
+
+  it('ensures Symbol.metadata is available through the exported initializer', () => {
+    expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
   });
 });

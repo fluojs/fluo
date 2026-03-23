@@ -1,4 +1,12 @@
-import { getOrCreatePropertyMap, getStandardMetadataBag, standardMetadataKeys } from './shared.js';
+import {
+  appendPropertyMapValue,
+  appendWeakMapValue,
+  getOrCreatePropertyMap,
+  getStandardConstructorMetadataMap,
+  getStandardMetadataBag,
+  mergeMetadataPropertyKeys,
+  standardMetadataKeys,
+} from './shared.js';
 import type {
   ClassValidationRule,
   DtoBindingSchemaEntry,
@@ -15,23 +23,11 @@ const dtoFieldValidationStore = new WeakMap<object, Map<MetadataPropertyKey, Dto
 const classValidationStore = new WeakMap<Function, ClassValidationRule[]>();
 
 function getStandardDtoBindingMap(target: object): Map<MetadataPropertyKey, StandardDtoBindingRecord> | undefined {
-  const constructor = (target as { constructor?: Function }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMetadataKeys.dtoFieldBinding] as
-        | Map<MetadataPropertyKey, StandardDtoBindingRecord>
-        | undefined)
-    : undefined;
+  return getStandardConstructorMetadataMap<StandardDtoBindingRecord>(target, standardMetadataKeys.dtoFieldBinding);
 }
 
 function getStandardDtoValidationMap(target: object): Map<MetadataPropertyKey, StandardDtoValidationRecord> | undefined {
-  const constructor = (target as { constructor?: Function }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMetadataKeys.dtoFieldValidation] as
-        | Map<MetadataPropertyKey, StandardDtoValidationRecord>
-        | undefined)
-    : undefined;
+  return getStandardConstructorMetadataMap<StandardDtoValidationRecord>(target, standardMetadataKeys.dtoFieldValidation);
 }
 
 function getStandardClassValidationRules(target: Function): ClassValidationRule[] | undefined {
@@ -68,12 +64,11 @@ export function appendDtoFieldValidationRule(
   propertyKey: MetadataPropertyKey,
   rule: DtoFieldValidationRule,
 ): void {
-  const map = getOrCreatePropertyMap(dtoFieldValidationStore, target);
-  map.set(propertyKey, [...(map.get(propertyKey) ?? []), rule]);
+  appendPropertyMapValue(dtoFieldValidationStore, target, propertyKey, rule);
 }
 
 export function appendClassValidationRule(target: Function, rule: ClassValidationRule): void {
-  classValidationStore.set(target, [...(classValidationStore.get(target) ?? []), rule]);
+  appendWeakMapValue(classValidationStore, target, rule);
 }
 
 export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
@@ -81,9 +76,9 @@ export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
   const standard =
     (getStandardMetadataBag(dto)?.[standardMetadataKeys.dtoFieldBinding] as Map<MetadataPropertyKey, StandardDtoBindingRecord> | undefined) ??
     new Map<MetadataPropertyKey, StandardDtoBindingRecord>();
-  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
+  const keys = mergeMetadataPropertyKeys(stored, standard);
 
-  return Array.from(keys)
+  return keys
     .map((propertyKey) => ({
       propertyKey,
       metadata: getDtoFieldBindingMetadata(dto.prototype, propertyKey),
@@ -101,9 +96,9 @@ export function getDtoFieldValidationRules(target: object, propertyKey: Metadata
 export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEntry[] {
   const stored = dtoFieldValidationStore.get(dto.prototype) ?? new Map<MetadataPropertyKey, DtoFieldValidationRule[]>();
   const standard = getStandardDtoValidationMap(dto.prototype) ?? new Map<MetadataPropertyKey, StandardDtoValidationRecord>();
-  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
+  const keys = mergeMetadataPropertyKeys(stored, standard);
 
-  return Array.from(keys)
+  return keys
     .map((propertyKey) => ({
       propertyKey,
       rules: getDtoFieldValidationRules(dto.prototype, propertyKey),

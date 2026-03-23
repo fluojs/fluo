@@ -281,6 +281,33 @@ describe('Container', () => {
       expect(a.b).toBeInstanceOf(ServiceB);
       expect(a.b.value).toBe('b');
     });
+
+    it('throws CircularDependencyError for a deep cycle (A -> B -> C -> A)', async () => {
+      class ServiceA {
+        constructor(public b: ServiceB) {}
+      }
+
+      class ServiceB {
+        constructor(public c: ServiceC) {}
+      }
+
+      class ServiceC {
+        constructor(public a: ServiceA) {}
+      }
+
+      const container = new Container().register(
+        { provide: ServiceA, useClass: ServiceA, inject: [ServiceB] },
+        { provide: ServiceB, useClass: ServiceB, inject: [ServiceC] },
+        { provide: ServiceC, useClass: ServiceC, inject: [ServiceA] },
+      );
+
+      const error = await container.resolve(ServiceA).catch((value: unknown) => value);
+
+      expect(error).toBeInstanceOf(CircularDependencyError);
+      expect((error as CircularDependencyError).message).toContain('ServiceA');
+      expect((error as CircularDependencyError).message).toContain('ServiceB');
+      expect((error as CircularDependencyError).message).toContain('ServiceC');
+    });
   });
 
   describe('duplicate provider detection', () => {
@@ -331,6 +358,26 @@ describe('Container', () => {
       expect(await container.resolve<string>(token)).toBe('single');
     });
 
+    it('throws DuplicateProviderError when registering a single provider after multi providers for the same token', () => {
+      const token = Symbol('plugins');
+
+      expect(() =>
+        new Container().register(
+          { provide: token, useValue: 'a', multi: true },
+          { provide: token, useValue: 'b' },
+        )).toThrow(DuplicateProviderError);
+    });
+
+    it('throws DuplicateProviderError when registering a multi provider after a single provider for the same token', () => {
+      const token = Symbol('plugins');
+
+      expect(() =>
+        new Container().register(
+          { provide: token, useValue: 'a' },
+          { provide: token, useValue: 'b', multi: true },
+        )).toThrow(DuplicateProviderError);
+    });
+  
     it('keeps root singleton cache isolated when overriding in a request scope', async () => {
       const token = Symbol('singleton-token');
       const rootSingleton = { value: 'root' };
@@ -432,6 +479,18 @@ describe('Container', () => {
       expect(plugins).toHaveLength(2);
       expect(plugins[0]).toBeInstanceOf(PluginA);
       expect(plugins[1]).toBeInstanceOf(PluginB);
+    });
+
+    it('collects parent and child multi providers without overriding parent registrations', async () => {
+      const PLUGINS = Symbol('Plugins');
+      const root = new Container().register(
+        { provide: PLUGINS, useValue: 'root-a', multi: true },
+        { provide: PLUGINS, useValue: 'root-b', multi: true },
+      );
+      const child = root.createRequestScope().register({ provide: PLUGINS, useValue: 'child-c', multi: true });
+
+      await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
+      await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b', 'child-c']);
     });
   });
 

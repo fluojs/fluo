@@ -17,7 +17,7 @@ Custom metadata keys must use a namespaced `Symbol.for()` pattern:
 
 ### Authoring Custom Decorators
 
-Use the `metadata` property on the decorator context to store metadata. Access this via the `Symbol.metadata` primitive (shipped by `@konekti/core` if missing).
+Use the `metadata` property on the decorator context to store metadata. Access this via the `Symbol.metadata` primitive, using the `@konekti/core` compatibility boundary (`ensureMetadataSymbol()` / `metadataSymbol`) when you need to guarantee the symbol exists.
 
 ```typescript
 import { metadataSymbol } from '@konekti/core';
