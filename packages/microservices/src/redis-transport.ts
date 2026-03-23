@@ -25,6 +25,7 @@ export interface RedisPubSubMicroserviceTransportOptions {
 export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
+  private listenPromise: Promise<void> | undefined;
   private readonly namespace: string;
   private readonly pending = new Map<string, { reject: (error: unknown) => void; resolve: (value: unknown) => void }>();
 
@@ -39,16 +40,29 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    this.options.subscribeClient.on('message', (channel, message) => {
-      void this.handleIncoming(channel, message);
-    });
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
 
-    await this.options.subscribeClient.subscribe(
-      this.requestChannel,
-      this.responseChannel,
-      this.eventChannel,
-    );
-    this.listening = true;
+    this.listenPromise = (async () => {
+      this.options.subscribeClient.on('message', (channel, message) => {
+        void this.handleIncoming(channel, message);
+      });
+
+      await this.options.subscribeClient.subscribe(
+        this.requestChannel,
+        this.responseChannel,
+        this.eventChannel,
+      );
+      this.listening = true;
+    })();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
@@ -69,6 +83,10 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
+    if (this.listenPromise) {
+      await this.listenPromise;
+    }
+
     if (this.listening) {
       await this.options.subscribeClient.unsubscribe(
         this.requestChannel,

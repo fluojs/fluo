@@ -621,6 +621,11 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
         return 'ownership-lost';
       }
 
+      this.logger.log(
+        `Renewed distributed cron lock for ${descriptor.taskName}.`,
+        'CronLifecycleService',
+      );
+
       return 'renewed';
     } catch (error) {
       this.logger.error(
@@ -654,7 +659,20 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
 
     try {
-      await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId);
+      const result = await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, this.options.distributed.ownerId);
+
+      if (typeof result === 'number' && result <= 0) {
+        this.logger.warn(
+          `Distributed cron lock for ${taskName} was already released or owned by another node.`,
+          'CronLifecycleService',
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Released distributed cron lock for ${taskName}.`,
+        'CronLifecycleService',
+      );
     } catch (error) {
       this.logger.error(
         `Failed to release distributed cron lock for ${taskName}.`,

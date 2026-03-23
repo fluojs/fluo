@@ -25,12 +25,11 @@ export interface KafkaMicroserviceTransportOptions {
 export class KafkaMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
+  private listenPromise: Promise<void> | undefined;
   private readonly eventTopic: string;
-  private readonly messageTopic: string;
 
   constructor(private readonly options: KafkaMicroserviceTransportOptions) {
     this.eventTopic = options.eventTopic ?? 'konekti.microservices.events';
-    this.messageTopic = options.messageTopic ?? 'konekti.microservices.messages';
   }
 
   async listen(handler: TransportHandler): Promise<void> {
@@ -40,14 +39,24 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    await this.options.consumer.subscribe(this.eventTopic, async (message) => {
-      await this.handleInboundMessage(message, 'event');
-    });
-    await this.options.consumer.subscribe(this.messageTopic, async (message) => {
-      await this.handleInboundMessage(message, 'message');
-    });
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
 
-    this.listening = true;
+    this.listenPromise = (async () => {
+      await this.options.consumer.subscribe(this.eventTopic, (message) => {
+        void this.handleInboundMessage(message, 'event').catch(() => undefined);
+      });
+
+      this.listening = true;
+    })();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
   }
 
   async send(_pattern: string, _payload: unknown): Promise<unknown> {
@@ -67,9 +76,12 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
+    if (this.listenPromise) {
+      await this.listenPromise;
+    }
+
     if (this.listening) {
       await this.options.consumer.unsubscribe(this.eventTopic);
-      await this.options.consumer.unsubscribe(this.messageTopic);
     }
 
     this.handler = undefined;

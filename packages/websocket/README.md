@@ -62,6 +62,7 @@ export class AppModule {}
 - Uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
 - Gateway path matching is exact and normalized (`/chat` != `/notifications`)
 - Non-singleton gateways are skipped with warnings
+- Handlers for gateways sharing the same socket/path execute in discovery order, not `Promise.all` parallel fan-out
 - Shutdown removes the shared upgrade listener and terminates all active clients
 - `message` and `close` events are buffered until `@OnConnect()` handlers complete, then replayed in order so connect-phase events are not silently dropped
 - Attachment server shutdown is timeout-aware and logs close timeout failures instead of hanging indefinitely

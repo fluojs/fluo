@@ -80,6 +80,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
   private listening = false;
+  private listenPromise: Promise<void> | undefined;
 
   constructor(
     private readonly runtimeContainer: Container,
@@ -93,13 +94,30 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       return;
     }
 
-    this.descriptors.length = 0;
-    this.descriptors.push(...this.discoverHandlerDescriptors());
-    await this.moduleOptions.transport.listen(async (packet) => this.dispatchPacket(packet));
-    this.listening = true;
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = (async () => {
+      this.descriptors.length = 0;
+      this.descriptors.push(...this.discoverHandlerDescriptors());
+      await this.moduleOptions.transport.listen(async (packet) => this.dispatchPacket(packet));
+      this.listening = true;
+    })();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
   }
 
   async close(): Promise<void> {
+    if (this.listenPromise) {
+      await this.listenPromise;
+    }
+
     await this.moduleOptions.transport.close();
     this.listening = false;
   }
@@ -121,6 +139,14 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       descriptor.kind === packet.kind && this.matchesPattern(descriptor.pattern, packet.pattern));
 
     if (packet.kind === 'message') {
+      if (matches.length > 1) {
+        throw new Error(
+          `Multiple message handlers matched pattern "${packet.pattern}": ${matches
+            .map((descriptor) => `${descriptor.targetName}.${descriptor.methodName}`)
+            .join(', ')}.`,
+        );
+      }
+
       const first = matches[0];
 
       if (!first) {
@@ -162,6 +188,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         const dedupeKey = this.dedupeKey(entry.metadata.kind, entry.metadata.pattern);
 
         if (this.isDuplicate(seen, candidate.targetType, entry.propertyKey, dedupeKey)) {
+          this.logger.warn(
+            `Duplicate microservice handler registration for ${dedupeKey} on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)} was ignored.`,
+            'MicroserviceLifecycleService',
+          );
           continue;
         }
 

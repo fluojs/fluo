@@ -204,4 +204,58 @@ describe('broker transport adapters', () => {
 
     await transport.close();
   });
+
+  it('captures Kafka async callback rejections without leaking them to emit()', async () => {
+    const bus = new InMemoryTopicBus();
+    const transport = new KafkaMicroserviceTransport({
+      consumer: {
+        subscribe: async (topic, handler) => {
+          await bus.subscribe(topic, handler);
+        },
+        unsubscribe: async (topic) => {
+          await bus.unsubscribe(topic);
+        },
+      },
+      producer: {
+        publish: async (topic, message) => {
+          await bus.publish(topic, message);
+        },
+      },
+    });
+
+    await transport.listen(async () => {
+      throw new Error('kafka handler failed');
+    });
+
+    await expect(transport.emit('audit.login', { message: 'ok' })).resolves.toBeUndefined();
+
+    await transport.close();
+  });
+
+  it('captures RabbitMQ async callback rejections without leaking them to emit()', async () => {
+    const bus = new InMemoryTopicBus();
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          await bus.unsubscribe(queue);
+        },
+        async consume(queue, handler) {
+          await bus.subscribe(queue, handler);
+        },
+      },
+      publisher: {
+        async publish(queue, message) {
+          await bus.publish(queue, message);
+        },
+      },
+    });
+
+    await transport.listen(async () => {
+      throw new Error('rabbit handler failed');
+    });
+
+    await expect(transport.emit('audit.logout', { message: 'bye' })).resolves.toBeUndefined();
+
+    await transport.close();
+  });
 });

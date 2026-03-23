@@ -1006,6 +1006,62 @@ describe('@konekti/cron', () => {
     await app.close();
   });
 
+  it('logs successful distributed lock renewals and releases for operational tracing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: true,
+        lockTtlMs: 2_000,
+        name: 'lock-trace-task',
+      })
+      async run() {
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-trace',
+            lockTtlMs: 2_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      mode: 'test',
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    release.resolve();
+    await tickPromise;
+
+    expect(loggerEvents.some((event) => event.includes('log:CronLifecycleService:Renewed distributed cron lock for lock-trace-task.'))).toBe(true);
+    expect(loggerEvents.some((event) => event.includes('log:CronLifecycleService:Released distributed cron lock for lock-trace-task.'))).toBe(true);
+
+    await app.close();
+  });
+
   it('awaits in-flight lock renewal attempts before deciding task success', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));

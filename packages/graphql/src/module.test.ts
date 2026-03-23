@@ -258,6 +258,48 @@ describe('@konekti/graphql', () => {
     await app.close();
   });
 
+  it('boots the same GraphQL module repeatedly without leaking middleware registration across app instances', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [GraphqlResolver],
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const firstPort = await findAvailablePort();
+    const firstApp = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port: firstPort,
+    });
+
+    await firstApp.listen();
+    await expect(postGraphql(firstPort, '{ echo(value: "first") }')).resolves.toEqual({
+      data: {
+        echo: 'first',
+      },
+    });
+    await firstApp.close();
+
+    const secondPort = await findAvailablePort();
+    const secondApp = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port: secondPort,
+    });
+
+    await secondApp.listen();
+    await expect(postGraphql(secondPort, '{ echo(value: "second") }')).resolves.toEqual({
+      data: {
+        echo: 'second',
+      },
+    });
+    await secondApp.close();
+  });
+
   it('keeps internal operation container when custom context includes reserved symbol key', async () => {
     const poisonedOperationContainer = {
       async dispose() {},

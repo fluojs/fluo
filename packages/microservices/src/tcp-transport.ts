@@ -16,6 +16,7 @@ interface TcpMicroserviceTransportOptions {
 
 export class TcpMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
+  private listenPromise: Promise<void> | undefined;
   private readonly sockets = new Set<Socket>();
   private readonly host: string;
   private readonly requestTimeoutMs: number;
@@ -37,13 +38,24 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    await new Promise<void>((resolve, reject) => {
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = new Promise<void>((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(this.options.port, this.host, () => {
         this.server.off('error', reject);
         resolve();
       });
     });
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
@@ -56,6 +68,10 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
+    if (this.listenPromise) {
+      await this.listenPromise;
+    }
+
     for (const socket of this.sockets) {
       socket.destroy();
     }
@@ -199,7 +215,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
         if (line.length > 0) {
           try {
-            onPacket(JSON.parse(line) as TPacket);
+            void Promise.resolve(onPacket(JSON.parse(line) as TPacket)).catch(() => undefined);
           } catch {
             return;
           }

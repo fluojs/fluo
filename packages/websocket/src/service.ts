@@ -46,6 +46,8 @@ interface ConnectionHandlerState {
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
+  processingMessageQueue: boolean;
+  queuedMessages: RawData[];
   resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>;
   socketId: string;
 }
@@ -53,6 +55,12 @@ interface ConnectionHandlerState {
 interface NodeUpgradeServer {
   off(event: 'upgrade', listener: NodeUpgradeListener): this;
   on(event: 'upgrade', listener: NodeUpgradeListener): this;
+}
+
+interface ClassProviderLike {
+  provide: Token;
+  scope?: 'request' | 'singleton' | 'transient';
+  useClass: new (...args: any[]) => unknown;
 }
 
 type NodeUpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
@@ -81,7 +89,8 @@ function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'trans
   }
 
   if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
+    const classProvider = provider as ClassProviderLike;
+    return classProvider.scope ?? getClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
   }
 
   return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
@@ -91,7 +100,7 @@ function methodKeyToName(methodKey: MetadataPropertyKey): string {
   return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
 }
 
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
+function isClassProvider(provider: Provider): provider is ClassProviderLike {
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
@@ -339,6 +348,8 @@ export class WebSocketGatewayLifecycleService
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
+      processingMessageQueue: false,
+      queuedMessages: [],
       resolved: [],
       socketId: randomUUID(),
     };
@@ -355,7 +366,7 @@ export class WebSocketGatewayLifecycleService
       : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
     const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
 
-    if (state.enqueuedMessageCount >= limit) {
+    if (state.queuedMessages.length >= limit) {
       if (policy === 'close') {
         socket.terminate();
         this.unregisterSocket(state.socketId);
@@ -366,25 +377,55 @@ export class WebSocketGatewayLifecycleService
         return;
       }
 
-      this.logger.warn(
-        `WebSocket connection ${state.socketId} dropped a ready-state message because queue limit (${String(limit)}) was reached.`,
-        'WebSocketGatewayLifecycleService',
-      );
+      if (policy === 'drop-oldest') {
+        state.queuedMessages.shift();
+        this.logger.warn(
+          `WebSocket connection ${state.socketId} dropped the oldest ready-state message because queue limit (${String(limit)}) was reached.`,
+          'WebSocketGatewayLifecycleService',
+        );
+      } else {
+        this.logger.warn(
+          `WebSocket connection ${state.socketId} dropped a ready-state message because queue limit (${String(limit)}) was reached.`,
+          'WebSocketGatewayLifecycleService',
+        );
+        return;
+      }
+    }
+
+    state.queuedMessages.push(data);
+    state.enqueuedMessageCount = state.queuedMessages.length;
+
+    if (state.processingMessageQueue) {
       return;
     }
 
-    state.enqueuedMessageCount += 1;
-
-    state.handlerQueue = state.handlerQueue
-      .then(async () => {
-        await this.handleMessage(state.resolved, socket, request, data);
-      })
+    state.processingMessageQueue = true;
+    state.handlerQueue = this.drainMessageQueue(state, socket, request)
       .finally(() => {
-        state.enqueuedMessageCount = Math.max(0, state.enqueuedMessageCount - 1);
+        state.processingMessageQueue = false;
+        state.enqueuedMessageCount = state.queuedMessages.length;
       })
       .catch((error) => {
         this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
       });
+  }
+
+  private async drainMessageQueue(
+    state: ConnectionHandlerState,
+    socket: WebSocket,
+    request: IncomingMessage,
+  ): Promise<void> {
+    while (state.queuedMessages.length > 0) {
+      const nextMessage = state.queuedMessages.shift();
+
+      state.enqueuedMessageCount = state.queuedMessages.length;
+
+      if (nextMessage === undefined) {
+        continue;
+      }
+
+      await this.handleMessage(state.resolved, socket, request, nextMessage);
+    }
   }
 
   private enqueueDisconnectDispatch(
@@ -498,11 +539,9 @@ export class WebSocketGatewayLifecycleService
     socket: WebSocket,
     request: IncomingMessage,
   ): Promise<void> {
-    await Promise.all(
-      state.resolved.map(async ({ descriptor, instance }) => {
-        await this.runHandlers(instance, descriptor, 'connect', socket, request, state.socketId);
-      }),
-    );
+    for (const { descriptor, instance } of state.resolved) {
+      await this.runHandlers(instance, descriptor, 'connect', socket, request, state.socketId);
+    }
   }
 
   private replayBufferedConnectionEvents(
@@ -536,15 +575,13 @@ export class WebSocketGatewayLifecycleService
   ): Promise<void> {
     const parsed = parseIncomingMessage(data);
 
-    await Promise.all(
-      resolved.map(async ({ descriptor, instance }) => {
-        const handlers = this.selectMessageHandlers(descriptor, parsed.event);
+    for (const { descriptor, instance } of resolved) {
+      const handlers = this.selectMessageHandlers(descriptor, parsed.event);
 
-        for (const handler of handlers) {
-          await this.invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request]);
-        }
-      }),
-    );
+      for (const handler of handlers) {
+        await this.invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request]);
+      }
+    }
   }
 
   private selectMessageHandlers(
@@ -565,11 +602,9 @@ export class WebSocketGatewayLifecycleService
     reason: Buffer,
     socketId: string,
   ): Promise<void> {
-    await Promise.all(
-      resolved.map(async ({ descriptor, instance }) => {
-        await this.runHandlers(instance, descriptor, 'disconnect', socket, code, reason.toString('utf8'), socketId);
-      }),
-    );
+    for (const { descriptor, instance } of resolved) {
+      await this.runHandlers(instance, descriptor, 'disconnect', socket, code, reason.toString('utf8'), socketId);
+    }
   }
 
   private async runHandlers(
@@ -684,7 +719,7 @@ export class WebSocketGatewayLifecycleService
             moduleName: compiledModule.type.name,
             scope: scopeFromProvider(provider),
             targetType: provider,
-            token: provider,
+            token: provider as Token,
           });
           continue;
         }

@@ -550,7 +550,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         failedAt: new Date(job.finishedOn ?? Date.now()).toISOString(),
         jobId: job.id ?? '',
         jobName: descriptor.jobName,
-        payload: job.data,
+        payload: isQueuePayload(job.data) ? cloneQueuePayload(job.data) : job.data,
       };
 
       await this.getRedisClient().rpush(deadLetterKey(descriptor.jobName), JSON.stringify(deadLetter));

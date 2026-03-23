@@ -52,6 +52,7 @@ await microservice.listen();
 - handlers are discovered from providers/controllers in compiled modules
 - only singleton-scoped handlers are registered
 - `@MessagePattern` matches one handler and returns its value to the caller
+- if multiple `@MessagePattern` handlers match the same incoming pattern, dispatch fails explicitly instead of silently picking the first match
 - `@EventPattern` dispatches to all matching handlers
 - pattern supports exact string or `RegExp` matching
 - transport lifecycle is managed through app startup/shutdown
@@ -61,7 +62,7 @@ await microservice.listen();
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
 - `RedisPubSubMicroserviceTransport` supports `emit()` fan-out only. Use TCP transport for request/reply `send()` semantics.
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
-- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` support `emit()` and inbound handler dispatch. For request/reply `send()`, use TCP or NATS transport.
+- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` are event-only transports: they support `emit()` plus inbound event dispatch. For request/reply `send()`, use TCP or NATS transport.
 
 ## Hybrid mode
 

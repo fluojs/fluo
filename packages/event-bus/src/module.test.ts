@@ -988,6 +988,69 @@ describe('@konekti/event-bus', () => {
       await app.close();
     });
 
+    it('rehydrates incoming shared-channel payloads with each handler event type', async () => {
+      const transport = createMockTransport();
+
+      class BaseInventoryEvent {
+        static readonly eventKey = 'inventory.shared.v1';
+
+        constructor(public readonly sku: string) {}
+      }
+
+      class DetailedInventoryEvent extends BaseInventoryEvent {
+        static readonly eventKey = 'inventory.shared.v1';
+
+        constructor(sku: string, public readonly warehouse: string) {
+          super(sku);
+        }
+      }
+
+      class EventStore {
+        baseEvent: BaseInventoryEvent | undefined;
+        detailedEvent: DetailedInventoryEvent | undefined;
+      }
+
+      @Inject([EventStore])
+      class BaseHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(BaseInventoryEvent)
+        onBase(event: BaseInventoryEvent) {
+          this.store.baseEvent = event;
+        }
+      }
+
+      @Inject([EventStore])
+      class DetailedHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(DetailedInventoryEvent)
+        onDetailed(event: DetailedInventoryEvent) {
+          this.store.detailedEvent = event;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, BaseHandler, DetailedHandler],
+      });
+
+      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const store = await app.container.resolve(EventStore);
+      const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'inventory.shared.v1');
+
+      expect(incomingSubscription).toBeDefined();
+
+      await incomingSubscription!.handler({ sku: 'sku-2', warehouse: 'icn' });
+
+      expect(store.baseEvent).toBeInstanceOf(BaseInventoryEvent);
+      expect(store.detailedEvent).toBeInstanceOf(DetailedInventoryEvent);
+      expect(store.detailedEvent?.warehouse).toBe('icn');
+
+      await app.close();
+    });
+
     it('isolates payload mutations between handlers for incoming transport messages', async () => {
       const transport = createMockTransport();
 

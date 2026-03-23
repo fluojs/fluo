@@ -176,7 +176,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     publishOptions: ResolvedPublishOptions,
   ): Promise<void>[] {
     return descriptors.map((descriptor) => {
-      const isolatedEvent = createIsolatedEvent(event.constructor as EventType, event);
+      const isolatedEvent = createIsolatedEvent(descriptor.eventType, event);
       return this.invokeHandlerWithBounds(descriptor, isolatedEvent, publishOptions);
     });
   }
@@ -187,7 +187,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     signal: AbortSignal | undefined,
   ): Promise<void>[] {
     return descriptors.map((descriptor) => {
-      const isolatedEvent = createIsolatedEvent(event.constructor as EventType, event);
+      const isolatedEvent = createIsolatedEvent(descriptor.eventType, event);
       return this.invokeHandlerInBackground(descriptor, isolatedEvent, signal);
     });
   }
@@ -328,33 +328,31 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
 
     for (const [channel, channelDescriptors] of descriptorsByChannel) {
-      const eventType = channelDescriptors[0]?.eventType;
-
-      if (!eventType) {
-        continue;
-      }
-
-      await this.subscribeTransportChannel(channel, eventType, channelDescriptors);
+      await this.subscribeTransportChannel(channel, channelDescriptors);
     }
   }
 
   private async subscribeTransportChannel(
     channel: string,
-    eventType: EventType,
     channelDescriptors: EventHandlerDescriptor[],
   ): Promise<void> {
     try {
       await this.transport!.subscribe(channel, async (payload) => {
-        const event = createIsolatedEvent(eventType, payload);
         if (channelDescriptors.length === 0) {
           return;
         }
 
-        const invocationTasks = this.createInvocationTasks(channelDescriptors, event, {
-          signal: undefined,
-          timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
-          waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
-        });
+        const invocationTasks = channelDescriptors.map((descriptor) =>
+          this.invokeHandlerWithBounds(
+            descriptor,
+            createIsolatedEvent(descriptor.eventType, payload),
+            {
+              signal: undefined,
+              timeoutMs: this.normalizeTimeoutMs(this.moduleOptions.publish?.timeoutMs),
+              waitForHandlers: this.moduleOptions.publish?.waitForHandlers ?? true,
+            },
+          ),
+        );
 
         await Promise.allSettled(invocationTasks);
       });

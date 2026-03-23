@@ -594,6 +594,61 @@ describe('@konekti/websocket', () => {
     await app.close();
   });
 
+  it('runs same-socket gateway handlers in deterministic registration order', async () => {
+    class SharedState {
+      steps: string[] = [];
+    }
+
+    @Inject([SharedState])
+    @WebSocketGateway({ path: '/ordered' })
+    class FirstGateway {
+      constructor(private readonly state: SharedState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        this.state.steps.push('first');
+      }
+    }
+
+    @Inject([SharedState])
+    @WebSocketGateway({ path: '/ordered' })
+    class SecondGateway {
+      constructor(private readonly state: SharedState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.steps.push(`second-after-${this.state.steps.join('|') || 'none'}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createWebSocketModule()],
+      providers: [SharedState, FirstGateway, SecondGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+    const state = await app.container.resolve(SharedState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ordered`);
+    await onceOpen(socket);
+    socket.close();
+    await onceClosed(socket);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.steps).toEqual(['first', 'second-after-first']);
+
+    await app.close();
+  });
+
   it('clears heartbeat pending markers when pong is received', async () => {
     const service = createTestLifecycleService();
     const { emitPong, socket } = createMockSocket();
@@ -626,7 +681,7 @@ describe('@konekti/websocket', () => {
     await shutdown.call(service);
   });
 
-  it('caps ready-state message queue and drops newest messages when saturated', async () => {
+  it('caps ready-state message queue and drops newest queued messages when saturated', async () => {
     const service = createTestLifecycleService({
       buffer: {
         maxPendingMessagesPerSocket: 1,
@@ -638,6 +693,8 @@ describe('@konekti/websocket', () => {
       state: {
         enqueuedMessageCount: number;
         handlerQueue: Promise<void>;
+        processingMessageQueue: boolean;
+        queuedMessages: unknown[];
         resolved: Array<{ descriptor: unknown; instance: unknown }>;
         socketId: string;
       },
@@ -656,17 +713,72 @@ describe('@konekti/websocket', () => {
     const state = {
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
+      processingMessageQueue: false,
+      queuedMessages: [] as unknown[],
       resolved: [],
       socketId: 'socket-ready-1',
     };
 
     enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'first');
     enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'second');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'third');
 
     gate.resolve();
     await state.handlerQueue;
 
-    expect(handledPayloads).toEqual(['first']);
+    expect(handledPayloads).toEqual(['first', 'second']);
+    expect(state.enqueuedMessageCount).toBe(0);
+  });
+
+  it('caps ready-state message queue and drops the oldest queued message when configured', async () => {
+    const service = createTestLifecycleService({
+      buffer: {
+        maxPendingMessagesPerSocket: 1,
+        overflowPolicy: 'drop-oldest',
+      },
+    });
+    const { socket } = createMockSocket();
+    const enqueueMessageDispatch = Reflect.get(service, 'enqueueMessageDispatch') as (
+      state: {
+        enqueuedMessageCount: number;
+        handlerQueue: Promise<void>;
+        processingMessageQueue: boolean;
+        queuedMessages: unknown[];
+        resolved: Array<{ descriptor: unknown; instance: unknown }>;
+        socketId: string;
+      },
+      socket: WebSocket,
+      request: IncomingMessage,
+      data: unknown,
+    ) => void;
+    const gate = createDeferred<void>();
+    const handledPayloads: unknown[] = [];
+
+    Reflect.set(service, 'handleMessage', async (_resolved: unknown, _socket: WebSocket, _request: IncomingMessage, data: unknown) => {
+      handledPayloads.push(data);
+
+      if (data === 'first') {
+        await gate.promise;
+      }
+    });
+
+    const state = {
+      enqueuedMessageCount: 0,
+      handlerQueue: Promise.resolve(),
+      processingMessageQueue: false,
+      queuedMessages: [] as unknown[],
+      resolved: [],
+      socketId: 'socket-ready-drop-oldest',
+    };
+
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'first');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'second');
+    enqueueMessageDispatch.call(service, state, socket, {} as IncomingMessage, 'third');
+
+    gate.resolve();
+    await state.handlerQueue;
+
+    expect(handledPayloads).toEqual(['first', 'third']);
     expect(state.enqueuedMessageCount).toBe(0);
   });
 

@@ -166,8 +166,6 @@ function patchGraphqlInstanceOf(): void {
 }
 
 async function loadGraphqlDeps(): Promise<GraphqlDeps> {
-  patchGraphqlInstanceOf();
-
   const graphqlMod = runtimeRequire('graphql') as typeof import('graphql');
   const yogaMod = runtimeRequire('graphql-yoga') as typeof import('graphql-yoga');
 
@@ -264,6 +262,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.unregisterMiddleware();
     this.middlewareRegistered = false;
     this.yoga = undefined;
   }
@@ -277,6 +276,10 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {
+    if (this.options.schema && typeof this.options.schema === 'object') {
+      patchGraphqlInstanceOf();
+    }
+
     return resolveSchema(deps, this.options.schema, () => this.createCodeFirstSchema(deps), markAllowedCrossRealmGraphqlObjects);
   }
 
@@ -297,10 +300,30 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
       const middleware = compiledModule.definition.middleware ?? [];
 
       if (!middleware.includes(this.middleware)) {
-        middleware.push(this.middleware);
+        compiledModule.definition.middleware = [...middleware, this.middleware];
+        continue;
       }
 
-      compiledModule.definition.middleware = middleware;
+      compiledModule.definition.middleware = [...middleware];
+    }
+  }
+
+  private unregisterMiddleware(): void {
+    for (const compiledModule of this.compiledModules) {
+      if (!compiledModule.providerTokens.has(GRAPHQL_LIFECYCLE_SERVICE)) {
+        continue;
+      }
+
+      const middleware = compiledModule.definition.middleware ?? [];
+      const remaining = [];
+
+      for (const entry of middleware) {
+        if (entry !== this.middleware) {
+          remaining.push(entry);
+        }
+      }
+
+      compiledModule.definition.middleware = remaining;
     }
   }
 

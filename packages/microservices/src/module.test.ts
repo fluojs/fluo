@@ -343,4 +343,70 @@ describe('@konekti/microservices', () => {
 
     await app.close();
   });
+
+  it('deduplicates concurrent listen() calls against the underlying transport subscription', async () => {
+    let listenCalls = 0;
+
+    const transport: MicroserviceTransport = {
+      async close() {},
+      async emit() {},
+      async listen(_handler) {
+        listenCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      },
+      async send() {
+        return undefined;
+      },
+    };
+
+    class Handler {
+      @EventPattern('listen.once')
+      onEvent() {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [Handler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+
+    await Promise.all([microservice.listen(), microservice.listen()]);
+
+    expect(listenCalls).toBe(1);
+
+    await microservice.close();
+  });
+
+  it('fails deterministically when multiple message handlers match the same pattern', async () => {
+    class ExactHandler {
+      @MessagePattern('user.lookup')
+      handle() {
+        return 'exact';
+      }
+    }
+
+    class RegexHandler {
+      @MessagePattern(/^user\./)
+      handle() {
+        return 'regex';
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [ExactHandler, RegexHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await expect(microservice.send('user.lookup', {})).rejects.toThrow('Multiple message handlers matched pattern "user.lookup"');
+
+    await microservice.close();
+  });
 });

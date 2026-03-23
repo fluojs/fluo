@@ -25,12 +25,11 @@ export interface RabbitMqMicroserviceTransportOptions {
 export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
+  private listenPromise: Promise<void> | undefined;
   private readonly eventQueue: string;
-  private readonly messageQueue: string;
 
   constructor(private readonly options: RabbitMqMicroserviceTransportOptions) {
     this.eventQueue = options.eventQueue ?? 'konekti.microservices.events';
-    this.messageQueue = options.messageQueue ?? 'konekti.microservices.messages';
   }
 
   async listen(handler: TransportHandler): Promise<void> {
@@ -40,14 +39,24 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    await this.options.consumer.consume(this.eventQueue, async (message) => {
-      await this.handleInboundMessage(message, 'event');
-    });
-    await this.options.consumer.consume(this.messageQueue, async (message) => {
-      await this.handleInboundMessage(message, 'message');
-    });
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
 
-    this.listening = true;
+    this.listenPromise = (async () => {
+      await this.options.consumer.consume(this.eventQueue, (message) => {
+        void this.handleInboundMessage(message, 'event').catch(() => undefined);
+      });
+
+      this.listening = true;
+    })();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
   }
 
   async send(_pattern: string, _payload: unknown): Promise<unknown> {
@@ -67,9 +76,12 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
+    if (this.listenPromise) {
+      await this.listenPromise;
+    }
+
     if (this.listening) {
       await this.options.consumer.cancel(this.eventQueue);
-      await this.options.consumer.cancel(this.messageQueue);
     }
 
     this.listening = false;
