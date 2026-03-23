@@ -1,6 +1,7 @@
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@konekti/core';
 import { IsInt, MinLength } from '@konekti/dto-validator';
@@ -50,6 +51,117 @@ async function postGraphql(port: number, query: string): Promise<unknown> {
 
 function decodeChunk(value: Uint8Array): string {
   return Buffer.from(value).toString('utf8');
+}
+
+type GraphqlWebSocketMessage = {
+  id?: string;
+  payload?: {
+    data?: Record<string, unknown>;
+  };
+  type: string;
+};
+
+function onceWebSocketOpen(socket: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.once('open', () => resolve());
+    socket.once('error', reject);
+  });
+}
+
+function onceWebSocketClosed(socket: WebSocket): Promise<void> {
+  return new Promise((resolve) => {
+    socket.once('close', () => resolve());
+  });
+}
+
+function onceGraphqlWebSocketMessage(socket: WebSocket): Promise<GraphqlWebSocketMessage> {
+  return new Promise((resolve, reject) => {
+    const handleClose = (code: number, reason: Buffer) => {
+      reject(new Error(`WebSocket closed before message: ${String(code)} ${reason.toString('utf8')}`));
+    };
+    const handleMessage = (data: unknown) => {
+      socket.off('close', handleClose);
+
+      if (typeof data === 'string') {
+        resolve(JSON.parse(data) as GraphqlWebSocketMessage);
+        return;
+      }
+
+      if (data instanceof ArrayBuffer) {
+        resolve(JSON.parse(Buffer.from(data).toString('utf8')) as GraphqlWebSocketMessage);
+        return;
+      }
+
+      if (ArrayBuffer.isView(data)) {
+        resolve(
+          JSON.parse(Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8')) as GraphqlWebSocketMessage,
+        );
+        return;
+      }
+
+      reject(new Error(`Unsupported websocket message payload: ${String(data)}`));
+    };
+
+    socket.once('close', handleClose);
+    socket.once('message', handleMessage);
+    socket.once('error', reject);
+  });
+}
+
+async function connectGraphqlWebSocket(port: number): Promise<WebSocket> {
+  const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/graphql`, 'graphql-transport-ws');
+
+  await onceWebSocketOpen(socket);
+  socket.send(JSON.stringify({ type: 'connection_init' }));
+
+  await expect(onceGraphqlWebSocketMessage(socket)).resolves.toEqual({
+    type: 'connection_ack',
+  });
+
+  return socket;
+}
+
+async function readGraphqlWebSocketMessages(socket: WebSocket, count: number): Promise<GraphqlWebSocketMessage[]> {
+  return await new Promise<GraphqlWebSocketMessage[]>((resolve, reject) => {
+    const messages: GraphqlWebSocketMessage[] = [];
+    const handleClose = (code: number, reason: Buffer) => {
+      cleanup();
+      reject(new Error(`WebSocket closed before collecting ${String(count)} messages: ${String(code)} ${reason.toString('utf8')}`));
+    };
+    const handleError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const handleMessage = (data: unknown) => {
+      if (typeof data === 'string') {
+        messages.push(JSON.parse(data) as GraphqlWebSocketMessage);
+      } else if (data instanceof ArrayBuffer) {
+        messages.push(JSON.parse(Buffer.from(data).toString('utf8')) as GraphqlWebSocketMessage);
+      } else if (ArrayBuffer.isView(data)) {
+        messages.push(
+          JSON.parse(Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8')) as GraphqlWebSocketMessage,
+        );
+      } else {
+        cleanup();
+        reject(new Error(`Unsupported websocket message payload: ${String(data)}`));
+        return;
+      }
+
+      if (messages.length >= count) {
+        cleanup();
+        resolve(messages);
+      }
+    };
+    const cleanup = () => {
+      socket.off('close', handleClose);
+      socket.off('error', handleError);
+      socket.off('message', handleMessage);
+    };
+
+    socket.on('close', handleClose);
+    socket.on('error', handleError);
+    socket.on('message', handleMessage);
+  });
 }
 
 @Inject([])
@@ -215,6 +327,61 @@ describe('@konekti/graphql', () => {
     expect(firstChunk.done).toBe(false);
     expect(decodeChunk(firstChunk.value!)).toContain('pingStream');
 
+    await app.close();
+  });
+
+  it('streams subscriptions over graphql-ws when websocket transport is enabled', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [GraphqlResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'sub-1',
+      payload: {
+        query: 'subscription { pingStream }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-1',
+        payload: {
+          data: {
+            pingStream: 'ping',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-1',
+        type: 'complete',
+      },
+    ]);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
     await app.close();
   });
 
@@ -478,6 +645,82 @@ describe('@konekti/graphql — provider scopes', () => {
     expect(firstOperation).toEqual({ data: { firstTick: 1, secondTick: 2 } });
     expect(secondOperation).toEqual({ data: { firstTick: 1, secondTick: 2 } });
 
+    await app.close();
+  });
+
+  it('isolates request-scoped subscription resolvers per websocket operation', async () => {
+    let issued = 0;
+
+    @Inject([])
+    @Scope('request')
+    class SubscriptionRequestIdentity {
+      readonly id = `subscription-${String(++issued)}`;
+    }
+
+    @Inject([SubscriptionRequestIdentity])
+    @Scope('request')
+    @Resolver('ScopedSubscriptionResolver')
+    class ScopedSubscriptionResolver {
+      constructor(private readonly identity: SubscriptionRequestIdentity) {}
+
+      @Subscription()
+      async *requestIds(): AsyncGenerator<string, void, void> {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        yield this.identity.id;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [ScopedSubscriptionResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [SubscriptionRequestIdentity, ScopedSubscriptionResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    const firstSocket = await connectGraphqlWebSocket(port);
+    const secondSocket = await connectGraphqlWebSocket(port);
+
+    firstSocket.send(JSON.stringify({
+      id: 'sub-a',
+      payload: {
+        query: 'subscription { requestIds }',
+      },
+      type: 'subscribe',
+    }));
+    secondSocket.send(JSON.stringify({
+      id: 'sub-b',
+      payload: {
+        query: 'subscription { requestIds }',
+      },
+      type: 'subscribe',
+    }));
+
+    const [firstMessages, secondMessages] = await Promise.all([
+      readGraphqlWebSocketMessages(firstSocket, 2),
+      readGraphqlWebSocketMessages(secondSocket, 2),
+    ]);
+    const firstId = firstMessages.find((message) => message.type === 'next')?.payload?.data?.requestIds;
+    const secondId = secondMessages.find((message) => message.type === 'next')?.payload?.data?.requestIds;
+
+    expect(firstId).toMatch(/^subscription-/);
+    expect(secondId).toMatch(/^subscription-/);
+    expect(firstId).not.toBe(secondId);
+
+    firstSocket.close();
+    secondSocket.close();
+    await Promise.all([onceWebSocketClosed(firstSocket), onceWebSocketClosed(secondSocket)]);
     await app.close();
   });
 
