@@ -266,18 +266,14 @@ describe('RefreshTokenService', () => {
       secret: 'refresh-secret',
       store: legacyStore,
     };
-    const signer = new DefaultJwtSigner({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
-    const verifier = new DefaultJwtVerifier({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
-
-    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
+    expect(
+      () =>
+        new DefaultJwtVerifier({
+          algorithms: ['HS256'],
+          refreshToken: refreshOptions,
+          secret: 'access-secret',
+        }),
+    ).toThrow(JwtConfigurationError);
   });
 
   it('fails fast when refresh secret is empty', () => {
@@ -288,18 +284,14 @@ describe('RefreshTokenService', () => {
       secret: '',
       store,
     };
-    const signer = new DefaultJwtSigner({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
-    const verifier = new DefaultJwtVerifier({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
-
-    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
+    expect(
+      () =>
+        new DefaultJwtVerifier({
+          algorithms: ['HS256'],
+          refreshToken: refreshOptions,
+          secret: 'access-secret',
+        }),
+    ).toThrow(JwtConfigurationError);
   });
 
   it('fails fast when refresh expiresInSeconds is non-positive', () => {
@@ -310,17 +302,33 @@ describe('RefreshTokenService', () => {
       secret: 'refresh-secret',
       store,
     };
-    const signer = new DefaultJwtSigner({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
-    const verifier = new DefaultJwtVerifier({
-      algorithms: ['HS256'],
-      refreshToken: refreshOptions,
-      secret: 'access-secret',
-    });
+    expect(
+      () =>
+        new DefaultJwtVerifier({
+          algorithms: ['HS256'],
+          refreshToken: refreshOptions,
+          secret: 'access-secret',
+        }),
+    ).toThrow(JwtConfigurationError);
+  });
 
-    expect(() => new RefreshTokenService(refreshOptions, signer, verifier)).toThrow(JwtConfigurationError);
+  it('fails fast when refresh verifyMaxAgeSeconds is negative', () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: false,
+      secret: 'refresh-secret',
+      store,
+      verifyMaxAgeSeconds: -1,
+    };
+
+    expect(
+      () =>
+        new DefaultJwtVerifier({
+          algorithms: ['HS256'],
+          refreshToken: refreshOptions,
+          secret: 'access-secret',
+        }),
+    ).toThrow(JwtConfigurationError);
   });
 });

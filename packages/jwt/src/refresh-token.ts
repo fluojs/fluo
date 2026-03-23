@@ -39,6 +39,35 @@ export interface RefreshTokenOptions {
   store: RefreshTokenStore;
 }
 
+export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | undefined): RefreshTokenOptions {
+  if (!options) {
+    throw new JwtConfigurationError('JWT refresh token options are not configured.');
+  }
+
+  if (typeof options.secret !== 'string' || options.secret.length === 0) {
+    throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
+  }
+
+  if (!Number.isFinite(options.expiresInSeconds) || options.expiresInSeconds <= 0) {
+    throw new JwtConfigurationError('JWT refresh token expiresInSeconds must be a positive finite number.');
+  }
+
+  if (
+    options.verifyMaxAgeSeconds !== undefined
+    && (!Number.isFinite(options.verifyMaxAgeSeconds) || options.verifyMaxAgeSeconds < 0)
+  ) {
+    throw new JwtConfigurationError('JWT refresh token verifyMaxAgeSeconds must be a non-negative finite number.');
+  }
+
+  if (options.rotation && typeof options.store.consume !== 'function') {
+    throw new JwtConfigurationError('Refresh token rotation requires an atomic store.consume() implementation.');
+  }
+
+  return {
+    ...options,
+  };
+}
+
 interface RefreshTokenClaims extends JwtClaims {
   family: string;
   jti: string;
@@ -46,24 +75,14 @@ interface RefreshTokenClaims extends JwtClaims {
 }
 
 export class RefreshTokenService {
+  private readonly options: RefreshTokenOptions;
+
   constructor(
-    private readonly options: RefreshTokenOptions,
+    options: RefreshTokenOptions,
     private readonly signer: DefaultJwtSigner,
     private readonly verifier: DefaultJwtVerifier,
   ) {
-    if (typeof this.options.secret !== 'string' || this.options.secret.length === 0) {
-      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
-    }
-
-    if (!Number.isFinite(this.options.expiresInSeconds) || this.options.expiresInSeconds <= 0) {
-      throw new JwtConfigurationError('JWT refresh token expiresInSeconds must be a positive finite number.');
-    }
-
-    if (this.options.rotation && typeof this.options.store.consume !== 'function') {
-      throw new JwtConfigurationError(
-        'Refresh token rotation requires an atomic store.consume() implementation.',
-      );
-    }
+    this.options = normalizeRefreshTokenOptions(options);
   }
 
   async issueRefreshToken(subject: string): Promise<string> {

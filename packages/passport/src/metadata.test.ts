@@ -47,4 +47,25 @@ describe('auth metadata scope merge', () => {
       strategy: 'session',
     });
   });
+
+  it('reuses cached merged requirements between repeated lookups', () => {
+    @Controller('/metadata')
+    @UseAuth('jwt')
+    @RequireScopes('profile:read')
+    class ProfileController {
+      @Get('/')
+      @RequireScopes('profile:write')
+      getProfile() {
+        return undefined;
+      }
+    }
+
+    const firstClassRequirement = getAuthRequirement(ProfileController);
+    const secondClassRequirement = getAuthRequirement(ProfileController);
+    const firstMethodRequirement = getAuthRequirement(ProfileController, 'getProfile');
+    const secondMethodRequirement = getAuthRequirement(ProfileController, 'getProfile');
+
+    expect(secondClassRequirement).toBe(firstClassRequirement);
+    expect(secondMethodRequirement).toBe(firstMethodRequirement);
+  });
 });

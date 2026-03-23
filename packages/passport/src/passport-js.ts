@@ -120,6 +120,22 @@ function extractChallengeMessage(challenge: unknown): string | undefined {
   return undefined;
 }
 
+function cloneStrategyStateValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.slice();
+  }
+
+  if (value && typeof value === 'object') {
+    try {
+      return structuredClone(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
 export class PassportJsAuthStrategy implements AuthStrategy {
   private readonly requestState = new WeakMap<PassportJsExecutableStrategy, PassportJsRequestState>();
 
@@ -131,7 +147,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
   authenticate(context: GuardContext): Promise<Principal | AuthHandledResult> {
     const response = context.requestContext.response;
     const request = context.requestContext.request.raw ?? context.requestContext.request;
-    const strategy = Object.create(this.strategyTemplate) as PassportJsExecutableStrategy;
+    const strategy = this.createExecutableStrategy();
     const mapPrincipal = this.options.mapPrincipal ?? defaultPrincipalMapper;
 
     return new Promise((resolve, reject) => {
@@ -152,6 +168,25 @@ export class PassportJsAuthStrategy implements AuthStrategy {
         this.settle(strategy, () => reject(error));
       }
     });
+  }
+
+  private createExecutableStrategy(): PassportJsExecutableStrategy {
+    const template = this.strategyTemplate as unknown as Record<PropertyKey, unknown>;
+    const strategy = Object.create(Object.getPrototypeOf(this.strategyTemplate)) as PassportJsExecutableStrategy &
+      Record<PropertyKey, unknown>;
+
+    for (const key of Reflect.ownKeys(template)) {
+      const value = template[key];
+
+      if (typeof value === 'function') {
+        strategy[key] = value;
+        continue;
+      }
+
+      strategy[key] = cloneStrategyStateValue(value);
+    }
+
+    return strategy;
   }
 
   private settle(strategy: PassportJsExecutableStrategy, handler: (state: PassportJsRequestState) => void): void {

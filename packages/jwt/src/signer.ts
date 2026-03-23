@@ -3,6 +3,7 @@ import { createHmac, createSign } from 'node:crypto';
 import { Inject } from '@konekti/core';
 
 import { JwtConfigurationError } from './errors.js';
+import { normalizeRefreshTokenOptions } from './refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from './types.js';
 import { ASYMMETRIC_HASH, HMAC_HASH, JWT_OPTIONS } from './verifier.js';
 
@@ -30,7 +31,13 @@ function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgor
 
 @Inject([JWT_OPTIONS])
 export class DefaultJwtSigner {
-  constructor(private readonly options: JwtVerifierOptions) {}
+  private readonly refreshAlgorithms: JwtAlgorithm[];
+
+  constructor(private readonly options: JwtVerifierOptions) {
+    this.refreshAlgorithms = this.options.algorithms.filter(
+      (algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH,
+    );
+  }
 
   async signAccessToken(claims: JwtClaims): Promise<string> {
     return this.signToken(claims, this.options, false);
@@ -42,26 +49,12 @@ export class DefaultJwtSigner {
   }
 
   private resolveRefreshSigningOptions(): JwtVerifierOptions {
-    const refreshToken = this.options.refreshToken;
-
-    if (!refreshToken) {
-      throw new JwtConfigurationError('JWT refresh token options are not configured.');
-    }
-
-    if (typeof refreshToken.secret !== 'string' || refreshToken.secret.length === 0) {
-      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
-    }
-
-    if (!Number.isFinite(refreshToken.expiresInSeconds) || refreshToken.expiresInSeconds <= 0) {
-      throw new JwtConfigurationError('JWT refresh token expiresInSeconds must be a positive finite number.');
-    }
-
-    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH);
+    const refreshToken = normalizeRefreshTokenOptions(this.options.refreshToken);
 
     return {
       audience: this.options.audience,
       accessTokenTtlSeconds: refreshToken.expiresInSeconds,
-      algorithms,
+      algorithms: this.refreshAlgorithms,
       issuer: this.options.issuer,
       secret: refreshToken.secret,
     };

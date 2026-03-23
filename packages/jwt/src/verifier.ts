@@ -5,6 +5,7 @@ import { Inject } from '@konekti/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
 import { JwksClient } from './jwks.js';
+import { normalizeRefreshTokenOptions } from './refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from './types.js';
 
 export const JWT_OPTIONS = Symbol.for('konekti.jwt.options');
@@ -32,15 +33,49 @@ function isFiniteNumericDate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function resolveHmacSecret(options: JwtVerifierOptions, kid: string | undefined): string | undefined {
-  const keys = options.keys;
+interface KeyResolutionState {
+  defaultHmacSecret?: string;
+  defaultPublicKey?: string | KeyObject;
+  hmacKeyCount: number;
+  keyByKid: Map<string, JwtKeyEntry>;
+  publicKeyCount: number;
+}
+
+function createKeyResolutionState(keys: JwtKeyEntry[] | undefined): KeyResolutionState {
+  const state: KeyResolutionState = {
+    hmacKeyCount: 0,
+    keyByKid: new Map<string, JwtKeyEntry>(),
+    publicKeyCount: 0,
+  };
 
   if (!Array.isArray(keys) || keys.length === 0) {
-    return options.secret;
+    return state;
   }
 
+  for (const entry of keys) {
+    state.keyByKid.set(entry.kid, entry);
+
+    if (typeof entry.secret === 'string' && entry.secret.length > 0) {
+      state.hmacKeyCount += 1;
+      state.defaultHmacSecret = state.hmacKeyCount === 1 ? entry.secret : undefined;
+    }
+
+    if (entry.publicKey !== undefined) {
+      state.publicKeyCount += 1;
+      state.defaultPublicKey = state.publicKeyCount === 1 ? entry.publicKey : undefined;
+    }
+  }
+
+  return state;
+}
+
+function resolveHmacSecret(
+  options: JwtVerifierOptions,
+  keyState: KeyResolutionState,
+  kid: string | undefined,
+): string | undefined {
   if (typeof kid === 'string' && kid.length > 0) {
-    const matchingKey = keys.find((entry) => entry.kid === kid);
+    const matchingKey = keyState.keyByKid.get(kid);
 
     if (!matchingKey) {
       throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
@@ -53,33 +88,20 @@ function resolveHmacSecret(options: JwtVerifierOptions, kid: string | undefined)
     return matchingKey.secret;
   }
 
-  const hmacKeys = keys.filter(
-    (entry): entry is JwtKeyEntry & { secret: string } => typeof entry.secret === 'string' && entry.secret.length > 0,
-  );
-
-  if (hmacKeys.length > 1) {
+  if (keyState.hmacKeyCount > 1) {
     throw new JwtInvalidTokenError('JWT is missing key id (kid) for multi-key HMAC verification.');
   }
 
-  if (hmacKeys.length === 1) {
-    return hmacKeys[0].secret;
-  }
-
-  return options.secret;
+  return keyState.defaultHmacSecret ?? options.secret;
 }
 
 function resolveStaticPublicKey(
   options: JwtVerifierOptions,
+  keyState: KeyResolutionState,
   kid: string | undefined,
 ): string | KeyObject | undefined {
-  const keys = options.keys;
-
-  if (!Array.isArray(keys) || keys.length === 0) {
-    return options.publicKey;
-  }
-
   if (typeof kid === 'string' && kid.length > 0) {
-    const matchingKey = keys.find((entry) => entry.kid === kid);
+    const matchingKey = keyState.keyByKid.get(kid);
 
     if (!matchingKey) {
       throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
@@ -92,19 +114,11 @@ function resolveStaticPublicKey(
     return matchingKey.publicKey;
   }
 
-  const publicKeys = keys.filter(
-    (entry): entry is JwtKeyEntry & { publicKey: string | KeyObject } => entry.publicKey !== undefined,
-  );
-
-  if (publicKeys.length > 1) {
+  if (keyState.publicKeyCount > 1) {
     throw new JwtInvalidTokenError('JWT is missing key id (kid) for multi-key public key verification.');
   }
 
-  if (publicKeys.length === 1) {
-    return publicKeys[0].publicKey;
-  }
-
-  return options.publicKey;
+  return keyState.defaultPublicKey ?? options.publicKey;
 }
 
 function verifyHmacSignature(
@@ -205,9 +219,16 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
 @Inject([JWT_OPTIONS])
 export class DefaultJwtVerifier {
   private readonly jwksClient: JwksClient | undefined;
+  private readonly keyResolutionState: KeyResolutionState;
+  private readonly refreshVerificationOptions: JwtVerifierOptions | undefined;
 
   constructor(private readonly options: JwtVerifierOptions) {
     this.jwksClient = options.jwksUri ? new JwksClient(options.jwksUri, options.jwksCacheTtl) : undefined;
+    this.keyResolutionState = createKeyResolutionState(options.keys);
+    this.refreshVerificationOptions =
+      options.refreshToken
+        ? this.createRefreshVerificationOptions(normalizeRefreshTokenOptions(options.refreshToken))
+        : undefined;
   }
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
@@ -215,20 +236,16 @@ export class DefaultJwtVerifier {
   }
 
   async verifyRefreshToken(token: string): Promise<JwtPrincipal> {
-    return this.verifyToken(token, this.resolveRefreshVerificationOptions(), undefined);
-  }
-
-  private resolveRefreshVerificationOptions(): JwtVerifierOptions {
-    const refreshToken = this.options.refreshToken;
-
-    if (!refreshToken) {
+    if (!this.refreshVerificationOptions) {
       throw new JwtConfigurationError('JWT refresh token options are not configured.');
     }
 
-    if (typeof refreshToken.secret !== 'string' || refreshToken.secret.length === 0) {
-      throw new JwtConfigurationError('JWT refresh token secret must be a non-empty string.');
-    }
+    return this.verifyToken(token, this.refreshVerificationOptions, undefined);
+  }
 
+  private createRefreshVerificationOptions(
+    refreshToken: ReturnType<typeof normalizeRefreshTokenOptions>,
+  ): JwtVerifierOptions {
     const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH);
 
     return {
@@ -249,7 +266,6 @@ export class DefaultJwtVerifier {
   ): Promise<JwtPrincipal> {
     const [headerSegment, payloadSegment, signatureSegment] = this.parseTokenSegments(token);
     const header = parseJwtPart<{ [key: string]: unknown; alg?: string; kid?: string; typ?: string }>(headerSegment);
-    const payload = parseJwtPart<JwtClaims>(payloadSegment);
     const algorithms = options.algorithms;
 
     if (!isAllowedAlgorithm(header.alg, algorithms)) {
@@ -265,6 +281,8 @@ export class DefaultJwtVerifier {
       options,
       jwksClient,
     );
+
+    const payload = parseJwtPart<JwtClaims>(payloadSegment);
     this.validateTokenClaims(payload, options);
 
     return normalizePrincipal(payload);
@@ -307,7 +325,7 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
     }
 
-    const secret = providerKey ?? resolveHmacSecret(options, header.kid);
+    const secret = providerKey ?? resolveHmacSecret(options, this.keyResolutionState, header.kid);
 
     if (!secret) {
       throw new JwtConfigurationError('JWT secret is not configured.');
@@ -326,7 +344,9 @@ export class DefaultJwtVerifier {
     const providerKey = await this.resolveProviderKey(options, header);
     const publicKey =
       providerKey ??
-      (jwksClient ? await this.resolveJwksPublicKey(header.kid, jwksClient) : resolveStaticPublicKey(options, header.kid));
+      (jwksClient
+        ? await this.resolveJwksPublicKey(header.kid, jwksClient)
+        : resolveStaticPublicKey(options, this.keyResolutionState, header.kid));
 
     if (!publicKey) {
       throw new JwtConfigurationError('JWT public key is not configured.');

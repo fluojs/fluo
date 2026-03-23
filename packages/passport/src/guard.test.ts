@@ -318,6 +318,66 @@ describe('AuthGuard', () => {
     expect(subjects).toEqual(['google-user-1', 'google-user-2']);
   });
 
+  it('does not leak mutable strategy template state across concurrent Passport.js requests', async () => {
+    class PassportLikeMutableStateStrategy {
+      success?: (user: unknown, info?: unknown) => void;
+      readonly state = { subject: '' };
+
+      authenticate(request: unknown) {
+        const headers = (request as { headers?: Record<string, string | undefined> }).headers;
+        const subject = headers?.['x-user'] ?? 'unknown';
+        this.state.subject = subject;
+
+        const delay = subject === 'alpha' ? 10 : 0;
+
+        setTimeout(() => {
+          this.success?.({ id: this.state.subject });
+        }, delay);
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-mutable', PassportLikeMutableStateStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-mutable')
+      getProfile(_input: unknown, ctx: { principal?: { subject: string } }) {
+        return { subject: ctx.principal?.subject };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeMutableStateStrategy,
+      ...bridge.providers,
+      ...createPassportProviders({ defaultStrategy: 'google-mutable' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+
+    const alphaRequest = createRequest('/oauth/profile', { 'x-user': 'alpha' });
+    alphaRequest.raw = { headers: alphaRequest.headers };
+
+    const betaRequest = createRequest('/oauth/profile', { 'x-user': 'beta' });
+    betaRequest.raw = { headers: betaRequest.headers };
+
+    const [alphaResponse, betaResponse] = [createResponse(), createResponse()];
+
+    await Promise.all([
+      dispatcher.dispatch(alphaRequest, alphaResponse),
+      dispatcher.dispatch(betaRequest, betaResponse),
+    ]);
+
+    const subjects = [alphaResponse.body, betaResponse.body]
+      .map((body) => (body as { subject?: string }).subject)
+      .sort();
+
+    expect(subjects).toEqual(['alpha', 'beta']);
+  });
+
   it('supports Passport.js redirect flow without executing the protected handler', async () => {
     let handlerCalled = false;
 

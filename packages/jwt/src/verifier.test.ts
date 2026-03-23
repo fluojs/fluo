@@ -467,6 +467,22 @@ describe('DefaultJwtVerifier', () => {
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
   });
 
+  it('verifies signature before payload parsing on malformed payload tokens', async () => {
+    const headerSegment = encodeBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+    const payloadSegment = encodeBase64Url('not-json-payload');
+    const signatureSegment = createHmac('sha256', 'secret').update(`${headerSegment}.${payloadSegment}`).digest('base64url');
+    const provider = vi.fn(async () => 'secret');
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secretOrKeyProvider: provider,
+    });
+
+    await expect(verifier.verifyAccessToken(`${headerSegment}.${payloadSegment}.${signatureSegment}`)).rejects.toBeInstanceOf(
+      JwtInvalidTokenError,
+    );
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
   it('verifies RS256 token when secretOrKeyProvider returns public key', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const exp = Math.floor(Date.now() / 1000) + 60;
