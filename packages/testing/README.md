@@ -95,7 +95,7 @@ Fluent builder returned by `createTestingModule`.
 
 | Method | Description |
 |---|---|
-| `.overrideProvider(token, implementation)` | Replace a DI token's provider with `implementation` before the graph is compiled. Chainable. |
+| `.overrideProvider(token, implementation)` | Replace a DI token's provider with `implementation` before any provider resolution in the compiled test container. Chainable. |
 | `.compile()` | Compile the module graph with all overrides applied. Returns a `Promise<TestingModuleRef>`. |
 
 ### `TestingModuleRef`
@@ -207,7 +207,7 @@ TestingModuleRef
 createTestApp({ rootModule })  → bootstrapped test app with request()
 ```
 
-Overrides are applied **after** the module graph is constructed, replacing the real providers with the fakes you supplied. The rest of the graph remains intact, so only the tokens you explicitly override are substituted.
+Overrides are applied immediately after module graph construction and before any provider resolution, replacing the real providers with the fakes you supplied. The rest of the graph remains intact, so only the tokens you explicitly override are substituted.
 
 ## File Reading Order (for contributors)
 

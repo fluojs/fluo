@@ -101,23 +101,21 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   async compile(): Promise<TestingModuleRef> {
     const bootstrapped = this.bootstrapTestingModule();
 
-    this.applyOverrides(bootstrapped);
-
     return this.createTestingModuleRef(bootstrapped);
   }
 
   private bootstrapTestingModule(): BootstrapResult {
     const rootModule = this._applyModuleReplacements(this.options.rootModule);
 
-    return bootstrapModule(rootModule, {
+    const bootstrapped = bootstrapModule(rootModule, {
       providers: this.options.providers,
     });
-  }
 
-  private applyOverrides(bootstrapped: BootstrapResult): void {
     if (this.overrides.length > 0) {
       bootstrapped.container.override(...this.overrides);
     }
+
+    return bootstrapped;
   }
 
   private createTestingModuleRef(bootstrapped: BootstrapResult): TestingModuleRef {

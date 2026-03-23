@@ -142,6 +142,21 @@ describe('DefaultBinder', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('preserves single-element arrays for query bindings', async () => {
+    class SearchUsersRequest {
+      @FromQuery('tag')
+      tags: string[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { tag: ['admin'] } })),
+    )) as SearchUsersRequest;
+
+    expect(bound.tags).toEqual(['admin']);
+  });
 });
 
 describe('HttpDtoValidationAdapter', () => {

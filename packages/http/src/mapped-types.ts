@@ -32,8 +32,18 @@ function createDerivedDto(
   return DerivedDto;
 }
 
-function ownKeysOf(dto: DtoConstructor): MetadataPropertyKey[] {
-  return Reflect.ownKeys(new dto() as object);
+function collectDtoKeys(dto: DtoConstructor): MetadataPropertyKey[] {
+  const keys = new Set<MetadataPropertyKey>();
+
+  for (const entry of getDtoBindingSchema(dto)) {
+    keys.add(entry.propertyKey);
+  }
+
+  for (const entry of getDtoValidationSchema(dto)) {
+    keys.add(entry.propertyKey);
+  }
+
+  return [...keys];
 }
 
 function copyDtoMetadata(
@@ -64,22 +74,16 @@ function copyDtoMetadata(
   }
 }
 
-function hasOptionalRule(source: DtoConstructor, propertyKey: MetadataPropertyKey): boolean {
-  return getDtoValidationSchema(source)
-    .find((entry) => entry.propertyKey === propertyKey)
-    ?.rules.some((rule) => rule.kind === 'optional') ?? false;
-}
-
 export function PickType<TBase extends DtoConstructor, TKey extends Extract<keyof InstanceType<TBase>, string>>(
   BaseDto: TBase,
   keys: readonly TKey[],
 ): DtoConstructor<Pick<InstanceType<TBase>, TKey>> {
   const selected = new Set<MetadataPropertyKey>(keys);
+  const baseKeys = collectDtoKeys(BaseDto);
   const PickedDto = createDerivedDto(`${BaseDto.name}PickType`, (instance) => {
-    const base = new BaseDto() as Record<PropertyKey, unknown>;
-    for (const key of ownKeysOf(BaseDto)) {
+    for (const key of baseKeys) {
       if (selected.has(key)) {
-        instance[key] = base[key];
+        instance[key] = undefined;
       }
     }
   });
@@ -94,11 +98,11 @@ export function OmitType<TBase extends DtoConstructor, TKey extends Extract<keyo
   keys: readonly TKey[],
 ): DtoConstructor<Omit<InstanceType<TBase>, TKey>> {
   const omitted = new Set<MetadataPropertyKey>(keys);
+  const baseKeys = collectDtoKeys(BaseDto);
   const OmittedDto = createDerivedDto(`${BaseDto.name}OmitType`, (instance) => {
-    const base = new BaseDto() as Record<PropertyKey, unknown>;
-    for (const key of ownKeysOf(BaseDto)) {
+    for (const key of baseKeys) {
       if (!omitted.has(key)) {
-        instance[key] = base[key];
+        instance[key] = undefined;
       }
     }
   });
@@ -117,11 +121,14 @@ type IntersectionInstance<TBaseDtos extends readonly DtoConstructor[]> = UnionTo
 export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, DtoConstructor, ...DtoConstructor[]]>(
   ...baseDtos: TBaseDtos
 ): DtoConstructor<IntersectionInstance<TBaseDtos>> {
+  const baseKeySets = baseDtos.map((dto) => collectDtoKeys(dto));
   const IntersectionDto = createDerivedDto(
     `${baseDtos.map((dto) => dto.name).join('') || 'Anonymous'}IntersectionType`,
     (instance) => {
-      for (const BaseDto of baseDtos) {
-        Object.assign(instance, new BaseDto());
+      for (const baseKeys of baseKeySets) {
+        for (const key of baseKeys) {
+          instance[key] = undefined;
+        }
       }
     },
   );
@@ -134,8 +141,9 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
 }
 
 export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoConstructor<Partial<InstanceType<TBase>>> {
+  const baseKeys = collectDtoKeys(BaseDto);
   const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (instance) => {
-    for (const key of ownKeysOf(BaseDto)) {
+    for (const key of baseKeys) {
       instance[key] = undefined;
     }
   });
@@ -147,12 +155,29 @@ export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoCo
     });
   }
 
-  for (const entry of getDtoValidationSchema(BaseDto)) {
+  const validationSchema = getDtoValidationSchema(BaseDto);
+  const optionalProperties = new Set<MetadataPropertyKey>();
+
+  for (const entry of validationSchema) {
+    let hasOptional = false;
+    for (const rule of entry.rules) {
+      if (rule.kind === 'optional') {
+        hasOptional = true;
+        break;
+      }
+    }
+
+    if (hasOptional) {
+      optionalProperties.add(entry.propertyKey);
+    }
+  }
+
+  for (const entry of validationSchema) {
     for (const rule of entry.rules) {
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, rule);
     }
 
-    if (!hasOptionalRule(BaseDto, entry.propertyKey)) {
+    if (!optionalProperties.has(entry.propertyKey)) {
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, { kind: 'optional' });
     }
   }

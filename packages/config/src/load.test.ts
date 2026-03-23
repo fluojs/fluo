@@ -290,6 +290,34 @@ describe('loadConfig', () => {
     }
   });
 
+  it('keeps the previous snapshot when manual reload listeners throw', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-reload-ordering-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+    });
+
+    try {
+      reloader.subscribe((_snapshot, reason) => {
+        if (reason === 'manual') {
+          throw new Error('listener failed');
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4700\n');
+
+      expect(() => reloader.reload()).toThrow('listener failed');
+      expect(reloader.current()['PORT']).toBe('4000');
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('stops watch notifications after close', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-watch-close-'));
     const envPath = join(cwd, '.env.dev');
