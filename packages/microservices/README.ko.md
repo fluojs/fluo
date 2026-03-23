@@ -50,12 +50,43 @@ await microservice.listen();
 ## 런타임 동작
 
 - 컴파일된 모듈의 프로바이더와 컨트롤러에서 핸들러를 검색합니다.
-- 싱글톤 스코프의 핸들러만 등록됩니다.
 - `@MessagePattern`은 단일 핸들러와 매칭되며 해당 값을 호출자에게 반환합니다.
+- `@MessagePattern`은 singleton, request, transient 핸들러를 지원합니다. request/transient 핸들러는 메시지별 child DI scope 안에서 실행되고, 핸들러 완료 후 해당 scope가 dispose됩니다.
 - 여러 `@MessagePattern` 핸들러가 동일한 패턴에 매칭되는 경우, 임의로 선택하지 않고 명시적으로 디스패치에 실패합니다.
-- `@EventPattern`은 매칭되는 모든 핸들러로 디스패치합니다.
+- `@EventPattern`은 매칭되는 모든 핸들러로 디스패치하지만, 현재 런타임에서는 이벤트 핸들러를 여전히 singleton-only로 제한합니다.
 - 패턴은 정확한 문자열 또는 `RegExp` 매칭을 지원합니다.
 - 트랜스포트 생명주기는 애플리케이션 시작 및 종료 시점에 관리됩니다.
+
+## 마이크로서비스 핸들러의 provider scope
+
+- **Singleton** (기본값): 모든 인바운드 메시지와 이벤트에서 하나의 인스턴스를 공유합니다.
+- **Request**: 인바운드 `@MessagePattern` 핸들러에서만 지원됩니다. 각 메시지는 새로운 child DI scope를 만들고, 핸들러 성공/실패 후 해당 scope를 dispose합니다.
+- **Transient**: 인바운드 `@MessagePattern` 핸들러에서만 지원됩니다. 핸들러와 transient 의존성은 같은 메시지별 child scope 경계에서 resolve되므로, 각 메시지마다 새로운 인스턴스 그래프를 가집니다.
+
+`@EventPattern` 핸들러는 아직 singleton-only입니다. request/transient event 핸들러는 현재 event 경로가 여러 핸들러로 fan-out되면서도 per-event shared context 계약을 정의하지 않았기 때문에 warning과 함께 skip됩니다.
+
+```typescript
+import { Inject, Scope } from '@konekti/core';
+import { MessagePattern } from '@konekti/microservices';
+
+@Scope('request')
+class CorrelationState {
+  readonly id = crypto.randomUUID();
+}
+
+@Inject([CorrelationState])
+@Scope('request')
+class PaymentsHandler {
+  constructor(private readonly state: CorrelationState) {}
+
+  @MessagePattern('payments.capture')
+  capture() {
+    return { correlationId: this.state.id };
+  }
+}
+```
+
+`@MessagePattern` 핸들러가 request scope를 사용할 때, 모든 의존성도 request 또는 transient scope여야 합니다. singleton이 request-scoped provider에 의존하면 DI 컨테이너는 여전히 `ScopeMismatchError`를 던집니다.
 
 ## 트랜스포트 참고 사항
 
