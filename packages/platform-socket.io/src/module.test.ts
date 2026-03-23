@@ -11,6 +11,17 @@ import { createSocketIoModule } from './module.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
 import type { SocketIoRoomService } from './types.js';
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 function createLogger(events: string[]): ApplicationLogger {
   return {
     debug(message: string, context?: string) {
@@ -209,6 +220,168 @@ describe('@konekti/platform-socket.io', () => {
         ),
       ),
     ).toBe(true);
+
+    await app.close();
+  });
+
+  it('buffers messages and disconnects until async connect handlers complete', async () => {
+    const connected = createDeferred<void>();
+
+    class GatewayState {
+      disconnects = 0;
+      messages: unknown[] = [];
+    }
+
+    @Inject([GatewayState])
+    @WebSocketGateway({ path: '/async-connect' })
+    class AsyncGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      async onConnect() {
+        await connected.promise;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      providers: [GatewayState, AsyncGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/async-connect`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(socket);
+
+    const disconnected = onceDisconnected(socket);
+    socket.emit('ping', 'early');
+    socket.disconnect();
+    await disconnected;
+
+    connected.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.messages).toEqual(['early']);
+    expect(state.disconnects).toBe(1);
+
+    await app.close();
+  });
+
+  it('isolates same room names across namespaces', async () => {
+    class GatewayState {
+      adminMessages: unknown[] = [];
+      chatMessages: unknown[] = [];
+    }
+
+    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      constructor(
+        private readonly state: GatewayState,
+        private readonly rooms: SocketIoRoomService,
+      ) {}
+
+      @OnConnect()
+      onConnect(socket: Socket) {
+        this.rooms.joinRoom(socket.id, 'shared-room');
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.chatMessages.push(payload);
+        this.rooms.broadcastToRoom('shared-room', 'chat:broadcast', payload);
+      }
+    }
+
+    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @WebSocketGateway({ path: '/admin' })
+    class AdminGateway {
+      constructor(
+        private readonly state: GatewayState,
+        private readonly rooms: SocketIoRoomService,
+      ) {}
+
+      @OnConnect()
+      onConnect(socket: Socket) {
+        this.rooms.joinRoom(socket.id, 'shared-room');
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.adminMessages.push(payload);
+        this.rooms.broadcastToRoom('shared-room', 'admin:broadcast', payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      providers: [GatewayState, ChatGateway, AdminGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    const adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+
+    await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
+
+    const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
+    let adminReceivedChatBroadcast = false;
+    adminSocket.once('chat:broadcast', () => {
+      adminReceivedChatBroadcast = true;
+    });
+
+    chatSocket.emit('ping', 'chat-message');
+
+    expect(await chatBroadcast).toBe('chat-message');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(adminReceivedChatBroadcast).toBe(false);
+    expect(state.chatMessages).toEqual(['chat-message']);
+    expect(state.adminMessages).toEqual([]);
+
+    const chatDisconnected = onceDisconnected(chatSocket);
+    const adminDisconnected = onceDisconnected(adminSocket);
+    chatSocket.disconnect();
+    adminSocket.disconnect();
+    await Promise.all([chatDisconnected, adminDisconnected]);
 
     await app.close();
   });

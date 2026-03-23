@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage } from 'node:http';
 
 import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
@@ -36,6 +37,23 @@ interface NamespaceAttachment {
   descriptors: WebSocketGatewayDescriptor[];
   namespace: Namespace;
   path: string;
+}
+
+interface BufferedMessageEvent {
+  acknowledgement?: (...callbackArgs: unknown[]) => void;
+  event: string;
+  payload: unknown;
+}
+
+interface BufferedDisconnectEvent {
+  description: unknown;
+  reason: string;
+}
+
+interface ConnectionHandlerState {
+  bufferedDisconnect: BufferedDisconnectEvent | undefined;
+  bufferedMessages: BufferedMessageEvent[];
+  handlersReady: boolean;
 }
 
 interface ClassProviderLike {
@@ -103,7 +121,7 @@ export class SocketIoLifecycleService
 {
   private attachments: NamespaceAttachment[] = [];
   private io: Server | undefined;
-  private readonly roomNamespaces = new Map<string, Set<string>>();
+  private readonly namespaceContext = new AsyncLocalStorage<string>();
   private readonly socketRegistry = new Map<string, Socket>();
   private shutdownPromise: Promise<void> | undefined;
   private wired = false;
@@ -174,9 +192,11 @@ export class SocketIoLifecycleService
 
     if (socket) {
       void socket.join(room);
-      this.trackRoomNamespace(room, socket.nsp.name);
       return;
     }
+
+    const namespace = this.resolveContextNamespace();
+    namespace?.in(socketId).socketsJoin(room);
   }
 
   leaveRoom(socketId: string, room: string): void {
@@ -184,20 +204,22 @@ export class SocketIoLifecycleService
 
     if (socket) {
       void socket.leave(room);
-    }
-  }
-
-  broadcastToRoom(room: string, event: string, data: unknown): void {
-    const namespaces = this.roomNamespaces.get(room);
-
-    if (!namespaces || namespaces.size === 0) {
-      this.io?.to(room).emit(event, data);
       return;
     }
 
-    for (const namespaceName of namespaces) {
-      this.resolveNamespace(namespaceName)?.to(room).emit(event, data);
+    const namespace = this.resolveContextNamespace();
+    namespace?.in(socketId).socketsLeave(room);
+  }
+
+  broadcastToRoom(room: string, event: string, data: unknown): void {
+    const namespace = this.resolveContextNamespace();
+
+    if (namespace) {
+      namespace.to(room).emit(event, data);
+      return;
     }
+
+    this.io?.to(room).emit(event, data);
   }
 
   getRooms(socketId: string): ReadonlySet<string> {
@@ -249,6 +271,16 @@ export class SocketIoLifecycleService
     return this.attachments.find((attachment) => attachment.path === path)?.namespace;
   }
 
+  private resolveContextNamespace(): Namespace | undefined {
+    const namespaceName = this.namespaceContext.getStore();
+
+    if (!namespaceName) {
+      return undefined;
+    }
+
+    return this.resolveNamespace(namespaceName);
+  }
+
   private resolveSocket(socketId: string): Socket | undefined {
     const registered = this.socketRegistry.get(socketId);
 
@@ -268,17 +300,6 @@ export class SocketIoLifecycleService
     return undefined;
   }
 
-  private trackRoomNamespace(room: string, namespaceName: string): void {
-    const current = this.roomNamespaces.get(room);
-
-    if (current) {
-      current.add(namespaceName);
-      return;
-    }
-
-    this.roomNamespaces.set(room, new Set([namespaceName]));
-  }
-
   private bindNamespaceHandlers(attachment: NamespaceAttachment): void {
     attachment.namespace.on('connection', (socket: Socket) => {
       void this.bindConnectionHandlers(attachment.descriptors, socket);
@@ -288,26 +309,78 @@ export class SocketIoLifecycleService
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
     const request = socket.request as IncomingMessage;
     const resolved = await this.resolveConnectionGateways(descriptors);
+    const state = this.createConnectionHandlerState();
 
     this.socketRegistry.set(socket.id, socket);
-    this.attachConnectionListeners(resolved, socket, request);
+    this.attachConnectionListeners(state, resolved, socket, request);
     await this.runConnectHandlers(resolved, socket, request);
+    state.handlersReady = true;
+    await this.replayBufferedConnectionEvents(state, resolved, socket, request);
+  }
+
+  private createConnectionHandlerState(): ConnectionHandlerState {
+    return {
+      bufferedDisconnect: undefined,
+      bufferedMessages: [],
+      handlersReady: false,
+    };
   }
 
   private attachConnectionListeners(
+    state: ConnectionHandlerState,
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
     socket: Socket,
     request: IncomingMessage,
   ): void {
     socket.onAny((event: string, ...args: unknown[]) => {
       const ack = typeof args.at(-1) === 'function' ? (args.at(-1) as (...callbackArgs: unknown[]) => void) : undefined;
+
+      if (!state.handlersReady) {
+        state.bufferedMessages.push({
+          acknowledgement: ack,
+          event,
+          payload: extractPayload(args),
+        });
+        return;
+      }
+
       void this.handleMessage(resolved, socket, request, event, extractPayload(args), ack);
     });
 
     socket.on('disconnect', (reason: string, description: unknown) => {
-      this.socketRegistry.delete(socket.id);
+      if (!state.handlersReady) {
+        state.bufferedDisconnect = { description, reason };
+        return;
+      }
+
       void this.handleDisconnect(resolved, socket, reason, description);
+      this.socketRegistry.delete(socket.id);
     });
+  }
+
+  private async replayBufferedConnectionEvents(
+    state: ConnectionHandlerState,
+    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    socket: Socket,
+    request: IncomingMessage,
+  ): Promise<void> {
+    for (const message of state.bufferedMessages) {
+      await this.handleMessage(resolved, socket, request, message.event, message.payload, message.acknowledgement);
+    }
+
+    state.bufferedMessages = [];
+
+    if (state.bufferedDisconnect) {
+      const disconnectEvent = state.bufferedDisconnect;
+      state.bufferedDisconnect = undefined;
+      await this.handleDisconnect(resolved, socket, disconnectEvent.reason, disconnectEvent.description);
+      this.socketRegistry.delete(socket.id);
+      return;
+    }
+
+    if (socket.disconnected) {
+      this.socketRegistry.delete(socket.id);
+    }
   }
 
   private async resolveConnectionGateways(
@@ -403,7 +476,10 @@ export class SocketIoLifecycleService
     }
 
     try {
-      await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args));
+      await this.namespaceContext.run(
+        descriptor.path,
+        async () => await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args)),
+      );
     } catch (error) {
       this.logger.error(
         `Socket.IO gateway handler ${descriptor.targetName}.${handler.methodName} failed.`,
@@ -540,7 +616,6 @@ export class SocketIoLifecycleService
     this.wired = false;
 
     if (!io) {
-      this.roomNamespaces.clear();
       this.socketRegistry.clear();
       return;
     }
@@ -555,7 +630,6 @@ export class SocketIoLifecycleService
       );
     } finally {
       this.io = undefined;
-      this.roomNamespaces.clear();
       this.socketRegistry.clear();
     }
   }
