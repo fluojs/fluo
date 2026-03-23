@@ -418,6 +418,9 @@ importers:
         specifier: ^8.18.3
         version: 8.19.0
     devDependencies:
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../platform-fastify
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
