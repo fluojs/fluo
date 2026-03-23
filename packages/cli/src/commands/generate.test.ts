@@ -52,4 +52,29 @@ describe('runGenerateCommand', () => {
     expect(moduleContent).toContain('from "./post.service"');
     expect(occurrences).toBe(2);
   });
+
+  it('does not write generated files when module rewrite preflight fails', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const domainDirectory = join(sourceDirectory, 'posts');
+    const modulePath = join(domainDirectory, 'post.module.ts');
+    mkdirSync(domainDirectory, { recursive: true });
+
+    writeFileSync(
+      modulePath,
+      `import { Module } from '@konekti/core';
+
+@Module({ providers: ExistingService })
+class PostModule {}
+
+export { PostModule };
+`,
+      'utf8',
+    );
+
+    expect(() => runGenerateCommand('service', 'Post', sourceDirectory)).toThrow('"providers" must be an array');
+    expect(existsSync(join(domainDirectory, 'post.service.ts'))).toBe(false);
+  });
 });

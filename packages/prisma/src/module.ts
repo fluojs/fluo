@@ -7,7 +7,11 @@ import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import { PrismaTransactionInterceptor } from './transaction.js';
 import type { PrismaClientLike, PrismaModuleOptions } from './types.js';
 
-interface NormalizedPrismaModuleOptions<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient> {
+interface NormalizedPrismaModuleOptions<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient,
+  TTransactionOptions,
+> {
   client: TClient;
   strictTransactions: boolean;
 }
@@ -15,16 +19,24 @@ interface NormalizedPrismaModuleOptions<TClient extends PrismaClientLike<TTransa
 const PRISMA_NORMALIZED_OPTIONS = Symbol('konekti.prisma.normalized-options');
 const PRISMA_MODULE_EXPORTS = [PrismaService, PrismaTransactionInterceptor];
 
-function normalizePrismaModuleOptions<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient>(
-  options: PrismaModuleOptions<TClient, TTransactionClient>,
-): NormalizedPrismaModuleOptions<TClient, TTransactionClient> {
+function normalizePrismaModuleOptions<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient,
+  TTransactionOptions,
+>(
+  options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
+): NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions> {
   return {
     client: options.client,
     strictTransactions: options.strictTransactions ?? false,
   };
 }
 
-function createPrismaRuntimeProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient>(
+function createPrismaRuntimeProviders<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient,
+  TTransactionOptions,
+>(
   normalizedOptionsProvider: Provider,
 ): Provider[] {
   return [
@@ -32,13 +44,15 @@ function createPrismaRuntimeProviders<TClient extends PrismaClientLike<TTransact
     {
       inject: [PRISMA_NORMALIZED_OPTIONS],
       provide: PRISMA_CLIENT,
-      useFactory: (options: unknown) => (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient>).client,
+      useFactory: (options: unknown) =>
+        (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>).client,
     },
     {
       inject: [PRISMA_NORMALIZED_OPTIONS],
       provide: PRISMA_OPTIONS,
       useFactory: (options: unknown) => ({
-        strictTransactions: (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient>).strictTransactions,
+        strictTransactions:
+          (options as NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>).strictTransactions,
       }),
     },
     PrismaService,
@@ -46,17 +60,25 @@ function createPrismaRuntimeProviders<TClient extends PrismaClientLike<TTransact
   ];
 }
 
-export function createPrismaProviders<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
-  options: PrismaModuleOptions<TClient, TTransactionClient>,
+export function createPrismaProviders<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient = TClient,
+  TTransactionOptions = unknown,
+>(
+  options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): Provider[] {
-  return createPrismaRuntimeProviders({
+  return createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
     provide: PRISMA_NORMALIZED_OPTIONS,
     useValue: normalizePrismaModuleOptions(options),
   });
 }
 
-export function createPrismaModule<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>(
-  options: PrismaModuleOptions<TClient, TTransactionClient>,
+export function createPrismaModule<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient = TClient,
+  TTransactionOptions = unknown,
+>(
+  options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): ModuleType {
   class PrismaModule {}
 
@@ -67,17 +89,24 @@ export function createPrismaModule<TClient extends PrismaClientLike<TTransaction
 }
 
 export function createPrismaModuleAsync<
-  TClient extends PrismaClientLike<TTransactionClient>,
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
->(options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient>>): ModuleType {
+  TTransactionOptions = unknown,
+>(options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>): ModuleType {
   class PrismaAsyncModule {}
 
-  const factory = options.useFactory as (...args: unknown[]) => MaybePromise<PrismaModuleOptions<TClient, TTransactionClient>>;
+  const factory = options.useFactory as (
+    ...args: unknown[]
+  ) => MaybePromise<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>;
 
-  let cachedResult: Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient>> | undefined;
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient>> => {
+  let cachedResult: Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>> | undefined;
+  const memoizedFactory = (
+    ...deps: unknown[]
+  ): Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>> => {
     if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizePrismaModuleOptions(resolved));
+      cachedResult = Promise.resolve(factory(...deps)).then((resolved) =>
+        normalizePrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>(resolved),
+      );
     }
     return cachedResult;
   };
@@ -91,6 +120,6 @@ export function createPrismaModuleAsync<
 
   return defineModule(PrismaAsyncModule, {
     exports: PRISMA_MODULE_EXPORTS,
-    providers: createPrismaRuntimeProviders(normalizedOptionsProvider),
+    providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>(normalizedOptionsProvider),
   });
 }

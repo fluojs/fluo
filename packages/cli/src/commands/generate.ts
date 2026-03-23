@@ -26,26 +26,53 @@ function assertValidResourceName(name: string): string {
   return kebab;
 }
 
-function ensureModuleFile(domainDirectory: string, name: string): string {
+function resolveModulePath(domainDirectory: string, name: string): string {
   const kebab = toKebabCase(name);
-  const modulePath = join(domainDirectory, `${kebab}.module.ts`);
-
-  if (!existsSync(modulePath)) {
-    const [moduleFile] = generateModuleFiles(name);
-    if (moduleFile) {
-      mkdirSync(domainDirectory, { recursive: true });
-      writeFileSync(modulePath, moduleFile.content, 'utf8');
-    }
-  }
-
-  return modulePath;
+  return join(domainDirectory, `${kebab}.module.ts`);
 }
 
-function updateModuleFile(modulePath: string, arrayKey: ModuleArrayKey, className: string, importPath: string): void {
-  let source = readFileSync(modulePath, 'utf8');
+function readOrCreateModuleSource(modulePath: string, name: string): string {
+  if (existsSync(modulePath)) {
+    return readFileSync(modulePath, 'utf8');
+  }
+
+  const [moduleFile] = generateModuleFiles(name);
+  if (!moduleFile) {
+    throw new Error(`Unable to generate module file for resource "${name}".`);
+  }
+
+  return moduleFile.content;
+}
+
+function buildUpdatedModuleSource(moduleSource: string, arrayKey: ModuleArrayKey, className: string, importPath: string): string {
+  let source = moduleSource;
   source = ensureModuleImport(source, className, importPath);
   source = registerInModule(source, arrayKey, className);
-  writeFileSync(modulePath, source, 'utf8');
+  return source;
+}
+
+type ModuleUpdatePlan = {
+  modulePath: string;
+  source: string;
+};
+
+function prepareModuleUpdate(
+  domainDirectory: string,
+  normalizedName: string,
+  kind: GeneratorKind,
+  classSuffix: string,
+  arrayKey: ModuleArrayKey,
+): ModuleUpdatePlan {
+  const kebab = toKebabCase(normalizedName);
+  const modulePath = resolveModulePath(domainDirectory, normalizedName);
+  const className = `${toPascalCase(normalizedName)}${classSuffix}`;
+  const importPath = `${kebab}.${kind}`;
+  const moduleSource = readOrCreateModuleSource(modulePath, normalizedName);
+
+  return {
+    modulePath,
+    source: buildUpdatedModuleSource(moduleSource, arrayKey, className, importPath),
+  };
 }
 
 export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirectory: string, options: GenerateOptions = {}): string[] {
@@ -55,10 +82,14 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
 
   const resolvedBase = resolve(baseDirectory);
   const domainDirectory = join(resolvedBase, toPlural(kebab));
+  const files = generator.factory(normalizedName, options);
+  const moduleRegistration = 'moduleRegistration' in generator ? generator.moduleRegistration : undefined;
+
+  const moduleUpdate = moduleRegistration
+    ? prepareModuleUpdate(domainDirectory, normalizedName, kind, moduleRegistration.classSuffix, moduleRegistration.arrayKey)
+    : undefined;
 
   mkdirSync(domainDirectory, { recursive: true });
-
-  const files = generator.factory(normalizedName, options);
 
   const writtenPaths = files.map((file) => {
     const filePath = join(domainDirectory, file.path);
@@ -71,15 +102,11 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
     return filePath;
   }).filter((filePath): filePath is string => filePath !== null);
 
-  const moduleRegistration = 'moduleRegistration' in generator ? generator.moduleRegistration : undefined;
-  if (moduleRegistration) {
-    const modulePath = ensureModuleFile(domainDirectory, normalizedName);
-    const className = `${toPascalCase(normalizedName)}${moduleRegistration.classSuffix}`;
-    const importPath = `${kebab}.${kind}`;
-    updateModuleFile(modulePath, moduleRegistration.arrayKey, className, importPath);
+  if (moduleUpdate) {
+    writeFileSync(moduleUpdate.modulePath, moduleUpdate.source, 'utf8');
 
-    if (!writtenPaths.includes(modulePath)) {
-      writtenPaths.push(modulePath);
+    if (!writtenPaths.includes(moduleUpdate.modulePath)) {
+      writtenPaths.push(moduleUpdate.modulePath);
     }
   }
 

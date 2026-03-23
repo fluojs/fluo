@@ -49,6 +49,7 @@ function createRequest(
   path: string,
   method: FrameworkRequest['method'],
   body?: unknown,
+  signal?: AbortSignal,
 ): FrameworkRequest {
   return {
     body,
@@ -59,6 +60,7 @@ function createRequest(
     path,
     query: {},
     raw: {},
+    signal,
     url: path,
   };
 }
@@ -74,6 +76,10 @@ describe('@konekti/drizzle vertical slice', () => {
     const users = new Map<string, UserRecord>();
     const events: string[] = [];
     let sequence = 0;
+    let resolveAbortCreate!: () => void;
+    const abortCreateReached = new Promise<void>((resolve) => {
+      resolveAbortCreate = resolve;
+    });
 
     const transactionDatabase = {
       users: {
@@ -83,6 +89,12 @@ describe('@konekti/drizzle vertical slice', () => {
         },
         async insert(value: { email: string; name: string }) {
           events.push(`tx:insert:${value.email}`);
+
+          if (value.email === 'abort@example.com') {
+            resolveAbortCreate();
+            return new Promise<never>(() => undefined);
+          }
+
           const record = {
             ...value,
             id: `user-${++sequence}`,
@@ -255,8 +267,44 @@ describe('@konekti/drizzle vertical slice', () => {
       'response:send',
     ]);
 
+    const abortController = new AbortController();
+    const abortResponse = createResponse(events);
+    const abortDispatch = app.dispatch(
+      createRequest('/users', 'POST', { email: 'abort@example.com', name: 'Ada' }, abortController.signal),
+      abortResponse,
+    );
+    await abortCreateReached;
+    abortController.abort(new Error('client aborted request'));
+    await abortDispatch;
+
+    expect(abortResponse.committed).toBe(false);
+    expect(users.get('user-1')).toEqual({
+      email: 'ada@example.com',
+      id: 'user-1',
+      name: 'Ada',
+    });
+
     await app.close();
 
-    expect(events).toContain('dispose');
+    expect(events).toEqual([
+      'transaction:start',
+      'tx:insert:ada@example.com',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:find:user-1',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:find:missing',
+      'transaction:rollback',
+      'transaction:end',
+      'response:send',
+      'transaction:start',
+      'tx:insert:abort@example.com',
+      'transaction:rollback',
+      'transaction:end',
+      'dispose',
+    ]);
   });
 });

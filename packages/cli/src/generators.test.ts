@@ -186,6 +186,14 @@ describe('CLI generators', () => {
 
       expect(occurrences).toBe(1);
     });
+
+    it('throws when the same class is already imported from a different module path', () => {
+      const source = `import { UserService } from './legacy.service';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
+
+      expect(() => ensureModuleImport(source, 'UserService', 'user.service')).toThrow(
+        'Import collision for UserService: already imported from "./legacy.service" but requested from "./user.service".',
+      );
+    });
   });
 });
 

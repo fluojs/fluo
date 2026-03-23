@@ -12,6 +12,9 @@ import { Inject } from '@konekti/core';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type { PrismaClientLike, PrismaHandleProvider } from './types.js';
 
+const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
+  'Nested Prisma transaction options are not supported because the active transaction context is reused.';
+
 interface PrismaServiceOptions {
   strictTransactions: boolean;
 }
@@ -27,8 +30,12 @@ type ActiveRequestTransactionHandle = {
 };
 
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
-export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>, TTransactionClient = TClient>
-  implements PrismaHandleProvider<TClient, TTransactionClient>, OnModuleInit, OnApplicationShutdown
+export class PrismaService<
+  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
+  TTransactionClient = TClient,
+  TTransactionOptions = unknown,
+>
+  implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
   private readonly transactions = new AsyncLocalStorage<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
@@ -44,9 +51,17 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
 
   private async runWithTransactionClient<T>(
     fn: () => Promise<T>,
-    run: (callback: (transactionClient: TTransactionClient) => Promise<T>) => Promise<T>,
+    run: (
+      callback: (transactionClient: TTransactionClient) => Promise<T>,
+      options?: TTransactionOptions,
+    ) => Promise<T>,
+    options?: TTransactionOptions,
   ): Promise<T> {
     if (this.transactions.getStore()) {
+      if (options !== undefined) {
+        throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
+      }
+
       return fn();
     }
 
@@ -58,7 +73,7 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
       return fn();
     }
 
-    return run((transactionClient) => this.transactions.run(transactionClient, fn));
+    return run((transactionClient) => this.transactions.run(transactionClient, fn), options);
   }
 
   async onModuleInit(): Promise<void> {
@@ -79,18 +94,23 @@ export class PrismaService<TClient extends PrismaClientLike<TTransactionClient>,
     }
   }
 
-  async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    return this.runWithTransactionClient(fn, (callback) => this.client.$transaction!(callback));
+  async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
+    return this.runWithTransactionClient(
+      fn,
+      (callback, transactionOptions) => this.client.$transaction!(callback, transactionOptions),
+      options,
+    );
   }
 
-  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
       return await this.runWithTransactionClient(
         () => raceWithAbort(fn, abortContext.signal),
-        (callback) => this.client.$transaction!(callback),
+        (callback, transactionOptions) => this.client.$transaction!(callback, transactionOptions),
+        options,
       );
     } finally {
       abortContext.cleanup();
