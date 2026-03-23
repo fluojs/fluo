@@ -13,6 +13,7 @@
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
@@ -38,6 +39,7 @@
 - **`@konekti/http`**: HTTP 실행, 바인딩, 예외, 라우트 메타데이터.
 - **`@konekti/runtime`**: 애플리케이션 부트스트랩 및 런타임 오케스트레이션.
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
+- **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
 - **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임.
 - **`@konekti/dto-validator`**: 유효성 검사 데코레이터 및 검증 엔진.
 - **`@konekti/jwt`**: 핵심 JWT 로직.

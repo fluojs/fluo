@@ -25,6 +25,7 @@
 | --- | --- | --- |
 | Node.js | official | 첫 번째 공식 런타임 |
 | Fastify 어댑터 | preview | host/HTTPS/CORS/multipart/rawBody에 대해 Node 런타임 옵션 동등성을 갖춘 `@konekti/platform-fastify` 어댑터이며, `getServer()`가 노출하는 공용 Node `upgrade` 리스너 경로를 통해 WebSocket 게이트웨이도 검증됨 |
+| Socket.IO 어댑터 | preview | `@konekti/platform-socket.io`는 `@konekti/websocket` 게이트웨이 데코레이터와 메타데이터를 재사용하면서 공용 Node HTTP 서버 위에 Socket.IO v4 네임스페이스/room 바인딩을 추가함 |
 | 마이크로서비스 트랜스포트 | preview | TCP, Redis Pub/Sub, Kafka, NATS, RabbitMQ 트랜스포트 어댑터 및 `KonektiFactory.createMicroservice()`를 포함한 `@konekti/microservices` |
 | Bun | preview | 코어 계약이 이 런타임으로 승격 가능하도록 유지되어야 함 |
 | Fetch 스타일 어댑터 | preview | 더 좁은 보장 범위를 가진 어댑터가 존재할 수 있음 |

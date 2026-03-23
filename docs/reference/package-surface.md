@@ -13,6 +13,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
@@ -38,6 +39,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/http`**: HTTP execution, binding, exceptions, and route metadata.
 - **`@konekti/runtime`**: Application bootstrap and runtime orchestration.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
+- **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime.
 - **`@konekti/dto-validator`**: Validation decorators and validation engine.
 - **`@konekti/jwt`**: Core JWT logic.
