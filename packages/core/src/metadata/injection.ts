@@ -1,15 +1,11 @@
-import { getOrCreatePropertyMap, getStandardMetadataBag, standardMetadataKeys } from './shared.js';
+import { getOrCreatePropertyMap, getStandardConstructorMetadataMap, mergeMetadataPropertyKeys, standardMetadataKeys } from './shared.js';
 import type { InjectionMetadata, InjectionSchemaEntry, StandardInjectionRecord } from './types.js';
 import type { MetadataPropertyKey } from '../types.js';
 
 const injectionMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, InjectionMetadata>>();
 
 function getStandardInjectionMap(target: object): Map<MetadataPropertyKey, StandardInjectionRecord> | undefined {
-  const constructor = (target as { constructor?: Function }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMetadataKeys.injection] as Map<MetadataPropertyKey, StandardInjectionRecord> | undefined)
-    : undefined;
+  return getStandardConstructorMetadataMap<StandardInjectionRecord>(target, standardMetadataKeys.injection);
 }
 
 export function defineInjectionMetadata(
@@ -23,7 +19,7 @@ export function defineInjectionMetadata(
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
   const standard = getStandardInjectionMap(target) ?? new Map<MetadataPropertyKey, StandardInjectionRecord>();
-  const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
+  const keys = mergeMetadataPropertyKeys(stored, standard);
   const schema: InjectionSchemaEntry[] = [];
 
   for (const propertyKey of keys) {

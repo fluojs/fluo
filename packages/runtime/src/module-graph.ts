@@ -1,5 +1,5 @@
 import type { Provider } from '@konekti/di';
-import { getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
 import type { MiddlewareLike } from '@konekti/http';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
@@ -22,34 +22,16 @@ type ClassDiMetadataView = {
   inject?: readonly InjectionToken[];
 };
 
-function getClassMetadataLineage(target: Function): Function[] {
-  const lineage: Function[] = [];
-  let current: unknown = target;
-
-  while (typeof current === 'function' && current !== Function.prototype) {
-    lineage.unshift(current);
-    current = Object.getPrototypeOf(current);
-  }
-
-  return lineage;
-}
-
 function getEffectiveClassDiMetadata(target: Function): ClassDiMetadataView | undefined {
-  let effective: ClassDiMetadataView | undefined;
+  const metadata = getClassDiMetadata(target);
 
-  for (const constructor of getClassMetadataLineage(target)) {
-    const metadata = getOwnClassDiMetadata(constructor);
-
-    if (!metadata) {
-      continue;
-    }
-
-    effective = {
-      inject: metadata.inject ? [...metadata.inject] as readonly InjectionToken[] : effective?.inject,
-    };
+  if (!metadata) {
+    return undefined;
   }
 
-  return effective;
+  return {
+    inject: metadata.inject ? [...metadata.inject] as readonly InjectionToken[] : undefined,
+  };
 }
 
 function isForwardRef(value: unknown): value is ForwardRefFn {

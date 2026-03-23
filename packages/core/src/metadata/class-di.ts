@@ -14,9 +14,11 @@ function getClassMetadataLineage(target: Function): Function[] {
   let current: unknown = target;
 
   while (typeof current === 'function' && current !== Function.prototype) {
-    lineage.unshift(current);
+    lineage.push(current);
     current = Object.getPrototypeOf(current);
   }
+
+  lineage.reverse();
 
   return lineage;
 }

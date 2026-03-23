@@ -25,6 +25,7 @@ See also:
 - `useClass`
 - `useFactory`
 - `useValue`
+- tokens must choose one registration mode: single provider or multi provider collection
 
 ## scopes
 
@@ -95,6 +96,7 @@ In short:
 - constructor dependency metadata and constructor arity must agree
 - bootstrap errors should distinguish missing local provider, missing export, missing import, and malformed injection metadata
 - fail-fast diagnostics are part of the framework contract, not optional polish
+- mixed single-provider + multi-provider registration for the same token is a fail-fast container error, not a last-write or silent-shadowing case
 
 ## testing stance
 

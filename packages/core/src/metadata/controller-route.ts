@@ -1,4 +1,11 @@
-import { cloneCollection, getOrCreatePropertyMap, getStandardMetadataBag, mergeUnique, standardMetadataKeys } from './shared.js';
+import {
+  cloneCollection,
+  getOrCreatePropertyMap,
+  getStandardConstructorMetadataMap,
+  getStandardMetadataBag,
+  mergeUnique,
+  standardMetadataKeys,
+} from './shared.js';
 import type { ControllerMetadata, RouteMetadata, StandardRouteMetadataRecord } from './types.js';
 import type { MetadataPropertyKey } from '../types.js';
 
@@ -32,10 +39,7 @@ function getStandardControllerMetadata(target: Function): ControllerMetadata | u
 }
 
 function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyKey): RouteMetadata | undefined {
-  const constructor = (target as { constructor?: Function }).constructor;
-  const routeMap = constructor
-    ? (getStandardMetadataBag(constructor)?.[standardMetadataKeys.route] as Map<MetadataPropertyKey, StandardRouteMetadataRecord> | undefined)
-    : undefined;
+  const routeMap = getStandardConstructorMetadataMap<StandardRouteMetadataRecord>(target, standardMetadataKeys.route);
   const metadata = routeMap?.get(propertyKey);
 
   if (!metadata?.method || metadata.path === undefined) {

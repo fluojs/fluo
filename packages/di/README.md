@@ -85,6 +85,8 @@ Additional public exports include `Provider`, `RequestScopeContainer`, `Normaliz
 
 All incoming provider shapes — bare class, `useClass`, `useFactory`, `useValue` — are normalized to a `NormalizedProvider` before storage. This means the resolve path never branches on shape: it always knows which inject list to use, which scope applies, and which instantiation path to take.
 
+Provider registration is deterministic per token: a token must be registered either as a single provider or as a multi provider collection, never both. Attempting to mix those registration modes for the same token throws the same duplicate-provider diagnostic used for accidental double registration.
+
 ### Scope-aware caching
 
 The container separates **where to find a provider** from **where to cache its instance**:
