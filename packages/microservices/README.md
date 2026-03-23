@@ -50,12 +50,43 @@ await microservice.listen();
 ## Runtime behavior
 
 - Handlers are discovered from providers and controllers in compiled modules.
-- Only singleton-scoped handlers are registered.
 - `@MessagePattern` matches a single handler and returns its value to the caller.
+- `@MessagePattern` supports singleton, request, and transient handlers. Request/transient handlers run inside a per-message child DI scope that is disposed after the handler completes.
 - If multiple `@MessagePattern` handlers match the same pattern, dispatch fails explicitly instead of picking a match silently.
-- `@EventPattern` dispatches to all matching handlers.
+- `@EventPattern` dispatches to all matching handlers, but event handlers remain singleton-only in the current runtime.
 - Patterns support exact string or `RegExp` matching.
 - Transport lifecycle is managed through application startup and shutdown.
+
+## Provider scopes in microservice handlers
+
+- **Singleton** (default): one instance shared across all inbound messages and events.
+- **Request**: supported for inbound `@MessagePattern` handlers only. Each message gets a fresh child DI scope, and that scope is disposed after the handler succeeds or fails.
+- **Transient**: supported for inbound `@MessagePattern` handlers only. The handler and its transient dependencies resolve from the same per-message child scope boundary, so each message gets a fresh instance graph.
+
+`@EventPattern` handlers are still singleton-only. A request- or transient-scoped event handler is skipped with a warning because the current event path fan-outs to multiple handlers without defining a per-event shared context contract.
+
+```typescript
+import { Inject, Scope } from '@konekti/core';
+import { MessagePattern } from '@konekti/microservices';
+
+@Scope('request')
+class CorrelationState {
+  readonly id = crypto.randomUUID();
+}
+
+@Inject([CorrelationState])
+@Scope('request')
+class PaymentsHandler {
+  constructor(private readonly state: CorrelationState) {}
+
+  @MessagePattern('payments.capture')
+  capture() {
+    return { correlationId: this.state.id };
+  }
+}
+```
+
+When a `@MessagePattern` handler uses request scope, all of its dependencies must also be request- or transient-scoped. The DI container still throws `ScopeMismatchError` if a singleton depends on a request-scoped provider.
 
 ## Transport notes
 

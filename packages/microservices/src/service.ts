@@ -177,10 +177,43 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       const entries = getHandlerMetadataEntries(candidate.targetType.prototype);
 
       if (candidate.scope !== 'singleton' && entries.length > 0) {
-        this.logger.warn(
-          `${candidate.targetType.name} in module ${candidate.moduleName} declares microservice handlers but is ${candidate.scope}. Only singleton handlers are supported.`,
-          'MicroserviceLifecycleService',
-        );
+        const messageEntries = entries.filter((entry) => entry.metadata.kind === 'message');
+        const eventEntries = entries.filter((entry) => entry.metadata.kind === 'event');
+
+        if (eventEntries.length > 0) {
+          this.logger.warn(
+            `${candidate.targetType.name} in module ${candidate.moduleName} declares @EventPattern handlers but is ${candidate.scope}. Only singleton event handlers are supported.`,
+            'MicroserviceLifecycleService',
+          );
+        }
+
+        if (messageEntries.length === 0) {
+          continue;
+        }
+
+        for (const entry of messageEntries) {
+          const dedupeKey = this.dedupeKey(entry.metadata.kind, entry.metadata.pattern);
+
+          if (this.isDuplicate(seen, candidate.targetType, entry.propertyKey, dedupeKey)) {
+            this.logger.warn(
+              `Duplicate microservice handler registration for ${dedupeKey} on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)} was ignored.`,
+              'MicroserviceLifecycleService',
+            );
+            continue;
+          }
+
+          descriptors.push({
+            kind: entry.metadata.kind,
+            methodKey: entry.propertyKey,
+            methodName: methodKeyToName(entry.propertyKey),
+            moduleName: candidate.moduleName,
+            pattern: entry.metadata.pattern,
+            scope: candidate.scope,
+            targetName: candidate.targetType.name,
+            token: candidate.token,
+          });
+        }
+
         continue;
       }
 
@@ -201,6 +234,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
           methodName: methodKeyToName(entry.propertyKey),
           moduleName: candidate.moduleName,
           pattern: entry.metadata.pattern,
+          scope: candidate.scope,
           targetName: candidate.targetType.name,
           token: candidate.token,
         });
@@ -285,8 +319,29 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
   }
 
   private async invokeHandler(descriptor: HandlerDescriptor, payload: unknown): Promise<unknown> {
-    const instance = await this.resolveHandlerInstance(descriptor);
+    if (descriptor.scope === 'singleton') {
+      return await this.invokeResolvedHandler(await this.resolveSingletonHandlerInstance(descriptor), descriptor, payload);
+    }
 
+    const messageScope = this.runtimeContainer.createRequestScope();
+
+    try {
+      const instance = await messageScope.resolve(descriptor.token);
+      return await this.invokeResolvedHandler(instance, descriptor, payload);
+    } finally {
+      try {
+        await messageScope.dispose();
+      } catch (error) {
+        this.logger.error(
+          `Failed to dispose microservice request scope for ${descriptor.targetName}.${descriptor.methodName}.`,
+          error,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+  }
+
+  private async invokeResolvedHandler(instance: unknown | undefined, descriptor: HandlerDescriptor, payload: unknown): Promise<unknown> {
     if (!instance) {
       return undefined;
     }
@@ -313,7 +368,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
   }
 
-  private async resolveHandlerInstance(descriptor: HandlerDescriptor): Promise<unknown | undefined> {
+  private async resolveSingletonHandlerInstance(descriptor: HandlerDescriptor): Promise<unknown | undefined> {
     const cached = this.handlerInstances.get(descriptor.token);
 
     if (cached) {
