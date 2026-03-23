@@ -1,0 +1,586 @@
+import type { IncomingMessage } from 'node:http';
+
+import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import type { Container, Provider } from '@konekti/di';
+import type { HttpApplicationAdapter } from '@konekti/http';
+import {
+  APPLICATION_LOGGER,
+  COMPILED_MODULES,
+  HTTP_APPLICATION_ADAPTER,
+  RUNTIME_CONTAINER,
+  type ApplicationLogger,
+  type CompiledModule,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+  type OnModuleDestroy,
+} from '@konekti/runtime';
+import {
+  getWebSocketGatewayMetadata,
+  getWebSocketHandlerMetadataEntries,
+  type WebSocketGatewayDescriptor,
+  type WebSocketGatewayHandlerDescriptor,
+} from '@konekti/websocket';
+import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
+
+import { SOCKETIO_OPTIONS } from './tokens.js';
+import type { SocketIoModuleOptions, SocketIoRoomService } from './types.js';
+
+interface DiscoveryCandidate {
+  moduleName: string;
+  scope: 'request' | 'singleton' | 'transient';
+  targetType: Function;
+  token: Token;
+}
+
+interface NamespaceAttachment {
+  descriptors: WebSocketGatewayDescriptor[];
+  namespace: Namespace;
+  path: string;
+}
+
+interface ClassProviderLike {
+  provide: Token;
+  scope?: 'request' | 'singleton' | 'transient';
+  useClass: new (...args: unknown[]) => unknown;
+}
+
+interface NodeHttpServerLike {
+}
+
+const DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS = 5_000;
+
+function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
+  if (typeof provider === 'function') {
+    return getClassDiMetadata(provider)?.scope ?? 'singleton';
+  }
+
+  if ('useClass' in provider) {
+    const classProvider = provider as ClassProviderLike;
+    return classProvider.scope ?? getClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
+  }
+
+  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
+}
+
+function methodKeyToName(methodKey: MetadataPropertyKey): string {
+  return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
+}
+
+function isClassProvider(provider: Provider): provider is ClassProviderLike {
+  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
+}
+
+function normalizeGatewayPath(path: string): string {
+  if (path === '/') {
+    return '/';
+  }
+
+  const normalized = `/${path.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+  return normalized === '' ? '/' : normalized;
+}
+
+function isNodeHttpServerLike(value: unknown): value is NodeHttpServerLike {
+  return typeof value === 'object' && value !== null;
+}
+
+function extractPayload(args: unknown[]): unknown {
+  if (args.length === 0) {
+    return undefined;
+  }
+
+  const effectiveArgs = typeof args.at(-1) === 'function' ? args.slice(0, -1) : args;
+
+  if (effectiveArgs.length === 0) {
+    return undefined;
+  }
+
+  return effectiveArgs.length === 1 ? effectiveArgs[0] : effectiveArgs;
+}
+
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS])
+export class SocketIoLifecycleService
+  implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
+{
+  private attachments: NamespaceAttachment[] = [];
+  private io: Server | undefined;
+  private readonly roomNamespaces = new Map<string, Set<string>>();
+  private readonly socketRegistry = new Map<string, Socket>();
+  private shutdownPromise: Promise<void> | undefined;
+  private wired = false;
+
+  constructor(
+    private readonly runtimeContainer: Container,
+    private readonly compiledModules: readonly CompiledModule[],
+    private readonly logger: ApplicationLogger,
+    private readonly adapter: HttpApplicationAdapter,
+    private readonly moduleOptions: SocketIoModuleOptions,
+  ) {}
+
+  getServer(): Server {
+    if (this.io) {
+      return this.io;
+    }
+
+    if (typeof this.adapter.getServer !== 'function') {
+      throw new Error(
+        'Socket.IO bootstrap requires an HTTP adapter with getServer(). Use the Node HTTP adapter or provide a compatible adapter implementation.',
+      );
+    }
+
+    const httpServer = this.adapter.getServer();
+
+    if (!isNodeHttpServerLike(httpServer)) {
+      throw new Error(
+        'Socket.IO bootstrap requires adapter.getServer() to return a Node HTTP/S server instance.',
+      );
+    }
+
+    this.io = new Server(httpServer as never, this.createServerOptions());
+    return this.io;
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
+    if (this.wired) {
+      return;
+    }
+
+    const descriptors = this.discoverGatewayDescriptors();
+
+    if (descriptors.length === 0) {
+      return;
+    }
+
+    const io = this.getServer();
+    const attachments = this.prepareNamespaceAttachments(io, descriptors);
+
+    for (const attachment of attachments) {
+      this.bindNamespaceHandlers(attachment);
+    }
+
+    this.attachments = attachments;
+    this.wired = true;
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.shutdown();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdown();
+  }
+
+  joinRoom(socketId: string, room: string): void {
+    const socket = this.resolveSocket(socketId);
+
+    if (socket) {
+      void socket.join(room);
+      this.trackRoomNamespace(room, socket.nsp.name);
+      return;
+    }
+  }
+
+  leaveRoom(socketId: string, room: string): void {
+    const socket = this.resolveSocket(socketId);
+
+    if (socket) {
+      void socket.leave(room);
+    }
+  }
+
+  broadcastToRoom(room: string, event: string, data: unknown): void {
+    const namespaces = this.roomNamespaces.get(room);
+
+    if (!namespaces || namespaces.size === 0) {
+      this.io?.to(room).emit(event, data);
+      return;
+    }
+
+    for (const namespaceName of namespaces) {
+      this.resolveNamespace(namespaceName)?.to(room).emit(event, data);
+    }
+  }
+
+  getRooms(socketId: string): ReadonlySet<string> {
+    const socket = this.socketRegistry.get(socketId);
+
+    if (!socket) {
+      return new Set<string>();
+    }
+
+    return new Set<string>(socket.rooms);
+  }
+
+  private createServerOptions(): Partial<ServerOptions> {
+    const options: Partial<ServerOptions> = {};
+
+    if (this.moduleOptions.cors !== undefined) {
+      options.cors = this.moduleOptions.cors;
+    }
+
+    if (this.moduleOptions.transports !== undefined) {
+      options.transports = this.moduleOptions.transports;
+    }
+
+    return options;
+  }
+
+  private prepareNamespaceAttachments(io: Server, descriptors: WebSocketGatewayDescriptor[]): NamespaceAttachment[] {
+    const attachmentsByPath = new Map<string, NamespaceAttachment>();
+
+    for (const descriptor of descriptors) {
+      const current = attachmentsByPath.get(descriptor.path);
+
+      if (current) {
+        current.descriptors.push(descriptor);
+        continue;
+      }
+
+      attachmentsByPath.set(descriptor.path, {
+        descriptors: [descriptor],
+        namespace: descriptor.path === '/' ? io.of('/') : io.of(descriptor.path),
+        path: descriptor.path,
+      });
+    }
+
+    return Array.from(attachmentsByPath.values());
+  }
+
+  private resolveNamespace(path: string): Namespace | undefined {
+    return this.attachments.find((attachment) => attachment.path === path)?.namespace;
+  }
+
+  private resolveSocket(socketId: string): Socket | undefined {
+    const registered = this.socketRegistry.get(socketId);
+
+    if (registered) {
+      return registered;
+    }
+
+    for (const attachment of this.attachments) {
+      const socket = attachment.namespace.sockets.get(socketId);
+
+      if (socket) {
+        this.socketRegistry.set(socketId, socket);
+        return socket;
+      }
+    }
+
+    return undefined;
+  }
+
+  private trackRoomNamespace(room: string, namespaceName: string): void {
+    const current = this.roomNamespaces.get(room);
+
+    if (current) {
+      current.add(namespaceName);
+      return;
+    }
+
+    this.roomNamespaces.set(room, new Set([namespaceName]));
+  }
+
+  private bindNamespaceHandlers(attachment: NamespaceAttachment): void {
+    attachment.namespace.on('connection', (socket: Socket) => {
+      void this.bindConnectionHandlers(attachment.descriptors, socket);
+    });
+  }
+
+  private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
+    const request = socket.request as IncomingMessage;
+    const resolved = await this.resolveConnectionGateways(descriptors);
+
+    this.socketRegistry.set(socket.id, socket);
+    this.attachConnectionListeners(resolved, socket, request);
+    await this.runConnectHandlers(resolved, socket, request);
+  }
+
+  private attachConnectionListeners(
+    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    socket: Socket,
+    request: IncomingMessage,
+  ): void {
+    socket.onAny((event: string, ...args: unknown[]) => {
+      const ack = typeof args.at(-1) === 'function' ? (args.at(-1) as (...callbackArgs: unknown[]) => void) : undefined;
+      void this.handleMessage(resolved, socket, request, event, extractPayload(args), ack);
+    });
+
+    socket.on('disconnect', (reason: string, description: unknown) => {
+      this.socketRegistry.delete(socket.id);
+      void this.handleDisconnect(resolved, socket, reason, description);
+    });
+  }
+
+  private async resolveConnectionGateways(
+    descriptors: WebSocketGatewayDescriptor[],
+  ): Promise<Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>> {
+    const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
+
+    for (const descriptor of descriptors) {
+      const instance = await this.resolveGatewayInstance(descriptor);
+
+      if (instance !== undefined) {
+        resolved.push({ descriptor, instance });
+      }
+    }
+
+    return resolved;
+  }
+
+  private async runConnectHandlers(
+    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    socket: Socket,
+    request: IncomingMessage,
+  ): Promise<void> {
+    for (const { descriptor, instance } of resolved) {
+      await this.runHandlers(instance, descriptor, 'connect', socket, request);
+    }
+  }
+
+  private async handleMessage(
+    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    socket: Socket,
+    request: IncomingMessage,
+    event: string,
+    payload: unknown,
+    acknowledgement?: (...callbackArgs: unknown[]) => void,
+  ): Promise<void> {
+    for (const { descriptor, instance } of resolved) {
+      const handlers = this.selectMessageHandlers(descriptor, event);
+
+      for (const handler of handlers) {
+        await this.invokeGatewayMethod(instance, descriptor, handler, [payload, socket, request, acknowledgement]);
+      }
+    }
+  }
+
+  private selectMessageHandlers(
+    descriptor: WebSocketGatewayDescriptor,
+    event: string,
+  ): WebSocketGatewayHandlerDescriptor[] {
+    return descriptor.handlers.filter(
+      (handler) => handler.type === 'message' && (handler.event === undefined || handler.event === event),
+    );
+  }
+
+  private async handleDisconnect(
+    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    socket: Socket,
+    reason: string,
+    description: unknown,
+  ): Promise<void> {
+    for (const { descriptor, instance } of resolved) {
+      await this.runHandlers(instance, descriptor, 'disconnect', socket, reason, description);
+    }
+  }
+
+  private async runHandlers(
+    instance: unknown,
+    descriptor: WebSocketGatewayDescriptor,
+    type: WebSocketGatewayHandlerDescriptor['type'],
+    ...args: unknown[]
+  ): Promise<void> {
+    const handlers = descriptor.handlers.filter((handler) => handler.type === type);
+
+    for (const handler of handlers) {
+      await this.invokeGatewayMethod(instance, descriptor, handler, args);
+    }
+  }
+
+  private async invokeGatewayMethod(
+    instance: unknown,
+    descriptor: WebSocketGatewayDescriptor,
+    handler: WebSocketGatewayHandlerDescriptor,
+    args: unknown[],
+  ): Promise<void> {
+    const value = (instance as Record<MetadataPropertyKey, unknown>)[handler.methodKey];
+
+    if (typeof value !== 'function') {
+      this.logger.warn(
+        `Socket.IO gateway handler ${descriptor.targetName}.${handler.methodName} is not callable and was skipped.`,
+        'SocketIoLifecycleService',
+      );
+      return;
+    }
+
+    try {
+      await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args));
+    } catch (error) {
+      this.logger.error(
+        `Socket.IO gateway handler ${descriptor.targetName}.${handler.methodName} failed.`,
+        error,
+        'SocketIoLifecycleService',
+      );
+    }
+  }
+
+  private async resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {
+    try {
+      return await this.runtimeContainer.resolve(descriptor.token);
+    } catch (error) {
+      this.logger.error(
+        `Failed to resolve Socket.IO gateway ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+        error,
+        'SocketIoLifecycleService',
+      );
+      return undefined;
+    }
+  }
+
+  private discoverGatewayDescriptors(): WebSocketGatewayDescriptor[] {
+    const seenTargets = new Set<Function>();
+    const descriptors: WebSocketGatewayDescriptor[] = [];
+
+    for (const candidate of this.discoveryCandidates()) {
+      const gatewayMetadata = getWebSocketGatewayMetadata(candidate.targetType);
+
+      if (!gatewayMetadata) {
+        continue;
+      }
+
+      if (this.shouldSkipGatewayCandidate(candidate, seenTargets)) {
+        continue;
+      }
+
+      seenTargets.add(candidate.targetType);
+      descriptors.push(this.createGatewayDescriptor(candidate, gatewayMetadata.path));
+    }
+
+    return descriptors;
+  }
+
+  private shouldSkipGatewayCandidate(candidate: DiscoveryCandidate, seenTargets: Set<Function>): boolean {
+    if (candidate.scope !== 'singleton') {
+      this.logger.warn(
+        `${candidate.targetType.name} in module ${candidate.moduleName} declares @WebSocketGateway() but is registered with ${candidate.scope} scope. Socket.IO gateways are registered only for singleton providers.`,
+        'SocketIoLifecycleService',
+      );
+      return true;
+    }
+
+    return seenTargets.has(candidate.targetType);
+  }
+
+  private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
+    return {
+      handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
+        event: entry.metadata.event,
+        methodKey: entry.propertyKey,
+        methodName: methodKeyToName(entry.propertyKey),
+        type: entry.metadata.type,
+      })),
+      moduleName: candidate.moduleName,
+      path: normalizeGatewayPath(path),
+      targetName: candidate.targetType.name,
+      token: candidate.token,
+    };
+  }
+
+  private discoveryCandidates(): DiscoveryCandidate[] {
+    const candidates: DiscoveryCandidate[] = [];
+
+    for (const compiledModule of this.compiledModules) {
+      for (const provider of compiledModule.definition.providers ?? []) {
+        if (typeof provider === 'function') {
+          candidates.push({
+            moduleName: compiledModule.type.name,
+            scope: scopeFromProvider(provider),
+            targetType: provider,
+            token: provider as Token,
+          });
+          continue;
+        }
+
+        if (isClassProvider(provider)) {
+          candidates.push({
+            moduleName: compiledModule.type.name,
+            scope: scopeFromProvider(provider),
+            targetType: provider.useClass,
+            token: provider.provide,
+          });
+        }
+      }
+
+      for (const controller of compiledModule.definition.controllers ?? []) {
+        candidates.push({
+          moduleName: compiledModule.type.name,
+          scope: scopeFromProvider(controller),
+          targetType: controller,
+          token: controller,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  private resolveShutdownTimeoutMs(): number {
+    const configured = this.moduleOptions.shutdown?.timeoutMs;
+
+    if (typeof configured !== 'number' || !Number.isFinite(configured) || configured <= 0) {
+      return DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS;
+    }
+
+    return Math.floor(configured);
+  }
+
+  private async shutdown(): Promise<void> {
+    if (this.shutdownPromise) {
+      await this.shutdownPromise;
+      return;
+    }
+
+    this.shutdownPromise = this.runShutdownLifecycle();
+    await this.shutdownPromise;
+  }
+
+  private async runShutdownLifecycle(): Promise<void> {
+    const io = this.io;
+
+    this.attachments = [];
+    this.wired = false;
+
+    if (!io) {
+      this.roomNamespaces.clear();
+      this.socketRegistry.clear();
+      return;
+    }
+
+    try {
+      await this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs());
+    } catch (error) {
+      this.logger.error(
+        `Failed to close Socket.IO server within ${String(this.resolveShutdownTimeoutMs())}ms.`,
+        error,
+        'SocketIoLifecycleService',
+      );
+    } finally {
+      this.io = undefined;
+      this.roomNamespaces.clear();
+      this.socketRegistry.clear();
+    }
+  }
+
+  private closeServerWithTimeout(io: Server, timeoutMs: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(new Error(`Timed out while closing Socket.IO server after ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      io.close(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+}
