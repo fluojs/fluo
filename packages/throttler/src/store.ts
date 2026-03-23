@@ -19,6 +19,21 @@ function consumeWindow(
   };
 }
 
+function sweepExpiredEntries(map: Map<string, ThrottlerStoreEntry>, now: number): number {
+  let nextSweepAt = Number.POSITIVE_INFINITY;
+
+  for (const [entryKey, entry] of map) {
+    if (now >= entry.resetAt) {
+      map.delete(entryKey);
+      continue;
+    }
+
+    nextSweepAt = Math.min(nextSweepAt, entry.resetAt);
+  }
+
+  return Number.isFinite(nextSweepAt) ? nextSweepAt : 0;
+}
+
 export function createMemoryThrottlerStore(): ThrottlerStore {
   const map = new Map<string, ThrottlerStoreEntry>();
   let nextSweepAt = 0;
@@ -27,25 +42,9 @@ export function createMemoryThrottlerStore(): ThrottlerStore {
     consume(key, input) {
       const { now } = input;
 
-      if (now < nextSweepAt) {
-        const nextEntry = consumeWindow(map.get(key), input);
-        map.set(key, nextEntry);
-        nextSweepAt = Math.min(nextSweepAt, nextEntry.resetAt);
-        return nextEntry;
+      if (now >= nextSweepAt) {
+        nextSweepAt = sweepExpiredEntries(map, now);
       }
-
-      let next = Number.POSITIVE_INFINITY;
-
-      for (const [key, entry] of map) {
-        if (now >= entry.resetAt) {
-          map.delete(key);
-          continue;
-        }
-
-        next = Math.min(next, entry.resetAt);
-      }
-
-      nextSweepAt = Number.isFinite(next) ? next : 0;
 
       const nextEntry = consumeWindow(map.get(key), input);
       map.set(key, nextEntry);

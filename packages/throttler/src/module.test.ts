@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { metadataSymbol } from '@konekti/core';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/http';
 
-import { SkipThrottle, Throttle } from './decorators.js';
+import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import { createMemoryThrottlerStore } from './store.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
@@ -103,6 +103,43 @@ describe('@konekti/throttler decorators', () => {
     expect(bag[Symbol.for('konekti.throttler.class-throttle')]).toEqual({ limit: 100, ttl: 60 });
   });
 
+  it('captures @Throttle options by value to avoid shared mutable metadata', () => {
+    const options = { limit: 5, ttl: 60 };
+
+    class AuthController {
+      @Throttle(options)
+      login() {}
+    }
+
+    options.limit = 99;
+
+    const bag = (AuthController as unknown as Record<symbol, unknown>)[metadataSymbol] as Record<PropertyKey, unknown>;
+    const routeMap = bag[Symbol.for('konekti.standard.route')] as Map<string, Record<PropertyKey, unknown>>;
+    const loginRecord = routeMap?.get('login') ?? {};
+
+    expect(getThrottleMetadata(loginRecord)).toEqual({ limit: 5, ttl: 60 });
+  });
+
+  it('returns cloned throttle metadata so callers cannot mutate stored options', () => {
+    class AuthController {
+      @Throttle({ limit: 3, ttl: 60 })
+      login() {}
+    }
+
+    const bag = (AuthController as unknown as Record<symbol, unknown>)[metadataSymbol] as Record<PropertyKey, unknown>;
+    const routeMap = bag[Symbol.for('konekti.standard.route')] as Map<string, Record<PropertyKey, unknown>>;
+    const loginRecord = routeMap?.get('login') ?? {};
+    const firstRead = getThrottleMetadata(loginRecord);
+
+    if (!firstRead) {
+      throw new Error('Throttle metadata should be defined for @Throttle-decorated methods.');
+    }
+
+    firstRead.limit = 50;
+
+    expect(getThrottleMetadata(loginRecord)).toEqual({ limit: 3, ttl: 60 });
+  });
+
   it('writes @SkipThrottle method-level metadata into the route map', () => {
     class AuthController {
       @SkipThrottle()
@@ -191,6 +228,20 @@ describe('ThrottlerGuard — in-memory store', () => {
     const result = await guard.canActivate(createGuardContext(TestController, 'action', ctx));
 
     expect(result).toBe(true);
+  });
+
+  it('re-enters expired keys with a fresh window while keeping active key counters', async () => {
+    const store = createMemoryThrottlerStore();
+
+    const firstA = await store.consume('key-a', { now: 0, ttlSeconds: 1 });
+    const firstB = await store.consume('key-b', { now: 500, ttlSeconds: 10 });
+    const secondB = await store.consume('key-b', { now: 1500, ttlSeconds: 10 });
+    const secondA = await store.consume('key-a', { now: 1500, ttlSeconds: 1 });
+
+    expect(firstA.count).toBe(1);
+    expect(firstB.count).toBe(1);
+    expect(secondB.count).toBe(2);
+    expect(secondA.count).toBe(1);
   });
 
   it('skips throttling when method-level @SkipThrottle is present', async () => {

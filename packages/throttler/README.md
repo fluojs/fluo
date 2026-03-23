@@ -101,6 +101,8 @@ class AppBootstrap {
 - When the limit is exceeded, `ThrottlerGuard` throws `TooManyRequestsException` (HTTP 429) and sets the `Retry-After` response header to the seconds remaining in the current window.
 - Method-level `@Throttle` overrides class-level `@Throttle`, which overrides module-level defaults — in that priority order.
 - `@SkipThrottle()` at either level wins unconditionally.
+- `@Throttle()` options are copied when metadata is written/read, so mutating a shared options object later does not alter registered throttle policy.
+- The in-memory store sweeps expired keys whenever the earliest known reset time is reached, then updates the next sweep deadline from remaining active windows.
 - The in-memory store is per-`ThrottlerGuard` instance and is not shared across clustered workers. Use `RedisThrottlerStore` for cross-instance enforcement.
 
 ## Related packages

@@ -70,3 +70,9 @@ await bootstrapApplication({
 - `Transform(fn: (value: unknown) => unknown): FieldDecorator`
 - `serialize(value: unknown): unknown`
 - `class SerializerInterceptor implements Interceptor`
+
+## Serialization contract
+
+- Cycles are cut to `undefined` at the cycle edge so output remains JSON-safe.
+- Shared references are preserved: revisiting an already-serialized object returns the same serialized node instead of dropping it.
+- Enumerable symbol-keyed properties on plain objects are serialized alongside string keys.

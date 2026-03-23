@@ -1,6 +1,6 @@
 import type { ThrottlerHandlerOptions } from './types.js';
 
-const standardThrottleRouteKey = Symbol.for('konekti.standard.route');
+export const throttleRouteMetadataKey = Symbol.for('konekti.standard.route');
 const throttleKey = Symbol.for('konekti.throttler.throttle');
 const skipThrottleKey = Symbol.for('konekti.throttler.skip');
 const classThrottleKey = Symbol.for('konekti.throttler.class-throttle');
@@ -15,13 +15,20 @@ function getMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;
 }
 
+function cloneThrottleOptions(options: ThrottlerHandlerOptions): ThrottlerHandlerOptions {
+  return {
+    limit: options.limit,
+    ttl: options.ttl,
+  };
+}
+
 function getRouteRecord(metadata: unknown, name: string | symbol): StandardMetadataBag {
   const bag = getMetadataBag(metadata);
-  let routeMap = bag[standardThrottleRouteKey] as Map<string | symbol, StandardMetadataBag> | undefined;
+  let routeMap = bag[throttleRouteMetadataKey] as Map<string | symbol, StandardMetadataBag> | undefined;
 
   if (!routeMap) {
     routeMap = new Map<string | symbol, StandardMetadataBag>();
-    bag[standardThrottleRouteKey] = routeMap;
+    bag[throttleRouteMetadataKey] = routeMap;
   }
 
   let record = routeMap.get(name);
@@ -37,9 +44,9 @@ function getRouteRecord(metadata: unknown, name: string | symbol): StandardMetad
 export function Throttle(options: ThrottlerHandlerOptions): ClassOrMethodDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     if (context.kind === 'class') {
-      getMetadataBag(context.metadata)[classThrottleKey] = options;
+      getMetadataBag(context.metadata)[classThrottleKey] = cloneThrottleOptions(options);
     } else {
-      getRouteRecord(context.metadata, context.name)[throttleKey] = options;
+      getRouteRecord(context.metadata, context.name)[throttleKey] = cloneThrottleOptions(options);
     }
   };
 
@@ -59,7 +66,8 @@ export function SkipThrottle(): ClassOrMethodDecoratorLike {
 }
 
 export function getThrottleMetadata(bag: StandardMetadataBag): ThrottlerHandlerOptions | undefined {
-  return bag[throttleKey] as ThrottlerHandlerOptions | undefined;
+  const metadata = bag[throttleKey] as ThrottlerHandlerOptions | undefined;
+  return metadata ? cloneThrottleOptions(metadata) : undefined;
 }
 
 export function getSkipThrottleMetadata(bag: StandardMetadataBag): boolean {
@@ -67,7 +75,8 @@ export function getSkipThrottleMetadata(bag: StandardMetadataBag): boolean {
 }
 
 export function getClassThrottleMetadata(bag: StandardMetadataBag): ThrottlerHandlerOptions | undefined {
-  return bag[classThrottleKey] as ThrottlerHandlerOptions | undefined;
+  const metadata = bag[classThrottleKey] as ThrottlerHandlerOptions | undefined;
+  return metadata ? cloneThrottleOptions(metadata) : undefined;
 }
 
 export function getClassSkipThrottleMetadata(bag: StandardMetadataBag): boolean {

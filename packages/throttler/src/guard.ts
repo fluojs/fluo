@@ -6,6 +6,7 @@ import {
   getClassThrottleMetadata,
   getSkipThrottleMetadata,
   getThrottleMetadata,
+  throttleRouteMetadataKey,
 } from './decorators.js';
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
@@ -27,7 +28,7 @@ function getMethodMetadataBag(controllerToken: Function, methodName: string): Me
     return undefined;
   }
 
-  const routeMap = classBag[Symbol.for('konekti.standard.route')] as Map<string | symbol, MetadataBag> | undefined;
+  const routeMap = classBag[throttleRouteMetadataKey] as Map<string | symbol, MetadataBag> | undefined;
 
   return routeMap?.get(methodName);
 }

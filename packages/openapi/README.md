@@ -244,6 +244,8 @@ function getControllerTags(target: Function): string[] | undefined;
 function getMethodApiMetadata(target: Function, propertyKey: MetadataPropertyKey): MethodApiMetadata | undefined;
 ```
 
+Both getters return defensive copies to prevent accidental external mutation of internal decorator metadata.
+
 ```typescript
 interface MethodApiMetadata {
   operation?: ApiOperationOptions;

@@ -70,7 +70,12 @@ function getIterableValues(value: unknown): unknown[] | undefined {
 }
 
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -99,9 +104,36 @@ interface CachedDtoMetadata {
   classValidationRules: ReturnType<typeof getClassValidationRules>;
   dtoValidationSchema: DtoValidationSchema;
   mergedPropertyKeys: Set<MetadataPropertyKey>;
+  nestedDtoTransforms: readonly {
+    each: boolean;
+    propertyKey: MetadataPropertyKey;
+    target: Constructor;
+  }[];
 }
 
 const dtoMetadataCache = new WeakMap<Constructor, CachedDtoMetadata>();
+
+function collectNestedDtoTransforms(dtoValidationSchema: DtoValidationSchema): CachedDtoMetadata['nestedDtoTransforms'] {
+  const nestedEntries: CachedDtoMetadata['nestedDtoTransforms'][number][] = [];
+
+  for (const entry of dtoValidationSchema) {
+    const nestedRule = entry.rules.find(
+      (rule: DtoFieldValidationRule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
+    );
+
+    if (!nestedRule) {
+      continue;
+    }
+
+    nestedEntries.push({
+      each: nestedRule.each === true,
+      propertyKey: entry.propertyKey,
+      target: resolveNestedDto(nestedRule.dto),
+    });
+  }
+
+  return nestedEntries;
+}
 
 function getCachedDtoMetadata(target: Constructor): CachedDtoMetadata {
   const cached = dtoMetadataCache.get(target);
@@ -117,11 +149,13 @@ function getCachedDtoMetadata(target: Constructor): CachedDtoMetadata {
     ...bindingMap.keys(),
     ...dtoValidationSchema.map((entry: { propertyKey: MetadataPropertyKey }) => entry.propertyKey),
   ]);
+  const nestedDtoTransforms = collectNestedDtoTransforms(dtoValidationSchema);
   const next: CachedDtoMetadata = {
     bindingMap,
     classValidationRules,
     dtoValidationSchema,
     mergedPropertyKeys,
+    nestedDtoTransforms,
   };
 
   dtoMetadataCache.set(target, next);
@@ -348,7 +382,7 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
   const instance = new target() as Record<PropertyKey, unknown>;
 
   if (!isPlainObject(rawValue)) {
-    return Object.assign(instance, rawValue) as T;
+    return instance as T;
   }
 
   Object.assign(instance, rawValue);
@@ -356,24 +390,15 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
   const metadata = getCachedDtoMetadata(target);
   applyBindingValues(instance, rawValue, metadata.mergedPropertyKeys, metadata.bindingMap);
 
-  for (const entry of metadata.dtoValidationSchema) {
-    const nestedRule = entry.rules.find(
-      (rule: DtoFieldValidationRule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
-    );
-
-    if (!nestedRule) {
-      continue;
-    }
-
-    const currentValue = instance[entry.propertyKey];
+  for (const nestedEntry of metadata.nestedDtoTransforms) {
+    const currentValue = instance[nestedEntry.propertyKey];
     if (currentValue === undefined || currentValue === null) {
       continue;
     }
 
-    const resolvedDto = resolveNestedDto(nestedRule.dto);
-    instance[entry.propertyKey] = nestedRule.each
-      ? transformNestedEachValue(currentValue, resolvedDto)
-      : transformNestedValue(currentValue, resolvedDto);
+    instance[nestedEntry.propertyKey] = nestedEntry.each
+      ? transformNestedEachValue(currentValue, nestedEntry.target)
+      : transformNestedValue(currentValue, nestedEntry.target);
   }
 
   return instance as T;

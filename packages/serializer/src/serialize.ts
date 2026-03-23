@@ -4,7 +4,7 @@ import { getClassSerializationOptions, getFieldSerializationMetadata, type Seria
 
 interface SerializationContext {
   metadataCache: WeakMap<Function, { classOptions: ReturnType<typeof getClassSerializationOptions>; fieldMetadata: ReturnType<typeof getFieldSerializationMetadata> }>;
-  seen: WeakMap<object, unknown>;
+  references: WeakMap<object, { active: boolean; value: unknown }>;
 }
 
 function isObjectLike(value: unknown): value is Record<string | symbol, unknown> {
@@ -74,12 +74,45 @@ function getCachedMetadata(
   return next;
 }
 
+function getCircularOrSharedValue(value: object, context: SerializationContext): unknown {
+  const cached = context.references.get(value);
+
+  if (!cached) {
+    return undefined;
+  }
+
+  if (cached.active) {
+    return undefined;
+  }
+
+  return cached.value;
+}
+
+function markSerializationStart(value: object, serialized: unknown, context: SerializationContext): void {
+  context.references.set(value, {
+    active: true,
+    value: serialized,
+  });
+}
+
+function markSerializationComplete(value: object, context: SerializationContext): void {
+  const cached = context.references.get(value);
+
+  if (!cached) {
+    return;
+  }
+
+  cached.active = false;
+}
+
 function serializeClassInstance(
   value: Record<string | symbol, unknown>,
   context: SerializationContext,
 ): Record<string | symbol, unknown> {
-  if (context.seen.has(value)) {
-    return undefined as unknown as Record<string | symbol, unknown>;
+  const cachedValue = getCircularOrSharedValue(value, context);
+
+  if (context.references.has(value)) {
+    return cachedValue as Record<string | symbol, unknown>;
   }
 
   const constructor = value.constructor as Function;
@@ -95,7 +128,7 @@ function serializeClassInstance(
   }
 
   const serialized: Record<string | symbol, unknown> = {};
-  context.seen.set(value, serialized);
+  markSerializationStart(value, serialized, context);
   const candidateKeys = resolveCandidateKeys(value, fieldMetadata, classOptions.excludeExtraneous === true);
 
   for (const propertyKey of candidateKeys) {
@@ -115,6 +148,8 @@ function serializeClassInstance(
     serialized[propertyKey] = serializeInternal(transformed, context);
   }
 
+  markSerializationComplete(value, context);
+
   return serialized;
 }
 
@@ -122,16 +157,24 @@ function serializeRecord(
   value: Record<string | symbol, unknown>,
   context: SerializationContext,
 ): Record<string | symbol, unknown> {
-  if (context.seen.has(value)) {
-    return undefined as unknown as Record<string | symbol, unknown>;
+  const cachedValue = getCircularOrSharedValue(value, context);
+
+  if (context.references.has(value)) {
+    return cachedValue as Record<string | symbol, unknown>;
   }
 
   const serialized: Record<string | symbol, unknown> = {};
-  context.seen.set(value, serialized);
+  markSerializationStart(value, serialized, context);
 
-  for (const [propertyKey, propertyValue] of Object.entries(value)) {
+  const symbolKeys = Object.getOwnPropertySymbols(value).filter((key) => Object.prototype.propertyIsEnumerable.call(value, key));
+  const keys: Array<string | symbol> = [...Object.keys(value), ...symbolKeys];
+
+  for (const propertyKey of keys) {
+    const propertyValue = value[propertyKey];
     serialized[propertyKey] = serializeInternal(propertyValue, context);
   }
+
+  markSerializationComplete(value, context);
 
   return serialized;
 }
@@ -142,16 +185,20 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
   }
 
   if (Array.isArray(value)) {
-    if (context.seen.has(value)) {
-      return undefined;
+    const cachedValue = getCircularOrSharedValue(value, context);
+
+    if (context.references.has(value)) {
+      return cachedValue;
     }
 
     const serialized: unknown[] = [];
-    context.seen.set(value, serialized);
+    markSerializationStart(value, serialized, context);
 
     for (const item of value) {
       serialized.push(serializeInternal(item, context));
     }
+
+    markSerializationComplete(value, context);
 
     return serialized;
   }
@@ -170,7 +217,7 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
 export function serialize<T = unknown>(value: T): unknown {
   const context: SerializationContext = {
     metadataCache: new WeakMap(),
-    seen: new WeakMap(),
+    references: new WeakMap(),
   };
 
   return serializeInternal(value, context);

@@ -245,58 +245,237 @@ function inferNestedSchema(
   return createSchemaRef(schemaName);
 }
 
+interface RuleProfile {
+  enumEachRule: Extract<DtoFieldValidationRule, { kind: 'enum' }> | undefined;
+  enumRule: Extract<DtoFieldValidationRule, { kind: 'enum' }> | undefined;
+  hasArrayRule: boolean;
+  hasBooleanRule: boolean;
+  hasDateRule: boolean;
+  hasEachBooleanRule: boolean;
+  hasEachIntRule: boolean;
+  hasEachNumberRule: boolean;
+  hasIntRule: boolean;
+  hasNumberRule: boolean;
+  hasObjectRule: boolean;
+  hasStringRule: boolean;
+  hasStringRuleForEach: boolean;
+  maxLength: number | undefined;
+  maximum: number | undefined;
+  minLength: number | undefined;
+  minimum: number | undefined;
+  nestedEachRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
+  nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
+  stringFormat: OpenApiSchemaObject['format'];
+}
+
+const ruleProfileCache = new WeakMap<readonly DtoFieldValidationRule[], RuleProfile>();
+
+function resolveValidatorStringFormat(
+  validatorRule: Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>,
+): OpenApiSchemaObject['format'] {
+  if (validatorRule.validator === 'email') {
+    return 'email';
+  }
+
+  if (validatorRule.validator === 'uuid') {
+    return 'uuid';
+  }
+
+  if (validatorRule.validator === 'url') {
+    return 'uri';
+  }
+
+  if (validatorRule.validator === 'dateString' || validatorRule.validator === 'iso8601') {
+    return 'date-time';
+  }
+
+  return undefined;
+}
+
+function getRuleProfile(rules: readonly DtoFieldValidationRule[]): RuleProfile {
+  const cached = ruleProfileCache.get(rules);
+
+  if (cached) {
+    return cached;
+  }
+
+  const profile: RuleProfile = {
+    enumEachRule: undefined,
+    enumRule: undefined,
+    hasArrayRule: false,
+    hasBooleanRule: false,
+    hasDateRule: false,
+    hasEachBooleanRule: false,
+    hasEachIntRule: false,
+    hasEachNumberRule: false,
+    hasIntRule: false,
+    hasNumberRule: false,
+    hasObjectRule: false,
+    hasStringRule: false,
+    hasStringRuleForEach: false,
+    maxLength: undefined,
+    maximum: undefined,
+    minLength: undefined,
+    minimum: undefined,
+    nestedEachRule: undefined,
+    nestedRule: undefined,
+    stringFormat: undefined,
+  };
+
+  for (const rule of rules) {
+    if (rule.kind === 'nested') {
+      profile.nestedRule ??= rule;
+
+      if (rule.each) {
+        profile.nestedEachRule ??= rule;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'array') {
+      profile.hasArrayRule = true;
+      continue;
+    }
+
+    if (rule.kind === 'enum') {
+      profile.enumRule ??= rule;
+
+      if (rule.each) {
+        profile.enumEachRule ??= rule;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'int') {
+      profile.hasIntRule = true;
+
+      if (rule.each) {
+        profile.hasEachIntRule = true;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'number') {
+      profile.hasNumberRule = true;
+
+      if (rule.each) {
+        profile.hasEachNumberRule = true;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'boolean') {
+      profile.hasBooleanRule = true;
+
+      if (rule.each) {
+        profile.hasEachBooleanRule = true;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'date') {
+      profile.hasDateRule = true;
+      continue;
+    }
+
+    if (rule.kind === 'object') {
+      profile.hasObjectRule = true;
+      continue;
+    }
+
+    if (rule.kind === 'string') {
+      profile.hasStringRule = true;
+      continue;
+    }
+
+    if (rule.kind === 'minLength') {
+      if (rule.each) {
+        profile.hasStringRuleForEach = true;
+      } else {
+        profile.minLength = rule.value;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'maxLength') {
+      if (rule.each) {
+        profile.hasStringRuleForEach = true;
+      } else {
+        profile.maxLength = rule.value;
+      }
+
+      continue;
+    }
+
+    if (rule.kind === 'min' && !rule.each) {
+      profile.minimum = rule.value;
+      continue;
+    }
+
+    if (rule.kind === 'max' && !rule.each) {
+      profile.maximum = rule.value;
+      continue;
+    }
+
+    if (rule.kind === 'validatorjs') {
+      const nextFormat = resolveValidatorStringFormat(rule);
+
+      if (nextFormat) {
+        profile.stringFormat = nextFormat;
+      }
+    }
+  }
+
+  ruleProfileCache.set(rules, profile);
+  return profile;
+}
+
 function inferPrimitiveTypeFromRules(
   rules: readonly DtoFieldValidationRule[],
   context: BuildSchemaContext,
 ): OpenApiSchemaObject | undefined {
-  const hasRule = <TKind extends DtoFieldValidationRule['kind']>(kind: TKind) =>
-    rules.find((rule): rule is Extract<DtoFieldValidationRule, { kind: TKind }> => rule.kind === kind);
-
-  const nestedRule = hasRule('nested');
-  const arrayRule = hasRule('array');
-  const intRule = hasRule('int');
-  const numberRule = hasRule('number');
-  const booleanRule = hasRule('boolean');
-  const dateRule = hasRule('date');
-  const objectRule = hasRule('object');
-  const stringRule = hasRule('string');
-  const enumRule = hasRule('enum');
-
-  const nestedSchema = inferNestedSchema(nestedRule, context);
+  const profile = getRuleProfile(rules);
+  const nestedSchema = inferNestedSchema(profile.nestedRule, context);
 
   if (nestedSchema) {
     return nestedSchema;
   }
 
-  if (arrayRule) {
-    return { items: inferEachItemSchema(rules, context) ?? {}, type: 'array' };
+  if (profile.hasArrayRule) {
+    return { items: inferEachItemSchema(rules, context, profile) ?? {}, type: 'array' };
   }
 
-  if (enumRule) {
-    return createEnumSchema(enumRule.values);
+  if (profile.enumRule) {
+    return createEnumSchema(profile.enumRule.values);
   }
 
-  if (intRule) {
+  if (profile.hasIntRule) {
     return { type: 'integer' };
   }
 
-  if (numberRule) {
+  if (profile.hasNumberRule) {
     return { type: 'number' };
   }
 
-  if (booleanRule) {
+  if (profile.hasBooleanRule) {
     return { type: 'boolean' };
   }
 
-  if (dateRule) {
+  if (profile.hasDateRule) {
     return { format: 'date-time', type: 'string' };
   }
 
-  if (objectRule) {
+  if (profile.hasObjectRule) {
     return { additionalProperties: true, type: 'object' };
   }
 
-  if (stringRule) {
+  if (profile.hasStringRule) {
     return { type: 'string' };
   }
 
@@ -306,37 +485,30 @@ function inferPrimitiveTypeFromRules(
 function inferEachItemSchema(
   rules: readonly DtoFieldValidationRule[],
   context: BuildSchemaContext,
+  profile = getRuleProfile(rules),
 ): OpenApiSchemaObject | undefined {
-  const nestedRule = rules.find(
-    (rule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested' && Boolean(rule.each),
-  );
-
-  if (nestedRule) {
-    const resolvedDto = resolveNestedDto(nestedRule.dto);
+  if (profile.nestedEachRule) {
+    const resolvedDto = resolveNestedDto(profile.nestedEachRule.dto);
     return createSchemaRef(getDtoSchemaName(resolvedDto, context));
   }
 
-  const enumRule = rules.find(
-    (rule): rule is Extract<DtoFieldValidationRule, { kind: 'enum' }> => rule.kind === 'enum' && Boolean(rule.each),
-  );
-
-  if (enumRule) {
-    return createEnumSchema(enumRule.values);
+  if (profile.enumEachRule) {
+    return createEnumSchema(profile.enumEachRule.values);
   }
 
-  if (rules.some((rule) => rule.kind === 'string' || ((rule.kind === 'minLength' || rule.kind === 'maxLength') && rule.each))) {
+  if (profile.hasStringRule || profile.hasStringRuleForEach) {
     return { type: 'string' };
   }
 
-  if (rules.some((rule) => rule.kind === 'int' && Boolean(rule.each))) {
+  if (profile.hasEachIntRule) {
     return { type: 'integer' };
   }
 
-  if (rules.some((rule) => rule.kind === 'number' && Boolean(rule.each))) {
+  if (profile.hasEachNumberRule) {
     return { type: 'number' };
   }
 
-  if (rules.some((rule) => rule.kind === 'boolean' && Boolean(rule.each))) {
+  if (profile.hasEachBooleanRule) {
     return { type: 'boolean' };
   }
 
@@ -345,40 +517,29 @@ function inferEachItemSchema(
 
 function applyValidationConstraints(schema: OpenApiSchemaObject, rules: readonly DtoFieldValidationRule[]): OpenApiSchemaObject {
   const nextSchema: OpenApiSchemaObject = { ...schema };
+  const profile = getRuleProfile(rules);
 
-  for (const rule of rules) {
-    if (rule.kind === 'minLength' && !rule.each && nextSchema.type === 'string') {
-      nextSchema.minLength = rule.value;
+  if (nextSchema.type === 'string') {
+    if (profile.minLength !== undefined) {
+      nextSchema.minLength = profile.minLength;
     }
 
-    if (rule.kind === 'maxLength' && !rule.each && nextSchema.type === 'string') {
-      nextSchema.maxLength = rule.value;
+    if (profile.maxLength !== undefined) {
+      nextSchema.maxLength = profile.maxLength;
     }
 
-    if (rule.kind === 'min' && !rule.each && (nextSchema.type === 'number' || nextSchema.type === 'integer')) {
-      nextSchema.minimum = rule.value;
+    if (profile.stringFormat !== undefined) {
+      nextSchema.format = profile.stringFormat;
+    }
+  }
+
+  if (nextSchema.type === 'number' || nextSchema.type === 'integer') {
+    if (profile.minimum !== undefined) {
+      nextSchema.minimum = profile.minimum;
     }
 
-    if (rule.kind === 'max' && !rule.each && (nextSchema.type === 'number' || nextSchema.type === 'integer')) {
-      nextSchema.maximum = rule.value;
-    }
-
-    if (rule.kind === 'validatorjs' && nextSchema.type === 'string') {
-      if (rule.validator === 'email') {
-        nextSchema.format = 'email';
-      }
-
-      if (rule.validator === 'uuid') {
-        nextSchema.format = 'uuid';
-      }
-
-      if (rule.validator === 'url') {
-        nextSchema.format = 'uri';
-      }
-
-      if (rule.validator === 'dateString' || rule.validator === 'iso8601') {
-        nextSchema.format = 'date-time';
-      }
+    if (profile.maximum !== undefined) {
+      nextSchema.maximum = profile.maximum;
     }
   }
 

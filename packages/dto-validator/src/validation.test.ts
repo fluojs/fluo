@@ -131,6 +131,26 @@ describe('DefaultValidator', () => {
     expect(Array.from(result.previousAddressSet)[0]).toBeInstanceOf(AddressDto);
   });
 
+  it('does not copy non-plain nested input into DTO instances during transform', async () => {
+    class ChildDto {}
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto)
+      child = new ChildDto();
+    }
+
+    const validator = new DefaultValidator();
+    const result = await validator.transform<ParentDto>(
+      {
+        child: 'unsafe-string-input',
+      },
+      ParentDto,
+    );
+
+    expect(result.child).toBeInstanceOf(ChildDto);
+    expect(Object.keys(result.child as object)).toEqual([]);
+  });
+
   it('transform throws DtoValidationError on invalid input', async () => {
     class CreateUserDto {
       @IsEmail()
@@ -170,6 +190,43 @@ describe('DefaultValidator', () => {
       ),
     ).rejects.toMatchObject({
       issues: [{ field: 'child.parents[0].name' }],
+    });
+  });
+
+  it('reports stable field paths for deeply nested DTO validation failures', async () => {
+    class Level3Dto {
+      @MinLength(2, { message: 'leaf must have length at least 2' })
+      leaf = '';
+    }
+
+    class Level2Dto {
+      @ValidateNested(() => Level3Dto)
+      level3 = new Level3Dto();
+    }
+
+    class Level1Dto {
+      @ValidateNested(() => Level2Dto, { each: true })
+      items: Level2Dto[] = [];
+    }
+
+    class RootDto {
+      @ValidateNested(() => Level1Dto)
+      level1 = new Level1Dto();
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new RootDto(), {
+          level1: {
+            items: [{ level3: { leaf: 'x' } }],
+          },
+        }),
+        RootDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'level1.items[0].level3.leaf', message: 'leaf must have length at least 2' }],
     });
   });
 

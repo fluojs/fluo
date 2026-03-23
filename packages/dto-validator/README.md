@@ -267,6 +267,8 @@ class CreateOrderDto {
 
 Errors use dot-notation paths: `{ field: 'address.city', ... }`.
 
+When transforming nested DTOs, only plain-object payloads are copied into the nested instance; non-plain inputs are treated as invalid data and are not implicitly merged into DTO fields.
+
 ### Arrays of Nested Objects
 
 ```typescript

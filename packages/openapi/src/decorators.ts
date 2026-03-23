@@ -42,10 +42,53 @@ function getMetadataBag(target: object): MetadataBag | undefined {
   return (target as Record<symbol, MetadataBag | undefined>)[metadataSymbol];
 }
 
+function cloneUnknown<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneUnknown(entry)) as T;
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  const clone: Record<PropertyKey, unknown> = {};
+
+  for (const key of Reflect.ownKeys(value)) {
+    clone[key] = cloneUnknown((value as Record<PropertyKey, unknown>)[key]);
+  }
+
+  return clone as T;
+}
+
+function cloneApiOperationMetadata(operation: ApiOperationMetadata | undefined): ApiOperationMetadata | undefined {
+  if (!operation) {
+    return undefined;
+  }
+
+  return {
+    description: operation.description,
+    summary: operation.summary,
+  };
+}
+
+function cloneApiResponseMetadata(response: ApiResponseMetadata): ApiResponseMetadata {
+  return {
+    description: response.description,
+    schema: cloneUnknown(response.schema),
+    status: response.status,
+    type: response.type,
+  };
+}
+
 /** Read tags registered via `@ApiTag` on a controller class. */
 export function getControllerTags(target: Function): string[] | undefined {
   const bag = getMetadataBag(target);
-  return bag?.[openApiControllerTagsKey] as string[] | undefined;
+  const tags = bag?.[openApiControllerTagsKey] as string[] | undefined;
+  return tags ? [...tags] : undefined;
 }
 
 /** Read combined operation, response, and security metadata for a controller method. */
@@ -65,9 +108,9 @@ export function getMethodApiMetadata(target: Function, propertyKey: MetadataProp
   }
 
   return {
-    operation,
-    responses: responses ?? [],
-    security,
+    operation: cloneApiOperationMetadata(operation),
+    responses: (responses ?? []).map((response) => cloneApiResponseMetadata(response)),
+    security: security ? [...security] : undefined,
   };
 }
 
@@ -139,12 +182,12 @@ export function ApiResponse(
 
     map.set(context.name, [
       ...existing,
-      {
+      cloneApiResponseMetadata({
         description: normalized.description,
         schema: normalized.schema,
         status: normalized.status,
         type: normalized.type,
-      },
+      }),
     ]);
   };
 }

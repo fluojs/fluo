@@ -123,4 +123,34 @@ describe('serialize', () => {
     expect(serialized.next).toBeUndefined();
     expect(() => JSON.stringify(serialized)).not.toThrow();
   });
+
+  it('preserves shared references instead of dropping revisited objects', () => {
+    const shared = { id: 'shared-node' };
+    const input = {
+      first: shared,
+      second: shared,
+    };
+
+    const serialized = serialize(input) as {
+      first?: { id: string };
+      second?: { id: string };
+    };
+
+    expect(serialized.first).toEqual({ id: 'shared-node' });
+    expect(serialized.second).toEqual({ id: 'shared-node' });
+    expect(serialized.second).toBe(serialized.first);
+  });
+
+  it('serializes enumerable symbol-keyed properties in plain objects', () => {
+    const token = Symbol('token');
+    const input: Record<string | symbol, unknown> = {
+      regular: 'value',
+      [token]: { nested: true },
+    };
+
+    const serialized = serialize(input) as Record<string | symbol, unknown>;
+
+    expect(serialized.regular).toBe('value');
+    expect(serialized[token]).toEqual({ nested: true });
+  });
 });
