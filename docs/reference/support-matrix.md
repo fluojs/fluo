@@ -24,7 +24,7 @@ This file is the compact reference table for current support policy.
 | Runtime | Tier | Note |
 | --- | --- | --- |
 | Node.js | official | first official runtime |
-| Fastify adapter | preview | `@konekti/platform-fastify` adapter with Node-runtime option parity for host/HTTPS/CORS/multipart/rawBody |
+| Fastify adapter | preview | `@konekti/platform-fastify` adapter with Node-runtime option parity for host/HTTPS/CORS/multipart/rawBody; WebSocket gateways are also validated through the shared Node `upgrade` listener exposed by `getServer()` |
 | Microservices transport | preview | `@konekti/microservices` with TCP, Redis Pub/Sub, Kafka, NATS, and RabbitMQ transport adapters plus `KonektiFactory.createMicroservice()` |
 | Bun | preview | core contracts should remain promotable to this runtime |
 | Fetch-style adapter | preview | adapter may exist with narrower guarantees |

@@ -6,6 +6,7 @@ import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@konekti/core';
 import { Container } from '@konekti/di';
+import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger, HTTP_APPLICATION_ADAPTER } from '@konekti/runtime';
 import type { HttpApplicationAdapter } from '@konekti/http';
 
@@ -380,6 +381,70 @@ describe('@konekti/websocket', () => {
 
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      mode: 'test',
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+    await onceOpen(socket);
+    socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+
+    const incoming = await onceMessage(socket);
+    expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
+
+    socket.close();
+    await onceClosed(socket);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.connectCount).toBe(1);
+    expect(state.messages).toEqual([{ value: 'hello' }]);
+    expect(state.disconnectCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('boots a Fastify app, connects websocket client, handles message, and disconnects', async () => {
+    class GatewayState {
+      connectCount = 0;
+      disconnectCount = 0;
+      messages: unknown[] = [];
+    }
+
+    @Inject([GatewayState])
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connectCount += 1;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown, socket: WebSocket) {
+        this.state.messages.push(payload);
+        socket.send(JSON.stringify({ event: 'pong', data: payload }));
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createWebSocketModule()],
+      providers: [GatewayState, ChatGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
       mode: 'test',
       port,
