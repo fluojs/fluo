@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, defineControllerMetadata, defineModuleMetadata } from '@konekti/core';
+import { Inject, Scope, defineControllerMetadata, defineModuleMetadata } from '@konekti/core';
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
 import { EventPattern, MessagePattern } from './decorators.js';
@@ -407,6 +407,157 @@ describe('@konekti/microservices', () => {
 
     await expect(microservice.send('user.lookup', {})).rejects.toThrow('Multiple message handlers matched pattern "user.lookup"');
 
+    await microservice.close();
+  });
+
+  it('creates an isolated request scope per @MessagePattern invocation', async () => {
+    let created = 0;
+
+    @Scope('request')
+    class RequestState {
+      readonly id = ++created;
+    }
+
+    @Inject([RequestState])
+    @Scope('request')
+    class RequestScopedHandler {
+      constructor(private readonly state: RequestState) {}
+
+      @MessagePattern('scope.id')
+      getId() {
+        return this.state.id;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [RequestState, RequestScopedHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    const [first, second] = await Promise.all([
+      microservice.send('scope.id', {}),
+      microservice.send('scope.id', {}),
+    ]);
+
+    expect(first).not.toBe(second);
+    expect(first).toBeTypeOf('number');
+    expect(second).toBeTypeOf('number');
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after each message completes', async () => {
+    const destroyed: number[] = [];
+
+    @Scope('request')
+    class RequestState {
+      constructor(public readonly id = destroyed.length + 1) {}
+
+      onDestroy(): void {
+        destroyed.push(this.id);
+      }
+    }
+
+    @Inject([RequestState])
+    @Scope('request')
+    class RequestScopedHandler {
+      constructor(private readonly state: RequestState) {}
+
+      @MessagePattern('scope.dispose')
+      getId() {
+        return this.state.id;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [RequestState, RequestScopedHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await expect(microservice.send('scope.dispose', {})).resolves.toBe(1);
+    await expect(microservice.send('scope.dispose', {})).resolves.toBe(2);
+    expect(destroyed).toEqual([1, 2]);
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after handler errors', async () => {
+    const onDestroy = vi.fn();
+
+    @Scope('request')
+    class RequestState {
+      onDestroy(): void {
+        onDestroy();
+      }
+    }
+
+    @Inject([RequestState])
+    @Scope('request')
+    class RequestScopedHandler {
+      constructor(private readonly state: RequestState) {}
+
+      @MessagePattern('scope.error')
+      fail() {
+        void this.state;
+        throw new Error('request handler failed');
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [RequestState, RequestScopedHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await expect(microservice.send('scope.error', {})).rejects.toThrow('request handler failed');
+    expect(onDestroy).toHaveBeenCalledTimes(1);
+
+    await microservice.close();
+  });
+
+  it('warns and skips request-scoped @EventPattern handlers', async () => {
+    @Scope('request')
+    class RequestScopedEventHandler {
+      @EventPattern('scope.event')
+      onEvent() {
+        return undefined;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [RequestScopedEventHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await microservice.listen();
+    await microservice.emit('scope.event', {});
+
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
     await microservice.close();
   });
 });
