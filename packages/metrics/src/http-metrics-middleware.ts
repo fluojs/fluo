@@ -1,5 +1,7 @@
 import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@konekti/http';
-import { Counter, Histogram, type Registry } from 'prom-client';
+import type { Registry } from 'prom-client';
+
+import { createPrometheusCounter, createPrometheusHistogram } from './prometheus-metrics-factory.js';
 
 type HttpMetricLabels = {
   method: string;
@@ -64,23 +66,20 @@ export class HttpMetricsMiddleware implements Middleware {
     this.pathLabelMode = options.pathLabelMode ?? 'template';
     this.pathLabelNormalizer = options.pathLabelNormalizer;
     this.unknownPathLabel = options.unknownPathLabel ?? 'UNKNOWN';
-    this.requestsTotal = new Counter({
+    this.requestsTotal = createPrometheusCounter(registry, {
       help: 'Total number of HTTP requests',
       labelNames: ['method', 'path', 'status'],
       name: 'http_requests_total',
-      registers: [registry],
     });
-    this.errorsTotal = new Counter({
+    this.errorsTotal = createPrometheusCounter(registry, {
       help: 'Total number of HTTP error responses (4xx/5xx)',
       labelNames: ['method', 'path', 'status'],
       name: 'http_errors_total',
-      registers: [registry],
     });
-    this.requestDuration = new Histogram({
+    this.requestDuration = createPrometheusHistogram(registry, {
       help: 'HTTP request duration in seconds',
       labelNames: ['method', 'path', 'status'],
       name: 'http_request_duration_seconds',
-      registers: [registry],
     });
   }
 
@@ -140,17 +139,19 @@ export class HttpMetricsMiddleware implements Middleware {
     durationSeconds: number,
     requestError: unknown,
   ): void {
-    const labels: Readonly<HttpMetricLabels> = {
+    const baseLabels: HttpMetricLabels = {
       method,
       path,
       status: String(statusCode),
     };
+    const requestLabels: HttpMetricLabels = { ...baseLabels };
+    const errorLabels = statusCode >= 400 || requestError !== undefined ? { ...baseLabels } : undefined;
 
-    this.requestsTotal.inc({ ...labels });
-    this.requestDuration.observe({ ...labels }, durationSeconds);
+    this.requestsTotal.inc(requestLabels);
+    this.requestDuration.observe(baseLabels, durationSeconds);
 
-    if (statusCode >= 400 || requestError !== undefined) {
-      this.errorsTotal.inc({ ...labels });
+    if (errorLabels) {
+      this.errorsTotal.inc(errorLabels);
     }
   }
 }
@@ -160,19 +161,26 @@ function normalizePathToTemplate(path: string, params: Readonly<Record<string, s
     return '/';
   }
 
-  const normalizedSegments = path
-    .split('/')
-    .filter((segment) => segment.length > 0)
-    .map((segment) => {
-      const decoded = safeDecodeURIComponent(segment);
-      for (const [paramKey, paramValue] of Object.entries(params)) {
-        if (segment === paramValue || decoded === paramValue) {
-          return `:${paramKey}`;
-        }
-      }
+  const normalizedSegments: string[] = [];
+  const paramEntries = Object.entries(params);
 
-      return segment;
-    });
+  for (const segment of path.split('/')) {
+    if (!segment) {
+      continue;
+    }
+
+    const decoded = safeDecodeURIComponent(segment);
+    let normalizedSegment = segment;
+
+    for (const [paramKey, paramValue] of paramEntries) {
+      if (segment === paramValue || decoded === paramValue) {
+        normalizedSegment = `:${paramKey}`;
+        break;
+      }
+    }
+
+    normalizedSegments.push(normalizedSegment);
+  }
 
   if (normalizedSegments.length === 0) {
     return '/';

@@ -57,7 +57,7 @@ function findModuleDecoratorObject(sourceFile: ts.SourceFile): ts.ObjectLiteralE
   return undefined;
 }
 
-function hasNamedImport(sourceFile: ts.SourceFile, className: string): boolean {
+function findNamedImportSource(sourceFile: ts.SourceFile, className: string): string | undefined {
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) {
       continue;
@@ -68,12 +68,16 @@ function hasNamedImport(sourceFile: ts.SourceFile, className: string): boolean {
       continue;
     }
 
-    if (importClause.namedBindings.elements.some((element) => element.name.text === className)) {
-      return true;
+    if (!importClause.namedBindings.elements.some((element) => element.name.text === className)) {
+      continue;
+    }
+
+    if (ts.isStringLiteral(statement.moduleSpecifier)) {
+      return statement.moduleSpecifier.text;
     }
   }
 
-  return false;
+  return undefined;
 }
 
 function buildImportDeclaration(className: string, importPath: string): ts.ImportDeclaration {
@@ -92,12 +96,19 @@ function buildImportDeclaration(className: string, importPath: string): ts.Impor
 
 export function ensureModuleImport(source: string, className: string, importPath: string): string {
   const sourceFile = parseSource(source);
+  const moduleSpecifier = `./${importPath}`;
+  const existingImportSource = findNamedImportSource(sourceFile, className);
 
-  if (hasNamedImport(sourceFile, className)) {
-    return source;
+  if (existingImportSource) {
+    if (existingImportSource === moduleSpecifier) {
+      return source;
+    }
+
+    throw new Error(
+      `Import collision for ${className}: already imported from "${existingImportSource}" but requested from "${moduleSpecifier}".`,
+    );
   }
 
-  const moduleSpecifier = `./${importPath}`;
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) {
       continue;

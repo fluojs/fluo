@@ -15,6 +15,9 @@ type ResolvedDrizzleModuleOptions<
   strictTransactions: boolean;
 };
 
+const DRIZZLE_NORMALIZED_OPTIONS = Symbol('konekti.drizzle.normalized-options');
+const DRIZZLE_MODULE_EXPORTS = [DrizzleDatabase, DrizzleTransactionInterceptor];
+
 function normalizeDrizzleModuleOptions<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase,
@@ -30,6 +33,38 @@ function normalizeDrizzleModuleOptions<
 
 function createRuntimeOptionsProviderValue(strictTransactions: boolean): DrizzleRuntimeOptions {
   return { strictTransactions };
+}
+
+function createDrizzleRuntimeProviders<
+  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+  TTransactionDatabase,
+  TTransactionOptions,
+>(normalizedOptionsProvider: Provider): Provider[] {
+  return [
+    normalizedOptionsProvider,
+    {
+      inject: [DRIZZLE_NORMALIZED_OPTIONS],
+      provide: DRIZZLE_DATABASE,
+      useFactory: (options: unknown) =>
+        (options as ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>).database,
+    },
+    {
+      inject: [DRIZZLE_NORMALIZED_OPTIONS],
+      provide: DRIZZLE_DISPOSE,
+      useFactory: (options: unknown) =>
+        (options as ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>).dispose,
+    },
+    {
+      inject: [DRIZZLE_NORMALIZED_OPTIONS],
+      provide: DRIZZLE_OPTIONS,
+      useFactory: (options: unknown) =>
+        createRuntimeOptionsProviderValue(
+          (options as ResolvedDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>).strictTransactions,
+        ),
+    },
+    DrizzleDatabase,
+    DrizzleTransactionInterceptor,
+  ];
 }
 
 function createMemoizedDrizzleOptionsResolver<
@@ -65,37 +100,14 @@ function createDrizzleProvidersAsync<
 ): Provider[] {
   const resolveOptions = createMemoizedDrizzleOptionsResolver(options);
 
-  const databaseProvider = {
+  const normalizedOptionsProvider = {
     inject: options.inject,
-    provide: DRIZZLE_DATABASE,
+    provide: DRIZZLE_NORMALIZED_OPTIONS,
     scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolved = await resolveOptions(...deps);
-      return resolved.database;
-    },
+    useFactory: async (...deps: unknown[]) => resolveOptions(...deps),
   };
 
-  const disposeProvider = {
-    inject: options.inject,
-    provide: DRIZZLE_DISPOSE,
-    scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolved = await resolveOptions(...deps);
-      return resolved.dispose;
-    },
-  };
-
-  const optionsProvider = {
-    inject: options.inject,
-    provide: DRIZZLE_OPTIONS,
-    scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolved = await resolveOptions(...deps);
-      return createRuntimeOptionsProviderValue(resolved.strictTransactions);
-    },
-  };
-
-  return [databaseProvider, disposeProvider, optionsProvider, DrizzleDatabase, DrizzleTransactionInterceptor];
+  return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>(normalizedOptionsProvider);
 }
 
 export function createDrizzleProviders<
@@ -105,22 +117,10 @@ export function createDrizzleProviders<
 >(options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>): Provider[] {
   const resolved = normalizeDrizzleModuleOptions(options);
 
-  return [
-    {
-      provide: DRIZZLE_DATABASE,
-      useValue: resolved.database,
-    },
-    {
-      provide: DRIZZLE_DISPOSE,
-      useValue: resolved.dispose,
-    },
-    {
-      provide: DRIZZLE_OPTIONS,
-      useValue: createRuntimeOptionsProviderValue(resolved.strictTransactions),
-    },
-    DrizzleDatabase,
-    DrizzleTransactionInterceptor,
-  ];
+  return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>({
+    provide: DRIZZLE_NORMALIZED_OPTIONS,
+    useValue: resolved,
+  });
 }
 
 export function createDrizzleModule<
@@ -131,7 +131,7 @@ export function createDrizzleModule<
   class DrizzleModule {}
 
   return defineModule(DrizzleModule, {
-    exports: [DrizzleDatabase, DrizzleTransactionInterceptor],
+    exports: DRIZZLE_MODULE_EXPORTS,
     providers: createDrizzleProviders(options),
   });
 }
@@ -144,7 +144,7 @@ export function createDrizzleModuleAsync<
   class DrizzleAsyncModule {}
 
   return defineModule(DrizzleAsyncModule, {
-    exports: [DrizzleDatabase, DrizzleTransactionInterceptor],
+    exports: DRIZZLE_MODULE_EXPORTS,
     providers: createDrizzleProvidersAsync(options),
   });
 }

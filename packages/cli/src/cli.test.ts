@@ -499,6 +499,54 @@ describe('CLI command runner', () => {
     expect(stderrBuffer.join('')).toContain('Usage: konekti <command> [options]');
   });
 
+  it('rejects unknown options for `new` before scaffolding side effects', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--unknown-flag'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Unknown option for new command: --unknown-flag');
+    expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('rejects `new --package-manager` when the value is missing', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Expected --package-manager to have a value.');
+    expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('rejects unsupported package-manager values for `new`', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'bun'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Invalid --package-manager value "bun". Use one of: pnpm, npm, yarn.');
+    expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
   it('prints generate usage for an unknown schematic', async () => {
     const stderrBuffer: string[] = [];
 

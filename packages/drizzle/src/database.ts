@@ -18,6 +18,8 @@ import type {
 } from './types.js';
 
 const TRANSACTION_NOT_SUPPORTED_ERROR = 'Transaction not supported: Drizzle database does not implement transaction.';
+const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
+  'Nested Drizzle transaction options are not supported because the active transaction context is reused.';
 
 type ActiveRequestTransaction = {
   abort(reason?: unknown): void;
@@ -78,6 +80,14 @@ export class DrizzleDatabase<
     const current = this.transactions.getStore();
 
     if (current) {
+      if (options !== undefined) {
+        throw new Error(NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR);
+      }
+
+      if (requestScoped && signal) {
+        return raceWithAbort(fn, signal);
+      }
+
       return fn();
     }
 

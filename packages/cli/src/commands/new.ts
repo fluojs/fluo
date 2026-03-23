@@ -49,34 +49,68 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
 ];
 
+const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['npm', 'pnpm', 'yarn']);
+
+function readOptionValue(argv: string[], index: number, option: '--name' | '--package-manager' | '--target-directory'): string {
+  const value = argv[index + 1];
+
+  if (!value || value.startsWith('-')) {
+    throw new Error(`Expected ${option} to have a value.`);
+  }
+
+  return value;
+}
+
 function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
   const parsed: Partial<BootstrapAnswers> = {};
   let hasExplicitTargetDirectory = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    const next = argv[index + 1];
 
     switch (arg) {
       case '--name':
-        parsed.projectName = next;
+        if (parsed.projectName) {
+          throw new Error('Duplicate --name option.');
+        }
+
+        parsed.projectName = readOptionValue(argv, index, '--name');
         index += 1;
         break;
       case '--package-manager':
-        parsed.packageManager = next as BootstrapAnswers['packageManager'];
+        if (parsed.packageManager) {
+          throw new Error('Duplicate --package-manager option.');
+        }
+
+        parsed.packageManager = readOptionValue(argv, index, '--package-manager') as BootstrapAnswers['packageManager'];
+        if (!SUPPORTED_PACKAGE_MANAGERS.has(parsed.packageManager)) {
+          throw new Error(
+            `Invalid --package-manager value "${parsed.packageManager}". Use one of: pnpm, npm, yarn.`,
+          );
+        }
         index += 1;
         break;
       case '--target-directory':
-        parsed.targetDirectory = next;
+        if (hasExplicitTargetDirectory) {
+          throw new Error('Duplicate --target-directory option.');
+        }
+
+        parsed.targetDirectory = readOptionValue(argv, index, '--target-directory');
         hasExplicitTargetDirectory = true;
         index += 1;
         break;
       default:
-        if (!arg.startsWith('-') && !parsed.projectName) {
-          parsed.projectName = arg;
-          if (!hasExplicitTargetDirectory) {
-            parsed.targetDirectory = `./${arg}`;
-          }
+        if (arg.startsWith('-')) {
+          throw new Error(`Unknown option for new command: ${arg}`);
+        }
+
+        if (parsed.projectName) {
+          throw new Error(`Unexpected positional argument: ${arg}`);
+        }
+
+        parsed.projectName = arg;
+        if (!hasExplicitTargetDirectory) {
+          parsed.targetDirectory = `./${arg}`;
         }
         break;
     }
