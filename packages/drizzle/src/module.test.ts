@@ -203,6 +203,26 @@ describe('@konekti/drizzle', () => {
     await asyncApp.close();
   });
 
+  it('runs nested request and service transactions through a single transaction boundary', async () => {
+    let transactionCalls = 0;
+    const transactionDatabase = {
+      kind: 'transaction' as const,
+    };
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+
+    await expect(
+      drizzle.requestTransaction(async () => drizzle.transaction(async () => 'ok')),
+    ).resolves.toBe('ok');
+    expect(transactionCalls).toBe(1);
+  });
+
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
     const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
     const transactionDatabase = { kind: 'transaction' };
@@ -230,6 +250,39 @@ describe('@konekti/drizzle', () => {
       { isolationLevel: 'serializable' },
       { isolationLevel: 'read committed' },
     ]);
+  });
+
+  it('rejects nested transaction options and still honors nested request abort signals', async () => {
+    const transactionDatabase = {
+      kind: 'transaction' as const,
+    };
+    const database = {
+      async transaction<T>(
+        callback: (value: typeof transactionDatabase) => Promise<T>,
+        _options?: { isolationLevel: string },
+      ): Promise<T> {
+        return callback(transactionDatabase);
+      },
+    };
+
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase, { isolationLevel: string }>(database);
+
+    await expect(
+      drizzle.transaction(
+        async () => drizzle.transaction(async () => 'never', { isolationLevel: 'serializable' }),
+      ),
+    ).rejects.toThrow(
+      'Nested Drizzle transaction options are not supported because the active transaction context is reused.',
+    );
+
+    const controller = new AbortController();
+    controller.abort(new Error('nested request aborted'));
+
+    await expect(
+      drizzle.transaction(
+        async () => drizzle.requestTransaction(async () => new Promise<never>(() => undefined), controller.signal),
+      ),
+    ).rejects.toThrow('nested request aborted');
   });
 });
 

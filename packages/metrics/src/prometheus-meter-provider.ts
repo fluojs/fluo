@@ -1,6 +1,7 @@
-import { Counter, Gauge, Histogram, type Registry } from 'prom-client';
+import type { Registry } from 'prom-client';
 
 import type { MeterCounter, MeterGauge, MeterHistogram, MeterProvider } from './meter-provider.js';
+import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './prometheus-metrics-factory.js';
 
 export class PrometheusMeterProvider implements MeterProvider {
   readonly type = 'prometheus' as const;
@@ -8,11 +9,10 @@ export class PrometheusMeterProvider implements MeterProvider {
   constructor(private readonly registry: Registry) {}
 
   createCounter(name: string, help: string, labelNames: string[] = []): MeterCounter {
-    const counter = new Counter({
+    const counter = createPrometheusCounter(this.registry, {
       help,
       labelNames,
       name,
-      registers: [this.registry],
     });
 
     return {
@@ -28,11 +28,10 @@ export class PrometheusMeterProvider implements MeterProvider {
   }
 
   createGauge(name: string, help: string, labelNames: string[] = []): MeterGauge {
-    const gauge = new Gauge({
+    const gauge = createPrometheusGauge(this.registry, {
       help,
       labelNames,
       name,
-      registers: [this.registry],
     });
 
     return {
@@ -48,12 +47,11 @@ export class PrometheusMeterProvider implements MeterProvider {
   }
 
   createHistogram(name: string, help: string, labelNames: string[] = [], buckets?: number[]): MeterHistogram {
-    const histogram = new Histogram({
+    const histogram = createPrometheusHistogram(this.registry, {
       buckets,
       help,
       labelNames,
       name,
-      registers: [this.registry],
     });
 
     return {

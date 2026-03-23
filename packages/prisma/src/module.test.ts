@@ -198,6 +198,61 @@ describe('@konekti/prisma', () => {
     await app.close();
   });
 
+  it('forwards transaction options for explicit and request-scoped transactions', async () => {
+    const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { isolationLevel: string },
+      ): Promise<T> {
+        optionsCalls.push(options);
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { isolationLevel: string }>(client);
+
+    await expect(prisma.transaction(async () => prisma.current(), { isolationLevel: 'serializable' })).resolves.toBe(
+      transactionClient,
+    );
+    await expect(
+      prisma.requestTransaction(async () => prisma.current(), undefined, { isolationLevel: 'read committed' }),
+    ).resolves.toBe(transactionClient);
+
+    expect(optionsCalls).toEqual([
+      { isolationLevel: 'serializable' },
+      { isolationLevel: 'read committed' },
+    ]);
+  });
+
+  it('rejects nested transaction options to avoid silent option drops', async () => {
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { isolationLevel: string }>(client);
+
+    await expect(
+      prisma.transaction(
+        async () => prisma.transaction(async () => 'never', { isolationLevel: 'serializable' }),
+      ),
+    ).rejects.toThrow(
+      'Nested Prisma transaction options are not supported because the active transaction context is reused.',
+    );
+  });
+
   it('falls back when transaction client is unsupported and strictTransactions is false', async () => {
     const client = {
       async $connect() {},
