@@ -24,10 +24,11 @@ It also publishes issue-aligned base contracts:
 - `ICommandHandler<TCommand extends ICommand, TResult = void>`
 - `IQueryHandler<TQuery extends IQuery<TResult>, TResult = unknown>`
 - `IEventHandler<TEvent extends IEvent>`
+- `ISaga<TEvent extends IEvent>` — saga/process-manager contract for event-driven orchestration
 
-`createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, eventBus? })` registers those global tokens and imports `createEventBusModule()` automatically, so CQRS event publishing works without extra module wiring.
+`createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` registers those global tokens and imports `createEventBusModule()` automatically, so CQRS event publishing works without extra module wiring.
 
-- `commandHandlers`, `queryHandlers`, `eventHandlers`: optional convenience arrays that are added as providers in the generated CQRS module.
+- `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`: optional convenience arrays that are added as providers in the generated CQRS module.
 - `eventBus`: forwarded to `createEventBusModule(eventBus)`.
 
 ## handler registration model
@@ -90,6 +91,48 @@ class GetUserHandler implements IQueryHandler<GetUserQuery, { id: string }> {
 - `publishAll(events)` calls `publish(event)` for each event in order.
 
 This means class-level `@EventHandler()` and method-level `@OnEvent(...)` handlers can coexist for the same event type.
+
+## saga / process-manager model
+
+`@Saga(EventClass | EventClass[])` marks a class as a saga/process-manager that reacts to one or more event types:
+
+```typescript
+import { Inject } from '@konekti/core';
+import {
+  CommandBus,
+  COMMAND_BUS,
+  createCqrsModule,
+  IEvent,
+  ISaga,
+  Saga,
+} from '@konekti/cqrs';
+
+class OrderSubmittedEvent implements IEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+class StartPaymentCommand {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject([COMMAND_BUS])
+@Saga(OrderSubmittedEvent)
+class OrderSaga implements ISaga<OrderSubmittedEvent> {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  async handle(event: OrderSubmittedEvent): Promise<void> {
+    await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+  }
+}
+```
+
+- `@Saga()` accepts a single event class or an array of event classes.
+- Saga classes must be singleton-scoped and implement `handle(event)`.
+- Different saga classes can observe the same event type; duplicate registration of the same saga class is deduplicated.
+- Saga dispatches run through per-saga execution chains, so concurrent `publish()` calls are applied in deterministic order for each saga instance.
+- Unexpected saga failures throw `SagaExecutionError` from `publish()`.
+- In-flight saga executions are drained during application shutdown.
+- Register sagas via the `sagas` option in `createCqrsModule({ sagas: [...] })` or rely on decorator discovery at bootstrap.
 
 ## mental model
 

@@ -16,8 +16,7 @@ const cacheOptions: NormalizedCacheModuleOptions = {
   httpKeyStrategy: 'route',
 };
 
-function createRequestContext(method: string, url: string, path = url): RequestContext {
-  const headers: Record<string, string | string[]> = {};
+function createRequestContext(method: string, url: string, path = url, headers: Record<string, string | string[]> = {}): RequestContext {
   const queryStart = url.indexOf('?');
   const query: Record<string, string> = {};
 
@@ -44,7 +43,7 @@ function createRequestContext(method: string, url: string, path = url): RequestC
     request: {
       body: undefined,
       cookies: {},
-      headers: {},
+      headers,
       method,
       params: {},
       path,
@@ -380,10 +379,8 @@ describe('CacheInterceptor', () => {
       };
 
       const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: customStrategy });
-      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products'));
-      firstContext.requestContext.request.headers['x-tenant-id'] = 'tenant-a';
-      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products'));
-      secondContext.requestContext.request.headers['x-tenant-id'] = 'tenant-b';
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products', { 'x-tenant-id': 'tenant-a' }));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products', { 'x-tenant-id': 'tenant-b' }));
       const next: CallHandler = {
         handle: vi.fn(async () => ({ data: 'response' })),
       };
@@ -434,6 +431,29 @@ describe('CacheInterceptor', () => {
       await interceptor.intercept(secondContext, next);
 
       expect(next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('strategy "full" includes sorted query in cache key (equivalent to route+query)', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'full' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&sort=asc', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?sort=asc&page=1', '/products'));
+      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2&sort=asc', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'response' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+      await interceptor.intercept(thirdContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products?page=1&sort=asc')).toEqual({ data: 'response' });
+      expect(await cacheService.get('/products?page=2&sort=asc')).toEqual({ data: 'response' });
     });
   });
 });

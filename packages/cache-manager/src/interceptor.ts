@@ -57,7 +57,7 @@ function defaultCacheKey(context: InterceptorContext, strategy: CacheKeyStrategy
     return path;
   }
 
-  if (strategy === 'route+query') {
+  if (strategy === 'route+query' || strategy === 'full') {
     return `${path}?${queryString}`;
   }
 
