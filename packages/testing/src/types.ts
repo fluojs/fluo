@@ -17,6 +17,7 @@ export interface TestRequestOptions {
 export interface TestingModuleRef extends BootstrapResult {
   has(token: Token): boolean;
   resolve<T>(token: Token<T>): Promise<T>;
+  resolveAll<T>(tokens: Token<T>[]): Promise<T[]>;
   dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
 }
 
@@ -24,6 +25,7 @@ export interface TestingModuleBuilder {
   compile(): Promise<TestingModuleRef>;
   overrideProvider<T>(token: Token<T>, provider: Provider<T>): this;
   overrideProvider<T>(token: Token<T>, value: T): this;
+  overrideProviders(overrides: Array<[Token, unknown]>): this;
   overrideGuard(guard: Token<Guard>, fake?: Partial<Guard>): this;
   overrideInterceptor(interceptor: Token<Interceptor>, fake?: Partial<Interceptor>): this;
   overrideFilter(filter: Token<unknown>, fake?: unknown): this;
