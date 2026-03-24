@@ -15,7 +15,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Draft release candidate entry (2026-03-24)
 
 - Breaking changes:
-  - `@konekti/runtime`, `@konekti/platform-fastify`: `globalPrefix` now applies to runtime-owned routes such as `/health`, `/ready`, `/openapi.json`, `/docs`, and `/metrics` by default. To preserve the previous behavior, pass `globalPrefixExclude: ['/health', '/ready', '/openapi.json', '/docs', '/metrics']` explicitly.
+  - _Describe public contract changes and include migration notes._
 - New features by package:
   - _List package-level additions (for example `@konekti/http`, `@konekti/cli`)._
 - Bug fixes:
