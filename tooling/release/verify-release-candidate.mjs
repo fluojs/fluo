@@ -219,6 +219,7 @@ assertCheck(
     !quickStart.includes('Database') &&
     !scaffoldSource.includes('@konekti/prisma') &&
     !scaffoldSource.includes('@konekti/drizzle') &&
+    !scaffoldSource.includes('@konekti/mongoose') &&
     !scaffoldSource.includes('createTierNote'),
   'Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.',
 );

@@ -46,6 +46,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/testing`
 - `@konekti/cli`

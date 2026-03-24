@@ -1,0 +1,352 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { Global, Inject, Module } from '@konekti/core';
+import { bootstrapApplication, defineModule } from '@konekti/runtime';
+
+import { createMongooseModule, createMongooseModuleAsync, MongooseConnection } from './index.js';
+import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
+
+function createFakeSession(events: string[]): MongooseSessionLike {
+  return {
+    async startTransaction() {
+      events.push('transaction:start');
+    },
+    async commitTransaction() {
+      events.push('transaction:commit');
+    },
+    async abortTransaction() {
+      events.push('transaction:abort');
+    },
+    async endSession() {
+      events.push('session:end');
+    },
+  };
+}
+
+describe('@konekti/mongoose', () => {
+  it('exposes current connection, session, and transaction callbacks with optional disposal', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    @Inject([MongooseConnection])
+    class UserService {
+      constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+      async create(email: string) {
+        return this.conn.transaction(async () => {
+          const current = this.conn.current();
+          const currentSession = this.conn.currentSession();
+
+          events.push(`tx:create:${email}`);
+          events.push(`session:${currentSession !== undefined}`);
+
+          return { connection: current === connection, email };
+        });
+      }
+
+      async findById(id: string) {
+        events.push(`root:find:${id}`);
+        return { id };
+      }
+    }
+
+    const MongooseModule = createMongooseModule<typeof connection>({
+      connection,
+      dispose(current) {
+        events.push(`dispose:${current === connection}`);
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MongooseModule],
+      providers: [UserService],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(UserService);
+
+    await expect(service.findById('user-1')).resolves.toEqual({ id: 'user-1' });
+    await expect(service.create('ada@example.com')).resolves.toEqual({ connection: true, email: 'ada@example.com' });
+
+    expect(events).toEqual([
+      'root:find:user-1',
+      'connection:startSession',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'session:true',
+      'transaction:commit',
+      'session:end',
+    ]);
+
+    await app.close();
+
+    expect(events).toEqual([
+      'root:find:user-1',
+      'connection:startSession',
+      'transaction:start',
+      'tx:create:ada@example.com',
+      'session:true',
+      'transaction:commit',
+      'session:end',
+      'dispose:true',
+    ]);
+  });
+
+  it('rolls back open request transactions before dispose on shutdown', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const MongooseModule = createMongooseModule<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MongooseModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+
+    const openTransaction = mongoose.requestTransaction(
+      async () => new Promise<never>(() => undefined),
+    );
+
+    await app.close();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'transaction:abort',
+      'session:end',
+      'dispose',
+    ]);
+  });
+
+  it('enforces strictTransactions for sync and async module builders', async () => {
+    const connection = {};
+
+    const StrictSyncModule = createMongooseModule({
+      connection,
+      strictTransactions: true,
+    });
+
+    class StrictSyncAppModule {}
+
+    defineModule(StrictSyncAppModule, {
+      imports: [StrictSyncModule],
+    });
+
+    const syncApp = await bootstrapApplication({
+      mode: 'test',
+      rootModule: StrictSyncAppModule,
+    });
+    const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
+
+    await expect(syncMongoose.transaction(async () => 'ok')).rejects.toThrow(
+      'Transaction not supported: Mongoose connection does not implement startSession.',
+    );
+
+    await syncApp.close();
+
+    const StrictAsyncModule = createMongooseModuleAsync({
+      useFactory: () => ({
+        connection,
+        strictTransactions: true,
+      }),
+    });
+
+    class StrictAsyncAppModule {}
+
+    defineModule(StrictAsyncAppModule, {
+      imports: [StrictAsyncModule],
+    });
+
+    const asyncApp = await bootstrapApplication({
+      mode: 'test',
+      rootModule: StrictAsyncAppModule,
+    });
+    const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
+
+    await expect(asyncMongoose.requestTransaction(async () => 'ok')).rejects.toThrow(
+      'Transaction not supported: Mongoose connection does not implement startSession.',
+    );
+
+    await asyncApp.close();
+  });
+
+  it('runs nested request and service transactions through a single session boundary', async () => {
+    let sessionCalls = 0;
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        sessionCalls += 1;
+        return session;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    await expect(
+      mongoose.requestTransaction(async () => mongoose.transaction(async () => 'ok')),
+    ).resolves.toBe('ok');
+    expect(sessionCalls).toBe(1);
+  });
+
+  it('handles transaction abort on error', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    await expect(
+      mongoose.transaction(async () => {
+        events.push('tx:work');
+        throw new Error('transaction failed');
+      }),
+    ).rejects.toThrow('transaction failed');
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'tx:work',
+      'transaction:abort',
+      'session:end',
+    ]);
+  });
+
+  it('handles connection without startSession gracefully', async () => {
+    const events: string[] = [];
+
+    const connection = {
+      someOtherMethod: async () => {
+        events.push('other:method');
+      },
+    } as unknown as MongooseConnectionLike;
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    await expect(mongoose.transaction(async () => {
+      events.push('tx:work');
+      return 'ok';
+    })).resolves.toBe('ok');
+
+    expect(events).toEqual(['tx:work']);
+  });
+});
+
+describe('createMongooseModuleAsync', () => {
+  function makeFakeConnection() {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    return { connection, events, session };
+  }
+
+  it('factory receives injected token and resolves MongooseConnection', async () => {
+    const { connection, events } = makeFakeConnection();
+
+    class ConfigService {
+      readonly url = 'mongodb://localhost/test';
+    }
+
+    @Global()
+    @Module({ providers: [ConfigService], exports: [ConfigService] })
+    class ConfigModule {}
+
+    const factory = vi.fn().mockResolvedValue({ connection });
+
+    const MongooseModule = createMongooseModuleAsync<typeof connection>({
+      inject: [ConfigService],
+      useFactory: factory,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [ConfigModule, MongooseModule],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const conn = await app.container.resolve(MongooseConnection);
+
+    expect(factory).toHaveBeenCalledOnce();
+    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+
+    void conn;
+    void events;
+
+    await app.close();
+  });
+
+  it('factory returning a promise resolves the connection correctly', async () => {
+    const { connection } = makeFakeConnection();
+
+    const MongooseModule = createMongooseModuleAsync<typeof connection>({
+      useFactory: () => Promise.resolve({ connection }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [MongooseModule] });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const conn = await app.container.resolve(MongooseConnection);
+
+    expect(conn).toBeInstanceOf(MongooseConnection);
+
+    await app.close();
+  });
+
+  it('propagates factory errors during module initialization', async () => {
+    const MongooseModule = createMongooseModuleAsync({
+      useFactory: () => Promise.reject(new Error('mongo config fetch failed')),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [MongooseModule] });
+
+    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('mongo config fetch failed');
+  });
+});
