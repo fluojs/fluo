@@ -162,6 +162,8 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `send()` applies `requestTimeoutMs` (default 3 000 ms) and rejects pending promises if the timeout expires or the transport closes.
 - `AbortSignal` is supported: passing an already-aborted signal rejects immediately; passing a signal that fires later aborts the in-flight request.
 - On `close()`, all pending request promises are rejected and subscriptions are removed cleanly.
+- Redis request/reply over Pub/Sub is best-effort (not durable queue semantics). Treat timeouts as transport-level failures and pair retries with idempotent handlers when needed.
+- Troubleshooting: repeated Redis timeouts usually mean no active responder for the pattern, namespace mismatch across instances, or missing response-channel subscriptions.
 
 ## Hybrid mode
 
