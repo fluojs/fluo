@@ -296,6 +296,9 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
+      '@konekti/jwt':
+        specifier: workspace:*
+        version: link:../jwt
 
   packages/platform-fastify:
     dependencies:

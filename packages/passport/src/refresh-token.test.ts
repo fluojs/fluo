@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
+import type { AuthStrategyResult } from './types.js';
 import type { GuardContext, RequestContext } from '@konekti/http';
 
 function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> = {}): RefreshTokenService {
@@ -22,6 +23,8 @@ function createGuardContext(body?: Record<string, unknown>, headers?: Record<str
     handler: {
       controllerToken: class {},
       methodName: 'test',
+      metadata: {} as never,
+      route: {} as never,
     },
     requestContext: {
       request: {
@@ -31,7 +34,8 @@ function createGuardContext(body?: Record<string, unknown>, headers?: Record<str
       principal: undefined,
       container: {
         resolve: vi.fn(),
-      } as RequestContext['container'],
+        dispose: vi.fn(),
+      } as unknown as RequestContext['container'],
     } as RequestContext,
   };
 }
@@ -157,7 +161,7 @@ describe('RefreshTokenStrategy', () => {
       ]);
 
       const fulfilled = [first, second].filter(
-        (result): result is PromiseFulfilledResult<unknown> => result.status === 'fulfilled',
+        (result): result is PromiseFulfilledResult<AuthStrategyResult> => result.status === 'fulfilled',
       );
       const rejected = [first, second].filter(
         (result): result is PromiseRejectedResult => result.status === 'rejected',

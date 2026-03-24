@@ -103,6 +103,147 @@ export class MyRefreshTokenService implements RefreshTokenService {
 }
 ```
 
+## Cookie Auth Preset
+
+`@konekti/passport` provides an official HttpOnly cookie/session auth preset for JWT-based authentication. This preset extracts JWT tokens from secure HttpOnly cookies instead of bearer headers.
+
+### Use the cookie auth strategy
+
+```typescript
+import { Controller, Post, Get } from '@konekti/http';
+import { UseAuth, CookieAuthStrategy, CookieManager } from '@konekti/passport';
+import type { RequestContext } from '@konekti/http';
+import { Inject } from '@konekti/core';
+import { DefaultJwtSigner } from '@konekti/jwt';
+
+@Controller('/auth')
+export class AuthController {
+  @Inject([DefaultJwtSigner, CookieManager])
+  constructor(
+    private readonly signer: DefaultJwtSigner,
+    private readonly cookieManager: CookieManager,
+  ) {}
+
+  @Post('/login')
+  async login(input: { username: string }, ctx: RequestContext) {
+    const accessToken = await this.signer.signAccessToken({
+      sub: input.username,
+      roles: ['user'],
+    });
+
+    this.cookieManager.setAccessTokenCookie(ctx.response, accessToken, 3600);
+
+    return { success: true };
+  }
+
+  @Get('/profile')
+  @UseAuth('cookie')
+  async getProfile(_input: never, ctx: RequestContext) {
+    return { user: ctx.principal };
+  }
+
+  @Post('/logout')
+  async logout(_input: never, ctx: RequestContext) {
+    this.cookieManager.clearAllCookies(ctx.response);
+    return { success: true };
+  }
+}
+```
+
+### Register the cookie auth preset
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createCookieAuthPreset,
+} from '@konekti/passport';
+import { createJwtCoreProviders } from '@konekti/jwt';
+
+@Module({
+  providers: [
+    ...createJwtCoreProviders({
+      algorithms: ['HS256'],
+      secret: process.env.JWT_SECRET!,
+      issuer: 'my-app',
+      audience: 'my-app-clients',
+      accessTokenTtlSeconds: 3600,
+    }),
+    ...createCookieAuthPreset({
+      cookieAuth: {
+        accessTokenCookieName: 'access_token',
+        refreshTokenCookieName: 'refresh_token',
+        requireAccessToken: true,
+      },
+      cookieManager: {
+        cookieOptions: {
+          secure: true,
+          sameSite: 'strict',
+          path: '/',
+        },
+      },
+    }).providers,
+    ...createPassportProviders(
+      { defaultStrategy: 'cookie' },
+      [createCookieAuthPreset().strategy],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+### Cookie manager utilities
+
+The `CookieManager` class provides utilities for managing auth cookies:
+
+```typescript
+import { CookieManager } from '@konekti/passport';
+import type { FrameworkResponse } from '@konekti/http';
+
+// Set access token cookie
+cookieManager.setAccessTokenCookie(response, accessToken, 3600);
+
+// Set refresh token cookie
+cookieManager.setRefreshTokenCookie(response, refreshToken, 604800);
+
+// Set both tokens at once
+cookieManager.setAuthCookies(response, accessToken, 3600, refreshToken, 604800);
+
+// Clear access token cookie
+cookieManager.clearAccessTokenCookie(response);
+
+// Clear refresh token cookie
+cookieManager.clearRefreshTokenCookie(response);
+
+// Clear all auth cookies (logout)
+cookieManager.clearAllCookies(response);
+```
+
+### Security defaults
+
+The cookie auth preset uses secure defaults:
+
+- **HttpOnly**: `true` (prevents JavaScript access)
+- **Secure**: `true` (HTTPS only in production)
+- **SameSite**: `strict` (prevents CSRF)
+- **Path**: `/` (available across the application)
+
+These defaults can be overridden via `CookieManagerConfig`.
+
+### What the preset owns vs application policy
+
+**The preset owns:**
+- JWT extraction from HttpOnly cookies
+- Cookie header construction with security flags
+- Integration with `@konekti/jwt` verifier
+
+**Application policy (not owned by preset):**
+- Login endpoint implementation (credential validation)
+- User session storage (if needed beyond JWT)
+- Cookie domain and path customization per route
+- Multi-tenant cookie isolation
+- Cookie consent compliance
+
 ## Installation
 
 ```bash
@@ -213,6 +354,9 @@ export class AuthModule {}
 | `RefreshTokenStrategy` | `src/refresh-token.ts` | Auth strategy for refresh token authentication |
 | `JwtRefreshTokenAdapter` | `src/jwt-refresh-token-adapter.ts` | Adapts `@konekti/jwt`'s `RefreshTokenService` to passport interface |
 | `createRefreshTokenProviders(service)` | `src/refresh-token.ts` | Registers refresh token service in DI |
+| `CookieAuthStrategy` | `src/cookie-auth.ts` | Auth strategy that extracts JWT from HttpOnly cookies |
+| `CookieManager` | `src/cookie-manager.ts` | Utilities for setting/clearing auth cookies |
+| `createCookieAuthPreset(config)` | `src/cookie-auth-module.ts` | Creates cookie auth providers and strategy registration |
 
 ## Architecture
 
@@ -260,10 +404,14 @@ The public package also exports auth error classes, bridge types, metadata helpe
 5. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope check, principal population
 6. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle primitives
 7. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — bridges `@konekti/jwt` to passport interface
-8. `src/module.ts` — `createPassportProviders`
-9. `src/passport-js.ts` — `createPassportJsStrategyBridge`
-10. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
-11. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, revocation
+8. `src/cookie-auth.ts` — `CookieAuthStrategy` — JWT extraction from HttpOnly cookies
+9. `src/cookie-manager.ts` — `CookieManager` — cookie setting/clearing utilities
+10. `src/cookie-auth-module.ts` — `createCookieAuthPreset` — cookie auth providers and strategy registration
+11. `src/module.ts` — `createPassportProviders`
+12. `src/passport-js.ts` — `createPassportJsStrategyBridge`
+13. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
+14. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, revocation
+15. `src/cookie-auth.test.ts` — cookie auth strategy and cookie manager tests
 
 ## Related packages
 
@@ -275,4 +423,5 @@ The public package also exports auth error classes, bridge types, metadata helpe
 ```text
 @konekti/passport = strategy-agnostic auth execution: any AuthStrategy → AuthGuard → principal in RequestContext
                  + refresh token lifecycle: issue → rotate → revoke with replay detection
+                 + cookie auth preset: HttpOnly cookie JWT extraction + cookie management utilities
 ```

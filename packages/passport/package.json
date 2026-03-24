@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@konekti/core": "workspace:*",
+    "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",
-    "@konekti/di": "workspace:*"
+    "@konekti/jwt": "workspace:*"
   }
 }

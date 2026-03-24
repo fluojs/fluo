@@ -1,3 +1,6 @@
+export * from './cookie-auth.js';
+export * from './cookie-auth-module.js';
+export * from './cookie-manager.js';
 export * from './decorators.js';
 export * from './errors.js';
 export * from './guard.js';

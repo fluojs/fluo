@@ -51,16 +51,71 @@ For asymmetric algorithms, provide `privateKey` and `publicKey` (PEM strings or 
 
 ## standard auth pattern
 
-The recommended authentication pattern is Bearer token authentication via the `Authorization: Bearer <token>` header.
+The recommended authentication patterns are:
+
+1. **Bearer token authentication** via the `Authorization: Bearer <token>` header
+2. **Cookie authentication** via HttpOnly secure cookies (official preset)
+
+### official cookie auth preset
+
+`@konekti/passport` now provides an official HttpOnly cookie/session auth preset for JWT-based authentication:
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createCookieAuthPreset,
+} from '@konekti/passport';
+import { createJwtCoreProviders } from '@konekti/jwt';
+
+@Module({
+  providers: [
+    ...createJwtCoreProviders({
+      algorithms: ['HS256'],
+      secret: process.env.JWT_SECRET!,
+      issuer: 'my-app',
+      audience: 'my-app-clients',
+      accessTokenTtlSeconds: 3600,
+    }),
+    ...createCookieAuthPreset({
+      cookieAuth: {
+        accessTokenCookieName: 'access_token',
+        refreshTokenCookieName: 'refresh_token',
+        requireAccessToken: true,
+      },
+      cookieManager: {
+        cookieOptions: {
+          secure: true,
+          sameSite: 'strict',
+          path: '/',
+        },
+      },
+    }).providers,
+    ...createPassportProviders(
+      { defaultStrategy: 'cookie' },
+      [createCookieAuthPreset().strategy],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+The preset includes:
+- `CookieAuthStrategy`: Extracts JWT from HttpOnly cookies
+- `CookieManager`: Utilities for setting/clearing auth cookies
+- Secure defaults: `HttpOnly: true`, `Secure: true`, `SameSite: strict`
+
+See `@konekti/passport` documentation for full cookie auth lifecycle details.
 
 ### application-level policies
 
-The following areas are currently treated as application-specific and are not standardized within the framework:
+The following areas remain application-specific:
 
-- HttpOnly cookie authentication presets.
-- Identity provider account linking.
-
-These should be implemented at the application level based on project requirements.
+- Login endpoint implementation (credential validation)
+- User session storage (if needed beyond JWT)
+- Cookie domain and path customization per route
+- Multi-tenant cookie isolation
+- Cookie consent compliance
 
 ### framework-level refresh token lifecycle
 
