@@ -7,6 +7,7 @@ import type {
   EventHandlerMetadata,
   QueryHandlerMetadata,
   QueryType,
+  SagaMetadata,
 } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
@@ -14,10 +15,12 @@ type StandardMetadataBag = Record<PropertyKey, unknown>;
 const commandHandlerMetadataStore = new WeakMap<Function, CommandHandlerMetadata>();
 const queryHandlerMetadataStore = new WeakMap<Function, QueryHandlerMetadata>();
 const eventHandlerMetadataStore = new WeakMap<Function, EventHandlerMetadata>();
+const sagaMetadataStore = new WeakMap<Function, SagaMetadata>();
 
 const standardCommandHandlerMetadataKey = Symbol.for('konekti.cqrs.standard.command-handler');
 const standardQueryHandlerMetadataKey = Symbol.for('konekti.cqrs.standard.query-handler');
 const standardEventHandlerMetadataKey = Symbol.for('konekti.cqrs.standard.event-handler');
+const standardSagaMetadataKey = Symbol.for('konekti.cqrs.standard.saga');
 
 function isObjectRecord(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === 'object' && value !== null;
@@ -33,6 +36,10 @@ function isQueryType(value: unknown): value is QueryType {
 
 function isEventType(value: unknown): value is CqrsEventType {
   return typeof value === 'function';
+}
+
+function isEventTypeList(value: unknown): value is readonly CqrsEventType[] {
+  return Array.isArray(value) && value.every((eventType) => isEventType(eventType));
 }
 
 function getStandardMetadataBag(target: Function): StandardMetadataBag | undefined {
@@ -55,6 +62,12 @@ function cloneQueryHandlerMetadata(metadata: QueryHandlerMetadata): QueryHandler
 function cloneEventHandlerMetadata(metadata: EventHandlerMetadata): EventHandlerMetadata {
   return {
     eventType: metadata.eventType,
+  };
+}
+
+function cloneSagaMetadata(metadata: SagaMetadata): SagaMetadata {
+  return {
+    eventTypes: [...metadata.eventTypes],
   };
 }
 
@@ -91,6 +104,18 @@ function getStandardEventHandlerMetadata(target: Function): EventHandlerMetadata
 
   return {
     eventType: raw.eventType,
+  };
+}
+
+function getStandardSagaMetadata(target: Function): SagaMetadata | undefined {
+  const raw = getStandardMetadataBag(target)?.[standardSagaMetadataKey];
+
+  if (!isObjectRecord(raw) || !isEventTypeList(raw.eventTypes)) {
+    return undefined;
+  }
+
+  return {
+    eventTypes: [...raw.eventTypes],
   };
 }
 
@@ -139,6 +164,21 @@ export function getEventHandlerMetadata(target: Function): EventHandlerMetadata 
   return cloneEventHandlerMetadata(stored ?? standard!);
 }
 
+export function defineSagaMetadata(target: Function, metadata: SagaMetadata): void {
+  sagaMetadataStore.set(target, cloneSagaMetadata(metadata));
+}
+
+export function getSagaMetadata(target: Function): SagaMetadata | undefined {
+  const stored = sagaMetadataStore.get(target);
+  const standard = getStandardSagaMetadata(target);
+
+  if (!stored && !standard) {
+    return undefined;
+  }
+
+  return cloneSagaMetadata(stored ?? standard!);
+}
+
 export function getCommandHandlerMetadataEntry(
   target: object,
 ): { metadata: CommandHandlerMetadata; propertyKey: MetadataPropertyKey } | undefined {
@@ -184,3 +224,4 @@ export function getQueryHandlerMetadataEntry(
 export const commandHandlerMetadataSymbol = standardCommandHandlerMetadataKey;
 export const queryHandlerMetadataSymbol = standardQueryHandlerMetadataKey;
 export const eventHandlerMetadataSymbol = standardEventHandlerMetadataKey;
+export const sagaMetadataSymbol = standardSagaMetadataKey;

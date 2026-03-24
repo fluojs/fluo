@@ -8,46 +8,11 @@ import {
 } from '@konekti/runtime';
 
 import { CqrsBusBase, createDuplicateHandlerMessage } from './discovery.js';
+import { createIsolatedEvent } from './event-clone.js';
 import { DuplicateEventHandlerError } from './errors.js';
 import { getEventHandlerMetadata } from './metadata.js';
+import { CqrsSagaLifecycleService } from './saga-bus.js';
 import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from './types.js';
-
-function fallbackClone(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => fallbackClone(item));
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    const source = value as Record<string, unknown>;
-    const cloned: Record<string, unknown> = {};
-
-    for (const [key, item] of Object.entries(source)) {
-      cloned[key] = fallbackClone(item);
-    }
-
-    return cloned;
-  }
-
-  return value;
-}
-
-function cloneValue<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return fallbackClone(value) as T;
-  }
-}
-
-function createIsolatedEvent<TEvent extends IEvent>(eventType: CqrsEventType<TEvent>, source: unknown): TEvent {
-  const clonedPayload = cloneValue(source);
-
-  if (typeof clonedPayload !== 'object' || clonedPayload === null) {
-    return clonedPayload as TEvent;
-  }
-
-  return Object.assign(Object.create(eventType.prototype) as object, clonedPayload) as TEvent;
-}
 
 function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -57,7 +22,7 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   return typeof (value as { handle?: unknown }).handle === 'function';
 }
 
-@Inject([KONEKTI_EVENT_BUS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject([KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap {
   private descriptors = new Map<CqrsEventType, EventHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;
@@ -65,6 +30,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   constructor(
     private readonly eventBus: EventBus,
+    private readonly sagaService: CqrsSagaLifecycleService,
     runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
@@ -89,6 +55,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event));
     }
+
+    await this.sagaService.dispatch(event);
   }
 
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {

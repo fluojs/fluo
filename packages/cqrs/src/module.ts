@@ -5,14 +5,16 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 import { CommandBusLifecycleService } from './command-bus.js';
 import { CqrsEventBusService } from './event-bus.js';
 import { QueryBusLifecycleService } from './query-bus.js';
+import { CqrsSagaLifecycleService } from './saga-bus.js';
 import { CQRS_EVENT_BUS, COMMAND_BUS, QUERY_BUS } from './tokens.js';
-import type { CommandHandlerClass, EventHandlerClass, QueryHandlerClass } from './types.js';
+import type { CommandHandlerClass, EventHandlerClass, QueryHandlerClass, SagaClass } from './types.js';
 
 export interface CqrsModuleOptions {
   commandHandlers?: readonly CommandHandlerClass[];
   eventBus?: EventBusModuleOptions;
   eventHandlers?: readonly EventHandlerClass[];
   queryHandlers?: readonly QueryHandlerClass[];
+  sagas?: readonly SagaClass[];
 }
 
 function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
@@ -30,6 +32,10 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
     providers.push(eventHandler);
   }
 
+  for (const saga of options.sagas ?? []) {
+    providers.push(saga);
+  }
+
   return providers;
 }
 
@@ -43,6 +49,7 @@ export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[]
       provide: QUERY_BUS,
       useClass: QueryBusLifecycleService,
     },
+    CqrsSagaLifecycleService,
     {
       provide: CQRS_EVENT_BUS,
       useClass: CqrsEventBusService,
