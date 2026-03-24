@@ -29,6 +29,80 @@ Scope note:
 - refresh-token rotation, revoke/logout handling, and cookie/session policy remain application-level concerns
 - `@konekti/passport` owns strategy execution, not the broader account/session lifecycle
 
+## Refresh Token Lifecycle
+
+`@konekti/passport` now provides framework-level primitives for refresh token operations:
+
+- **Issue**: Create new refresh tokens for subjects
+- **Rotate**: Exchange refresh tokens for new access + refresh tokens with replay detection
+- **Revoke**: Invalidate specific tokens or all tokens for a subject (logout)
+
+### Use the refresh token strategy
+
+```typescript
+import { Controller, Post } from '@konekti/http';
+import { UseAuth, RefreshTokenStrategy } from '@konekti/passport';
+import type { RequestContext } from '@konekti/http';
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(_: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+### Register the refresh token adapter
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createRefreshTokenProviders,
+  JwtRefreshTokenAdapter,
+  RefreshTokenStrategy,
+} from '@konekti/passport';
+
+@Module({
+  providers: [
+    JwtRefreshTokenAdapter,
+    RefreshTokenStrategy,
+    ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
+    ...createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'refresh-token', token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+### Implement a custom refresh token service
+
+```typescript
+import type { RefreshTokenService } from '@konekti/passport';
+
+export class MyRefreshTokenService implements RefreshTokenService {
+  async issueRefreshToken(subject: string): Promise<string> {
+    // Your implementation
+  }
+
+  async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // Your implementation with rotation and replay detection
+  }
+
+  async revokeRefreshToken(tokenId: string): Promise<void> {
+    // Your implementation
+  }
+
+  async revokeAllForSubject(subject: string): Promise<void> {
+    // Logout: revoke all tokens for subject
+  }
+}
+```
+
 ## Installation
 
 ```bash
@@ -135,6 +209,10 @@ export class AuthModule {}
 | `createPassportProviders(opts)` | `src/module.ts` | Registers strategy registry and default strategy wiring |
 | `createPassportJsStrategyBridge(...)` | `src/passport-js.ts` | Wraps a Passport.js strategy as a Konekti `AuthStrategy` |
 | `AuthRequirement` | `src/types.ts` | `{ strategy?, scopes? }` — merged from class + method level |
+| `RefreshTokenService` | `src/refresh-token.ts` | Interface for refresh token lifecycle operations |
+| `RefreshTokenStrategy` | `src/refresh-token.ts` | Auth strategy for refresh token authentication |
+| `JwtRefreshTokenAdapter` | `src/jwt-refresh-token-adapter.ts` | Adapts `@konekti/jwt`'s `RefreshTokenService` to passport interface |
+| `createRefreshTokenProviders(service)` | `src/refresh-token.ts` | Registers refresh token service in DI |
 
 ## Architecture
 
@@ -180,9 +258,12 @@ The public package also exports auth error classes, bridge types, metadata helpe
 3. `src/decorators.ts` — `UseAuth`, `RequireScopes` — metadata write + `AuthGuard` attachment
 4. `src/errors.ts` — auth-specific error types
 5. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope check, principal population
-6. `src/module.ts` — `createPassportProviders`
-7. `src/passport-js.ts` — `createPassportJsStrategyBridge`
-8. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
+6. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle primitives
+7. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — bridges `@konekti/jwt` to passport interface
+8. `src/module.ts` — `createPassportProviders`
+9. `src/passport-js.ts` — `createPassportJsStrategyBridge`
+10. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
+11. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, revocation
 
 ## Related packages
 
@@ -193,4 +274,5 @@ The public package also exports auth error classes, bridge types, metadata helpe
 
 ```text
 @konekti/passport = strategy-agnostic auth execution: any AuthStrategy → AuthGuard → principal in RequestContext
+                 + refresh token lifecycle: issue → rotate → revoke with replay detection
 ```

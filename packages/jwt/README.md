@@ -24,7 +24,7 @@ The current official docs/examples path uses this package through bearer-token a
 Current scope notes:
 
 - Shipped algorithms: `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`.
-- Refresh-token issuance, rotation, and revoke/logout flows are outside this package and remain application-owned.
+- Refresh-token issuance, rotation, and revoke/logout flows are available through `@konekti/passport`'s `RefreshTokenService` interface.
 
 ## Installation
 
@@ -149,9 +149,11 @@ const verifier = new DefaultJwtVerifier({
 | `createJwtCoreProviders(options)` | `src/module.ts` | Registers options, verifier, and signer in one call |
 | `JwtPrincipal` | `src/types.ts` | `{ subject, issuer?, audience?, roles?, scopes?, claims }` |
 | `JwtClaims` | `src/types.ts` | Raw claims shape |
-| `JwtVerifierOptions` | `src/types.ts` | `{ secret?, privateKey?, publicKey?, issuer?, audience?, algorithms?, accessTokenTtlSeconds?, keys? }` |
+| `JwtVerifierOptions` | `src/types.ts` | `{ secret?, privateKey?, publicKey?, issuer?, audience?, algorithms?, accessTokenTtlSeconds?, keys?, refreshToken? }` |
 | `JwtVerifier` | `src/types.ts` | Interface for custom verifier implementations |
 | `JwtSigner` | `src/types.ts` | Interface for custom signer implementations |
+| `RefreshTokenService` | `src/refresh-token.ts` | Service for refresh token lifecycle (issue, rotate, revoke) |
+| `RefreshTokenStore` | `src/refresh-token.ts` | Interface for refresh token persistence |
 
 ## Architecture
 
@@ -190,17 +192,62 @@ Two separate checks exist: "is this algorithm in the allowlist?" and "does this 
 2. `src/errors.ts` — typed JWT errors (expired, invalid signature, missing claim, etc.)
 3. `src/verifier.ts` — `DefaultJwtVerifier`, `normalizePrincipal`
 4. `src/signer.ts` — `DefaultJwtSigner`, defaults filling
-5. `src/module.ts` — `createJwtCoreProviders`
-6. `src/verifier.test.ts` — happy path, expired token, invalid signature
-7. `src/signer.test.ts` — sign/verify roundtrip
+5. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStore`, rotation with replay detection
+6. `src/module.ts` — `createJwtCoreProviders`
+7. `src/verifier.test.ts` — happy path, expired token, invalid signature
+8. `src/signer.test.ts` — sign/verify roundtrip
+9. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, concurrent attempts
+
+## Refresh token integration
+
+For refresh token lifecycle (issue, rotate, revoke with replay detection), use `@konekti/passport`:
+
+```typescript
+import { Module } from '@konekti/core';
+import { createJwtCoreProviders } from '@konekti/jwt';
+import {
+  createPassportProviders,
+  createRefreshTokenProviders,
+  JwtRefreshTokenAdapter,
+  RefreshTokenStrategy,
+} from '@konekti/passport';
+
+@Module({
+  providers: [
+    ...createJwtCoreProviders({
+      algorithms: ['HS256'],
+      secret: process.env.JWT_SECRET!,
+      issuer: 'my-app',
+      audience: 'my-app-clients',
+      accessTokenTtlSeconds: 3600,
+      refreshToken: {
+        secret: process.env.REFRESH_TOKEN_SECRET!,
+        expiresInSeconds: 604800, // 7 days
+        rotation: true,
+      },
+    }),
+    JwtRefreshTokenAdapter,
+    RefreshTokenStrategy,
+    ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
+    ...createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'refresh-token', token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+See `@konekti/passport` documentation for full refresh token lifecycle details.
 
 ## Related packages
 
-- `@konekti/passport` — the auth strategy/guard layer that calls this token core
+- `@konekti/passport` — the auth strategy/guard layer that calls this token core, including refresh token lifecycle
 - `@konekti/http` — how auth failures become HTTP responses
 
 ## One-liner mental model
 
 ```text
 @konekti/jwt = HTTP-agnostic token core: sign → verify → normalize to JwtPrincipal
+             + refresh token lifecycle via @konekti/passport: issue → rotate → revoke
 ```
