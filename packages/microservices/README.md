@@ -132,19 +132,19 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 ## Transport notes
 
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
-- `RedisPubSubMicroserviceTransport` supports `emit()` fan-out only. Use TCP transport for request/reply `send()` semantics.
+- `RedisPubSubMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via separate request, response, and event channels with correlation-based reply routing.
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
-- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` are event-only transports: they support `emit()` plus inbound event dispatch. For request/reply `send()`, use TCP or NATS transport.
+- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` are event-only transports: they support `emit()` plus inbound event dispatch. For request/reply `send()`, use TCP, NATS, or Redis transport.
 
 ### Kafka
 
-- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP or NATS instead.
+- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, or Redis instead.
 - Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
 - Ordering, offset commit policy, consumer group recovery, and broker-specific reconnect semantics are not guaranteed by Konekti itself; treat them as broker/client concerns unless a future guide says otherwise.
 
 ### RabbitMQ
 
-- `RabbitMqMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP or NATS instead.
+- `RabbitMqMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, or Redis instead.
 - Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
 - Ack/nack, requeue, dead-letter, and channel recovery policies are not configured by this adapter today. Treat them as broker/client concerns unless a future guide says otherwise.
 
@@ -153,6 +153,15 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` by using separate request/reply and event subjects.
 - `send()` applies `requestTimeoutMs` and only propagates handler failures that the transport can serialize back as an error message.
 - Reconnect behavior, buffering, and responder availability remain client/server concerns; if request/reply guarantees matter operationally, validate them against your chosen NATS client/runtime setup.
+
+### Redis
+
+- `RedisPubSubMicroserviceTransport` supports both `send()` and `emit()` using separate Redis channels for requests, responses, and events.
+- `send()` publishes a message with a unique `requestId` to the request channel and waits for a correlated response on the response channel.
+- Handler failures are serialized back as error messages and rejected at the caller side.
+- `send()` applies `requestTimeoutMs` (default 3 000 ms) and rejects pending promises if the timeout expires or the transport closes.
+- `AbortSignal` is supported: passing an already-aborted signal rejects immediately; passing a signal that fires later aborts the in-flight request.
+- On `close()`, all pending request promises are rejected and subscriptions are removed cleanly.
 
 ## Hybrid mode
 

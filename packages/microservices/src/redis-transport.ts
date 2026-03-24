@@ -27,10 +27,12 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private listening = false;
   private listenPromise: Promise<void> | undefined;
   private readonly namespace: string;
-  private readonly pending = new Map<string, { reject: (error: unknown) => void; resolve: (value: unknown) => void }>();
+  private readonly pending = new Map<string, { reject: (error: unknown) => void; resolve: (value: unknown) => void; timeout: ReturnType<typeof setTimeout> }>();
+  private readonly requestTimeoutMs: number;
 
   constructor(private readonly options: RedisPubSubMicroserviceTransportOptions) {
     this.namespace = options.namespace ?? 'konekti:microservices';
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
   async listen(handler: TransportHandler): Promise<void> {
@@ -76,10 +78,61 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
-    void pattern;
-    void payload;
-    void signal;
-    throw new Error('RedisPubSubMicroserviceTransport does not support request/reply send(). Use TCP transport for send().');
+    if (!this.listening) {
+      throw new Error('RedisPubSubMicroserviceTransport is not listening. Call listen() before send().');
+    }
+
+    const requestId = crypto.randomUUID();
+    const message: RedisPubSubMessage = {
+      kind: 'message',
+      pattern,
+      payload,
+      requestId,
+    };
+
+    return await new Promise<unknown>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(new Error(`Redis request timed out after ${this.requestTimeoutMs}ms waiting for pattern "${pattern}".`));
+      }, this.requestTimeoutMs);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        this.pending.delete(requestId);
+      };
+
+      this.pending.set(requestId, {
+        resolve: (value: unknown) => {
+          cleanup();
+          resolve(value);
+        },
+        reject: (error: unknown) => {
+          cleanup();
+          reject(error);
+        },
+        timeout,
+      });
+
+      if (signal) {
+        if (signal.aborted) {
+          cleanup();
+          reject(new Error('Redis request aborted before publish.'));
+          return;
+        }
+
+        const onAbort = () => {
+          cleanup();
+          reject(new Error('Redis request aborted.'));
+        };
+
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      void this.options.publishClient.publish(this.requestChannel, JSON.stringify(message)).catch((error: unknown) => {
+        cleanup();
+        reject(error instanceof Error ? error : new Error('Failed to publish Redis request.'));
+      });
+    });
   }
 
   async close(): Promise<void> {
@@ -99,6 +152,7 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
     this.handler = undefined;
 
     for (const [requestId, entry] of this.pending) {
+      clearTimeout(entry.timeout);
       this.pending.delete(requestId);
       entry.reject(new Error('Redis microservice transport closed before response.'));
     }
