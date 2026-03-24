@@ -799,4 +799,128 @@ describe('@konekti/graphql — provider scopes', () => {
 
     await app.close();
   });
+
+  it('discovers resolvers from useValue providers via instance constructor', async () => {
+    @Resolver('UseValueResolver')
+    class UseValueResolver {
+      constructor(private readonly greeting: string) {}
+
+      @Query()
+      useValueHello(): string {
+        return this.greeting;
+      }
+    }
+
+    const resolverInstance = new UseValueResolver('Hello from useValue!');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule()],
+      providers: [{ provide: UseValueResolver, useValue: resolverInstance }],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    await expect(postGraphql(port, '{ useValueHello }')).resolves.toEqual({
+      data: { useValueHello: 'Hello from useValue!' },
+    });
+
+    await app.close();
+  });
+
+  it('discovers resolvers from useFactory providers with resolverClass', async () => {
+    @Resolver('UseFactoryResolver')
+    class UseFactoryResolver {
+      constructor(private readonly config: { prefix: string }) {}
+
+      @Query()
+      useFactoryGreeting(): string {
+        return `${this.config.prefix} World`;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule()],
+      providers: [
+        {
+          provide: UseFactoryResolver,
+          useFactory: () => new UseFactoryResolver({ prefix: 'Hello' }),
+          resolverClass: UseFactoryResolver,
+        },
+      ],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    await expect(postGraphql(port, '{ useFactoryGreeting }')).resolves.toEqual({
+      data: { useFactoryGreeting: 'Hello World' },
+    });
+
+    await app.close();
+  });
+
+  it('handles mixed provider registrations (class, useValue, useFactory) in same module', async () => {
+    @Resolver('ClassResolver')
+    class ClassResolver {
+      @Query()
+      classHello(): string {
+        return 'from class';
+      }
+    }
+
+    @Resolver('ValueResolver')
+    class ValueResolver {
+      @Query()
+      valueHello(): string {
+        return 'from value';
+      }
+    }
+
+    @Resolver('FactoryResolver')
+    class FactoryResolver {
+      @Query()
+      factoryHello(): string {
+        return 'from factory';
+      }
+    }
+
+    const valueInstance = new ValueResolver();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule()],
+      providers: [
+        ClassResolver,
+        { provide: ValueResolver, useValue: valueInstance },
+        {
+          provide: FactoryResolver,
+          useFactory: () => new FactoryResolver(),
+          resolverClass: FactoryResolver,
+        },
+      ],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    await app.listen();
+
+    await expect(postGraphql(port, '{ classHello }')).resolves.toEqual({
+      data: { classHello: 'from class' },
+    });
+
+    await expect(postGraphql(port, '{ valueHello }')).resolves.toEqual({
+      data: { valueHello: 'from value' },
+    });
+
+    await expect(postGraphql(port, '{ factoryHello }')).resolves.toEqual({
+      data: { factoryHello: 'from factory' },
+    });
+
+    await app.close();
+  });
 });

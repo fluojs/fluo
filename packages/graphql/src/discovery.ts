@@ -1,5 +1,5 @@
 import { getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
-import type { Provider } from '@konekti/di';
+import type { FactoryProvider, Provider, ValueProvider } from '@konekti/di';
 import type { CompiledModule } from '@konekti/runtime';
 
 import { getArgFieldMetadataEntries, getResolverHandlerMetadataEntries, getResolverMetadata } from './metadata.js';
@@ -26,6 +26,14 @@ function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'trans
 
 function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
+}
+
+function isValueProvider(provider: Provider): provider is ValueProvider {
+  return typeof provider === 'object' && provider !== null && 'useValue' in provider;
+}
+
+function isFactoryProvider(provider: Provider): provider is FactoryProvider {
+  return typeof provider === 'object' && provider !== null && 'useFactory' in provider;
 }
 
 function methodKeyToName(methodKey: MetadataPropertyKey): string {
@@ -62,6 +70,51 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
           targetType: provider.useClass,
           token: provider.provide,
         });
+        continue;
+      }
+
+      if (isValueProvider(provider)) {
+        const value = provider.useValue;
+
+        if (typeof value === 'function') {
+          candidates.push({
+            moduleName: compiledModule.type.name,
+            scope: 'singleton',
+            targetType: value,
+            token: provider.provide,
+          });
+          continue;
+        }
+
+        if (typeof value === 'object' && value !== null) {
+          const constructor = value.constructor as Function | undefined;
+
+          if (constructor && constructor !== Object) {
+            candidates.push({
+              moduleName: compiledModule.type.name,
+              scope: 'singleton',
+              targetType: constructor,
+              token: provider.provide,
+            });
+          }
+        }
+
+        continue;
+      }
+
+      if (isFactoryProvider(provider)) {
+        const resolverClass = (provider as FactoryProvider & { resolverClass?: Function }).resolverClass;
+
+        if (resolverClass) {
+          candidates.push({
+            moduleName: compiledModule.type.name,
+            scope: scopeFromProvider(provider),
+            targetType: resolverClass,
+            token: provider.provide,
+          });
+        }
+
+        continue;
       }
     }
 
