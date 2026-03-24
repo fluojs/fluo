@@ -7,11 +7,20 @@ export interface HealthStatus {
   status: 'ok' | 'unavailable';
 }
 
+export interface HealthCheckResponse {
+  body: unknown;
+  statusCode?: number;
+}
+
 export interface ReadinessStatus {
   status: 'ready' | 'starting' | 'unavailable';
 }
 
 export interface HealthModuleOptions {
+  healthCheck?: (ctx: import('@konekti/http').RequestContext) =>
+    | HealthStatus
+    | HealthCheckResponse
+    | Promise<HealthStatus | HealthCheckResponse>;
   path?: string;
 }
 
@@ -22,11 +31,34 @@ export function createHealthModule(options: HealthModuleOptions = {}): ModuleTyp
   const readinessChecks: ReadinessCheck[] = [];
   let ready = false;
 
+  const resolveHealthResponse = async (
+    ctx: import('@konekti/http').RequestContext,
+  ): Promise<HealthStatus | HealthCheckResponse> => {
+    if (!options.healthCheck) {
+      return { status: 'ok' };
+    }
+
+    return options.healthCheck(ctx);
+  };
+
+  const isHealthCheckResponse = (value: HealthStatus | HealthCheckResponse): value is HealthCheckResponse =>
+    typeof value === 'object' && value !== null && 'body' in value;
+
   @Controller(basePath)
   class HealthController {
     @Get('/health')
-    health(): HealthStatus {
-      return { status: 'ok' };
+    async health(_input: undefined, ctx: import('@konekti/http').RequestContext): Promise<unknown> {
+      const result = await resolveHealthResponse(ctx);
+
+      if (isHealthCheckResponse(result)) {
+        if (result.statusCode !== undefined) {
+          ctx.response.setStatus(result.statusCode);
+        }
+
+        return result.body;
+      }
+
+      return result;
     }
 
     @Get('/ready')

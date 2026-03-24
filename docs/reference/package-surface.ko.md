@@ -20,6 +20,7 @@
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/terminus`
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serializer`
@@ -55,6 +56,7 @@
 - **`@konekti/websocket`**: 데코레이터 기반 WebSocket 게이트웨이 탐색 및 Node 업그레이드 연결.
 - **`@konekti/queue`**: 워커 탐색과 DLQ(Dead Letter Queue)를 지원하는 Redis 기반 백그라운드 작업.
 - **데이터 통합**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`.
+- **`@konekti/terminus`**: 헬스 인디케이터 조합과 런타임 헬스 응답 집계를 확장하는 운영 헬스 패키지.
 - **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티.
 - **`@konekti/cli`**: 애플리케이션 부트스트랩 및 생성 명령어.
 
