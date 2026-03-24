@@ -42,6 +42,8 @@ konekti new my-app
 
 `--target-directory` always wins over the positional project name, regardless of argument order.
 
+The generated `dev` script is a runner-level restart path based on Node watch mode and `tsx`. That starter workflow restarts the process for source edits; it is not a promise of in-process HMR.
+
 For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported.
 
 ### Generate a file inside an existing project
