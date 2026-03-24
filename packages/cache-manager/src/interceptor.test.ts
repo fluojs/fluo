@@ -13,10 +13,23 @@ const cacheOptions: NormalizedCacheModuleOptions = {
   keyPrefix: 'konekti:cache:',
   store: 'memory',
   ttl: 0,
+  httpKeyStrategy: 'route',
 };
 
 function createRequestContext(method: string, url: string, path = url): RequestContext {
   const headers: Record<string, string | string[]> = {};
+  const queryStart = url.indexOf('?');
+  const query: Record<string, string> = {};
+
+  if (queryStart !== -1) {
+    const queryString = url.slice(queryStart + 1);
+    for (const pair of queryString.split('&')) {
+      const [key, value] = pair.split('=');
+      if (key) {
+        query[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
+      }
+    }
+  }
 
   return {
     container: {
@@ -35,7 +48,7 @@ function createRequestContext(method: string, url: string, path = url): RequestC
       method,
       params: {},
       path,
-      query: {},
+      query,
       raw: {},
       url,
     },
@@ -268,5 +281,159 @@ describe('CacheInterceptor', () => {
     await interceptor.intercept(context, next);
 
     await expect(cacheService.get('/products')).resolves.toBeUndefined();
+  });
+
+  describe('httpKeyStrategy', () => {
+    it('strategy "route" ignores query parameters in cache key', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ page: 1 })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(1);
+      expect(await cacheService.get('/products')).toEqual({ page: 1 });
+    });
+
+    it('strategy "route+query" includes sorted query in cache key', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&sort=asc', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?sort=asc&page=1', '/products'));
+      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2&sort=asc', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'response' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+      await interceptor.intercept(thirdContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products?page=1&sort=asc')).toEqual({ data: 'response' });
+      expect(await cacheService.get('/products?page=2&sort=asc')).toEqual({ data: 'response' });
+    });
+
+    it('strategy "route+query" produces same key regardless of query param order', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?b=2&a=1', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?a=1&b=2', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'test' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('strategy "route+query" treats no-query and empty-query differently from route-only', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const noQueryContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products'));
+      const withQueryContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'response' })),
+      };
+
+      await interceptor.intercept(noQueryContext, next);
+      await interceptor.intercept(withQueryContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products')).toEqual({ data: 'response' });
+      expect(await cacheService.get('/products?page=1')).toEqual({ data: 'response' });
+    });
+
+    it('custom function strategy allows arbitrary key computation', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const customStrategy = (context: InterceptorContext) => {
+        const path = context.handler.metadata.effectivePath;
+        const tenantId = context.requestContext.request.headers['x-tenant-id'] ?? 'default';
+        return `${tenantId}:${path}`;
+      };
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: customStrategy });
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products'));
+      firstContext.requestContext.request.headers['x-tenant-id'] = 'tenant-a';
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products', '/products'));
+      secondContext.requestContext.request.headers['x-tenant-id'] = 'tenant-b';
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'response' })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('tenant-a:/products')).toEqual({ data: 'response' });
+      expect(await cacheService.get('tenant-b:/products')).toEqual({ data: 'response' });
+    });
+
+    it('@CacheKey decorator overrides httpKeyStrategy', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        @CacheKey('custom-key')
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'route+query' });
+      const context = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ data: 'test' })),
+      };
+
+      await interceptor.intercept(context, next);
+      await interceptor.intercept(context, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(1);
+      expect(await cacheService.get('custom-key')).toEqual({ data: 'test' });
+      expect(await cacheService.get('/products?page=1')).toBeUndefined();
+    });
+
+    it('default strategy is "route" for backward compatibility', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor } = createInterceptor();
+      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1', '/products'));
+      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
+      const next: CallHandler = {
+        handle: vi.fn(async () => ({ count: 1 })),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(1);
+    });
   });
 });
