@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest';
+
+import { createTestingModule } from '@konekti/testing';
+
+import { <%- resource %>Module } from './<%- kebab %>.module';
+import { <%- pascal %> } from './<%- kebab %>.repo';
+
+describe('<%- pascal %> slice template', () => {
+  it('resolves from the module graph', async () => {
+    const testingModule = await createTestingModule({ rootModule: <%- resource %>Module }).compile();
+    const repo = await testingModule.resolve(<%- pascal %>);
+
+    await expect(repo.list<%- resource %>s()).resolves.toEqual([]);
+  });
+});

@@ -38,7 +38,13 @@ Current public boundary:
 - keep `@konekti/testing` as the public testing baseline
 - surface covers module compilation, dispatch, request helpers, and provider/module introspection
 - module introspection utilities are explicitly stable public API, not internal helpers
-- do not add richer generated test-template families now
+- official generated templates now include:
+  - starter unit templates: `src/health/*.test.ts`
+  - starter integration template: `src/app.test.ts`
+  - starter e2e-style template: `src/app.e2e.test.ts` (uses `createTestApp`)
+  - slice unit template: `<name>.repo.test.ts` from `konekti g repo <Name>`
+  - slice/integration template: `<name>.repo.slice.test.ts` from `konekti g repo <Name>` (uses `createTestingModule`)
+- choose unit templates for fast logic checks; choose slice/e2e templates for module wiring and route-level confidence
 
 Primary evidence:
 
@@ -60,7 +66,7 @@ Use these files as the contract examples when expanding tests:
 
 ## generated app expectations
 
-`konekti new` emits a starter app with a runnable `src/app.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, `test`, and `konekti g ...` immediately after install, while the generated app test itself proves `/health`, `/ready`, and the starter-owned `/health-info/` route.
+`konekti new` emits runnable starter tests in both integration and e2e-style forms: `src/app.test.ts` and `src/app.e2e.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, and `test` immediately after install, then generate a repo slice and re-run `typecheck` + `test` with the generated `user.repo.test.ts` and `user.repo.slice.test.ts` templates.
 
 For contributor-facing manual verification, `packages/cli` now exposes a persistent sandbox harness:
 
@@ -68,7 +74,7 @@ For contributor-facing manual verification, `packages/cli` now exposes a persist
 pnpm --dir packages/cli run sandbox:test
 ```
 
-That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns the same generated-app checks (`typecheck`, `build`, `test`, and `konekti g repo User`) against the installed CLI binary.
+That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns generated-app checks (`typecheck`, `build`, `test`), runs `konekti g repo User` through the installed CLI binary, and validates the generated repo templates by re-running `typecheck` and `test`.
 
 `KONEKTI_CLI_SANDBOX_ROOT=/path` is still available for advanced local setups, but it must point to a dedicated directory outside the monorepo workspace. Repo-internal paths are warned on and automatically replaced with the temp sandbox root so contributor verification keeps using a standalone app.
 

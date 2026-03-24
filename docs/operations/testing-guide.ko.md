@@ -34,7 +34,13 @@ pnpm verify:release-candidate
 
 - `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
 - 공개 표면은 모듈 컴파일, dispatch, 경량 request 헬퍼에 집중합니다.
-- 더 풍부한 generated test-template 계열도 지금 추가하지 않습니다.
+- 현재 공식 generated 템플릿은 다음을 포함합니다:
+  - 스타터 unit 템플릿: `src/health/*.test.ts`
+  - 스타터 integration 템플릿: `src/app.test.ts`
+  - 스타터 e2e 스타일 템플릿: `src/app.e2e.test.ts` (`createTestApp` 사용)
+  - 슬라이스 unit 템플릿: `konekti g repo <Name>`가 생성하는 `<name>.repo.test.ts`
+  - 슬라이스 integration 템플릿: `konekti g repo <Name>`가 생성하는 `<name>.repo.slice.test.ts` (`createTestingModule` 사용)
+- 빠른 로직 검증에는 unit 템플릿을, 모듈 wiring/라우트 수준 검증에는 slice/e2e 템플릿을 선택하세요.
 
 주요 근거 자료:
 
@@ -55,7 +61,7 @@ pnpm verify:release-candidate
 
 ## generated app expectations
 
-`konekti new`는 실행 가능한 `src/app.test.ts`가 포함된 스타터 앱을 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`, `konekti g ...`를 실행할 수 있는지 검증하며, 생성된 앱 테스트 자체는 `/health`, `/ready`, 그리고 스타터가 소유한 `/health-info/` 라우트 작동 여부를 증명합니다.
+`konekti new`는 integration과 e2e 스타일 모두를 포함한 스타터 테스트(`src/app.test.ts`, `src/app.e2e.test.ts`)를 생성합니다. `packages/cli/src/cli.test.ts`의 스캐폴드 통합 커버리지는 새 프로젝트가 설치 직후 `typecheck`, `build`, `test`를 실행할 수 있는지 검증하고, 이어서 repo 슬라이스를 생성한 뒤 `user.repo.test.ts`, `user.repo.slice.test.ts` 템플릿과 함께 `typecheck` 및 `test`를 다시 검증합니다.
 
 기여자를 위한 수동 검증용으로 `packages/cli`는 이제 영구적인 샌드박스 하네스를 제공합니다:
 
@@ -63,7 +69,7 @@ pnpm verify:release-candidate
 pnpm --dir packages/cli run sandbox:test
 ```
 
-이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 설치된 CLI 바이너리에 대해 동일한 생성 앱 체크(`typecheck`, `build`, `test`, `konekti g repo User`)를 다시 실행합니다.
+이 명령은 로컬에 패키징된 워크스페이스 패키지를 사용하여 임시 샌드박스 경로의 `starter-app`을 갱신한 뒤, 생성 앱 체크(`typecheck`, `build`, `test`)를 실행하고 설치된 CLI 바이너리로 `konekti g repo User`를 수행한 다음, 생성된 repo 템플릿까지 포함해 `typecheck`와 `test`를 다시 검증합니다.
 
 고급 로컬 설정을 위해 `KONEKTI_CLI_SANDBOX_ROOT=/path`를 여전히 사용할 수 있지만, 반드시 모노레포 워크스페이스 외부의 전용 디렉터리를 가리켜야 합니다. 레포 내부 경로는 경고와 함께 자동으로 임시 샌드박스 루트로 대체되어, 기여자 검증이 독립된 앱 환경에서 유지되도록 합니다.
 
