@@ -30,6 +30,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
@@ -38,12 +39,14 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/serializer`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/cqrs`
 - `@konekti/event-bus`
 - `@konekti/websocket`
 - `@konekti/queue`
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/terminus`
 - `@konekti/testing`
 - `@konekti/cli`
 

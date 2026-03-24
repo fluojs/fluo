@@ -58,6 +58,8 @@ Konekti runtime provides built-in health and readiness endpoints. By default, th
 - `/health`: Liveness probe. Returns `200 { status: 'ok' }` when the process is up.
 - `/ready`: Readiness probe. Returns `200` once the application bootstrap is complete and all registered readiness checks pass. Returns `503` during startup or when a dependency check fails.
 
+If you register `@konekti/terminus`, `/health` can return enriched indicator details and HTTP `503` when any registered indicator is down.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment

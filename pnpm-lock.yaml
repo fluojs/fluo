@@ -407,6 +407,30 @@ importers:
         specifier: workspace:*
         version: link:../http
 
+  packages/terminus:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/drizzle':
+        specifier: workspace:*
+        version: link:../drizzle
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/prisma':
+        specifier: workspace:*
+        version: link:../prisma
+      '@konekti/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/testing:
     dependencies:
       '@babel/core':

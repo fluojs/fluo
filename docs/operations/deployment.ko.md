@@ -57,6 +57,8 @@ Konekti 런타임은 내장된 헬스 체크와 레디니스 엔드포인트를 
 - `/health`: Liveness probe. 프로세스가 실행 중일 때 `200 { status: 'ok' }`를 반환합니다.
 - `/ready`: Readiness probe. 애플리케이션 부트스트랩이 완료되고 등록된 모든 레디니스 체크를 통과하면 `200`을 반환합니다. 시작 중이거나 의존성 체크에 실패하면 `503`을 반환합니다.
 
+`@konekti/terminus`를 등록하면 `/health`가 인디케이터 상세 정보를 포함한 응답을 반환할 수 있으며, 등록된 인디케이터 중 하나라도 실패하면 HTTP `503`을 반환합니다.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
