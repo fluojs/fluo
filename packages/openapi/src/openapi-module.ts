@@ -49,8 +49,9 @@ function createSwaggerUiHtml(title: string): string {
     <div id="swagger-ui"></div>
     <script src="${SWAGGER_UI_BUNDLE_JS_URL}" crossorigin></script>
     <script>
+      const specUrl = window.location.pathname.replace(/\/docs\/?$/, '/openapi.json');
       window.ui = SwaggerUIBundle({
-        url: '/openapi.json',
+        url: specUrl,
         dom_id: '#swagger-ui'
       });
     </script>

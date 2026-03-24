@@ -1,9 +1,11 @@
+import { createServer } from 'node:net';
+
 import { describe, expect, it } from 'vitest';
 
 import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 import { Controller, Get, IntersectionType, OmitType, PartialType, PickType, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { bootstrapApplication, bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag } from './decorators.js';
 import { OpenApiModule } from './openapi-module.js';
@@ -47,6 +49,31 @@ function createResponse(): TestFrameworkResponse {
     statusCode: undefined,
     statusSet: false,
   };
+}
+
+async function findAvailablePort(): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+
+    server.once('error', reject);
+    server.listen(0, () => {
+      const address = server.address();
+
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to resolve an available port.'));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(address.port);
+      });
+    });
+  });
 }
 
 describe('OpenApiModule', () => {
@@ -268,8 +295,64 @@ describe('OpenApiModule', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toBe('text/html; charset=utf-8');
-    expect(response.body).toEqual(expect.stringContaining("url: '/openapi.json'"));
+    expect(response.body).toEqual(expect.stringContaining('const specUrl = window.location.pathname.replace('));
+    expect(response.body).toEqual(expect.stringContaining("url: specUrl"));
     expect(response.body).toEqual(expect.stringContaining('SwaggerUIBundle'));
+  });
+
+  it('serves prefix-aware Swagger UI when globalPrefix is configured', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: HealthController }]).descriptors;
+    const openApiModule = OpenApiModule.forRoot({
+      descriptors,
+      title: 'Docs API',
+      ui: true,
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      imports: [openApiModule],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [docsResponse, docsTrailingSlashResponse, specResponse, unprefixedSpecResponse] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetch(`http://127.0.0.1:${String(port)}/api/docs/`),
+      fetch(`http://127.0.0.1:${String(port)}/api/openapi.json`),
+      fetch(`http://127.0.0.1:${String(port)}/openapi.json`),
+    ]);
+    const docsHtml = await docsResponse.text();
+    const docsTrailingHtml = await docsTrailingSlashResponse.text();
+
+    expect(docsResponse.status).toBe(200);
+    expect(docsHtml).toContain('const specUrl = window.location.pathname.replace(');
+    expect(docsHtml).toContain('url: specUrl');
+    expect(docsTrailingSlashResponse.status).toBe(200);
+    expect(docsTrailingHtml).toContain('const specUrl = window.location.pathname.replace(');
+    expect(docsTrailingHtml).toContain('url: specUrl');
+    expect(specResponse.status).toBe(200);
+    expect(unprefixedSpecResponse.status).toBe(404);
+
+    await app.close();
   });
 
   it('documents cookie parameters and optional-only request bodies accurately', async () => {
