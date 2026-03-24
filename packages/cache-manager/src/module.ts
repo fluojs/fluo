@@ -17,6 +17,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     redis: options.redis,
     store: options.store ?? 'memory',
     ttl: options.ttl ?? 0,
+    httpKeyStrategy: options.httpKeyStrategy ?? 'route',
   };
 }
 
@@ -32,7 +33,8 @@ function isNormalizedCacheModuleOptions(value: unknown): value is NormalizedCach
     (typeof candidate.store === 'string' || typeof candidate.store === 'object') &&
     typeof candidate.keyPrefix === 'string' &&
     typeof candidate.ttl === 'number' &&
-    typeof candidate.isGlobal === 'boolean'
+    typeof candidate.isGlobal === 'boolean' &&
+    'httpKeyStrategy' in candidate
   );
 }
 

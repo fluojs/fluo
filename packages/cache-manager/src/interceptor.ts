@@ -4,7 +4,7 @@ import { SseResponse, type CallHandler, type Interceptor, type InterceptorContex
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CACHE_MANAGER, CACHE_OPTIONS } from './tokens.js';
 import { CacheService } from './service.js';
-import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, NormalizedCacheModuleOptions } from './types.js';
+import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
@@ -24,8 +24,44 @@ function normalizeCacheMethod(method: string): string {
   return method.toUpperCase();
 }
 
-function defaultCacheKey(context: InterceptorContext): string {
-  return context.handler.metadata.effectivePath;
+function buildSortedQueryString(query: Record<string, unknown>): string {
+  const entries = Object.entries(query)
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      if (Array.isArray(value)) {
+        return value.map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`).join('&');
+      }
+
+      return `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`;
+    });
+
+  return entries.join('&');
+}
+
+function defaultCacheKey(context: InterceptorContext, strategy: CacheKeyStrategy): string {
+  if (typeof strategy === 'function') {
+    return strategy(context);
+  }
+
+  const path = context.handler.metadata.effectivePath;
+  const query = context.requestContext.request.query;
+
+  if (strategy === 'route') {
+    return path;
+  }
+
+  const queryString = buildSortedQueryString(query);
+
+  if (!queryString) {
+    return path;
+  }
+
+  if (strategy === 'route+query') {
+    return `${path}?${queryString}`;
+  }
+
+  return `${path}?${queryString}`;
 }
 
 function normalizeTtl(ttlSeconds: number | undefined, fallback: number): number | undefined {
@@ -50,9 +86,13 @@ function normalizeEvictKeys(value: string | readonly string[]): string[] {
   return [];
 }
 
-async function resolveCacheKeyValue(metadata: CacheKeyDecoratorValue | undefined, context: InterceptorContext): Promise<string> {
+async function resolveCacheKeyValue(
+  metadata: CacheKeyDecoratorValue | undefined,
+  context: InterceptorContext,
+  strategy: CacheKeyStrategy,
+): Promise<string> {
   if (!metadata) {
-    return defaultCacheKey(context);
+    return defaultCacheKey(context, strategy);
   }
 
   if (typeof metadata === 'string') {
@@ -119,7 +159,7 @@ export class CacheInterceptor implements Interceptor {
     metadataBag: MetadataBag | undefined,
   ): Promise<unknown> {
     const keyMetadata = metadataBag ? getCacheKeyMetadata(metadataBag) : undefined;
-    const key = await resolveCacheKeyValue(keyMetadata, context);
+    const key = await resolveCacheKeyValue(keyMetadata, context, this.options.httpKeyStrategy);
     const ttl = normalizeTtl(metadataBag ? getCacheTtlMetadata(metadataBag) : undefined, this.options.ttl);
 
     if (ttl !== undefined) {

@@ -121,17 +121,81 @@ class AppModule {}
 - `CACHE_MANAGER` — DI token for `CacheService`.
 - `CACHE_OPTIONS` — DI token for normalized module options.
 
-`CacheModuleOptions` primary fields are `store`, `ttl`, and `isGlobal`.
+`CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, and `httpKeyStrategy`.
 
 ## Behavior
 
 ### HTTP Interceptor Behavior (CacheInterceptor)
 
 - Cache reads are **GET-only** by default.
-- Default cache key is the matched route path (`handler.metadata.effectivePath`).
-- Example: `GET /products?sort=asc` => default cache key `/products`.
-- Use `@CacheKey(...)` when query-string-aware or fully custom cache keys are required.
+- Default cache key depends on `httpKeyStrategy`:
+  - `'route'` (default) — matched route path only, query params ignored.
+  - `'route+query'` — route path + sorted query string (recommended for query-sensitive endpoints).
+  - `'full'` — route path + query string (same as `'route+query'` currently).
+  - `function` — custom resolver `(context) => string`.
+- `@CacheKey(...)` decorator overrides the module-level strategy for individual handlers.
 - `@CacheEvict(...)` runs after the response write of successful non-GET handlers.
+
+#### Query-Sensitive Caching Example
+
+For endpoints where query parameters change the response, use `httpKeyStrategy: 'route+query'`:
+
+```ts
+@Module({
+  imports: [
+    createCacheModule({
+      store: 'memory',
+      ttl: 30,
+      httpKeyStrategy: 'route+query', // cache key includes sorted query params
+    }),
+  ],
+  controllers: [ProductController],
+})
+class AppModule {}
+
+@Controller('/products')
+class ProductController {
+  @Get('/')
+  @UseInterceptor(CacheInterceptor)
+  @CacheTTL(60)
+  list() {
+    // GET /products?page=1  => cache key: '/products?page=1'
+    // GET /products?page=2  => cache key: '/products?page=2'
+    // GET /products?page=1&sort=asc  => cache key: '/products?page=1&sort=asc'
+    return { ok: true };
+  }
+}
+```
+
+#### Migration Note
+
+The default `httpKeyStrategy` is `'route'` for backward compatibility. This means:
+- Existing applications continue to work without changes.
+- Query parameters are ignored in cache keys by default.
+- For new projects or query-sensitive endpoints, set `httpKeyStrategy: 'route+query'`.
+
+To opt in to query-aware caching globally:
+
+```ts
+createCacheModule({
+  store: 'memory',
+  httpKeyStrategy: 'route+query',
+})
+```
+
+To opt in per-handler while keeping the default globally:
+
+```ts
+@CacheKey((context) => {
+  const path = context.handler.metadata.effectivePath;
+  const query = new URLSearchParams(
+    Object.entries(context.requestContext.request.query)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+  ).toString();
+  return query ? `${path}?${query}` : path;
+})
+```
 
 ### General Cache Behavior (CacheService / CacheStore)
 
