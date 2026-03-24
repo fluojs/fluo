@@ -30,19 +30,19 @@ function createResponse(): TestResponse {
   return {
     committed: false,
     headers: {},
-    redirect(status, location) {
+    redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('location', location);
       this.committed = true;
     },
-    send(body) {
+    send(body: unknown) {
       this.body = body;
       this.committed = true;
     },
-    setHeader(name, value) {
+    setHeader(name: string, value: string | string[]) {
       this.headers[name] = value;
     },
-    setStatus(code) {
+    setStatus(code: number) {
       this.statusCode = code;
       this.statusSet = true;
     },
@@ -107,6 +107,38 @@ describe('createHealthModule', () => {
     await app.dispatch(createRequest('/ready'), readyResponse);
     expect(readyResponse.statusCode).toBe(503);
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('supports custom health responses while preserving readiness behavior', async () => {
+    const healthModule = createHealthModule({
+      healthCheck: async () => ({
+        body: { status: 'unavailable', subsystem: 'cache' },
+        statusCode: 503,
+      }),
+    }) as ReadinessManagedModule;
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [healthModule],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.body).toEqual({ status: 'unavailable', subsystem: 'cache' });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
 
     await app.close();
   });
