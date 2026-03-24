@@ -55,6 +55,7 @@ interface MetricsModuleOptions {
   provider?: 'prometheus';    // only supported provider at this time
   defaultMetrics?: boolean;   // collect Node.js default metrics (default: true)
   middleware?: MiddlewareLike[];
+  registry?: Registry;        // external Prometheus registry to share with custom metrics
 }
 
 class MetricsModule {
@@ -135,7 +136,70 @@ Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality
 
 ## Custom Metrics
 
-`MetricsModule` creates a dedicated `prom-client` `Registry` instance per `forRoot()` call. The current public API does not expose that internal registry, so sharing one registry between custom metrics and the built-in endpoint is not currently supported.
+`MetricsModule` creates a dedicated `prom-client` `Registry` instance per `forRoot()` call by default. You can either use the isolated default or provide a shared registry to emit both framework and application metrics from a single scrape endpoint.
+
+### Shared Registry (Recommended)
+
+Pass an external `Registry` to `forRoot()` so custom metrics and framework metrics share the same endpoint:
+
+```typescript
+import { Counter, Registry } from 'prom-client';
+import { MetricsModule } from '@konekti/metrics';
+
+const sharedRegistry = new Registry();
+
+// Register custom metrics on the shared registry
+const httpRequests = new Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'status'],
+  registers: [sharedRegistry],
+});
+
+httpRequests.inc({ method: 'GET', status: '200' });
+
+@Module({
+  imports: [
+    MetricsModule.forRoot({ registry: sharedRegistry }),
+  ],
+})
+class AppModule {}
+// GET /metrics → framework metrics + http_requests_total from same registry
+```
+
+### Using MetricsService with Shared Registry
+
+After providing a shared registry, `MetricsService` and `METER_PROVIDER` both use it:
+
+```typescript
+import { METRICS_SERVICE, MetricsService } from '@konekti/metrics';
+
+@Inject([METRICS_SERVICE])
+class OrderService {
+  constructor(private readonly metrics: MetricsService) {
+    this.orderCounter = this.metrics.counter({
+      name: 'orders_created_total',
+      help: 'Total orders created',
+      labelNames: ['status'],
+    });
+  }
+}
+// All metrics appear on /metrics endpoint
+```
+
+### Accessing the Registry
+
+`MetricsService.getRegistry()` returns the underlying `prom-client` `Registry`:
+
+```typescript
+const metricsService = await app.container.resolve(METRICS_SERVICE);
+const registry = metricsService.getRegistry();
+// Use registry directly with prom-client APIs
+```
+
+### Isolated Registry (Default)
+
+Without a `registry` option, each `forRoot()` call creates a separate registry:
 
 ```typescript
 import { Counter } from 'prom-client';
@@ -150,7 +214,25 @@ const httpRequests = new Counter({
 httpRequests.inc({ method: 'GET', status: '200' });
 ```
 
-> **Note:** `MetricsModule` uses its own isolated `Registry`. If you need one endpoint backed by a shared registry, extend or wrap the module with your own registry plumbing.
+> **Note:** When using isolated registries, custom metrics registered outside the module won't appear on the built-in `/metrics` endpoint. Use a shared registry for unified scraping.
+
+### Duplicate Metric Names
+
+Prometheus requires unique metric names. When using a shared registry, registering the same name twice throws:
+
+```typescript
+import { Counter } from 'prom-client';
+
+const registry = new Registry();
+
+new Counter({ name: 'my_counter', help: 'help', registers: [registry] });
+
+// This throws: 'A metric with the name my_counter has already been registered.'
+MetricsModule.forRoot({ registry }).container.resolve(METRICS_SERVICE)
+  .counter({ name: 'my_counter', help: 'duplicate' });
+```
+
+This behavior matches `prom-client` and prevents silent metric collisions.
 
 ---
 
