@@ -58,11 +58,19 @@ The recommended authentication pattern is Bearer token authentication via the `A
 The following areas are currently treated as application-specific and are not standardized within the framework:
 
 - HttpOnly cookie authentication presets.
-- Refresh token lifecycles and rotation.
-- Logout and token revocation.
 - Identity provider account linking.
 
 These should be implemented at the application level based on project requirements.
+
+### framework-level refresh token lifecycle
+
+`@konekti/passport` provides framework-level primitives for refresh token operations via `RefreshTokenService`:
+
+- **Issue**: Create new refresh tokens for subjects.
+- **Rotate**: Exchange refresh tokens for new access + refresh tokens with replay detection.
+- **Revoke**: Invalidate specific tokens or all tokens for a subject (logout).
+
+The `RefreshTokenStrategy` extracts refresh tokens from request body (`refreshToken`), `Authorization: Bearer` header, or a custom `x-refresh-token` header. The framework handles header shape normalization (string or string array) internally.
 
 ## further reading
 

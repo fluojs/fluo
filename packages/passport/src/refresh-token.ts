@@ -67,12 +67,14 @@ export class RefreshTokenStrategy implements AuthStrategy {
       return (request.body as { refreshToken: string }).refreshToken;
     }
 
-    const authHeader = request.headers?.authorization;
+    const authHeaderRaw = request.headers?.authorization;
+    const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.slice(7);
     }
 
-    return request.headers?.['x-refresh-token'] as string | undefined;
+    const customHeader = request.headers?.['x-refresh-token'];
+    return Array.isArray(customHeader) ? customHeader[0] : customHeader;
   }
 
   private extractSubjectFromToken(accessToken: string): string {
