@@ -23,6 +23,7 @@ This directory contains framework-level information that spans multiple packages
 
 - `concepts/architecture-overview.md`
 - `concepts/cqrs.md`
+- `concepts/caching.md`
 - `concepts/http-runtime.md`
 - `concepts/di-and-modules.md`
 - `concepts/lifecycle-and-shutdown.md`
