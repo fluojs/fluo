@@ -80,7 +80,7 @@ class GetUserHandler implements IQueryHandler<GetUserQuery, { id: string }> {
 - Exactly one handler must exist per query type.
 - Duplicate registrations fail bootstrap with typed framework errors.
 - Missing handlers fail at execute-time with typed framework errors.
-- Handlers must be singleton-scoped and implement `handle(...)`.
+- Command/query handler classes must be singleton-scoped and implement `execute(...)`.
 
 ## event publishing model
 
