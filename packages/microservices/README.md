@@ -44,7 +44,7 @@ await microservice.listen();
 - `TcpMicroserviceTransport` - TCP transport adapter
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub event transport adapter
 - `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
-- `KafkaMicroserviceTransport` - Kafka transport adapter (event, inbound message dispatch)
+- `KafkaMicroserviceTransport` - Kafka transport adapter (request/reply + event)
 - `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
 
 ## Runtime behavior
@@ -134,14 +134,24 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
 - `RedisPubSubMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via separate request, response, and event channels with correlation-based reply routing.
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
-- `KafkaMicroserviceTransport` is event-only: it supports `emit()` plus inbound event dispatch.
+- `KafkaMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via dedicated message, response, and event topics with correlation-based reply routing.
 - `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
 
 ### Kafka
 
-- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, Redis, or RabbitMQ instead.
-- Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
-- Ordering, offset commit policy, consumer group recovery, and broker-specific reconnect semantics are not guaranteed by Konekti itself; treat them as broker/client concerns unless a future guide says otherwise.
+- `KafkaMicroserviceTransport` supports both request/reply `send()` and event `emit()`.
+- `send()` publishes `{ kind: 'message', pattern, payload, requestId, replyTopic }` to the configured message topic and waits for a correlated `{ kind: 'response', requestId, payload | error }` frame.
+- Correlation identity is `requestId` (generated per call). Reply routing uses `replyTopic` (defaults to a per-instance topic at transport construction time).
+- `send()` applies `requestTimeoutMs` (default 3 000 ms) and rejects on timeout, abort, transport close, or serialized remote handler error.
+- `listen()` must run before `send()` so the response subscription is active.
+- Inbound event handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
+- Request/reply assumptions:
+  - If you override `responseTopic` to a shared topic across instances, isolate consumption per instance (for example, dedicated consumer-group or topic strategy) to avoid unmatched response consumption.
+  - Broker-level ordering, offset commit policy, consumer group recovery, and reconnect behavior remain broker/client concerns.
+- When to use Kafka request/reply vs TCP/NATS:
+  - Kafka request/reply is appropriate when you already operate Kafka and want request/reply semantics within Kafka-centric service topologies.
+  - TCP/NATS remain the recommended path for lower-latency operationally simpler request/reply flows.
+- Troubleshooting: repeated Kafka request timeouts usually indicate no active responder for the pattern, mismatched message/response topic configuration, or cross-instance response-topic/group contention.
 
 ### RabbitMQ
 

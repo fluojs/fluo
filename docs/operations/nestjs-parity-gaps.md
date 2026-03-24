@@ -73,7 +73,7 @@ The following items were previously listed as open gaps and have since been ship
 | Item | Resolution |
 |---|---|
 | A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)` is shipped in `@konekti/runtime`. Boots the module graph without an HTTP adapter, runs lifecycle hooks, and returns a typed `get<T>()` + `close()` context. |
-| A2. microservice / transport layer | `@konekti/microservices` ships TCP, Redis Pub/Sub, Kafka, NATS, and RabbitMQ transports, `@MessagePattern` / `@EventPattern` decorators, `KonektiFactory.createMicroservice()`, and shared-container hybrid composition with runtime integration tests. |
+| A2. microservice / transport layer | `@konekti/microservices` ships TCP, Redis Pub/Sub, Kafka (request/reply + event), NATS, and RabbitMQ (event-only) transports, `@MessagePattern` / `@EventPattern` decorators, `KonektiFactory.createMicroservice()`, and shared-container hybrid composition with runtime integration tests. |
 | A3. platform adapter breadth | `@konekti/platform-fastify` ships a Fastify adapter implementing `HttpApplicationAdapter` with full parity test suite. |
 | A4. HTTP versioning strategies beyond URI | All four strategies (URI, Header, Media type, Custom) are shipped in `@konekti/http` and `@konekti/runtime`. |
 | A5. schema-based validation (ArkType) | `createArkTypeAdapter` is shipped in `@konekti/dto-validator` as an optional peer, mapping ArkType parse errors to the standard `ValidationIssue` shape. |

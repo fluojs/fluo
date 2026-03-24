@@ -73,7 +73,7 @@
 | Item | Resolution |
 |---|---|
 | A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)`가 `@konekti/runtime`에 출하되었습니다. HTTP 어댑터 없이 모듈 그래프를 부트스트랩하고, 라이프사이클 훅을 실행하며, 타입이 지정된 `get<T>()` + `close()` 컨텍스트를 반환합니다. |
-| A2. microservice / transport layer | `@konekti/microservices`에 TCP, Redis Pub/Sub, Kafka, NATS, RabbitMQ 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`, 공유 컨테이너 기반 하이브리드 구성 및 런타임 통합 테스트가 출하되었습니다. |
+| A2. microservice / transport layer | `@konekti/microservices`에 TCP, Redis Pub/Sub, Kafka(요청/응답 + 이벤트), NATS, RabbitMQ(이벤트 전용) 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`, 공유 컨테이너 기반 하이브리드 구성 및 런타임 통합 테스트가 출하되었습니다. |
 | A3. platform adapter breadth | `@konekti/platform-fastify`에 전체 패리티 테스트 스위트를 갖춘 `HttpApplicationAdapter` 구현 Fastify 어댑터가 출하되었습니다. |
 | A4. HTTP versioning strategies beyond URI | URI, Header, Media type, Custom 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하되었습니다. |
 | A5. schema-based validation (ArkType) | `createArkTypeAdapter`가 `@konekti/dto-validator`에 선택적 피어로 출하되어 ArkType 파싱 에러를 표준 `ValidationIssue` 형태로 매핑합니다. |
