@@ -532,12 +532,27 @@ describe('@konekti/microservices', () => {
     await microservice.close();
   });
 
-  it('warns and skips request-scoped @EventPattern handlers', async () => {
+  it('supports request-scoped @EventPattern handlers with per-event scope isolation', async () => {
+    const createdIds: number[] = [];
+    let nextId = 0;
+
+    @Scope('request')
+    class EventContext {
+      readonly id = ++nextId;
+
+      constructor() {
+        createdIds.push(this.id);
+      }
+    }
+
+    @Inject([EventContext])
     @Scope('request')
     class RequestScopedEventHandler {
+      constructor(private readonly ctx: EventContext) {}
+
       @EventPattern('scope.event')
-      onEvent() {
-        return undefined;
+      onEvent(_input: unknown) {
+        return this.ctx.id;
       }
     }
 
@@ -546,18 +561,188 @@ describe('@konekti/microservices', () => {
     class AppModule {}
     defineModuleMetadata(AppModule, {
       imports: [createMicroservicesModule({ transport })],
-      providers: [RequestScopedEventHandler],
+      providers: [EventContext, RequestScopedEventHandler],
     });
 
     const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
     await microservice.listen();
-    await microservice.emit('scope.event', {});
 
-    expect(warnSpy).toHaveBeenCalled();
+    await microservice.emit('scope.event', { id: 1 });
+    await microservice.emit('scope.event', { id: 2 });
 
-    warnSpy.mockRestore();
+    expect(createdIds).toHaveLength(2);
+    expect(createdIds[0]).not.toBe(createdIds[1]);
+
+    await microservice.close();
+  });
+
+  it('shares per-event scope across multiple matching fan-out handlers', async () => {
+    const scopeIds: Array<{ handler: string; scopeId: number }> = [];
+
+    @Scope('request')
+    class SharedScope {
+      static counter = 0;
+      readonly id = ++SharedScope.counter;
+    }
+
+    @Inject([SharedScope])
+    @Scope('request')
+    class FirstEventHandler {
+      constructor(private readonly scope: SharedScope) {}
+
+      @EventPattern('fanout.event')
+      onEvent() {
+        scopeIds.push({ handler: 'first', scopeId: this.scope.id });
+      }
+    }
+
+    @Inject([SharedScope])
+    @Scope('request')
+    class SecondEventHandler {
+      constructor(private readonly scope: SharedScope) {}
+
+      @EventPattern('fanout.event')
+      onEvent() {
+        scopeIds.push({ handler: 'second', scopeId: this.scope.id });
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [SharedScope, FirstEventHandler, SecondEventHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await microservice.emit('fanout.event', {});
+
+    expect(scopeIds).toHaveLength(2);
+    expect(scopeIds[0].scopeId).toBe(scopeIds[1].scopeId);
+
+    await microservice.close();
+  });
+
+  it('disposes per-event scope after fan-out completes', async () => {
+    const disposed: number[] = [];
+
+    @Scope('request')
+    class DisposableContext {
+      static counter = 0;
+      readonly id = ++DisposableContext.counter;
+
+      onDestroy(): void {
+        disposed.push(this.id);
+      }
+    }
+
+    @Inject([DisposableContext])
+    @Scope('request')
+    class DisposableHandler {
+      constructor(private readonly ctx: DisposableContext) {}
+
+      @EventPattern('dispose.event')
+      onEvent() {
+        return this.ctx.id;
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [DisposableContext, DisposableHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await microservice.emit('dispose.event', {});
+    await microservice.emit('dispose.event', {});
+
+    expect(disposed).toHaveLength(2);
+    expect(disposed[0]).not.toBe(disposed[1]);
+
+    await microservice.close();
+  });
+
+  it('disposes per-event scope even when handler throws', async () => {
+    const disposed: number[] = [];
+
+    @Scope('request')
+    class DisposableContext {
+      static counter = 0;
+      readonly id = ++DisposableContext.counter;
+
+      onDestroy(): void {
+        disposed.push(this.id);
+      }
+    }
+
+    @Inject([DisposableContext])
+    @Scope('request')
+    class FailingHandler {
+      constructor(private readonly ctx: DisposableContext) {}
+
+      @EventPattern('fail.event')
+      onEvent() {
+        throw new Error('handler failed');
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [DisposableContext, FailingHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await microservice.emit('fail.event', {});
+
+    expect(disposed).toHaveLength(1);
+
+    await microservice.close();
+  });
+
+  it('supports transient-scoped @EventPattern handlers', async () => {
+    const instanceIds: number[] = [];
+    let nextId = 0;
+
+    @Scope('transient')
+    class TransientHandler {
+      readonly id = ++nextId;
+
+      @EventPattern('transient.event')
+      onEvent() {
+        instanceIds.push(this.id);
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [TransientHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    await microservice.listen();
+
+    await microservice.emit('transient.event', {});
+    await microservice.emit('transient.event', {});
+
+    expect(instanceIds).toHaveLength(2);
+    expect(instanceIds[0]).not.toBe(instanceIds[1]);
+
     await microservice.close();
   });
 });
