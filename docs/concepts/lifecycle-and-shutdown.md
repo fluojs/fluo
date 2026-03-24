@@ -7,6 +7,7 @@ This guide describes the application lifecycle, covering bootstrap, readiness, a
 ### related documentation
 
 - `./config-and-environments.md`
+- `./dev-reload-architecture.md`
 - `./transactions.md`
 - `../../packages/runtime/README.md`
 
@@ -38,6 +39,8 @@ The runtime manages the following standard hook sequence:
 - `onApplicationBootstrap`
 - `onModuleDestroy`
 - `onApplicationShutdown`
+
+In dev mode with `watch: true`, runtime can also apply validated config reloads between bootstrap and shutdown. That path does not rebuild the module graph or replace the application shell. It updates the runtime-owned config snapshot and then notifies runtime-managed reload participants.
 
 ## shutdown sequence
 

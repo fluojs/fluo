@@ -82,6 +82,8 @@ The generated application includes:
 - sample `health/` module at `/health-info/`
 - pre-configured `dev`, `build`, `typecheck`, and `test` scripts
 
+The generated `dev` script uses a watch-driven process restart path for source changes. Konekti's targeted in-process reload path is reserved for validated config snapshots, not general code HMR.
+
 ## why teams pick konekti
 
 - **Standard decorators, not legacy flags**: avoid `"experimentalDecorators": true` and `emitDecoratorMetadata`.
@@ -94,6 +96,7 @@ The generated application includes:
 - `docs/README.md` - reading order and documentation map
 - `docs/getting-started/quick-start.md` - fastest path from installation to a running app
 - `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
+- `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
 - `docs/reference/package-surface.md` - public package surface reference
 
 For package-level API details, see `packages/*/README.md` in each package directory.

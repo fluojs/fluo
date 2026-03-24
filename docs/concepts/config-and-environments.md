@@ -8,6 +8,7 @@ This guide outlines the configuration management implemented across `@konekti/co
 
 - `../../packages/config/README.md`
 - `./lifecycle-and-shutdown.md`
+- `./dev-reload-architecture.md`
 - `../getting-started/bootstrap-paths.md`
 
 ## responsibilities
@@ -57,3 +58,15 @@ The configuration resolution order is deterministic:
 ## usage recommendations
 
 Use `ConfigService` for general application configuration. For complex integrations, prefer the typed configuration providers provided by those specific packages.
+
+## reload behavior
+
+`@konekti/config` keeps reload explicit.
+
+- `loadConfig()` still resolves one validated snapshot during bootstrap.
+- `createConfigReloader()` is the opt-in path for watching and reloading env-backed config.
+- Reload support is config-specific; it does not imply general code hot reload.
+
+When `@konekti/runtime` runs in `mode: 'dev'` with `watch: true`, it can subscribe to `createConfigReloader()` and apply validated snapshots to the existing `ConfigService` instance without rebuilding the whole application shell.
+
+Runtime only applies snapshots that have already passed config validation. If runtime-side reload handling fails, the previous snapshot remains active.

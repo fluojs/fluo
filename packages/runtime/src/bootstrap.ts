@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 import { Container, type Provider } from '@konekti/di';
-import { ConfigService, loadConfig } from '@konekti/config';
+import { ConfigService, createConfigReloader, loadConfig, type ConfigDictionary, type ConfigReloadReason } from '@konekti/config';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
 import {
   createDispatcher,
@@ -116,6 +116,10 @@ function isOnApplicationShutdown(value: unknown): value is OnApplicationShutdown
   return hasMethod(value, 'onApplicationShutdown');
 }
 
+function isRuntimeReloadParticipant(value: unknown): value is RuntimeReloadParticipant {
+  return hasMethod(value, 'onRuntimeReload');
+}
+
 function hasReadinessStateMethods(value: unknown): value is { markReady(): void; markStarting(): void } {
   if (typeof value !== 'function') {
     return false;
@@ -153,6 +157,18 @@ interface SelectedProviderEntry {
   provider: Provider;
   source: 'module' | 'runtime';
   token: Token;
+}
+
+interface RuntimeReloadEvent {
+  envFile: string;
+  kind: 'config';
+  nextConfig: ConfigDictionary;
+  previousConfig: ConfigDictionary;
+  reason: ConfigReloadReason;
+}
+
+interface RuntimeReloadParticipant {
+  onRuntimeReload(event: RuntimeReloadEvent): void | Promise<void>;
 }
 
 function createDuplicateProviderMessage(token: Token, moduleName: string, existingModuleName: string): string {
@@ -303,6 +319,7 @@ class KonektiApplication implements Application {
     private readonly adapter: HttpApplicationAdapter,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
+    private readonly runtimeCleanup: Array<() => void>,
   ) {
     this.lifecycleInstances = lifecycleInstances;
   }
@@ -362,6 +379,10 @@ class KonektiApplication implements Application {
     }
 
     this.closingPromise = (async () => {
+      for (const cleanup of this.runtimeCleanup) {
+        cleanup();
+      }
+
       await runShutdownHooks(this.lifecycleInstances, signal);
       await this.adapter.close(signal);
       await disposeContainer(this.container);
@@ -390,6 +411,7 @@ class KonektiApplicationContext implements ApplicationContext {
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     private readonly lifecycleInstances: unknown[],
+    private readonly runtimeCleanup: Array<() => void>,
   ) {}
 
   async get<T>(token: Token<T>): Promise<T> {
@@ -407,6 +429,10 @@ class KonektiApplicationContext implements ApplicationContext {
     }
 
     this.closingPromise = (async () => {
+      for (const cleanup of this.runtimeCleanup) {
+        cleanup();
+      }
+
       await runShutdownHooks(this.lifecycleInstances, signal);
       await disposeContainer(this.container);
       this.closed = true;
@@ -769,6 +795,66 @@ function createRuntimeDispatcher(
   return createDispatcher(dispatcherOptions);
 }
 
+function shouldEnableRuntimeConfigReload(options: BootstrapApplicationOptions): boolean {
+  return options.mode === 'dev' && options.watch === true;
+}
+
+async function notifyRuntimeReloadParticipants(
+  lifecycleInstances: readonly unknown[],
+  event: RuntimeReloadEvent,
+): Promise<void> {
+  for (const instance of lifecycleInstances) {
+    if (!isRuntimeReloadParticipant(instance)) {
+      continue;
+    }
+
+    await instance.onRuntimeReload(event);
+  }
+}
+
+function setupRuntimeConfigReload(
+  options: BootstrapApplicationOptions,
+  config: ConfigService,
+  lifecycleInstances: readonly unknown[],
+  envFile: string,
+  logger: ApplicationLogger,
+): (() => void) | undefined {
+  if (!shouldEnableRuntimeConfigReload(options)) {
+    return undefined;
+  }
+
+  const reloader = createConfigReloader(options);
+  const subscription = reloader.subscribe((nextConfig: ConfigDictionary, reason: ConfigReloadReason) => {
+    void (async () => {
+      const previousConfig = config.snapshot();
+
+      try {
+        config._replaceSnapshot(nextConfig);
+        await notifyRuntimeReloadParticipants(lifecycleInstances, {
+          envFile,
+          kind: 'config',
+          nextConfig,
+          previousConfig,
+          reason,
+        });
+        logger.log(`Applied config reload from ${envFile}.`, 'KonektiFactory');
+      } catch (error: unknown) {
+        config._replaceSnapshot(previousConfig);
+        logger.error('Failed to apply runtime config reload. Restored previous configuration snapshot.', error, 'KonektiFactory');
+      }
+    })();
+  });
+  const errorSubscription = reloader.subscribeError((error: unknown, reason: ConfigReloadReason) => {
+    logger.error(`Config reload failed during ${reason}.`, error, 'KonektiFactory');
+  });
+
+  return () => {
+    subscription.unsubscribe();
+    errorSubscription.unsubscribe();
+    reloader.close();
+  };
+}
+
 /**
  * config 로딩, bootstrap-level provider 등록, 모듈 부트스트랩, lifecycle hook 실행까지를 묶어
  * 런타임 애플리케이션 셸을 만든다.
@@ -778,6 +864,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
   const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
+  const runtimeCleanup: Array<() => void> = [];
 
   try {
     logger.log('Starting Konekti application...', 'KonektiFactory');
@@ -797,12 +884,18 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
     await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
+    const envFile = resolveEnvFile(options);
+    const configReloadCleanup = setupRuntimeConfigReload(options, config, lifecycleInstances, envFile, logger);
+    if (configReloadCleanup) {
+      runtimeCleanup.push(configReloadCleanup);
+    }
+
     const dispatcher = createRuntimeDispatcher(bootstrapped, options, logger);
 
     return new KonektiApplication(
       config,
       bootstrapped.container,
-      resolveEnvFile(options),
+      envFile,
       options.mode,
       bootstrapped.modules,
       options.rootModule,
@@ -810,6 +903,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       adapter,
       lifecycleInstances,
       logger,
+      runtimeCleanup,
     );
   } catch (error: unknown) {
     logger.error('Failed to bootstrap application.', error, 'KonektiFactory');
@@ -820,6 +914,10 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     if (bootstrappedContainer) {
       await disposeContainer(bootstrappedContainer);
+    }
+
+    for (const cleanup of runtimeCleanup) {
+      cleanup();
     }
 
     throw error;
@@ -842,6 +940,7 @@ export class KonektiFactory {
     const logger = options.logger ?? createConsoleApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
+    const runtimeCleanup: Array<() => void> = [];
 
     try {
       logger.log('Starting Konekti application context...', 'KonektiFactory');
@@ -868,18 +967,26 @@ export class KonektiFactory {
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
       await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
+      const bootstrapOptions = {
+        ...options,
+        mode,
+        rootModule,
+      } as BootstrapApplicationOptions;
+      const envFile = resolveEnvFile(bootstrapOptions);
+      const configReloadCleanup = setupRuntimeConfigReload(bootstrapOptions, config, lifecycleInstances, envFile, logger);
+      if (configReloadCleanup) {
+        runtimeCleanup.push(configReloadCleanup);
+      }
+
       return new KonektiApplicationContext(
         config,
         bootstrapped.container,
-        resolveEnvFile({
-          ...options,
-          mode,
-          rootModule,
-        }),
+        envFile,
         mode,
         bootstrapped.modules,
         rootModule,
         lifecycleInstances,
+        runtimeCleanup,
       );
     } catch (error: unknown) {
       logger.error('Failed to bootstrap application context.', error, 'KonektiFactory');
@@ -890,6 +997,10 @@ export class KonektiFactory {
 
       if (bootstrappedContainer) {
         await disposeContainer(bootstrappedContainer);
+      }
+
+      for (const cleanup of runtimeCleanup) {
+        cleanup();
       }
 
       throw error;

@@ -1,5 +1,8 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -64,6 +67,24 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForCondition(assertion: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (assertion()) {
+      return;
+    }
+
+    await delay(25);
+  }
+
+  throw new Error('Timed out waiting for condition.');
 }
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -283,6 +304,134 @@ describe('bootstrapApplication', () => {
     await app.close('SIGTERM');
 
     expect(resource.destroyed).toBe(true);
+  });
+
+  it('applies watched config reloads in dev mode without replacing ConfigService identity', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-dev-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=3000\n');
+
+    @Inject([ConfigService])
+    class ReloadAwareService {
+      readonly ports: string[] = [];
+
+      constructor(readonly config: ConfigService) {}
+
+      onRuntimeReload(): void {
+        const port = this.config.get('PORT' as never);
+
+        if (typeof port === 'string') {
+          this.ports.push(port);
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [ReloadAwareService],
+    });
+
+    const app = await bootstrapApplication({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      rootModule: AppModule,
+      watch: true,
+    });
+    const service = await app.container.resolve(ReloadAwareService);
+
+    await delay(100);
+    writeFileSync(envPath, 'PORT=3100\n');
+    await waitForCondition(() => service.ports.includes('3100'), 5_000);
+
+    expect(app.config.get('PORT')).toBe('3100');
+    expect(service.config).toBe(app.config);
+
+    await app.close();
+  });
+
+  it('keeps the previous runtime config snapshot when a watched update is invalid', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-invalid-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=3000\n');
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await bootstrapApplication({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      rootModule: AppModule,
+      validate: (raw: Record<string, unknown>) => {
+        const port = raw['PORT'];
+
+        if (typeof port !== 'string' || !/^\d+$/.test(port)) {
+          throw new Error('PORT must be numeric');
+        }
+
+        return raw;
+      },
+      watch: true,
+    });
+
+    writeFileSync(envPath, 'PORT=oops\n');
+    await delay(150);
+
+    expect(app.config.get('PORT')).toBe('3000');
+
+    await app.close();
+  });
+
+  it('does not activate runtime config watch reload outside dev mode', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-prod-'));
+    const envPath = join(cwd, '.env.prod');
+
+    writeFileSync(envPath, 'PORT=3000\n');
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await bootstrapApplication({
+      cwd,
+      mode: 'prod',
+      processEnv: {},
+      rootModule: AppModule,
+      watch: true,
+    });
+
+    writeFileSync(envPath, 'PORT=3300\n');
+    await delay(150);
+
+    expect(app.config.get('PORT')).toBe('3000');
+
+    await app.close();
+  });
+
+  it('stops runtime config watch updates after application close', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-close-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=3000\n');
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await bootstrapApplication({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      rootModule: AppModule,
+      watch: true,
+    });
+
+    await app.close();
+    writeFileSync(envPath, 'PORT=3400\n');
+    await delay(150);
+
+    expect(app.config.get('PORT')).toBe('3000');
   });
 
   it('injects real runtime tokens before OnModuleInit runs', async () => {

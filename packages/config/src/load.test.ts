@@ -484,4 +484,13 @@ describe('ConfigService', () => {
 
     expect(service.get('db.host')).toBe('localhost');
   });
+
+  it('replaces the active snapshot without changing service identity', () => {
+    const service = new ConfigService({ PORT: '3000', nested: { host: 'localhost' } });
+
+    service._replaceSnapshot({ PORT: '3100', nested: { host: 'remote' } });
+
+    expect(service.get('PORT')).toBe('3100');
+    expect(service.get('nested.host')).toBe('remote');
+  });
 });

@@ -88,6 +88,8 @@ type ConfigReloader = {
 
 Use `createConfigReloader()` when you need explicit reload hooks. Reload notifications and errors are delivered via `subscribe(...)` and `subscribeError(...)`; no global process event side-effects are used.
 
+When used together with `@konekti/runtime` in `mode: 'dev'` and `watch: true`, the runtime can apply those validated snapshots to its existing `ConfigService` instance without rebuilding the full application shell.
+
 ### `ConfigService`
 
 ```typescript
@@ -126,6 +128,8 @@ createConfigReloader(options)
 ```
 
 `ConfigService` remains intentionally read-only after bootstrap. Dynamic reload is an explicit opt-in flow through `createConfigReloader()`.
+
+That explicit reload path is still config-scoped. Konekti does not treat it as a general code hot reload or HMR mechanism.
 
 ## File reading order (for contributors)
 

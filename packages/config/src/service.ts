@@ -8,7 +8,7 @@ function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
 }
 
 export class ConfigService<T extends Record<string, unknown> = ConfigDictionary> {
-  private readonly values: T;
+  private values: T;
 
   constructor(values: T) {
     this.values = cloneConfigDictionary(values);
@@ -30,6 +30,10 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   snapshot(): ConfigDictionary {
     return cloneConfigDictionary(this.values);
+  }
+
+  _replaceSnapshot(values: T): void {
+    this.values = cloneConfigDictionary(values);
   }
 
   private _resolve(key: string): unknown {
