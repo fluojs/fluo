@@ -53,7 +53,7 @@
 - **`@konekti/cache-manager`**: 메모리/Redis 스토어를 지원하는 데코레이터 기반 HTTP 응답 캐시.
 - **`@konekti/metrics`**: Prometheus 메트릭 노출.
 - **`@konekti/cron`**: 분산 락을 지원하는 데코레이터 기반 작업 스케줄링.
-- **`@konekti/cqrs`**: 부트스트랩 시점 핸들러 탐색과 event-bus 위임을 제공하는 command/query 버스.
+- **`@konekti/cqrs`**: 부트스트랩 시점 핸들러 탐색, saga/process-manager 지원, event-bus 위임을 제공하는 command/query 버스.
 - **`@konekti/event-bus`**: 프로세스 내 이벤트 발행 및 탐색.
 - **`@konekti/websocket`**: 데코레이터 기반 WebSocket 게이트웨이 탐색 및 Node 업그레이드 연결.
 - **`@konekti/queue`**: 워커 탐색과 DLQ(Dead Letter Queue)를 지원하는 Redis 기반 백그라운드 작업.
