@@ -24,6 +24,8 @@ The assembly layer that compiles a module graph and wires config, DI, and HTTP i
 
 For Node.js apps, `runNodeApplication()` is the canonical startup path. It handles the HTTP adapter, default CORS, startup logging, and graceful shutdown signal wiring.
 
+In development, runtime also owns the in-process application of validated config reloads. Source-code edits still belong to runner-level process restart.
+
 ## Installation
 
 ```bash
@@ -73,6 +75,18 @@ await app.dispatch(req, res);
 // Graceful shutdown
 await app.close();
 ```
+
+### Dev-mode config reload
+
+```typescript
+const app = await bootstrapApplication({
+  mode: 'dev',
+  rootModule: AppModule,
+  watch: true,
+});
+```
+
+With `watch: true`, runtime can subscribe to `createConfigReloader()` from `@konekti/config` and apply validated env-file updates to the existing `ConfigService` instance. This path is intentionally limited to config snapshots. It does not perform general code hot reload or module hot replacement.
 
 ### Standalone application context (no HTTP adapter)
 
@@ -305,6 +319,7 @@ export class AppModule {}
 runNodeApplication(options)  [or bootstrapApplication]
   → loadConfig(...)               (@konekti/config)
   → register ConfigService provider
+  → optionally subscribe to dev-mode config reloads
   → compileModuleGraph()
       → validate imports/exports visibility
       → detect circular imports
