@@ -45,7 +45,7 @@ await microservice.listen();
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `NatsMicroserviceTransport` - NATS 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (이벤트, 인바운드 메시지 디스패치).
-- `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (이벤트, 인바운드 메시지 디스패치).
+- `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 
 ## 런타임 동작
 
@@ -93,19 +93,25 @@ class PaymentsHandler {
 - `TcpMicroserviceTransport`는 `send()` (요청/응답)와 `emit()` (이벤트)를 모두 지원합니다.
 - `RedisPubSubMicroserviceTransport`는 Redis의 요청/응답 채널, 응답 채널, 이벤트 채널을 분리해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
 - `NatsMicroserviceTransport`는 NATS 요청/응답 및 pub/sub 주제를 통해 `send()`와 `emit()`을 모두 지원합니다.
-- `KafkaMicroserviceTransport`와 `RabbitMqMicroserviceTransport`는 이벤트 전용 트랜스포트입니다. `emit()`과 인바운드 이벤트 디스패치를 지원합니다. 요청/응답 `send()`가 필요한 경우 TCP, NATS 또는 Redis 트랜스포트를 사용하세요.
+- `KafkaMicroserviceTransport`는 이벤트 전용 트랜스포트입니다. `emit()`과 인바운드 이벤트 디스패치를 지원합니다.
+- `RabbitMqMicroserviceTransport`는 요청/응답 상관관계(request/reply correlation)와 전용 요청/응답 큐를 사용해 `send()`와 `emit()`을 모두 지원합니다.
 
 ### Kafka
 
-- `KafkaMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP, NATS 또는 Redis를 사용해야 합니다.
+- `KafkaMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP, NATS, Redis 또는 RabbitMQ를 사용해야 합니다.
 - 인바운드 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
 - 순서 보장, 오프셋 커밋 정책, 컨슈머 그룹 복구, 브로커별 재연결 의미론은 현재 Konekti가 보장하지 않습니다. 별도 가이드가 나오기 전까지는 브로커/클라이언트 책임으로 취급하세요.
 
 ### RabbitMQ
 
-- `RabbitMqMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP, NATS 또는 Redis를 사용해야 합니다.
-- 인바운드 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
-- ack/nack, 재큐잉(requeue), dead-letter, 채널 복구 정책은 현재 이 어댑터가 구성하지 않습니다. 별도 가이드가 나오기 전까지는 브로커/클라이언트 책임으로 취급하세요.
+- `RabbitMqMicroserviceTransport`는 전용 이벤트(`eventQueue`), 요청(`messageQueue`), 응답(`responseQueue`) 큐를 사용해 `send()`와 `emit()`을 모두 지원합니다.
+- `send()`는 `{ kind: 'message', pattern, payload, requestId, replyTo }`를 `messageQueue`에 publish하고, `responseQueue`에서 `{ kind: 'response', requestId, payload | error }`를 기다립니다.
+- 상관관계는 `requestId` 기준으로 처리되며, 요청이 종료된 뒤 도착한 알 수 없는/지연/중복 응답은 무시됩니다.
+- `send()`는 `requestTimeoutMs`(기본 3 000ms)를 적용합니다. 타임아웃, abort, 트랜스포트 종료 시 대기 중인 요청 Promise는 결정적으로 reject됩니다.
+- 핸들러 실패는 응답 `error` 문자열로 직렬화되어 호출자 쪽 `send()`에서 reject됩니다.
+- 생명주기 동작: startup 시 이벤트/요청/응답 큐를 구독하고, reconnect는 `close()` 이후 `listen()`을 다시 호출해 지원하며, shutdown 시 큐 소비를 해제하고 진행 중 요청을 모두 reject합니다.
+- ack/nack, 재큐잉(requeue), dead-letter, 브로커 관리 채널 복구는 별도 가이드가 나오기 전까지 브로커/클라이언트 책임입니다.
+- 트러블슈팅: RabbitMQ 요청 타임아웃이 반복되면 `messageQueue` responder 부재, 서비스 간 `responseQueue` 이름 불일치, 브로커 재연결 이후 consumer 재구독 누락을 우선 확인하세요.
 
 ### NATS
 
