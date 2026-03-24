@@ -5,16 +5,18 @@ import { Container } from '@konekti/di';
 import { OnEvent } from '@konekti/event-bus';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
-import { CommandHandler, EventHandler, QueryHandler } from './decorators.js';
+import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
 import {
   CommandHandlerNotFoundException,
   DuplicateCommandHandlerError,
   DuplicateQueryHandlerError,
   QueryHandlerNotFoundException,
+  SagaExecutionError,
 } from './errors.js';
 import { CqrsEventBusService } from './event-bus.js';
-import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata } from './metadata.js';
+import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { createCqrsModule } from './module.js';
+import { CqrsSagaLifecycleService } from './saga-bus.js';
 import { CQRS_EVENT_BUS, COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,
@@ -25,6 +27,7 @@ import type {
   IEventHandler,
   IQuery,
   IQueryHandler,
+  ISaga,
   QueryBus,
 } from './types.js';
 
@@ -42,6 +45,28 @@ function createLogger(events: string[]): ApplicationLogger {
     warn(message: string, context?: string) {
       events.push(`warn:${context ?? 'none'}:${message}`);
     },
+  };
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
   };
 }
 
@@ -66,7 +91,7 @@ class UserCreatedEvent implements IEvent {
 }
 
 describe('@konekti/cqrs', () => {
-  it('stores and reads class decorator metadata for command/query/event handlers', () => {
+  it('stores and reads class decorator metadata for command/query/event handlers and sagas', () => {
     @CommandHandler(CreateUserCommand)
     class CreateUserHandler {
       execute(_command: CreateUserCommand) {
@@ -84,14 +109,21 @@ describe('@konekti/cqrs', () => {
     @EventHandler(UserCreatedEvent)
     class UserCreatedHandler {}
 
+    @Saga([UserCreatedEvent])
+    class UserCreatedSaga {
+      handle(_event: UserCreatedEvent): void {}
+    }
+
     class UndecoratedHandler {}
 
     expect(getCommandHandlerMetadata(CreateUserHandler)).toEqual({ commandType: CreateUserCommand });
     expect(getQueryHandlerMetadata(GetUserHandler)).toEqual({ queryType: GetUserQuery });
     expect(getEventHandlerMetadata(UserCreatedHandler)).toEqual({ eventType: UserCreatedEvent });
+    expect(getSagaMetadata(UserCreatedSaga)).toEqual({ eventTypes: [UserCreatedEvent] });
     expect(getCommandHandlerMetadata(UndecoratedHandler)).toBeUndefined();
     expect(getQueryHandlerMetadata(UndecoratedHandler)).toBeUndefined();
     expect(getEventHandlerMetadata(UndecoratedHandler)).toBeUndefined();
+    expect(getSagaMetadata(UndecoratedHandler)).toBeUndefined();
   });
 
   it('executes command and query handlers discovered at bootstrap', async () => {
@@ -220,9 +252,12 @@ describe('@konekti/cqrs', () => {
     const publish = vi.fn(async () => undefined);
     const eventBus = { publish };
     const loggerEvents: string[] = [];
+    const container = new Container();
+    const sagaService = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents));
     const cqrsEventBus = new CqrsEventBusService(
       eventBus,
-      new Container(),
+      sagaService,
+      container,
       [],
       createLogger(loggerEvents),
     );
@@ -303,6 +338,287 @@ describe('@konekti/cqrs', () => {
     expect(receivedNames).toEqual(['alice']);
 
     await app.close();
+  });
+
+  it('orchestrates follow-up commands across multiple events over time with sagas', async () => {
+    class ProcessStore {
+      commandLog: string[] = [];
+      sagaLog: string[] = [];
+    }
+
+    class StartPaymentCommand implements ICommand {
+      constructor(public readonly orderId: string) {}
+    }
+
+    class ReserveInventoryCommand implements ICommand {
+      constructor(public readonly orderId: string) {}
+    }
+
+    class CompleteOrderCommand implements ICommand {
+      constructor(public readonly orderId: string) {}
+    }
+
+    class OrderSubmittedEvent implements IEvent {
+      constructor(public readonly orderId: string) {}
+    }
+
+    class PaymentAuthorizedEvent implements IEvent {
+      constructor(public readonly orderId: string) {}
+    }
+
+    class InventoryReservedEvent implements IEvent {
+      constructor(public readonly orderId: string) {}
+    }
+
+    @Inject([EVENT_BUS, ProcessStore])
+    @CommandHandler(StartPaymentCommand)
+    class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
+      constructor(
+        private readonly eventBus: CqrsEventBus,
+        private readonly store: ProcessStore,
+      ) {}
+
+      async execute(command: StartPaymentCommand): Promise<void> {
+        this.store.commandLog.push(`start-payment:${command.orderId}`);
+        await this.eventBus.publish(new PaymentAuthorizedEvent(command.orderId));
+      }
+    }
+
+    @Inject([EVENT_BUS, ProcessStore])
+    @CommandHandler(ReserveInventoryCommand)
+    class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
+      constructor(
+        private readonly eventBus: CqrsEventBus,
+        private readonly store: ProcessStore,
+      ) {}
+
+      async execute(command: ReserveInventoryCommand): Promise<void> {
+        this.store.commandLog.push(`reserve-inventory:${command.orderId}`);
+        await this.eventBus.publish(new InventoryReservedEvent(command.orderId));
+      }
+    }
+
+    @Inject([ProcessStore])
+    @CommandHandler(CompleteOrderCommand)
+    class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
+      constructor(private readonly store: ProcessStore) {}
+
+      execute(command: CompleteOrderCommand): void {
+        this.store.commandLog.push(`complete-order:${command.orderId}`);
+      }
+    }
+
+    @Inject([COMMAND_BUS, ProcessStore])
+    @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
+    class OrderFulfillmentSaga implements ISaga<IEvent> {
+      constructor(
+        private readonly commandBus: CommandBus,
+        private readonly store: ProcessStore,
+      ) {}
+
+      async handle(event: IEvent): Promise<void> {
+        if (event instanceof OrderSubmittedEvent) {
+          this.store.sagaLog.push(`submitted:${event.orderId}`);
+          await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+          return;
+        }
+
+        if (event instanceof PaymentAuthorizedEvent) {
+          this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
+          await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+          return;
+        }
+
+        if (event instanceof InventoryReservedEvent) {
+          this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
+          await this.commandBus.execute(new CompleteOrderCommand(event.orderId));
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule()],
+      providers: [
+        ProcessStore,
+        StartPaymentHandler,
+        ReserveInventoryHandler,
+        CompleteOrderHandler,
+        OrderFulfillmentSaga,
+      ],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(ProcessStore);
+
+    await eventBus.publish(new OrderSubmittedEvent('order-1'));
+
+    expect(store.sagaLog).toEqual([
+      'submitted:order-1',
+      'payment-authorized:order-1',
+      'inventory-reserved:order-1',
+    ]);
+    expect(store.commandLog).toEqual([
+      'start-payment:order-1',
+      'reserve-inventory:order-1',
+      'complete-order:order-1',
+    ]);
+
+    await app.close();
+  });
+
+  it('deduplicates saga registration when the same saga class is provided twice', async () => {
+    let handledCount = 0;
+
+    class AccountActivatedEvent implements IEvent {
+      constructor(public readonly accountId: string) {}
+    }
+
+    @Saga(AccountActivatedEvent)
+    class AccountActivationSaga implements ISaga<AccountActivatedEvent> {
+      handle(_event: AccountActivatedEvent): void {
+        handledCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCqrsModule({
+          sagas: [AccountActivationSaga],
+        }),
+      ],
+      providers: [AccountActivationSaga],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new AccountActivatedEvent('acct-1'));
+
+    expect(handledCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('wraps unexpected saga failures in SagaExecutionError', async () => {
+    class PaymentFailedEvent implements IEvent {
+      constructor(public readonly orderId: string) {}
+    }
+
+    @Saga(PaymentFailedEvent)
+    class FailingSaga implements ISaga<PaymentFailedEvent> {
+      handle(_event: PaymentFailedEvent): void {
+        throw new Error('saga exploded');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule()],
+      providers: [FailingSaga],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toBeInstanceOf(SagaExecutionError);
+    await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toThrow('saga exploded');
+
+    await app.close();
+  });
+
+  it('processes saga events in a deterministic order under concurrent publish calls', async () => {
+    class SequenceStore {
+      seen: number[] = [];
+    }
+
+    class SequencedEvent implements IEvent {
+      constructor(
+        public readonly index: number,
+        public readonly waitMs: number,
+      ) {}
+    }
+
+    @Inject([SequenceStore])
+    @Saga(SequencedEvent)
+    class SequencingSaga implements ISaga<SequencedEvent> {
+      constructor(private readonly store: SequenceStore) {}
+
+      async handle(event: SequencedEvent): Promise<void> {
+        await delay(event.waitMs);
+        this.store.seen.push(event.index);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule()],
+      providers: [SequenceStore, SequencingSaga],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(SequenceStore);
+
+    await Promise.all([
+      eventBus.publish(new SequencedEvent(1, 30)),
+      eventBus.publish(new SequencedEvent(2, 0)),
+      eventBus.publish(new SequencedEvent(3, 0)),
+    ]);
+
+    expect(store.seen).toEqual([1, 2, 3]);
+
+    await app.close();
+  });
+
+  it('waits for in-flight saga execution during application shutdown', async () => {
+    const releaseSaga = createDeferred<void>();
+
+    class ShutdownStore {
+      completed = false;
+    }
+
+    class ShutdownEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @Inject([ShutdownStore])
+    @Saga(ShutdownEvent)
+    class ShutdownSaga implements ISaga<ShutdownEvent> {
+      constructor(private readonly store: ShutdownStore) {}
+
+      async handle(_event: ShutdownEvent): Promise<void> {
+        await releaseSaga.promise;
+        this.store.completed = true;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule()],
+      providers: [ShutdownStore, ShutdownSaga],
+    });
+
+    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const store = await app.container.resolve(ShutdownStore);
+
+    const publishPromise = eventBus.publish(new ShutdownEvent('shutdown-1'));
+    await Promise.resolve();
+
+    const closePromise = app.close();
+    await Promise.resolve();
+
+    expect(store.completed).toBe(false);
+
+    releaseSaga.resolve();
+
+    await publishPromise;
+    await closePromise;
+
+    expect(store.completed).toBe(true);
   });
 
   it('wires command/query/event buses through createCqrsModule with bootstrapApplication', async () => {
