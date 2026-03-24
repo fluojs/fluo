@@ -45,7 +45,7 @@ await microservice.listen();
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub event transport adapter
 - `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
 - `KafkaMicroserviceTransport` - Kafka transport adapter (event, inbound message dispatch)
-- `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (event, inbound message dispatch)
+- `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
 
 ## Runtime behavior
 
@@ -134,19 +134,25 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
 - `RedisPubSubMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via separate request, response, and event channels with correlation-based reply routing.
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
-- `KafkaMicroserviceTransport` and `RabbitMqMicroserviceTransport` are event-only transports: they support `emit()` plus inbound event dispatch. For request/reply `send()`, use TCP, NATS, or Redis transport.
+- `KafkaMicroserviceTransport` is event-only: it supports `emit()` plus inbound event dispatch.
+- `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
 
 ### Kafka
 
-- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, or Redis instead.
+- `KafkaMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, Redis, or RabbitMQ instead.
 - Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
 - Ordering, offset commit policy, consumer group recovery, and broker-specific reconnect semantics are not guaranteed by Konekti itself; treat them as broker/client concerns unless a future guide says otherwise.
 
 ### RabbitMQ
 
-- `RabbitMqMicroserviceTransport` is event-only in the current adapter contract. `send()` always rejects, so request/reply flows should use TCP, NATS, or Redis instead.
-- Inbound handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
-- Ack/nack, requeue, dead-letter, and channel recovery policies are not configured by this adapter today. Treat them as broker/client concerns unless a future guide says otherwise.
+- `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using dedicated event (`eventQueue`), request (`messageQueue`), and response (`responseQueue`) queues.
+- `send()` publishes `{ kind: 'message', pattern, payload, requestId, replyTo }` to `messageQueue` and waits for `{ kind: 'response', requestId, payload | error }` on `responseQueue`.
+- Correlation is `requestId`-based. Unknown, late, or duplicate responses are ignored once a request is settled.
+- `send()` applies `requestTimeoutMs` (default 3 000 ms). On timeout, abort, or transport close, pending request promises reject deterministically.
+- Handler failures are serialized back as response `error` strings and rejected at the caller side.
+- Lifecycle behavior: startup subscribes event/request/response queues; reconnect is supported by calling `listen()` again after `close()`; shutdown cancels queue consumers and rejects in-flight pending requests.
+- Ack/nack, requeue, dead-letter, and broker-managed channel recovery remain broker/client concerns unless a future guide says otherwise.
+- Troubleshooting: repeated RabbitMQ request timeouts usually mean no active responder on `messageQueue`, mismatched `responseQueue` names across services, or missing consumer resubscription after broker reconnect.
 
 ### NATS
 
