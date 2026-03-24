@@ -23,6 +23,7 @@
 
 - `concepts/architecture-overview.ko.md`
 - `concepts/cqrs.ko.md`
+- `concepts/caching.ko.md`
 - `concepts/http-runtime.ko.md`
 - `concepts/di-and-modules.ko.md`
 - `concepts/lifecycle-and-shutdown.ko.md`
