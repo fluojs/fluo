@@ -1,3 +1,4 @@
+export * from './account-linking.js';
 export * from './cookie-auth.js';
 export * from './cookie-auth-module.js';
 export * from './cookie-manager.js';
