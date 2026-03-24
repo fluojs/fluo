@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Counter, Registry } from 'prom-client';
 
 import { MetricsModule } from './metrics-module.js';
 import { METER_PROVIDER } from './meter-provider.js';
@@ -236,5 +237,132 @@ describe('MetricsModule', () => {
     expect(() => MetricsModule.forRoot({ provider: 'otel' as unknown as 'prometheus' })).toThrow(
       'MetricsModule provider "otel" is not supported. Use provider "prometheus".',
     );
+  });
+
+  it('uses shared registry when provided via options', async () => {
+    const sharedRegistry = new Registry();
+
+    const customCounter = new Counter({
+      name: 'app_custom_requests_total',
+      help: 'Custom application request counter',
+      labelNames: ['endpoint'],
+      registers: [sharedRegistry],
+    });
+    customCounter.inc({ endpoint: '/api' });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const resolvedRegistry = metricsService.getRegistry();
+
+    expect(resolvedRegistry).toBe(sharedRegistry);
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.body)).toContain('app_custom_requests_total{endpoint="/api"} 1');
+
+    await app.close();
+  });
+
+  it('emits both framework and custom metrics from shared registry', async () => {
+    const sharedRegistry = new Registry();
+
+    const customGauge = new Counter({
+      name: 'app_active_connections',
+      help: 'Active connection count',
+      registers: [sharedRegistry],
+    });
+    customGauge.inc(5);
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    const metricsText = String(response.body);
+
+    expect(response.statusCode).toBe(200);
+    expect(metricsText).toContain('app_active_connections');
+    expect(metricsText).toContain('process_cpu_seconds_total');
+
+    await app.close();
+  });
+
+  it('throws on duplicate metric names when using shared registry with MetricsService', async () => {
+    const sharedRegistry = new Registry();
+
+    new Counter({
+      name: 'shared_duplicate_counter',
+      help: 'First registration',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+
+    expect(() => {
+      metricsService.counter({
+        help: 'Duplicate registration',
+        name: 'shared_duplicate_counter',
+      });
+    }).toThrow('A metric with the name shared_duplicate_counter has already been registered.');
+
+    await app.close();
+  });
+
+  it('creates isolated registry by default when registry option is omitted', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      mode: 'test',
+      rootModule: AppModule,
+    });
+
+    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const registry = metricsService.getRegistry();
+
+    metricsService.counter({
+      help: 'Isolated counter',
+      name: 'isolated_counter_total',
+    });
+
+    const metrics = await registry.metrics();
+    expect(metrics).toContain('isolated_counter_total');
+
+    await app.close();
   });
 });
