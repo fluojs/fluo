@@ -44,7 +44,7 @@ await microservice.listen();
 - `TcpMicroserviceTransport` - TCP 트랜스포트 어댑터입니다.
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `NatsMicroserviceTransport` - NATS 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
-- `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (이벤트, 인바운드 메시지 디스패치).
+- `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (이벤트, 인바운드 메시지 디스패치).
 
 ## 런타임 동작
@@ -93,13 +93,24 @@ class PaymentsHandler {
 - `TcpMicroserviceTransport`는 `send()` (요청/응답)와 `emit()` (이벤트)를 모두 지원합니다.
 - `RedisPubSubMicroserviceTransport`는 Redis의 요청/응답 채널, 응답 채널, 이벤트 채널을 분리해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
 - `NatsMicroserviceTransport`는 NATS 요청/응답 및 pub/sub 주제를 통해 `send()`와 `emit()`을 모두 지원합니다.
-- `KafkaMicroserviceTransport`와 `RabbitMqMicroserviceTransport`는 이벤트 전용 트랜스포트입니다. `emit()`과 인바운드 이벤트 디스패치를 지원합니다. 요청/응답 `send()`가 필요한 경우 TCP, NATS 또는 Redis 트랜스포트를 사용하세요.
+- `KafkaMicroserviceTransport`는 메시지, 응답, 이벤트 토픽을 분리하고 correlation 기반 라우팅을 사용해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
+- `RabbitMqMicroserviceTransport`는 현재 이벤트 전용입니다. 요청/응답 `send()`가 필요하면 Kafka, TCP, NATS, Redis 트랜스포트를 사용하세요.
 
 ### Kafka
 
-- `KafkaMicroserviceTransport`는 현재 어댑터 계약에서 이벤트 전용입니다. `send()`는 항상 reject되므로 요청/응답 흐름은 TCP, NATS 또는 Redis를 사용해야 합니다.
-- 인바운드 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
-- 순서 보장, 오프셋 커밋 정책, 컨슈머 그룹 복구, 브로커별 재연결 의미론은 현재 Konekti가 보장하지 않습니다. 별도 가이드가 나오기 전까지는 브로커/클라이언트 책임으로 취급하세요.
+- `KafkaMicroserviceTransport`는 요청/응답 `send()`와 이벤트 `emit()`을 모두 지원합니다.
+- `send()`는 구성된 메시지 토픽으로 `{ kind: 'message', pattern, payload, requestId, replyTopic }` 프레임을 publish하고, 상관관계가 맞는 `{ kind: 'response', requestId, payload | error }` 응답을 기다립니다.
+- 상관관계 식별자는 `requestId`(호출마다 생성)이며, 응답 라우팅은 `replyTopic`을 사용합니다 (`replyTopic` 기본값은 트랜스포트 인스턴스별 고유 토픽).
+- `send()`는 `requestTimeoutMs`(기본값 3 000ms)를 적용하며, 타임아웃·abort·트랜스포트 종료·원격 핸들러 오류 직렬화 시 reject됩니다.
+- 응답 구독이 활성화되어야 하므로 `send()` 전에 `listen()`을 호출해야 합니다.
+- 인바운드 이벤트 핸들러 실패는 트랜스포트 경계에서 격리되며 `emit()` 호출자에게 다시 전파되지 않습니다.
+- 요청/응답 운용 가정:
+  - `responseTopic`을 여러 인스턴스가 공유하는 값으로 오버라이드하면, 인스턴스별 소비가 격리되도록(예: 전용 consumer-group 또는 토픽 전략) 구성해야 응답 오소비를 피할 수 있습니다.
+  - 순서 보장, 오프셋 커밋 정책, 컨슈머 그룹 복구, 재연결 동작은 여전히 브로커/클라이언트 책임입니다.
+- Kafka 요청/응답 vs TCP/NATS 선택 기준:
+  - Kafka 중심 토폴로지를 이미 운영 중이고 해당 경계 안에서 요청/응답이 필요하면 Kafka 요청/응답이 적합합니다.
+  - 더 낮은 지연시간과 단순한 운영을 우선하면 TCP/NATS가 권장 경로입니다.
+- 트러블슈팅: Kafka 요청 타임아웃이 반복되면 패턴 responder 부재, 메시지/응답 토픽 설정 불일치, 인스턴스 간 response-topic/group 경합을 우선 점검하세요.
 
 ### RabbitMQ
 

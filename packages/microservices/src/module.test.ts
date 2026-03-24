@@ -4,6 +4,7 @@ import { Inject, Scope, defineControllerMetadata, defineModuleMetadata } from '@
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
 import { EventPattern, MessagePattern } from './decorators.js';
+import { KafkaMicroserviceTransport } from './kafka-transport.js';
 import { createMicroservicesModule } from './module.js';
 import { MICROSERVICE } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
@@ -66,6 +67,32 @@ class InMemoryPubSubRedisClient {
     for (const listener of this.listeners) {
       listener(channel, message);
     }
+  }
+}
+
+class InMemoryKafkaBus {
+  private readonly listeners = new Map<string, Set<(message: string) => Promise<void> | void>>();
+
+  async publish(topic: string, message: string): Promise<void> {
+    const handlers = this.listeners.get(topic);
+
+    if (!handlers) {
+      return;
+    }
+
+    for (const handler of handlers) {
+      await handler(message);
+    }
+  }
+
+  async subscribe(topic: string, handler: (message: string) => Promise<void> | void): Promise<void> {
+    const handlers = this.listeners.get(topic) ?? new Set<(message: string) => Promise<void> | void>();
+    handlers.add(handler);
+    this.listeners.set(topic, handlers);
+  }
+
+  async unsubscribe(topic: string): Promise<void> {
+    this.listeners.delete(topic);
   }
 }
 
@@ -167,6 +194,64 @@ describe('@konekti/microservices', () => {
     await app.close();
   });
 
+  it('handles Kafka transport request/reply and event dispatch', async () => {
+    const bus = new InMemoryKafkaBus();
+    const transport = new KafkaMicroserviceTransport({
+      consumer: {
+        subscribe: async (topic, handler) => {
+          await bus.subscribe(topic, handler);
+        },
+        unsubscribe: async (topic) => {
+          await bus.unsubscribe(topic);
+        },
+      },
+      producer: {
+        publish: async (topic, message) => {
+          await bus.publish(topic, message);
+        },
+      },
+      requestTimeoutMs: 1_000,
+      responseTopic: 'konekti.microservices.responses.test-module',
+    });
+
+    class Store {
+      events: string[] = [];
+    }
+
+    @Inject([Store])
+    class Handler {
+      constructor(private readonly store: Store) {}
+
+      @MessagePattern('math.sum')
+      sum(input: { a: number; b: number }) {
+        return input.a + input.b;
+      }
+
+      @EventPattern(/^audit\./)
+      onAudit(input: { message: string }) {
+        this.store.events.push(input.message);
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [Store, Handler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+
+    await microservice.listen();
+
+    await expect(microservice.send('math.sum', { a: 5, b: 7 })).resolves.toBe(12);
+    await microservice.emit('audit.login', { message: 'ok' });
+
+    const store = await microservice.get(Store);
+    expect(store.events).toEqual(['ok']);
+
+    await microservice.close();
+  });
+
   it('handles Redis pubsub transport publish/subscribe and regex pattern matching', async () => {
     const publishClient = new InMemoryPubSubRedisClient();
     const subscribeClient = new InMemoryPubSubRedisClient();
@@ -200,7 +285,7 @@ describe('@konekti/microservices', () => {
     await microservice.listen();
 
     await expect(microservice.send('calc.double', { value: 21 })).rejects.toThrow(
-      'does not support request/reply send()',
+      'No message handler registered for pattern "calc.double".',
     );
     await microservice.emit('audit.login', { message: 'ok' });
 

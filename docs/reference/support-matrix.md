@@ -28,7 +28,7 @@ This file is the compact reference table for current support policy.
 | Socket.IO adapter | preview | `@konekti/platform-socket.io` adds Socket.IO v4 namespace and room wiring on the shared Node HTTP server while reusing `@konekti/websocket` gateway decorators and metadata |
 | GraphQL subscriptions (SSE) | official | available at `/graphql` through GraphQL Yoga server-sent events |
 | GraphQL subscriptions (`graphql-ws`) | preview | opt-in via `createGraphqlModule({ subscriptions: { websocket: { enabled: true } } })` on the shared Node HTTP adapter |
-| Microservices transport | preview | `@konekti/microservices` with TCP, Redis Pub/Sub, Kafka, NATS, and RabbitMQ transport adapters plus `KonektiFactory.createMicroservice()`; promotion is evaluated per transport and requires transport-specific docs, tests, CI, example coverage, and troubleshooting guidance |
+| Microservices transport | preview | `@konekti/microservices` with TCP, Redis Pub/Sub, Kafka (request/reply + event), NATS, and RabbitMQ (event-only) transport adapters plus `KonektiFactory.createMicroservice()`; promotion is evaluated per transport and requires transport-specific docs, tests, CI, example coverage, and troubleshooting guidance |
 | Bun | preview | core contracts should remain promotable to this runtime |
 | Fetch-style adapter | preview | adapter may exist with narrower guarantees |
 | Deno | experimental | later candidate only |
