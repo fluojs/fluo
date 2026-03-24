@@ -10,6 +10,7 @@ const baseOptions: NormalizedCacheModuleOptions = {
   keyPrefix: 'konekti:cache:',
   store: 'memory',
   ttl: 0,
+  httpKeyStrategy: 'route',
 };
 
 class MockRedisClient {

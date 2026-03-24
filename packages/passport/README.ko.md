@@ -5,7 +5,11 @@
 
 Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 generic `AuthGuard`를 통해 request context에 연결한다.
 
-현재 공식 docs/examples 경로는 bearer-token JWT auth를 권장 preset으로 사용합니다. Cookie 기반 auth, refresh-token 정책, account-linking 정책은 현재 application-level concern으로 남아 있습니다.
+이 패키지는 bearer-token JWT 외에 두 가지 공식 preset을 함께 제공한다:
+- **Cookie auth preset**: HttpOnly 쿠키 JWT 추출 + `CookieManager` 유틸리티.
+- **Refresh token lifecycle**: 재생 감지(replay detection)를 포함한 refresh token 발급·로테이션·취소.
+
+계정 연결 정책이나 더 넓은 세션 스토어 관리는 애플리케이션 레벨 책임으로 남는다.
 
 ## 관련 문서
 
@@ -20,6 +24,228 @@ Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 
 2. request 시점에 `AuthGuard`가 requirement를 읽고, strategy를 이름으로 찾고, `strategy.authenticate(context)`를 호출하고, principal을 얻고, scope를 확인하고, `requestContext.principal`을 채운다
 3. auth 에러는 `UnauthorizedException` (401) 또는 `ForbiddenException` (403)으로 매핑된다
 4. Passport.js strategy는 `createPassportJsStrategyBridge()`로 bridge할 수 있다
+
+`AuthGuard`는 generic HTTP guard 계약을 명시적으로 따른다: pipeline을 계속하려면 성공을 반환하고, auth 실패 시 `UnauthorizedException` / `ForbiddenException`을 throw하며, redirect 같은 committed-response 흐름은 핸들러를 short-circuit할 수 있다.
+
+범위 정리:
+
+- `@konekti/passport`는 strategy 실행, refresh token lifecycle(발급·로테이션·취소), HttpOnly cookie auth preset을 소유한다
+- 로그인 자격 증명 검증, 세션 스토리지, 동의(consent), 계정 연결 등 더 넓은 account/session lifecycle은 애플리케이션 레벨 책임이다
+
+## Refresh Token Lifecycle
+
+`@konekti/passport`는 refresh token 작업을 위한 프레임워크 레벨 기본 기능을 제공한다:
+
+- **Issue**: subject에 대한 새 refresh token 생성
+- **Rotate**: 재생 감지를 포함하여 refresh token을 새 access + refresh token으로 교환
+- **Revoke**: 특정 token 또는 subject의 모든 token 무효화(로그아웃)
+
+### Refresh token strategy 사용
+
+```typescript
+import { Controller, Post } from '@konekti/http';
+import { UseAuth, RefreshTokenStrategy } from '@konekti/passport';
+import type { RequestContext } from '@konekti/http';
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(_: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+### Refresh token 어댑터 등록
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createRefreshTokenProviders,
+  JwtRefreshTokenAdapter,
+  RefreshTokenStrategy,
+} from '@konekti/passport';
+
+@Module({
+  providers: [
+    JwtRefreshTokenAdapter,
+    RefreshTokenStrategy,
+    ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
+    ...createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'refresh-token', token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+### 커스텀 refresh token 서비스 구현
+
+```typescript
+import type { RefreshTokenService } from '@konekti/passport';
+
+export class MyRefreshTokenService implements RefreshTokenService {
+  async issueRefreshToken(subject: string): Promise<string> {
+    // 직접 구현
+  }
+
+  async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // 로테이션 및 재생 감지 포함 구현
+  }
+
+  async revokeRefreshToken(tokenId: string): Promise<void> {
+    // 직접 구현
+  }
+
+  async revokeAllForSubject(subject: string): Promise<void> {
+    // 로그아웃: subject의 모든 token 취소
+  }
+}
+```
+
+## Cookie Auth Preset
+
+`@konekti/passport`는 JWT 기반 인증을 위한 공식 HttpOnly 쿠키 auth preset을 제공한다. 이 preset은 bearer 헤더 대신 보안 HttpOnly 쿠키에서 JWT 토큰을 추출한다.
+
+### Cookie auth strategy 사용
+
+```typescript
+import { Controller, Post, Get } from '@konekti/http';
+import { UseAuth, CookieAuthStrategy, CookieManager } from '@konekti/passport';
+import type { RequestContext } from '@konekti/http';
+import { Inject } from '@konekti/core';
+import { DefaultJwtSigner } from '@konekti/jwt';
+
+@Controller('/auth')
+export class AuthController {
+  @Inject([DefaultJwtSigner, CookieManager])
+  constructor(
+    private readonly signer: DefaultJwtSigner,
+    private readonly cookieManager: CookieManager,
+  ) {}
+
+  @Post('/login')
+  async login(input: { username: string }, ctx: RequestContext) {
+    const accessToken = await this.signer.signAccessToken({
+      sub: input.username,
+      roles: ['user'],
+    });
+
+    this.cookieManager.setAccessTokenCookie(ctx.response, accessToken, 3600);
+
+    return { success: true };
+  }
+
+  @Get('/profile')
+  @UseAuth('cookie')
+  async getProfile(_input: never, ctx: RequestContext) {
+    return { user: ctx.principal };
+  }
+
+  @Post('/logout')
+  async logout(_input: never, ctx: RequestContext) {
+    this.cookieManager.clearAllCookies(ctx.response);
+    return { success: true };
+  }
+}
+```
+
+### Cookie auth preset 등록
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createCookieAuthPreset,
+} from '@konekti/passport';
+import { createJwtCoreProviders } from '@konekti/jwt';
+
+@Module({
+  providers: [
+    ...createJwtCoreProviders({
+      algorithms: ['HS256'],
+      secret: process.env.JWT_SECRET!,
+      issuer: 'my-app',
+      audience: 'my-app-clients',
+      accessTokenTtlSeconds: 3600,
+    }),
+    ...createCookieAuthPreset({
+      cookieAuth: {
+        accessTokenCookieName: 'access_token',
+        refreshTokenCookieName: 'refresh_token',
+        requireAccessToken: true,
+      },
+      cookieManager: {
+        cookieOptions: {
+          secure: true,
+          sameSite: 'strict',
+          path: '/',
+        },
+      },
+    }).providers,
+    ...createPassportProviders(
+      { defaultStrategy: 'cookie' },
+      [createCookieAuthPreset().strategy],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+### Cookie manager 유틸리티
+
+`CookieManager` 클래스는 auth 쿠키 관리를 위한 유틸리티를 제공한다:
+
+```typescript
+import { CookieManager } from '@konekti/passport';
+import type { FrameworkResponse } from '@konekti/http';
+
+// access token 쿠키 설정
+cookieManager.setAccessTokenCookie(response, accessToken, 3600);
+
+// refresh token 쿠키 설정
+cookieManager.setRefreshTokenCookie(response, refreshToken, 604800);
+
+// 두 토큰 동시 설정
+cookieManager.setAuthCookies(response, accessToken, 3600, refreshToken, 604800);
+
+// access token 쿠키 삭제
+cookieManager.clearAccessTokenCookie(response);
+
+// refresh token 쿠키 삭제
+cookieManager.clearRefreshTokenCookie(response);
+
+// 모든 auth 쿠키 삭제 (로그아웃)
+cookieManager.clearAllCookies(response);
+```
+
+### 보안 기본값
+
+Cookie auth preset은 보안 기본값을 사용한다:
+
+- **HttpOnly**: `true` (JavaScript 접근 차단)
+- **Secure**: `true` (프로덕션에서 HTTPS 전용)
+- **SameSite**: `strict` (CSRF 방지)
+- **Path**: `/` (애플리케이션 전체에서 사용 가능)
+
+이 기본값은 `CookieManagerConfig`로 재정의할 수 있다.
+
+### Preset 소유 범위 vs 애플리케이션 정책
+
+**Preset이 소유하는 것:**
+- HttpOnly 쿠키에서 JWT 추출
+- 보안 플래그를 포함한 쿠키 헤더 구성
+- `@konekti/jwt` verifier와의 통합
+
+**애플리케이션 정책 (preset이 소유하지 않는 것):**
+- 로그인 엔드포인트 구현 (자격 증명 검증)
+- 사용자 세션 스토리지 (JWT 외에 필요한 경우)
+- 라우트별 쿠키 도메인 및 경로 커스터마이징
+- 멀티 테넌트 쿠키 격리
+- 쿠키 동의 준수
 
 ## 설치
 
@@ -73,17 +299,19 @@ export class AuthModule {}
 ```typescript
 import type { AuthStrategy, GuardContext } from '@konekti/passport';
 import { AuthenticationRequiredError } from '@konekti/passport';
-import { DefaultJwtVerifier } from '@konekti/jwt';
 
-export class BearerAuthStrategy implements AuthStrategy {
-  constructor(private verifier: DefaultJwtVerifier) {}
-
+export class ApiKeyStrategy implements AuthStrategy {
   async authenticate(context: GuardContext) {
-    const authHeader = context.requestContext.request.headers['authorization'];
-    const token = authHeader?.replace(/^Bearer /, '');
-    if (!token) throw new AuthenticationRequiredError();
+    const apiKey = context.requestContext.request.headers['x-api-key'];
+    if (!apiKey) {
+      throw new AuthenticationRequiredError();
+    }
 
-    return this.verifier.verifyAccessToken(token);
+    return {
+      claims: { apiKey },
+      scopes: ['read:profile'],
+      subject: 'api-key-user',
+    };
   }
 }
 ```
@@ -117,7 +345,7 @@ export class AuthModule {}
 
 | Export | 위치 | 설명 |
 |---|---|---|
-| `AuthStrategy` | `src/types.ts` | 인터페이스: `authenticate(context) → AuthStrategyResult` |
+| `AuthStrategy` | `src/types.ts` | 인터페이스: `authenticate(context) → principal \| handled result` |
 | `AuthStrategyResult` | `src/types.ts` | `Principal` 또는 `{ handled: true, principal? }` |
 | `AuthGuard` | `src/guard.ts` | auth requirement를 읽고 strategy를 호출하는 generic guard |
 | `UseAuth(strategyName)` | `src/decorators.ts` | strategy 설정 + route에 `AuthGuard` 부착 |
@@ -125,6 +353,13 @@ export class AuthModule {}
 | `createPassportProviders(opts)` | `src/module.ts` | strategy registry와 default strategy wiring 등록 |
 | `createPassportJsStrategyBridge(...)` | `src/passport-js.ts` | Passport.js strategy를 Konekti `AuthStrategy`로 감쌈 |
 | `AuthRequirement` | `src/types.ts` | `{ strategy?, scopes? }` — class + method 레벨에서 merge됨 |
+| `RefreshTokenService` | `src/refresh-token.ts` | refresh token lifecycle 작업을 위한 인터페이스 |
+| `RefreshTokenStrategy` | `src/refresh-token.ts` | refresh token 인증을 위한 auth strategy |
+| `JwtRefreshTokenAdapter` | `src/jwt-refresh-token-adapter.ts` | `@konekti/jwt`의 `RefreshTokenService`를 passport 인터페이스로 연결 |
+| `createRefreshTokenProviders(service)` | `src/refresh-token.ts` | DI에 refresh token 서비스 등록 |
+| `CookieAuthStrategy` | `src/cookie-auth.ts` | HttpOnly 쿠키에서 JWT를 추출하는 auth strategy |
+| `CookieManager` | `src/cookie-manager.ts` | auth 쿠키 설정/삭제 유틸리티 |
+| `createCookieAuthPreset(config)` | `src/cookie-auth-module.ts` | cookie auth provider와 strategy 등록 생성 |
 
 ## 구조
 
@@ -170,17 +405,27 @@ public package는 auth error 클래스, bridge 타입, metadata helper, `AUTH_ST
 3. `src/decorators.ts` — `UseAuth`, `RequireScopes` — 메타데이터 쓰기 + `AuthGuard` 부착
 4. `src/errors.ts` — auth-specific 에러 타입
 5. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope 확인, principal 채우기
-6. `src/module.ts` — `createPassportProviders`
-7. `src/passport-js.ts` — `createPassportJsStrategyBridge`
-8. `src/guard.test.ts` — non-JWT strategy 흐름, 401/403 매핑, principal 채우기, scope 강제, Passport.js bridge 경로
+6. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle 기본 기능
+7. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — `@konekti/jwt`를 passport 인터페이스로 연결
+8. `src/cookie-auth.ts` — `CookieAuthStrategy` — HttpOnly 쿠키에서 JWT 추출
+9. `src/cookie-manager.ts` — `CookieManager` — 쿠키 설정/삭제 유틸리티
+10. `src/cookie-auth-module.ts` — `createCookieAuthPreset` — cookie auth provider와 strategy 등록
+11. `src/module.ts` — `createPassportProviders`
+12. `src/passport-js.ts` — `createPassportJsStrategyBridge`
+13. `src/guard.test.ts` — non-JWT strategy 흐름, 401/403 매핑, principal 채우기, scope 강제, Passport.js bridge 경로
+14. `src/refresh-token.test.ts` — refresh token lifecycle, 로테이션, 재생 감지, 취소
+15. `src/cookie-auth.test.ts` — cookie auth strategy 및 cookie manager 테스트
 
 ## 관련 패키지
 
-- `@konekti/jwt` — JWT token 검증을 사용해 `AuthStrategy`를 구현; strategy 코드는 이 패키지가 아니라 앱에 있음
+- `@konekti/jwt` — token-core 서명/검증 구현
 - `@konekti/http` — `AuthGuard`는 `@konekti/http` dispatcher의 guard chain에서 동작
 
 ## 한 줄 mental model
 
 ```text
 @konekti/passport = strategy-agnostic auth 실행: 어떤 AuthStrategy든 → AuthGuard → RequestContext의 principal
+                 + refresh token lifecycle: 발급 → 로테이션 → 취소 (재생 감지 포함)  (프레임워크 소유)
+                 + cookie auth preset: HttpOnly 쿠키 JWT 추출 + 쿠키 관리 유틸리티   (프레임워크 소유)
+                 + 로그인 흐름, 세션 스토어, 동의, 계정 연결                           (애플리케이션 소유)
 ```

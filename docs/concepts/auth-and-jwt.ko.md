@@ -51,18 +51,81 @@
 
 ## 표준 인증 패턴
 
-권장되는 인증 패턴은 `Authorization: Bearer <token>` 헤더를 통한 Bearer 토큰 인증입니다.
+권장 인증 패턴은 두 가지입니다:
+
+1. **Bearer 토큰 인증** — `Authorization: Bearer <token>` 헤더를 통한 인증
+2. **Cookie 인증** — HttpOnly 보안 쿠키를 통한 인증 (공식 preset)
+
+### 공식 Cookie auth preset
+
+`@konekti/passport`는 JWT 기반 인증을 위한 공식 HttpOnly 쿠키 auth preset을 제공합니다:
+
+```typescript
+import { Module } from '@konekti/core';
+import {
+  createPassportProviders,
+  createCookieAuthPreset,
+} from '@konekti/passport';
+import { createJwtCoreProviders } from '@konekti/jwt';
+
+@Module({
+  providers: [
+    ...createJwtCoreProviders({
+      algorithms: ['HS256'],
+      secret: process.env.JWT_SECRET!,
+      issuer: 'my-app',
+      audience: 'my-app-clients',
+      accessTokenTtlSeconds: 3600,
+    }),
+    ...createCookieAuthPreset({
+      cookieAuth: {
+        accessTokenCookieName: 'access_token',
+        refreshTokenCookieName: 'refresh_token',
+        requireAccessToken: true,
+      },
+      cookieManager: {
+        cookieOptions: {
+          secure: true,
+          sameSite: 'strict',
+          path: '/',
+        },
+      },
+    }).providers,
+    ...createPassportProviders(
+      { defaultStrategy: 'cookie' },
+      [createCookieAuthPreset().strategy],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+Preset에 포함된 것:
+- `CookieAuthStrategy`: HttpOnly 쿠키에서 JWT 추출
+- `CookieManager`: auth 쿠키 설정/삭제 유틸리티
+- 보안 기본값: `HttpOnly: true`, `Secure: true`, `SameSite: strict`
+
+전체 cookie auth lifecycle 세부 정보는 `@konekti/passport` 문서를 참조하세요.
 
 ### 애플리케이션 레벨 정책
 
-다음 영역은 현재 애플리케이션 특정 사항으로 간주되며 프레임워크 내에서 표준화되지 않았습니다:
+다음 영역은 애플리케이션 특정 사항으로 남아 있습니다:
 
-- HttpOnly 쿠키 인증 프리셋.
-- 리프레시 토큰 라이프사이클 및 로테이션.
-- 로그아웃 및 토큰 취소.
-- ID 제공자 계정 연결(Identity provider account linking).
+- 로그인 엔드포인트 구현 (자격 증명 검증)
+- 사용자 세션 스토리지 (JWT 외에 필요한 경우)
+- 라우트별 쿠키 도메인 및 경로 커스터마이징
+- 멀티 테넌트 쿠키 격리
+- 쿠키 동의 준수
 
-이러한 항목들은 프로젝트 요구사항에 따라 애플리케이션 레벨에서 구현되어야 합니다.
+### 프레임워크 레벨 Refresh Token Lifecycle
+
+`@konekti/passport`는 `RefreshTokenService`를 통해 refresh token 작업을 위한 프레임워크 레벨 기본 기능을 제공합니다:
+
+- **Issue**: subject에 대한 새 refresh token 생성.
+- **Rotate**: 재생 감지를 포함하여 refresh token을 새 access + refresh token으로 교환.
+- **Revoke**: 특정 token 또는 subject의 모든 token 무효화(로그아웃).
+
+`RefreshTokenStrategy`는 request body(`refreshToken`), `Authorization: Bearer` 헤더, 또는 커스텀 `x-refresh-token` 헤더에서 refresh token을 추출합니다. 프레임워크가 헤더 형태(문자열 또는 문자열 배열) 정규화를 내부적으로 처리합니다.
 
 ## 추가 정보
 

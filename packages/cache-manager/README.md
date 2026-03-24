@@ -131,7 +131,7 @@ class AppModule {}
 - Default cache key depends on `httpKeyStrategy`:
   - `'route'` (default) — matched route path only, query params ignored.
   - `'route+query'` — route path + sorted query string (recommended for query-sensitive endpoints).
-  - `'full'` — route path + query string (same as `'route+query'` currently).
+  - `'full'` — route path + sorted query string; currently equivalent to `'route+query'`.
   - `function` — custom resolver `(context) => string`.
 - `@CacheKey(...)` decorator overrides the module-level strategy for individual handlers.
 - `@CacheEvict(...)` runs after the response write of successful non-GET handlers.

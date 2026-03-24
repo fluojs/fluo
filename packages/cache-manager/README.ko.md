@@ -119,16 +119,19 @@ class AppModule {}
 - `CACHE_MANAGER` — `CacheService` DI 토큰.
 - `CACHE_OPTIONS` — 정규화된 모듈 옵션 DI 토큰.
 
-`CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`입니다.
+`CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`입니다.
 
 ## 동작 규약
 
 ### HTTP 인터셉터 동작 (CacheInterceptor)
 
 - 기본 캐시 조회는 **GET 전용**입니다.
-- 기본 캐시 키는 매칭된 라우트 경로(`handler.metadata.effectivePath`)입니다.
-- 예: `GET /products?sort=asc` 요청의 기본 캐시 키는 `/products`입니다.
-- 쿼리 문자열까지 포함한 키가 필요하면 `@CacheKey(...)`로 명시적으로 지정합니다.
+- 기본 캐시 키는 `httpKeyStrategy`에 따라 결정됩니다:
+  - `'route'` (기본값) — 매칭된 라우트 경로만 사용, 쿼리 파라미터 무시.
+  - `'route+query'` — 라우트 경로 + 정렬된 쿼리 문자열 (쿼리 민감 엔드포인트에 권장).
+  - `'full'` — 라우트 경로 + 정렬된 쿼리 문자열; 현재 `'route+query'`와 동일.
+  - `function` — 커스텀 resolver `(context) => string`.
+- `@CacheKey(...)` 데코레이터는 개별 핸들러에 대해 모듈 레벨 전략을 재정의합니다.
 - `@CacheEvict(...)`는 성공한 non-GET 핸들러의 응답이 기록된 뒤 실행됩니다.
 
 ### 범용 캐시 동작 (CacheService / CacheStore)

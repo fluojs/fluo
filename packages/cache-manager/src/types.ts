@@ -57,7 +57,7 @@ export type CacheEvictDecoratorValue = string | readonly string[] | CacheEvictFa
  *
  * - `'route'` — key is the matched route path only (legacy default).
  * - `'route+query'` — route path + sorted query string (recommended).
- * - `'full'` — full URL including path and query in original order.
+ * - `'full'` — route path + sorted query string; currently equivalent to `'route+query'`.
  * - `function` — custom resolver receiving the interceptor context.
  */
 export type CacheKeyStrategy = 'route' | 'route+query' | 'full' | ((context: InterceptorContext) => string);

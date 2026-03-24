@@ -5,7 +5,11 @@
 
 Strategy-agnostic auth execution layer for Konekti — routes any `AuthStrategy` through a generic `AuthGuard` into the request context.
 
-The current official docs/examples path uses bearer-token JWT auth as the recommended preset. Cookie-based auth, refresh-token policy, and account-linking policy remain application-level concerns today.
+The package ships two official presets beyond bearer-token JWT:
+- **Cookie auth preset**: HttpOnly cookie JWT extraction with `CookieManager` utilities.
+- **Refresh token lifecycle**: Issue, rotate, and revoke refresh tokens with replay detection.
+
+Account-linking policy and broader session store management remain application-level concerns.
 
 ## See also
 
@@ -25,9 +29,8 @@ The current official docs/examples path uses bearer-token JWT auth as the recomm
 
 Scope note:
 
-- the current official example path is bearer-token JWT auth
-- refresh-token rotation, revoke/logout handling, and cookie/session policy remain application-level concerns
-- `@konekti/passport` owns strategy execution, not the broader account/session lifecycle
+- `@konekti/passport` owns strategy execution, the refresh token lifecycle (issue / rotate / revoke), and the HttpOnly cookie auth preset
+- the broader account/session lifecycle (login credential validation, session storage, consent, account linking) remains application-level
 
 ## Refresh Token Lifecycle
 
@@ -422,6 +425,7 @@ The public package also exports auth error classes, bridge types, metadata helpe
 
 ```text
 @konekti/passport = strategy-agnostic auth execution: any AuthStrategy → AuthGuard → principal in RequestContext
-                 + refresh token lifecycle: issue → rotate → revoke with replay detection
-                 + cookie auth preset: HttpOnly cookie JWT extraction + cookie management utilities
+                 + refresh token lifecycle: issue → rotate → revoke with replay detection        (framework-owned)
+                 + cookie auth preset: HttpOnly cookie JWT extraction + cookie management        (framework-owned)
+                 + login flow, session store, consent, account linking                          (application-owned)
 ```
