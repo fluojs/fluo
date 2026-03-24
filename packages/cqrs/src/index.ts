@@ -1,10 +1,11 @@
-export { CommandHandler, EventHandler, QueryHandler } from './decorators.js';
+export { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
 export {
   DuplicateCommandHandlerError,
   DuplicateEventHandlerError,
   DuplicateQueryHandlerError,
   CommandHandlerNotFoundException,
   QueryHandlerNotFoundException,
+  SagaExecutionError,
   CommandHandlerNotFoundError,
   QueryHandlerNotFoundError,
 } from './errors.js';
@@ -20,6 +21,9 @@ export {
   getQueryHandlerMetadata,
   getQueryHandlerMetadataEntry,
   queryHandlerMetadataSymbol,
+  defineSagaMetadata,
+  getSagaMetadata,
+  sagaMetadataSymbol,
 } from './metadata.js';
 export { createCqrsModule, createCqrsProviders, type CqrsModuleOptions } from './module.js';
 export { CQRS_EVENT_BUS, COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
@@ -40,9 +44,13 @@ export type {
   IEventHandler,
   IQuery,
   IQueryHandler,
+  ISaga,
   QueryBus,
   QueryHandlerClass,
   QueryHandlerDescriptor,
   QueryHandlerMetadata,
   QueryType,
+  SagaClass,
+  SagaDescriptor,
+  SagaMetadata,
 } from './types.js';

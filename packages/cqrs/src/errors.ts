@@ -30,5 +30,11 @@ export class DuplicateEventHandlerError extends KonektiError {
   }
 }
 
+export class SagaExecutionError extends KonektiError {
+  constructor(message: string) {
+    super(message, { code: 'CQRS_SAGA_EXECUTION_FAILED' });
+  }
+}
+
 export const CommandHandlerNotFoundError = CommandHandlerNotFoundException;
 export const QueryHandlerNotFoundError = QueryHandlerNotFoundException;

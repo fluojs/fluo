@@ -4,6 +4,7 @@ import {
   commandHandlerMetadataSymbol,
   eventHandlerMetadataSymbol,
   queryHandlerMetadataSymbol,
+  sagaMetadataSymbol,
 } from './metadata.js';
 import type {
   CommandHandlerMetadata,
@@ -12,6 +13,7 @@ import type {
   EventHandlerMetadata,
   QueryHandlerMetadata,
   QueryType,
+  SagaMetadata,
 } from './types.js';
 
 type ClassDecoratorLike = (value: Function, context: ClassDecoratorContext) => void;
@@ -48,6 +50,30 @@ function defineStandardEventHandlerMetadata(metadata: unknown, handlerMetadata: 
   } satisfies EventHandlerMetadata;
 }
 
+function defineStandardSagaMetadata(metadata: unknown, sagaMetadata: SagaMetadata): void {
+  const bag = getStandardMetadataBag(metadata);
+  bag[sagaMetadataSymbol] = {
+    eventTypes: [...sagaMetadata.eventTypes],
+  } satisfies SagaMetadata;
+}
+
+function normalizeSagaEventTypes(eventTypeOrTypes: CqrsEventType | readonly CqrsEventType[]): readonly CqrsEventType[] {
+  const eventTypes = Array.isArray(eventTypeOrTypes) ? eventTypeOrTypes : [eventTypeOrTypes];
+  const uniqueEventTypes = Array.from(new Set(eventTypes));
+
+  if (uniqueEventTypes.length === 0) {
+    throw new Error('@Saga() requires at least one event type.');
+  }
+
+  for (const eventType of uniqueEventTypes) {
+    if (typeof eventType !== 'function') {
+      throw new Error('@Saga() event types must be class constructors.');
+    }
+  }
+
+  return uniqueEventTypes;
+}
+
 export function CommandHandler(commandType: CommandType): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext): void => {
     const metadata: CommandHandlerMetadata = {
@@ -79,6 +105,20 @@ export function EventHandler(eventType: CqrsEventType): ClassDecoratorLike {
     };
 
     defineStandardEventHandlerMetadata(context.metadata, metadata);
+  };
+
+  return decorator;
+}
+
+export function Saga(eventTypeOrTypes: CqrsEventType | readonly CqrsEventType[]): ClassDecoratorLike {
+  const eventTypes = normalizeSagaEventTypes(eventTypeOrTypes);
+
+  const decorator = (_value: Function, context: ClassDecoratorContext): void => {
+    const metadata: SagaMetadata = {
+      eventTypes,
+    };
+
+    defineStandardSagaMetadata(context.metadata, metadata);
   };
 
   return decorator;

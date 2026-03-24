@@ -112,24 +112,123 @@ export class AppModule {}
 
 ## API
 
-- `createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, eventBus? })` - 글로벌 `COMMAND_BUS`, `QUERY_BUS`, CQRS `EVENT_BUS`를 등록하고 내부적으로 `createEventBusModule()`을 import합니다.
+- `createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - 글로벌 `COMMAND_BUS`, `QUERY_BUS`, CQRS `EVENT_BUS`를 등록하고 내부적으로 `createEventBusModule()`을 import합니다.
 - `createCqrsProviders()` - 수동 조합을 위한 raw provider 목록을 반환합니다.
 - `COMMAND_BUS` - `CommandBus`용 DI 토큰입니다.
 - `QUERY_BUS` - `QueryBus`용 DI 토큰입니다.
 - `EVENT_BUS` - 이슈 기대치에 맞춘 `CqrsEventBus`용 CQRS 이벤트 버스 토큰입니다.
 - `CQRS_EVENT_BUS` - 동일 토큰에 대한 호환 별칭입니다.
 - `ICommand`, `IQuery<TResult>`, `IEvent` - CQRS 메시지 마커 인터페이스입니다.
-- `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>` - 핸들러 계약 인터페이스입니다.
+- `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - 핸들러 계약 인터페이스입니다.
 - `@CommandHandler(CommandClass)` - 클래스에 command handler 메타데이터를 기록합니다.
 - `@QueryHandler(QueryClass)` - 클래스에 query handler 메타데이터를 기록합니다.
 - `@EventHandler(EventClass)` - 클래스에 CQRS event handler 메타데이터를 기록합니다.
+- `@Saga(EventClass | EventClass[])` - 하나 이상의 이벤트 타입에 반응하는 클래스 기반 saga/process-manager 메타데이터를 기록합니다.
 
 ### 모듈 옵션 동작
 
-- `commandHandlers`, `queryHandlers`, `eventHandlers`는 선택적 편의 등록 배열입니다.
+- `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`는 선택적 편의 등록 배열입니다.
 - 배열 항목은 생성되는 CQRS 모듈의 provider로 추가됩니다.
 - 실제 핸들러 탐색은 부트스트랩 시점 decorator/compiled module 스캔을 계속 사용하므로, 이 배열은 데코레이터를 대체하는 방식이 아니라 명시적 등록 경로입니다.
 - `eventBus`는 `createEventBusModule(eventBus)`로 그대로 전달됩니다.
+
+## Saga process-manager 예시
+
+```typescript
+import { Inject, Module } from '@konekti/core';
+import {
+  CommandBus,
+  CommandHandler,
+  COMMAND_BUS,
+  CqrsEventBus,
+  createCqrsModule,
+  EVENT_BUS,
+  ICommand,
+  ICommandHandler,
+  IEvent,
+  ISaga,
+  Saga,
+} from '@konekti/cqrs';
+
+class OrderSubmittedEvent implements IEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+class PaymentAuthorizedEvent implements IEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+class InventoryReservedEvent implements IEvent {
+  constructor(public readonly orderId: string) {}
+}
+
+class StartPaymentCommand implements ICommand {
+  constructor(public readonly orderId: string) {}
+}
+
+class ReserveInventoryCommand implements ICommand {
+  constructor(public readonly orderId: string) {}
+}
+
+class CompleteOrderCommand implements ICommand {
+  constructor(public readonly orderId: string) {}
+}
+
+@Inject([EVENT_BUS])
+@CommandHandler(StartPaymentCommand)
+class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
+  constructor(private readonly eventBus: CqrsEventBus) {}
+
+  async execute(command: StartPaymentCommand): Promise<void> {
+    await this.eventBus.publish(new PaymentAuthorizedEvent(command.orderId));
+  }
+}
+
+@Inject([EVENT_BUS])
+@CommandHandler(ReserveInventoryCommand)
+class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
+  constructor(private readonly eventBus: CqrsEventBus) {}
+
+  async execute(command: ReserveInventoryCommand): Promise<void> {
+    await this.eventBus.publish(new InventoryReservedEvent(command.orderId));
+  }
+}
+
+@CommandHandler(CompleteOrderCommand)
+class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
+  execute(command: CompleteOrderCommand): void {
+    console.log(`order completed: ${command.orderId}`);
+  }
+}
+
+@Inject([COMMAND_BUS])
+@Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
+class OrderFulfillmentSaga implements ISaga<IEvent> {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  async handle(event: IEvent): Promise<void> {
+    if (event instanceof OrderSubmittedEvent) {
+      await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+      return;
+    }
+
+    if (event instanceof PaymentAuthorizedEvent) {
+      await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
+      return;
+    }
+
+    if (event instanceof InventoryReservedEvent) {
+      await this.commandBus.execute(new CompleteOrderCommand(event.orderId));
+    }
+  }
+}
+
+@Module({
+  imports: [createCqrsModule()],
+  providers: [StartPaymentHandler, ReserveInventoryHandler, CompleteOrderHandler, OrderFulfillmentSaga],
+})
+export class AppModule {}
+```
 
 ## 런타임 동작
 
@@ -140,6 +239,11 @@ export class AppModule {}
 - 등록되지 않은 command/query는 `execute(...)` 호출 시 typed not-found error를 발생시킵니다.
 - `CqrsEventBus.publish()`는 내부 `EVENT_BUS.publish()`로 위임됩니다.
 - `CqrsEventBus.publish()`는 부트스트랩 시점에 발견된 클래스 기반 `@EventHandler()` 핸들러도 함께 디스패치합니다.
+- saga 탐색은 부트스트랩 시점에 수행되며 singleton `@Saga()` 클래스만 등록됩니다.
+- 서로 다른 saga 클래스는 같은 이벤트 타입을 함께 구독할 수 있고, 같은 saga 클래스의 중복 등록은 자동으로 dedupe됩니다.
+- saga 디스패치는 saga 인스턴스 단위 실행 체인으로 처리되어, 동시 `publish()` 상황에서도 saga별 처리 순서가 결정적으로 유지됩니다.
+- saga 내부에서 예상치 못한 예외가 발생하면 `publish()`는 `SagaExecutionError`를 throw합니다. 기존 `KonektiError`는 그대로 전달됩니다.
+- 애플리케이션 종료 시 진행 중인 saga 실행은 drain됩니다.
 - `CqrsEventBus.publishAll()`은 각 이벤트에 대해 순차적으로 `publish()`를 호출합니다.
 
 ## 요구 사항 및 경계
@@ -148,4 +252,6 @@ export class AppModule {}
 - command/query 핸들러 클래스는 singleton 스코프여야 합니다.
 - command/query 핸들러 클래스는 `execute(...)`를 구현해야 합니다.
 - event handler 클래스는 `handle(...)`를 구현해야 합니다.
+- saga 클래스는 singleton 스코프여야 합니다.
+- saga 클래스는 `handle(...)`를 구현해야 합니다.
 - `@EventHandler()` 클래스 핸들러는 `@konekti/event-bus`의 메서드 레벨 `@OnEvent()`와 함께 사용할 수 있습니다.

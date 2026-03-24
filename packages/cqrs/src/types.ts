@@ -20,6 +20,10 @@ export interface IEventHandler<TEvent extends IEvent> {
   handle(event: TEvent): void | Promise<void>;
 }
 
+export interface ISaga<TEvent extends IEvent = IEvent> {
+  handle(event: TEvent): void | Promise<void>;
+}
+
 export interface CommandType<TCommand extends ICommand = ICommand> {
   new (...args: never[]): TCommand;
 }
@@ -44,6 +48,10 @@ export interface EventHandlerClass {
   new (...args: never[]): object;
 }
 
+export interface SagaClass {
+  new (...args: never[]): object;
+}
+
 export interface CommandHandlerMetadata {
   commandType: CommandType;
 }
@@ -54,6 +62,10 @@ export interface QueryHandlerMetadata {
 
 export interface EventHandlerMetadata {
   eventType: CqrsEventType;
+}
+
+export interface SagaMetadata {
+  eventTypes: readonly CqrsEventType[];
 }
 
 export interface CommandHandlerDescriptor {
@@ -71,6 +83,13 @@ export interface QueryHandlerDescriptor {
 }
 
 export interface EventHandlerDescriptor {
+  eventType: CqrsEventType;
+  moduleName: string;
+  token: Token;
+  targetType: Function;
+}
+
+export interface SagaDescriptor {
   eventType: CqrsEventType;
   moduleName: string;
   token: Token;
