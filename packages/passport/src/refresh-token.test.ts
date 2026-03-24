@@ -17,7 +17,7 @@ function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> =
   };
 }
 
-function createGuardContext(body?: Record<string, unknown>, headers?: Record<string, string>): GuardContext {
+function createGuardContext(body?: Record<string, unknown>, headers?: Record<string, string | string[]>): GuardContext {
   return {
     handler: {
       controllerToken: class {},
@@ -79,6 +79,32 @@ describe('RefreshTokenStrategy', () => {
         subject: 'user-1',
       });
       expect(service.rotateRefreshToken).toHaveBeenCalledWith('custom-token');
+    });
+
+    it('handles array authorization header by using first element', async () => {
+      const service = createMockRefreshTokenService();
+      const strategy = new RefreshTokenStrategy(service);
+      const context = createGuardContext(undefined, { authorization: ['Bearer array-token', 'Bearer second-token'] });
+
+      const result = await strategy.authenticate(context);
+
+      expect(result).toMatchObject({
+        subject: 'user-1',
+      });
+      expect(service.rotateRefreshToken).toHaveBeenCalledWith('array-token');
+    });
+
+    it('handles array x-refresh-token header by using first element', async () => {
+      const service = createMockRefreshTokenService();
+      const strategy = new RefreshTokenStrategy(service);
+      const context = createGuardContext(undefined, { 'x-refresh-token': ['custom-array-token'] });
+
+      const result = await strategy.authenticate(context);
+
+      expect(result).toMatchObject({
+        subject: 'user-1',
+      });
+      expect(service.rotateRefreshToken).toHaveBeenCalledWith('custom-array-token');
     });
 
     it('throws AuthenticationRequiredError when no token is provided', async () => {
