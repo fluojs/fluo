@@ -24,6 +24,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serializer`
+- `@konekti/cache-manager`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`
@@ -49,6 +50,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/openapi`**: Document generation and OpenAPI decorators.
 - **`@konekti/graphql`**: GraphQL module, schema exposure, and execution pipeline.
 - **`@konekti/serializer`**: Class-based response serialization and interceptors.
+- **`@konekti/cache-manager`**: Decorator-driven HTTP response caching with memory and Redis stores.
 - **`@konekti/metrics`**: Prometheus metrics exposure.
 - **`@konekti/cron`**: Decorator-based task scheduling with distributed lock support.
 - **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery and event-bus delegation.

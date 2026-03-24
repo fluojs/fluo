@@ -36,6 +36,27 @@ importers:
         specifier: ^3.0.8
         version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
+  packages/cache-manager:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      ioredis:
+        specifier: ^5.0.0
+        version: 5.10.0
+
   packages/cli:
     dependencies:
       ejs:

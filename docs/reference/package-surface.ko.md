@@ -24,6 +24,7 @@
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serializer`
+- `@konekti/cache-manager`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`
@@ -49,6 +50,7 @@
 - **`@konekti/openapi`**: 문서 생성 및 OpenAPI 데코레이터.
 - **`@konekti/graphql`**: GraphQL 모듈, 스키마 노출, 실행 파이프라인.
 - **`@konekti/serializer`**: 클래스 기반 응답 직렬화 및 인터셉터.
+- **`@konekti/cache-manager`**: 메모리/Redis 스토어를 지원하는 데코레이터 기반 HTTP 응답 캐시.
 - **`@konekti/metrics`**: Prometheus 메트릭 노출.
 - **`@konekti/cron`**: 분산 락을 지원하는 데코레이터 기반 작업 스케줄링.
 - **`@konekti/cqrs`**: 부트스트랩 시점 핸들러 탐색과 event-bus 위임을 제공하는 command/query 버스.
