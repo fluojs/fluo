@@ -4,7 +4,18 @@ import { Inject, Module } from '@konekti/core';
 import { Controller, Get, Post, type RequestContext } from '@konekti/http';
 import type { Dispatcher } from '@konekti/http';
 
-import { asMock, createDeepMock, createMock, createTestApp, createTestingModule, makeRequest, mockToken } from './index.js';
+import {
+  asMock,
+  createDeepMock,
+  createMock,
+  createTestApp,
+  createTestingModule,
+  extractModuleControllers,
+  extractModuleImports,
+  extractModuleProviders,
+  makeRequest,
+  mockToken,
+} from './index.js';
 
 @Controller('/users')
 class UserController {
@@ -688,5 +699,223 @@ describe('mockToken', () => {
 
     const greeter = await testingModule.resolve<Greeter>(TOKEN);
     expect(greeter.greet()).toBe('hello from mock');
+  });
+});
+
+describe('extractModuleProviders', () => {
+  it('returns providers array from module metadata', () => {
+    class ServiceA {}
+    class ServiceB {}
+
+    @Module({ providers: [ServiceA, ServiceB] })
+    class TestModule {}
+
+    const providers = extractModuleProviders(TestModule);
+
+    expect(providers).toHaveLength(2);
+    expect(providers).toContain(ServiceA);
+    expect(providers).toContain(ServiceB);
+  });
+
+  it('returns empty array when module has no providers', () => {
+    @Module({})
+    class EmptyModule {}
+
+    const providers = extractModuleProviders(EmptyModule);
+
+    expect(providers).toEqual([]);
+  });
+
+  it('includes factory and value providers', () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_B = Symbol('TokenB');
+
+    @Module({
+      providers: [
+        { provide: TOKEN_A, useValue: 'value-a' },
+        { provide: TOKEN_B, useFactory: () => 'factory-b' },
+      ],
+    })
+    class ProviderModule {}
+
+    const providers = extractModuleProviders(ProviderModule);
+
+    expect(providers).toHaveLength(2);
+    expect(providers[0]).toEqual({ provide: TOKEN_A, useValue: 'value-a' });
+    expect(providers[1]).toHaveProperty('provide', TOKEN_B);
+    expect(providers[1]).toHaveProperty('useFactory');
+  });
+});
+
+describe('extractModuleControllers', () => {
+  it('returns controllers array from module metadata', () => {
+    @Controller('/a')
+    class ControllerA {
+      @Get('/')
+      index() {
+        return 'a';
+      }
+    }
+
+    @Controller('/b')
+    class ControllerB {
+      @Get('/')
+      index() {
+        return 'b';
+      }
+    }
+
+    @Module({ controllers: [ControllerA, ControllerB] })
+    class TestModule {}
+
+    const controllers = extractModuleControllers(TestModule);
+
+    expect(controllers).toHaveLength(2);
+    expect(controllers).toContain(ControllerA);
+    expect(controllers).toContain(ControllerB);
+  });
+
+  it('returns empty array when module has no controllers', () => {
+    @Module({})
+    class EmptyModule {}
+
+    const controllers = extractModuleControllers(EmptyModule);
+
+    expect(controllers).toEqual([]);
+  });
+});
+
+describe('extractModuleImports', () => {
+  it('returns imports array from module metadata', () => {
+    @Module({})
+    class ChildA {}
+
+    @Module({})
+    class ChildB {}
+
+    @Module({ imports: [ChildA, ChildB] })
+    class ParentModule {}
+
+    const imports = extractModuleImports(ParentModule);
+
+    expect(imports).toHaveLength(2);
+    expect(imports).toContain(ChildA);
+    expect(imports).toContain(ChildB);
+  });
+
+  it('returns empty array when module has no imports', () => {
+    @Module({})
+    class RootModule {}
+
+    const imports = extractModuleImports(RootModule);
+
+    expect(imports).toEqual([]);
+  });
+});
+
+describe('overrideProviders', () => {
+  it('applies multiple provider overrides at once', async () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_B = Symbol('TokenB');
+    const TOKEN_C = Symbol('TokenC');
+
+    @Module({
+      providers: [
+        { provide: TOKEN_A, useValue: 'real-a' },
+        { provide: TOKEN_B, useValue: 'real-b' },
+        { provide: TOKEN_C, useValue: 'real-c' },
+      ],
+    })
+    class TestModule {}
+
+    const testingModule = await createTestingModule({ rootModule: TestModule })
+      .overrideProviders([
+        [TOKEN_A, 'fake-a'],
+        [TOKEN_B, 'fake-b'],
+      ])
+      .compile();
+
+    const a = await testingModule.resolve<string>(TOKEN_A);
+    const b = await testingModule.resolve<string>(TOKEN_B);
+    const c = await testingModule.resolve<string>(TOKEN_C);
+
+    expect(a).toBe('fake-a');
+    expect(b).toBe('fake-b');
+    expect(c).toBe('real-c');
+  });
+
+  it('chains with other override methods', async () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_B = Symbol('TokenB');
+
+    @Module({
+      providers: [
+        { provide: TOKEN_A, useValue: 'real-a' },
+        { provide: TOKEN_B, useValue: 'real-b' },
+      ],
+    })
+    class TestModule {}
+
+    const testingModule = await createTestingModule({ rootModule: TestModule })
+      .overrideProviders([[TOKEN_A, 'fake-a']])
+      .overrideProvider(TOKEN_B, 'fake-b')
+      .compile();
+
+    const a = await testingModule.resolve<string>(TOKEN_A);
+    const b = await testingModule.resolve<string>(TOKEN_B);
+
+    expect(a).toBe('fake-a');
+    expect(b).toBe('fake-b');
+  });
+});
+
+describe('resolveAll', () => {
+  it('resolves multiple tokens and returns results in order', async () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_B = Symbol('TokenB');
+
+    @Module({
+      providers: [
+        { provide: TOKEN_A, useValue: 'value-a' },
+        { provide: TOKEN_B, useValue: 'value-b' },
+      ],
+    })
+    class TestModule {}
+
+    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+
+    const [a, b] = await testingModule.resolveAll([TOKEN_A, TOKEN_B]);
+
+    expect(a).toBe('value-a');
+    expect(b).toBe('value-b');
+  });
+
+  it('throws aggregated error when some tokens fail to resolve', async () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_MISSING = Symbol('TokenMissing');
+
+    @Module({
+      providers: [{ provide: TOKEN_A, useValue: 'value-a' }],
+    })
+    class TestModule {}
+
+    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+
+    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_MISSING])).rejects.toThrow(
+      /Failed to resolve 1 of 2 tokens/,
+    );
+  });
+
+  it('includes token names in aggregated error message', async () => {
+    const TOKEN_A = Symbol('TokenA');
+    const TOKEN_B = Symbol('TokenB');
+
+    @Module({})
+    class EmptyModule {}
+
+    const testingModule = await createTestingModule({ rootModule: EmptyModule }).compile();
+
+    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenA/);
+    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenB/);
   });
 });

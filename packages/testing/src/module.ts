@@ -9,6 +9,36 @@ import type { Guard, HandlerSource, Interceptor } from '@konekti/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
 
+export function extractModuleProviders(moduleType: ModuleType): Provider[] {
+  const metadata = getModuleMetadata(moduleType);
+
+  if (!metadata || !Array.isArray(metadata.providers)) {
+    return [];
+  }
+
+  return metadata.providers as Provider[];
+}
+
+export function extractModuleControllers(moduleType: ModuleType): ClassType[] {
+  const metadata = getModuleMetadata(moduleType);
+
+  if (!metadata || !Array.isArray(metadata.controllers)) {
+    return [];
+  }
+
+  return metadata.controllers as ClassType[];
+}
+
+export function extractModuleImports(moduleType: ModuleType): ModuleType[] {
+  const metadata = getModuleMetadata(moduleType);
+
+  if (!metadata || !Array.isArray(metadata.imports)) {
+    return [];
+  }
+
+  return metadata.imports as ModuleType[];
+}
+
 function createHandlerSources(bootstrappedModules: BootstrapResult['modules']): HandlerSource[] {
   return bootstrappedModules.flatMap((compiledModule) =>
     (compiledModule.definition.controllers ?? []).map((controllerToken) => ({
@@ -76,6 +106,14 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     return this;
   }
 
+  overrideProviders(overrides: Array<[Token, unknown]>): this {
+    for (const [token, value] of overrides) {
+      this.overrideProvider(token, value);
+    }
+
+    return this;
+  }
+
   overrideGuard(guard: Token<Guard>, fake: Partial<Guard> = {}): this {
     const passthrough: Guard = { canActivate: () => true, ...fake };
     this.overrides.push({ provide: guard as Token<Guard>, useValue: passthrough });
@@ -125,6 +163,28 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       ...bootstrapped,
       has: (token) => bootstrapped.container.has(token),
       resolve: (token) => bootstrapped.container.resolve(token),
+      resolveAll: async <T>(tokens: Token<T>[]): Promise<T[]> => {
+        const results: T[] = [];
+        const errors: Array<{ token: Token; error: unknown }> = [];
+
+        for (const token of tokens) {
+          try {
+            results.push(await bootstrapped.container.resolve<T>(token));
+          } catch (error) {
+            errors.push({ token, error });
+          }
+        }
+
+        if (errors.length > 0) {
+          const summary = errors
+            .map(({ token, error }) => `  - ${String(token)}: ${error instanceof Error ? error.message : String(error)}`)
+            .join('\n');
+
+          throw new Error(`Failed to resolve ${errors.length} of ${tokens.length} tokens:\n${summary}`);
+        }
+
+        return results;
+      },
       dispatch: (request: TestRequestWithOptions) => makeRequest(dispatcher, request),
     };
   }

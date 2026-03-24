@@ -65,6 +65,20 @@ const module = await createTestingModule({ rootModule: AppModule })
   .compile();
 ```
 
+### Batch provider overrides
+
+Use `overrideProviders` when you have multiple tokens to override at once:
+
+```typescript
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideProviders([
+    [USER_REPOSITORY, fakeUserRepo],
+    [EMAIL_SERVICE, fakeEmailService],
+    [CONFIG_TOKEN, { dbUrl: 'sqlite::memory:' }],
+  ])
+  .compile();
+```
+
 ### Resolving tokens directly
 
 ```typescript
@@ -73,6 +87,26 @@ const service = await module.resolve(UserService);
 
 // Resolve by DI token (symbol or string)
 const config = await module.resolve(CONFIG_TOKEN);
+```
+
+### Resolving multiple tokens
+
+Use `resolveAll` to resolve multiple tokens with aggregated error diagnostics:
+
+```typescript
+const module = await createTestingModule({ rootModule: AppModule }).compile();
+
+// Resolve multiple tokens at once
+const [userService, emailService, config] = await module.resolveAll([
+  UserService,
+  EmailService,
+  CONFIG_TOKEN,
+]);
+
+// If any token fails, get a clear error with all failures listed:
+// Error: Failed to resolve 2 of 3 tokens:
+//   - EmailService: No provider registered for token EmailService.
+//   - CONFIG_TOKEN: No provider registered for token Symbol(CONFIG_TOKEN).
 ```
 
 ## Key API
@@ -96,6 +130,11 @@ Fluent builder returned by `createTestingModule`.
 | Method | Description |
 |---|---|
 | `.overrideProvider(token, implementation)` | Replace a DI token's provider with `implementation` before any provider resolution in the compiled test container. Chainable. |
+| `.overrideProviders(overrides)` | Apply multiple provider overrides at once. Takes an array of `[token, value]` tuples. Chainable. |
+| `.overrideGuard(guard, fake?)` | Replace a guard with a passthrough that always allows access. Chainable. |
+| `.overrideInterceptor(interceptor, fake?)` | Replace an interceptor with a passthrough. Chainable. |
+| `.overrideFilter(filter, fake?)` | Replace a filter token with a provided fake. Chainable. |
+| `.overrideModule(module, replacement)` | Swap an imported module with a replacement before compilation. Chainable. |
 | `.compile()` | Compile the module graph with all overrides applied. Returns a `Promise<TestingModuleRef>`. |
 
 ### `TestingModuleRef`
@@ -105,8 +144,38 @@ The compiled test container.
 | Method | Description |
 |---|---|
 | `.resolve(token)` | Resolve a provider from the compiled module graph. Accepts class constructors or DI tokens and returns `Promise<T>`. |
+| `.resolveAll(tokens)` | Resolve multiple tokens at once. Returns results in order. Throws an aggregated error listing all failed tokens if any resolution fails. |
 | `.has(token)` | Check whether a provider token is available in the compiled graph. |
 | `.dispatch(request)` | Run a request through the compiled module dispatcher (`createDispatcher`) and return a `TestResponse`. |
+
+### Module introspection utilities
+
+Use these to extract module metadata for test setup without manually accessing metadata symbols:
+
+```typescript
+import {
+  extractModuleProviders,
+  extractModuleControllers,
+  extractModuleImports,
+} from '@konekti/testing';
+
+// Get providers from a module
+const providers = extractModuleProviders(JwtModule);
+// → [DefaultJwtSigner, DefaultJwtVerifier, ...]
+
+// Get controllers from a module
+const controllers = extractModuleControllers(AppModule);
+// → [UserController, OrderController, ...]
+
+// Get imports from a module
+const imports = extractModuleImports(RootModule);
+// → [AuthModule, DatabaseModule, ...]
+```
+
+These are useful when you need to:
+- Register module providers into a test container manually
+- Verify which providers/controllers a module exports
+- Build custom test setup that iterates over module metadata
 
 ### `createTestApp(options)`
 

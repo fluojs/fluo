@@ -20,21 +20,24 @@ Generated starter projects expose the same commands through the selected package
 
 ## official testing API
 
-`@konekti/testing` currently provides a minimal but practical public testing surface:
+`@konekti/testing` provides a stable public testing surface:
 
 - `createTestingModule(...)`
-- provider override support
-- `TestingModuleRef.resolve(...)`
+- Provider override support (single and batch)
+- `TestingModuleRef.resolve(...)` and `resolveAll(...)`
 - `TestingModuleRef.dispatch(...)`
 - `createTestApp(...)` for end-to-end style request dispatch
 - `TestApp.dispatch(...)` for direct request execution without fluent builder
-- fluent request building with request principal injection
-- predictable cleanup through `createTestApp`'s `close()` lifecycle path
+- Fluent request building with request principal injection
+- Predictable cleanup through `createTestApp`'s `close()` lifecycle path
+- Module introspection utilities: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
+- Mock utilities: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
 
 Current public boundary:
 
-- keep `@konekti/testing` as the minimal public testing baseline
-- keep the surface focused on module compilation, dispatch, and lightweight request helpers
+- keep `@konekti/testing` as the public testing baseline
+- surface covers module compilation, dispatch, request helpers, and provider/module introspection
+- module introspection utilities are explicitly stable public API, not internal helpers
 - do not add richer generated test-template families now
 
 Primary evidence:
