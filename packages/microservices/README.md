@@ -53,17 +53,22 @@ await microservice.listen();
 - `@MessagePattern` matches a single handler and returns its value to the caller.
 - `@MessagePattern` supports singleton, request, and transient handlers. Request/transient handlers run inside a per-message child DI scope that is disposed after the handler completes.
 - If multiple `@MessagePattern` handlers match the same pattern, dispatch fails explicitly instead of picking a match silently.
-- `@EventPattern` dispatches to all matching handlers, but event handlers remain singleton-only in the current runtime.
+- `@EventPattern` dispatches to all matching handlers.
+- `@EventPattern` supports singleton, request, and transient handlers. Request/transient handlers run inside a per-event shared child DI scope that is disposed after all matching handlers complete.
+- When multiple scoped handlers match the same event (fan-out), they share the same per-event scope instance, enabling shared context across handlers for that event.
+- Different events receive isolated scopes, preventing state leakage between concurrent events.
 - Patterns support exact string or `RegExp` matching.
 - Transport lifecycle is managed through application startup and shutdown.
 
 ## Provider scopes in microservice handlers
 
 - **Singleton** (default): one instance shared across all inbound messages and events.
-- **Request**: supported for inbound `@MessagePattern` handlers only. Each message gets a fresh child DI scope, and that scope is disposed after the handler succeeds or fails.
-- **Transient**: supported for inbound `@MessagePattern` handlers only. The handler and its transient dependencies resolve from the same per-message child scope boundary, so each message gets a fresh instance graph.
+- **Request**: each handler invocation gets a fresh child DI scope. For `@MessagePattern`, the scope is per-message. For `@EventPattern`, the scope is per-event and shared across all fan-out handlers for that event. The scope is disposed after the handler(s) complete.
+- **Transient**: each handler invocation resolves a fresh instance graph from the same scope boundary. For `@MessagePattern`, the boundary is per-message. For `@EventPattern`, the boundary is per-event and shared across all fan-out handlers for that event.
 
-`@EventPattern` handlers are still singleton-only. A request- or transient-scoped event handler is skipped with a warning because the current event path fan-outs to multiple handlers without defining a per-event shared context contract.
+When any scoped handler (request or transient) is used, all of its dependencies must also be request- or transient-scoped. The DI container throws `ScopeMismatchError` if a singleton depends on a request-scoped provider.
+
+### Per-message scope (request-scoped `@MessagePattern`)
 
 ```typescript
 import { Inject, Scope } from '@konekti/core';
@@ -86,7 +91,43 @@ class PaymentsHandler {
 }
 ```
 
-When a `@MessagePattern` handler uses request scope, all of its dependencies must also be request- or transient-scoped. The DI container still throws `ScopeMismatchError` if a singleton depends on a request-scoped provider.
+### Per-event scope (request-scoped `@EventPattern`)
+
+When multiple scoped handlers match the same event, they share a single per-event scope instance:
+
+```typescript
+import { Inject, Scope } from '@konekti/core';
+import { EventPattern } from '@konekti/microservices';
+
+@Scope('request')
+class EventContext {
+  readonly correlationId = crypto.randomUUID();
+}
+
+@Inject([EventContext])
+@Scope('request')
+class AuditHandler {
+  constructor(private readonly ctx: EventContext) {}
+
+  @EventPattern('order.placed')
+  audit() {
+    console.log(`Audit: ${this.ctx.correlationId}`);
+  }
+}
+
+@Inject([EventContext])
+@Scope('request')
+class NotificationHandler {
+  constructor(private readonly ctx: EventContext) {}
+
+  @EventPattern('order.placed')
+  notify() {
+    console.log(`Notify: ${this.ctx.correlationId}`);
+  }
+}
+```
+
+In this example, `AuditHandler` and `NotificationHandler` receive the same `EventContext` instance when handling the same `order.placed` event. Different events get isolated context instances.
 
 ## Transport notes
 
