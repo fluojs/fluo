@@ -7,6 +7,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 ### related documentation
 
 - `./http-runtime.md`
+- `./dev-reload-architecture.md`
 - `./auth-and-jwt.md`
 - `../reference/package-surface.md`
 
@@ -45,7 +46,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 - `@konekti/core`: shared decorators, metadata helpers, and stable framework primitives.
 - `@konekti/di`: explicit token-based provider resolution and scopes.
 - `@konekti/http`: request execution, binding, validation entrypoints, exceptions, and route metadata.
-- `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, and adapter bootstrapping.
+- `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, adapter bootstrapping, and dev-mode config reload application.
 - `@konekti/dto-validator`: validation decorators and engine.
 - `@konekti/jwt`: token-core concerns.
 - `@konekti/passport`: generic auth strategy registration and guard wiring.
@@ -73,6 +74,7 @@ Implementation details are located in:
 - Explicit DI and stable metadata are preferred over implicit magic.
 - Package boundaries take precedence over phase history.
 - Starter apps should use runtime-owned bootstrap helpers instead of duplicating infrastructure.
+- Development-time source edits use runner-level process restart, while targeted config reload remains an explicit runtime path.
 - Package READMEs contain package-specific details; `docs/` contains cross-package information.
 
 ## transport boundary
