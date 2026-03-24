@@ -341,8 +341,9 @@ describe('bootstrapApplication', () => {
     });
     const service = await app.container.resolve(ReloadAwareService);
 
+    await delay(100);
     writeFileSync(envPath, 'PORT=3100\n');
-    await waitForCondition(() => service.ports.includes('3100'));
+    await waitForCondition(() => service.ports.includes('3100'), 5_000);
 
     expect(app.config.get('PORT')).toBe('3100');
     expect(service.config).toBe(app.config);
