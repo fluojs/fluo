@@ -17,5 +17,9 @@ export function generateRepoFiles(name: string, _options: GenerateOptions = {}):
       content: renderTemplate('repository.test.ts.ejs', { kebab, resource, pascal }),
       path: `${kebab}.repo.test.ts`,
     },
+    {
+      content: renderTemplate('repository.slice.test.ts.ejs', { kebab, resource, pascal }),
+      path: `${kebab}.repo.slice.test.ts`,
+    },
   ];
 }

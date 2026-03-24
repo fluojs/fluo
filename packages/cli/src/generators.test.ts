@@ -27,6 +27,15 @@ describe('CLI generators', () => {
     expect(generateControllerFiles('User')[1]?.path).toBe('user.controller.test.ts');
     expect(generateServiceFiles('User')[1]?.path).toBe('user.service.test.ts');
     expect(generateRepoFiles('User')[1]?.path).toBe('user.repo.test.ts');
+    expect(generateRepoFiles('User')[2]?.path).toBe('user.repo.slice.test.ts');
+  });
+
+  it('emits repo slice templates based on stable testing APIs', () => {
+    const content = generateRepoFiles('User')[2]?.content ?? '';
+
+    expect(content).toContain("from '@konekti/testing'");
+    expect(content).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(content).toContain('await testingModule.resolve(UserRepo)');
   });
 
   it('emits generic repository examples without ORM-specific access', () => {

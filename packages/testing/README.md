@@ -5,7 +5,7 @@
 
 The official module construction and provider override baseline for testing Konekti applications.
 
-The current public contract stays intentionally minimal. Broader testing helpers and richer generated test templates are deferred for now.
+The public contract stays intentionally focused. Official CLI-generated templates now build on this stable surface for unit, slice/integration, and starter e2e-style flows.
 
 ## See also
 

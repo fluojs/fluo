@@ -196,6 +196,10 @@ function verifySandboxProject(projectName) {
   const projectDirectory = resolveProjectDirectory(projectName);
   verifySandboxExists(projectDirectory);
 
+  if (!existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))) {
+    throw new Error('Expected the starter scaffold to include src/app.e2e.test.ts.');
+  }
+
   log('Running generated project checks');
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['build'], projectDirectory);
@@ -208,8 +212,13 @@ function verifySandboxProject(projectName) {
     throw new Error('Expected the installed CLI to generate src/users/user.repo.ts.');
   }
 
-  log('Re-running typecheck after generator output');
+  if (!existsSync(join(projectDirectory, 'src', 'users', 'user.repo.slice.test.ts'))) {
+    throw new Error('Expected the installed CLI to generate src/users/user.repo.slice.test.ts.');
+  }
+
+  log('Re-running typecheck and test after generator output');
   run('pnpm', ['typecheck'], projectDirectory);
+  run('pnpm', ['test'], projectDirectory);
 
   log('Sandbox verification passed');
 }

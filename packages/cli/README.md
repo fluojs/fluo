@@ -59,6 +59,22 @@ Implemented generator kinds include `controller`, `guard`, `interceptor`, `middl
 
 Each generator produces one or more files with correctly kebab-cased names and PascalCase class names.
 
+## Official generated testing templates
+
+The CLI ships a small official test-template family designed to stay teachable and runnable by default:
+
+- Starter unit templates: `src/health/*.test.ts`
+- Starter integration template: `src/app.test.ts`
+- Starter e2e-style template: `src/app.e2e.test.ts` (uses `createTestApp` from `@konekti/testing`)
+- Repo unit template: `konekti g repo User` → `src/users/user.repo.test.ts`
+- Repo slice/integration template: `konekti g repo User` → `src/users/user.repo.slice.test.ts` (uses `createTestingModule`)
+
+When to choose each:
+
+- Use unit templates for fast logic checks with narrow dependencies.
+- Use integration/slice templates to validate module wiring and provider resolution.
+- Use e2e-style templates to verify route behavior through the application dispatch surface.
+
 ## Local sandbox workflow
 
 When you are working inside the Konekti monorepo, use the package-local sandbox instead of publishing prereleases.
@@ -67,7 +83,7 @@ When you are working inside the Konekti monorepo, use the package-local sandbox 
 pnpm --dir packages/cli run sandbox:test
 ```
 
-That command rebuilds `@konekti/cli`, scaffolds `starter-app` directly at a standalone temp sandbox path, installs local tarballs from the workspace, and then verifies the generated app can run `typecheck`, `build`, `test`, and `konekti g repo User`.
+That command rebuilds `@konekti/cli`, scaffolds `starter-app` directly at a standalone temp sandbox path, installs local tarballs from the workspace, verifies `typecheck`/`build`/`test`, runs `konekti g repo User`, and then re-runs `typecheck` + `test` with generated repo templates.
 
 `KONEKTI_CLI_SANDBOX_ROOT=/path` remains available as an advanced override, but it must point to a dedicated directory outside the monorepo workspace. If it points inside the repo, the harness prints a warning and falls back to the temp sandbox root so `pnpm install` cannot be captured by the workspace.
 

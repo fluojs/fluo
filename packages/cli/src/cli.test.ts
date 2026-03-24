@@ -54,7 +54,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(readFileSync(join(workspaceDirectory, 'apps', 'starter-app', 'src', 'users', 'user.repo.ts'), 'utf8')).toContain('return [];');
-    expect(stdoutBuffer.join('')).toContain('Generated 3 file(s):');
+    expect(stdoutBuffer.join('')).toContain('Generated 4 file(s):');
   });
 
   it('auto-detects the package manager from the calling context when no flag is provided', async () => {
@@ -438,13 +438,17 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.response.dto.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
 
     run('pnpm', ['typecheck'], projectDirectory);
     run('pnpm', ['build'], projectDirectory);
     run('pnpm', ['test'], projectDirectory);
     run('pnpm', ['exec', 'konekti', 'g', 'repo', 'User'], projectDirectory);
     expect(existsSync(join(projectDirectory, 'src', 'users', 'user.repo.ts'))).toBe(true);
-  }, 60000);
+    expect(existsSync(join(projectDirectory, 'src', 'users', 'user.repo.slice.test.ts'))).toBe(true);
+    run('pnpm', ['typecheck'], projectDirectory);
+    run('pnpm', ['test'], projectDirectory);
+  }, 90000);
 
   it('keeps the local sandbox outside the repo workspace', () => {
     const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
