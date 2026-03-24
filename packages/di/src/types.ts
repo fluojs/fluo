@@ -19,6 +19,7 @@ export interface FactoryProvider<T = unknown> {
   inject?: Array<Token | ForwardRefFn | OptionalToken>;
   scope?: Scope;
   multi?: boolean;
+  resolverClass?: ClassType;
 }
 
 export interface ValueProvider<T = unknown> {

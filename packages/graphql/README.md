@@ -147,7 +147,7 @@ Maps DTO fields to GraphQL argument names for input binding.
 - Reserved internal context keys are protected; custom context cannot override the per-operation DI container symbol.
 - Discovery: resolvers are discovered from compiled modules during bootstrap.
 - Scope model: singleton, request, and transient scopes are all supported in GraphQL resolvers.
-- Registration rule: class providers and controllers are discoverable; `useValue`/`useFactory` providers are not.
+- Registration rule: class providers, controllers, `useValue` providers (via instance constructor), and `useFactory` providers (with explicit `resolverClass`) are all discoverable.
 - Shutdown: Yoga state and any enabled GraphQL websocket listeners are released during application shutdown.
 
 ## Provider Scopes in Resolvers
@@ -178,6 +178,74 @@ class RequestScopedResolver {
 ```
 
 When a resolver is declared with `@Scope('request')`, all its dependencies must also use `'request'` or `'transient'` scope. The DI container enforces this at bootstrap and throws `ScopeMismatchError` if a request-scoped provider depends on a singleton.
+
+## Alternative Provider Registration
+
+In addition to plain class providers and `useClass` registrations, GraphQL resolver discovery supports `useValue` and `useFactory` providers.
+
+### useValue
+
+`useValue` providers register a pre-instantiated resolver. Discovery inspects the instance's constructor to find resolver decorators.
+
+```typescript
+import { Module } from '@konekti/core';
+import { Resolver, Query, createGraphqlModule } from '@konekti/graphql';
+
+@Resolver('ConfiguredResolver')
+class ConfiguredResolver {
+  constructor(private readonly greeting: string) {}
+
+  @Query()
+  hello(): string {
+    return this.greeting;
+  }
+}
+
+const configuredResolver = new ConfiguredResolver('Hello from useValue!');
+
+@Module({
+  imports: [
+    createGraphqlModule(),
+  ],
+  providers: [
+    { provide: ConfiguredResolver, useValue: configuredResolver },
+  ],
+})
+class AppModule {}
+```
+
+### useFactory
+
+`useFactory` providers use a factory function to create resolvers. Since the resolver class cannot be determined from the factory at discovery time, you must specify it explicitly via the `resolverClass` property.
+
+```typescript
+import { Module } from '@konekti/core';
+import { Resolver, Query, createGraphqlModule } from '@konekti/graphql';
+
+@Resolver('DynamicResolver')
+class DynamicResolver {
+  constructor(private readonly config: { prefix: string }) {}
+
+  @Query()
+  greeting(): string {
+    return `${this.config.prefix} World`;
+  }
+}
+
+@Module({
+  imports: [
+    createGraphqlModule(),
+  ],
+  providers: [
+    {
+      provide: DynamicResolver,
+      useFactory: () => new DynamicResolver({ prefix: 'Hello' }),
+      resolverClass: DynamicResolver,
+    },
+  ],
+})
+class AppModule {}
+```
 
 ## Validation and Errors
 
