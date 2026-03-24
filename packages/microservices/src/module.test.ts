@@ -200,7 +200,7 @@ describe('@konekti/microservices', () => {
     await microservice.listen();
 
     await expect(microservice.send('calc.double', { value: 21 })).rejects.toThrow(
-      'does not support request/reply send()',
+      'No message handler registered for pattern "calc.double".',
     );
     await microservice.emit('audit.login', { message: 'ok' });
 
