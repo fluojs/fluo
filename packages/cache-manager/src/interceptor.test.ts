@@ -1,0 +1,272 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type { CallHandler, HttpMethod, InterceptorContext, RequestContext } from '@konekti/http';
+
+import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
+import { CacheInterceptor } from './interceptor.js';
+import { MemoryStore } from './memory-store.js';
+import { CacheService } from './service.js';
+import type { NormalizedCacheModuleOptions } from './types.js';
+
+const cacheOptions: NormalizedCacheModuleOptions = {
+  isGlobal: false,
+  keyPrefix: 'konekti:cache:',
+  store: 'memory',
+  ttl: 0,
+};
+
+function createRequestContext(method: string, url: string, path = url): RequestContext {
+  const headers: Record<string, string | string[]> = {};
+
+  return {
+    container: {
+      async dispose() {
+        return undefined;
+      },
+      async resolve<T>(_token: unknown): Promise<T> {
+        throw new Error('resolve() should not be called in cache interceptor unit tests.');
+      },
+    },
+    metadata: {},
+    request: {
+      body: undefined,
+      cookies: {},
+      headers: {},
+      method,
+      params: {},
+      path,
+      query: {},
+      raw: {},
+      url,
+    },
+    response: {
+      committed: false,
+      headers,
+      redirect() {},
+      send: vi.fn(async function send(this: { committed: boolean }) {
+        this.committed = true;
+      }),
+      setHeader(name: string, value: string | string[]) {
+        headers[name] = value;
+      },
+      setStatus(_code: number) {},
+      statusCode: 200,
+    },
+  };
+}
+
+function createContext(
+  controllerToken: Function,
+  methodName: string,
+  requestContext: RequestContext,
+  requestMethod: HttpMethod = 'GET',
+): InterceptorContext {
+  return {
+    handler: {
+      controllerToken: controllerToken as InterceptorContext['handler']['controllerToken'],
+      metadata: {
+        controllerPath: '',
+        effectivePath: requestContext.request.path,
+        effectiveVersion: undefined,
+        moduleMiddleware: [],
+        moduleType: undefined,
+        pathParams: [],
+      },
+      methodName,
+      route: {
+        method: requestMethod,
+        path: requestContext.request.path,
+      },
+    },
+    requestContext,
+  };
+}
+
+function createInterceptor(overrides: Partial<NormalizedCacheModuleOptions> = {}) {
+  const options: NormalizedCacheModuleOptions = {
+    ...cacheOptions,
+    ...overrides,
+  };
+  const cacheService = new CacheService(new MemoryStore(), options);
+  return {
+    cacheService,
+    interceptor: new CacheInterceptor(cacheService, options),
+  };
+}
+
+describe('CacheInterceptor', () => {
+  it('returns cached GET values on cache hit', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      @CacheKey('GET:/products')
+      list() {}
+    }
+
+    const { interceptor } = createInterceptor();
+    const context = createContext(ProductController, 'list', createRequestContext('GET', '/products?sort=asc'));
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ source: 'handler' })),
+    };
+
+    const first = await interceptor.intercept(context, next);
+    const second = await interceptor.intercept(context, next);
+
+    expect(first).toEqual({ source: 'handler' });
+    expect(second).toEqual({ source: 'handler' });
+    expect(next.handle).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses effective route path by default when @CacheKey is absent', async () => {
+    class ProductController {
+      list() {}
+    }
+
+    const { interceptor } = createInterceptor();
+    const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
+    const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=9', '/products'));
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ count: 1 })),
+    };
+
+    await interceptor.intercept(firstContext, next);
+    await interceptor.intercept(secondContext, next);
+
+    expect(next.handle).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not perform read-through caching for non-GET handlers', async () => {
+    class ProductController {
+      @CacheTTL(120)
+      @CacheKey('GET:/products')
+      update() {}
+    }
+
+    const { interceptor } = createInterceptor();
+    const context = createContext(ProductController, 'update', createRequestContext('POST', '/products'), 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ source: 'post-handler' })),
+    };
+
+    await interceptor.intercept(context, next);
+    await interceptor.intercept(context, next);
+
+    expect(next.handle).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts configured keys after successful non-GET handlers', async () => {
+    class ProductController {
+      @CacheEvict('GET:/products')
+      refresh() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor();
+    await cacheService.set('GET:/products', { count: 1 }, 120);
+
+    const context = createContext(ProductController, 'refresh', createRequestContext('POST', '/products/refresh'), 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+
+    const value = await interceptor.intercept(context, next);
+    await context.requestContext.response.send(value);
+
+    await expect(cacheService.get('GET:/products')).resolves.toBeUndefined();
+  });
+
+  it('does not evict keys when non-GET handlers throw', async () => {
+    class ProductController {
+      @CacheEvict('GET:/products')
+      refresh() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor();
+    await cacheService.set('GET:/products', { count: 1 }, 120);
+
+    const context = createContext(ProductController, 'refresh', createRequestContext('POST', '/products/refresh'), 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => {
+        throw new Error('refresh failed');
+      }),
+    };
+
+    await expect(interceptor.intercept(context, next)).rejects.toThrow('refresh failed');
+    await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
+  });
+
+  it('treats ttl=0 as no-expiry caching by default', async () => {
+    class ProductController {
+      list() {}
+    }
+
+    const { interceptor } = createInterceptor({ ttl: 0 });
+    const context = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ count: 1 })),
+    };
+
+    await interceptor.intercept(context, next);
+    await interceptor.intercept(context, next);
+
+    expect(next.handle).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to handler results when cache reads or writes fail', async () => {
+    class ProductController {
+      list() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor({ ttl: 30 });
+    vi.spyOn(cacheService, 'get').mockRejectedValueOnce(new Error('redis down'));
+    vi.spyOn(cacheService, 'set').mockRejectedValueOnce(new Error('redis down'));
+
+    const context = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ count: 1 })),
+    };
+
+    await expect(interceptor.intercept(context, next)).resolves.toEqual({ count: 1 });
+    expect(next.handle).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fail successful non-GET handlers when cache eviction fails', async () => {
+    class ProductController {
+      @CacheEvict('GET:/products')
+      refresh() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor();
+    vi.spyOn(cacheService, 'del').mockRejectedValueOnce(new Error('redis down'));
+
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+
+    const value = await interceptor.intercept(context, next);
+    await requestContext.response.send(value);
+
+    expect(value).toEqual({ refreshed: true });
+  });
+
+  it('evicts immediately when the handler already committed the response before returning', async () => {
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor();
+    await cacheService.set('/products', { count: 1 }, 120);
+
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    requestContext.response.committed = true;
+    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+
+    await interceptor.intercept(context, next);
+
+    await expect(cacheService.get('/products')).resolves.toBeUndefined();
+  });
+});
