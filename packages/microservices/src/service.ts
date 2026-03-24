@@ -156,8 +156,74 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       return await this.invokeHandler(first, clonePayload(packet.payload));
     }
 
-    await Promise.allSettled(matches.map((descriptor) => this.invokeHandler(descriptor, clonePayload(packet.payload))));
+    return await this.dispatchEventHandlers(matches, clonePayload(packet.payload));
+  }
+
+  private async dispatchEventHandlers(descriptors: HandlerDescriptor[], payload: unknown): Promise<undefined> {
+    const singletonDescriptors = descriptors.filter((descriptor) => descriptor.scope === 'singleton');
+    const scopedDescriptors = descriptors.filter((descriptor) => descriptor.scope !== 'singleton');
+
+    const singletonResults = await Promise.allSettled(
+      singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, clonePayload(payload))),
+    );
+
+    for (const result of singletonResults) {
+      if (result.status === 'rejected') {
+        this.logger.error(
+          'Event handler failed during singleton dispatch.',
+          result.reason,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+
+    if (scopedDescriptors.length === 0) {
+      return undefined;
+    }
+
+    const perEventScope = this.runtimeContainer.createRequestScope();
+    const scopeErrors: Error[] = [];
+
+    try {
+      const scopedResults = await Promise.allSettled(
+        scopedDescriptors.map((descriptor) =>
+          this.invokeResolvedHandlerInScope(perEventScope, descriptor, clonePayload(payload)),
+        ),
+      );
+
+      for (const result of scopedResults) {
+        if (result.status === 'rejected') {
+          scopeErrors.push(result.reason instanceof Error ? result.reason : new Error(String(result.reason)));
+        }
+      }
+    } finally {
+      try {
+        await perEventScope.dispose();
+      } catch (disposeError) {
+        this.logger.error(
+          'Failed to dispose per-event scope.',
+          disposeError,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+
+    if (scopeErrors.length > 0) {
+      for (const error of scopeErrors) {
+        this.logger.error(
+          'Scoped event handler failed.',
+          error,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+
     return undefined;
+  }
+
+  private async invokeResolvedHandlerInScope(scope: Container, descriptor: HandlerDescriptor, payload: unknown): Promise<unknown> {
+    const instance = await scope.resolve(descriptor.token);
+    return await this.invokeResolvedHandler(instance, descriptor, payload);
   }
 
   private matchesPattern(pattern: Pattern, input: string): boolean {
@@ -175,47 +241,6 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
 
     for (const candidate of this.discoveryCandidates()) {
       const entries = getHandlerMetadataEntries(candidate.targetType.prototype);
-
-      if (candidate.scope !== 'singleton' && entries.length > 0) {
-        const messageEntries = entries.filter((entry) => entry.metadata.kind === 'message');
-        const eventEntries = entries.filter((entry) => entry.metadata.kind === 'event');
-
-        if (eventEntries.length > 0) {
-          this.logger.warn(
-            `${candidate.targetType.name} in module ${candidate.moduleName} declares @EventPattern handlers but is ${candidate.scope}. Only singleton event handlers are supported.`,
-            'MicroserviceLifecycleService',
-          );
-        }
-
-        if (messageEntries.length === 0) {
-          continue;
-        }
-
-        for (const entry of messageEntries) {
-          const dedupeKey = this.dedupeKey(entry.metadata.kind, entry.metadata.pattern);
-
-          if (this.isDuplicate(seen, candidate.targetType, entry.propertyKey, dedupeKey)) {
-            this.logger.warn(
-              `Duplicate microservice handler registration for ${dedupeKey} on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)} was ignored.`,
-              'MicroserviceLifecycleService',
-            );
-            continue;
-          }
-
-          descriptors.push({
-            kind: entry.metadata.kind,
-            methodKey: entry.propertyKey,
-            methodName: methodKeyToName(entry.propertyKey),
-            moduleName: candidate.moduleName,
-            pattern: entry.metadata.pattern,
-            scope: candidate.scope,
-            targetName: candidate.targetType.name,
-            token: candidate.token,
-          });
-        }
-
-        continue;
-      }
 
       for (const entry of entries) {
         const dedupeKey = this.dedupeKey(entry.metadata.kind, entry.metadata.pattern);
