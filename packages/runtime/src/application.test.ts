@@ -385,6 +385,55 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('restores the previous runtime config snapshot when a reload participant throws', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-rollback-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=3000\n');
+
+    @Inject([ConfigService])
+    class FailingReloadAwareService {
+      readonly seenPorts: string[] = [];
+
+      constructor(readonly config: ConfigService) {}
+
+      onRuntimeReload(): void {
+        const port = this.config.get('PORT' as never);
+
+        if (typeof port === 'string') {
+          this.seenPorts.push(port);
+        }
+
+        throw new Error('participant failure');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [FailingReloadAwareService],
+    });
+
+    const app = await bootstrapApplication({
+      cwd,
+      mode: 'dev',
+      processEnv: {},
+      rootModule: AppModule,
+      watch: true,
+    });
+    const service = await app.container.resolve(FailingReloadAwareService);
+
+    await delay(100);
+    writeFileSync(envPath, 'PORT=3100\n');
+    await waitForCondition(() => service.seenPorts.includes('3100'), 5_000);
+    await delay(150);
+
+    expect(service.seenPorts).toContain('3100');
+    expect(app.config.get('PORT')).toBe('3000');
+    expect(service.config).toBe(app.config);
+
+    await app.close();
+  });
+
   it('does not activate runtime config watch reload outside dev mode', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-prod-'));
     const envPath = join(cwd, '.env.prod');
