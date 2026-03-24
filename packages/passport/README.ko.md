@@ -9,7 +9,7 @@ Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 
 - **Cookie auth preset**: HttpOnly 쿠키 JWT 추출 + `CookieManager` 유틸리티.
 - **Refresh token lifecycle**: 재생 감지(replay detection)를 포함한 refresh token 발급·로테이션·취소.
 
-계정 연결 정책이나 더 넓은 세션 스토어 관리는 애플리케이션 레벨 책임으로 남는다.
+`@konekti/passport`는 이제 공식 계정 연결 확장 계약(`AccountLinkPolicy`)을 제공하며, 최종 identity 정책 결정은 애플리케이션 레벨 책임으로 남는다.
 
 ## 관련 문서
 
@@ -29,8 +29,8 @@ Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 
 
 범위 정리:
 
-- `@konekti/passport`는 strategy 실행, refresh token lifecycle(발급·로테이션·취소), HttpOnly cookie auth preset을 소유한다
-- 로그인 자격 증명 검증, 세션 스토리지, 동의(consent), 계정 연결 등 더 넓은 account/session lifecycle은 애플리케이션 레벨 책임이다
+- `@konekti/passport`는 strategy 실행, refresh token lifecycle(발급·로테이션·취소), HttpOnly cookie auth preset, 계정 연결 정책 계약을 소유한다
+- 로그인 자격 증명 검증, 세션 스토리지, 동의(consent), 계정 upsert 소유권 등 더 넓은 account/session lifecycle은 애플리케이션 레벨 책임이다
 
 ## Refresh Token Lifecycle
 
@@ -247,6 +247,108 @@ Cookie auth preset은 보안 기본값을 사용한다:
 - 멀티 테넌트 쿠키 격리
 - 쿠키 동의 준수
 
+## Account Linking Policy 계약
+
+`@konekti/passport`는 계정 소유권 자체를 프레임워크로 끌어오지 않으면서도, 애플리케이션이 일관되게 계정 연결을 구현할 수 있도록 최소 계약을 제공한다:
+
+- `AccountLinkPolicy.evaluate(context)`로 애플리케이션 정책 결정을 정의
+- `resolveAccountLinking(context, policy, options)`로 결과를 정규화하고 conflict/reject 시맨틱을 강제
+- `createConservativeAccountLinkPolicy()`는 모호한 후보 연결 시 명시적 확인을 요구하는 공식 baseline 정책
+
+### 프레임워크 동작 vs 애플리케이션 정책 경계
+
+**프레임워크 소유 동작:**
+- 계정 연결 계약 타입 및 DI 토큰(`ACCOUNT_LINKING_POLICY`)
+- 결정 정규화(`linked`, `create-account`, `skipped`)
+- 명시적 타입 에러(`AccountLinkConflictError`, `AccountLinkRejectedError`)
+
+**애플리케이션 소유 동작:**
+- 계정 후보 탐색(이메일/provider/메타데이터 기준 조회)
+- 동의 UI 및 명시적 링크 확인 UX
+- 계정 upsert/merge 트랜잭션 및 감사 로깅
+
+### 공통 플로우 매핑
+
+| 플로우 | 일반적인 입력 컨텍스트 | 기대 정책 결정 |
+|---|---|---|
+| 첫 외부 로그인 | `candidates: []` | `create-account` |
+| 기존 계정 매칭 | `candidates: [account]`, 아직 확인 없음 | `conflict` (명시적 확인 필요) |
+| 명시적 링크 확인 | `linkAttempt.confirmedByUser === true` 이고 대상이 후보에 포함 | `link` |
+| 링크 거절 | 사용자가 확인 거절 또는 대상 계정이 유효하지 않음 | `reject` |
+
+### 예시: 로컬 자격 증명 플로우 (외부 연결 없음)
+
+```typescript
+import { AuthenticationFailedError } from '@konekti/passport';
+
+export async function loginWithPassword(email: string, password: string) {
+  const account = await accountRepository.findByEmail(email);
+  if (!account || !(await passwordHasher.verify(password, account.passwordHash))) {
+    throw new AuthenticationFailedError('Invalid credentials.');
+  }
+
+  return account;
+}
+```
+
+### 예시: 외부 provider 플로우 + 명시적 링크 확인
+
+```typescript
+import {
+  AccountLinkConflictError,
+  AccountLinkRejectedError,
+  createConservativeAccountLinkPolicy,
+  resolveAccountLinking,
+} from '@konekti/passport';
+
+const policy = createConservativeAccountLinkPolicy();
+
+export async function handleGoogleCallback(identity: {
+  email?: string;
+  providerSubject: string;
+}) {
+  const candidates = await accountRepository.findCandidatesForExternalIdentity(identity);
+
+  try {
+    const resolution = await resolveAccountLinking(
+      {
+        candidates,
+        identity: {
+          email: identity.email,
+          emailVerified: true,
+          provider: 'google',
+          providerSubject: identity.providerSubject,
+        },
+      },
+      policy,
+    );
+
+    if (resolution.status === 'linked') {
+      return accountRepository.attachExternalIdentity(resolution.accountId, 'google', identity.providerSubject);
+    }
+
+    if (resolution.status === 'create-account') {
+      return accountRepository.createFromExternalIdentity('google', identity.providerSubject, identity.email);
+    }
+
+    return { next: 'manual-review' };
+  } catch (error) {
+    if (error instanceof AccountLinkConflictError) {
+      return {
+        candidateAccountIds: error.candidateAccountIds,
+        next: 'ask-link-confirmation',
+      };
+    }
+
+    if (error instanceof AccountLinkRejectedError) {
+      return { next: 'link-rejected' };
+    }
+
+    throw error;
+  }
+}
+```
+
 ## 설치
 
 ```bash
@@ -353,6 +455,12 @@ export class AuthModule {}
 | `createPassportProviders(opts)` | `src/module.ts` | strategy registry와 default strategy wiring 등록 |
 | `createPassportJsStrategyBridge(...)` | `src/passport-js.ts` | Passport.js strategy를 Konekti `AuthStrategy`로 감쌈 |
 | `AuthRequirement` | `src/types.ts` | `{ strategy?, scopes? }` — class + method 레벨에서 merge됨 |
+| `AccountLinkPolicy` | `src/account-linking.ts` | 애플리케이션이 제공한 후보 데이터로 identity-linking 결정을 내리는 확장 계약 |
+| `resolveAccountLinking(...)` | `src/account-linking.ts` | 정책 결과(`linked`, `create-account`, `skipped`) 정규화 + conflict/reject 타입 에러 처리 |
+| `createConservativeAccountLinkPolicy()` | `src/account-linking.ts` | 명시적 확인 전에는 모호한 연결을 허용하지 않는 기본 보수 정책 |
+| `ACCOUNT_LINKING_POLICY` | `src/account-linking.ts` | 정책 구현 연결을 위한 DI 토큰 |
+| `AccountLinkConflictError` | `src/account-linking.ts` | 하나 이상 후보가 매칭되어 명시적 확인이 필요한 경우 throw |
+| `AccountLinkRejectedError` | `src/account-linking.ts` | 정책에 의해 링크가 거절된 경우 throw |
 | `RefreshTokenService` | `src/refresh-token.ts` | refresh token lifecycle 작업을 위한 인터페이스 |
 | `RefreshTokenStrategy` | `src/refresh-token.ts` | refresh token 인증을 위한 auth strategy |
 | `JwtRefreshTokenAdapter` | `src/jwt-refresh-token-adapter.ts` | `@konekti/jwt`의 `RefreshTokenService`를 passport 인터페이스로 연결 |
@@ -394,27 +502,29 @@ export class AuthModule {}
 
 ### Passport.js bridge
 
-`createPassportJsStrategyBridge()`는 Passport.js의 `success`/`fail`/`redirect`/`error` callback 프로토콜을 Konekti의 `AuthStrategyResult`로 변환한다. `mapPrincipal` 인수는 passport user 객체를 Konekti `Principal` shape으로 정규화한다. bridge는 계정 upsert나 JWT 발급을 소유하지 않는다 — 그것들은 app service 코드의 책임이다.
+`createPassportJsStrategyBridge()`는 Passport.js의 `success`/`fail`/`redirect`/`error` callback 프로토콜을 Konekti의 `AuthStrategyResult`로 변환한다. `mapPrincipal` 인수는 passport user 객체를 Konekti `Principal` shape으로 정규화한다. bridge는 계정 upsert나 JWT 발급을 소유하지 않는다 — 그것들은 app service 코드의 책임이다. identity linking은 `AccountLinkPolicy` + `resolveAccountLinking` 계약 경계를 사용한다.
 
 public package는 auth error 클래스, bridge 타입, metadata helper, `AUTH_STRATEGY_REGISTRY`, `PASSPORT_OPTIONS`도 `src/index.ts`에서 함께 export한다.
 
 ## 파일 읽기 순서 (기여자용)
 
 1. `src/types.ts` — `AuthStrategy`, `AuthStrategyResult`, `AuthRequirement`, `GuardContext`
-2. `src/metadata.ts` — class + method requirement 저장과 merge
-3. `src/decorators.ts` — `UseAuth`, `RequireScopes` — 메타데이터 쓰기 + `AuthGuard` 부착
-4. `src/errors.ts` — auth-specific 에러 타입
-5. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope 확인, principal 채우기
-6. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle 기본 기능
-7. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — `@konekti/jwt`를 passport 인터페이스로 연결
-8. `src/cookie-auth.ts` — `CookieAuthStrategy` — HttpOnly 쿠키에서 JWT 추출
-9. `src/cookie-manager.ts` — `CookieManager` — 쿠키 설정/삭제 유틸리티
-10. `src/cookie-auth-module.ts` — `createCookieAuthPreset` — cookie auth provider와 strategy 등록
-11. `src/module.ts` — `createPassportProviders`
-12. `src/passport-js.ts` — `createPassportJsStrategyBridge`
-13. `src/guard.test.ts` — non-JWT strategy 흐름, 401/403 매핑, principal 채우기, scope 강제, Passport.js bridge 경로
-14. `src/refresh-token.test.ts` — refresh token lifecycle, 로테이션, 재생 감지, 취소
-15. `src/cookie-auth.test.ts` — cookie auth strategy 및 cookie manager 테스트
+2. `src/account-linking.ts` — 계정 연결 계약, conservative baseline 정책, conflict/reject 시맨틱
+3. `src/metadata.ts` — class + method requirement 저장과 merge
+4. `src/decorators.ts` — `UseAuth`, `RequireScopes` — 메타데이터 쓰기 + `AuthGuard` 부착
+5. `src/errors.ts` — auth-specific 에러 타입
+6. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope 확인, principal 채우기
+7. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle 기본 기능
+8. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — `@konekti/jwt`를 passport 인터페이스로 연결
+9. `src/cookie-auth.ts` — `CookieAuthStrategy` — HttpOnly 쿠키에서 JWT 추출
+10. `src/cookie-manager.ts` — `CookieManager` — 쿠키 설정/삭제 유틸리티
+11. `src/cookie-auth-module.ts` — `createCookieAuthPreset` — cookie auth provider와 strategy 등록
+12. `src/module.ts` — `createPassportProviders`
+13. `src/passport-js.ts` — `createPassportJsStrategyBridge`
+14. `src/account-linking.test.ts` — happy-path linking, conflict 처리, non-linking fallback, 명시적 거절 플로우 테스트
+15. `src/guard.test.ts` — non-JWT strategy 흐름, 401/403 매핑, principal 채우기, scope 강제, Passport.js bridge 경로
+16. `src/refresh-token.test.ts` — refresh token lifecycle, 로테이션, 재생 감지, 취소
+17. `src/cookie-auth.test.ts` — cookie auth strategy 및 cookie manager 테스트
 
 ## 관련 패키지
 
@@ -427,5 +537,6 @@ public package는 auth error 클래스, bridge 타입, metadata helper, `AUTH_ST
 @konekti/passport = strategy-agnostic auth 실행: 어떤 AuthStrategy든 → AuthGuard → RequestContext의 principal
                  + refresh token lifecycle: 발급 → 로테이션 → 취소 (재생 감지 포함)  (프레임워크 소유)
                  + cookie auth preset: HttpOnly 쿠키 JWT 추출 + 쿠키 관리 유틸리티   (프레임워크 소유)
-                 + 로그인 흐름, 세션 스토어, 동의, 계정 연결                           (애플리케이션 소유)
+                 + 계정 연결 정책 계약: evaluate → resolve → conflict/reject 시맨틱   (프레임워크 경계 소유)
+                 + 로그인 흐름, 세션 스토어, 동의, 계정 upsert/merge 구현            (애플리케이션 소유)
 ```
