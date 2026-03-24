@@ -53,7 +53,9 @@ CMD ["node", "dist/main.js"]
 
 ## Kubernetes probes
 
-Konekti runtime provides built-in health and readiness endpoints. By default, these are unprefixed even if a `globalPrefix` is configured.
+Konekti runtime provides built-in health and readiness endpoints. If a `globalPrefix` is configured, probes must either use the prefixed paths or you must exclude `/health` and `/ready` explicitly via `globalPrefixExclude`.
+
+The Docker `HEALTHCHECK` above assumes no `globalPrefix` (or that `/health` is explicitly excluded). If your app uses `globalPrefix: '/api'`, probe `http://localhost:3000/api/health` instead.
 
 - `/health`: Liveness probe. Returns `200 { status: 'ok' }` when the process is up.
 - `/ready`: Readiness probe. Returns `200` once the application bootstrap is complete and all registered readiness checks pass. Returns `503` during startup or when a dependency check fails.
@@ -75,14 +77,14 @@ spec:
         - containerPort: 3000
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/health
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /api/ready
             port: 3000
           initialDelaySeconds: 2
           periodSeconds: 5

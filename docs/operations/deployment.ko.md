@@ -52,7 +52,9 @@ CMD ["node", "dist/main.js"]
 
 ## Kubernetes probes
 
-Konekti 런타임은 내장된 헬스 체크와 레디니스 엔드포인트를 제공합니다. `globalPrefix` 설정과 관계없이 기본적으로 접두사 없이 노출됩니다.
+Konekti 런타임은 내장된 헬스 체크와 레디니스 엔드포인트를 제공합니다. `globalPrefix`를 설정했다면 프로브도 접두사가 붙은 경로를 사용해야 하며, `/health`와 `/ready`를 접두사 없이 유지하려면 `globalPrefixExclude`로 명시적으로 제외해야 합니다.
+
+위 Docker `HEALTHCHECK` 예시는 `globalPrefix`가 없거나(`/health`를 직접 사용) `/health`가 명시적으로 제외된 경우를 가정합니다. 앱이 `globalPrefix: '/api'`를 사용한다면 `http://localhost:3000/api/health`를 검사해야 합니다.
 
 - `/health`: Liveness probe. 프로세스가 실행 중일 때 `200 { status: 'ok' }`를 반환합니다.
 - `/ready`: Readiness probe. 애플리케이션 부트스트랩이 완료되고 등록된 모든 레디니스 체크를 통과하면 `200`을 반환합니다. 시작 중이거나 의존성 체크에 실패하면 `503`을 반환합니다.
@@ -74,14 +76,14 @@ spec:
         - containerPort: 3000
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/health
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /api/ready
             port: 3000
           initialDelaySeconds: 2
           periodSeconds: 5
