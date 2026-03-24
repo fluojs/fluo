@@ -20,6 +20,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/openapi`
 - `@konekti/graphql`
@@ -57,7 +58,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
 - **`@konekti/websocket`**: Decorator-based WebSocket gateway discovery and Node upgrade wiring.
 - **`@konekti/queue`**: Redis-backed background jobs with worker discovery and DLQ support.
-- **Data Integrations**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`.
+- **Data Integrations**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`.
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
 - **`@konekti/testing`**: Testing module and helper utilities.
 - **`@konekti/cli`**: Application bootstrap and generation commands.
