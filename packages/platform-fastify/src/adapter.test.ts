@@ -4,7 +4,7 @@ import { request as httpsRequest } from 'node:https';
 import { describe, expect, it } from 'vitest';
 
 import { Controller, Get, Post, type FrameworkRequest, type RequestContext } from '@konekti/http';
-import { defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { createHealthModule, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import {
   bootstrapFastifyApplication,
@@ -346,6 +346,48 @@ describe('@konekti/platform-fastify', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
     expect(observedPaths).toEqual(['/api/app/info']);
+
+    await app.close();
+  });
+
+  it('applies a global prefix to runtime-owned paths by default', async () => {
+    const HealthModule = createHealthModule();
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController],
+      imports: [HealthModule],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [prefixedApp, prefixedHealth, health] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetch(`http://127.0.0.1:${String(port)}/api/health`),
+      fetch(`http://127.0.0.1:${String(port)}/health`),
+    ]);
+
+    expect(prefixedApp.status).toBe(200);
+    await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
+    expect(prefixedHealth.status).toBe(200);
+    await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
+    expect(health.status).toBe(404);
 
     await app.close();
   });

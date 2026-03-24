@@ -58,7 +58,6 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const DEFAULT_GLOBAL_PREFIX_EXCLUDE = ['/health', '/ready', '/openapi.json', '/docs', '/metrics'] as const;
 
 export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   cors?: CorsInput;
@@ -605,7 +604,7 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
     };
   }
 
-  const exclusions = [...DEFAULT_GLOBAL_PREFIX_EXCLUDE, ...(exclude ?? [])].map((path) => normalizePathPattern(path));
+  const exclusions = [...(exclude ?? [])].map((path) => normalizePathPattern(path));
 
   return {
     async handle(context: MiddlewareContext, next: Next) {
