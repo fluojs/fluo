@@ -22,6 +22,7 @@ This directory contains framework-level information that spans multiple packages
 ### architecture and runtime
 
 - `concepts/architecture-overview.md`
+- `concepts/cqrs.md`
 - `concepts/http-runtime.md`
 - `concepts/di-and-modules.md`
 - `concepts/lifecycle-and-shutdown.md`

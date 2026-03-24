@@ -22,6 +22,7 @@
 ### 아키텍처와 런타임 흐름을 이해하고 싶다면
 
 - `concepts/architecture-overview.ko.md`
+- `concepts/cqrs.ko.md`
 - `concepts/http-runtime.ko.md`
 - `concepts/di-and-modules.ko.md`
 - `concepts/lifecycle-and-shutdown.ko.md`

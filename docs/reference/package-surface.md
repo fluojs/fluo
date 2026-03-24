@@ -25,6 +25,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/serializer`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/cqrs`
 - `@konekti/event-bus`
 - `@konekti/websocket`
 - `@konekti/queue`
@@ -49,6 +50,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/serializer`**: Class-based response serialization and interceptors.
 - **`@konekti/metrics`**: Prometheus metrics exposure.
 - **`@konekti/cron`**: Decorator-based task scheduling with distributed lock support.
+- **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery and event-bus delegation.
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
 - **`@konekti/websocket`**: Decorator-based WebSocket gateway discovery and Node upgrade wiring.
 - **`@konekti/queue`**: Redis-backed background jobs with worker discovery and DLQ support.

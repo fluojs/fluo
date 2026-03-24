@@ -25,6 +25,7 @@
 - `@konekti/serializer`
 - `@konekti/metrics`
 - `@konekti/cron`
+- `@konekti/cqrs`
 - `@konekti/event-bus`
 - `@konekti/websocket`
 - `@konekti/queue`
@@ -49,6 +50,7 @@
 - **`@konekti/serializer`**: 클래스 기반 응답 직렬화 및 인터셉터.
 - **`@konekti/metrics`**: Prometheus 메트릭 노출.
 - **`@konekti/cron`**: 분산 락을 지원하는 데코레이터 기반 작업 스케줄링.
+- **`@konekti/cqrs`**: 부트스트랩 시점 핸들러 탐색과 event-bus 위임을 제공하는 command/query 버스.
 - **`@konekti/event-bus`**: 프로세스 내 이벤트 발행 및 탐색.
 - **`@konekti/websocket`**: 데코레이터 기반 WebSocket 게이트웨이 탐색 및 Node 업그레이드 연결.
 - **`@konekti/queue`**: 워커 탐색과 DLQ(Dead Letter Queue)를 지원하는 Redis 기반 백그라운드 작업.

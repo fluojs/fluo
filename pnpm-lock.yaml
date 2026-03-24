@@ -66,6 +66,21 @@ importers:
 
   packages/core: {}
 
+  packages/cqrs:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/cron:
     dependencies:
       '@konekti/core':
