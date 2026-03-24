@@ -22,6 +22,7 @@
 ### 아키텍처와 런타임 흐름을 이해하고 싶다면
 
 - `concepts/architecture-overview.ko.md`
+- `concepts/dev-reload-architecture.ko.md`
 - `concepts/cqrs.ko.md`
 - `concepts/caching.ko.md`
 - `concepts/http-runtime.ko.md`
