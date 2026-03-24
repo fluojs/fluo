@@ -1,7 +1,7 @@
 import { Controller, Get, type MiddlewareLike, type RequestContext } from '@konekti/http';
 import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
-import { Registry, collectDefaultMetrics } from 'prom-client';
+import { type Registry, Registry as PrometheusRegistry, collectDefaultMetrics } from 'prom-client';
 
 import {
   HttpMetricsMiddleware,
@@ -25,6 +25,8 @@ export interface MetricsModuleOptions {
   provider?: 'prometheus';
   defaultMetrics?: boolean;
   middleware?: MiddlewareLike[];
+  /** External Prometheus registry to share between built-in and custom metrics. */
+  registry?: Registry;
 }
 
 export class MetricsModule {
@@ -38,7 +40,7 @@ export class MetricsModule {
 
     const httpOptions = resolveHttpOptions(options.http);
     const metricsPath = options.path ?? '/metrics';
-    const registry = new Registry();
+    const registry = options.registry ?? new PrometheusRegistry();
     const metricsService = new MetricsService(registry);
     const meterProvider = new PrometheusMeterProvider(registry);
 
