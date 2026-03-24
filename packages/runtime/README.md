@@ -187,9 +187,9 @@ await runNodeApplication(AppModule, {
 });
 ```
 
-`globalPrefix` applies to application routes owned by the runtime-owned HTTP app, so a controller route like `/app/info` becomes `/api/app/info`. By default, runtime-owned operational endpoints stay unprefixed at `/health`, `/ready`, `/openapi.json`, `/docs`, and `/metrics`, and their prefixed forms like `/api/health` return `404` by design. `globalPrefixExclude` adds more unprefixed path patterns on top of that default exclusion set.
+`globalPrefix` applies to all routes by default, so a controller route like `/app/info` becomes `/api/app/info` and runtime-owned endpoints such as `/health` become `/api/health`. Use `globalPrefixExclude` when specific paths should stay unprefixed.
 
-`globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op.
+`globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op. To preserve the previous operational-endpoint behavior, pass `globalPrefixExclude: ['/health', '/ready', '/openapi.json', '/docs', '/metrics']` explicitly.
 
 ### Global exception filters
 

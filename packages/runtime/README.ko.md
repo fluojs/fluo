@@ -187,9 +187,9 @@ await runNodeApplication(AppModule, {
 });
 ```
 
-`globalPrefix`는 런타임 소유의 HTTP 앱이 소유한 애플리케이션 라우트에 적용되므로, `/app/info`와 같은 컨트롤러 라우트는 `/api/app/info`가 됩니다. 기본적으로 런타임 소유의 운영 엔드포인트는 접두사 없이 `/health`, `/ready`, `/openapi.json`, `/docs`, `/metrics`로 유지되며, `/api/health`와 같은 접두사가 붙은 형태는 설계상 `404`를 반환합니다. `globalPrefixExclude`는 이 기본 제외 세트 위에 더 많은 접두사 없는 경로 패턴을 추가합니다.
+`globalPrefix`는 모든 라우트에 기본적으로 적용되므로, `/app/info`와 같은 컨트롤러 라우트는 `/api/app/info`가 되고 `/health` 같은 런타임 소유 엔드포인트도 `/api/health`가 됩니다. 특정 경로를 접두사 없이 유지하려면 `globalPrefixExclude`를 사용하세요.
 
-`globalPrefixExclude`는 `/internal/ping`과 같은 정확한 경로와 `/internal/*`과 같은 후행 `/*` 패턴을 지원합니다. 런타임은 매칭 전에 중복된 슬래시와 후행 슬래시를 정규화하며, `globalPrefix: '/'`는 아무런 동작을 하지 않는 것(no-op)으로 처리합니다.
+`globalPrefixExclude`는 `/internal/ping`과 같은 정확한 경로와 `/internal/*`과 같은 후행 `/*` 패턴을 지원합니다. 런타임은 매칭 전에 중복된 슬래시와 후행 슬래시를 정규화하며, `globalPrefix: '/'`는 아무런 동작을 하지 않는 것(no-op)으로 처리합니다. 이전 운영 엔드포인트 동작을 유지하려면 `globalPrefixExclude: ['/health', '/ready', '/openapi.json', '/docs', '/metrics']`를 명시적으로 전달하세요.
 
 ### 글로벌 예외 필터
 

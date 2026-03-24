@@ -55,7 +55,6 @@ export type NodeApplicationSignal = 'SIGINT' | 'SIGTERM';
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
-const DEFAULT_GLOBAL_PREFIX_EXCLUDE = ['/health', '/ready', '/openapi.json', '/docs', '/metrics'] as const;
 
 export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   compression?: boolean;
@@ -431,7 +430,7 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
     };
   }
 
-  const exclusions = [...DEFAULT_GLOBAL_PREFIX_EXCLUDE, ...(exclude ?? [])].map((path) => normalizePathPattern(path));
+  const exclusions = [...(exclude ?? [])].map((path) => normalizePathPattern(path));
 
   return {
     async handle(context, next) {

@@ -1130,7 +1130,7 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
-  it('applies a global prefix to application routes while leaving runtime-owned paths unprefixed', async () => {
+  it('applies a global prefix to application routes and runtime-owned paths by default', async () => {
     const HealthModule = createHealthModule();
 
     @Controller('')
@@ -1175,34 +1175,90 @@ describe('bootstrapApplication', () => {
 
     await app.listen();
 
-    const [prefixedApp, unprefixedApp, health, ready, docs, metrics, openapi, prefixedHealth, prefixedDocs] = await Promise.all([
+    const [prefixedApp, unprefixedApp, prefixedHealth, prefixedReady, prefixedDocs, prefixedMetrics, prefixedOpenapi, health, docs] = await Promise.all([
       fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
       fetch(`http://127.0.0.1:${String(port)}/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/health`),
-      fetch(`http://127.0.0.1:${String(port)}/ready`),
-      fetch(`http://127.0.0.1:${String(port)}/docs`),
-      fetch(`http://127.0.0.1:${String(port)}/metrics`),
-      fetch(`http://127.0.0.1:${String(port)}/openapi.json`),
       fetch(`http://127.0.0.1:${String(port)}/api/health`),
+      fetch(`http://127.0.0.1:${String(port)}/api/ready`),
       fetch(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetch(`http://127.0.0.1:${String(port)}/api/metrics`),
+      fetch(`http://127.0.0.1:${String(port)}/api/openapi.json`),
+      fetch(`http://127.0.0.1:${String(port)}/health`),
+      fetch(`http://127.0.0.1:${String(port)}/docs`),
     ]);
 
     expect(prefixedApp.status).toBe(200);
     await expect(prefixedApp.json()).resolves.toEqual({ ok: true, route: 'app-info' });
 
     expect(unprefixedApp.status).toBe(404);
+    expect(prefixedHealth.status).toBe(200);
+    await expect(prefixedHealth.json()).resolves.toEqual({ status: 'ok' });
+    expect(prefixedReady.status).toBe(200);
+    await expect(prefixedReady.json()).resolves.toEqual({ status: 'ready' });
+    expect(prefixedDocs.status).toBe(200);
+    await expect(prefixedDocs.json()).resolves.toEqual({ ok: true, route: 'docs' });
+    expect(prefixedMetrics.status).toBe(200);
+    await expect(prefixedMetrics.text()).resolves.toBe('process_cpu_seconds_total 1');
+    expect(prefixedOpenapi.status).toBe(200);
+    await expect(prefixedOpenapi.json()).resolves.toEqual({ openapi: '3.1.0' });
+    expect(health.status).toBe(404);
+    expect(docs.status).toBe(404);
+
+    await app.close();
+  });
+
+  it('supports explicit global prefix exclusions for runtime-owned paths', async () => {
+    const HealthModule = createHealthModule();
+
+    @Controller('')
+    class RuntimeOwnedController {
+      @Get('/docs')
+      getDocs() {
+        return { ok: true, route: 'docs' };
+      }
+    }
+
+    @Controller('/app')
+    class AppController {
+      @Get('/info')
+      getInfo() {
+        return { ok: true, route: 'app-info' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AppController, RuntimeOwnedController],
+      imports: [HealthModule],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      globalPrefix: '/api',
+      globalPrefixExclude: ['/health', '/ready'],
+      mode: 'test',
+      port,
+    });
+
+    await app.listen();
+
+    const [health, ready, prefixedHealth, prefixedReady, prefixedDocs] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/health`),
+      fetch(`http://127.0.0.1:${String(port)}/ready`),
+      fetch(`http://127.0.0.1:${String(port)}/api/health`),
+      fetch(`http://127.0.0.1:${String(port)}/api/ready`),
+      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
+    ]);
+
     expect(health.status).toBe(200);
     await expect(health.json()).resolves.toEqual({ status: 'ok' });
     expect(ready.status).toBe(200);
     await expect(ready.json()).resolves.toEqual({ status: 'ready' });
-    expect(docs.status).toBe(200);
-    await expect(docs.json()).resolves.toEqual({ ok: true, route: 'docs' });
-    expect(metrics.status).toBe(200);
-    await expect(metrics.text()).resolves.toBe('process_cpu_seconds_total 1');
-    expect(openapi.status).toBe(200);
-    await expect(openapi.json()).resolves.toEqual({ openapi: '3.1.0' });
     expect(prefixedHealth.status).toBe(404);
-    expect(prefixedDocs.status).toBe(404);
+    expect(prefixedReady.status).toBe(404);
+    expect(prefixedDocs.status).toBe(200);
+    await expect(prefixedDocs.json()).resolves.toEqual({ ok: true, route: 'docs' });
 
     await app.close();
   });
