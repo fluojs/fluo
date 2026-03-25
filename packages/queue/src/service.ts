@@ -37,12 +37,12 @@ const DEAD_LETTER_DRAIN_TIMEOUT_MS = 5_000;
 
 type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
 
-interface QueueOwnedConnection {
+type QueueOwnedConnection = ConnectionOptions & {
   connect(): Promise<unknown>;
   disconnect(): void;
   quit(): Promise<unknown>;
   status?: string;
-}
+};
 
 interface QueueRedisClient {
   duplicate(): QueueOwnedConnection;
@@ -382,7 +382,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     queueConnection: QueueOwnedConnection,
   ): QueueInstance {
     return new BullQueue(descriptor.jobName, {
-      connection: queueConnection as unknown as ConnectionOptions,
+      connection: queueConnection,
     });
   }
 
@@ -412,7 +412,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   } {
     return {
       concurrency: descriptor.concurrency,
-      connection: workerConnection as unknown as ConnectionOptions,
+      connection: workerConnection,
       ...this.createWorkerLimiterOptions(descriptor),
     };
   }
