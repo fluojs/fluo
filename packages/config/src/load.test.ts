@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
+import { getModuleMetadata } from '@konekti/core';
 
 import { createConfigReloader, loadConfig } from './load.js';
+import { ConfigModule } from './module.js';
 import { ConfigService } from './service.js';
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -44,6 +46,39 @@ describe('loadConfig', () => {
       NAME: 'from-runtime',
       PORT: '4000',
     });
+  });
+
+  it('supports envFilePath as alias for envFile', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-envpath-'));
+    const envPath = join(cwd, '.env.custom');
+
+    writeFileSync(envPath, 'API_KEY=test-key-123\n');
+
+    const loaded = loadConfig({
+      cwd,
+      envFilePath: envPath,
+      processEnv: {},
+    });
+
+    expect(loaded['API_KEY']).toBe('test-key-123');
+  });
+
+  it('prefers envFilePath over envFile when both provided', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-envpath-pref-'));
+    const envFilePrimary = join(cwd, '.env.primary');
+    const envFileAlias = join(cwd, '.env.alias');
+
+    writeFileSync(envFilePrimary, 'KEY=from-primary\n');
+    writeFileSync(envFileAlias, 'KEY=from-alias\n');
+
+    const loaded = loadConfig({
+      cwd,
+      envFile: envFilePrimary,
+      envFilePath: envFileAlias,
+      processEnv: {},
+    });
+
+    expect(loaded['KEY']).toBe('from-alias');
   });
 
   it('does not let undefined process env values overwrite file/default values', () => {
@@ -396,11 +431,11 @@ describe('loadConfig', () => {
 });
 
 describe('ConfigService', () => {
-  it('reads required and optional keys', () => {
+  it('reads keys with get returning undefined for missing', () => {
     const service = new ConfigService({ PORT: '3000' });
 
     expect(service.get('PORT')).toBe('3000');
-    expect(service.getOptional('MISSING' as never)).toBeUndefined();
+    expect(service.get('MISSING' as never)).toBeUndefined();
   });
 
   it('resolves nested dot-path keys', () => {
@@ -410,10 +445,16 @@ describe('ConfigService', () => {
     expect(service.get('db.port')).toBe(5432);
   });
 
-  it('throws on missing required key', () => {
+  it('throws on missing required key with getOrThrow', () => {
     const service = new ConfigService({ PORT: '3000' });
 
-    expect(() => service.get('MISSING' as never)).toThrow('Missing config key');
+    expect(() => service.getOrThrow('MISSING' as never)).toThrow('Missing config key');
+  });
+
+  it('returns value with getOrThrow for existing key', () => {
+    const service = new ConfigService({ PORT: '3000' });
+
+    expect(service.getOrThrow('PORT')).toBe('3000');
   });
 
   it('returns undefined for missing optional nested key', () => {
@@ -427,7 +468,8 @@ describe('ConfigService', () => {
     const service = new ConfigService(values);
 
     expect(service.getOptional('PORT' as never)).toBeUndefined();
-    expect(() => service.get('PORT' as never)).toThrow('Missing config key');
+    expect(service.get('PORT' as never)).toBeUndefined();
+    expect(() => service.getOrThrow('PORT' as never)).toThrow('Missing config key');
   });
 
   it('does not resolve inherited nested keys', () => {
@@ -435,7 +477,8 @@ describe('ConfigService', () => {
     const service = new ConfigService({ db });
 
     expect(service.getOptional('db.host' as never)).toBeUndefined();
-    expect(() => service.get('db.host' as never)).toThrow('Missing config key');
+    expect(service.get('db.host' as never)).toBeUndefined();
+    expect(() => service.getOrThrow('db.host' as never)).toThrow('Missing config key');
   });
 
   it('provides typed get/getOptional for generic ConfigService', () => {
@@ -490,5 +533,25 @@ describe('ConfigService', () => {
 
     expect(service.get('PORT')).toBe('3100');
     expect(service.get('nested.host')).toBe('remote');
+  });
+});
+
+describe('ConfigModule', () => {
+  it('registers as global by default', () => {
+    const moduleRef = ConfigModule.forRoot();
+
+    expect(getModuleMetadata(moduleRef)?.global).toBe(true);
+  });
+
+  it('honors isGlobal=false', () => {
+    const moduleRef = ConfigModule.forRoot({ isGlobal: false });
+
+    expect(getModuleMetadata(moduleRef)?.global).toBe(false);
+  });
+
+  it('honors isGlobal=true', () => {
+    const moduleRef = ConfigModule.forRoot({ isGlobal: true });
+
+    expect(getModuleMetadata(moduleRef)?.global).toBe(true);
   });
 });

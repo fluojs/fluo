@@ -9,7 +9,7 @@ export class ConfigModule {
     class ConfigModuleImpl extends ConfigModule {}
 
     defineModuleMetadata(ConfigModuleImpl, {
-      global: true,
+      global: options?.isGlobal ?? true,
       exports: [ConfigService],
       providers: [
         {

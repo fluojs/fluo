@@ -14,7 +14,11 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
     this.values = cloneConfigDictionary(values);
   }
 
-  get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {
+  get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
+    return this._resolve(key as string) as DotValue<T, K & string> | undefined;
+  }
+
+  getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {
     const value = this._resolve(key as string);
 
     if (value === undefined) {
@@ -24,6 +28,9 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
     return value as DotValue<T, K & string>;
   }
 
+  /**
+   * @deprecated Use `get()` instead. `get()` now returns `T | undefined` matching NestJS semantics.
+   */
   getOptional<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
     return this._resolve(key as string) as DotValue<T, K & string> | undefined;
   }

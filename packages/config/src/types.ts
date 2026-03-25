@@ -30,12 +30,14 @@ export type DotValue<T, K extends string> = K extends keyof T
 
 export interface ConfigModuleOptions {
   envFile?: string;
+  envFilePath?: string;
   validate?: (raw: ConfigDictionary) => ConfigDictionary;
   defaults?: ConfigDictionary;
   /** Supply a custom file parser (e.g. for YAML or TOML). Receives raw file content,
    *  returns a flat key-value record. Defaults to dotenv parsing. */
   parse?: (content: string) => Record<string, string>;
   watch?: boolean;
+  isGlobal?: boolean;
 }
 
 export interface ConfigLoadOptions extends ConfigModuleOptions {
