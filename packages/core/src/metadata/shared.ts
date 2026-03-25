@@ -3,9 +3,14 @@ import type { MetadataPropertyKey } from '../types.js';
 export type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-export const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
+export let metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
 
 export function ensureMetadataSymbol(): symbol {
+  if (symbolWithMetadata.metadata) {
+    metadataSymbol = symbolWithMetadata.metadata;
+    return metadataSymbol;
+  }
+
   if (!symbolWithMetadata.metadata) {
     Object.defineProperty(Symbol, 'metadata', {
       configurable: true,
@@ -17,6 +22,48 @@ export function ensureMetadataSymbol(): symbol {
 }
 
 void ensureMetadataSymbol();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+
+  return prototype === Object.prototype || prototype === null;
+}
+
+export function cloneMutableValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneMutableValue(item)) as T;
+  }
+
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as T;
+  }
+
+  if (value instanceof Map) {
+    return new Map(
+      Array.from(value.entries(), ([key, entryValue]) => [key, cloneMutableValue(entryValue)]),
+    ) as T;
+  }
+
+  if (value instanceof Set) {
+    return new Set(Array.from(value.values(), (entryValue) => cloneMutableValue(entryValue))) as T;
+  }
+
+  if (isPlainObject(value)) {
+    const cloned: Record<string, unknown> = {};
+
+    for (const [key, entryValue] of Object.entries(value)) {
+      cloned[key] = cloneMutableValue(entryValue);
+    }
+
+    return cloned as T;
+  }
+
+  return value;
+}
 
 export const standardMetadataKeys = {
   classValidation: Symbol.for('konekti.standard.class-validation'),
@@ -39,7 +86,7 @@ export const metadataKeys = {
 } as const;
 
 export function cloneCollection<T>(collection: readonly T[] | undefined): T[] | undefined {
-  return collection ? [...collection] : undefined;
+  return collection ? collection.map((value) => cloneMutableValue(value)) : undefined;
 }
 
 export function getOrCreatePropertyMap<T>(

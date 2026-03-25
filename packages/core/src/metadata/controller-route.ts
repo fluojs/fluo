@@ -1,4 +1,5 @@
 import {
+  cloneMutableValue,
   cloneCollection,
   getOrCreatePropertyMap,
   getStandardConstructorMetadataMap,
@@ -13,6 +14,14 @@ import type { MetadataPropertyKey } from '../types.js';
 const controllerMetadataStore = createClonedWeakMapStore<Function, ControllerMetadata>(cloneControllerMetadata);
 const routeMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, RouteMetadata>>();
 
+function cloneRouteHeaders(headers: RouteMetadata['headers']): RouteMetadata['headers'] {
+  return headers?.map((header) => ({ ...header }));
+}
+
+function cloneRouteRedirect(redirect: RouteMetadata['redirect']): RouteMetadata['redirect'] {
+  return redirect ? { ...redirect } : undefined;
+}
+
 function cloneControllerMetadata(metadata: ControllerMetadata): ControllerMetadata {
   return {
     ...metadata,
@@ -24,6 +33,8 @@ function cloneControllerMetadata(metadata: ControllerMetadata): ControllerMetada
 function cloneRouteMetadata(metadata: RouteMetadata): RouteMetadata {
   return {
     ...metadata,
+    headers: cloneRouteHeaders(metadata.headers),
+    redirect: cloneRouteRedirect(metadata.redirect),
     guards: cloneCollection(metadata.guards),
     interceptors: cloneCollection(metadata.interceptors),
   };
@@ -108,13 +119,16 @@ function mergeRouteMetadata(
   standard: RouteMetadata | undefined,
   required: Pick<RouteMetadata, 'method' | 'path'>,
 ): RouteMetadata {
+  const mergedHeaders = stored?.headers ?? standard?.headers;
+  const mergedRedirect = stored?.redirect ?? standard?.redirect;
+
   return {
     guards: mergeUnique(stored?.guards, standard?.guards),
-    headers: stored?.headers ?? standard?.headers,
+    headers: cloneMutableValue(mergedHeaders),
     interceptors: mergeUnique(stored?.interceptors, standard?.interceptors),
     method: required.method,
     path: required.path,
-    redirect: stored?.redirect ?? standard?.redirect,
+    redirect: cloneMutableValue(mergedRedirect),
     request: stored?.request ?? standard?.request,
     successStatus: stored?.successStatus ?? standard?.successStatus,
     version: stored?.version ?? standard?.version,

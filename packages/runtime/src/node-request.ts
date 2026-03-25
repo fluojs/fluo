@@ -30,11 +30,8 @@ export async function createFrameworkRequest(
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url ?? '/', 'http://localhost');
-  const headers = Object.fromEntries(
-    Object.entries(request.headers).map(([name, value]) => [name, Array.isArray(value) ? value.join(', ') : value]),
-  );
-
-  const contentType = headers['content-type'];
+  const headers = cloneRequestHeaders(request.headers);
+  const contentType = readPrimaryHeaderValue(headers['content-type']);
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
   let body: unknown;
@@ -119,13 +116,29 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
   return query;
 }
 
-function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
-  if (!cookieHeader) {
+function cloneRequestHeaders(headers: IncomingHttpHeaders): FrameworkRequest['headers'] {
+  const clonedEntries = Object.entries(headers).map(([name, value]) => [name, Array.isArray(value) ? [...value] : value]);
+
+  return Object.fromEntries(clonedEntries);
+}
+
+function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {
+  if (Array.isArray(headerValue)) {
+    return headerValue[0];
+  }
+
+  return headerValue;
+}
+
+function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<string, string> {
+  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
+
+  if (!normalizedCookieHeader) {
     return {};
   }
 
   return Object.fromEntries(
-    cookieHeader
+    normalizedCookieHeader
       .split(';')
       .map((pair) => pair.trim())
       .filter(Boolean)

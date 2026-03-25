@@ -20,6 +20,7 @@ import type {
   HandlerMapping,
   InterceptorLike,
   InterceptorContext,
+  MiddlewareContext,
   MiddlewareLike,
   RequestContext,
   RequestObservationContext,
@@ -214,34 +215,38 @@ async function notifyRequestFinish(context: DispatchPhaseContext): Promise<void>
 async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
   ensureRequestNotAborted(context.requestContext.request);
 
-  await runMiddlewareChain(context.options.appMiddleware ?? [], {
+  const appMiddlewareContext: MiddlewareContext = {
     request: context.requestContext.request,
     requestContext: context.requestContext,
     response: context.response,
-  }, async () => {
+  };
+
+  await runMiddlewareChain(context.options.appMiddleware ?? [], appMiddlewareContext, async () => {
     if (context.response.committed) {
       return;
     }
 
-    const match = matchHandlerOrThrow(context.options.handlerMapping, context.requestContext.request);
+    const match = matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
     context.matchedHandler = match.descriptor;
     updateRequestParams(context.requestContext, match.params);
     await notifyHandlerMatched(context, match.descriptor);
 
-      await runMiddlewareChain(match.descriptor.metadata.moduleMiddleware ?? [], {
-        request: context.requestContext.request,
-        requestContext: context.requestContext,
-        response: context.response,
-      }, async () => {
-        await dispatchMatchedHandler(
-          match.descriptor,
-          context.requestContext,
-          context.observers,
-          context.contentNegotiation,
-          context.options.interceptors,
-        );
-      });
+    const moduleMiddlewareContext: MiddlewareContext = {
+      request: appMiddlewareContext.request,
+      requestContext: context.requestContext,
+      response: context.response,
+    };
+
+    await runMiddlewareChain(match.descriptor.metadata.moduleMiddleware ?? [], moduleMiddlewareContext, async () => {
+      await dispatchMatchedHandler(
+        match.descriptor,
+        context.requestContext,
+        context.observers,
+        context.contentNegotiation,
+        context.options.interceptors,
+      );
     });
+  });
 }
 
 async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {

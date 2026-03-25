@@ -115,6 +115,44 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('returns cloned nested route metadata objects', () => {
+    class ExampleController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    defineRouteMetadata(ExampleController.prototype, 'getUser', {
+      headers: [{ name: 'x-test', value: 'v1' }],
+      method: 'GET',
+      path: '/users',
+      redirect: {
+        statusCode: 302,
+        url: '/moved',
+      },
+    });
+
+    const metadata = getRouteMetadata(ExampleController.prototype, 'getUser');
+
+    if (metadata?.headers?.[0]) {
+      metadata.headers[0].value = 'mutated';
+    }
+
+    if (metadata?.redirect) {
+      metadata.redirect.url = '/mutated';
+    }
+
+    expect(getRouteMetadata(ExampleController.prototype, 'getUser')).toEqual({
+      headers: [{ name: 'x-test', value: 'v1' }],
+      method: 'GET',
+      path: '/users',
+      redirect: {
+        statusCode: 302,
+        url: '/moved',
+      },
+    });
+  });
+
   it('builds DTO binding schema from field metadata', () => {
     class GetUserRequest {
       id!: string;
@@ -198,6 +236,31 @@ describe('metadata helpers', () => {
       {
         propertyKey: 'name',
         rules: [{ kind: 'string' }, { kind: 'minLength', value: 2 }],
+      },
+    ]);
+  });
+
+  it('returns cloned DTO validation rule payloads for nested rule objects', () => {
+    class ExampleDto {
+      tags!: string[];
+    }
+
+    appendDtoFieldValidationRule(ExampleDto.prototype, 'tags', {
+      kind: 'in',
+      values: ['a', 'b'],
+    });
+
+    const schema = getDtoValidationSchema(ExampleDto);
+    const firstRule = schema[0]?.rules[0];
+
+    if (firstRule && firstRule.kind === 'in') {
+      (firstRule.values as string[]).push('mutated');
+    }
+
+    expect(getDtoValidationSchema(ExampleDto)).toEqual([
+      {
+        propertyKey: 'tags',
+        rules: [{ kind: 'in', values: ['a', 'b'] }],
       },
     ]);
   });

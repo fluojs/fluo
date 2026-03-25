@@ -1,5 +1,6 @@
 import {
   appendPropertyMapValue,
+  cloneMutableValue,
   getOrCreatePropertyMap,
   getStandardConstructorMetadataMap,
   getStandardMetadataBag,
@@ -20,7 +21,9 @@ import type { Constructor, MetadataPropertyKey } from '../types.js';
 
 const dtoFieldBindingStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldBindingMetadata>>();
 const dtoFieldValidationStore = new WeakMap<object, Map<MetadataPropertyKey, DtoFieldValidationRule[]>>();
-const classValidationStore = createClonedWeakMapStore<Function, ClassValidationRule[]>((rules) => [...rules]);
+const classValidationStore = createClonedWeakMapStore<Function, ClassValidationRule[]>((rules) =>
+  rules.map((rule) => cloneMutableValue(rule))
+);
 
 function getStandardDtoBindingMap(target: object): Map<MetadataPropertyKey, StandardDtoBindingRecord> | undefined {
   return getStandardConstructorMetadataMap<StandardDtoBindingRecord>(target, standardMetadataKeys.dtoFieldBinding);
@@ -33,7 +36,7 @@ function getStandardDtoValidationMap(target: object): Map<MetadataPropertyKey, S
 function getStandardClassValidationRules(target: Function): ClassValidationRule[] | undefined {
   const rules = getStandardMetadataBag(target)?.[standardMetadataKeys.classValidation] as ClassValidationRule[] | undefined;
 
-  return rules ? [...rules] : undefined;
+  return rules ? rules.map((rule) => cloneMutableValue(rule)) : undefined;
 }
 
 export function getDtoFieldBindingMetadata(target: object, propertyKey: MetadataPropertyKey): DtoFieldBindingMetadata | undefined {
@@ -65,12 +68,12 @@ export function appendDtoFieldValidationRule(
   propertyKey: MetadataPropertyKey,
   rule: DtoFieldValidationRule,
 ): void {
-  appendPropertyMapValue(dtoFieldValidationStore, target, propertyKey, rule);
+  appendPropertyMapValue(dtoFieldValidationStore, target, propertyKey, cloneMutableValue(rule));
 }
 
 export function appendClassValidationRule(target: Function, rule: ClassValidationRule): void {
   const rules = classValidationStore.read(target) ?? [];
-  rules.push(rule);
+  rules.push(cloneMutableValue(rule));
   classValidationStore.write(target, rules);
 }
 
@@ -107,7 +110,10 @@ export function getDtoFieldValidationRules(target: object, propertyKey: Metadata
   const stored = dtoFieldValidationStore.get(target)?.get(propertyKey) ?? [];
   const standard = getStandardDtoValidationMap(target)?.get(propertyKey) ?? [];
 
-  return [...standard, ...stored];
+  return [
+    ...standard.map((rule) => cloneMutableValue(rule)),
+    ...stored.map((rule) => cloneMutableValue(rule)),
+  ];
 }
 
 export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEntry[] {
@@ -117,8 +123,8 @@ export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEnt
 
   return keys.flatMap((propertyKey) => {
     const rules: DtoFieldValidationRule[] = [
-      ...(standard.get(propertyKey) ?? []),
-      ...(stored.get(propertyKey) ?? []),
+      ...(standard.get(propertyKey) ?? []).map((rule) => cloneMutableValue(rule)),
+      ...(stored.get(propertyKey) ?? []).map((rule) => cloneMutableValue(rule)),
     ];
 
     if (rules.length === 0) {
