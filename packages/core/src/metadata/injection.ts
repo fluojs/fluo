@@ -26,7 +26,7 @@ export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
     const metadata = stored.get(propertyKey);
     const standardMetadata = standard.get(propertyKey);
 
-    if (!metadata && !standardMetadata?.token) {
+    if (!metadata && standardMetadata?.token == null) {
       continue;
     }
 
