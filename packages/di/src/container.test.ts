@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Scope } from '@konekti/core';
+import { Inject, Scope as ScopeDecorator } from '@konekti/core';
 
 import { Container } from './container.js';
 import { CircularDependencyError, DuplicateProviderError, ScopeMismatchError } from './errors.js';
-import { forwardRef, optional } from './types.js';
+import { Scope, forwardRef, optional } from './types.js';
 
 describe('Container', () => {
   it('caches singleton providers', async () => {
@@ -69,7 +69,7 @@ describe('Container', () => {
     class Logger {}
 
     @Inject([Logger])
-    @Scope('request')
+    @ScopeDecorator('request')
     class RequestService {
       constructor(readonly logger: Logger) {}
     }
@@ -84,6 +84,41 @@ describe('Container', () => {
 
     expect(first).toBe(second);
     expect(first.logger).toBeInstanceOf(Logger);
+  });
+
+  it('accepts Scope constants in both decorator and provider registrations', async () => {
+    class Logger {}
+
+    @Inject([Logger])
+    @ScopeDecorator(Scope.REQUEST)
+    class RequestService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    let created = 0;
+    class TransientService {
+      readonly id = ++created;
+    }
+
+    const root = new Container().register(
+      Logger,
+      RequestService,
+      {
+        provide: TransientService,
+        scope: Scope.TRANSIENT,
+        useClass: TransientService,
+      },
+    );
+
+    await expect(root.resolve(RequestService)).rejects.toThrow('outside request scope');
+
+    const requestScope = root.createRequestScope();
+    const requestScoped = await requestScope.resolve(RequestService);
+    const firstTransient = await requestScope.resolve(TransientService);
+    const secondTransient = await requestScope.resolve(TransientService);
+
+    expect(requestScoped.logger).toBeInstanceOf(Logger);
+    expect(firstTransient).not.toBe(secondTransient);
   });
 
   describe('transient scope', () => {
@@ -111,7 +146,7 @@ describe('Container', () => {
     it('supports @Scope decorator for transient services', async () => {
       let created = 0;
 
-      @Scope('transient')
+      @ScopeDecorator('transient')
       class TransientCounter {
         readonly id = ++created;
       }
