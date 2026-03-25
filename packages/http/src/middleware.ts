@@ -10,16 +10,27 @@ export function isMiddlewareRouteConfig(value: MiddlewareLike): value is Middlew
   return typeof value === 'object' && value !== null && 'middleware' in value && 'routes' in value;
 }
 
-function matchRoute(pattern: string, path: string): boolean {
-  const normPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
-  const normPattern = pattern.endsWith('/') && pattern.length > 1 ? pattern.slice(0, -1) : pattern;
-
-  if (normPattern.endsWith('/*')) {
-    const prefix = normPattern.slice(0, -2);
-    return normPath === prefix || normPath.startsWith(`${prefix}/`);
+export function normalizeRoutePattern(path: string): string {
+  if (path.endsWith('/*')) {
+    return `${normalizeRoutePattern(path.slice(0, -2))}/*`;
   }
 
-  return normPath === normPattern;
+  const segments = path.split('/').filter(Boolean);
+  const normalized = `/${segments.join('/')}`;
+
+  return normalized === '' ? '/' : normalized;
+}
+
+export function matchRoutePattern(pattern: string, path: string): boolean {
+  const normalizedPath = normalizeRoutePattern(path);
+  const normalizedPattern = normalizeRoutePattern(pattern);
+
+  if (normalizedPattern.endsWith('/*')) {
+    const prefix = normalizedPattern.slice(0, -2);
+    return normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`);
+  }
+
+  return normalizedPath === normalizedPattern;
 }
 
 export function forRoutes<T extends Constructor<Middleware>>(
@@ -37,34 +48,51 @@ async function resolveMiddleware(definition: MiddlewareLike, requestContext: Req
   return requestContext.container.resolve(definition as Token<Middleware>);
 }
 
+async function resolveActiveMiddlewareDefinitions(
+  definitions: MiddlewareLike[],
+  context: MiddlewareContext,
+): Promise<Middleware[]> {
+  const requestPath = context.request.path;
+  const middlewareChain: Middleware[] = [];
+
+  for (const definition of definitions) {
+    if (isMiddlewareRouteConfig(definition)) {
+      const matches = definition.routes.length === 0 || definition.routes.some((route) => matchRoutePattern(route, requestPath));
+
+      if (!matches) {
+        continue;
+      }
+
+      const middleware = await context.requestContext.container.resolve(definition.middleware);
+      middlewareChain.push(middleware);
+      continue;
+    }
+
+    middlewareChain.push(await resolveMiddleware(definition, context.requestContext));
+  }
+
+  return middlewareChain;
+}
+
+function deferNext(next: Next): Next {
+  return async () => {
+    await Promise.resolve();
+    await next();
+  };
+}
+
 export async function runMiddlewareChain(
   definitions: MiddlewareLike[],
   context: MiddlewareContext,
   terminal: Next,
 ): Promise<void> {
-  const dispatch = async (index: number): Promise<void> => {
-    if (index === definitions.length) {
-      await terminal();
-      return;
-    }
+  const middlewareChain = await resolveActiveMiddlewareDefinitions(definitions, context);
+  const composed = middlewareChain.reduceRight<Next>(
+    (next, middleware) => deferNext(async () => {
+      await middleware.handle(context, next);
+    }),
+    deferNext(terminal),
+  );
 
-    const definition = definitions[index];
-    if (isMiddlewareRouteConfig(definition)) {
-      const requestPath = context.request.path;
-      const matches = definition.routes.length === 0 || definition.routes.some((route) => matchRoute(route, requestPath));
-      if (!matches) {
-        await dispatch(index + 1);
-        return;
-      }
-
-      const middleware = await context.requestContext.container.resolve(definition.middleware);
-      await middleware.handle(context, () => dispatch(index + 1));
-      return;
-    }
-
-    const middleware = await resolveMiddleware(definition, context.requestContext);
-    await middleware.handle(context, () => dispatch(index + 1));
-  };
-
-  await dispatch(0);
+  await composed();
 }

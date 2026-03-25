@@ -144,134 +144,144 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
   );
 }
 
+interface SyncResolverState {
+  introspection: ContainerIntrospection;
+  resolutionChain: Set<Token>;
+  singletonCache: Map<Token, unknown>;
+}
+
+function collectMultiProviders(target: ContainerIntrospection, token: Token): NormalizedProvider[] {
+  const fromParent = target.parent ? collectMultiProviders(target.parent, token) : [];
+  const local = target.multiRegistrations.get(token) ?? [];
+  return [...fromParent, ...local];
+}
+
+function lookupProvider(target: ContainerIntrospection, token: Token): NormalizedProvider | undefined {
+  const local = target.registrations.get(token);
+
+  if (local) {
+    return local;
+  }
+
+  return target.parent ? lookupProvider(target.parent, token) : undefined;
+}
+
+function hasToken(state: SyncResolverState, token: Token): boolean {
+  return lookupProvider(state.introspection, token) !== undefined || collectMultiProviders(state.introspection, token).length > 0;
+}
+
+function resolveSyncDependency(entry: Token | ForwardRefFn | OptionalToken, state: SyncResolverState): unknown {
+  if (isOptionalToken(entry)) {
+    if (!hasToken(state, entry.token)) {
+      return undefined;
+    }
+
+    return resolveSyncToken(entry.token, state);
+  }
+
+  if (isForwardRef(entry)) {
+    return resolveSyncToken(entry.forwardRef(), state);
+  }
+
+  return resolveSyncToken(entry as Token, state);
+}
+
+function instantiateSyncProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
+  switch (provider.type) {
+    case 'value': {
+      return provider.useValue;
+    }
+    case 'existing': {
+      if (!provider.useExisting) {
+        throw new Error('Existing provider is missing useExisting token.');
+      }
+
+      return resolveSyncToken(provider.useExisting, state);
+    }
+    case 'factory': {
+      if (!provider.useFactory) {
+        throw new Error('Factory provider is missing useFactory.');
+      }
+
+      const deps = provider.inject.map((entry) => resolveSyncDependency(entry, state));
+      const value = provider.useFactory(...deps) as MaybePromise<unknown>;
+
+      if (isPromiseLike(value)) {
+        throw new Error(
+          `Token ${String(provider.provide)} requires async resolution. Use resolve() instead of get() for async providers.`,
+        );
+      }
+
+      return value;
+    }
+    case 'class': {
+      if (!provider.useClass) {
+        throw new Error('Class provider is missing useClass.');
+      }
+
+      const deps = provider.inject.map((entry) => resolveSyncDependency(entry, state));
+      return new provider.useClass(...deps);
+    }
+    default: {
+      throw new Error('Unknown provider type.');
+    }
+  }
+}
+
+function resolveSyncProvider(provider: NormalizedProvider, state: SyncResolverState): unknown {
+  if (provider.scope === 'request' && !state.introspection.requestScopeEnabled) {
+    throw new Error(`Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`);
+  }
+
+  if (provider.scope === 'transient') {
+    return instantiateSyncProvider(provider, state);
+  }
+
+  if (state.singletonCache.has(provider.provide)) {
+    return state.singletonCache.get(provider.provide);
+  }
+
+  const instance = instantiateSyncProvider(provider, state);
+  state.singletonCache.set(provider.provide, instance);
+  return instance;
+}
+
+function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
+  if (state.resolutionChain.has(token)) {
+    throw new Error(`Circular dependency detected while resolving token ${String(token)} via get().`);
+  }
+
+  state.resolutionChain.add(token);
+
+  try {
+    const multiProviders = collectMultiProviders(state.introspection, token);
+
+    if (multiProviders.length > 0) {
+      return multiProviders.map((provider) => instantiateSyncProvider(provider, state));
+    }
+
+    const provider = lookupProvider(state.introspection, token);
+
+    if (!provider) {
+      throw new Error(`No provider registered for token ${String(token)}.`);
+    }
+
+    return resolveSyncProvider(provider, state);
+  } finally {
+    state.resolutionChain.delete(token);
+  }
+}
+
 function createSyncResolver(
   container: BootstrapResult['container'],
 ): <T>(token: Token<T>) => T {
-  const introspection = toContainerIntrospection(container);
-  const singletonCache = new Map<Token, unknown>();
-  const resolutionChain = new Set<Token>();
-
-  const collectMultiProviders = (target: ContainerIntrospection, token: Token): NormalizedProvider[] => {
-    const fromParent = target.parent ? collectMultiProviders(target.parent, token) : [];
-    const local = target.multiRegistrations.get(token) ?? [];
-    return [...fromParent, ...local];
+  const state: SyncResolverState = {
+    introspection: toContainerIntrospection(container),
+    resolutionChain: new Set<Token>(),
+    singletonCache: new Map<Token, unknown>(),
   };
 
-  const lookupProvider = (target: ContainerIntrospection, token: Token): NormalizedProvider | undefined => {
-    const local = target.registrations.get(token);
-    if (local) {
-      return local;
-    }
-
-    return target.parent ? lookupProvider(target.parent, token) : undefined;
-  };
-
-  const hasToken = (token: Token): boolean => {
-    return lookupProvider(introspection, token) !== undefined || collectMultiProviders(introspection, token).length > 0;
-  };
-
-  const resolveDep = (entry: Token | ForwardRefFn | OptionalToken): unknown => {
-    if (isOptionalToken(entry)) {
-      if (!hasToken(entry.token)) {
-        return undefined;
-      }
-
-      return resolveToken(entry.token);
-    }
-
-    if (isForwardRef(entry)) {
-      return resolveToken(entry.forwardRef());
-    }
-
-    return resolveToken(entry as Token);
-  };
-
-  const instantiateProvider = (provider: NormalizedProvider): unknown => {
-    switch (provider.type) {
-      case 'value': {
-        return provider.useValue;
-      }
-      case 'existing': {
-        if (!provider.useExisting) {
-          throw new Error('Existing provider is missing useExisting token.');
-        }
-
-        return resolveToken(provider.useExisting);
-      }
-      case 'factory': {
-        if (!provider.useFactory) {
-          throw new Error('Factory provider is missing useFactory.');
-        }
-
-        const deps = provider.inject.map((entry) => resolveDep(entry));
-        const value = provider.useFactory(...deps) as MaybePromise<unknown>;
-
-        if (isPromiseLike(value)) {
-          throw new Error(
-            `Token ${String(provider.provide)} requires async resolution. Use resolve() instead of get() for async providers.`,
-          );
-        }
-
-        return value;
-      }
-      case 'class': {
-        if (!provider.useClass) {
-          throw new Error('Class provider is missing useClass.');
-        }
-
-        const deps = provider.inject.map((entry) => resolveDep(entry));
-        return new provider.useClass(...deps);
-      }
-      default: {
-        throw new Error('Unknown provider type.');
-      }
-    }
-  };
-
-  const resolveProvider = (provider: NormalizedProvider): unknown => {
-    if (provider.scope === 'request' && !introspection.requestScopeEnabled) {
-      throw new Error(`Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`);
-    }
-
-    if (provider.scope === 'transient') {
-      return instantiateProvider(provider);
-    }
-
-    if (singletonCache.has(provider.provide)) {
-      return singletonCache.get(provider.provide);
-    }
-
-    const instance = instantiateProvider(provider);
-    singletonCache.set(provider.provide, instance);
-    return instance;
-  };
-
-  const resolveToken = (token: Token): unknown => {
-    if (resolutionChain.has(token)) {
-      throw new Error(`Circular dependency detected while resolving token ${String(token)} via get().`);
-    }
-
-    resolutionChain.add(token);
-
-    try {
-      const multiProviders = collectMultiProviders(introspection, token);
-      if (multiProviders.length > 0) {
-        return multiProviders.map((provider) => instantiateProvider(provider));
-      }
-
-      const provider = lookupProvider(introspection, token);
-
-      if (!provider) {
-        throw new Error(`No provider registered for token ${String(token)}.`);
-      }
-
-      return resolveProvider(provider);
-    } finally {
-      resolutionChain.delete(token);
-    }
-  };
-
-  return <T>(token: Token<T>): T => resolveToken(token) as T;
+  return <T>(token: Token<T>): T => resolveSyncToken(token, state) as T;
 }
 
 class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {

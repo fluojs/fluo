@@ -292,14 +292,8 @@ function resolveValidatorStringFormat(
   return undefined;
 }
 
-function getRuleProfile(rules: readonly DtoFieldValidationRule[]): RuleProfile {
-  const cached = ruleProfileCache.get(rules);
-
-  if (cached) {
-    return cached;
-  }
-
-  const profile: RuleProfile = {
+function createRuleProfile(): RuleProfile {
+  return {
     enumEachRule: undefined,
     enumRule: undefined,
     hasArrayRule: false,
@@ -321,115 +315,129 @@ function getRuleProfile(rules: readonly DtoFieldValidationRule[]): RuleProfile {
     nestedRule: undefined,
     stringFormat: undefined,
   };
+}
+
+function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule): void {
+  if (rule.kind === 'nested') {
+    profile.nestedRule ??= rule;
+
+    if (rule.each) {
+      profile.nestedEachRule ??= rule;
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'array') {
+    profile.hasArrayRule = true;
+    return;
+  }
+
+  if (rule.kind === 'enum') {
+    profile.enumRule ??= rule;
+
+    if (rule.each) {
+      profile.enumEachRule ??= rule;
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'int') {
+    profile.hasIntRule = true;
+
+    if (rule.each) {
+      profile.hasEachIntRule = true;
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'number') {
+    profile.hasNumberRule = true;
+
+    if (rule.each) {
+      profile.hasEachNumberRule = true;
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'boolean') {
+    profile.hasBooleanRule = true;
+
+    if (rule.each) {
+      profile.hasEachBooleanRule = true;
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'date') {
+    profile.hasDateRule = true;
+    return;
+  }
+
+  if (rule.kind === 'object') {
+    profile.hasObjectRule = true;
+    return;
+  }
+
+  if (rule.kind === 'string') {
+    profile.hasStringRule = true;
+    return;
+  }
+
+  if (rule.kind === 'minLength') {
+    if (rule.each) {
+      profile.hasStringRuleForEach = true;
+      return;
+    }
+
+    profile.minLength = rule.value;
+    return;
+  }
+
+  if (rule.kind === 'maxLength') {
+    if (rule.each) {
+      profile.hasStringRuleForEach = true;
+      return;
+    }
+
+    profile.maxLength = rule.value;
+    return;
+  }
+
+  if (rule.kind === 'min' && !rule.each) {
+    profile.minimum = rule.value;
+    return;
+  }
+
+  if (rule.kind === 'max' && !rule.each) {
+    profile.maximum = rule.value;
+    return;
+  }
+
+  if (rule.kind === 'validatorjs') {
+    const nextFormat = resolveValidatorStringFormat(rule);
+
+    if (nextFormat) {
+      profile.stringFormat = nextFormat;
+    }
+  }
+}
+
+function getRuleProfile(rules: readonly DtoFieldValidationRule[]): RuleProfile {
+  const cached = ruleProfileCache.get(rules);
+
+  if (cached) {
+    return cached;
+  }
+
+  const profile = createRuleProfile();
 
   for (const rule of rules) {
-    if (rule.kind === 'nested') {
-      profile.nestedRule ??= rule;
-
-      if (rule.each) {
-        profile.nestedEachRule ??= rule;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'array') {
-      profile.hasArrayRule = true;
-      continue;
-    }
-
-    if (rule.kind === 'enum') {
-      profile.enumRule ??= rule;
-
-      if (rule.each) {
-        profile.enumEachRule ??= rule;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'int') {
-      profile.hasIntRule = true;
-
-      if (rule.each) {
-        profile.hasEachIntRule = true;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'number') {
-      profile.hasNumberRule = true;
-
-      if (rule.each) {
-        profile.hasEachNumberRule = true;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'boolean') {
-      profile.hasBooleanRule = true;
-
-      if (rule.each) {
-        profile.hasEachBooleanRule = true;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'date') {
-      profile.hasDateRule = true;
-      continue;
-    }
-
-    if (rule.kind === 'object') {
-      profile.hasObjectRule = true;
-      continue;
-    }
-
-    if (rule.kind === 'string') {
-      profile.hasStringRule = true;
-      continue;
-    }
-
-    if (rule.kind === 'minLength') {
-      if (rule.each) {
-        profile.hasStringRuleForEach = true;
-      } else {
-        profile.minLength = rule.value;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'maxLength') {
-      if (rule.each) {
-        profile.hasStringRuleForEach = true;
-      } else {
-        profile.maxLength = rule.value;
-      }
-
-      continue;
-    }
-
-    if (rule.kind === 'min' && !rule.each) {
-      profile.minimum = rule.value;
-      continue;
-    }
-
-    if (rule.kind === 'max' && !rule.each) {
-      profile.maximum = rule.value;
-      continue;
-    }
-
-    if (rule.kind === 'validatorjs') {
-      const nextFormat = resolveValidatorStringFormat(rule);
-
-      if (nextFormat) {
-        profile.stringFormat = nextFormat;
-      }
-    }
+    applyRuleToProfile(profile, rule);
   }
 
   ruleProfileCache.set(rules, profile);

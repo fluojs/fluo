@@ -149,4 +149,29 @@ describe('matchRoute behavior via runMiddlewareChain', () => {
 
     expect(events).toEqual(['terminal']);
   });
+
+  it('runs deep middleware stacks without recursive overflow', async () => {
+    const container = new Container();
+    const chainLength = 3_000;
+    let executed = 0;
+
+    const context = {
+      request: { path: '/health' },
+      requestContext: { container },
+      response: createResponse(),
+    } as unknown as MiddlewareContext;
+
+    const definitions: MiddlewareLike[] = Array.from({ length: chainLength }, () => ({
+      async handle(_context: MiddlewareContext, next: Next) {
+        executed += 1;
+        await next();
+      },
+    }));
+
+    await runMiddlewareChain(definitions, context, async () => {
+      executed += 1;
+    });
+
+    expect(executed).toBe(chainLength + 1);
+  });
 });
