@@ -154,7 +154,6 @@ describe('@konekti/microservices', () => {
     });
 
     const microservice = await KonektiFactory.createMicroservice(AppModule, {
-      mode: 'test',
     });
 
     await microservice.listen();
@@ -185,7 +184,7 @@ describe('@konekti/microservices', () => {
       providers: [Handler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const microservice = await app.container.resolve<{ listen(): Promise<void>; send(pattern: string, payload: unknown): Promise<unknown>; close(): Promise<void> }>(MICROSERVICE);
 
     await microservice.listen();
@@ -239,7 +238,7 @@ describe('@konekti/microservices', () => {
       providers: [Store, Handler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
 
     await microservice.listen();
 
@@ -280,7 +279,7 @@ describe('@konekti/microservices', () => {
       providers: [Store, Handler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
 
     await microservice.listen();
 
@@ -324,7 +323,6 @@ describe('@konekti/microservices', () => {
     });
 
     const microservice = await KonektiFactory.createMicroservice(AppModule, {
-      mode: 'test',
     });
 
     await microservice.listen();
@@ -374,7 +372,6 @@ describe('@konekti/microservices', () => {
     });
 
     const microservice = await KonektiFactory.createMicroservice(AppModule, {
-      mode: 'test',
     });
     const payload = { meta: { role: 'original' } };
 
@@ -413,7 +410,6 @@ describe('@konekti/microservices', () => {
     });
 
     const app = await KonektiFactory.create(AppModule, {
-      mode: 'test',
     });
     const microservice = await app.container.resolve<{
       emit(pattern: string, payload: unknown): Promise<void>;
@@ -455,7 +451,7 @@ describe('@konekti/microservices', () => {
       providers: [Handler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
 
     await Promise.all([microservice.listen(), microservice.listen()]);
 
@@ -487,7 +483,7 @@ describe('@konekti/microservices', () => {
       providers: [ExactHandler, RegexHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await expect(microservice.send('user.lookup', {})).rejects.toThrow('Multiple message handlers matched pattern "user.lookup"');
@@ -522,7 +518,7 @@ describe('@konekti/microservices', () => {
       providers: [RequestState, RequestScopedHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     const [first, second] = await Promise.all([
@@ -568,7 +564,7 @@ describe('@konekti/microservices', () => {
       providers: [RequestState, RequestScopedHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await expect(microservice.send('scope.dispose', {})).resolves.toBe(1);
@@ -608,7 +604,7 @@ describe('@konekti/microservices', () => {
       providers: [RequestState, RequestScopedHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await expect(microservice.send('scope.error', {})).rejects.toThrow('request handler failed');
@@ -649,7 +645,7 @@ describe('@konekti/microservices', () => {
       providers: [EventContext, RequestScopedEventHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await microservice.emit('scope.event', { id: 1 });
@@ -700,7 +696,7 @@ describe('@konekti/microservices', () => {
       providers: [SharedScope, FirstEventHandler, SecondEventHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await microservice.emit('fanout.event', {});
@@ -743,7 +739,7 @@ describe('@konekti/microservices', () => {
       providers: [DisposableContext, DisposableHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await microservice.emit('dispose.event', {});
@@ -787,7 +783,7 @@ describe('@konekti/microservices', () => {
       providers: [DisposableContext, FailingHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await microservice.emit('fail.event', {});
@@ -819,7 +815,7 @@ describe('@konekti/microservices', () => {
       providers: [TransientHandler],
     });
 
-    const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'test' });
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
     await microservice.listen();
 
     await microservice.emit('transient.event', {});

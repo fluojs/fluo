@@ -513,7 +513,6 @@ describe('KonektiFactory.createApplicationContext', () => {
     });
 
     const context = await KonektiFactory.createApplicationContext(AppModule, {
-      mode: 'test',
     });
 
     await expect(context.get(AppService)).resolves.toBeInstanceOf(AppService);
@@ -549,7 +548,6 @@ describe('KonektiFactory.createApplicationContext', () => {
     });
 
     const context = await KonektiFactory.createApplicationContext(AppModule, {
-      mode: 'test',
     });
 
     expect(events).toEqual(['module:init', 'app:bootstrap']);
@@ -587,7 +585,6 @@ describe('KonektiFactory.createMicroservice', () => {
     });
 
     const microservice = await KonektiFactory.createMicroservice(AppModule, {
-      mode: 'test',
     });
 
     await microservice.listen();
@@ -611,7 +608,7 @@ describe('KonektiFactory.createMicroservice', () => {
       ],
     });
 
-    await expect(KonektiFactory.createMicroservice(AppModule, { mode: 'test' })).rejects.toThrow(
+    await expect(KonektiFactory.createMicroservice(AppModule)).rejects.toThrow(
       'Resolved microservice token does not implement listen().',
     );
   });
@@ -637,7 +634,6 @@ describe('KonektiFactory.createMicroservice', () => {
     });
 
     const app = await KonektiFactory.create(AppModule, {
-      mode: 'test',
     });
     const microservice = await app.container.resolve<MicroserviceRuntime>(MICROSERVICE_TOKEN);
 

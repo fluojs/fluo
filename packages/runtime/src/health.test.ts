@@ -62,7 +62,6 @@ describe('createHealthModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -94,7 +93,6 @@ describe('createHealthModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -126,7 +124,6 @@ describe('createHealthModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 

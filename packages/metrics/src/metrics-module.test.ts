@@ -60,7 +60,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -87,11 +86,9 @@ describe('MetricsModule', () => {
     });
 
     const firstApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: FirstAppModule,
     });
     const secondApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: SecondAppModule,
     });
 
@@ -130,7 +127,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -164,7 +160,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -194,7 +189,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -214,7 +208,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -257,7 +250,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -292,7 +284,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -324,7 +315,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -348,7 +338,6 @@ describe('MetricsModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 

@@ -237,7 +237,6 @@ describe('@konekti/prisma vertical slice', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 

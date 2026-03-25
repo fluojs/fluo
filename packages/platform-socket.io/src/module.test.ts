@@ -98,7 +98,6 @@ describe('@konekti/platform-socket.io', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port: await findAvailablePort(),
     });
     const probe = await app.container.resolve(ServerProbe);
@@ -154,7 +153,6 @@ describe('@konekti/platform-socket.io', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -209,7 +207,6 @@ describe('@konekti/platform-socket.io', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       logger: createLogger(loggerEvents),
-      mode: 'test',
       port: await findAvailablePort(),
     });
 
@@ -262,7 +259,6 @@ describe('@konekti/platform-socket.io', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -344,7 +340,6 @@ describe('@konekti/platform-socket.io', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -402,7 +397,6 @@ describe('@konekti/platform-socket.io', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       shutdownTimeoutMs: 200,
     });

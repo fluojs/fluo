@@ -161,7 +161,7 @@ describe('@konekti/cqrs', () => {
       providers: [Store, CreateUserHandler, GetUserHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -190,7 +190,7 @@ describe('@konekti/cqrs', () => {
       imports: [createCqrsModule()],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
 
@@ -221,7 +221,7 @@ describe('@konekti/cqrs', () => {
       providers: [FirstCreateUserHandler, SecondCreateUserHandler],
     });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateCommandHandlerError);
   });
 
   it('fails bootstrap when duplicate query handlers are registered for one query type', async () => {
@@ -245,7 +245,7 @@ describe('@konekti/cqrs', () => {
       providers: [FirstGetUserHandler, SecondGetUserHandler],
     });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toBeInstanceOf(DuplicateQueryHandlerError);
   });
 
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
@@ -279,7 +279,7 @@ describe('@konekti/cqrs', () => {
       imports: [createCqrsModule()],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const busByAlias = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const busByLegacy = await app.container.resolve<CqrsEventBus>(CQRS_EVENT_BUS);
 
@@ -324,7 +324,7 @@ describe('@konekti/cqrs', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
@@ -448,7 +448,7 @@ describe('@konekti/cqrs', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ProcessStore);
 
@@ -492,7 +492,7 @@ describe('@konekti/cqrs', () => {
       providers: [AccountActivationSaga],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await eventBus.publish(new AccountActivatedEvent('acct-1'));
@@ -520,7 +520,7 @@ describe('@konekti/cqrs', () => {
       providers: [FailingSaga],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
     await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toBeInstanceOf(SagaExecutionError);
@@ -558,7 +558,7 @@ describe('@konekti/cqrs', () => {
       providers: [SequenceStore, SequencingSaga],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(SequenceStore);
 
@@ -601,7 +601,7 @@ describe('@konekti/cqrs', () => {
       providers: [ShutdownStore, ShutdownSaga],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(ShutdownStore);
 
@@ -674,7 +674,7 @@ describe('@konekti/cqrs', () => {
       providers: [Store, CreateUserHandler, GetUserHandler, UserCreatedEventRecorder, UserCreatedOnEventProjection],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
     const eventBus = await app.container.resolve<CqrsEventBus>(CQRS_EVENT_BUS);

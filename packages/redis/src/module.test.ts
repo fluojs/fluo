@@ -96,7 +96,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
     });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('connect failed');
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('connect failed');
 
     expect(mockRedisState.events).toEqual(['connect', 'disconnect']);
   });
@@ -117,7 +117,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const cache = await app.container.resolve(CacheService);
 
     expect(mockRedisState.instances).toHaveLength(1);
@@ -142,7 +142,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
@@ -157,7 +157,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     await expect(app.close()).rejects.toThrow('quit failed');
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
@@ -169,7 +169,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const instance = mockRedisState.instances[0];
 
     expect(instance).toBeDefined();
@@ -189,7 +189,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const instance = mockRedisState.instances[0];
 
     expect(instance).toBeDefined();
@@ -219,7 +219,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const cacheFacade = await app.container.resolve(CacheFacade);
 
     expect(cacheFacade.redisService).toBeInstanceOf(RedisService);
@@ -251,7 +251,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const cacheFacade = await app.container.resolve(CacheFacade);
     const rawClient = cacheFacade.redisService.getRawClient();
 
@@ -278,7 +278,7 @@ describe('@konekti/redis', () => {
       imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const cacheFacade = await app.container.resolve(CacheFacade);
     const rawClient = cacheFacade.redisService.getRawClient();
 

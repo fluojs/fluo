@@ -222,7 +222,6 @@ describe('@konekti/drizzle vertical slice', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 

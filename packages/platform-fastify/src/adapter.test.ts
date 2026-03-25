@@ -150,7 +150,6 @@ describe('@konekti/platform-fastify', () => {
     const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       rawBody: true,
     });
@@ -206,7 +205,6 @@ describe('@konekti/platform-fastify', () => {
     const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       rawBody: true,
     });
@@ -247,7 +245,6 @@ describe('@konekti/platform-fastify', () => {
     const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: 'https://my-frontend.com',
-      mode: 'test',
       port,
     });
 
@@ -295,7 +292,6 @@ describe('@konekti/platform-fastify', () => {
       cors: false,
       host: '127.0.0.1',
       logger,
-      mode: 'test',
       port,
     });
 
@@ -334,7 +330,6 @@ describe('@konekti/platform-fastify', () => {
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      mode: 'test',
       observers: [new PathObserver()],
       port,
     });
@@ -371,7 +366,6 @@ describe('@konekti/platform-fastify', () => {
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      mode: 'test',
       port,
     });
 
@@ -427,7 +421,6 @@ describe('@konekti/platform-fastify', () => {
         key: TEST_TLS_PRIVATE_KEY,
       },
       logger,
-      mode: 'test',
       port,
     });
 

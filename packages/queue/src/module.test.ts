@@ -375,7 +375,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -422,7 +421,6 @@ describe('@konekti/queue', () => {
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -474,7 +472,6 @@ describe('@konekti/queue', () => {
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -532,7 +529,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -589,7 +585,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -632,7 +627,6 @@ describe('@konekti/queue', () => {
     };
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -685,7 +679,6 @@ describe('@konekti/queue', () => {
 
     await expect(
       bootstrapApplication({
-        mode: 'test',
         providers: [{ provide: REDIS_CLIENT, useValue: redis }],
         rootModule: AppModule,
       }),
@@ -715,7 +708,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -753,7 +745,6 @@ describe('@konekti/queue', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -790,7 +781,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -824,7 +814,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -858,7 +847,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -898,7 +886,6 @@ describe('@konekti/queue', () => {
 
     const redis = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });

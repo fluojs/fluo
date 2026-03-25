@@ -61,7 +61,7 @@ describe('createTerminusModule', () => {
       imports: [TerminusModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
@@ -107,7 +107,7 @@ describe('createTerminusModule', () => {
       imports: [TerminusModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
@@ -151,7 +151,7 @@ describe('createTerminusModule', () => {
       imports: [TerminusModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const firstHealth = createResponse();
     await app.dispatch(createRequest('/health'), firstHealth);
@@ -199,7 +199,7 @@ describe('createTerminusModule', () => {
       imports: [TerminusModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
@@ -241,7 +241,7 @@ describe('createTerminusModule', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const healthResponse = createResponse();
     await app.dispatch(createRequest('/health'), healthResponse);
