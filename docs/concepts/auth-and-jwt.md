@@ -58,7 +58,7 @@ The recommended authentication patterns are:
 
 ### official cookie auth preset
 
-`@konekti/passport` now provides an official HttpOnly cookie/session auth preset for JWT-based authentication:
+`@konekti/passport` now provides an official HttpOnly cookie auth preset for JWT-based authentication:
 
 ```typescript
 import { Module } from '@konekti/core';
