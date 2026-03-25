@@ -6,16 +6,27 @@ export function registerShutdownSignals(
   app: Application,
   logger: ApplicationLogger,
   signals: false | readonly NodeShutdownSignal[],
-): void {
+): () => void {
   if (signals === false) {
-    return;
+    return () => {};
   }
 
+  const bindings: Array<{ signal: NodeShutdownSignal; handler: () => void }> = [];
+
   for (const signal of signals) {
-    process.once(signal, () => {
+    const handler = () => {
       void closeFromSignal(app, logger, signal);
-    });
+    };
+
+    bindings.push({ signal, handler });
+    process.once(signal, handler);
   }
+
+  return () => {
+    for (const binding of bindings) {
+      process.off(binding.signal, binding.handler);
+    }
+  };
 }
 
 async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeShutdownSignal): Promise<void> {

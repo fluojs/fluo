@@ -988,6 +988,44 @@ describe('bootstrapApplication', () => {
     await app.close();
   });
 
+  it('removes registered shutdown signal listeners after close', async () => {
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log() {},
+      warn() {},
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = process.listeners(signal).length;
+    const port = await findAvailablePort();
+    const app = await runNodeApplication(AppModule, {
+      cors: false,
+      logger,
+      port,
+      shutdownSignals: [signal],
+    });
+
+    expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+
+    await app.close();
+
+    expect(process.listeners(signal).length).toBe(listenersBefore);
+  });
+
   it('supports https startup and reports the https listen URL', async () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {

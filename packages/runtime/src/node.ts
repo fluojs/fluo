@@ -269,7 +269,18 @@ export async function runNodeApplication(
     throw error;
   }
 
-  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const close = app.close.bind(app);
+  let shutdownSignalsUnregistered = false;
+
+  app.close = async (signal?: string) => {
+    if (!shutdownSignalsUnregistered) {
+      unregisterShutdownSignals();
+      shutdownSignalsUnregistered = true;
+    }
+
+    await close(signal);
+  };
 
   return app;
 }
@@ -450,13 +461,8 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
       }
 
       const strippedPath = stripGlobalPrefix(requestPath, normalizedPrefix);
-      const restore = applyScopedGlobalPrefixRequest(context, requestPath, strippedPath);
-
-      try {
-        await next();
-      } finally {
-        restore();
-      }
+      context.request = rewriteGlobalPrefixRequest(context.request, requestPath, strippedPath);
+      await next();
     },
   };
 }
@@ -482,23 +488,6 @@ function rewriteGlobalPrefixRequest(
     ...request,
     path: strippedPath,
     url: rewritePrefixedUrl(request.url, requestPath, strippedPath),
-  };
-}
-
-function applyScopedGlobalPrefixRequest(
-  context: MiddlewareContext,
-  requestPath: string,
-  strippedPath: string,
-): () => void {
-  const originalRequest = context.requestContext.request;
-  const scopedRequest = rewriteGlobalPrefixRequest(originalRequest, requestPath, strippedPath);
-
-  context.request = scopedRequest;
-  context.requestContext.request = scopedRequest;
-
-  return () => {
-    context.request = originalRequest;
-    context.requestContext.request = originalRequest;
   };
 }
 
