@@ -241,7 +241,6 @@ describe('@konekti/websocket', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -283,7 +282,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -319,7 +317,6 @@ describe('@konekti/websocket', () => {
           async close() {},
           async listen() {},
         },
-        mode: 'test',
         rootModule: AppModule,
       }),
     ).rejects.toThrow('WebSocket gateway bootstrap requires an HTTP adapter with getServer()');
@@ -333,7 +330,6 @@ describe('@konekti/websocket', () => {
 
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port: await findAvailablePort(),
     });
     const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
@@ -382,7 +378,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -446,7 +441,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -510,7 +504,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -572,7 +565,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -633,7 +625,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(GatewayState);
@@ -696,7 +687,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
     const state = await app.container.resolve(SharedState);
@@ -990,7 +980,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -1044,7 +1033,6 @@ describe('@konekti/websocket', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       shutdownTimeoutMs: 200,
     });

@@ -118,7 +118,6 @@ async function measureScenario(name: string, rootModule: ModuleType, iterations 
     const startedAt = performance.now();
     const app = await KonektiFactory.create(rootModule, {
       logger: silentLogger,
-      mode: 'test',
     });
     const bootstrapMs = performance.now() - startedAt;
 

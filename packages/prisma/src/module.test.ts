@@ -76,7 +76,6 @@ describe('@konekti/prisma', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const service = await app.container.resolve(UserService);
@@ -141,7 +140,6 @@ describe('@konekti/prisma', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
@@ -185,7 +183,6 @@ describe('@konekti/prisma', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
@@ -271,7 +268,6 @@ describe('@konekti/prisma', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const prisma = await app.container.resolve(PrismaService<typeof client>);
@@ -300,7 +296,6 @@ describe('@konekti/prisma', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const prisma = await app.container.resolve(PrismaService<typeof client>);
@@ -364,7 +359,7 @@ describe('createPrismaModuleAsync', () => {
       imports: [ConfigModule, PrismaModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService);
     const rawClient = await app.container.resolve(PRISMA_CLIENT);
     const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
@@ -392,7 +387,7 @@ describe('createPrismaModuleAsync', () => {
 
     defineModule(AppModule, { imports: [PrismaModule] });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService);
 
     expect(prisma).toBeInstanceOf(PrismaService);
@@ -414,7 +409,7 @@ describe('createPrismaModuleAsync', () => {
 
     defineModule(AppModule, { imports: [PrismaModule] });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService<typeof client>);
 
     await expect(prisma.transaction(async () => 'never')).rejects.toThrow(
@@ -433,6 +428,6 @@ describe('createPrismaModuleAsync', () => {
 
     defineModule(AppModule, { imports: [PrismaModule] });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('secret fetch failed');
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('secret fetch failed');
   });
 });

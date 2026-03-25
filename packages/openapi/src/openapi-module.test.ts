@@ -143,7 +143,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -286,7 +285,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -328,7 +326,6 @@ describe('OpenApiModule', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      mode: 'test',
       port,
     });
 
@@ -398,7 +395,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -473,7 +469,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -556,7 +551,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -700,7 +694,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -800,7 +793,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -875,7 +867,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -999,7 +990,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1077,7 +1067,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1143,7 +1132,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1245,7 +1233,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1295,7 +1282,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1383,7 +1369,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1451,7 +1436,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const response = createResponse();
@@ -1518,7 +1502,6 @@ describe('OpenApiModule', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: OPENAPI_TITLE, useValue: 'Async OpenAPI' }],
       rootModule: AppModule,
     });
@@ -1553,7 +1536,6 @@ describe('OpenApiModule', () => {
 
     await expect(
       bootstrapApplication({
-        mode: 'test',
         rootModule: AppModule,
       }),
     ).rejects.toThrow('openapi async options failed');

@@ -72,7 +72,6 @@ describe('@konekti/mongoose', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const service = await app.container.resolve(UserService);
@@ -128,7 +127,7 @@ describe('@konekti/mongoose', () => {
       imports: [MongooseModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
     const openTransaction = mongoose.requestTransaction(
@@ -162,7 +161,6 @@ describe('@konekti/mongoose', () => {
     });
 
     const syncApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: StrictSyncAppModule,
     });
     const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
@@ -187,7 +185,6 @@ describe('@konekti/mongoose', () => {
     });
 
     const asyncApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: StrictAsyncAppModule,
     });
     const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
@@ -307,7 +304,7 @@ describe('createMongooseModuleAsync', () => {
       imports: [ConfigModule, MongooseModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const conn = await app.container.resolve(MongooseConnection);
 
     expect(factory).toHaveBeenCalledOnce();
@@ -330,7 +327,7 @@ describe('createMongooseModuleAsync', () => {
 
     defineModule(AppModule, { imports: [MongooseModule] });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const conn = await app.container.resolve(MongooseConnection);
 
     expect(conn).toBeInstanceOf(MongooseConnection);
@@ -347,6 +344,6 @@ describe('createMongooseModuleAsync', () => {
 
     defineModule(AppModule, { imports: [MongooseModule] });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('mongo config fetch failed');
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('mongo config fetch failed');
   });
 });

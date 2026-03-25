@@ -228,7 +228,6 @@ describe('@konekti/graphql', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -294,7 +293,6 @@ describe('@konekti/graphql', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -349,7 +347,6 @@ describe('@konekti/graphql', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -410,7 +407,6 @@ describe('@konekti/graphql', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -439,7 +435,6 @@ describe('@konekti/graphql', () => {
     const firstPort = await findAvailablePort();
     const firstApp = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port: firstPort,
     });
 
@@ -454,7 +449,6 @@ describe('@konekti/graphql', () => {
     const secondPort = await findAvailablePort();
     const secondApp = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port: secondPort,
     });
 
@@ -500,7 +494,6 @@ describe('@konekti/graphql', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -546,7 +539,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const [op1, op2] = await Promise.all([
@@ -591,7 +584,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const r1 = await postGraphql(port, '{ tick }');
@@ -636,7 +629,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const firstOperation = await postGraphql(port, '{ firstTick secondTick }');
@@ -686,7 +679,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const firstSocket = await connectGraphqlWebSocket(port);
@@ -751,7 +744,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const r1 = await postGraphql(port, '{ transientTick }');
@@ -788,7 +781,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     const r1 = await postGraphql(port, '{ singletonTick }');
@@ -820,7 +813,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     await expect(postGraphql(port, '{ useValueHello }')).resolves.toEqual({
@@ -854,7 +847,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     await expect(postGraphql(port, '{ useFactoryGreeting }')).resolves.toEqual({
@@ -906,7 +899,7 @@ describe('@konekti/graphql — provider scopes', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, mode: 'test', port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
     await expect(postGraphql(port, '{ classHello }')).resolves.toEqual({

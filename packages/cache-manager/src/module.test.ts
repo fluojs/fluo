@@ -112,7 +112,7 @@ describe('createCacheModule', () => {
       providers: [Consumer],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const consumer = await app.container.resolve(Consumer);
 
     await consumer.cache.set('/health', { ok: true });
@@ -128,7 +128,7 @@ describe('createCacheModule', () => {
       imports: [createCacheModule({ store: 'redis' })],
     });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow(
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
       '@konekti/cache-manager redis store requires a Redis client at bootstrap.',
     );
   });
@@ -147,7 +147,6 @@ describe('createCacheModule', () => {
 
     const redisClient = new MockRedisClient();
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT_TOKEN, useValue: redisClient }],
       rootModule: AppModule,
     });
@@ -185,7 +184,7 @@ describe('createCacheModule', () => {
       imports: [createCacheModule({ store: 'memory' })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     const firstGetResponse = createResponse();
     await app.dispatch(createRequest('/products', 'GET', '/products?page=1'), firstGetResponse);

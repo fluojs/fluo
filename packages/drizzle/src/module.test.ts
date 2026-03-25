@@ -73,7 +73,6 @@ describe('@konekti/drizzle', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const service = await app.container.resolve(UserService);
@@ -131,7 +130,6 @@ describe('@konekti/drizzle', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
@@ -166,7 +164,6 @@ describe('@konekti/drizzle', () => {
     });
 
     const syncApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: StrictSyncAppModule,
     });
     const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
@@ -191,7 +188,6 @@ describe('@konekti/drizzle', () => {
     });
 
     const asyncApp = await bootstrapApplication({
-      mode: 'test',
       rootModule: StrictAsyncAppModule,
     });
     const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
@@ -325,7 +321,7 @@ describe('createDrizzleModuleAsync', () => {
       imports: [ConfigModule, DrizzleModule],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const db = await app.container.resolve(DrizzleDatabase);
 
     expect(factory).toHaveBeenCalledOnce();
@@ -348,7 +344,7 @@ describe('createDrizzleModuleAsync', () => {
 
     defineModule(AppModule, { imports: [DrizzleModule] });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const db = await app.container.resolve(DrizzleDatabase);
 
     expect(db).toBeInstanceOf(DrizzleDatabase);
@@ -365,6 +361,6 @@ describe('createDrizzleModuleAsync', () => {
 
     defineModule(AppModule, { imports: [DrizzleModule] });
 
-    await expect(bootstrapApplication({ mode: 'test', rootModule: AppModule })).rejects.toThrow('db config fetch failed');
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('db config fetch failed');
   });
 });

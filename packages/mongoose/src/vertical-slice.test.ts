@@ -208,7 +208,6 @@ describe('@konekti/mongoose vertical slice', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
 

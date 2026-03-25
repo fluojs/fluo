@@ -275,7 +275,7 @@ describe('@konekti/cron', () => {
       imports: [FeatureModule, createCronModule({ scheduler: scheduled.scheduler })],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const store = await app.container.resolve(TickStore);
 
     expect(scheduled.records).toHaveLength(1);
@@ -321,7 +321,6 @@ describe('@konekti/cron', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const store = await app.container.resolve(TickStore);
@@ -355,7 +354,7 @@ describe('@konekti/cron', () => {
       providers: [TaskService],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     expect(scheduled.records).toHaveLength(1);
 
@@ -395,7 +394,6 @@ describe('@konekti/cron', () => {
 
     await expect(
       bootstrapApplication({
-        mode: 'test',
         rootModule: AppModule,
       }),
     ).rejects.toThrow('scheduler boom');
@@ -426,7 +424,6 @@ describe('@konekti/cron', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -469,7 +466,6 @@ describe('@konekti/cron', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -546,12 +542,10 @@ describe('@konekti/cron', () => {
     });
 
     const appOne = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
     const appTwo = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: SecondAppModule,
     });
@@ -626,12 +620,10 @@ describe('@konekti/cron', () => {
     });
 
     const appOne = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
     const appTwo = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: SecondAppModule,
     });
@@ -683,7 +675,7 @@ describe('@konekti/cron', () => {
       providers: [TickStore, DefaultSchedulerTaskService],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const store = await app.container.resolve(TickStore);
 
     expect(store.count).toBe(0);
@@ -739,7 +731,7 @@ describe('@konekti/cron', () => {
       providers: [HookedTaskService],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     await scheduled.records[0]!.tick();
 
@@ -777,7 +769,7 @@ describe('@konekti/cron', () => {
       providers: [HookedFailingTaskService],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     await scheduled.records[0]!.tick();
 
@@ -818,7 +810,7 @@ describe('@konekti/cron', () => {
       providers: [BeforeRunFailingTaskService],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
 
     await scheduled.records[0]!.tick();
 
@@ -858,7 +850,6 @@ describe('@konekti/cron', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -918,7 +909,6 @@ describe('@konekti/cron', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -986,7 +976,6 @@ describe('@konekti/cron', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -1045,7 +1034,6 @@ describe('@konekti/cron', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -1111,7 +1099,6 @@ describe('@konekti/cron', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });
@@ -1181,7 +1168,6 @@ describe('@konekti/cron', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       rootModule: AppModule,
     });

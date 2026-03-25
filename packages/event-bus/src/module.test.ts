@@ -118,7 +118,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, UserCreatedHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
     const event = new UserCreatedEvent('user-1');
@@ -164,7 +164,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -224,7 +223,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, FirstHandler, SecondHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -278,7 +277,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -320,7 +318,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, SlowHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -368,7 +366,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -409,7 +406,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -471,7 +467,7 @@ describe('@konekti/event-bus', () => {
       imports: [FeatureModule, createEventBusModule()],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -504,7 +500,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, BaseEventHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -525,7 +521,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -566,7 +561,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, UserCreatedHandler, UserPublisher],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const publisher = await app.container.resolve(UserPublisher);
     const store = await app.container.resolve(EventStore);
 
@@ -600,7 +595,7 @@ describe('@konekti/event-bus', () => {
       providers: [SharedHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
     await eventBus.publish(new UserCreatedEvent('user-7'));
@@ -636,7 +631,6 @@ describe('@konekti/event-bus', () => {
 
     const app = await bootstrapApplication({
       logger: createLogger(loggerEvents),
-      mode: 'test',
       rootModule: AppModule,
     });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
@@ -703,7 +697,7 @@ describe('@konekti/event-bus', () => {
       ],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -754,7 +748,7 @@ describe('@konekti/event-bus', () => {
       providers: [EventStore, FirstCollidingHandler, SecondCollidingHandler],
     });
 
-    const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+    const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
@@ -802,7 +796,7 @@ describe('@konekti/event-bus', () => {
         imports: [createEventBusModule({ transport })],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
 
       await eventBus.publish(new UserCreatedEvent('transport-user-1'));
@@ -838,7 +832,7 @@ describe('@konekti/event-bus', () => {
         providers: [HandlerA, HandlerB, HandlerC],
       });
 
-      await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      await bootstrapApplication({ rootModule: AppModule });
 
       const subscribedChannels = transport.subscribed.map((s) => s.channel).sort();
       expect(subscribedChannels).toEqual(['PasswordResetEvent', 'UserCreatedEvent']);
@@ -867,7 +861,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, TransportHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const store = await app.container.resolve(EventStore);
 
       const incomingSubscription = transport.subscribed.find((s) => s.channel === 'UserCreatedEvent');
@@ -916,7 +910,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, BaseHandler, DerivedHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 
@@ -969,7 +963,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, InventoryHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 
@@ -1036,7 +1030,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, BaseHandler, DetailedHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const store = await app.container.resolve(EventStore);
       const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'inventory.shared.v1');
 
@@ -1090,7 +1084,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, FirstHandler, SecondHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const store = await app.container.resolve(EventStore);
       const incomingSubscription = transport.subscribed.find((s) => s.channel === 'MutableTransportEvent');
 
@@ -1111,7 +1105,7 @@ describe('@konekti/event-bus', () => {
         imports: [createEventBusModule({ transport })],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
 
       expect(transport.closeCalls).toBe(0);
       await app.close();
@@ -1139,7 +1133,7 @@ describe('@konekti/event-bus', () => {
         providers: [EventStore, LocalHandler],
       });
 
-      const app = await bootstrapApplication({ mode: 'test', rootModule: AppModule });
+      const app = await bootstrapApplication({ rootModule: AppModule });
       const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
       const store = await app.container.resolve(EventStore);
 

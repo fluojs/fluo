@@ -44,7 +44,6 @@ function normalizeRequestInput(
 export async function createTestApp(options: TestingModuleOptions): Promise<TestApp> {
   const app = await bootstrapApplication({
     ...options,
-    mode: 'test',
     middleware: [createTestRequestContextMiddleware()],
   });
 
