@@ -8,16 +8,26 @@ import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
-function getMethodMetadataBag(controllerToken: Function, methodName: string): MetadataBag | undefined {
-  const classBag = (controllerToken as unknown as Record<symbol, MetadataBag | undefined>)[metadataSymbol];
+function isMetadataBag(value: unknown): value is MetadataBag {
+  return typeof value === 'object' && value !== null;
+}
 
-  if (!classBag) {
+function getMethodMetadataBag(controllerToken: Function, methodName: string): MetadataBag | undefined {
+  const classBag = Reflect.get(controllerToken, metadataSymbol);
+
+  if (!isMetadataBag(classBag)) {
     return undefined;
   }
 
-  const routeMap = classBag[cacheRouteMetadataKey] as Map<string | symbol, MetadataBag> | undefined;
+  const routeMap = classBag[cacheRouteMetadataKey];
 
-  return routeMap?.get(methodName);
+  if (!(routeMap instanceof Map)) {
+    return undefined;
+  }
+
+  const methodMetadata = routeMap.get(methodName);
+
+  return isMetadataBag(methodMetadata) ? methodMetadata : undefined;
 }
 
 function normalizeCacheMethod(method: string): string {

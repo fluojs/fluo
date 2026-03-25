@@ -29,7 +29,7 @@ export function createMock<T extends object>(partial: Partial<MockedMethods<T>> 
 }
 
 export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> {
-  return fn as unknown as Mock<T>;
+  return vi.mocked(fn);
 }
 
 export function createDeepMock<T extends object>(type: new (...args: unknown[]) => T): DeepMocked<T> {
