@@ -157,7 +157,7 @@ export class CookieManager {
         : [];
 
     cookies.push(cookie);
-    response.setHeader('Set-Cookie', cookies);
+    response.setHeader('Set-Cookie', cookies.length === 1 ? cookies[0] : cookies);
   }
 }
 
