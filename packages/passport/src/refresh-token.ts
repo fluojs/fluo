@@ -1,5 +1,6 @@
 import type { GuardContext, RequestContext } from '@konekti/http';
 import { Inject, type Token } from '@konekti/core';
+import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -50,13 +51,11 @@ export class RefreshTokenStrategy implements AuthStrategy {
         subject: this.extractSubjectFromToken(result.accessToken),
       };
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        if (error.message.includes('expired')) {
-          throw new AuthenticationExpiredError('Refresh token has expired.');
-        }
-        if (error.message.includes('reuse') || error.message.includes('invalid')) {
-          throw new AuthenticationFailedError('Refresh token is invalid or has been reused.');
-        }
+      if (error instanceof JwtExpiredTokenError) {
+        throw new AuthenticationExpiredError('Refresh token has expired.');
+      }
+      if (error instanceof JwtInvalidTokenError) {
+        throw new AuthenticationFailedError('Refresh token is invalid or has been reused.');
       }
       throw new AuthenticationFailedError('Refresh token authentication failed.');
     }

@@ -1,11 +1,23 @@
 import { Inject } from '@konekti/core';
-import { DefaultJwtSigner, DefaultJwtVerifier, RefreshTokenService as JwtRefreshTokenService } from '@konekti/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, RefreshTokenService as JwtRefreshTokenService } from '@konekti/jwt';
 
 import type { RefreshTokenService } from './refresh-token.js';
 
 @Inject([DefaultJwtSigner, DefaultJwtVerifier])
 export class JwtRefreshTokenAdapter implements RefreshTokenService {
   private readonly service: JwtRefreshTokenService;
+
+  private static resolveSecret(): string {
+    const secret = process.env.REFRESH_TOKEN_SECRET;
+
+    if (!secret) {
+      throw new JwtConfigurationError(
+        'REFRESH_TOKEN_SECRET environment variable is required. Set it to a strong, random secret.',
+      );
+    }
+
+    return secret;
+  }
 
   constructor(
     private readonly signer: DefaultJwtSigner,
@@ -15,7 +27,7 @@ export class JwtRefreshTokenAdapter implements RefreshTokenService {
       {
         expiresInSeconds: 3600,
         rotation: true,
-        secret: process.env.REFRESH_TOKEN_SECRET || 'refresh-secret-change-me',
+        secret: JwtRefreshTokenAdapter.resolveSecret(),
         store: this.createDefaultStore(),
       },
       signer,
