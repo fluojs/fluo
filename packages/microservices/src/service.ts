@@ -1,4 +1,4 @@
-import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { Inject, fallbackClone, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import {
   APPLICATION_LOGGER,
@@ -26,25 +26,6 @@ interface DiscoveryCandidate {
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
-}
-
-function fallbackClone(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => fallbackClone(item));
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    const source = value as Record<string, unknown>;
-    const cloned: Record<string, unknown> = {};
-
-    for (const [key, item] of Object.entries(source)) {
-      cloned[key] = fallbackClone(item);
-    }
-
-    return cloned;
-  }
-
-  return value;
 }
 
 function clonePayload<T>(payload: T): T {

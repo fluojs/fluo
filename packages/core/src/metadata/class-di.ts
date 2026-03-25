@@ -1,6 +1,7 @@
+import { createClonedWeakMapStore } from './store.js';
 import type { ClassDiMetadata } from './types.js';
 
-const classDiMetadataStore = new WeakMap<Function, ClassDiMetadata>();
+const classDiMetadataStore = createClonedWeakMapStore<Function, ClassDiMetadata>(cloneClassDiMetadata);
 
 function cloneClassDiMetadata(metadata: ClassDiMetadata): ClassDiMetadata {
   return {
@@ -24,28 +25,26 @@ function getClassMetadataLineage(target: Function): Function[] {
 }
 
 export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadata): void {
-  const existing = classDiMetadataStore.get(target);
+  const existing = classDiMetadataStore.read(target);
 
-  classDiMetadataStore.set(
+  classDiMetadataStore.write(
     target,
-    cloneClassDiMetadata({
+    {
       inject: metadata.inject ?? existing?.inject,
       scope: metadata.scope ?? existing?.scope,
-    }),
+    },
   );
 }
 
 export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undefined {
-  const metadata = classDiMetadataStore.get(target);
-
-  return metadata ? cloneClassDiMetadata(metadata) : undefined;
+  return classDiMetadataStore.read(target);
 }
 
 export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
   let effective: ClassDiMetadata | undefined;
 
   for (const constructor of getClassMetadataLineage(target)) {
-    const metadata = classDiMetadataStore.get(constructor);
+    const metadata = classDiMetadataStore.read(constructor);
 
     if (!metadata) {
       continue;

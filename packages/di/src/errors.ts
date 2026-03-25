@@ -1,59 +1,42 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiCodeError, formatTokenName } from '@konekti/core';
 
-export class InvalidProviderError extends KonektiError {
+export class InvalidProviderError extends KonektiCodeError {
   constructor(message: string) {
-    super(message, { code: 'INVALID_PROVIDER' });
+    super(message, 'INVALID_PROVIDER');
   }
 }
 
-export class ContainerResolutionError extends KonektiError {
+export class ContainerResolutionError extends KonektiCodeError {
   constructor(message: string) {
-    super(message, { code: 'CONTAINER_RESOLUTION_ERROR' });
+    super(message, 'CONTAINER_RESOLUTION_ERROR');
   }
 }
 
-export class RequestScopeResolutionError extends KonektiError {
+export class RequestScopeResolutionError extends KonektiCodeError {
   constructor(message: string) {
-    super(message, { code: 'REQUEST_SCOPE_RESOLUTION_ERROR' });
+    super(message, 'REQUEST_SCOPE_RESOLUTION_ERROR');
   }
 }
 
-export class ScopeMismatchError extends KonektiError {
+export class ScopeMismatchError extends KonektiCodeError {
   constructor(message: string) {
-    super(message, { code: 'SCOPE_MISMATCH' });
+    super(message, 'SCOPE_MISMATCH');
   }
 }
 
-export class CircularDependencyError extends KonektiError {
+export class CircularDependencyError extends KonektiCodeError {
   constructor(chain: readonly unknown[]) {
-    const path = chain.map((t) => CircularDependencyError.tokenName(t)).join(' -> ');
-    super(`Circular dependency detected: ${path}`, { code: 'CIRCULAR_DEPENDENCY' });
-  }
-
-  private static tokenName(token: unknown): string {
-    if (typeof token === 'function' && 'name' in token && token.name) {
-      return String(token.name);
-    }
-
-    if (typeof token === 'symbol') {
-      return token.toString();
-    }
-
-    return String(token);
+    const path = chain.map((token) => formatTokenName(token)).join(' -> ');
+    super(`Circular dependency detected: ${path}`, 'CIRCULAR_DEPENDENCY');
   }
 }
 
-export class DuplicateProviderError extends KonektiError {
+export class DuplicateProviderError extends KonektiCodeError {
   constructor(token: unknown) {
-    const name =
-      typeof token === 'function' && 'name' in token && token.name
-        ? String(token.name)
-        : typeof token === 'symbol'
-          ? token.toString()
-          : String(token);
+    const name = formatTokenName(token);
     super(
       `Token "${name}" is already registered. Use container.override() for intentional overrides.`,
-      { code: 'DUPLICATE_PROVIDER' },
+      'DUPLICATE_PROVIDER',
     );
   }
 }

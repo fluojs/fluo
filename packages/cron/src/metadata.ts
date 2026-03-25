@@ -1,18 +1,10 @@
-import type { MetadataPropertyKey } from '@konekti/core';
+import { ensureSymbolMetadataPolyfill, metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
 
 import type { CronTaskMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
-
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
-}
+void ensureSymbolMetadataPolyfill();
 
 const standardCronMetadataKey = Symbol.for('konekti.cron.standard.task');
 const cronMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, CronTaskMetadata>>();

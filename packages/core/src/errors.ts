@@ -31,3 +31,21 @@ export class InvariantError extends KonektiError {
     super(message, { ...options, code: 'INVARIANT_ERROR' });
   }
 }
+
+export abstract class KonektiCodeError extends KonektiError {
+  constructor(message: string, code: string, options: Omit<KonektiErrorOptions, 'code'> = {}) {
+    super(message, { ...options, code });
+  }
+}
+
+export function formatTokenName(token: unknown): string {
+  if (typeof token === 'function' && 'name' in token && token.name) {
+    return String(token.name);
+  }
+
+  if (typeof token === 'symbol') {
+    return token.toString();
+  }
+
+  return String(token);
+}

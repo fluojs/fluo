@@ -1,16 +1,10 @@
+import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@konekti/core';
+
 import type { QueueWorkerMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
-
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
-}
+void ensureSymbolMetadataPolyfill();
 
 const standardQueueWorkerMetadataKey = Symbol.for('konekti.queue.standard.worker');
 const queueWorkerMetadataStore = new WeakMap<Function, QueueWorkerMetadata>();
