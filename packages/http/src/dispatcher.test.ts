@@ -235,6 +235,40 @@ describe('dispatcher runtime', () => {
     });
   });
 
+  it('does not leak @Header values onto 406 negotiation error responses', async () => {
+    @Controller('/negotiation')
+    class NegotiationController {
+      @Header('X-Secret', 'sensitive')
+      @Produces('application/json')
+      @Get('/secret-header')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation/secret-header', 'GET', { accept: 'text/plain' }), response);
+
+    expect(response.statusCode).toBe(406);
+    expect((response.headers as Record<string, unknown>)['X-Secret']).toBeUndefined();
+  });
+
   it('falls back to default formatter for wildcard Accept header', async () => {
     @Controller('/negotiation')
     class NegotiationController {

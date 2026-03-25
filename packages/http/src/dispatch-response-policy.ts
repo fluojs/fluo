@@ -33,10 +33,6 @@ export async function writeSuccessResponse(
     return;
   }
 
-  for (const header of handler.route.headers ?? []) {
-    response.setHeader(header.name, header.value);
-  }
-
   if (handler.route.redirect) {
     const { url, statusCode = 302 } = handler.route.redirect;
     response.redirect(statusCode, url);
@@ -46,6 +42,13 @@ export async function writeSuccessResponse(
   const formatter = contentNegotiation
     ? selectResponseFormatter(handler, request, contentNegotiation)
     : undefined;
+
+  // Write route-level headers only after successful formatter negotiation so
+  // that a negotiation failure does not leak success-only headers onto the
+  // error response.
+  for (const header of handler.route.headers ?? []) {
+    response.setHeader(header.name, header.value);
+  }
 
   if (formatter) {
     response.setHeader('Content-Type', formatter.mediaType);

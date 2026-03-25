@@ -114,7 +114,8 @@ async function notifyObserversSafely(
 ): Promise<void> {
   try {
     await notifyObservers(observers, requestContext, callback, handler);
-  } catch {
+  } catch (error) {
+    console.error('[konekti] request observer threw an unhandled error:', error);
   }
 }
 

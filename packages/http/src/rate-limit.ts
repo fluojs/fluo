@@ -89,7 +89,9 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
         return next();
       }
 
-      if (entry.count >= options.limit) {
+      const count = await store.increment(key);
+
+      if (count > options.limit) {
         const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
         const error = new TooManyRequestsException('Too Many Requests', {
           meta: { retryAfter },
@@ -101,7 +103,6 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
         return;
       }
 
-      await store.increment(key);
       return next();
     },
   };
