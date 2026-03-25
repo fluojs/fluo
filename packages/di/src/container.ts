@@ -18,10 +18,9 @@ import type {
   NormalizedProvider,
   OptionalToken,
   Provider,
-  Scope,
   ValueProvider,
 } from './types.js';
-import { isForwardRef, isOptionalToken } from './types.js';
+import { Scope, isForwardRef, isOptionalToken } from './types.js';
 
 function isClassConstructor(value: Provider): value is ClassType {
   return typeof value === 'function';
@@ -54,7 +53,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     return {
       inject: (metadata?.inject ?? []).map(normalizeInjectToken),
       provide: provider,
-      scope: metadata?.scope ?? 'singleton',
+      scope: metadata?.scope ?? Scope.DEFAULT,
       type: 'class',
       useClass: provider,
     };
@@ -65,7 +64,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: [],
       multi: provider.multi,
       provide: provider.provide,
-      scope: 'singleton',
+      scope: Scope.DEFAULT,
       type: 'value',
       useValue: provider.useValue,
     };
@@ -76,7 +75,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: (provider.inject ?? []).map(normalizeInjectToken),
       multi: provider.multi,
       provide: provider.provide,
-      scope: provider.scope ?? 'singleton',
+      scope: provider.scope ?? Scope.DEFAULT,
       type: 'factory',
       useFactory: provider.useFactory,
     };
@@ -89,7 +88,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: (provider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
       multi: provider.multi,
       provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? 'singleton',
+      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
       type: 'class',
       useClass: provider.useClass,
     };
@@ -99,7 +98,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
     return {
       inject: [],
       provide: provider.provide,
-      scope: 'singleton',
+      scope: Scope.DEFAULT,
       type: 'existing',
       useExisting: provider.useExisting,
     };
@@ -366,7 +365,7 @@ export class Container {
   private singletonCacheFor(token: Token): Map<Token, Promise<unknown>> | undefined {
     const provider = this.lookupProvider(token);
 
-    if (!provider || provider.scope !== 'singleton') return undefined;
+    if (!provider || provider.scope !== Scope.DEFAULT) return undefined;
 
     if (this.requestScopeEnabled && this.registrations.has(token)) {
       return this.requestCache;
@@ -431,7 +430,7 @@ export class Container {
   }
 
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
-    if (provider.scope === 'singleton') {
+    if (provider.scope === Scope.DEFAULT) {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
         return this.requestCache;
       }
@@ -585,7 +584,7 @@ export class Container {
   }
 
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
-    if (provider.scope !== 'singleton') {
+    if (provider.scope !== Scope.DEFAULT) {
       return;
     }
 
@@ -635,7 +634,7 @@ export class Container {
       this.requestCache.delete(token);
     }
 
-    if (this.parent || scope !== 'singleton') {
+    if (this.parent || scope !== Scope.DEFAULT) {
       return;
     }
 
