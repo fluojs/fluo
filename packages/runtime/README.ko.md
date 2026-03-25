@@ -51,7 +51,7 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class AppModule {}
 
-await runNodeApplication(AppModule, { mode: 'dev' });
+await runNodeApplication(AppModule);
 ```
 
 ### 수동 수신(listen)을 포함한 전체 부트스트랩
@@ -61,7 +61,6 @@ import { bootstrapApplication } from '@konekti/runtime';
 
 const app = await bootstrapApplication({
   rootModule: AppModule,
-  mode: 'dev',
 });
 
 await app.listen();
@@ -79,9 +78,7 @@ await app.close();
 ```typescript
 import { KonektiFactory } from '@konekti/runtime';
 
-const context = await KonektiFactory.createApplicationContext(AppModule, {
-  mode: 'prod',
-});
+const context = await KonektiFactory.createApplicationContext(AppModule);
 
 const service = await context.get(UserService);
 
@@ -112,7 +109,7 @@ class MathHandler {
 })
 class AppModule {}
 
-const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'prod' });
+const microservice = await KonektiFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
@@ -124,7 +121,7 @@ await microservice.listen();
 import { KonektiFactory } from '@konekti/runtime';
 import { MICROSERVICE } from '@konekti/microservices';
 
-const app = await KonektiFactory.create(AppModule, { mode: 'prod' });
+const app = await KonektiFactory.create(AppModule);
 const microservice = await app.container.resolve(MICROSERVICE);
 
 await Promise.all([app.listen(), microservice.listen()]);
@@ -152,7 +149,6 @@ class WebhookController {
 }
 
 await runNodeApplication(AppModule, {
-  mode: 'prod',
   rawBody: true,
 });
 ```
@@ -165,7 +161,6 @@ await runNodeApplication(AppModule, {
 import { readFileSync } from 'node:fs';
 
 await runNodeApplication(AppModule, {
-  mode: 'prod',
   host: '127.0.0.1',
   https: {
     cert: readFileSync('./certs/dev.crt'),
@@ -183,7 +178,6 @@ await runNodeApplication(AppModule, {
 await runNodeApplication(AppModule, {
   globalPrefix: '/api',
   globalPrefixExclude: ['/internal/*'],
-  mode: 'prod',
 });
 ```
 
@@ -211,7 +205,6 @@ class DomainExceptionFilter implements ExceptionFilterHandler {
 
 await runNodeApplication(AppModule, {
   filters: [new DomainExceptionFilter()],
-  mode: 'prod',
 });
 ```
 
@@ -222,7 +215,6 @@ await runNodeApplication(AppModule, {
 ```typescript
 await bootstrapApplication({
   duplicateProviderPolicy: 'throw',
-  mode: 'prod',
   rootModule: AppModule,
 });
 ```
@@ -244,7 +236,6 @@ class UsersController {
 }
 
 await runNodeApplication(AppModule, {
-  mode: 'prod',
   versioning: {
     header: 'X-API-Version',
     type: VersioningType.HEADER,

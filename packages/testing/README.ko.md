@@ -150,7 +150,7 @@ expect(response.status).toBe(200);
 `app.dispatch(request)`는 `app.request(...).send()`와 같은 테스트 파이프라인을 그대로 사용하며,
 `method`, `path`, `query`, `headers`, `body`, `principal`을 동일한 형태로 받습니다.
 
-`createTestApp()`는 `bootstrapApplication`을 `mode: 'test'`로 호출하므로, 실제 앱 파이프라인을 유지하면서도 테스트 실행에 맞춘 경량 클라이언트를 제공합니다.
+`createTestApp()`는 내부적으로 `bootstrapApplication`을 호출하며, 실제 앱 파이프라인을 유지하면서도 테스트 실행에 맞춘 경량 클라이언트를 제공합니다.
 
 ### `request()` 빌더
 

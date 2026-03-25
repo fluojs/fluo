@@ -211,7 +211,6 @@ import { runNodeApplication } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
 await runNodeApplication(AppModule, {
-  mode: 'dev',
   port: 3000,
 });
 ```
@@ -224,7 +223,6 @@ import { AppModule } from './app.module';
 
 const app = await bootstrapApplication({
   rootModule: AppModule,
-  mode: 'dev',
 });
 
 await app.listen();
@@ -429,24 +427,27 @@ export class AppModule {}
 ### Konekti
 
 ```typescript
-import { runNodeApplication } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { ConfigModule } from '@konekti/config';
 
-await runNodeApplication(AppModule, {
-  mode: 'dev',
-  config: {
-    defaults: { PORT: '3000' },
-    validate: (raw) => {
-      if (!raw.DATABASE_URL) {
-        throw new Error('DATABASE_URL is required');
-      }
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      validate: (raw) => {
+        if (!raw.DATABASE_URL) {
+          throw new Error('DATABASE_URL is required');
+        }
 
-      return raw as { DATABASE_URL: string; PORT: string };
-    },
-  },
-});
+        return raw as { DATABASE_URL: string; PORT: string };
+      },
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-`mode: 'dev'`를 사용하면 기본적으로 `.env.dev`를 읽습니다 (`test`, `prod`도 동일 패턴).
+`ConfigModule.forRoot()`는 env 파일을 로드하고 `ConfigService`를 모듈 스코프의 provider로 등록합니다. 특정 파일을 로드하려면 `envFile` 경로를 명시적으로 전달하세요.
 
 ## 8) 테스트
 

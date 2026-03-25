@@ -16,7 +16,6 @@ npm install @konekti/platform-fastify fastify
 import { runFastifyApplication } from '@konekti/platform-fastify';
 
 await runFastifyApplication(AppModule, {
-  mode: 'prod',
   port: 3000,
 });
 ```

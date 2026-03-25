@@ -57,7 +57,6 @@ import { bootstrapApplication } from '@konekti/runtime';
 import { SerializerInterceptor } from '@konekti/serializer';
 
 await bootstrapApplication({
-  mode: 'prod',
   rootModule: AppModule,
   interceptors: [SerializerInterceptor],
 });

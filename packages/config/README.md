@@ -17,7 +17,7 @@ Reads, merges, validates, and exposes configuration as a typed runtime contract.
 Sources, in merge order (lowest → highest precedence):
 
 1. `defaults` (inline object)
-2. env file (`.env.dev`, `.env.test`, `.env.prod`, depending on mode)
+2. env file (path set by `envFile` option, defaults to `.env`)
 3. `process.env`
 4. `runtimeOverrides` (inline object)
 
@@ -41,7 +41,7 @@ npm install @konekti/config
 import { loadConfig, ConfigService } from '@konekti/config';
 
 const config = loadConfig({
-  mode: 'dev',
+  envFile: '.env',
   defaults: { PORT: '3000' },
   validate: (raw) => {
     if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -55,7 +55,7 @@ service.getOptional('REDIS_URL');     // returns undefined if missing
 service.snapshot();                   // returns a deep-cloned snapshot
 ```
 
-In practice you use `bootstrapApplication()` from `@konekti/runtime`, which calls `loadConfig()` for you and registers the resulting `ConfigService` as a bootstrap-level provider.
+In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your root module, which calls `loadConfig()` during bootstrap and registers the resulting `ConfigService` as a provider.
 
 ## Key API
 
@@ -63,9 +63,8 @@ In practice you use `bootstrapApplication()` from `@konekti/runtime`, which call
 
 | Option | Type | Description |
 |---|---|---|
-| `mode` | `'dev' \| 'prod' \| 'test'` | Selects the env file to load |
+| `envFile` | `string` | Path to the env file to load (defaults to `.env`) |
 | `defaults` | `ConfigDictionary` | Lowest-precedence values |
-| `envFile` | `string` | Override the default `.env.<mode>` file path |
 | `cwd` | `string` | Resolve the env file from a custom working directory |
 | `processEnv` | `NodeJS.ProcessEnv` | Override the source used instead of the live `process.env` |
 | `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
@@ -88,7 +87,7 @@ type ConfigReloader = {
 
 Use `createConfigReloader()` when you need explicit reload hooks. Reload notifications and errors are delivered via `subscribe(...)` and `subscribeError(...)`; no global process event side-effects are used.
 
-When used together with `@konekti/runtime` in `mode: 'dev'` and `watch: true`, the runtime can apply those validated snapshots to its existing `ConfigService` instance without rebuilding the full application shell.
+When used together with `@konekti/runtime` and `watch: true`, the runtime can apply those validated snapshots to its existing `ConfigService` instance without rebuilding the full application shell.
 
 ### `ConfigService`
 
@@ -102,7 +101,6 @@ class ConfigService {
 
 ### Types
 
-- `ConfigMode` — `'dev' | 'prod' | 'test'`
 - `ConfigDictionary`
 - `ConfigModuleOptions`
 - `ConfigLoadOptions`
@@ -133,7 +131,7 @@ That explicit reload path is still config-scoped. Konekti does not treat it as a
 
 ## File reading order (for contributors)
 
-1. `src/types.ts` — mode, options, and load contracts
+1. `src/types.ts` — options and load contracts
 2. `src/load.ts` — merge + validate entrypoint
 3. `src/service.ts` — typed accessor
 4. `src/load.test.ts` — merge/override/validation baseline tests
@@ -141,7 +139,7 @@ That explicit reload path is still config-scoped. Konekti does not treat it as a
 ## Related packages
 
 - **`@konekti/runtime`** — calls `loadConfig()` and registers `ConfigService` as a provider
-- **`@konekti/cli`** — shows how generated apps lay out `.env.dev` / `.env.test` / `.env.prod`
+- **`@konekti/cli`** — shows how generated apps lay out `.env` files
 
 ## One-liner mental model
 

@@ -198,7 +198,7 @@ expect(response.status).toBe(201);
 await app.close();
 ```
 
-`createTestApp()` calls `bootstrapApplication` with `mode: 'test'`, so it keeps the full application dispatch stack while remaining lightweight.
+`createTestApp()` calls `bootstrapApplication` internally, keeping the full application dispatch stack while remaining lightweight for test use.
 
 ### `TestApp.dispatch(request)`
 

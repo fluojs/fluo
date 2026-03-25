@@ -111,7 +111,6 @@ import { runNodeApplication } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
 await runNodeApplication(AppModule, {
-  mode: 'prod',
   shutdownTimeoutMs: 15000, // 15 seconds
 });
 ```

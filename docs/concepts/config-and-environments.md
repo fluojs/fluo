@@ -19,20 +19,14 @@ This guide outlines the configuration management implemented across `@konekti/co
 
 ## core configuration principles
 
-- **Explicit Mode Selection**: Choose between `dev`, `prod`, and `test`.
+- **Explicit File Selection**: Specify the env file path directly via `envFile`, or use the `.env` default.
 - **Deterministic Precedence**: One clear order for configuration resolution.
 - **Early Validation**: Configuration is validated at application startup.
 - **Typed Access**: Configurations are accessed via `ConfigService`.
 
 ## environments and files
 
-The following environments and corresponding file patterns are supported:
-
-- **Official Modes**: `dev`, `prod`, `test`
-- **Default Files**:
-  - `.env.dev`
-  - `.env.prod`
-  - `.env.test`
+The env file path is controlled by the `envFile` option passed to `ConfigModule.forRoot()` or `loadConfig()`. It defaults to `.env` when omitted. There is no automatic file selection based on a mode name — callers decide which file to load at bootstrap time.
 
 ## precedence and merging
 
@@ -40,7 +34,7 @@ The configuration resolution order is deterministic:
 
 1.  **Runtime Overrides**: Passed directly during bootstrap.
 2.  **Process Environment**: Standard system environment variables.
-3.  **Mode-specific Files**: Based on the active application mode.
+3.  **Env File**: Loaded from the path set by `envFile` (defaults to `.env`).
 4.  **Default Values**: Hardcoded fallback values.
 
 ### merge behavior
@@ -67,6 +61,6 @@ Use `ConfigService` for general application configuration. For complex integrati
 - `createConfigReloader()` is the opt-in path for watching and reloading env-backed config.
 - Reload support is config-specific; it does not imply general code hot reload.
 
-When `@konekti/runtime` runs in `mode: 'dev'` with `watch: true`, it can subscribe to `createConfigReloader()` and apply validated snapshots to the existing `ConfigService` instance without rebuilding the whole application shell.
+When `@konekti/runtime` uses `watch: true`, it can subscribe to `createConfigReloader()` and apply validated snapshots to the existing `ConfigService` instance without rebuilding the whole application shell.
 
 Runtime only applies snapshots that have already passed config validation. If runtime-side reload handling fails, the previous snapshot remains active.
