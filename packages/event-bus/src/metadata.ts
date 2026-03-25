@@ -1,18 +1,10 @@
-import type { MetadataPropertyKey } from '@konekti/core';
+import { ensureSymbolMetadataPolyfill, metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
 
 import type { EventHandlerMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('konekti.symbol.metadata');
-
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
-}
+void ensureSymbolMetadataPolyfill();
 
 const standardEventHandlerMetadataKey = Symbol.for('konekti.event-bus.standard.handler');
 const eventHandlerMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, EventHandlerMetadata>>();

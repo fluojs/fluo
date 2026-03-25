@@ -6,10 +6,11 @@ import {
   mergeUnique,
   standardMetadataKeys,
 } from './shared.js';
+import { createClonedWeakMapStore } from './store.js';
 import type { ControllerMetadata, RouteMetadata, StandardRouteMetadataRecord } from './types.js';
 import type { MetadataPropertyKey } from '../types.js';
 
-const controllerMetadataStore = new WeakMap<Function, ControllerMetadata>();
+const controllerMetadataStore = createClonedWeakMapStore<Function, ControllerMetadata>(cloneControllerMetadata);
 const routeMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, RouteMetadata>>();
 
 function cloneControllerMetadata(metadata: ControllerMetadata): ControllerMetadata {
@@ -60,11 +61,11 @@ function getStandardRouteMetadata(target: object, propertyKey: MetadataPropertyK
 }
 
 export function defineControllerMetadata(target: Function, metadata: ControllerMetadata): void {
-  controllerMetadataStore.set(target, cloneControllerMetadata(metadata));
+  controllerMetadataStore.write(target, metadata);
 }
 
 export function getControllerMetadata(target: Function): ControllerMetadata | undefined {
-  const stored = controllerMetadataStore.get(target);
+  const stored = controllerMetadataStore.read(target);
   const standard = getStandardControllerMetadata(target);
 
   if (!stored && !standard) {

@@ -629,11 +629,15 @@ function createRuntimeProviders(
 }
 
 function registerRuntimeBootstrapTokens(bootstrapped: BootstrapResult, adapter: HttpApplicationAdapter): void {
+  registerRuntimeContextTokens(bootstrapped, {
+    provide: HTTP_APPLICATION_ADAPTER,
+    useValue: adapter,
+  });
+}
+
+function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...providers: Provider[]): void {
   bootstrapped.container.register(
-    {
-      provide: HTTP_APPLICATION_ADAPTER,
-      useValue: adapter,
-    },
+    ...providers,
     {
       provide: RUNTIME_CONTAINER,
       useValue: bootstrapped.container,
@@ -646,16 +650,7 @@ function registerRuntimeBootstrapTokens(bootstrapped: BootstrapResult, adapter: 
 }
 
 function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult): void {
-  bootstrapped.container.register(
-    {
-      provide: RUNTIME_CONTAINER,
-      useValue: bootstrapped.container,
-    },
-    {
-      provide: COMPILED_MODULES,
-      useValue: bootstrapped.modules,
-    },
-  );
+  registerRuntimeContextTokens(bootstrapped);
 }
 
 async function resolveBootstrapLifecycleInstances(
