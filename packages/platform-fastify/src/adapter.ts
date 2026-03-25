@@ -12,7 +12,9 @@ import {
   createSecurityHeadersMiddleware,
   HttpException,
   InternalServerErrorException,
+  matchRoutePattern,
   NotFoundException,
+  normalizeRoutePattern,
   PayloadTooLargeException,
   type CorsOptions,
   type Dispatcher,
@@ -594,7 +596,7 @@ function createFastifyMiddleware(options: BootstrapFastifyApplicationOptions): M
 }
 
 function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[] | undefined): MiddlewareLike {
-  const normalizedPrefix = normalizePathPattern(prefix);
+  const normalizedPrefix = normalizeRoutePattern(prefix);
 
   if (normalizedPrefix === '/') {
     return {
@@ -604,45 +606,72 @@ function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[]
     };
   }
 
-  const exclusions = [...(exclude ?? [])].map((path) => normalizePathPattern(path));
+  const exclusions = [...(exclude ?? [])].map((path) => normalizeRoutePattern(path));
 
   return {
     async handle(context: MiddlewareContext, next: Next) {
-      const requestPath = normalizePathPattern(context.request.path);
+      const requestPath = normalizeRoutePattern(context.request.path);
 
       if (matchesExcludedPath(requestPath, exclusions)) {
         await next();
         return;
       }
 
-      if (!matchesPrefix(requestPath, normalizedPrefix)) {
+      if (shouldRejectGlobalPrefixRequest(requestPath, normalizedPrefix, exclusions)) {
         await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
         return;
       }
 
       const strippedPath = stripGlobalPrefix(requestPath, normalizedPrefix);
-
-      if (matchesExcludedPath(strippedPath, exclusions)) {
-        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
-        return;
-      }
-
-      const originalRequest = context.requestContext.request;
-      const scopedRequest = {
-        ...originalRequest,
-        path: strippedPath,
-        url: rewritePrefixedUrl(originalRequest.url, requestPath, strippedPath),
-      };
-      context.request = scopedRequest;
-      context.requestContext.request = scopedRequest;
+      const restore = applyScopedGlobalPrefixRequest(context, requestPath, strippedPath);
 
       try {
         await next();
       } finally {
-        context.request = originalRequest;
-        context.requestContext.request = originalRequest;
+        restore();
       }
     },
+  };
+}
+
+function shouldRejectGlobalPrefixRequest(
+  requestPath: string,
+  normalizedPrefix: string,
+  exclusions: readonly string[],
+): boolean {
+  if (!matchesPrefix(requestPath, normalizedPrefix)) {
+    return true;
+  }
+
+  return matchesExcludedPath(stripGlobalPrefix(requestPath, normalizedPrefix), exclusions);
+}
+
+function rewriteGlobalPrefixRequest(
+  request: MiddlewareContext['request'],
+  requestPath: string,
+  strippedPath: string,
+): MiddlewareContext['request'] {
+  return {
+    ...request,
+    path: strippedPath,
+    url: rewritePrefixedUrl(request.url, requestPath, strippedPath),
+  };
+}
+
+function applyScopedGlobalPrefixRequest(
+  context: MiddlewareContext,
+  requestPath: string,
+  strippedPath: string,
+): () => void {
+  const originalRequest = context.requestContext.request;
+  const scopedRequest = rewriteGlobalPrefixRequest(originalRequest, requestPath, strippedPath);
+
+  context.request = scopedRequest;
+  context.requestContext.request = scopedRequest;
+
+  return () => {
+    context.request = originalRequest;
+    context.requestContext.request = originalRequest;
   };
 }
 
@@ -664,17 +693,6 @@ function writeGlobalPrefixNotFound(requestId: string | undefined, response: Fram
   return Promise.resolve(response.send(createErrorResponse(error, requestId)));
 }
 
-function normalizePathPattern(path: string): string {
-  if (path.endsWith('/*')) {
-    return `${normalizePathPattern(path.slice(0, -2))}/*`;
-  }
-
-  const segments = path.split('/').filter(Boolean);
-  const normalized = `/${segments.join('/')}`;
-
-  return normalized === '' ? '/' : normalized;
-}
-
 function matchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
@@ -684,20 +702,11 @@ function stripGlobalPrefix(path: string, prefix: string): string {
     return '/';
   }
 
-  return normalizePathPattern(path.slice(prefix.length));
+  return normalizeRoutePattern(path.slice(prefix.length));
 }
 
 function matchesExcludedPath(path: string, exclusions: readonly string[]): boolean {
   return exclusions.some((pattern) => matchRoutePattern(pattern, path));
-}
-
-function matchRoutePattern(pattern: string, path: string): boolean {
-  if (pattern.endsWith('/*')) {
-    const prefix = pattern.slice(0, -2);
-    return path === prefix || path.startsWith(`${prefix}/`);
-  }
-
-  return path === pattern;
 }
 
 function rewritePrefixedUrl(url: string, originalPath: string, rewrittenPath: string): string {

@@ -5,6 +5,16 @@ import { transformAsync } from '@babel/core';
 
 const babelConfigFileCache = new Map<string, string>();
 
+interface BabelDecoratorsTransformResult {
+  code: string;
+  map: unknown;
+}
+
+interface KonektiBabelDecoratorsPlugin {
+  name: string;
+  transform(code: string, id: string): Promise<BabelDecoratorsTransformResult | null>;
+}
+
 function resolveBabelConfigFile(filePath: string): string {
   let currentDirectory = dirname(filePath);
 
@@ -32,7 +42,7 @@ function resolveBabelConfigFile(filePath: string): string {
   }
 }
 
-export function konektiBabelDecoratorsPlugin() {
+export function konektiBabelDecoratorsPlugin(): KonektiBabelDecoratorsPlugin {
   return {
     name: 'konekti-babel-decorators',
     async transform(code: string, id: string) {
