@@ -110,6 +110,32 @@ interface ContainerIntrospection {
   requestScopeEnabled?: boolean;
 }
 
+function isContainerIntrospection(value: unknown): value is ContainerIntrospection {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as {
+    multiRegistrations?: unknown;
+    parent?: unknown;
+    registrations?: unknown;
+    requestScopeEnabled?: unknown;
+  };
+
+  const parentValid = candidate.parent === undefined || isContainerIntrospection(candidate.parent);
+  const requestScopeValid = candidate.requestScopeEnabled === undefined || typeof candidate.requestScopeEnabled === 'boolean';
+
+  return candidate.registrations instanceof Map && candidate.multiRegistrations instanceof Map && parentValid && requestScopeValid;
+}
+
+function toContainerIntrospection(container: BootstrapResult['container']): ContainerIntrospection {
+  if (!isContainerIntrospection(container)) {
+    throw new Error('Testing container introspection is unavailable for the current container implementation.');
+  }
+
+  return container;
+}
+
 function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
   return (
     (typeof value === 'object' || typeof value === 'function') &&
@@ -121,7 +147,7 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
 function createSyncResolver(
   container: BootstrapResult['container'],
 ): <T>(token: Token<T>) => T {
-  const introspection = container as unknown as ContainerIntrospection;
+  const introspection = toContainerIntrospection(container);
   const singletonCache = new Map<Token, unknown>();
   const resolutionChain = new Set<Token>();
 
@@ -410,12 +436,14 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     }
 
     class PatchedModule {}
-    defineModule(PatchedModule as unknown as ModuleType, {
+    const patchedModule: ModuleType = PatchedModule;
+
+    defineModule(patchedModule, {
       ...(metadata as ModuleDefinition),
       imports: rewrittenImports,
     });
 
-    return PatchedModule as unknown as ModuleType;
+    return patchedModule;
   }
 
   private rewriteModuleImports(imports: ModuleType[]): ModuleType[] {

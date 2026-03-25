@@ -265,7 +265,7 @@ export class Container {
         this.resolveMultiProviderInstances(multiProviders, chain, activeTokens),
       );
 
-      return instances as unknown as T;
+      return instances as T;
     }
 
     const provider = this.requireProvider(token);

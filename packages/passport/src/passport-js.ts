@@ -171,12 +171,12 @@ export class PassportJsAuthStrategy implements AuthStrategy {
   }
 
   private createExecutableStrategy(): PassportJsExecutableStrategy {
-    const template = this.strategyTemplate as unknown as Record<PropertyKey, unknown>;
+    const template = this.strategyTemplate;
     const strategy = Object.create(Object.getPrototypeOf(this.strategyTemplate)) as PassportJsExecutableStrategy &
       Record<PropertyKey, unknown>;
 
     for (const key of Reflect.ownKeys(template)) {
-      const value = template[key];
+      const value = Reflect.get(template, key);
 
       if (typeof value === 'function') {
         strategy[key] = value;

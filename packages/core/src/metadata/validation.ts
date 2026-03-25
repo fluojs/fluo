@@ -39,15 +39,16 @@ function getStandardClassValidationRules(target: Function): ClassValidationRule[
 export function getDtoFieldBindingMetadata(target: object, propertyKey: MetadataPropertyKey): DtoFieldBindingMetadata | undefined {
   const stored = dtoFieldBindingStore.get(target)?.get(propertyKey);
   const standard = getStandardDtoBindingMap(target)?.get(propertyKey);
+  const source = stored?.source ?? standard?.source;
 
-  if (!stored && !standard?.source) {
+  if (!source) {
     return undefined;
   }
 
   return {
     key: stored?.key ?? standard?.key,
     optional: stored?.optional ?? standard?.optional,
-    source: stored?.source ?? (standard as { source: DtoFieldBindingMetadata['source'] }).source,
+    source,
   };
 }
 

@@ -20,16 +20,19 @@ export interface CookieManagerConfig extends CookieAuthOptions {
   cookieOptions?: CookieOptions;
 }
 
-export const DEFAULT_COOKIE_OPTIONS: Required<CookieOptions> = {
+type NormalizedCookieOptions = Omit<Required<CookieOptions>, 'domain' | 'maxAge'> &
+  Pick<CookieOptions, 'domain' | 'maxAge'>;
+
+export const DEFAULT_COOKIE_OPTIONS: NormalizedCookieOptions = {
   httpOnly: true,
   secure: true,
   sameSite: 'strict',
   path: '/',
-  domain: undefined as unknown as string,
-  maxAge: undefined as unknown as number,
+  domain: undefined,
+  maxAge: undefined,
 };
 
-function buildCookieHeader(name: string, value: string, options: Required<CookieOptions>): string {
+function buildCookieHeader(name: string, value: string, options: NormalizedCookieOptions): string {
   const parts: string[] = [`${name}=${value}`];
 
   if (options.maxAge !== undefined && options.maxAge >= 0) {
@@ -59,7 +62,7 @@ function buildCookieHeader(name: string, value: string, options: Required<Cookie
   return parts.join('; ');
 }
 
-function buildClearCookieHeader(name: string, options: Required<CookieOptions>): string {
+function buildClearCookieHeader(name: string, options: NormalizedCookieOptions): string {
   return buildCookieHeader(name, '', {
     ...options,
     maxAge: 0,
@@ -68,7 +71,7 @@ function buildClearCookieHeader(name: string, options: Required<CookieOptions>):
 
 export class CookieManager {
   private readonly options: Required<CookieAuthOptions>;
-  private readonly cookieOptions: Required<CookieOptions>;
+  private readonly cookieOptions: NormalizedCookieOptions;
 
   constructor(config?: CookieManagerConfig) {
     this.options = normalizeCookieAuthOptions(config);

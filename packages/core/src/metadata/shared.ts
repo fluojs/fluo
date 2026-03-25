@@ -75,7 +75,13 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
 }
 
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
+  const metadata = Reflect.get(target, metadataSymbol);
+
+  if (typeof metadata !== 'object' || metadata === null) {
+    return undefined;
+  }
+
+  return metadata as StandardMetadataBag;
 }
 
 export function getStandardConstructorMetadataBag(target: object): StandardMetadataBag | undefined {
