@@ -50,8 +50,9 @@ const config = loadConfig({
 });
 
 const service = new ConfigService(config);
-service.get('DATABASE_URL');          // 없으면 throw
-service.getOptional('REDIS_URL');     // 없으면 undefined 반환
+service.get('DATABASE_URL');          // string | undefined 반환
+service.getOrThrow('DATABASE_URL');   // 없으면 throw
+service.getOptional('REDIS_URL');     // deprecated: get() 사용
 service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 ```
 
@@ -64,12 +65,14 @@ service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 | 옵션 | 타입 | 설명 |
 |---|---|---|
 | `envFile` | `string` | 로드할 env 파일 경로 (기본값 `.env`) |
+| `envFilePath` | `string` | `envFile`의 별칭 |
 | `defaults` | `ConfigDictionary` | 가장 낮은 우선순위 값 |
 | `cwd` | `string` | env 파일을 해석할 작업 디렉터리 지정 |
 | `processEnv` | `NodeJS.ProcessEnv` | 실제 `process.env` 대신 사용할 소스 |
 | `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
 | `validate` | `(raw) => T` | 유효하지 않으면 throw, 타입 딕셔너리 반환 |
 | `watch` | `boolean` | `createConfigReloader(options)`에서 env 파일 watch 리로드를 활성화할 때 사용 |
+| `isGlobal` | `boolean` | `ConfigModule.forRoot()`의 글로벌 등록 여부 (기본값 `true`) |
 
 ### `createConfigReloader(options)`
 
@@ -91,8 +94,9 @@ type ConfigReloader = {
 
 ```typescript
 class ConfigService {
-  get<T>(key: string): T              // 필수 — 없으면 throw
-  getOptional<T>(key: string): T | undefined
+  get<T>(key: string): T | undefined
+  getOrThrow<T>(key: string): T       // 없으면 throw
+  getOptional<T>(key: string): T | undefined // deprecated: get() 사용
   snapshot(): ConfigDictionary        // 현재 정규화된 값을 deep clone으로 반환
 }
 ```

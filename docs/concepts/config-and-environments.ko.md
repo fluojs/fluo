@@ -18,14 +18,14 @@
 
 ## 핵심 설정 원칙
 
-- **명시적 파일 선택**: `envFile`로 env 파일 경로를 직접 지정하거나, 기본값 `.env`를 사용합니다.
+- **명시적 파일 선택**: `envFile`(별칭 `envFilePath`)로 env 파일 경로를 직접 지정하거나, 기본값 `.env`를 사용합니다.
 - **결정론적 우선순위**: 설정 해결을 위한 하나의 명확한 순서를 따릅니다.
 - **조기 유효성 검사**: 설정은 애플리케이션 시작 시점에 검증됩니다.
 - **타입이 지정된 접근**: 설정은 `ConfigService`를 통해 접근합니다.
 
 ## 환경 및 파일
 
-env 파일 경로는 `ConfigModule.forRoot()` 또는 `loadConfig()`에 전달하는 `envFile` 옵션으로 제어합니다. 생략하면 `.env`가 기본값입니다. 모드 이름에 따른 자동 파일 선택은 없으며, 부트스트랩 시점에 호출자가 로드할 파일을 결정합니다.
+env 파일 경로는 `ConfigModule.forRoot()` 또는 `loadConfig()`에 전달하는 `envFile` 옵션(별칭 `envFilePath`)으로 제어합니다. 생략하면 `.env`가 기본값입니다. 모드 이름에 따른 자동 파일 선택은 없으며, 부트스트랩 시점에 호출자가 로드할 파일을 결정합니다.
 
 ## 우선순위 및 병합
 
@@ -33,7 +33,7 @@ env 파일 경로는 `ConfigModule.forRoot()` 또는 `loadConfig()`에 전달하
 
 1.  **런타임 재정의 (Runtime Overrides)**: 부트스트랩 도중 직접 전달됩니다.
 2.  **프로세스 환경 (Process Environment)**: 표준 시스템 환경 변수입니다.
-3.  **Env 파일**: `envFile`로 지정한 경로에서 로드됩니다 (기본값 `.env`).
+3.  **Env 파일**: `envFile`/`envFilePath`로 지정한 경로에서 로드됩니다 (기본값 `.env`).
 4.  **기본값 (Default Values)**: 하드코딩된 폴백(fallback) 값입니다.
 
 ### 병합 동작
