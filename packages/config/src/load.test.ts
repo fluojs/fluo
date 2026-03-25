@@ -35,7 +35,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { NAME: 'from-default', PORT: '3000' },
-      mode: 'dev',
+      envFile: envPath,
       processEnv: { NAME: 'from-process' },
       runtimeOverrides: { NAME: 'from-runtime' },
     });
@@ -55,7 +55,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { PORT: '3000' },
-      mode: 'dev',
+      envFile: envPath,
       processEnv: { PORT: undefined },
     });
 
@@ -74,7 +74,6 @@ describe('loadConfig', () => {
           },
         },
       },
-      mode: 'test',
       processEnv: {},
       runtimeOverrides: {
         db: {
@@ -101,7 +100,6 @@ describe('loadConfig', () => {
   it('fails when validation rejects the merged config', () => {
     expect(() =>
       loadConfig({
-        mode: 'test',
         validate: () => {
           throw new Error('PORT is required');
         },
@@ -115,7 +113,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQ\\n-----END RSA PRIVATE KEY-----"\n');
 
-    const loaded = loadConfig({ cwd, mode: 'dev', processEnv: {} });
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
 
     expect(loaded['PRIVATE_KEY']).toContain('BEGIN RSA PRIVATE KEY');
     expect(loaded['PRIVATE_KEY']).toContain('\n');
@@ -127,7 +125,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'DB_HOST=localhost\nDB_PORT=5432\nDATABASE_URL=${DB_HOST}:${DB_PORT}/mydb\n');
 
-    const loaded = loadConfig({ cwd, mode: 'dev', processEnv: {} });
+    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
 
     expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
   });
@@ -140,7 +138,7 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
       parse: (content) => {
         const result: Record<string, string> = {};
@@ -165,7 +163,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
     });
 
@@ -202,7 +200,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
     });
 
@@ -237,7 +235,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
       validate: (raw) => {
         const port = raw['PORT'];
@@ -298,7 +296,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
     });
 
@@ -326,7 +324,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
       watch: true,
     });
@@ -359,7 +357,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      mode: 'dev',
+      envFile: envPath,
       processEnv: {},
       watch: true,
     });

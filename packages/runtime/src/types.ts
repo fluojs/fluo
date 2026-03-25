@@ -103,6 +103,7 @@ export interface BootstrapApplicationOptions extends ConfigLoadOptions {
   interceptors?: InterceptorLike[];
   logger?: ApplicationLogger;
   middleware?: MiddlewareLike[];
+  mode?: ConfigMode;
   observers?: RequestObserverLike[];
   providers?: Provider[];
   rootModule: ModuleType;
@@ -112,8 +113,7 @@ export interface BootstrapApplicationOptions extends ConfigLoadOptions {
 export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'rootModule'>;
 
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'filters' | 'middleware' | 'mode' | 'observers' | 'rootModule'> {
-  mode?: ConfigMode;
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'filters' | 'middleware' | 'observers' | 'rootModule'> {
 }
 
 export interface MicroserviceRuntime {

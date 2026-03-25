@@ -43,7 +43,7 @@ function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, strin
 
 function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   const cwd = options.cwd ?? process.cwd();
-  const envFile = options.envFile ?? join(cwd, `.env.${options.mode}`);
+  const envFile = options.envFile ?? join(cwd, '.env');
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? process.env;
   const safeProcessEnv = sanitizeProcessEnv(processEnv);

@@ -1,3 +1,6 @@
+/**
+ * @deprecated Use `envFile` option instead. Mode-based env file selection is removed.
+ */
 export type ConfigMode = 'dev' | 'prod' | 'test';
 
 export type ConfigDictionary = Record<string, unknown>;
@@ -26,7 +29,6 @@ export type DotValue<T, K extends string> = K extends keyof T
     : never;
 
 export interface ConfigModuleOptions {
-  mode: ConfigMode;
   envFile?: string;
   validate?: (raw: ConfigDictionary) => ConfigDictionary;
   defaults?: ConfigDictionary;

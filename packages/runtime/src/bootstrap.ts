@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 import { Container, type Provider } from '@konekti/di';
-import { ConfigService, createConfigReloader, loadConfig, type ConfigDictionary, type ConfigReloadReason } from '@konekti/config';
+import { ConfigService, createConfigReloader, loadConfig, type ConfigDictionary, type ConfigMode, type ConfigReloadReason } from '@konekti/config';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
 import {
   createDispatcher,
@@ -312,7 +312,7 @@ class KonektiApplication implements Application {
     readonly config: ConfigService,
     readonly container: Container,
     readonly envFile: string,
-    readonly mode: BootstrapApplicationOptions['mode'],
+    readonly mode: ConfigMode,
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     readonly dispatcher: Dispatcher,
@@ -407,7 +407,7 @@ class KonektiApplicationContext implements ApplicationContext {
     readonly config: ConfigService,
     readonly container: Container,
     readonly envFile: string,
-    readonly mode: BootstrapApplicationOptions['mode'],
+    readonly mode: ConfigMode,
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     private readonly lifecycleInstances: unknown[],
@@ -470,7 +470,7 @@ class KonektiMicroserviceApplication implements MicroserviceApplication {
     return this.context.envFile;
   }
 
-  get mode(): BootstrapApplicationOptions['mode'] {
+  get mode(): ConfigMode {
     return this.context.mode;
   }
 
@@ -610,7 +610,11 @@ async function runShutdownHooks(instances: unknown[], signal?: string): Promise<
  * 모드와 작업 디렉터리를 기준으로 실제로 사용될 env 파일 경로를 결정한다.
  */
 function resolveEnvFile(options: BootstrapApplicationOptions): string {
-  return options.envFile ?? join(options.cwd ?? process.cwd(), `.env.${options.mode}`);
+  return options.envFile ?? join(options.cwd ?? process.cwd(), `.env.${options.mode ?? 'prod'}`);
+}
+
+function resolveApplicationMode(mode: ConfigMode | undefined): ConfigMode {
+  return mode ?? 'prod';
 }
 
 function createHandlerSources(modules: CompiledModule[]): HandlerSource[] {
@@ -860,20 +864,27 @@ function setupRuntimeConfigReload(
  * 런타임 애플리케이션 셸을 만든다.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
+  const mode = resolveApplicationMode(options.mode);
+  const envFile = resolveEnvFile({ ...options, mode });
+  const bootstrapOptions: BootstrapApplicationOptions = {
+    ...options,
+    envFile,
+    mode,
+  };
   const logger = options.logger ?? createConsoleApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
-  const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
+  const adapter = bootstrapOptions.adapter ?? createNoopHttpApplicationAdapter();
   const runtimeCleanup: Array<() => void> = [];
 
   try {
     logger.log('Starting Konekti application...', 'KonektiFactory');
-    const configValues = loadConfig(options);
+    const configValues = loadConfig(bootstrapOptions);
     const config = new ConfigService(configValues);
-    const runtimeProviders = createRuntimeProviders(options, config, logger);
+    const runtimeProviders = createRuntimeProviders(bootstrapOptions, config, logger);
 
-    const bootstrapped = bootstrapModule(options.rootModule, {
-      duplicateProviderPolicy: options.duplicateProviderPolicy,
+    const bootstrapped = bootstrapModule(bootstrapOptions.rootModule, {
+      duplicateProviderPolicy: bootstrapOptions.duplicateProviderPolicy,
       logger,
       providers: runtimeProviders,
       validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
@@ -884,21 +895,20 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
     await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
-    const envFile = resolveEnvFile(options);
-    const configReloadCleanup = setupRuntimeConfigReload(options, config, lifecycleInstances, envFile, logger);
+    const configReloadCleanup = setupRuntimeConfigReload(bootstrapOptions, config, lifecycleInstances, envFile, logger);
     if (configReloadCleanup) {
       runtimeCleanup.push(configReloadCleanup);
     }
 
-    const dispatcher = createRuntimeDispatcher(bootstrapped, options, logger);
+    const dispatcher = createRuntimeDispatcher(bootstrapped, bootstrapOptions, logger);
 
     return new KonektiApplication(
       config,
       bootstrapped.container,
       envFile,
-      options.mode,
+      mode,
       bootstrapped.modules,
-      options.rootModule,
+      bootstrapOptions.rootModule,
       dispatcher,
       adapter,
       lifecycleInstances,
@@ -936,7 +946,14 @@ export class KonektiFactory {
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
   ): Promise<ApplicationContext> {
-    const mode = options.mode ?? 'prod';
+    const mode = resolveApplicationMode(options.mode);
+    const envFile = resolveEnvFile({ ...options, mode, rootModule });
+    const bootstrapOptions: BootstrapApplicationOptions = {
+      ...options,
+      envFile,
+      mode,
+      rootModule,
+    };
     const logger = options.logger ?? createConsoleApplicationLogger();
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
@@ -944,16 +961,9 @@ export class KonektiFactory {
 
     try {
       logger.log('Starting Konekti application context...', 'KonektiFactory');
-      const configValues = loadConfig({
-        ...options,
-        mode,
-      });
+      const configValues = loadConfig(bootstrapOptions);
       const config = new ConfigService(configValues);
-      const runtimeProviders = createRuntimeProviders({
-        ...options,
-        mode,
-        rootModule,
-      }, config, logger);
+      const runtimeProviders = createRuntimeProviders(bootstrapOptions, config, logger);
 
       const bootstrapped = bootstrapModule(rootModule, {
         duplicateProviderPolicy: options.duplicateProviderPolicy,
@@ -967,12 +977,6 @@ export class KonektiFactory {
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
       await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
-      const bootstrapOptions = {
-        ...options,
-        mode,
-        rootModule,
-      } as BootstrapApplicationOptions;
-      const envFile = resolveEnvFile(bootstrapOptions);
       const configReloadCleanup = setupRuntimeConfigReload(bootstrapOptions, config, lifecycleInstances, envFile, logger);
       if (configReloadCleanup) {
         runtimeCleanup.push(configReloadCleanup);
