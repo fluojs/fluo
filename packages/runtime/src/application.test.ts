@@ -1,13 +1,9 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
 import type { Container } from '@konekti/di';
 import {
   Controller,
@@ -67,24 +63,6 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
-}
-
-async function delay(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function waitForCondition(assertion: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (assertion()) {
-      return;
-    }
-
-    await delay(25);
-  }
-
-  throw new Error('Timed out waiting for condition.');
 }
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -157,32 +135,6 @@ async function requestHttps(url: string): Promise<{ body: string; statusCode: nu
 }
 
 describe('bootstrapApplication', () => {
-  it('registers ConfigService as a bootstrap-level provider', async () => {
-    @Inject([ConfigService])
-    class AppService {
-      constructor(readonly config: ConfigService) {}
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      providers: [AppService],
-    });
-
-    const app = await bootstrapApplication({
-      mode: 'test',
-      rootModule: AppModule,
-      runtimeOverrides: { PORT: '3000' },
-    });
-
-    const service = await app.container.resolve(AppService);
-
-    expect(service.config.get<string>('PORT')).toBe('3000');
-    expect(app.mode).toBe('test');
-    expect(app.envFile.endsWith('.env.test')).toBe(true);
-
-    await expect(app.ready()).resolves.toBeUndefined();
-  });
-
   it('runs lifecycle hooks in deterministic order and supports explicit close', async () => {
     const events: string[] = [];
     const adapter: HttpApplicationAdapter = {
@@ -219,7 +171,6 @@ describe('bootstrapApplication', () => {
 
     const app = await bootstrapApplication({
       adapter,
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -268,7 +219,6 @@ describe('bootstrapApplication', () => {
 
     const app = await bootstrapApplication({
       adapter,
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -296,7 +246,6 @@ describe('bootstrapApplication', () => {
     });
 
     const app = await bootstrapApplication({
-      mode: 'test',
       rootModule: AppModule,
     });
     const resource = await app.container.resolve(DisposableResource);
@@ -304,183 +253,6 @@ describe('bootstrapApplication', () => {
     await app.close('SIGTERM');
 
     expect(resource.destroyed).toBe(true);
-  });
-
-  it('applies watched config reloads in dev mode without replacing ConfigService identity', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-dev-'));
-    const envPath = join(cwd, '.env.dev');
-
-    writeFileSync(envPath, 'PORT=3000\n');
-
-    @Inject([ConfigService])
-    class ReloadAwareService {
-      readonly ports: string[] = [];
-
-      constructor(readonly config: ConfigService) {}
-
-      onRuntimeReload(): void {
-        const port = this.config.get('PORT' as never);
-
-        if (typeof port === 'string') {
-          this.ports.push(port);
-        }
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      providers: [ReloadAwareService],
-    });
-
-    const app = await bootstrapApplication({
-      cwd,
-      mode: 'dev',
-      processEnv: {},
-      rootModule: AppModule,
-      watch: true,
-    });
-    const service = await app.container.resolve(ReloadAwareService);
-
-    await delay(100);
-    writeFileSync(envPath, 'PORT=3100\n');
-    await waitForCondition(() => service.ports.includes('3100'), 5_000);
-
-    expect(app.config.get('PORT')).toBe('3100');
-    expect(service.config).toBe(app.config);
-
-    await app.close();
-  });
-
-  it('keeps the previous runtime config snapshot when a watched update is invalid', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-invalid-'));
-    const envPath = join(cwd, '.env.dev');
-
-    writeFileSync(envPath, 'PORT=3000\n');
-
-    class AppModule {}
-    defineModule(AppModule, {});
-
-    const app = await bootstrapApplication({
-      cwd,
-      mode: 'dev',
-      processEnv: {},
-      rootModule: AppModule,
-      validate: (raw: Record<string, unknown>) => {
-        const port = raw['PORT'];
-
-        if (typeof port !== 'string' || !/^\d+$/.test(port)) {
-          throw new Error('PORT must be numeric');
-        }
-
-        return raw;
-      },
-      watch: true,
-    });
-
-    writeFileSync(envPath, 'PORT=oops\n');
-    await delay(150);
-
-    expect(app.config.get('PORT')).toBe('3000');
-
-    await app.close();
-  });
-
-  it('restores the previous runtime config snapshot when a reload participant throws', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-rollback-'));
-    const envPath = join(cwd, '.env.dev');
-
-    writeFileSync(envPath, 'PORT=3000\n');
-
-    @Inject([ConfigService])
-    class FailingReloadAwareService {
-      readonly seenPorts: string[] = [];
-
-      constructor(readonly config: ConfigService) {}
-
-      onRuntimeReload(): void {
-        const port = this.config.get('PORT' as never);
-
-        if (typeof port === 'string') {
-          this.seenPorts.push(port);
-        }
-
-        throw new Error('participant failure');
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      providers: [FailingReloadAwareService],
-    });
-
-    const app = await bootstrapApplication({
-      cwd,
-      mode: 'dev',
-      processEnv: {},
-      rootModule: AppModule,
-      watch: true,
-    });
-    const service = await app.container.resolve(FailingReloadAwareService);
-
-    await delay(100);
-    writeFileSync(envPath, 'PORT=3100\n');
-    await waitForCondition(() => service.seenPorts.includes('3100'), 5_000);
-    await delay(150);
-
-    expect(service.seenPorts).toContain('3100');
-    expect(app.config.get('PORT')).toBe('3000');
-    expect(service.config).toBe(app.config);
-
-    await app.close();
-  });
-
-  it('does not activate runtime config watch reload outside dev mode', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-prod-'));
-    const envPath = join(cwd, '.env.prod');
-
-    writeFileSync(envPath, 'PORT=3000\n');
-
-    class AppModule {}
-    defineModule(AppModule, {});
-
-    const app = await bootstrapApplication({
-      cwd,
-      mode: 'prod',
-      processEnv: {},
-      rootModule: AppModule,
-      watch: true,
-    });
-
-    writeFileSync(envPath, 'PORT=3300\n');
-    await delay(150);
-
-    expect(app.config.get('PORT')).toBe('3000');
-
-    await app.close();
-  });
-
-  it('stops runtime config watch updates after application close', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'konekti-runtime-reload-close-'));
-    const envPath = join(cwd, '.env.dev');
-
-    writeFileSync(envPath, 'PORT=3000\n');
-
-    class AppModule {}
-    defineModule(AppModule, {});
-
-    const app = await bootstrapApplication({
-      cwd,
-      mode: 'dev',
-      processEnv: {},
-      rootModule: AppModule,
-      watch: true,
-    });
-
-    await app.close();
-    writeFileSync(envPath, 'PORT=3400\n');
-    await delay(150);
-
-    expect(app.config.get('PORT')).toBe('3000');
   });
 
   it('injects real runtime tokens before OnModuleInit runs', async () => {
@@ -520,7 +292,6 @@ describe('bootstrapApplication', () => {
 
     const app = await bootstrapApplication({
       adapter,
-      mode: 'test',
       rootModule: AppModule,
     });
     const probe = await app.container.resolve(RuntimeTokenProbe);
@@ -537,7 +308,6 @@ describe('bootstrapApplication', () => {
     defineModule(AppModule, {});
 
     const app = await KonektiFactory.create(AppModule, {
-      mode: 'test',
     });
 
     expect(app.rootModule).toBe(AppModule);
@@ -566,7 +336,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -601,7 +370,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -653,7 +421,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       rawBody: true,
     });
@@ -708,7 +475,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -750,7 +516,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       rawBody: true,
     });
@@ -803,7 +568,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -843,7 +607,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       middleware: [createSecurityHeadersMiddleware()],
-      mode: 'test',
       port,
     });
 
@@ -889,7 +652,6 @@ describe('bootstrapApplication', () => {
 
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
-      mode: 'test',
       observers: [new StatusObserver()],
       port,
     });
@@ -929,7 +691,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
-      mode: 'test',
       port,
     });
 
@@ -974,7 +735,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -1016,7 +776,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       versioning: {
         header: 'X-API-Version',
@@ -1069,7 +828,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       versioning: {
         key: 'v=',
@@ -1115,7 +873,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       versioning: {
         extractor: (request) => {
@@ -1169,7 +926,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       logger,
-      mode: 'test',
       port,
     });
 
@@ -1220,7 +976,6 @@ describe('bootstrapApplication', () => {
       cors: false,
       host: '127.0.0.1',
       logger,
-      mode: 'test',
       port,
     });
 
@@ -1268,7 +1023,6 @@ describe('bootstrapApplication', () => {
         key: TEST_TLS_PRIVATE_KEY,
       },
       logger,
-      mode: 'test',
       port,
     });
 
@@ -1312,7 +1066,6 @@ describe('bootstrapApplication', () => {
       cors: false,
       host: '0.0.0.0',
       logger,
-      mode: 'test',
       port,
     });
 
@@ -1367,7 +1120,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      mode: 'test',
       port,
     });
 
@@ -1435,7 +1187,6 @@ describe('bootstrapApplication', () => {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/health', '/ready'],
-      mode: 'test',
       port,
     });
 
@@ -1487,7 +1238,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
-      mode: 'test',
       observers: [new PathObserver()],
       port,
     });
@@ -1530,7 +1280,6 @@ describe('bootstrapApplication', () => {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/internal/*'],
-      mode: 'test',
       port,
     });
 
@@ -1580,7 +1329,6 @@ describe('bootstrapApplication', () => {
       cors: false,
       globalPrefix: '///api//',
       globalPrefixExclude: ['//internal//*'],
-      mode: 'test',
       port,
     });
 
@@ -1619,7 +1367,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/',
-      mode: 'test',
       port,
     });
 
@@ -1655,7 +1402,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       shutdownTimeoutMs: 1_000,
     });
@@ -1704,7 +1450,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
       shutdownTimeoutMs: 50,
     });
@@ -1716,21 +1461,6 @@ describe('bootstrapApplication', () => {
 
     await expect(app.close()).resolves.toBeUndefined();
     await expect(responsePromise).rejects.toThrow();
-  });
-
-  it('fails before listen when config validation rejects bootstrap config', async () => {
-    class AppModule {}
-    defineModule(AppModule, {});
-
-    await expect(
-      bootstrapApplication({
-        mode: 'test',
-        rootModule: AppModule,
-        validate: () => {
-          throw new Error('PORT is required');
-        },
-      }),
-    ).rejects.toThrow('Invalid configuration.');
   });
 
   it('fails during bootstrap when a provider omits required injection metadata', async () => {
@@ -1747,7 +1477,6 @@ describe('bootstrapApplication', () => {
 
     await expect(
       bootstrapApplication({
-        mode: 'test',
         rootModule: AppModule,
       }),
     ).rejects.toThrow(ModuleInjectionMetadataError);
@@ -1777,7 +1506,6 @@ describe('bootstrapApplication', () => {
 
     const app = await bootstrapApplication({
       adapter,
-      mode: 'test',
       rootModule: AppModule,
     });
     const request: FrameworkRequest = {
@@ -1855,7 +1583,6 @@ describe('bootstrapApplication', () => {
 
     const app = await bootstrapApplication({
       interceptors: [SerializerInterceptor],
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -1971,7 +1698,6 @@ describe('bootstrapApplication', () => {
     await expect(
       bootstrapApplication({
         logger,
-        mode: 'test',
         rootModule: AppModule,
       }),
     ).rejects.toThrow('boom');
@@ -2021,7 +1747,6 @@ describe('bootstrapApplication', () => {
     const app = await bootstrapApplication({
       adapter,
       logger,
-      mode: 'test',
       rootModule: AppModule,
     });
 
@@ -2059,7 +1784,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -2089,7 +1813,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: 'https://my-frontend.com',
-      mode: 'test',
       port,
     });
 
@@ -2121,7 +1844,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: ['https://a.com', 'https://b.com'],
-      mode: 'test',
       port,
     });
 
@@ -2156,7 +1878,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: { allowOrigin: 'https://my-frontend.com', maxAge: 600 },
-      mode: 'test',
       port,
     });
 
@@ -2194,7 +1915,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -2266,7 +1986,6 @@ describe('bootstrapApplication', () => {
     const port = await findAvailablePort();
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      mode: 'test',
       port,
     });
 
@@ -2338,7 +2057,6 @@ describe('exception filter pipeline', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [filter],
-      mode: 'test',
       port,
     });
 
@@ -2377,7 +2095,6 @@ describe('exception filter pipeline', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [filter],
-      mode: 'test',
       port,
     });
 
@@ -2427,7 +2144,6 @@ describe('exception filter pipeline', () => {
     const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [firstFilter, secondFilter],
-      mode: 'test',
       port,
     });
 
