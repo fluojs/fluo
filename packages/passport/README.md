@@ -108,7 +108,7 @@ export class MyRefreshTokenService implements RefreshTokenService {
 
 ## Cookie Auth Preset
 
-`@konekti/passport` provides an official HttpOnly cookie/session auth preset for JWT-based authentication. This preset extracts JWT tokens from secure HttpOnly cookies instead of bearer headers.
+`@konekti/passport` provides an official HttpOnly cookie auth preset for JWT-based authentication. This preset extracts JWT tokens from secure HttpOnly cookies instead of bearer headers.
 
 ### Use the cookie auth strategy
 
