@@ -81,10 +81,10 @@ await this.db.transaction(async () => {
 ### Automatic request-scoped transaction (opt-in)
 
 ```typescript
-import { UseInterceptor } from '@konekti/http';
+import { UseInterceptors } from '@konekti/http';
 import { DrizzleTransactionInterceptor } from '@konekti/drizzle';
 
-@UseInterceptor(DrizzleTransactionInterceptor)
+@UseInterceptors(DrizzleTransactionInterceptor)
 class UsersController {}
 ```
 

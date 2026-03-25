@@ -80,10 +80,10 @@ export class UserService {
 ### 4. Apply the interceptor for automatic request-level transactions
 
 ```typescript
-import { UseInterceptor } from '@konekti/http';
+import { UseInterceptors } from '@konekti/http';
 import { PrismaTransactionInterceptor } from '@konekti/prisma';
 
-@UseInterceptor(PrismaTransactionInterceptor)
+@UseInterceptors(PrismaTransactionInterceptor)
 class UserController {}
 ```
 

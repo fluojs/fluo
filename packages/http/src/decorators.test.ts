@@ -10,9 +10,9 @@ import {
   Optional,
   Produces,
   RequestDto,
-  SuccessStatus,
-  UseGuard,
-  UseInterceptor,
+  HttpCode,
+  UseGuards,
+  UseInterceptors,
   getRouteProducesMetadata,
 } from './decorators.js';
 import { IntersectionType, OmitType, PartialType, PickType } from './mapped-types.js';
@@ -63,16 +63,16 @@ describe('http decorators', () => {
       };
     })
     @Controller('/users')
-    @UseGuard(ClassGuard)
-    @UseInterceptor(ClassInterceptor)
+    @UseGuards(ClassGuard)
+    @UseInterceptors(ClassInterceptor)
     class ExampleController {
       requestCount = 1;
 
       @RequestDto(GetUserRequest)
-      @SuccessStatus(200)
+      @HttpCode(200)
       @Get('/:id')
-      @UseGuard(MethodGuard)
-      @UseInterceptor(MethodInterceptor)
+      @UseGuards(MethodGuard)
+      @UseInterceptors(MethodInterceptor)
       getUser() {
         return { ok: true };
       }

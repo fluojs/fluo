@@ -65,10 +65,10 @@ class AuthController {
 등록된 `ThrottlerGuard`를 위한 DI 토큰입니다. 명시적인 가드로 사용하려면 이를 주입하세요.
 
 ```typescript
-import { UseGuard } from '@konekti/http';
+import { UseGuards } from '@konekti/http';
 import { THROTTLER_GUARD } from '@konekti/throttler';
 
-@UseGuard(THROTTLER_GUARD)
+@UseGuards(THROTTLER_GUARD)
 @Controller('/api')
 class ApiController {}
 ```

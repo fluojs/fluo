@@ -10,8 +10,8 @@ import {
   NotFoundException,
   Post,
   RequestDto,
-  SuccessStatus,
-  UseInterceptor,
+  HttpCode,
+  UseInterceptors,
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@konekti/http';
@@ -191,16 +191,16 @@ describe('@konekti/drizzle vertical slice', () => {
       constructor(private readonly users: UserService) {}
 
       @RequestDto(CreateUserRequest)
-      @SuccessStatus(201)
+      @HttpCode(201)
       @Post('/')
-      @UseInterceptor(DrizzleTransactionInterceptor)
+      @UseInterceptors(DrizzleTransactionInterceptor)
       async create(input: CreateUserRequest) {
         return this.users.create(input);
       }
 
       @RequestDto(GetUserRequest)
       @Get('/:id')
-      @UseInterceptor(DrizzleTransactionInterceptor)
+      @UseInterceptors(DrizzleTransactionInterceptor)
       async getOne(input: GetUserRequest) {
         return this.users.get(input.id);
       }

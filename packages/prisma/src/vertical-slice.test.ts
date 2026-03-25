@@ -10,8 +10,8 @@ import {
   NotFoundException,
   Post,
   RequestDto,
-  SuccessStatus,
-  UseInterceptor,
+  HttpCode,
+  UseInterceptors,
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@konekti/http';
@@ -211,16 +211,16 @@ describe('@konekti/prisma vertical slice', () => {
       constructor(private readonly users: UserService) {}
 
       @RequestDto(CreateUserRequest)
-      @SuccessStatus(201)
+      @HttpCode(201)
       @Post('/')
-      @UseInterceptor(PrismaTransactionInterceptor)
+      @UseInterceptors(PrismaTransactionInterceptor)
       async create(input: CreateUserRequest) {
         return this.users.create(input);
       }
 
       @RequestDto(GetUserRequest)
       @Get('/:id')
-      @UseInterceptor(PrismaTransactionInterceptor)
+      @UseInterceptors(PrismaTransactionInterceptor)
       async getOne(input: GetUserRequest) {
         return this.users.get(input.id);
       }

@@ -102,6 +102,9 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|
 | `@Controller(path)` | 클래스를 기본 경로를 가진 컨트롤러로 표시 |
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP 메서드 라우트 |
+| `@All(path)` | 모든 HTTP 메서드에 매칭되는 라우트 |
+| `@Header(name, value)` | 라우트에 응답 헤더를 설정 |
+| `@Redirect(url, statusCode?)` | 응답을 지정된 URL로 리다이렉트 |
 | `@Version(value)` | `/v1/...`과 같은 URI 버전 관리를 적용; 핸들러 레벨 버전은 컨트롤러 레벨 버전을 오버라이드함 |
 
 ### 버전 관리 전략
@@ -191,7 +194,7 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS 미들웨어 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 컨텍스트 팩토리 |
 
-추가적인 공개 익스포트에는 `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 포함됩니다.
+추가적인 공개 익스포트에는 `All`, `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 포함됩니다.
 
 ### 서버 전송 이벤트 (SSE)
 
@@ -231,7 +234,7 @@ class EventsController {
 - `GET`, `PUT`, `PATCH`, `HEAD`의 기본값은 `200`입니다.
 - `POST`의 기본값은 `201`입니다.
 - `DELETE`와 `OPTIONS`는 핸들러가 `undefined`를 반환하면 `204`, 그렇지 않으면 `200`이 기본값입니다.
-- `@SuccessStatus(code)`는 항상 메서드 기본값보다 우선합니다.
+- `@HttpCode(code)`는 항상 메서드 기본값보다 우선합니다.
 - 디스패처는 인터셉터 체인이 해결된 후 최종 성공 코드를 결정하므로, 인터셉터의 결과 형태 변경은 여전히 기본 상태 결정에 영향을 미칩니다.
 
 ### 예외(Exceptions)
@@ -244,7 +247,7 @@ class EventsController {
 | `NotFoundException` | 404 |
 | `ConflictException` | 409 |
 | `PayloadTooLargeException` | 413 |
-| `InternalServerException` | 500 |
+| `InternalServerErrorException` | 500 |
 
 ## 아키텍처
 
@@ -261,7 +264,7 @@ class EventsController {
   → 요청 DTO 바인딩 (FromBody / FromPath / FromQuery / ...)
   → DTO 검증 (@konekti/dto-validator 경유)
   → 컨트롤러 메서드 호출(input, ctx)
-  → 성공 상태 해결 (@SuccessStatus 오버라이드 또는 메서드 기본값)
+  → 성공 상태 해결 (@HttpCode 오버라이드 또는 메서드 기본값)
   → 성공 응답 작성
   → catch → 표준 오류 응답 작성
 ```

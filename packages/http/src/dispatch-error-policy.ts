@@ -1,7 +1,7 @@
 import { HandlerNotFoundError } from './errors.js';
 import {
   HttpException,
-  InternalServerException,
+  InternalServerErrorException,
   NotFoundException,
   createErrorResponse,
 } from './exceptions.js';
@@ -17,7 +17,7 @@ function toHttpException(error: unknown): HttpException {
     return new NotFoundException(message, { cause: error });
   }
 
-  return new InternalServerException('Internal server error.', {
+  return new InternalServerErrorException('Internal server error.', {
     cause: error,
   });
 }

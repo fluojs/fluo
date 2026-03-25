@@ -102,6 +102,9 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 |---|---|
 | `@Controller(path)` | Marks a class as a controller with a base path |
 | `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
+| `@All(path)` | Matches all HTTP methods for a route |
+| `@Header(name, value)` | Sets a response header on the route |
+| `@Redirect(url, statusCode?)` | Redirects the response to the specified URL |
 | `@Version(value)` | Applies URI versioning such as `/v1/...`; handler-level version overrides controller-level version |
 
 ### Versioning strategies
@@ -191,7 +194,7 @@ Binding keeps source value shape explicit. For example, repeated query/header va
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `SuccessStatus`, `UseGuard`, `UseInterceptor`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `All`, `Options`, `Head`, `IntersectionType`, `OmitType`, `PartialType`, `PickType`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
 
 ### Server-Sent Events (SSE)
 
@@ -231,7 +234,7 @@ class EventsController {
 - `GET`, `PUT`, `PATCH`, `HEAD` default to `200`.
 - `POST` defaults to `201`.
 - `DELETE` and `OPTIONS` default to `204` when the handler returns `undefined`, otherwise `200`.
-- `@SuccessStatus(code)` always overrides the method default.
+- `@HttpCode(code)` always overrides the method default.
 - The dispatcher decides the final success code after the interceptor chain resolves, so interceptor result shaping still affects the default status decision.
 
 ### Exceptions
@@ -244,7 +247,7 @@ class EventsController {
 | `NotFoundException` | 404 |
 | `ConflictException` | 409 |
 | `PayloadTooLargeException` | 413 |
-| `InternalServerException` | 500 |
+| `InternalServerErrorException` | 500 |
 
 ## Architecture
 
@@ -261,7 +264,7 @@ incoming request
   → request DTO binding  (fromBody / fromPath / fromQuery / ...)
   → DTO validation  (via @konekti/dto-validator)
   → controller method(input, ctx)
-  → success status resolution (`@SuccessStatus` override or method default)
+  → success status resolution (`@HttpCode` override or method default)
   → success response write
   → catch → canonical error response write
 ```

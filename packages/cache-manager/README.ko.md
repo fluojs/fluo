@@ -20,20 +20,20 @@ npm install @konekti/cache-manager @konekti/redis ioredis
 
 ```ts
 import { Module } from '@konekti/core';
-import { Controller, Get, Post, UseInterceptor } from '@konekti/http';
+import { Controller, Get, Post, UseInterceptors } from '@konekti/http';
 import { CacheEvict, CacheInterceptor, CacheTTL, createCacheModule } from '@konekti/cache-manager';
 
 @Controller('/products')
 class ProductController {
   @Get('/')
-  @UseInterceptor(CacheInterceptor)
+  @UseInterceptors(CacheInterceptor)
   @CacheTTL(30)
   list() {
     return { ok: true };
   }
 
   @Post('/refresh')
-  @UseInterceptor(CacheInterceptor)
+  @UseInterceptors(CacheInterceptor)
   @CacheEvict('/products')
   refresh() {
     return { refreshed: true };

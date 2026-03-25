@@ -82,10 +82,10 @@ await this.conn.transaction(async () => {
 ### Automatic request-scoped transaction (opt-in)
 
 ```typescript
-import { UseInterceptor } from '@konekti/http';
+import { UseInterceptors } from '@konekti/http';
 import { MongooseTransactionInterceptor } from '@konekti/mongoose';
 
-@UseInterceptor(MongooseTransactionInterceptor)
+@UseInterceptors(MongooseTransactionInterceptor)
 class UsersController {}
 ```
 

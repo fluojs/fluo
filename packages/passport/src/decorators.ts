@@ -1,4 +1,4 @@
-import { UseGuard } from '@konekti/http';
+import { UseGuards } from '@konekti/http';
 
 import { AuthGuard } from './guard.js';
 import { getOwnAuthRequirement } from './metadata.js';
@@ -63,12 +63,12 @@ function applyAuthRequirement(targetOrValue: Function, contextOrPropertyKey: Cla
       contextOrPropertyKey.metadata,
       mergeAuthRequirements(getOwnAuthRequirement(targetOrValue), patch),
     );
-    UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey);
+    UseGuards(AuthGuard)(targetOrValue, contextOrPropertyKey);
     return;
   }
 
   defineStandardAuthRequirement(contextOrPropertyKey.metadata, patch, contextOrPropertyKey.name);
-  UseGuard(AuthGuard)(targetOrValue, contextOrPropertyKey);
+  UseGuards(AuthGuard)(targetOrValue, contextOrPropertyKey);
 }
 
 function createAuthRequirementDecorator(patch: RequirementPatch): ClassOrMethodDecoratorLike {

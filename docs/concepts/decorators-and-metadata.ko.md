@@ -17,7 +17,7 @@ Konekti는 TC39 표준 데코레이터만을 기반으로 하는 데코레이터
 ### 핵심 데코레이터 제품군
 
 - **모듈 및 DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
-- **HTTP 라우팅**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuard()`, `@UseInterceptor()`
+- **HTTP 라우팅**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
 - **DTO 바인딩**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
 - **유효성 검사**: `@konekti/dto-validator`에서 제공하는 데코레이터들
 
