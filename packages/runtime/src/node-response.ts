@@ -3,7 +3,7 @@ import type { ServerResponse } from 'node:http';
 import {
   createErrorResponse,
   HttpException,
-  InternalServerException,
+  InternalServerErrorException,
   type FrameworkResponse,
 } from '@konekti/http';
 
@@ -164,7 +164,7 @@ function toHttpException(error: unknown): HttpException {
     return error;
   }
 
-  return new InternalServerException('Internal server error.', {
+  return new InternalServerErrorException('Internal server error.', {
     cause: error,
   });
 }

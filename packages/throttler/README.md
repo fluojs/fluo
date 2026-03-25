@@ -65,10 +65,10 @@ Bypasses throttling entirely for a specific controller class or handler method.
 DI token for the registered `ThrottlerGuard`. Inject it to use it as an explicit guard:
 
 ```typescript
-import { UseGuard } from '@konekti/http';
+import { UseGuards } from '@konekti/http';
 import { THROTTLER_GUARD } from '@konekti/throttler';
 
-@UseGuard(THROTTLER_GUARD)
+@UseGuards(THROTTLER_GUARD)
 @Controller('/api')
 class ApiController {}
 ```

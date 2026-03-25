@@ -22,9 +22,9 @@ import {
   Produces,
   RequestDto,
   SseResponse,
-  SuccessStatus,
-  UseGuard,
-  UseInterceptor,
+  HttpCode,
+  UseGuards,
+  UseInterceptors,
   assertRequestContext,
   getCurrentRequestContext,
 } from '@konekti/http';
@@ -530,8 +530,8 @@ describe('dispatcher runtime', () => {
     @Controller('/health')
     class HealthController {
       @Get('/:id')
-      @UseGuard(HealthGuard)
-      @UseInterceptor(HealthInterceptor)
+      @UseGuards($$$)
+      @UseInterceptors(HealthInterceptor)
       getHealth(_input: unknown, ctx: ReturnType<typeof assertRequestContext>) {
         events.push('handler');
         return {
@@ -598,7 +598,7 @@ describe('dispatcher runtime', () => {
     @Controller('/interceptor-order')
     class OrderedController {
       @Get('/')
-      @UseInterceptor(RouteInterceptor)
+      @UseInterceptors(RouteInterceptor)
       getValue() {
         events.push('handler');
         return { ok: true };
@@ -771,7 +771,7 @@ describe('dispatcher runtime', () => {
     @Controller('/secure')
     class SecureController {
       @Get('/resource')
-      @UseGuard(DenyGuard)
+      @UseGuards($$$)
       getSecure() {
         return { ok: true };
       }
@@ -809,7 +809,7 @@ describe('dispatcher runtime', () => {
     @Controller('/secure')
     class SecureController {
       @Get('/resource')
-      @UseGuard(PassGuard)
+      @UseGuards($$$)
       getSecure() {
         return { ok: true };
       }
@@ -841,7 +841,7 @@ describe('dispatcher runtime', () => {
     @Controller('/secure')
     class SecureController {
       @Get('/login')
-      @UseGuard(RedirectGuard)
+      @UseGuards($$$)
       getSecure() {
         events.push('handler');
         return { ok: true };
@@ -876,8 +876,8 @@ describe('dispatcher runtime', () => {
     @Controller('/errors')
     class ErrorController {
       @Get('/boom')
-      @UseGuard(PassGuard)
-      @UseInterceptor(PassInterceptor)
+      @UseGuards($$$)
+      @UseInterceptors(PassInterceptor)
       fail() {
         throw new Error('boom');
       }
@@ -916,7 +916,7 @@ describe('dispatcher runtime', () => {
     @Controller('/users')
     class UsersController {
       @RequestDto(CreateUserRequest)
-      @SuccessStatus(201)
+      @HttpCode($$$)
       @Post('/')
       createUser(input: CreateUserRequest) {
         return {

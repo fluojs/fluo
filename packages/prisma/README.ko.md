@@ -80,10 +80,10 @@ export class UserService {
 ### 4. 요청 수준 자동 트랜잭션을 위한 인터셉터 적용
 
 ```typescript
-import { UseInterceptor } from '@konekti/http';
+import { UseInterceptors } from '@konekti/http';
 import { PrismaTransactionInterceptor } from '@konekti/prisma';
 
-@UseInterceptor(PrismaTransactionInterceptor)
+@UseInterceptors(PrismaTransactionInterceptor)
 class UserController {}
 ```
 

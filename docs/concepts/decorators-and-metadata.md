@@ -17,7 +17,7 @@ Konekti uses a decorator-first approach based exclusively on TC39 standard decor
 ### core decorator families
 
 - **Module and DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
-- **HTTP Routing**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuard()`, `@UseInterceptor()`
+- **HTTP Routing**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
 - **DTO Binding**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
 - **Validation**: Decorators provided by `@konekti/dto-validator`
 

@@ -36,7 +36,7 @@ Unless overridden, the dispatcher uses method-based defaults:
 - `POST`: `201`
 - `DELETE`, `OPTIONS`: `204` if the result is `undefined`, otherwise `200`.
 
-Use `@SuccessStatus(code)` to override these defaults. Note that status resolution happens after the interceptor chain, so interceptors can still influence the final status code.
+Use `@HttpCode(code)` to override these defaults. Note that status resolution happens after the interceptor chain, so interceptors can still influence the final status code.
 
 ## dto boundaries
 
@@ -61,7 +61,7 @@ The HTTP and runtime contracts are intentionally kept narrow to ensure stability
 ### current priorities
 
 - Keep the handler signature as `handler(input, ctx)`.
-- Use plain return values and `@SuccessStatus(...)` as the primary response model.
+- Use plain return values and `@HttpCode(...)` as the primary response model.
 - Restrict middleware to the application and module levels.
 - Maintain the current boolean (allow/deny) guard model.
 
