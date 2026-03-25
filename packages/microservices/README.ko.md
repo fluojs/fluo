@@ -30,7 +30,7 @@ class MathHandler {
 })
 class AppModule {}
 
-const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'prod' });
+const microservice = await KonektiFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
@@ -145,7 +145,7 @@ class PaymentsHandler {
 런타임 앱 부트스트랩을 사용하고 동일한 컨테이너에서 마이크로서비스 런타임을 해결(resolve)합니다.
 
 ```typescript
-const app = await KonektiFactory.create(AppModule, { mode: 'prod' });
+const app = await KonektiFactory.create(AppModule);
 const microservice = await app.container.resolve(MICROSERVICE);
 
 await Promise.all([app.listen(), microservice.listen()]);

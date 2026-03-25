@@ -30,7 +30,7 @@ class MathHandler {
 })
 class AppModule {}
 
-const microservice = await KonektiFactory.createMicroservice(AppModule, { mode: 'prod' });
+const microservice = await KonektiFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
@@ -186,7 +186,7 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 Use runtime app bootstrap and resolve the microservice runtime from the same container:
 
 ```typescript
-const app = await KonektiFactory.create(AppModule, { mode: 'prod' });
+const app = await KonektiFactory.create(AppModule);
 const microservice = await app.container.resolve(MICROSERVICE);
 
 await Promise.all([app.listen(), microservice.listen()]);

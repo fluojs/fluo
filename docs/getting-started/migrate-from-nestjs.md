@@ -211,7 +211,6 @@ import { runNodeApplication } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
 await runNodeApplication(AppModule, {
-  mode: 'dev',
   port: 3000,
 });
 ```
@@ -224,7 +223,6 @@ import { AppModule } from './app.module';
 
 const app = await bootstrapApplication({
   rootModule: AppModule,
-  mode: 'dev',
 });
 
 await app.listen();
@@ -429,24 +427,27 @@ export class AppModule {}
 ### Konekti
 
 ```typescript
-import { runNodeApplication } from '@konekti/runtime';
+import { Module } from '@konekti/core';
+import { ConfigModule } from '@konekti/config';
 
-await runNodeApplication(AppModule, {
-  mode: 'dev',
-  config: {
-    defaults: { PORT: '3000' },
-    validate: (raw) => {
-      if (!raw.DATABASE_URL) {
-        throw new Error('DATABASE_URL is required');
-      }
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      validate: (raw) => {
+        if (!raw.DATABASE_URL) {
+          throw new Error('DATABASE_URL is required');
+        }
 
-      return raw as { DATABASE_URL: string; PORT: string };
-    },
-  },
-});
+        return raw as { DATABASE_URL: string; PORT: string };
+      },
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-`mode: 'dev'` loads `.env.dev` by default (and similarly for `test` and `prod`).
+`ConfigModule.forRoot()` loads the env file and registers `ConfigService` as a provider scoped to the module. Pass the `envFile` path explicitly to load a specific file.
 
 ## 8) testing
 

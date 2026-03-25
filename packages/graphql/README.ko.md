@@ -52,7 +52,6 @@ class AppResolver {
 class AppModule {}
 
 const app = await bootstrapNodeApplication(AppModule, {
-  mode: 'prod',
   port: 3000,
 });
 

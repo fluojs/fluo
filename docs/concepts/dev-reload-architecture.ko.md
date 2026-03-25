@@ -30,7 +30,7 @@ Konekti의 개발 중 갱신 경로는 두 가지이며, 서로 같은 것으로
 
 `@konekti/config`는 env 파일 기반 설정을 명시적으로 다시 읽기 위한 `createConfigReloader()`를 제공합니다.
 
-`@konekti/runtime`은 호출자가 `watch: true`를 주고 `mode: 'dev'`로 실행할 때 이 reloader를 받아들여 사용할 수 있습니다.
+`@konekti/runtime`은 호출자가 `watch: true`를 설정해 실행할 때 이 reloader를 받아들여 사용할 수 있습니다.
 
 이 경로는 의도적으로 좁게 유지됩니다.
 

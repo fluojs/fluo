@@ -17,7 +17,7 @@
 소스 목록 (낮은 우선순위 → 높은 우선순위):
 
 1. `defaults` (인라인 객체)
-2. env 파일 (`.env.dev`, `.env.test`, `.env.prod`, mode에 따라)
+2. env 파일 (`envFile` 옵션으로 지정, 기본값 `.env`)
 3. `process.env`
 4. `runtimeOverrides` (인라인 객체)
 
@@ -41,7 +41,7 @@ npm install @konekti/config
 import { loadConfig, ConfigService } from '@konekti/config';
 
 const config = loadConfig({
-  mode: 'dev',
+  envFile: '.env',
   defaults: { PORT: '3000' },
   validate: (raw) => {
     if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -55,7 +55,7 @@ service.getOptional('REDIS_URL');     // 없으면 undefined 반환
 service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 ```
 
-실제로는 `@konekti/runtime`의 `bootstrapApplication()`이 `loadConfig()`를 호출하고, 결과 `ConfigService`를 bootstrap-level provider로 등록합니다.
+실제로는 루트 모듈에서 `@konekti/config`의 `ConfigModule.forRoot()`를 사용합니다. 부트스트랩 시 `loadConfig()`를 호출하고, 결과 `ConfigService`를 provider로 등록합니다.
 
 ## 핵심 API
 
@@ -63,9 +63,8 @@ service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 
 | 옵션 | 타입 | 설명 |
 |---|---|---|
-| `mode` | `'dev' \| 'prod' \| 'test'` | 로드할 env 파일 선택 |
+| `envFile` | `string` | 로드할 env 파일 경로 (기본값 `.env`) |
 | `defaults` | `ConfigDictionary` | 가장 낮은 우선순위 값 |
-| `envFile` | `string` | 기본 `.env.<mode>` 경로를 override |
 | `cwd` | `string` | env 파일을 해석할 작업 디렉터리 지정 |
 | `processEnv` | `NodeJS.ProcessEnv` | 실제 `process.env` 대신 사용할 소스 |
 | `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
@@ -100,7 +99,6 @@ class ConfigService {
 
 ### 타입
 
-- `ConfigMode` — `'dev' | 'prod' | 'test'`
 - `ConfigDictionary`
 - `ConfigModuleOptions`
 - `ConfigLoadOptions`
@@ -129,7 +127,7 @@ createConfigReloader(options)
 
 ## 파일 읽기 순서 (기여자용)
 
-1. `src/types.ts` — mode, options, load 계약
+1. `src/types.ts` — options, load 계약
 2. `src/load.ts` — 병합 + 검증 엔트리포인트
 3. `src/service.ts` — 타입 accessor
 4. `src/load.test.ts` — 병합/오버라이드/검증 baseline 테스트
@@ -137,7 +135,7 @@ createConfigReloader(options)
 ## 관련 패키지
 
 - **`@konekti/runtime`** — `loadConfig()`를 호출하고 `ConfigService`를 provider로 등록
-- **`@konekti/cli`** — 생성된 앱이 `.env.dev` / `.env.test` / `.env.prod`를 배치하는 방식
+- **`@konekti/cli`** — 생성된 앱의 `.env` 파일 배치 방식
 
 ## 한 줄 mental model
 

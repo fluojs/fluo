@@ -303,7 +303,7 @@ export async function runFastifyApplication(
     throw error;
   }
 
-  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals(options.mode));
+  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
 
   return app;
 }
@@ -770,8 +770,8 @@ function resolvePort(value: number | undefined): number {
   return port;
 }
 
-function defaultShutdownSignals(mode: RunFastifyApplicationOptions['mode']): false | readonly FastifyApplicationSignal[] {
-  return mode === 'test' ? false : ['SIGINT', 'SIGTERM'];
+function defaultShutdownSignals(): false | readonly FastifyApplicationSignal[] {
+  return ['SIGINT', 'SIGTERM'];
 }
 
 function registerShutdownSignals(
