@@ -17,7 +17,7 @@ This guide is for teams that already ship NestJS services and want a practical m
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` or `bootstrapApplication({ rootModule: AppModule, ... })` | Runtime owns adapter wiring and startup flow. |
 | `app.listen(3000)` | `runNodeApplication(...)` (built-in listen) or `await app.listen()` after `bootstrapApplication(...)` | Both are supported depending on how much control you need. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuard()`, `@UseInterceptor()`, and `@RequestDto(...)` + `@konekti/dto-validator` decorators | Konekti does not use a separate `@UsePipes()` decorator. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, and `@RequestDto(...)` + `@konekti/dto-validator` decorators | Konekti does not use a separate `@UsePipes()` decorator. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `createTestingModule({ rootModule })` from `@konekti/testing` | Override providers, compile graph, resolve tokens. |
 
 ## 1) module mapping
@@ -267,7 +267,7 @@ if (!input.email) {
 
 ### guards
 
-Nest `@UseGuards(...)` maps to Konekti `@UseGuard(...)`.
+Nest `@UseGuards(...)` maps to Konekti `@UseGuards(...)`.
 
 ### NestJS
 
@@ -289,7 +289,7 @@ class AdminController {}
 ### Konekti
 
 ```typescript
-import { Controller, Get, UseGuard, type Guard } from '@konekti/http';
+import { Controller, Get, UseGuards, type Guard } from '@konekti/http';
 
 class AdminGuard implements Guard {
   canActivate({ requestContext }) {
@@ -299,7 +299,7 @@ class AdminGuard implements Guard {
 }
 
 @Controller('/admin')
-@UseGuard(AdminGuard)
+@UseGuards(AdminGuard)
 class AdminController {
   @Get('/')
   list() {
@@ -310,7 +310,7 @@ class AdminController {
 
 ### interceptors
 
-Nest `@UseInterceptors(...)` maps to Konekti `@UseInterceptor(...)`.
+Nest `@UseInterceptors(...)` maps to Konekti `@UseInterceptors(...)`.
 
 ### NestJS
 
@@ -333,7 +333,7 @@ class UsersController {}
 ### Konekti
 
 ```typescript
-import { Controller, Get, UseInterceptor, type Interceptor } from '@konekti/http';
+import { Controller, Get, UseInterceptors, type Interceptor } from '@konekti/http';
 
 class EnvelopeInterceptor implements Interceptor {
   async intercept(_ctx, next) {
@@ -343,7 +343,7 @@ class EnvelopeInterceptor implements Interceptor {
 }
 
 @Controller('/users')
-@UseInterceptor(EnvelopeInterceptor)
+@UseInterceptors(EnvelopeInterceptor)
 class UsersController {
   @Get('/')
   list() {
@@ -487,7 +487,7 @@ const service = await moduleRef.resolve(UserService);
 - move module declarations first (`@Module`) and keep boundaries explicit
 - replace `@Injectable()` usage with provider registration in module metadata
 - convert DI metadata to explicit `@Inject([...])` token lists where needed
-- migrate guards/interceptors with `@UseGuard` and `@UseInterceptor`
+- migrate guards/interceptors with `@UseGuards` and `@UseInterceptors`
 - move validation from Nest pipes to `@RequestDto` + `@konekti/dto-validator`
 - switch bootstrap to `runNodeApplication(...)` or `bootstrapApplication(...)`
 - migrate tests to `createTestingModule(...)` and provider overrides

@@ -158,7 +158,7 @@ describe('dispatcher success status defaults', () => {
     expect(response.body).toBeUndefined();
   });
 
-  it('keeps SuccessStatus as an override over method defaults', async () => {
+  it('keeps HttpCode as an override over method defaults', async () => {
     class UsersController {
       createUser() {
         return { accepted: true };

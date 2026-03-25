@@ -11,7 +11,7 @@ import {
   createErrorResponse,
   createSecurityHeadersMiddleware,
   HttpException,
-  InternalServerException,
+  InternalServerErrorException,
   NotFoundException,
   PayloadTooLargeException,
   type CorsOptions,
@@ -808,7 +808,7 @@ function toHttpException(error: unknown): HttpException {
     return error;
   }
 
-  return new InternalServerException('Internal server error.', {
+  return new InternalServerErrorException('Internal server error.', {
     cause: error,
   });
 }

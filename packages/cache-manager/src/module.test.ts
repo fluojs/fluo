@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, getModuleMetadata } from '@konekti/core';
-import { Controller, Get, Post, UseInterceptor, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
+import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { CacheEvict } from './decorators.js';
@@ -165,13 +165,13 @@ describe('createCacheModule', () => {
     @Controller('/products')
     class ProductController {
       @Get('/')
-      @UseInterceptor(CacheInterceptor)
+      @UseInterceptors(CacheInterceptor)
       list() {
         return listHandler();
       }
 
       @Post('/refresh')
-      @UseInterceptor(CacheInterceptor)
+      @UseInterceptors(CacheInterceptor)
       @CacheEvict('/products')
       refresh() {
         return { refreshed: true };

@@ -89,7 +89,7 @@ export class PayloadTooLargeException extends HttpException {
   }
 }
 
-export class InternalServerException extends HttpException {
+export class InternalServerErrorException extends HttpException {
   constructor(message = 'Internal server error.', options: Omit<HttpExceptionOptions, 'code'> = {}) {
     super(500, message, { ...options, code: 'INTERNAL_SERVER_ERROR' });
   }

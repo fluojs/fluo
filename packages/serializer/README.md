@@ -21,7 +21,7 @@ pnpm add @konekti/serializer
 ## Quick Start
 
 ```typescript
-import { Controller, Get, UseInterceptor } from '@konekti/http';
+import { Controller, Get, UseInterceptors } from '@konekti/http';
 import { Exclude, Expose, SerializerInterceptor } from '@konekti/serializer';
 
 @Expose({ excludeExtraneous: true })
@@ -41,7 +41,7 @@ class UserView {
 @Controller('/users')
 class UsersController {
   @Get('/')
-  @UseInterceptor(SerializerInterceptor)
+  @UseInterceptors(SerializerInterceptor)
   listUsers() {
     return [new UserView('u-1', 'secret')];
   }

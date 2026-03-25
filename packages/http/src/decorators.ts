@@ -24,10 +24,12 @@ const standardDtoBindingMetadataKey = Symbol.for('konekti.standard.dto-binding')
 
 interface StandardRouteMetadataRecord {
   guards?: GuardLike[];
+  headers?: Array<{ name: string; value: string }>;
   interceptors?: InterceptorLike[];
   method?: HttpMethod;
   path?: string;
   produces?: string[];
+  redirect?: { url: string; statusCode?: number };
   request?: Constructor;
   successStatus?: number;
   version?: string;
@@ -193,6 +195,7 @@ export const Patch = createRouteDecorator('PATCH');
 export const Delete = createRouteDecorator('DELETE');
 export const Options = createRouteDecorator('OPTIONS');
 export const Head = createRouteDecorator('HEAD');
+export const All = createRouteDecorator('ALL');
 
 export const RequestDto = createRouteValueDecorator<Constructor>((record, dto) => {
   record.request = dto;
@@ -204,7 +207,7 @@ export function Produces(...mediaTypes: string[]): MethodDecoratorLike {
   })(mediaTypes);
 }
 
-export const SuccessStatus = createRouteValueDecorator<number>((record, status) => {
+export const HttpCode = createRouteValueDecorator<number>((record, status) => {
   record.successStatus = status;
 });
 
@@ -230,7 +233,24 @@ export function Optional(): FieldDecoratorLike {
   return decorator as FieldDecoratorLike;
 }
 
-export function UseGuard(...guards: GuardLike[]): ClassOrMethodDecoratorLike {
+export function Header(name: string, value: string): MethodDecoratorLike {
+  const decorator = (_target: Function, context: ClassMethodDecoratorContext) => {
+    const route = getStandardRouteRecord(context.metadata, context.name);
+    route.headers = [...(route.headers ?? []), { name, value }];
+  };
+
+  return decorator as MethodDecoratorLike;
+}
+
+export function Redirect(url: string, statusCode?: number): MethodDecoratorLike {
+  const decorator = (_target: Function, context: ClassMethodDecoratorContext) => {
+    getStandardRouteRecord(context.metadata, context.name).redirect = { url, statusCode };
+  };
+
+  return decorator as MethodDecoratorLike;
+}
+
+export function UseGuards(...guards: GuardLike[]): ClassOrMethodDecoratorLike {
   const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     if (context.kind === 'class') {
       const controller = getStandardControllerRecord(context.metadata);
@@ -245,7 +265,7 @@ export function UseGuard(...guards: GuardLike[]): ClassOrMethodDecoratorLike {
   return decorator as ClassOrMethodDecoratorLike;
 }
 
-export function UseInterceptor(...interceptors: InterceptorLike[]): ClassOrMethodDecoratorLike {
+export function UseInterceptors(...interceptors: InterceptorLike[]): ClassOrMethodDecoratorLike {
   const decorator = (_target: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     if (context.kind === 'class') {
       const controller = getStandardControllerRecord(context.metadata);

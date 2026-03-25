@@ -2,7 +2,7 @@ import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, To
 import type { RequestScopeContainer } from '@konekti/di';
 export type { ValidationIssue, Validator } from '@konekti/dto-validator';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'ALL';
 
 export enum VersioningType {
   URI = 'URI',

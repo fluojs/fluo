@@ -17,7 +17,7 @@
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` 또는 `bootstrapApplication({ rootModule: AppModule, ... })` | 런타임이 어댑터 wiring과 시작 흐름을 소유합니다. |
 | `app.listen(3000)` | `runNodeApplication(...)` (내장 listen) 또는 `bootstrapApplication(...)` 후 `await app.listen()` | 제어 수준에 따라 선택할 수 있습니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuard()`, `@UseInterceptor()`, `@RequestDto(...)` + `@konekti/dto-validator` | 현재 공개 API에는 별도의 `@UsePipes()` 데코레이터가 없습니다. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)` + `@konekti/dto-validator` | 현재 공개 API에는 별도의 `@UsePipes()` 데코레이터가 없습니다. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `@konekti/testing`의 `createTestingModule({ rootModule })` | provider override, compile, token resolve 흐름이 유사합니다. |
 
 ## 1) 모듈 매핑
@@ -267,7 +267,7 @@ if (!input.email) {
 
 ### 가드
 
-Nest `@UseGuards(...)`는 Konekti `@UseGuard(...)`로 매핑됩니다.
+Nest `@UseGuards(...)`는 Konekti `@UseGuards(...)`로 매핑됩니다.
 
 ### NestJS
 
@@ -289,7 +289,7 @@ class AdminController {}
 ### Konekti
 
 ```typescript
-import { Controller, Get, UseGuard, type Guard } from '@konekti/http';
+import { Controller, Get, UseGuards, type Guard } from '@konekti/http';
 
 class AdminGuard implements Guard {
   canActivate({ requestContext }) {
@@ -299,7 +299,7 @@ class AdminGuard implements Guard {
 }
 
 @Controller('/admin')
-@UseGuard(AdminGuard)
+@UseGuards(AdminGuard)
 class AdminController {
   @Get('/')
   list() {
@@ -310,7 +310,7 @@ class AdminController {
 
 ### 인터셉터
 
-Nest `@UseInterceptors(...)`는 Konekti `@UseInterceptor(...)`로 매핑됩니다.
+Nest `@UseInterceptors(...)`는 Konekti `@UseInterceptors(...)`로 매핑됩니다.
 
 ### NestJS
 
@@ -333,7 +333,7 @@ class UsersController {}
 ### Konekti
 
 ```typescript
-import { Controller, Get, UseInterceptor, type Interceptor } from '@konekti/http';
+import { Controller, Get, UseInterceptors, type Interceptor } from '@konekti/http';
 
 class EnvelopeInterceptor implements Interceptor {
   async intercept(_ctx, next) {
@@ -343,7 +343,7 @@ class EnvelopeInterceptor implements Interceptor {
 }
 
 @Controller('/users')
-@UseInterceptor(EnvelopeInterceptor)
+@UseInterceptors(EnvelopeInterceptor)
 class UsersController {
   @Get('/')
   list() {
@@ -487,7 +487,7 @@ const service = await moduleRef.resolve(UserService);
 - 모듈 선언(`@Module`)을 먼저 옮기고 경계를 명시적으로 유지
 - `@Injectable()` 의존을 줄이고 provider 등록 중심으로 정리
 - 필요한 클래스에 `@Inject([...])` 토큰 목록 명시
-- 가드/인터셉터를 `@UseGuard`/`@UseInterceptor`로 이전
+- 가드/인터셉터를 `@UseGuards`/`@UseInterceptors`로 이전
 - Nest pipe 기반 검증을 `@RequestDto` + `@konekti/dto-validator`로 이전
 - 부트스트랩을 `runNodeApplication(...)` 또는 `bootstrapApplication(...)`로 전환
 - 테스트를 `createTestingModule(...)` + provider override 패턴으로 전환
