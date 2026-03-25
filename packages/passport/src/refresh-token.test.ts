@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
+
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
 import type { AuthStrategyResult } from './types.js';
@@ -121,7 +123,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('throws AuthenticationExpiredError for expired tokens', async () => {
       const service = createMockRefreshTokenService({
-        rotateRefreshToken: vi.fn().mockRejectedValue(new Error('Refresh token has expired.')),
+        rotateRefreshToken: vi.fn().mockRejectedValue(new JwtExpiredTokenError('Refresh token has expired.')),
       });
       const strategy = new RefreshTokenStrategy(service);
       const context = createGuardContext({ refreshToken: 'expired-token' });
@@ -131,7 +133,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('throws AuthenticationFailedError for reused tokens', async () => {
       const service = createMockRefreshTokenService({
-        rotateRefreshToken: vi.fn().mockRejectedValue(new Error('Refresh token reuse detected.')),
+        rotateRefreshToken: vi.fn().mockRejectedValue(new JwtInvalidTokenError('Refresh token reuse detected.')),
       });
       const strategy = new RefreshTokenStrategy(service);
       const context = createGuardContext({ refreshToken: 'reused-token' });
@@ -141,7 +143,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('throws AuthenticationFailedError for invalid tokens', async () => {
       const service = createMockRefreshTokenService({
-        rotateRefreshToken: vi.fn().mockRejectedValue(new Error('Invalid token')),
+        rotateRefreshToken: vi.fn().mockRejectedValue(new JwtInvalidTokenError('Invalid token')),
       });
       const strategy = new RefreshTokenStrategy(service);
       const context = createGuardContext({ refreshToken: 'invalid-token' });
