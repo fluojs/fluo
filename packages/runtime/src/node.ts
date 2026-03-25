@@ -9,7 +9,6 @@ import {
   NotFoundException,
   type CorsOptions,
   type Dispatcher,
-  type FrameworkRequest,
   type FrameworkResponse,
   type HttpApplicationAdapter,
   type MiddlewareLike,
@@ -266,7 +265,7 @@ export async function runNodeApplication(
     throw error;
   }
 
-  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals(options.mode));
+  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
 
   return app;
 }
@@ -549,8 +548,8 @@ function forceCloseConnections(server: import('node:http').Server, sockets: Read
   }
 }
 
-function defaultShutdownSignals(mode: RunNodeApplicationOptions['mode']): false | readonly NodeApplicationSignal[] {
-  return mode === 'test' ? false : ['SIGINT', 'SIGTERM'];
+function defaultShutdownSignals(): false | readonly NodeApplicationSignal[] {
+  return ['SIGINT', 'SIGTERM'];
 }
 
 function resolveNodePort(value: number | undefined): number {

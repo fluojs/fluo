@@ -1,4 +1,3 @@
-import type { ConfigLoadOptions, ConfigMode, ConfigService } from '@konekti/config';
 import type { Constructor, MaybePromise, Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import type {
@@ -84,7 +83,7 @@ export interface ExceptionFilterHandler {
   catch(error: unknown, context: ExceptionFilterContext): MaybePromise<boolean | void>;
 }
 
-export interface BootstrapApplicationOptions extends ConfigLoadOptions {
+export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
   /**
    * Policy for duplicate provider tokens across modules.
@@ -103,7 +102,6 @@ export interface BootstrapApplicationOptions extends ConfigLoadOptions {
   interceptors?: InterceptorLike[];
   logger?: ApplicationLogger;
   middleware?: MiddlewareLike[];
-  mode?: ConfigMode;
   observers?: RequestObserverLike[];
   providers?: Provider[];
   rootModule: ModuleType;
@@ -127,10 +125,7 @@ export interface CreateMicroserviceOptions extends CreateApplicationContextOptio
 }
 
 export interface ApplicationContext {
-  readonly config: ConfigService;
   readonly container: Container;
-  readonly envFile: string;
-  readonly mode: ConfigMode;
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;
 
@@ -139,10 +134,7 @@ export interface ApplicationContext {
 }
 
 export interface Application {
-  readonly config: ConfigService;
   readonly container: Container;
-  readonly envFile: string;
-  readonly mode: ConfigMode;
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;
   readonly state: ApplicationState;
