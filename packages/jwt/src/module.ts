@@ -3,6 +3,7 @@ import type { Provider } from '@konekti/di';
 
 import { JwtConfigurationError } from './errors.js';
 import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh-token.js';
+import { JwtService } from './service.js';
 import type { JwtVerifierOptions } from './types.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier, JWT_OPTIONS } from './verifier.js';
@@ -35,7 +36,7 @@ function createJwtModuleProviders(
   includeRefreshTokenService: boolean,
   refreshTokenServiceScope: 'singleton' | 'transient',
 ): Provider[] {
-  const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner];
+  const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner, JwtService];
 
   if (includeRefreshTokenService) {
     providers.push({
@@ -67,6 +68,10 @@ export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] 
 }
 
 export class JwtModule {
+  static register(options: JwtVerifierOptions): ModuleType {
+    return this.forRoot(options);
+  }
+
   static forRoot(options: JwtVerifierOptions): ModuleType {
     return this.createModule({
       provide: JWT_OPTIONS,
@@ -92,7 +97,7 @@ export class JwtModule {
     class JwtRuntimeModule {}
 
     defineModuleMetadata(JwtRuntimeModule, {
-      exports: [DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenService ? [RefreshTokenService] : [])],
+      exports: [JwtService, DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenService ? [RefreshTokenService] : [])],
       providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenService, refreshTokenServiceScope),
     });
 
