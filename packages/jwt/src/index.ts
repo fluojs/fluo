@@ -2,6 +2,7 @@ export * from './errors.js';
 export * from './jwks.js';
 export * from './module.js';
 export * from './refresh-token.js';
+export * from './service.js';
 export * from './signer.js';
 export * from './types.js';
 export * from './verifier.js';

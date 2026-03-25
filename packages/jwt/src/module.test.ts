@@ -5,6 +5,7 @@ import { Container, type Provider } from '@konekti/di';
 
 import { JwtModule } from './module.js';
 import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh-token.js';
+import { JwtService } from './service.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
@@ -100,6 +101,34 @@ describe('JwtModule', () => {
     const service = await container.resolve(JwtRoundTripService);
 
     await expect(service.signAndVerify('sync-user')).resolves.toBe('sync-user');
+  });
+
+  it('supports NestJS-style register alias and resolves JwtService', async () => {
+    const container = new Container();
+    const moduleType = JwtModule.register({
+      algorithms: ['HS256'],
+      issuer: 'jwt-module-tests',
+      secret: 'register-secret',
+    });
+
+    container.register(...moduleProviders(moduleType));
+
+    const jwtService = await container.resolve(JwtService);
+    const token = await jwtService.sign({ sub: 'register-user' });
+
+    await expect(jwtService.verify<{ sub?: string }>(token)).resolves.toMatchObject({
+      sub: 'register-user',
+    });
+  });
+
+  it('registers JwtService provider in module metadata', () => {
+    const moduleType = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      issuer: 'jwt-module-tests',
+      secret: 'metadata-secret',
+    });
+
+    expect(moduleProviders(moduleType).map((provider) => providerToken(provider))).toContain(JwtService);
   });
 
   it('resolves injected async options and wires them into jwt providers', async () => {
