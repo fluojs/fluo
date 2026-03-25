@@ -447,7 +447,7 @@ import { ConfigModule } from '@konekti/config';
 export class AppModule {}
 ```
 
-`ConfigModule.forRoot()` loads the env file and registers `ConfigService` as a provider scoped to the module. Pass the `envFile` path explicitly to load a specific file.
+`ConfigModule.forRoot()` loads the env file and registers `ConfigService` as a global provider by default (`isGlobal: true`). Pass `isGlobal: false` for module-only scope, and use either `envFile` or `envFilePath` to set a specific env file.
 
 ## 8) testing
 

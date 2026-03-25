@@ -447,7 +447,7 @@ import { ConfigModule } from '@konekti/config';
 export class AppModule {}
 ```
 
-`ConfigModule.forRoot()`는 env 파일을 로드하고 `ConfigService`를 모듈 스코프의 provider로 등록합니다. 특정 파일을 로드하려면 `envFile` 경로를 명시적으로 전달하세요.
+`ConfigModule.forRoot()`는 env 파일을 로드하고 기본적으로 `ConfigService`를 글로벌 provider로 등록합니다(`isGlobal: true`). 모듈 스코프로 제한하려면 `isGlobal: false`를 사용하고, 특정 env 파일은 `envFile` 또는 `envFilePath`로 지정할 수 있습니다.
 
 ## 8) 테스트
 

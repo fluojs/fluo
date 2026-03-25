@@ -19,14 +19,14 @@ This guide outlines the configuration management implemented across `@konekti/co
 
 ## core configuration principles
 
-- **Explicit File Selection**: Specify the env file path directly via `envFile`, or use the `.env` default.
+- **Explicit File Selection**: Specify the env file path directly via `envFile` (or alias `envFilePath`), or use the `.env` default.
 - **Deterministic Precedence**: One clear order for configuration resolution.
 - **Early Validation**: Configuration is validated at application startup.
 - **Typed Access**: Configurations are accessed via `ConfigService`.
 
 ## environments and files
 
-The env file path is controlled by the `envFile` option passed to `ConfigModule.forRoot()` or `loadConfig()`. It defaults to `.env` when omitted. There is no automatic file selection based on a mode name — callers decide which file to load at bootstrap time.
+The env file path is controlled by the `envFile` option (or alias `envFilePath`) passed to `ConfigModule.forRoot()` or `loadConfig()`. It defaults to `.env` when omitted. There is no automatic file selection based on a mode name — callers decide which file to load at bootstrap time.
 
 ## precedence and merging
 
@@ -34,7 +34,7 @@ The configuration resolution order is deterministic:
 
 1.  **Runtime Overrides**: Passed directly during bootstrap.
 2.  **Process Environment**: Standard system environment variables.
-3.  **Env File**: Loaded from the path set by `envFile` (defaults to `.env`).
+3.  **Env File**: Loaded from the path set by `envFile` / `envFilePath` (defaults to `.env`).
 4.  **Default Values**: Hardcoded fallback values.
 
 ### merge behavior

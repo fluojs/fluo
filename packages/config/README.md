@@ -50,8 +50,9 @@ const config = loadConfig({
 });
 
 const service = new ConfigService(config);
-service.get('DATABASE_URL');          // throws if missing
-service.getOptional('REDIS_URL');     // returns undefined if missing
+service.get('DATABASE_URL');          // returns string | undefined
+service.getOrThrow('DATABASE_URL');   // throws if missing
+service.getOptional('REDIS_URL');     // deprecated: use get()
 service.snapshot();                   // returns a deep-cloned snapshot
 ```
 
@@ -64,12 +65,14 @@ In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your 
 | Option | Type | Description |
 |---|---|---|
 | `envFile` | `string` | Path to the env file to load (defaults to `.env`) |
+| `envFilePath` | `string` | Alias for `envFile` |
 | `defaults` | `ConfigDictionary` | Lowest-precedence values |
 | `cwd` | `string` | Resolve the env file from a custom working directory |
 | `processEnv` | `NodeJS.ProcessEnv` | Override the source used instead of the live `process.env` |
 | `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
 | `validate` | `(raw) => T` | Throws on invalid config, returns typed dictionary |
 | `watch` | `boolean` | Used by `createConfigReloader(options)` to enable env file watch reloads |
+| `isGlobal` | `boolean` | Controls `ConfigModule.forRoot()` global registration (default: `true`) |
 
 ### `createConfigReloader(options)`
 
@@ -93,8 +96,9 @@ When used together with `@konekti/runtime` and `watch: true`, the runtime can ap
 
 ```typescript
 class ConfigService {
-  get<T>(key: string): T              // required — throws if missing
-  getOptional<T>(key: string): T | undefined
+  get<T>(key: string): T | undefined
+  getOrThrow<T>(key: string): T       // throws if missing
+  getOptional<T>(key: string): T | undefined // deprecated: use get()
   snapshot(): ConfigDictionary        // returns deep-cloned normalized values
 }
 ```
