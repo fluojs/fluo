@@ -566,6 +566,67 @@ describe('@konekti/cron', () => {
     await appTwo.close();
   });
 
+  it('fails bootstrap before scheduling jobs when distributed mode is enabled without REDIS_CLIENT', async () => {
+    const scheduler = createManualScheduler();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-missing-redis' })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-missing-redis',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduler.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+      'Cron distributed mode requires REDIS_CLIENT to be registered.',
+    );
+    expect(scheduler.records).toHaveLength(0);
+  });
+
+  it('fails bootstrap before scheduling jobs when REDIS_CLIENT cannot perform lock operations', async () => {
+    const scheduler = createManualScheduler();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-invalid-redis' })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-invalid-redis',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduler.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        providers: [{ provide: REDIS_CLIENT, useValue: {} }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('Cron distributed mode requires REDIS_CLIENT to implement set/eval lock operations.');
+    expect(scheduler.records).toHaveLength(0);
+  });
+
   it('releases owned distributed locks during shutdown so another node can continue', async () => {
     const firstScheduler = createManualScheduler();
     const secondScheduler = createManualScheduler();

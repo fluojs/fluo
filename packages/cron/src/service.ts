@@ -162,21 +162,13 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
 
     if (!this.runtimeContainer.has(REDIS_CLIENT)) {
-      this.logger.warn(
-        'Cron distributed mode is enabled but REDIS_CLIENT is not registered. Falling back to in-process scheduling.',
-        'CronLifecycleService',
-      );
-      return;
+      throw new Error('Cron distributed mode requires REDIS_CLIENT to be registered.');
     }
 
     const redisClient = await this.runtimeContainer.resolve(REDIS_CLIENT);
 
     if (!hasRedisLockClient(redisClient)) {
-      this.logger.warn(
-        'REDIS_CLIENT is registered but does not implement set/eval lock operations. Falling back to in-process scheduling.',
-        'CronLifecycleService',
-      );
-      return;
+      throw new Error('Cron distributed mode requires REDIS_CLIENT to implement set/eval lock operations.');
     }
 
     this.redisClient = redisClient;
