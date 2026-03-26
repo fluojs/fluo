@@ -81,7 +81,7 @@ MetricsModule.forRoot({ path: '/internal/metrics' })
 
 ### 기본 메트릭 비활성화
 
-기본적으로 `prom-client`의 `collectDefaultMetrics()`가 호출되어 표준 Node.js 프로세스 및 GC 메트릭을 등록합니다. 내장 엔드포인트가 모듈이 등록한 메트릭만 노출하게 하려면 비활성화하세요:
+기본적으로 `prom-client`의 `collectDefaultMetrics()`가 호출되어 표준 Node.js 프로세스 및 GC 메트릭을 등록합니다. `prom-client` v15에서는 이 값들을 백그라운드 interval이 아니라 scrape 시점에 수집합니다. 내장 엔드포인트가 모듈이 등록한 메트릭만 노출하게 하려면 기본 메트릭을 비활성화하세요:
 
 ```typescript
 MetricsModule.forRoot({ defaultMetrics: false })
