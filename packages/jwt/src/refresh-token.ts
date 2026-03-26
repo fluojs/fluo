@@ -166,15 +166,14 @@ export class RefreshTokenService {
     const now = Math.floor(Date.now() / 1000);
     const tokenId = randomUUID();
     const expiresAt = new Date((now + this.options.expiresInSeconds) * 1000);
-
-    await this.options.store.save({
+    const tokenRecord = {
       createdAt: new Date(now * 1000),
       expiresAt,
       family,
       id: tokenId,
       subject,
       used: false,
-    });
+    };
 
     const claims: RefreshTokenClaims = {
       exp: Math.floor(expiresAt.getTime() / 1000),
@@ -185,7 +184,11 @@ export class RefreshTokenService {
       type: 'refresh',
     };
 
-    return this.signer.signRefreshToken(claims);
+    const refreshToken = await this.signer.signRefreshToken(claims);
+
+    await this.options.store.save(tokenRecord);
+
+    return refreshToken;
   }
 
   private async verifyRefreshClaims(token: string): Promise<RefreshTokenClaims & { sub: string }> {

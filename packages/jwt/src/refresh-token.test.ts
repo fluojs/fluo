@@ -136,6 +136,32 @@ describe('RefreshTokenService', () => {
     expect(typeof payload.family).toBe('string');
   });
 
+  it('does not persist a refresh token record when signing fails', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const refreshOptions = {
+      expiresInSeconds: 3600,
+      rotation: true,
+      secret: 'refresh-secret',
+      store,
+    };
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: refreshOptions,
+      secret: 'access-secret',
+    });
+    const service = new RefreshTokenService(refreshOptions, signer, verifier);
+
+    vi.spyOn(signer, 'signRefreshToken').mockRejectedValueOnce(new Error('refresh signing failed'));
+
+    await expect(service.issueRefreshToken('user-1')).rejects.toThrow('refresh signing failed');
+    expect(store.countBySubject('user-1')).toBe(0);
+  });
+
   it('rotates refresh token and marks previous token as used', async () => {
     const store = new InMemoryRefreshTokenStore();
     const { service } = createService(store);
