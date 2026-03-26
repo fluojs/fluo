@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-The assembly layer that compiles a module graph and wires config, DI, and HTTP into a runnable application shell.
+The assembly layer that compiles a module graph and wires DI and HTTP into a runnable application shell.
 
 ## See also
 
@@ -17,14 +17,11 @@ The assembly layer that compiles a module graph and wires config, DI, and HTTP i
 
 1. Compiles the module graph: validates `imports`/`exports` visibility, detects circular imports, and ensures every resolved token is accessible.
 2. Creates the root DI container and registers all providers and controllers.
-3. Loads config via `@konekti/config` and registers `ConfigService`.
-4. Resolves singleton providers and runs lifecycle hooks (`onModuleInit` → `onApplicationBootstrap`).
-5. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
-6. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
+3. Resolves singleton providers and runs lifecycle hooks (`onModuleInit` → `onApplicationBootstrap`).
+4. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
+5. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
 
 For Node.js apps, `runNodeApplication()` is the canonical startup path. It handles the HTTP adapter, default CORS, startup logging, and graceful shutdown signal wiring.
-
-In development, runtime also owns the in-process application of validated config reloads. Source-code edits still belong to runner-level process restart.
 
 ## Installation
 
@@ -74,17 +71,6 @@ await app.dispatch(req, res);
 // Graceful shutdown
 await app.close();
 ```
-
-### Dev-mode config reload
-
-```typescript
-const app = await bootstrapApplication({
-  rootModule: AppModule,
-  watch: true,
-});
-```
-
-With `watch: true`, runtime can subscribe to `createConfigReloader()` from `@konekti/config` and apply validated env-file updates to the existing `ConfigService` instance. This path is intentionally limited to config snapshots. It does not perform general code hot reload or module hot replacement.
 
 ### Standalone application context (no HTTP adapter)
 
@@ -297,7 +283,7 @@ export class AppModule {}
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context and attach a transport-backed microservice runtime |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | Lower-level: compile module graph + build container |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | Low-level helper to attach module metadata without decorator |
-| `Application` | `src/types.ts` | Interface: `config`, `container`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
+| `Application` | `src/types.ts` | Interface: `container`, `modules`, `rootModule`, `state`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
 | `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
 | `@Global()` | `@konekti/core` | Marks a module as globally visible |
 
@@ -307,9 +293,6 @@ export class AppModule {}
 
 ```text
 runNodeApplication(options)  [or bootstrapApplication]
-  → loadConfig(...)               (@konekti/config)
-  → register ConfigService provider
-  → optionally subscribe to dev-mode config reloads
   → compileModuleGraph()
       → validate imports/exports visibility
       → detect circular imports
@@ -356,7 +339,7 @@ Additional public exports also include helpers such as `KonektiFactory`, `create
 `runNodeApplication()` consolidates Node-specific startup details that should not live in application code:
 - HTTP adapter creation and binding
 - Default CORS middleware
-- Port resolution from config
+- Port resolution from runtime options (`port`, default `3000`)
 - Startup log
 - `SIGTERM`/`SIGINT` → `app.close()` wiring
 - Request abort signal → `FrameworkRequest.signal` bridge
@@ -375,12 +358,11 @@ The Node adapter stops accepting new connections on shutdown, drains started req
 
 ## Related packages
 
-- `@konekti/config` — provides `loadConfig` and `ConfigService` used during bootstrap
 - `@konekti/di` — `Container` that `bootstrapModule` registers providers into
 - `@konekti/http` — `createHandlerMapping` and `createDispatcher` called by `bootstrapApplication`
 
 ## One-liner mental model
 
 ```text
-@konekti/runtime = metadata-validated module graph → assembled config/DI/HTTP application shell
+@konekti/runtime = metadata-validated module graph → assembled DI/HTTP application shell
 ```

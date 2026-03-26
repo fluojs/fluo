@@ -389,7 +389,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
       return this.options.graphiql;
     }
 
-    return process.env.NODE_ENV !== 'production';
+    return true;
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {

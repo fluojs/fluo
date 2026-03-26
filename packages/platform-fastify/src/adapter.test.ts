@@ -8,6 +8,7 @@ import { createHealthModule, defineModule, type ApplicationLogger } from '@konek
 
 import {
   bootstrapFastifyApplication,
+  createFastifyAdapter,
   FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from './adapter.js';
@@ -122,6 +123,42 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 describe('@konekti/platform-fastify', () => {
+  it('uses the runtime default port instead of process.env.PORT', async () => {
+    const previousPort = process.env.PORT;
+    process.env.PORT = '4321';
+
+    try {
+      const adapter = createFastifyAdapter() as FastifyHttpApplicationAdapter;
+
+      expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
+      await adapter.close();
+    } finally {
+      if (previousPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = previousPort;
+      }
+    }
+  });
+
+  it('does not fail when process.env.PORT is invalid', async () => {
+    const previousPort = process.env.PORT;
+    process.env.PORT = 'not-a-number';
+
+    try {
+      const adapter = createFastifyAdapter() as FastifyHttpApplicationAdapter;
+
+      expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
+      await adapter.close();
+    } finally {
+      if (previousPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = previousPort;
+      }
+    }
+  });
+
   it('preserves raw body for JSON and text requests when enabled', async () => {
     @Controller('/webhooks')
     class WebhookController {

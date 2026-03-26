@@ -758,10 +758,10 @@ function formatHostForAuthority(host: string): string {
 }
 
 function resolvePort(value: number | undefined): number {
-  const port = value ?? Number(process.env.PORT ?? 3000);
+  const port = value ?? 3000;
 
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid PORT value: ${String(value ?? process.env.PORT ?? 3000)}.`);
+    throw new Error(`Invalid PORT value: ${String(value ?? 3000)}.`);
   }
 
   return port;
