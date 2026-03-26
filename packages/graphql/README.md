@@ -100,7 +100,7 @@ interface GraphQLContext {
 - `schema`: schema-first input. Accepts a `GraphQLSchema` instance or SDL string.
 - `resolvers`: optional allowlist for code-first discovery.
 - `context`: adds custom GraphQL context values for each request.
-- `graphiql`: explicit GraphiQL toggle. Default is `true` unless `NODE_ENV === 'production'`.
+- `graphiql`: explicit GraphiQL toggle. Default is `true` when not set.
 - `subscriptions.websocket.enabled`: enables `graphql-ws` transport on the shared Node HTTP server while keeping SSE support available on `/graphql`.
 - `subscriptions.websocket.keepAliveMs`: custom websocket ping interval for `graphql-ws` keepalive frames.
 - `subscriptions.websocket.connectionInitWaitTimeoutMs`: custom timeout for the initial `connection_init` message.

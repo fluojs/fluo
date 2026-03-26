@@ -12,37 +12,19 @@ import type { RefreshTokenService } from './refresh-token.js';
 export const REFRESH_TOKEN_MODULE_OPTIONS = Symbol.for('konekti.passport.refresh-token-module-options');
 
 export interface RefreshTokenModuleOptions {
-  /**
-   * Secret used to sign refresh tokens.
-   * Defaults to the `REFRESH_TOKEN_SECRET` environment variable if not provided.
-   */
-  secret?: string;
-  /**
-   * Refresh token lifetime in seconds.
-   * Defaults to 604800 (7 days) if not provided.
-   */
+  secret: string;
   expiresInSeconds?: number;
-  /**
-   * Persistent store for refresh token records.
-   * Pass `'memory'` to explicitly opt into the in-memory store (development / single-instance only).
-   * Omitting this field causes a startup error, ensuring production deployments provide a real store.
-   */
   store: RefreshTokenStore | 'memory';
 }
 
 function resolveSecret(options: RefreshTokenModuleOptions): string {
-  if (options.secret) {
-    return options.secret;
-  }
-
-  const envSecret = process.env.REFRESH_TOKEN_SECRET;
-  if (!envSecret) {
+  if (!options.secret) {
     throw new JwtConfigurationError(
-      'Refresh token secret is not configured. Provide it via RefreshTokenModuleOptions.secret or the REFRESH_TOKEN_SECRET environment variable.',
+      'Refresh token secret is not configured. Provide it via RefreshTokenModuleOptions.secret.',
     );
   }
 
-  return envSecret;
+  return options.secret;
 }
 
 function createInMemoryStore(): RefreshTokenStore {

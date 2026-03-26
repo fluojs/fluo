@@ -3,7 +3,7 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-모듈 그래프를 컴파일하고 설정(config), DI, HTTP를 실행 가능한 애플리케이션 셸(shell)로 연결하는 조립 레이어입니다.
+모듈 그래프를 컴파일하고 DI, HTTP를 실행 가능한 애플리케이션 셸(shell)로 연결하는 조립 레이어입니다.
 
 ## 관련 문서
 
@@ -17,10 +17,9 @@
 
 1. 모듈 그래프 컴파일: `imports`/`exports` 가시성(visibility)을 검증하고, 순환 참조(circular imports)를 감지하며, 해결된 모든 토큰이 접근 가능한지 확인합니다.
 2. 루트 DI 컨테이너를 생성하고 모든 프로바이더와 컨트롤러를 등록합니다.
-3. `@konekti/config`를 통해 설정을 로드하고 `ConfigService`를 등록합니다.
-4. 싱글톤 프로바이더를 해결(resolve)하고 생명주기 훅(lifecycle hooks)을 실행합니다 (`onModuleInit` → `onApplicationBootstrap`).
-5. `@konekti/http`에서 `createHandlerMapping()`과 `createDispatcher()`를 호출합니다.
-6. `dispatch()`, `listen()`, `ready()`, `close()`를 포함하는 `KonektiApplication` 셸을 반환합니다.
+3. 싱글톤 프로바이더를 해결(resolve)하고 생명주기 훅(lifecycle hooks)을 실행합니다 (`onModuleInit` → `onApplicationBootstrap`).
+4. `@konekti/http`에서 `createHandlerMapping()`과 `createDispatcher()`를 호출합니다.
+5. `dispatch()`, `listen()`, `ready()`, `close()`를 포함하는 `KonektiApplication` 셸을 반환합니다.
 
 Node.js 앱의 경우 `runNodeApplication()`이 표준 시작 경로입니다. HTTP 어댑터, 기본 CORS, 시작 로깅, 그리고 정상 종료 시그널 연결(graceful shutdown signal wiring)을 처리합니다.
 
@@ -284,7 +283,7 @@ export class AppModule {}
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | DI/생명주기 컨텍스트를 부트스트랩하고 트랜스포트 기반 마이크로서비스 런타임 연결 |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | 하위 레벨: 모듈 그래프 컴파일 + 컨테이너 빌드 |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | 데코레이터 없이 모듈 메타데이터를 연결하는 하위 레벨 헬퍼 |
-| `Application` | `src/types.ts` | 인터페이스: `config`, `container`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
+| `Application` | `src/types.ts` | 인터페이스: `container`, `modules`, `rootModule`, `state`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
 | `@Module(metadata)` | `@konekti/core` | 모듈 프로바이더, 컨트롤러, 임포트, 익스포트 선언 |
 | `@Global()` | `@konekti/core` | 모듈을 전역적으로 가시성 있게 표시 |
 
@@ -294,8 +293,6 @@ export class AppModule {}
 
 ```text
 runNodeApplication(options)  [또는 bootstrapApplication]
-  → loadConfig(...)               (@konekti/config)
-  → ConfigService 프로바이더 등록
   → compileModuleGraph()
       → 임포트/익스포트 가시성 검증
       → 순환 참조 감지
@@ -342,7 +339,7 @@ runNodeApplication(options)  [또는 bootstrapApplication]
 `runNodeApplication()`은 애플리케이션 코드에 있어서는 안 될 Node 전용 시작 세부사항들을 통합합니다.
 - HTTP 어댑터 생성 및 바인딩
 - 기본 CORS 미들웨어
-- 설정으로부터 포트 해결
+- 런타임 옵션(`port`, 기본 `3000`)으로 포트 결정
 - 시작 로그
 - `SIGTERM`/`SIGINT` → `app.close()` 연결
 - 요청 중단 시그널 → `FrameworkRequest.signal` 브리지
@@ -361,12 +358,11 @@ Node 어댑터는 종료 시 새로운 연결 수락을 중단하고, 시작된 
 
 ## 관련 패키지
 
-- `@konekti/config` — 부트스트랩 중에 사용되는 `loadConfig`와 `ConfigService` 제공
 - `@konekti/di` — `bootstrapModule`이 프로바이더를 등록하는 `Container`
 - `@konekti/http` — `bootstrapApplication`에 의해 호출되는 `createHandlerMapping`과 `createDispatcher`
 
 ## 한 줄 멘탈 모델
 
 ```text
-@konekti/runtime = 메타데이터로 검증된 모듈 그래프 → 조립된 설정/DI/HTTP 애플리케이션 셸
+@konekti/runtime = 메타데이터로 검증된 모듈 그래프 → 조립된 DI/HTTP 애플리케이션 셸
 ```
