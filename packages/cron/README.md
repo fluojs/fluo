@@ -53,7 +53,7 @@ import { createRedisModule } from '@konekti/redis';
 export class AppModule {}
 ```
 
-To run in distributed mode, register `REDIS_CLIENT` (for example via `createRedisModule(...)`) alongside `createCronModule(...)`. In distributed mode each tick acquires a Redis lock before running and attempts lock renewal while work is in progress; if lock ownership is lost or renewal fails before completion, the tick is treated as failed. When `REDIS_CLIENT` is missing, runtime logs a warning and falls back to in-process scheduling.
+To run in distributed mode, register `REDIS_CLIENT` (for example via `createRedisModule(...)`) alongside `createCronModule(...)`. In distributed mode each tick acquires a Redis lock before running and attempts lock renewal while work is in progress; if lock ownership is lost or renewal fails before completion, the tick is treated as failed. If `REDIS_CLIENT` is missing or does not implement the required `set`/`eval` lock operations, application bootstrap fails instead of silently falling back to in-process scheduling.
 
 ## API
 
