@@ -39,7 +39,10 @@ function defaultKeyGenerator(ctx: MiddlewareContext): string {
 }
 
 function buildStoreKey(handlerKey: string, clientKey: string): string {
-  return `throttler:${handlerKey}:${clientKey}`;
+  const encodedHandlerKey = encodeURIComponent(handlerKey);
+  const encodedClientKey = encodeURIComponent(clientKey);
+
+  return `throttler:${encodedHandlerKey}:${encodedClientKey}`;
 }
 
 function getFunctionIdentity(value: Function): number {
