@@ -29,6 +29,10 @@ type ActiveRequestTransactionHandle = {
   settle(): void;
 };
 
+type PrismaClientVersionCarrier = {
+  _clientVersion?: unknown;
+};
+
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -105,17 +109,58 @@ export class PrismaService<
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    const transactionPromise = this.runWithTransactionClient<T>(
+      () => raceWithAbort(fn, abortContext.signal),
+      (callback, transactionOptions) =>
+        this.runRequestTransactionWithAbortSignal(callback, abortContext.signal, transactionOptions),
+      options,
+    );
 
     try {
-      return await this.runWithTransactionClient(
-        () => raceWithAbort(fn, abortContext.signal),
-        (callback, transactionOptions) => this.client.$transaction!(callback, transactionOptions),
-        options,
-      );
+      return await transactionPromise;
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);
     }
+  }
+
+  private runRequestTransactionWithAbortSignal<T>(
+    callback: (transactionClient: TTransactionClient) => Promise<T>,
+    signal: AbortSignal,
+    options?: TTransactionOptions,
+  ): Promise<T> {
+    if (!this.supportsTransactionAbortSignalOption(options)) {
+      return this.client.$transaction!<T>(callback, options);
+    }
+
+    return this.client.$transaction!<T>(callback, this.withTransactionAbortSignal(options, signal));
+  }
+
+  private supportsTransactionAbortSignalOption(options?: TTransactionOptions): boolean {
+    if (options !== undefined && (typeof options !== 'object' || options === null)) {
+      return false;
+    }
+
+    const clientVersion = (this.client as PrismaClientVersionCarrier)._clientVersion;
+
+    if (typeof clientVersion !== 'string') {
+      return false;
+    }
+
+    const majorVersion = Number.parseInt(clientVersion.split('.')[0] ?? '', 10);
+
+    return Number.isInteger(majorVersion) && majorVersion >= 5;
+  }
+
+  private withTransactionAbortSignal(options: TTransactionOptions | undefined, signal: AbortSignal): TTransactionOptions {
+    if (options === undefined) {
+      return { signal } as TTransactionOptions;
+    }
+
+    return {
+      ...(options as Record<string, unknown>),
+      signal,
+    } as TTransactionOptions;
   }
 
   private trackActiveRequestTransaction(controller: AbortController): ActiveRequestTransactionHandle {
