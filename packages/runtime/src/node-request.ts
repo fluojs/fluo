@@ -130,6 +130,14 @@ function readPrimaryHeaderValue(headerValue: string | string[] | undefined): str
   return headerValue;
 }
 
+function decodeCookieValue(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<string, string> {
   const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
 
@@ -149,7 +157,7 @@ function parseCookieHeader(cookieHeader: string | string[] | undefined): Record<
           return [pair.trim(), ''] as [string, string];
         }
 
-        return [pair.slice(0, index).trim(), decodeURIComponent(pair.slice(index + 1).trim())] as [string, string];
+        return [pair.slice(0, index).trim(), decodeCookieValue(pair.slice(index + 1).trim())] as [string, string];
       }),
   );
 }
