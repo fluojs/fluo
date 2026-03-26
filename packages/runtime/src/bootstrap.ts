@@ -412,7 +412,11 @@ class KonektiApplicationContext implements ApplicationContext {
         cleanup();
       }
 
-      await runShutdownHooks(this.lifecycleInstances, signal);
+      try {
+        await runShutdownHooks(this.lifecycleInstances, signal);
+      } catch (error) {
+        console.error('[konekti] shutdown hook threw an error:', error);
+      }
       await disposeContainer(this.container);
       this.closed = true;
     })();

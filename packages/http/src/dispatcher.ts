@@ -291,7 +291,12 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           await handleDispatchError(phaseContext, error);
         } finally {
           await notifyRequestFinish(phaseContext);
-          await phaseContext.requestContext.container.dispose();
+          try {
+            await phaseContext.requestContext.container.dispose();
+          } catch (error) {
+            // dispose errors are logged but must not mask the original request error
+            console.error('[konekti] request-scoped container dispose threw an error:', error);
+          }
         }
       });
     },
