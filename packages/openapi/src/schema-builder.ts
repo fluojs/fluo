@@ -621,7 +621,7 @@ function buildComponentSchemaShape(
     const rules = entry.validation?.rules ?? [];
     ensureNestedSchemasFromRules(rules, componentSchemas, context);
 
-    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? { type: 'string' };
+    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? {};
     properties[entry.name] = applyValidationConstraints(inferred, rules);
 
     if (isPropertyRequired(entry.binding, entry.validation)) {
@@ -660,7 +660,7 @@ function createParameters(
   return entries.map((entry) => {
     const source = entry.binding.metadata.source as 'cookie' | 'header' | 'path' | 'query';
     const rules = entry.validation?.rules ?? [];
-    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? { type: 'string' as const };
+    const inferred = inferPrimitiveTypeFromRules(rules, context) ?? {};
     const schema = alignParameterSchemaWithRuntimeBindingContract(applyValidationConstraints(inferred, rules), source);
     const isRequired = source === 'path' ? true : isPropertyRequired(entry.binding, entry.validation);
 

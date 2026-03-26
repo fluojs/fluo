@@ -36,13 +36,22 @@ type OpenApiOptionsProvider =
       useFactory: (...deps: unknown[]) => MaybePromise<OpenApiModuleOptions>;
     };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 function createSwaggerUiHtml(title: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <link rel="stylesheet" href="${SWAGGER_UI_CSS_URL}" />
   </head>
   <body>
