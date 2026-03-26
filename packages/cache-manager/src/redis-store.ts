@@ -60,7 +60,6 @@ export class RedisStore implements CacheStore {
   }
 
   async get<T = unknown>(key: string): Promise<T | undefined> {
-    const now = Date.now();
     const redisKey = this.toRedisKey(key);
     const raw = await this.client.get(redisKey);
 
@@ -70,8 +69,7 @@ export class RedisStore implements CacheStore {
 
     const decoded = parseEntry(raw);
 
-    if (!decoded || (decoded.expiresAt !== undefined && now >= decoded.expiresAt)) {
-      await this.client.del(redisKey);
+    if (!decoded) {
       return undefined;
     }
 

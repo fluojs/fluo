@@ -15,13 +15,35 @@ const baseOptions: NormalizedCacheModuleOptions = {
 
 class MockRedisClient {
   readonly storage = new Map<string, string>();
+  private readonly expiry = new Map<string, number>();
 
   async get(key: string): Promise<string | null> {
+    const expiresAt = this.expiry.get(key);
+
+    if (expiresAt !== undefined && Date.now() >= expiresAt) {
+      this.storage.delete(key);
+      this.expiry.delete(key);
+      return null;
+    }
+
     return this.storage.get(key) ?? null;
   }
 
   async set(key: string, value: string, ...args: Array<string | number>): Promise<'OK'> {
     this.storage.set(key, value);
+
+    const exIndex = args.findIndex((a) => a === 'EX');
+
+    if (exIndex >= 0) {
+      const ttlSeconds = Number(args[exIndex + 1]);
+
+      if (Number.isFinite(ttlSeconds) && ttlSeconds > 0) {
+        this.expiry.set(key, Date.now() + ttlSeconds * 1000);
+      }
+    } else {
+      this.expiry.delete(key);
+    }
+
     return 'OK';
   }
 
