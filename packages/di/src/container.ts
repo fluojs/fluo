@@ -111,6 +111,7 @@ export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
+  private readonly multiSingletonCache = new WeakMap<NormalizedProvider, Promise<unknown>>();
   private readonly staleDisposalTasks = new Set<Promise<void>>();
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
@@ -339,7 +340,25 @@ export class Container {
     const instances: unknown[] = [];
 
     for (const provider of providers) {
-      instances.push(await this.instantiate(provider, chain, activeTokens));
+      if (provider.type === 'existing') {
+        instances.push(await this.resolveWithChain(provider.useExisting as Token, chain, activeTokens));
+        continue;
+      }
+
+      if (provider.scope === 'transient') {
+        instances.push(await this.instantiate(provider, chain, activeTokens));
+        continue;
+      }
+
+      const rootCache = this.root().multiSingletonCache;
+
+      if (!rootCache.has(provider)) {
+        const promise = this.instantiate(provider, chain, activeTokens);
+        rootCache.set(provider, promise);
+        promise.catch(() => rootCache.delete(provider));
+      }
+
+      instances.push(await rootCache.get(provider)!);
     }
 
     return instances;
@@ -571,6 +590,8 @@ export class Container {
     switch (provider.type) {
       case 'value':
         return provider.useValue as T;
+      case 'existing':
+        return await this.resolveWithChain(provider.useExisting as Token<T>, [], new Set());
       case 'factory': {
         if (!provider.useFactory) {
           throw new InvariantError('Factory provider is missing useFactory.');

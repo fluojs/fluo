@@ -331,7 +331,10 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       const method = request.method.toUpperCase() as HttpMethod;
       const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
       const incomingSegments = splitPathSegments(request.path);
-      const candidates = descriptorIndex.get(method)?.get(incomingSegments.length) ?? [];
+      const candidates = [
+        ...(descriptorIndex.get(method)?.get(incomingSegments.length) ?? []),
+        ...(descriptorIndex.get('ALL' as HttpMethod)?.get(incomingSegments.length) ?? []),
+      ];
       let firstUnversionedMatch: HandlerMatch | undefined;
 
       for (const candidate of candidates) {
