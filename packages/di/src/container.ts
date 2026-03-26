@@ -705,29 +705,29 @@ export class Container {
       this.requestCache.delete(token);
     }
 
-    if (this.parent || scope !== Scope.DEFAULT) {
-      return;
+    if (!this.parent && scope === Scope.DEFAULT) {
+      const singletonCache = this.singletonCache;
+
+      if (singletonCache.has(token)) {
+        const cached = singletonCache.get(token);
+
+        if (cached) {
+          this.scheduleStaleDisposal(cached);
+        }
+
+        singletonCache.delete(token);
+      }
     }
 
-    const singletonCache = this.singletonCache;
+    if (!this.parent) {
+      for (const [provider, cached] of this.multiSingletonCache.entries()) {
+        if (provider.provide !== token) {
+          continue;
+        }
 
-    if (singletonCache.has(token)) {
-      const cached = singletonCache.get(token);
-
-      if (cached) {
         this.scheduleStaleDisposal(cached);
+        this.multiSingletonCache.delete(provider);
       }
-
-      singletonCache.delete(token);
-    }
-
-    for (const [provider, cached] of this.multiSingletonCache.entries()) {
-      if (provider.provide !== token) {
-        continue;
-      }
-
-      this.scheduleStaleDisposal(cached);
-      this.multiSingletonCache.delete(provider);
     }
   }
 }

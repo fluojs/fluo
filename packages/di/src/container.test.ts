@@ -804,5 +804,37 @@ describe('Container', () => {
       expect(events).toContain('plugin-a');
       expect(events).toContain('plugin-b');
     });
+
+    it('evicts multi singleton cache when override uses non-default scope', async () => {
+      const events: string[] = [];
+      const token = Symbol('multi-non-default-scope-override');
+
+      class PluginA {
+        onDestroy() {
+          events.push('plugin-a');
+        }
+      }
+
+      class PluginB {
+        onDestroy() {
+          events.push('plugin-b');
+        }
+      }
+
+      const container = new Container().register(
+        { provide: token, useClass: PluginA, multi: true },
+      );
+
+      await container.resolve(token);
+
+      container.override({ provide: token, useClass: PluginB, multi: true, scope: 'transient' });
+      await Promise.resolve();
+
+      expect(events).toContain('plugin-a');
+
+      await container.dispose();
+
+      expect(events.filter((e) => e === 'plugin-a')).toHaveLength(1);
+    });
   });
 });
