@@ -160,6 +160,90 @@ describe('@konekti/prisma', () => {
     ]);
   });
 
+  it('waits for delayed request transaction settlement before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    const transactionClient = {};
+    let releaseRollback!: () => void;
+    const rollbackBarrier = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+
+    const client = {
+      _clientVersion: '5.11.0',
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { signal?: AbortSignal },
+      ): Promise<T> {
+        events.push('transaction:start');
+        events.push(options?.signal ? 'transaction:signal' : 'transaction:no-signal');
+
+        try {
+          return await callback(transactionClient);
+        } catch (error) {
+          events.push('transaction:rollback:pending');
+          await rollbackBarrier;
+          events.push('transaction:rollback:done');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient, { signal?: AbortSignal }>({
+      client,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const prisma = await app.container.resolve(
+      PrismaService<typeof client, typeof transactionClient, { signal?: AbortSignal }>,
+    );
+
+    const requestAbortController = new AbortController();
+    const openTransaction = prisma.requestTransaction(
+      async () => new Promise<never>(() => undefined),
+      requestAbortController.signal,
+    );
+
+    requestAbortController.abort(new Error('request aborted'));
+    await Promise.resolve();
+
+    const shutdownPromise = app.close();
+
+    await Promise.resolve();
+    expect(events).toContain('transaction:rollback:pending');
+    expect(events).not.toContain('disconnect');
+
+    releaseRollback();
+
+    await expect(openTransaction).rejects.toThrow();
+    await shutdownPromise;
+
+    expect(events).toEqual([
+      'connect',
+      'transaction:start',
+      'transaction:signal',
+      'transaction:rollback:pending',
+      'transaction:rollback:done',
+      'transaction:end',
+      'disconnect',
+    ]);
+  });
+
   it('runs nested request and service transactions through a single transaction boundary', async () => {
     let transactionCalls = 0;
     const transactionClient = {
@@ -196,21 +280,23 @@ describe('@konekti/prisma', () => {
   });
 
   it('forwards transaction options for explicit and request-scoped transactions', async () => {
-    const optionsCalls: Array<{ isolationLevel: string } | undefined> = [];
+    const optionsCalls: Array<{ isolationLevel: string; signal?: AbortSignal } | undefined> = [];
     const transactionClient = {
       kind: 'transaction' as const,
     };
     const client = {
+      _clientVersion: '5.11.0',
       async $connect() {},
       async $disconnect() {},
       async $transaction<T>(
         callback: (value: typeof transactionClient) => Promise<T>,
-        options?: { isolationLevel: string },
+        options?: { isolationLevel: string; signal?: AbortSignal },
       ): Promise<T> {
         optionsCalls.push(options);
         return callback(transactionClient);
       },
     };
+    const requestAbortController = new AbortController();
 
     const prisma = new PrismaService<typeof client, typeof transactionClient, { isolationLevel: string }>(client);
 
@@ -218,13 +304,45 @@ describe('@konekti/prisma', () => {
       transactionClient,
     );
     await expect(
-      prisma.requestTransaction(async () => prisma.current(), undefined, { isolationLevel: 'read committed' }),
+      prisma.requestTransaction(async () => prisma.current(), requestAbortController.signal, {
+        isolationLevel: 'read committed',
+      }),
     ).resolves.toBe(transactionClient);
 
-    expect(optionsCalls).toEqual([
-      { isolationLevel: 'serializable' },
-      { isolationLevel: 'read committed' },
-    ]);
+    expect(optionsCalls[0]).toEqual({ isolationLevel: 'serializable' });
+    expect(optionsCalls[1]).toMatchObject({ isolationLevel: 'read committed' });
+    expect(optionsCalls[1]?.signal).toBeDefined();
+    expect(optionsCalls[1]?.signal).not.toBe(requestAbortController.signal);
+  });
+
+  it('does not inject request signal into transaction options for legacy Prisma clients', async () => {
+    const optionsCalls: Array<{ isolationLevel: string; signal?: AbortSignal } | undefined> = [];
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      _clientVersion: '4.16.2',
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { isolationLevel: string; signal?: AbortSignal },
+      ): Promise<T> {
+        optionsCalls.push(options);
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { isolationLevel: string }>(client);
+    const requestAbortController = new AbortController();
+
+    await expect(
+      prisma.requestTransaction(async () => prisma.current(), requestAbortController.signal, {
+        isolationLevel: 'repeatable read',
+      }),
+    ).resolves.toBe(transactionClient);
+
+    expect(optionsCalls).toEqual([{ isolationLevel: 'repeatable read' }]);
   });
 
   it('rejects nested transaction options to avoid silent option drops', async () => {
