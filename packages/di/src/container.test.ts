@@ -698,6 +698,48 @@ describe('Container', () => {
       expect(events).toEqual(['first', 'second']);
     });
 
+    it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
+      const events: string[] = [];
+      const token = Symbol('multi-rotating-disposable-token');
+
+      class PluginA {
+        onDestroy() {
+          events.push('plugin-a');
+        }
+      }
+
+      class PluginB {
+        onDestroy() {
+          events.push('plugin-b');
+        }
+      }
+
+      class PluginC {
+        onDestroy() {
+          events.push('plugin-c');
+        }
+      }
+
+      const container = new Container().register(
+        { provide: token, useClass: PluginA, multi: true },
+        { provide: token, useClass: PluginB, multi: true },
+      );
+
+      await container.resolve(token);
+
+      container.override({ provide: token, useClass: PluginC, multi: true });
+      await Promise.resolve();
+
+      expect(events.slice().sort()).toEqual(['plugin-a', 'plugin-b']);
+
+      await container.resolve(token);
+      await container.dispose();
+
+      expect(events.filter((event) => event === 'plugin-a')).toHaveLength(1);
+      expect(events.filter((event) => event === 'plugin-b')).toHaveLength(1);
+      expect(events.filter((event) => event === 'plugin-c')).toHaveLength(1);
+    });
+
     it('does not retain stale singleton instances across repeated overrides', async () => {
       const events: string[] = [];
       const token = Symbol('rotating-disposable-token');

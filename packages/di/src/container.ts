@@ -506,7 +506,7 @@ export class Container {
     return entries;
   }
 
-  private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
+  private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
     await this.waitForStaleDisposalTasks();
 
     const { disposables, errors } = await this.collectDisposableInstances(entries);
@@ -719,6 +719,15 @@ export class Container {
       }
 
       singletonCache.delete(token);
+    }
+
+    for (const [provider, cached] of this.multiSingletonCache.entries()) {
+      if (provider.provide !== token) {
+        continue;
+      }
+
+      this.scheduleStaleDisposal(cached);
+      this.multiSingletonCache.delete(provider);
     }
   }
 }
