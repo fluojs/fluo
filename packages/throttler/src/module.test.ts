@@ -407,7 +407,7 @@ describe('ThrottlerGuard — Redis store mock', () => {
     };
 
     const guard = new ThrottlerGuard({ limit: 2, store, ttl: 60 });
-    const ctx = createRequestContext('10.0.0.9');
+    const ctx = createRequestContext('2001:db8::1');
     class RateController {
       hit() {}
     }
@@ -424,12 +424,26 @@ describe('ThrottlerGuard — Redis store mock', () => {
 
     const key = vi.mocked(store.consume).mock.calls[0]?.[0];
 
-    expect(key).toContain('method:POST');
-    expect(key).toContain('path:%2Fv1%2Frate-limit');
-    expect(key).toContain('version:1');
-    expect(key).toContain('handler:hit');
-    expect(key).toContain('module:');
-    expect(key).toContain('controller:');
-    expect(key).toContain(':10.0.0.9');
+    expect(key).toBeDefined();
+
+    const delimiterCount = (key?.match(/:/g) ?? []).length;
+    expect(delimiterCount).toBe(2);
+
+    const [prefix, encodedHandler, encodedClient] = key?.split(':', 3) ?? [];
+
+    expect(prefix).toBe('throttler');
+    expect(encodedHandler).toBeTruthy();
+    expect(encodedClient).toBeTruthy();
+
+    const decodedHandler = decodeURIComponent(encodedHandler ?? '');
+    const decodedClient = decodeURIComponent(encodedClient ?? '');
+
+    expect(decodedHandler).toContain('method:POST');
+    expect(decodedHandler).toContain('path:%2Fv1%2Frate-limit');
+    expect(decodedHandler).toContain('version:1');
+    expect(decodedHandler).toContain('handler:hit');
+    expect(decodedHandler).toContain('module:');
+    expect(decodedHandler).toContain('controller:');
+    expect(decodedClient).toBe('2001:db8::1');
   });
 });

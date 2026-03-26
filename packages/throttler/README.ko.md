@@ -97,7 +97,7 @@ class AppBootstrap {
 ## 동작 방식
 
 - 속도 제한 키의 기본값은 `socket.remoteAddress`입니다. 헤더 기반 키(예: `x-api-key`)를 사용하려면 `keyGenerator`를 제공하세요.
-- 저장소 키는 `throttler:<handler-key>:<client-key>` 형태로 구성됩니다. 여기서 `<handler-key>`는 클래스나 메서드 이름이 같은 핸들러 간의 충돌을 방지하기 위해 경로 메서드/경로/버전 및 컨트롤러/모듈 토큰 식별자를 포함합니다.
+- 저장소 키는 `throttler:<encoded-handler-key>:<encoded-client-key>` 형태로 구성됩니다. 두 키 세그먼트는 모두 `encodeURIComponent(...)`로 인코딩되므로 IPv6 주소처럼 `:`를 포함하는 클라이언트 키도 구분자 경계와 충돌하지 않습니다. 디코딩된 `<handler-key>`에는 클래스나 메서드 이름이 같은 핸들러 간의 충돌을 방지하기 위한 경로 메서드/경로/버전 및 컨트롤러/모듈 토큰 식별자가 포함됩니다.
 - 제한을 초과하면 `ThrottlerGuard`는 `TooManyRequestsException` (HTTP 429)을 발생시키고, `Retry-After` 응답 헤더에 현재 윈도우에 남은 시간을 초 설정합니다.
 - 메서드 레벨의 `@Throttle`은 클래스 레벨의 `@Throttle`을 오버라이드하며, 클래스 레벨은 모듈 레벨의 기본값을 오버라이드합니다 (이 우선순위 순서대로 적용).
 - 어느 레벨에서든 `@SkipThrottle()`이 설정되면 무조건 우선권을 갖습니다.
