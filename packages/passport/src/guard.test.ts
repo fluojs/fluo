@@ -413,6 +413,38 @@ describe('AuthGuard', () => {
     expect(subjects).toEqual(['alpha', 'beta']);
   });
 
+  it('rejects handled:true result when response is not committed and principal is absent', async () => {
+    class BrokenHandledStrategy implements AuthStrategy {
+      async authenticate(): Promise<{ handled: true }> {
+        return { handled: true };
+      }
+    }
+
+    @Controller('/protected')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('broken')
+      getResource() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      BrokenHandledStrategy,
+      ...createPassportProviders({ defaultStrategy: 'broken' }, [{ name: 'broken', token: BrokenHandledStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/protected', { 'x-request-id': 'req-handled-bypass' }), response);
+
+    expect(response.statusCode).toBe(401);
+  });
+
   it('supports Passport.js redirect flow without executing the protected handler', async () => {
     let handlerCalled = false;
 
