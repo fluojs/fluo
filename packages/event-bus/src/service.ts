@@ -124,19 +124,19 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
+    const publishOptions = this.resolvePublishOptions(options);
 
     const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
     const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors);
 
-    if (matchingDescriptors.length === 0) {
-      await transportPublish;
+    if (!publishOptions.waitForHandlers) {
+      const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
+      this.runInvocationTasksInBackground([...backgroundTasks, transportPublish]);
+
       return;
     }
 
-    const publishOptions = this.resolvePublishOptions(options);
-    if (!publishOptions.waitForHandlers) {
-      const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
-      this.runInvocationTasksInBackground(backgroundTasks);
+    if (matchingDescriptors.length === 0) {
       await transportPublish;
 
       return;

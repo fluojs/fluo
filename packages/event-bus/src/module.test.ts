@@ -808,6 +808,46 @@ describe('@konekti/event-bus', () => {
       await app.close();
     });
 
+    it('does not block on transport.publish() when waitForHandlers is false', async () => {
+      const gate = createDeferred<void>();
+      const transport = {
+        publishCompleted: false,
+        published: [] as Array<{ channel: string; payload: unknown }>,
+        async publish(channel: string, payload: unknown) {
+          this.published.push({ channel, payload });
+          await gate.promise;
+          this.publishCompleted = true;
+        },
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+        async close() {},
+      } satisfies EventBusTransport & {
+        publishCompleted: boolean;
+        published: Array<{ channel: string; payload: unknown }>;
+      };
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+
+      await expect(
+        eventBus.publish(new UserCreatedEvent('transport-user-nowait'), { waitForHandlers: false }),
+      ).resolves.toBeUndefined();
+
+      expect(transport.published).toHaveLength(1);
+      expect(transport.publishCompleted).toBe(false);
+
+      gate.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(transport.publishCompleted).toBe(true);
+
+      await app.close();
+    });
+
     it('subscribes to a channel per discovered local handler event type on bootstrap', async () => {
       const transport = createMockTransport();
 
