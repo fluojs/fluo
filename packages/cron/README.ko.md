@@ -53,7 +53,7 @@ createCronModule({
 export class AppModule {}
 ```
 
-분산 모드를 실제로 사용하려면 `createRedisModule(...)`로 `REDIS_CLIENT`를 함께 등록해야 합니다. 이때만 락을 획득한 인스턴스가 tick 작업을 실행하며, 실행 중에는 락 갱신을 시도합니다. `REDIS_CLIENT`가 없으면 런타임은 경고를 남기고 인프로세스 스케줄링으로 fallback합니다.
+분산 모드를 실제로 사용하려면 `createRedisModule(...)`로 `REDIS_CLIENT`를 함께 등록해야 합니다. 이때만 락을 획득한 인스턴스가 tick 작업을 실행하며, 실행 중에는 락 갱신을 시도합니다. `REDIS_CLIENT`가 없거나 필요한 `set`/`eval` 락 연산을 구현하지 않으면, 런타임은 인프로세스 스케줄링으로 조용히 fallback하지 않고 애플리케이션 부트스트랩을 실패시킵니다.
 
 ## API
 
