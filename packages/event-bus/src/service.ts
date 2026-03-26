@@ -137,7 +137,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     if (!publishOptions.waitForHandlers) {
       const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
       this.runInvocationTasksInBackground(backgroundTasks);
-      this.runInvocationTasksInBackground([transportPublish]);
+      await transportPublish;
 
       return;
     }
