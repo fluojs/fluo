@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 import type { PackageManager } from './types.js';
 
@@ -7,10 +7,35 @@ export interface InstallCommand {
   command: string;
 }
 
-export function resolveInstallCommand(packageManager: PackageManager): InstallCommand {
+export interface ResolveInstallCommandOptions {
+  isCorepackAvailable?: boolean;
+}
+
+const COREPACK_DOCS_URL = 'https://nodejs.org/api/corepack.html';
+
+function checkCommandAvailability(command: string): boolean {
+  const checker = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(checker, [command], { stdio: 'ignore' });
+
+  return result.status === 0;
+}
+
+export function resolveInstallCommand(
+  packageManager: PackageManager,
+  options: ResolveInstallCommandOptions = {},
+): InstallCommand {
   if (packageManager === 'yarn') {
+    const isCorepackAvailable = options.isCorepackAvailable ?? checkCommandAvailability('corepack');
+
+    if (!isCorepackAvailable) {
+      return {
+        args: ['install'],
+        command: 'yarn',
+      };
+    }
+
     return {
-      args: ['yarn', 'install', '--no-cache'],
+      args: ['yarn', 'install'],
       command: 'corepack',
     };
   }
@@ -22,7 +47,14 @@ export function resolveInstallCommand(packageManager: PackageManager): InstallCo
 }
 
 export async function installDependencies(targetDirectory: string, packageManager: PackageManager): Promise<void> {
-  const { args, command } = resolveInstallCommand(packageManager);
+  const hasCorepack = packageManager === 'yarn' ? checkCommandAvailability('corepack') : undefined;
+  const { args, command } = resolveInstallCommand(packageManager, { isCorepackAvailable: hasCorepack });
+
+  if (packageManager === 'yarn' && hasCorepack === false) {
+    console.warn(
+      `[konekti] corepack was not found in PATH, falling back to "yarn install". See ${COREPACK_DOCS_URL}`,
+    );
+  }
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
