@@ -44,7 +44,6 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
     await this.ensureDiscovered();
-    await this.eventBus.publish(event);
 
     for (const descriptor of this.matchEventDescriptors(event)) {
       const instance = await this.resolveHandlerInstance(descriptor.token);
@@ -57,6 +56,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
 
     await this.sagaService.dispatch(event);
+    await this.eventBus.publish(event);
   }
 
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {

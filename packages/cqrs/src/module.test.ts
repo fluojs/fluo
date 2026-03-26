@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@konekti/core';
 import { Container } from '@konekti/di';
-import { OnEvent } from '@konekti/event-bus';
+import { OnEvent, type EventBusTransport } from '@konekti/event-bus';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
@@ -529,6 +529,40 @@ describe('@konekti/cqrs', () => {
     await app.close();
   });
 
+  it('does not publish to transport when a CQRS event handler fails', async () => {
+    const transport = {
+      published: [] as Array<{ channel: string; payload: unknown }>,
+      async publish(channel: string, payload: unknown) {
+        this.published.push({ channel, payload });
+      },
+      async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      async close() {},
+    } satisfies EventBusTransport & {
+      published: Array<{ channel: string; payload: unknown }>;
+    };
+
+    @EventHandler(UserCreatedEvent)
+    class FailingEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(_event: UserCreatedEvent): void {
+        throw new Error('handler exploded');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule({ eventBus: { transport } })],
+      providers: [FailingEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(eventBus.publish(new UserCreatedEvent('alice'))).rejects.toThrow('handler exploded');
+    expect(transport.published).toEqual([]);
+
+    await app.close();
+  });
+
   it('processes saga events in a deterministic order under concurrent publish calls', async () => {
     class SequenceStore {
       seen: number[] = [];
@@ -687,7 +721,7 @@ describe('@konekti/cqrs', () => {
 
     expect(commandCount).toBe(1);
     expect(store.commandCount).toBe(1);
-    expect(store.eventNames).toEqual(['on:alice', 'alice', 'on:bob', 'bob']);
+    expect(store.eventNames).toEqual(['alice', 'on:alice', 'bob', 'on:bob']);
 
     await app.close();
   });
