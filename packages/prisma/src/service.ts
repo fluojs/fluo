@@ -147,7 +147,8 @@ export class PrismaService<
       return false;
     }
 
-    const majorVersion = Number.parseInt(clientVersion.split('.')[0] ?? '', 10);
+    const rawSegment = clientVersion.split('.')[0] ?? '';
+    const majorVersion = Number.parseInt(rawSegment.replace(/^v/i, ''), 10);
 
     return Number.isInteger(majorVersion) && majorVersion >= 5;
   }

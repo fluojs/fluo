@@ -345,6 +345,32 @@ describe('@konekti/prisma', () => {
     expect(optionsCalls).toEqual([{ isolationLevel: 'repeatable read' }]);
   });
 
+  it('injects request signal when _clientVersion uses a v-prefixed format', async () => {
+    const optionsCalls: Array<{ signal?: AbortSignal } | undefined> = [];
+    const transactionClient = {};
+    const client = {
+      _clientVersion: 'v5.0.0',
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { signal?: AbortSignal },
+      ): Promise<T> {
+        optionsCalls.push(options);
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { signal?: AbortSignal }>(client);
+    const requestAbortController = new AbortController();
+
+    await expect(
+      prisma.requestTransaction(async () => prisma.current(), requestAbortController.signal),
+    ).resolves.toBe(transactionClient);
+
+    expect(optionsCalls[0]?.signal).toBeDefined();
+  });
+
   it('rejects nested transaction options to avoid silent option drops', async () => {
     const transactionClient = {
       kind: 'transaction' as const,
