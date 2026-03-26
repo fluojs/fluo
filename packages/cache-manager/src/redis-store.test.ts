@@ -68,14 +68,14 @@ describe('RedisStore', () => {
     expect(cached).toEqual({ id: 'u1' });
   });
 
-  it('deletes malformed payloads on read', async () => {
+  it('returns undefined for malformed payloads without deleting', async () => {
     const client = new MockRedisClient();
     const store = new RedisStore(client, { keyPrefix: 'cache:' });
 
     client.storage.set('cache:bad', '{"expiresAt": "not-number"}');
 
     await expect(store.get('bad')).resolves.toBeUndefined();
-    expect(client.deletedKeys).toContainEqual(['cache:bad']);
+    expect(client.deletedKeys).not.toContainEqual(['cache:bad']);
   });
 
   it('uses scoped scan+del reset instead of flush-all behavior', async () => {
