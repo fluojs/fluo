@@ -93,6 +93,43 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('pnpm dev');
   });
 
+  it('honors explicit yarn selection without changing the stable scaffold shape', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'yarn'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Installing dependencies with yarn');
+    expect(stdoutBuffer.join('')).toContain('yarn dev');
+  });
+
+  it('scaffolds a local .env file while ignoring it from git by default', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    const exitCode = await runCli(['new', 'starter-app'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const projectDirectory = join(workspaceDirectory, 'starter-app');
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
+    expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
+  });
+
   it('keeps explicit --target-directory when it appears before positional project name', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -433,6 +470,8 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/runtime');
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/prisma');
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/drizzle');
+    expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
+    expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
     expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
