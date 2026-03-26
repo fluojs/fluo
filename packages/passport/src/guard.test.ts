@@ -87,6 +87,41 @@ describe('AuthGuard', () => {
     expect(response.body).toEqual({ subject: 'mock-user' });
   });
 
+  it('resolves strategies whose names shadow Object.prototype keys', async () => {
+    class ToStringStrategy implements AuthStrategy {
+      async authenticate() {
+        return {
+          claims: { source: 'prototype-safe' },
+          subject: 'prototype-safe-user',
+        };
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('toString')
+      getProfile(_input: unknown, ctx: { principal?: { subject: string } }) {
+        return { subject: ctx.principal?.subject };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      ToStringStrategy,
+      ...createPassportProviders({ defaultStrategy: 'toString' }, [{ name: 'toString', token: ToStringStrategy }]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile'), response);
+
+    expect(response.body).toEqual({ subject: 'prototype-safe-user' });
+  });
+
   it('maps authentication-required failures to a canonical 401 response', async () => {
     class MissingCredentialsStrategy implements AuthStrategy {
       async authenticate(_context: GuardContext): Promise<never> {

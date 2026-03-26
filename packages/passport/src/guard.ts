@@ -45,6 +45,10 @@ function isAuthenticationFailure(error: unknown): boolean {
   );
 }
 
+function hasRegisteredStrategy(registry: AuthStrategyRegistry, strategyName: string): boolean {
+  return Object.prototype.hasOwnProperty.call(registry, strategyName);
+}
+
 @Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])
 export class AuthGuard implements AuthGuardContract {
   constructor(
@@ -64,11 +68,11 @@ export class AuthGuard implements AuthGuardContract {
       return true;
     }
 
-    const strategyToken = this.strategies[strategyName];
-
-    if (!strategyToken) {
+    if (!hasRegisteredStrategy(this.strategies, strategyName)) {
       throw new AuthStrategyResolutionError(`No auth strategy registered for ${strategyName}.`);
     }
+
+    const strategyToken = this.strategies[strategyName];
 
     const strategy = await context.requestContext.container.resolve(strategyToken as Token<AuthStrategy>).catch((error: unknown) => {
       if (error instanceof ContainerResolutionError) {

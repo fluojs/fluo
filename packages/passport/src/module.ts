@@ -10,10 +10,10 @@ import {
 } from './types.js';
 
 function createStrategyRegistry(strategies: AuthStrategyRegistration[]): AuthStrategyRegistry {
-  const registry: Record<string, AuthStrategyRegistration['token']> = {};
+  const registry: Record<string, AuthStrategyRegistration['token']> = Object.create(null);
 
   for (const strategy of strategies) {
-    if (strategy.name in registry) {
+    if (Object.prototype.hasOwnProperty.call(registry, strategy.name)) {
       throw new AuthStrategyResolutionError(`Duplicate auth strategy registration for "${strategy.name}".`);
     }
 
