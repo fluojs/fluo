@@ -82,7 +82,7 @@ MetricsModule.forRoot({ path: '/internal/metrics' })
 
 ### Disable default metrics
 
-By default, `prom-client`'s `collectDefaultMetrics()` is called, which registers standard Node.js process and GC metrics. Disable it if you want the built-in endpoint to expose only metrics registered by the module itself:
+By default, `prom-client`'s `collectDefaultMetrics()` is called, which registers standard Node.js process and GC metrics. In `prom-client` v15 these values are collected on scrape rather than by a background interval. Disable default metrics if you want the built-in endpoint to expose only metrics registered by the module itself:
 
 ```typescript
 MetricsModule.forRoot({ defaultMetrics: false })

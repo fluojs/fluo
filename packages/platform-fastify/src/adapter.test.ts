@@ -304,6 +304,44 @@ describe('@konekti/platform-fastify', () => {
     await app.close();
   });
 
+  it('removes registered shutdown signal listeners after close', async () => {
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log() {},
+      warn() {},
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const signal = 'SIGTERM' as const;
+    const listenersBefore = process.listeners(signal).length;
+    const port = await findAvailablePort();
+    const app = await runFastifyApplication(AppModule, {
+      cors: false,
+      logger,
+      port,
+      shutdownSignals: [signal],
+    });
+
+    expect(process.listeners(signal).length).toBe(listenersBefore + 1);
+
+    await app.close();
+
+    expect(process.listeners(signal).length).toBe(listenersBefore);
+  });
+
   it('does not leak global-prefix path rewrites to request observers', async () => {
     const observedPaths: string[] = [];
 

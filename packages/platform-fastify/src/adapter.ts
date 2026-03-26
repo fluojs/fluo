@@ -305,7 +305,18 @@ export async function runFastifyApplication(
     throw error;
   }
 
-  registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const close = app.close.bind(app);
+  let shutdownSignalsUnregistered = false;
+
+  app.close = async (signal?: string) => {
+    if (!shutdownSignalsUnregistered) {
+      unregisterShutdownSignals();
+      shutdownSignalsUnregistered = true;
+    }
+
+    await close(signal);
+  };
 
   return app;
 }
@@ -764,12 +775,13 @@ function registerShutdownSignals(
   app: Application,
   logger: ApplicationLogger,
   signals: false | readonly FastifyApplicationSignal[],
-): void {
+): () => void {
   if (signals === false || signals.length === 0) {
-    return;
+    return () => {};
   }
 
   const seen = new Set<FastifyApplicationSignal>();
+  const bindings: Array<{ signal: FastifyApplicationSignal; handler: () => void }> = [];
 
   for (const signal of signals) {
     if (seen.has(signal)) {
@@ -777,7 +789,7 @@ function registerShutdownSignals(
     }
 
     seen.add(signal);
-    process.once(signal, () => {
+    const handler = () => {
       void app.close(signal)
         .then(() => {
           logger.log(`Application closed after receiving ${signal}.`, 'KonektiFactory');
@@ -785,8 +797,17 @@ function registerShutdownSignals(
         .catch((error: unknown) => {
           logger.error(`Failed to close application after receiving ${signal}.`, error, 'KonektiFactory');
         });
-    });
+    };
+
+    bindings.push({ signal, handler });
+    process.once(signal, handler);
   }
+
+  return () => {
+    for (const binding of bindings) {
+      process.off(binding.signal, binding.handler);
+    }
+  };
 }
 
 function toHttpException(error: unknown): HttpException {
