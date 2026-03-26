@@ -53,4 +53,24 @@ describe('core decorators', () => {
       scope: 'request',
     });
   });
+
+  it('allows @Inject([]) to clear inherited inject tokens', () => {
+    const LOGGER = Symbol('LOGGER');
+
+    @Inject([LOGGER])
+    @Scope('request')
+    class BaseService {}
+
+    @Inject([])
+    class ChildService extends BaseService {}
+
+    expect(getOwnClassDiMetadata(ChildService)).toEqual({
+      inject: [],
+      scope: undefined,
+    });
+    expect(getClassDiMetadata(ChildService)).toEqual({
+      inject: [],
+      scope: 'request',
+    });
+  });
 });

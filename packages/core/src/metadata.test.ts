@@ -351,6 +351,32 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('treats explicit empty inject arrays as an override instead of inheriting parent inject tokens', () => {
+    const LOGGER = Symbol('LOGGER');
+
+    class BaseService {}
+
+    defineClassDiMetadata(BaseService, {
+      inject: [LOGGER],
+      scope: 'request',
+    });
+
+    class ChildService extends BaseService {}
+
+    defineClassDiMetadata(ChildService, {
+      inject: [],
+    });
+
+    expect(getOwnClassDiMetadata(ChildService)).toEqual({
+      inject: [],
+      scope: undefined,
+    });
+    expect(getInheritedClassDiMetadata(ChildService)).toEqual({
+      inject: [],
+      scope: 'request',
+    });
+  });
+
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
   });
