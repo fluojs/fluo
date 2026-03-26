@@ -100,7 +100,7 @@ interface GraphQLContext {
 - `schema`: 스키마 우선 입력입니다. `GraphQLSchema` 인스턴스 또는 SDL 문자열을 받을 수 있습니다.
 - `resolvers`: 코드 우선 탐색 시 사용할 resolver allowlist입니다.
 - `context`: 요청 단위 커스텀 GraphQL context 값을 추가합니다.
-- `graphiql`: GraphiQL 표시 여부를 명시합니다. 값을 지정하지 않으면 기본값은 `true`입니다.
+- `graphiql`: GraphiQL 표시 여부를 명시합니다. 기본값은 `false`입니다. 개발 환경에서 활성화하려면 `graphiql: true`를 전달하세요.
 - `subscriptions.websocket.enabled`: 공유 Node HTTP 서버에 `graphql-ws` 전송 계층을 활성화하며, `/graphql`의 SSE 지원은 그대로 유지합니다.
 - `subscriptions.websocket.keepAliveMs`: `graphql-ws` keepalive용 websocket ping 간격을 조정합니다.
 - `subscriptions.websocket.connectionInitWaitTimeoutMs`: 초기 `connection_init` 메시지 대기 시간을 조정합니다.

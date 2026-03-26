@@ -385,11 +385,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private resolveGraphiqlEnabled(): boolean {
-    if (this.options.graphiql !== undefined) {
-      return this.options.graphiql;
-    }
-
-    return true;
+    return this.options.graphiql ?? false;
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {

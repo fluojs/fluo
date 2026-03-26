@@ -39,14 +39,20 @@ function resolveGraphiqlEnabled(service: GraphqlLifecycleService): boolean {
 }
 
 describe('GraphqlLifecycleService graphiql defaults', () => {
-  it('defaults to true even when NODE_ENV is production', () => {
+  it('defaults to false when graphiql option is not set', () => {
+    const service = createService({});
+
+    expect(resolveGraphiqlEnabled(service)).toBe(false);
+  });
+
+  it('defaults to false regardless of NODE_ENV', () => {
     const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+    process.env.NODE_ENV = 'development';
 
     try {
       const service = createService({});
 
-      expect(resolveGraphiqlEnabled(service)).toBe(true);
+      expect(resolveGraphiqlEnabled(service)).toBe(false);
     } finally {
       if (previousNodeEnv === undefined) {
         delete process.env.NODE_ENV;
