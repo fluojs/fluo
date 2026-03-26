@@ -43,6 +43,10 @@ function isExistingProvider(value: Provider): value is ExistingProvider {
 }
 
 function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
+  if (token == null) {
+    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject([...]) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
+  }
+
   return token;
 }
 
@@ -153,6 +157,15 @@ export class Container {
     return this;
   }
 
+  /**
+   * Override one or more already-registered providers.
+   *
+   * **Multi-provider destructive replacement**: when the incoming provider has `multi: true`,
+   * the entire existing multi-registration array for that token is deleted before the new entry
+   * is added. There is intentionally no way to replace a single entry within a multi-provider
+   * set — the whole set is replaced. If you need to preserve other entries, re-register them
+   * together with the replacement in one `override()` call.
+   */
   override(...providers: Provider[]): this {
     if (this.disposed) {
       throw new ContainerResolutionError('Container has been disposed and can no longer override providers.');
@@ -452,6 +465,17 @@ export class Container {
     return this.parent?.lookupProvider(token);
   }
 
+  /**
+   * Resolve the cache map that should hold the instance for `provider`.
+   *
+   * **Singleton-in-request-scope**: if a provider with `scope: 'singleton'` (the default) is
+   * registered directly on a request-scope child container (rather than the root), it is cached
+   * in the child's `requestCache` instead of the root's `singletonCache`. This means it behaves
+   * as request-scoped despite the singleton scope annotation. This is intentional — it allows
+   * test and override scenarios to inject short-lived values without polluting the global cache
+   * — but the divergence from the declared scope is a known footgun for consumers who
+   * inadvertently register singletons on child containers.
+   */
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {

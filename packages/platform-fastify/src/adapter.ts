@@ -319,8 +319,7 @@ function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse 
       this.setStatus(status);
       this.setHeader('Location', location);
       this.committed = true;
-      reply.status(status);
-      reply.redirect(location);
+      reply.redirect(location, status);
     },
     async send(body: unknown) {
       if (reply.sent) {
@@ -871,7 +870,7 @@ function serializeResponseBody(
   if (typeof body === 'string') {
     return {
       defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
-      payload: isJsonContentType(contentType) ? JSON.stringify(body) : body,
+      payload: body,
     };
   }
 

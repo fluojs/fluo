@@ -20,7 +20,7 @@ export interface RefreshTokenConsumeInput {
   now: Date;
 }
 
-export type RefreshTokenConsumeResult = 'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch';
+export type RefreshTokenConsumeResult = 'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch' | 'invalid';
 
 export interface RefreshTokenRecord {
   id: string;
@@ -124,7 +124,7 @@ export class RefreshTokenService {
         throw new JwtExpiredTokenError('Refresh token has expired.');
       }
 
-      if (consumeResult === 'not_found') {
+      if (consumeResult === 'not_found' || consumeResult === 'invalid') {
         throw new JwtInvalidTokenError('Refresh token record was not found.');
       }
 

@@ -11,7 +11,7 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
   return {
     read(target: TKey): TValue | undefined {
       const value = store.get(target);
-      return value ? cloneValue(value) : undefined;
+      return value !== undefined ? cloneValue(value) : undefined;
     },
     write(target: TKey, value: TValue): void {
       store.set(target, cloneValue(value));
