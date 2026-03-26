@@ -79,6 +79,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
 }
 
 export interface RunNodeApplicationOptions extends BootstrapNodeApplicationOptions {
+  forceExitTimeoutMs?: number;
   shutdownSignals?: false | readonly NodeApplicationSignal[];
 }
 
@@ -269,7 +270,7 @@ export async function runNodeApplication(
     throw error;
   }
 
-  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals(), options.forceExitTimeoutMs);
   const close = app.close.bind(app);
   let shutdownSignalsUnregistered = false;
 

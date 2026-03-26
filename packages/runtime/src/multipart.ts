@@ -64,6 +64,8 @@ export function parseMultipart(request: IncomingMessage, options: MultipartOptio
       if (fileCount > maxFiles) {
         fileStream.resume();
         rejectOnce(new PayloadTooLargeException(`Exceeded maximum file count of ${String(maxFiles)}.`));
+        request.unpipe(bb);
+        bb.destroy();
         return;
       }
 

@@ -69,7 +69,12 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
       );
 
       if (origin && origin !== '*') {
-        context.response.setHeader('Vary', 'Origin');
+        const existingVary = context.response.headers['vary'] ?? context.response.headers['Vary'];
+        const varyValues = existingVary ? (Array.isArray(existingVary) ? existingVary : String(existingVary).split(',').map((v) => v.trim())) : [];
+        if (!varyValues.some((v) => v.toLowerCase() === 'origin')) {
+          varyValues.push('Origin');
+        }
+        context.response.setHeader('Vary', varyValues.join(', '));
       }
 
       if (context.request.method === 'OPTIONS') {

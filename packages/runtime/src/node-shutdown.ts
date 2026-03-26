@@ -2,10 +2,13 @@ import type { Application, ApplicationLogger } from './types.js';
 
 type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
 
+const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
+
 export function registerShutdownSignals(
   app: Application,
   logger: ApplicationLogger,
   signals: false | readonly NodeShutdownSignal[],
+  forceExitTimeoutMs: number = DEFAULT_FORCE_EXIT_TIMEOUT_MS,
 ): () => void {
   if (signals === false) {
     return () => {};
@@ -15,7 +18,7 @@ export function registerShutdownSignals(
 
   for (const signal of signals) {
     const handler = () => {
-      void closeFromSignal(app, logger, signal);
+      void closeFromSignal(app, logger, signal, forceExitTimeoutMs);
     };
 
     bindings.push({ signal, handler });
@@ -29,16 +32,27 @@ export function registerShutdownSignals(
   };
 }
 
-async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeShutdownSignal): Promise<void> {
+async function closeFromSignal(app: Application, logger: ApplicationLogger, signal: NodeShutdownSignal, forceExitTimeoutMs: number): Promise<void> {
   if (app.state === 'closed') {
     process.exitCode = 0;
     return;
   }
 
+  const forceExitTimer = setTimeout(() => {
+    logger.error(`Forced exit after ${String(forceExitTimeoutMs)}ms shutdown timeout.`, undefined, 'KonektiFactory');
+    process.exit(1);
+  }, forceExitTimeoutMs);
+
+  if (forceExitTimer.unref) {
+    forceExitTimer.unref();
+  }
+
   try {
     await app.close(signal);
+    clearTimeout(forceExitTimer);
     process.exitCode = 0;
   } catch (error: unknown) {
+    clearTimeout(forceExitTimer);
     logger.error('Failed to shut down the application cleanly.', error, 'KonektiFactory');
     process.exitCode = 1;
   }

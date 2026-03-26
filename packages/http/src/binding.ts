@@ -47,6 +47,11 @@ function readSourceValue(
       return request.cookies[resolvedKey];
     case 'body': {
       if (!isPlainObject(request.body)) {
+        if (request.body !== undefined && request.body !== null) {
+          throw new BadRequestException('Request body must be a plain object.', {
+            details: [toInputErrorDetail({ code: 'INVALID_BODY', message: 'Request body must be a plain object.', source: 'body' })],
+          });
+        }
         return undefined;
       }
 
