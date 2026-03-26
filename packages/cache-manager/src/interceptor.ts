@@ -108,6 +108,8 @@ async function resolveCacheKeyValue(
   return metadata(context);
 }
 
+const EVICTION_FALLBACK_TIMEOUT_MS = 5_000;
+
 function installDeferredEviction(
   response: InterceptorContext['requestContext']['response'],
   evict: () => Promise<void>,
@@ -116,23 +118,33 @@ function installDeferredEviction(
   let restored = false;
   let completed = false;
 
+  const runEviction = () => {
+    if (completed) {
+      return;
+    }
+
+    completed = true;
+    void evict();
+  };
+
   const restore = () => {
     if (restored) {
       return;
     }
 
+    clearTimeout(fallbackTimer);
     response.send = originalSend;
     restored = true;
   };
 
+  const fallbackTimer = setTimeout(() => {
+    runEviction();
+    restore();
+  }, EVICTION_FALLBACK_TIMEOUT_MS);
+
   response.send = async (body: unknown) => {
     await originalSend(body);
-
-    if (!completed) {
-      completed = true;
-      await evict();
-    }
-
+    runEviction();
     restore();
   };
 

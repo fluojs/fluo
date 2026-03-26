@@ -5,6 +5,8 @@ import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 @Inject([CACHE_STORE, CACHE_OPTIONS])
 export class CacheService {
+  private readonly inflight = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly store: CacheStore,
     private readonly options: NormalizedCacheModuleOptions,
@@ -35,9 +37,21 @@ export class CacheService {
       return cached;
     }
 
-    const value = await loader();
-    await this.set(key, value, ttlSeconds);
-    return value;
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
+
+    if (existing) {
+      return existing;
+    }
+
+    const promise = loader().then(async (value) => {
+      await this.set(key, value, ttlSeconds);
+      return value;
+    }).finally(() => {
+      this.inflight.delete(key);
+    });
+
+    this.inflight.set(key, promise);
+    return promise;
   }
 
   async del(key: string): Promise<void> {
