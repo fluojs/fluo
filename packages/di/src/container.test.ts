@@ -735,5 +735,32 @@ describe('Container', () => {
 
       expect(events).toEqual(['v1', 'v2', 'v3']);
     });
+    it('calls onDestroy for resolved multi-provider singleton instances on dispose', async () => {
+      const events: string[] = [];
+      const token = Symbol('multi-disposable');
+
+      class PluginA {
+        onDestroy() {
+          events.push('plugin-a');
+        }
+      }
+
+      class PluginB {
+        onDestroy() {
+          events.push('plugin-b');
+        }
+      }
+
+      const container = new Container().register(
+        { provide: token, useClass: PluginA, multi: true },
+        { provide: token, useClass: PluginB, multi: true },
+      );
+
+      await container.resolve(token);
+      await container.dispose();
+
+      expect(events).toContain('plugin-a');
+      expect(events).toContain('plugin-b');
+    });
   });
 });
