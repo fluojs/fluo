@@ -115,7 +115,7 @@ export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
-  private readonly multiSingletonCache = new WeakMap<NormalizedProvider, Promise<unknown>>();
+  private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly staleDisposalTasks = new Set<Promise<void>>();
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
@@ -494,12 +494,16 @@ export class Container {
     return this.requestCache;
   }
 
-  private disposalCacheEntries(): Array<[Token, Promise<unknown>]> {
+  private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
     if (this.parent) {
       return Array.from(this.requestCache.entries());
     }
 
-    return Array.from(this.singletonCache.entries());
+    const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> = Array.from(this.singletonCache.entries());
+    for (const [provider, promise] of this.multiSingletonCache.entries()) {
+      entries.push([provider, promise]);
+    }
+    return entries;
   }
 
   private async disposeCache(entries: Array<[Token, Promise<unknown>]>): Promise<void> {
@@ -516,7 +520,7 @@ export class Container {
   }
 
   private async collectDisposableInstances(
-    entries: Array<[Token, Promise<unknown>]>,
+    entries: Array<[NormalizedProvider | Token, Promise<unknown>]>,
   ): Promise<{ disposables: Disposable[]; errors: unknown[] }> {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
@@ -562,6 +566,7 @@ export class Container {
     }
 
     this.singletonCache.clear();
+    this.multiSingletonCache.clear();
   }
 
   private async waitForStaleDisposalTasks(): Promise<void> {
