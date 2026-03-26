@@ -93,6 +93,10 @@ export class DrizzleDatabase<
 
     const transactionRunner = this.resolveTransactionRunner();
     if (!transactionRunner) {
+      if (requestScoped) {
+        throw new Error(TRANSACTION_NOT_SUPPORTED_ERROR);
+      }
+
       return fn();
     }
 

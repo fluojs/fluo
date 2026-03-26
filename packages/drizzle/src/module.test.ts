@@ -199,6 +199,24 @@ describe('@konekti/drizzle', () => {
     await asyncApp.close();
   });
 
+  it('rejects requestTransaction when transaction support is unavailable even if strictTransactions is false', async () => {
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database, undefined, {
+      strictTransactions: false,
+    });
+    let invoked = false;
+
+    await expect(
+      drizzle.requestTransaction(async () => {
+        invoked = true;
+        return 'never';
+      }),
+    ).rejects.toThrow('Transaction not supported: Drizzle database does not implement transaction.');
+
+    await expect(drizzle.transaction(async () => 'fallback-transaction')).resolves.toBe('fallback-transaction');
+    expect(invoked).toBe(false);
+  });
+
   it('runs nested request and service transactions through a single transaction boundary', async () => {
     let transactionCalls = 0;
     const transactionDatabase = {
