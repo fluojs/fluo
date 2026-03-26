@@ -217,6 +217,7 @@ function createGitignore(): string {
   return `node_modules
 dist
 .konekti
+.env
 .env.local
 coverage
 `;
