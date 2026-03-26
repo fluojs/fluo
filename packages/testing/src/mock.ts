@@ -52,7 +52,7 @@ export function createDeepMock<T extends object>(type: new (...args: unknown[]) 
 
       const descriptor = Object.getOwnPropertyDescriptor(proto, key);
       if (descriptor && typeof descriptor.value === 'function') {
-        spies[key as string] = vi.fn();
+        spies[key] = vi.fn();
       }
     }
     proto = Object.getPrototypeOf(proto) as object | null;

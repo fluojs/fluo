@@ -711,6 +711,23 @@ describe('createDeepMock', () => {
     const mock = createDeepMock(Child);
     expect(vi.isMockFunction(mock.method)).toBe(true);
   });
+
+  it('wraps symbol-keyed methods in a vi.fn() spy', () => {
+    const MY_METHOD = Symbol('myMethod');
+
+    class SymbolService {
+      [MY_METHOD]() {
+        return 42;
+      }
+    }
+
+    const mock = createDeepMock(SymbolService);
+
+    expect(vi.isMockFunction(mock[MY_METHOD])).toBe(true);
+
+    mock[MY_METHOD]();
+    expect(mock[MY_METHOD]).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('mockToken', () => {
