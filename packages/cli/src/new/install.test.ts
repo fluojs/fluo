@@ -14,10 +14,17 @@ describe('resolveInstallCommand', () => {
     });
   });
 
-  it('uses the corepack yarn install path only when yarn is selected', () => {
-    expect(resolveInstallCommand('yarn')).toEqual({
-      args: ['yarn', 'install', '--no-cache'],
+  it('uses the corepack yarn install path when corepack is available', () => {
+    expect(resolveInstallCommand('yarn', { isCorepackAvailable: true })).toEqual({
+      args: ['yarn', 'install'],
       command: 'corepack',
+    });
+  });
+
+  it('falls back to direct yarn install when corepack is unavailable', () => {
+    expect(resolveInstallCommand('yarn', { isCorepackAvailable: false })).toEqual({
+      args: ['install'],
+      command: 'yarn',
     });
   });
 });
