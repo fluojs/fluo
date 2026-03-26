@@ -291,6 +291,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           await handleDispatchError(phaseContext, error);
         } finally {
           await notifyRequestFinish(phaseContext);
+          await phaseContext.requestContext.container.dispose();
         }
       });
     },

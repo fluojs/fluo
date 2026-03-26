@@ -65,13 +65,11 @@ export function createFrameworkResponse(response: ServerResponse, acceptEncoding
       if (acceptEncoding && payload.byteLength >= 256) {
         this.committed = true;
 
-        compressResponse(response, payload, acceptEncoding, contentType).catch(() => {
+        return compressResponse(response, payload, acceptEncoding, contentType).catch(() => {
           if (!response.writableEnded) {
             response.end();
           }
         });
-
-        return;
       }
 
       response.end(payload);
