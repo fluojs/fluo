@@ -1,6 +1,6 @@
 import type { GuardContext, RequestContext } from '@konekti/http';
 import { Inject, type Token } from '@konekti/core';
-import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
+import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -28,9 +28,12 @@ export interface RefreshTokenAuthResult {
   subject: string;
 }
 
-@Inject([REFRESH_TOKEN_SERVICE])
+@Inject([REFRESH_TOKEN_SERVICE, DefaultJwtVerifier])
 export class RefreshTokenStrategy implements AuthStrategy {
-  constructor(private readonly refreshTokenService: RefreshTokenService) {}
+  constructor(
+    private readonly refreshTokenService: RefreshTokenService,
+    private readonly verifier: DefaultJwtVerifier,
+  ) {}
 
   async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
     const request = context.requestContext.request;
@@ -42,15 +45,21 @@ export class RefreshTokenStrategy implements AuthStrategy {
 
     try {
       const result = await this.refreshTokenService.rotateRefreshToken(refreshToken);
-      
+      const subject = await this.extractVerifiedSubject(result.accessToken);
+
       return {
         claims: {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
         },
-        subject: this.extractSubjectFromToken(result.accessToken),
+        subject,
       };
     } catch (error: unknown) {
+      if (error instanceof AuthenticationRequiredError
+        || error instanceof AuthenticationExpiredError
+        || error instanceof AuthenticationFailedError) {
+        throw error;
+      }
       if (error instanceof JwtExpiredTokenError) {
         throw new AuthenticationExpiredError('Refresh token has expired.');
       }
@@ -76,14 +85,13 @@ export class RefreshTokenStrategy implements AuthStrategy {
     return Array.isArray(customHeader) ? customHeader[0] : customHeader;
   }
 
-  private extractSubjectFromToken(accessToken: string): string {
-    try {
-      const payload = accessToken.split('.')[1];
-      const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-      return decoded.sub || 'unknown';
-    } catch {
-      return 'unknown';
+  private async extractVerifiedSubject(accessToken: string): Promise<string> {
+    const principal = await this.verifier.verifyAccessToken(accessToken);
+    const sub = principal.claims.sub;
+    if (typeof sub !== 'string' || sub.length === 0) {
+      throw new AuthenticationFailedError('Access token is missing a valid subject claim.');
     }
+    return sub;
   }
 }
 

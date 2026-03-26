@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { DefaultJwtVerifier } from '@konekti/jwt';
 import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
@@ -11,13 +12,20 @@ function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> =
   return {
     issueRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
     rotateRefreshToken: vi.fn().mockResolvedValue({
-      accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEiLCJpYXQiOjE1MTYyMzkwMjJ9.SflKxwRJSMeKKF2QT4fwpMfTLZfFJcKz6U6Jbc6GFcU',
+      accessToken: 'mock-access-token',
       refreshToken: 'new-refresh-token',
     }),
     revokeRefreshToken: vi.fn().mockResolvedValue(undefined),
     revokeAllForSubject: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
+}
+
+function createMockVerifier(subject = 'user-1'): DefaultJwtVerifier {
+  return {
+    verifyAccessToken: vi.fn().mockResolvedValue({ claims: { sub: subject } }),
+    verifyRefreshToken: vi.fn().mockResolvedValue({ claims: { sub: subject } }),
+  } as unknown as DefaultJwtVerifier;
 }
 
 function createGuardContext(body?: Record<string, unknown>, headers?: Record<string, string | string[]>): GuardContext {
@@ -46,7 +54,7 @@ describe('RefreshTokenStrategy', () => {
   describe('authenticate', () => {
     it('authenticates with refresh token from request body', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'valid-token' });
 
       const result = await strategy.authenticate(context);
@@ -63,7 +71,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('authenticates with refresh token from authorization header', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext(undefined, { authorization: 'Bearer header-token' });
 
       const result = await strategy.authenticate(context);
@@ -76,7 +84,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('authenticates with refresh token from custom header', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext(undefined, { 'x-refresh-token': 'custom-token' });
 
       const result = await strategy.authenticate(context);
@@ -89,7 +97,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('handles array authorization header by using first element', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext(undefined, { authorization: ['Bearer array-token', 'Bearer second-token'] });
 
       const result = await strategy.authenticate(context);
@@ -102,7 +110,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('handles array x-refresh-token header by using first element', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext(undefined, { 'x-refresh-token': ['custom-array-token'] });
 
       const result = await strategy.authenticate(context);
@@ -115,7 +123,7 @@ describe('RefreshTokenStrategy', () => {
 
     it('throws AuthenticationRequiredError when no token is provided', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext();
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
@@ -125,7 +133,7 @@ describe('RefreshTokenStrategy', () => {
       const service = createMockRefreshTokenService({
         rotateRefreshToken: vi.fn().mockRejectedValue(new JwtExpiredTokenError('Refresh token has expired.')),
       });
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'expired-token' });
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationExpiredError);
@@ -135,7 +143,7 @@ describe('RefreshTokenStrategy', () => {
       const service = createMockRefreshTokenService({
         rotateRefreshToken: vi.fn().mockRejectedValue(new JwtInvalidTokenError('Refresh token reuse detected.')),
       });
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'reused-token' });
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationFailedError);
@@ -145,7 +153,7 @@ describe('RefreshTokenStrategy', () => {
       const service = createMockRefreshTokenService({
         rotateRefreshToken: vi.fn().mockRejectedValue(new JwtInvalidTokenError('Invalid token')),
       });
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'invalid-token' });
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationFailedError);
@@ -155,7 +163,7 @@ describe('RefreshTokenStrategy', () => {
   describe('concurrent refresh attempts', () => {
     it('handles concurrent rotation attempts', async () => {
       const service = createMockRefreshTokenService();
-      const strategy = new RefreshTokenStrategy(service);
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
 
       const [first, second] = await Promise.allSettled([
         strategy.authenticate(createGuardContext({ refreshToken: 'token-1' })),
