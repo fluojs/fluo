@@ -3,6 +3,20 @@ export function fallbackClone<T>(value: T): T {
     return value.map((item) => fallbackClone(item)) as T;
   }
 
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as T;
+  }
+
+  if (value instanceof Map) {
+    return new Map(
+      Array.from((value as Map<unknown, unknown>).entries(), ([k, v]) => [k, fallbackClone(v)]),
+    ) as T;
+  }
+
+  if (value instanceof Set) {
+    return new Set(Array.from((value as Set<unknown>).values(), (v) => fallbackClone(v))) as T;
+  }
+
   if (typeof value === 'object' && value !== null) {
     const source = value as Record<string, unknown>;
     const cloned: Record<string, unknown> = {};

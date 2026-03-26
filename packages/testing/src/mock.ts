@@ -10,13 +10,22 @@ export type MockedMethods<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K];
 };
 
-export function createMock<T extends object>(partial: Partial<MockedMethods<T>> = {}): MockedMethods<T> {
+export function createMock<T extends object>(
+  partial: Partial<MockedMethods<T>> = {},
+  options: { strict?: boolean } = {},
+): MockedMethods<T> {
   const autoMocks = new Map<PropertyKey, unknown>();
 
   return new Proxy({ ...partial } as MockedMethods<T>, {
     get(target, prop, receiver) {
       if (Reflect.has(target, prop)) {
         return Reflect.get(target, prop, receiver);
+      }
+
+      if (options.strict) {
+        throw new Error(
+          `createMock: strict mode — property "${String(prop)}" is not declared in the partial mock. Add it to the partial or disable strict mode.`,
+        );
       }
 
       if (!autoMocks.has(prop)) {

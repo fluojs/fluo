@@ -11,12 +11,10 @@ export function ensureMetadataSymbol(): symbol {
     return metadataSymbol;
   }
 
-  if (!symbolWithMetadata.metadata) {
-    Object.defineProperty(Symbol, 'metadata', {
-      configurable: true,
-      value: metadataSymbol,
-    });
-  }
+  Object.defineProperty(Symbol, 'metadata', {
+    configurable: true,
+    value: metadataSymbol,
+  });
 
   return metadataSymbol;
 }
@@ -103,6 +101,12 @@ export function getOrCreatePropertyMap<T>(
   return map;
 }
 
+/**
+ * Merges two arrays into a single deduplicated array, preserving insertion order.
+ * Deduplication uses reference equality (===), so two objects with identical shapes
+ * are treated as distinct entries unless they are the exact same reference.
+ * Returns `undefined` when both inputs are empty or absent.
+ */
 export function mergeUnique<T>(existing: readonly T[] | undefined, values: readonly T[] | undefined): T[] | undefined {
   if (!existing?.length && !values?.length) {
     return undefined;

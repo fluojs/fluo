@@ -30,7 +30,7 @@ export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadat
   classDiMetadataStore.write(
     target,
     {
-      inject: metadata.inject ?? existing?.inject,
+      inject: metadata.inject?.length ? metadata.inject : (existing?.inject ?? metadata.inject),
       scope: metadata.scope ?? existing?.scope,
     },
   );

@@ -34,7 +34,7 @@ export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
       propertyKey,
       metadata: {
         optional: metadata?.optional ?? standardMetadata?.optional,
-        token: metadata?.token ?? (standardMetadata as { token: unknown }).token,
+        token: metadata?.token ?? standardMetadata?.token,
       },
     });
   }

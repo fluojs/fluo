@@ -87,11 +87,11 @@ function createInMemoryStore(): RefreshTokenStore {
       const record = records.get(input.tokenId);
 
       if (!record) {
-        return 'not_found';
+        return 'invalid';
       }
 
       if (record.subject !== input.subject || record.family !== input.family) {
-        return 'mismatch';
+        return 'invalid';
       }
 
       if (record.expiresAt.getTime() <= input.now.getTime()) {

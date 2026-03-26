@@ -421,6 +421,10 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     worker: WorkerInstance,
   ): void {
     worker.on('failed', (job: BullJob | undefined, error: Error) => {
+      if (!job || !this.isTerminalFailure(job, descriptor.attempts)) {
+        return;
+      }
+
       const pendingWrite = this.handleFailedJob(descriptor, job, error);
       this.pendingDeadLetterWrites.add(pendingWrite);
       pendingWrite.finally(() => {
@@ -570,9 +574,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       await this.drainDeadLetterWrites();
       this.lifecycleState = 'stopped';
       this.startPromise = undefined;
-    })().finally(() => {
-      this.shutdownPromise = undefined;
-    });
+    })();
 
     await this.shutdownPromise;
   }

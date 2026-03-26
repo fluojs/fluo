@@ -179,7 +179,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
       const value = Reflect.get(template, key);
 
       if (typeof value === 'function') {
-        strategy[key] = value;
+        strategy[key] = value.bind(strategy);
         continue;
       }
 
