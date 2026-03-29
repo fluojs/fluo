@@ -254,12 +254,40 @@ export class Container {
         throw new DuplicateProviderError(token);
       }
 
+      if (this.hasAncestorSingleRegistration(token)) {
+        throw new DuplicateProviderError(token);
+      }
+
       return;
     }
 
     if (this.registrations.has(token) || this.multiRegistrations.has(token)) {
       throw new DuplicateProviderError(token);
     }
+
+    if (this.hasAncestorMultiRegistration(token)) {
+      throw new DuplicateProviderError(token);
+    }
+  }
+
+  private hasAncestorSingleRegistration(token: Token): boolean {
+    return this.parent?.hasSingleRegistration(token) ?? false;
+  }
+
+  private hasSingleRegistration(token: Token): boolean {
+    if (this.registrations.has(token)) return true;
+
+    return this.parent?.hasSingleRegistration(token) ?? false;
+  }
+
+  private hasAncestorMultiRegistration(token: Token): boolean {
+    return this.parent?.hasMultiRegistration(token) ?? false;
+  }
+
+  private hasMultiRegistration(token: Token): boolean {
+    if (this.multiRegistrations.has(token)) return true;
+
+    return this.parent?.hasMultiRegistration(token) ?? false;
   }
 
   private collectMultiProviders(token: Token): NormalizedProvider[] {
