@@ -44,17 +44,26 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
   }
 
   private _resolve(key: string): unknown {
+    let resolved: unknown;
+
     if (hasOwn(this.values, key)) {
-      return this.values[key];
-    }
-    const parts = key.split('.');
-    let current: unknown = this.values;
-    for (const part of parts) {
-      if (!hasOwn(current, part)) {
-        return undefined;
+      resolved = this.values[key];
+    } else {
+      const parts = key.split('.');
+      let current: unknown = this.values;
+      for (const part of parts) {
+        if (!hasOwn(current, part)) {
+          return undefined;
+        }
+        current = current[part];
       }
-      current = current[part];
+      resolved = current;
     }
-    return current;
+
+    if (typeof resolved === 'object' && resolved !== null) {
+      return cloneConfigDictionary(resolved);
+    }
+
+    return resolved;
   }
 }
