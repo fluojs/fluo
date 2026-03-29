@@ -42,24 +42,14 @@ function buildStoreKey(handlerKey: string, clientKey: string): string {
   return `throttler:${encodedHandlerKey}:${encodedClientKey}`;
 }
 
-function getTypeIdentity(value: Function): string {
-  return value.name || 'anonymous';
-}
-
 function buildHandlerKey(handler: GuardContext['handler']): string {
   const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
-  const moduleIdentity = handler.metadata.moduleType
-    ? `module:${getTypeIdentity(handler.metadata.moduleType)}`
-    : 'module:none';
-  const controllerIdentity = `controller:${getTypeIdentity(handler.controllerToken)}`;
 
   return [
     `method:${handler.route.method}`,
     `path:${encodeURIComponent(handler.route.path)}`,
     `version:${encodeURIComponent(version)}`,
     `handler:${encodeURIComponent(handler.methodName)}`,
-    moduleIdentity,
-    controllerIdentity,
   ].join('|');
 }
 
