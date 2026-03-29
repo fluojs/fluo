@@ -232,7 +232,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     await notifyHandlerMatched(context, match.descriptor);
 
     const moduleMiddlewareContext: MiddlewareContext = {
-      request: appMiddlewareContext.request,
+      request: context.requestContext.request,
       requestContext: context.requestContext,
       response: context.response,
     };

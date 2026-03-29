@@ -96,6 +96,24 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:id",status="200"} 1');
   });
 
+  it('does not reuse a param key when multiple params share the same value', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry);
+
+    const context = createContext('/users/foo/orders/foo', {
+      orderId: 'foo',
+      userId: 'foo',
+    });
+
+    await middleware.handle(context, async () => {
+      context.response.setStatus(200);
+    });
+
+    const metricsText = await registry.metrics();
+
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:userId/orders/:orderId",status="200"} 1');
+  });
+
   it('passes immutable label snapshots to each metric recorder call', async () => {
     const registry = new Registry();
     const middleware = new HttpMetricsMiddleware(registry);
