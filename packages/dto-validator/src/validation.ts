@@ -181,7 +181,7 @@ const RULE_HANDLERS: { [K in RuleKind]: RuleHandler<K> } = {
   defined: {
     defaultCode: 'REQUIRED',
     describe: (field) => `${field} is required.`,
-    validate: () => true,
+    validate: (_rule, value) => value !== undefined && value !== null,
   },
   optional: {
     defaultCode: 'OPTIONAL',
