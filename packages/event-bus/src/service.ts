@@ -343,6 +343,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
         error,
         'EventBusLifecycleService',
       );
+
+      throw error;
     }
   }
 
