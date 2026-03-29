@@ -170,6 +170,15 @@ function rejectUpgradeRequest(socket: Duplex): void {
   socket.destroy();
 }
 
+function rejectBadUpgradeRequest(socket: Duplex): void {
+  if (socket.destroyed) {
+    return;
+  }
+
+  socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+  socket.destroy();
+}
+
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS])
 export class WebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
@@ -270,12 +279,18 @@ export class WebSocketGatewayLifecycleService
 
   private createUpgradeListener(attachmentsByPath: Map<string, GatewayAttachment>): NodeUpgradeListener {
     return (request, socket, head) => {
-      const url = new URL(request.url ?? '/', 'http://localhost');
-      const targetPath = normalizeGatewayPath(url.pathname);
-      const attachment = attachmentsByPath.get(targetPath);
+      let attachment: GatewayAttachment | undefined;
+
+      try {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        const targetPath = normalizeGatewayPath(url.pathname);
+        attachment = attachmentsByPath.get(targetPath);
+      } catch {
+        rejectBadUpgradeRequest(socket);
+        return;
+      }
 
       if (!attachment) {
-        rejectUpgradeRequest(socket);
         return;
       }
 
@@ -514,6 +529,11 @@ export class WebSocketGatewayLifecycleService
     socket.on('pong', () => {
       this.pingPending.delete(state.socketId);
       this.pingSentAt.delete(state.socketId);
+    });
+
+    socket.on('error', (error: Error) => {
+      this.unregisterSocket(state.socketId);
+      this.logger.error('WebSocket gateway socket emitted an error.', error, 'WebSocketGatewayLifecycleService');
     });
 
     socket.on('close', (code: number, reason: Buffer) => {

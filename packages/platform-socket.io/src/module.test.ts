@@ -8,6 +8,7 @@ import { io as createClient, type Socket as ClientSocket } from 'socket.io-clien
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
 import { createSocketIoModule } from './module.js';
+import { SocketIoLifecycleService } from './adapter.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
 import type { SocketIoRoomService } from './types.js';
 
@@ -285,6 +286,56 @@ describe('@konekti/platform-socket.io', () => {
     await app.close();
   });
 
+  it('drops oldest pre-connect socket.io messages once the pending buffer limit is reached', () => {
+    const loggerEvents: string[] = [];
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger(loggerEvents),
+      {
+        async close() {},
+        getServer() {
+          return {};
+        },
+      } as never,
+      {
+        buffer: {
+          maxPendingMessagesPerSocket: 2,
+          overflowPolicy: 'drop-oldest',
+        },
+        transports: ['websocket'],
+      },
+    );
+    const listeners: {
+      disconnect?: (reason: string, description: unknown) => void;
+      onAny?: (event: string, ...args: unknown[]) => void;
+    } = {};
+    const socket = {
+      id: 'socket-1',
+      disconnect: () => undefined,
+      on(event: 'disconnect', listener: (reason: string, description: unknown) => void) {
+        listeners.disconnect = listener;
+        return this;
+      },
+      onAny(listener: (event: string, ...args: unknown[]) => void) {
+        listeners.onAny = listener;
+        return this;
+      },
+    } as unknown as Socket;
+    const state = Reflect.get(service, 'createConnectionHandlerState').call(service) as {
+      bufferedMessages: Array<{ event: string; payload: unknown }>;
+    };
+
+    Reflect.get(service, 'attachConnectionListeners').call(service, state, [], socket, {} as never);
+
+    listeners.onAny?.('ping', 'one');
+    listeners.onAny?.('ping', 'two');
+    listeners.onAny?.('ping', 'three');
+
+    expect(state.bufferedMessages.map((message) => message.payload)).toEqual(['two', 'three']);
+    expect(loggerEvents.some((event) => event.includes('dropped the oldest pending message'))).toBe(true);
+  });
+
   it('isolates same room names across namespaces', async () => {
     class GatewayState {
       adminMessages: unknown[] = [];
@@ -377,6 +428,35 @@ describe('@konekti/platform-socket.io', () => {
     chatSocket.disconnect();
     adminSocket.disconnect();
     await Promise.all([chatDisconnected, adminDisconnected]);
+
+    await app.close();
+  });
+
+  it('requires an explicit namespace when room helpers are used outside gateway handler context', async () => {
+    @WebSocketGateway({ path: '/' })
+    class DefaultGateway {
+      @OnConnect()
+      onConnect() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      providers: [DefaultGateway],
+    });
+
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: await findAvailablePort(),
+    });
+    const rooms = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
+
+    await app.listen();
+
+    expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload')).toThrow(/namespace/i);
+    expect(() => rooms.joinRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
+    expect(() => rooms.leaveRoom('missing-socket', 'shared-room')).toThrow(/namespace/i);
+    expect(() => rooms.broadcastToRoom('shared-room', 'chat:broadcast', 'payload', '/')).not.toThrow();
 
     await app.close();
   });
