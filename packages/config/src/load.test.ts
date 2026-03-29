@@ -262,6 +262,43 @@ describe('loadConfig', () => {
     }
   });
 
+  it('updates current() before notifying manual reload listeners', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-reload-current-visibility-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+    });
+
+    try {
+      const observed: Array<{ callbackPort: string; currentPort: string | undefined }> = [];
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'manual') {
+          return;
+        }
+
+        const callbackPort = snapshot['PORT'];
+        const currentPort = reloader.current()['PORT'];
+
+        if (typeof callbackPort === 'string') {
+          observed.push({ callbackPort, currentPort: typeof currentPort === 'string' ? currentPort : undefined });
+        }
+      });
+
+      writeFileSync(envPath, 'PORT=4100\n');
+      reloader.reload();
+
+      expect(observed).toEqual([{ callbackPort: '4100', currentPort: '4100' }]);
+    } finally {
+      reloader.close();
+    }
+  });
+
   it('keeps last valid snapshot and reports validation failures in watch mode', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-watch-validation-'));
     const envPath = join(cwd, '.env.dev');

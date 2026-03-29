@@ -168,10 +168,17 @@ function applyReload(
   listeners: ReadonlySet<ConfigReloadListener>,
   reason: ConfigReloadReason,
 ): ConfigDictionary {
+  const previous = state.current;
   const next = resolveConfig(normalized);
 
-  notifyReloadListeners(listeners, next, reason);
   state.current = next;
+
+  try {
+    notifyReloadListeners(listeners, next, reason);
+  } catch (error) {
+    state.current = previous;
+    throw error;
+  }
 
   return cloneConfigDictionary(next);
 }
