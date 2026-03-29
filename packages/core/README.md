@@ -113,7 +113,7 @@ For DI metadata, `getOwnClassDiMetadata()` returns only metadata written on the 
 
 `@konekti/core` also re-exports additional metadata helpers and types from `src/metadata.ts`; treat this table as the most important helpers, not the full public surface.
 
-`ensureMetadataSymbol()` is the explicit compatibility boundary for standard-decorator metadata. Call it during bootstrap when your runtime does not provide `Symbol.metadata`; framework extensions should depend on this explicit initializer instead of import-order side effects.
+`ensureMetadataSymbol()` is an idempotent compatibility guard for standard-decorator metadata. `@konekti/core` invokes it automatically on import, so explicit bootstrap calls are usually unnecessary, but calling it manually is harmless when you want an explicit compatibility check in custom tooling or isolated tests.
 
 ## Architecture
 

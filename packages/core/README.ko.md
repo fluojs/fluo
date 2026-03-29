@@ -113,6 +113,8 @@ DI 메타데이터에서는 `getOwnClassDiMetadata()`가 현재 클래스에 직
 
 `@konekti/core`는 `src/metadata.ts`의 추가 메타데이터 헬퍼와 타입도 함께 re-export합니다. 위 표는 가장 중요한 헬퍼 요약이지 전체 public surface 목록은 아닙니다.
 
+`ensureMetadataSymbol()`은 표준 데코레이터 메타데이터를 위한 idempotent 호환성 가드입니다. `@konekti/core`가 import될 때 자동으로 실행되므로 일반적인 앱 부트스트랩에서 직접 호출할 필요는 없지만, 커스텀 툴링이나 격리된 테스트에서 명시적으로 확인하고 싶다면 수동 호출도 무해합니다.
+
 ## 구조
 
 ```
