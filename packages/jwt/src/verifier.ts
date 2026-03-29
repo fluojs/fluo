@@ -101,17 +101,23 @@ function resolveStaticPublicKey(
   kid: string | undefined,
 ): string | KeyObject | undefined {
   if (typeof kid === 'string' && kid.length > 0) {
-    const matchingKey = keyState.keyByKid.get(kid);
+    // Only consult keyByKid when a multi-key keys[] array was provided.
+    // When the verifier is configured with a single options.publicKey, the
+    // map is empty and a kid header in the token should be ignored so that
+    // verification proceeds with the single configured key.
+    if (keyState.keyByKid.size > 0) {
+      const matchingKey = keyState.keyByKid.get(kid);
 
-    if (!matchingKey) {
-      throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
+      if (!matchingKey) {
+        throw new JwtInvalidTokenError('JWT key id (kid) is not recognized.');
+      }
+
+      if (matchingKey.publicKey === undefined) {
+        throw new JwtConfigurationError(`JWT key "${kid}" does not provide a public key.`);
+      }
+
+      return matchingKey.publicKey;
     }
-
-    if (matchingKey.publicKey === undefined) {
-      throw new JwtConfigurationError(`JWT key "${kid}" does not provide a public key.`);
-    }
-
-    return matchingKey.publicKey;
   }
 
   if (keyState.publicKeyCount > 1) {
