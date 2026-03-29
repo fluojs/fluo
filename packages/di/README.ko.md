@@ -50,7 +50,7 @@ container.register(
   UserService,
 );
 
-const svc = container.resolve<UserService>(UserService);
+const svc = await container.resolve<UserService>(UserService);
 svc.greet('world');
 ```
 
@@ -60,7 +60,7 @@ svc.greet('world');
 const requestContainer = container.createRequestScope();
 
 // request-scoped provider는 요청마다 격리된다
-const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
+const handler = await requestContainer.resolve<RequestHandler>(RequestHandler);
 ```
 
 ## 핵심 API
@@ -70,7 +70,7 @@ const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
 | `Container` | `src/container.ts` | DI 컨테이너 |
 | `container.register(...providers)` | `src/container.ts` | 하나 이상의 provider 등록 |
 | `container.has(token)` | `src/container.ts` | 토큰 등록 여부 확인 |
-| `container.resolve<T>(token)` | `src/container.ts` | 토큰을 인스턴스로 resolve |
+| `container.resolve<T>(token)` | `src/container.ts` | 토큰을 비동기로 resolve (`Promise<T>`) |
 | `container.createRequestScope()` | `src/container.ts` | 단일 요청용 child container 생성 |
 | `ClassProvider` | `src/types.ts` | `{ provide, useClass, scope? }` |
 | `FactoryProvider` | `src/types.ts` | `{ provide, useFactory, inject?, scope? }` |
