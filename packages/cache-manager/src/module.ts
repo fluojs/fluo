@@ -18,6 +18,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     store: options.store ?? 'memory',
     ttl: options.ttl ?? 0,
     httpKeyStrategy: options.httpKeyStrategy ?? 'route',
+    principalScopeResolver: options.principalScopeResolver,
   };
 }
 

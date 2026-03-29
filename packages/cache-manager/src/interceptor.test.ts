@@ -14,6 +14,7 @@ const cacheOptions: NormalizedCacheModuleOptions = {
   store: 'memory',
   ttl: 0,
   httpKeyStrategy: 'route',
+  principalScopeResolver: undefined,
 };
 
 function createRequestContext(

@@ -121,7 +121,7 @@ class AppModule {}
 - `CACHE_MANAGER` — DI token for `CacheService`.
 - `CACHE_OPTIONS` — DI token for normalized module options.
 
-`CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, and `httpKeyStrategy`.
+`CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, and `principalScopeResolver`.
 
 ## Behavior
 
@@ -133,6 +133,7 @@ class AppModule {}
   - `'route+query'` — route path + sorted query string, plus authenticated principal scope when present.
   - `'full'` — route path + sorted query string, plus authenticated principal scope when present; currently equivalent to `'route+query'`.
   - `function` — custom resolver `(context) => string`.
+- `principalScopeResolver` — optional function `(context) => string | undefined` that overrides the default `issuer:subject` principal scope segment. When provided, the returned string is appended verbatim as `|principal:<scope>`. Returning `undefined` skips the principal scope entirely for that request.
 - `@CacheKey(...)` decorator overrides the module-level strategy for individual handlers.
 - `@CacheEvict(...)` runs after the response write of successful non-GET handlers.
 
@@ -199,6 +200,41 @@ To opt in per-handler while keeping the default globally:
   return query ? `${path}?${query}` : path;
 })
 ```
+
+#### Multi-Tenant and Role-Varied Caching
+
+When responses differ by tenant ID, subscription plan, or any other dimension beyond `issuer:subject`, use `principalScopeResolver` to control exactly what gets appended to the cache key.
+
+Scope responses by tenant only (ignores individual user):
+
+```ts
+createCacheModule({
+  store: 'redis',
+  ttl: 60,
+  principalScopeResolver: (context) => {
+    // context.requestContext.principal is available when the request is authenticated
+    const tenantId = context.requestContext.metadata['tenantId'] as string | undefined;
+    return tenantId; // undefined = skip principal scope entirely for anonymous requests
+  },
+})
+```
+
+Scope responses by subscription plan:
+
+```ts
+createCacheModule({
+  store: 'memory',
+  ttl: 120,
+  principalScopeResolver: (context) => {
+    const plan = context.requestContext.metadata['subscriptionPlan'] as string | undefined;
+    return plan ?? 'free';
+  },
+})
+```
+
+When `principalScopeResolver` returns `undefined`, no `|principal:…` segment is appended. When it returns a string, the cache key becomes `<base-key>|principal:<scope>`.
+
+> `principalScopeResolver` affects only the default key built by built-in string strategies (`'route'`, `'route+query'`, `'full'`). Handlers that use `@CacheKey(...)` or a custom `httpKeyStrategy` function are unaffected — those handlers own their own key construction and must include scope information themselves.
 
 ### General Cache Behavior (CacheService / CacheStore)
 

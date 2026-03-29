@@ -4,7 +4,7 @@ import { SseResponse, type CallHandler, type Interceptor, type InterceptorContex
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CACHE_MANAGER, CACHE_OPTIONS } from './tokens.js';
 import { CacheService } from './service.js';
-import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions } from './types.js';
+import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions, PrincipalScopeResolver } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
@@ -49,11 +49,20 @@ function buildSortedQueryString(query: Record<string, unknown>): string {
   return entries.join('&');
 }
 
-function appendPrincipalScope(key: string, context: InterceptorContext): string {
+function appendPrincipalScope(
+  key: string,
+  context: InterceptorContext,
+  resolver: PrincipalScopeResolver | undefined,
+): string {
   const principal = context.requestContext.principal;
 
   if (!principal) {
     return key;
+  }
+
+  if (resolver) {
+    const scope = resolver(context);
+    return scope !== undefined ? `${key}|principal:${scope}` : key;
   }
 
   const issuer = encodeURIComponent(principal.issuer ?? 'unknown');
@@ -62,7 +71,11 @@ function appendPrincipalScope(key: string, context: InterceptorContext): string 
   return `${key}|principal:${issuer}:${subject}`;
 }
 
-function defaultCacheKey(context: InterceptorContext, strategy: CacheKeyStrategy): string {
+function defaultCacheKey(
+  context: InterceptorContext,
+  strategy: CacheKeyStrategy,
+  resolver: PrincipalScopeResolver | undefined,
+): string {
   if (typeof strategy === 'function') {
     return strategy(context);
   }
@@ -71,16 +84,16 @@ function defaultCacheKey(context: InterceptorContext, strategy: CacheKeyStrategy
   const query = context.requestContext.request.query;
 
   if (strategy === 'route') {
-    return appendPrincipalScope(path, context);
+    return appendPrincipalScope(path, context, resolver);
   }
 
   const queryString = buildSortedQueryString(query);
 
   if (!queryString) {
-    return appendPrincipalScope(path, context);
+    return appendPrincipalScope(path, context, resolver);
   }
 
-  return appendPrincipalScope(`${path}?${queryString}`, context);
+  return appendPrincipalScope(`${path}?${queryString}`, context, resolver);
 }
 
 function normalizeTtl(ttlSeconds: number | undefined, fallback: number): number | undefined {
@@ -109,9 +122,10 @@ async function resolveCacheKeyValue(
   metadata: CacheKeyDecoratorValue | undefined,
   context: InterceptorContext,
   strategy: CacheKeyStrategy,
+  resolver: PrincipalScopeResolver | undefined,
 ): Promise<string> {
   if (!metadata) {
-    return defaultCacheKey(context, strategy);
+    return defaultCacheKey(context, strategy, resolver);
   }
 
   if (typeof metadata === 'string') {
@@ -190,7 +204,7 @@ export class CacheInterceptor implements Interceptor {
     metadataBag: MetadataBag | undefined,
   ): Promise<unknown> {
     const keyMetadata = metadataBag ? getCacheKeyMetadata(metadataBag) : undefined;
-    const key = await resolveCacheKeyValue(keyMetadata, context, this.options.httpKeyStrategy);
+    const key = await resolveCacheKeyValue(keyMetadata, context, this.options.httpKeyStrategy, this.options.principalScopeResolver);
     const ttl = normalizeTtl(metadataBag ? getCacheTtlMetadata(metadataBag) : undefined, this.options.ttl);
 
     if (ttl !== undefined) {

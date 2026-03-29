@@ -11,6 +11,7 @@ const baseOptions: NormalizedCacheModuleOptions = {
   store: 'memory',
   ttl: 0,
   httpKeyStrategy: 'route',
+  principalScopeResolver: undefined,
 };
 
 class MockRedisClient {

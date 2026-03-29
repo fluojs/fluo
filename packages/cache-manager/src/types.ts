@@ -26,11 +26,14 @@ interface CacheModuleInternalOptions {
   redis?: RedisCacheOptions;
 }
 
+export type PrincipalScopeResolver = (context: InterceptorContext) => string | undefined;
+
 export interface CacheModuleOptions extends CacheModuleInternalOptions {
   isGlobal?: boolean;
   store?: 'memory' | 'redis' | CacheStore;
   ttl?: number;
   httpKeyStrategy?: CacheKeyStrategy;
+  principalScopeResolver?: PrincipalScopeResolver;
 }
 
 export interface NormalizedCacheModuleOptions {
@@ -40,6 +43,7 @@ export interface NormalizedCacheModuleOptions {
   store: 'memory' | 'redis' | CacheStore;
   ttl: number;
   httpKeyStrategy: CacheKeyStrategy;
+  principalScopeResolver: PrincipalScopeResolver | undefined;
 }
 
 export type CacheKeyFactory = (context: InterceptorContext) => Awaitable<string>;
