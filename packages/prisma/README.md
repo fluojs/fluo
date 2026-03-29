@@ -41,6 +41,7 @@ const AppModule = createPrismaModule({ client: prisma });
 ### 2. Use `PrismaService` in a repository
 
 ```typescript
+import { PrismaClient } from '@prisma/client';
 import { Inject } from '@konekti/core';
 import { PrismaService } from '@konekti/prisma';
 
@@ -61,6 +62,7 @@ export class UserRepository {
 ### 3. Wrap a service method in a transaction
 
 ```typescript
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '@konekti/prisma';
 
 export class UserService {
@@ -68,9 +70,10 @@ export class UserService {
 
   async createWithProfile(data: CreateUserDto) {
     return this.prisma.transaction(async () => {
-      // everything called inside this callback shares the same tx client
-      const user = await this.userRepo.create(data);
-      await this.profileRepo.create({ userId: user.id });
+      const user = await this.prisma.current().user.create({ data });
+      await this.prisma.current().profile.create({
+        data: { userId: user.id },
+      });
       return user;
     });
   }
