@@ -120,6 +120,7 @@ export class Container {
   private readonly staleDisposalTasks = new Set<Promise<void>>();
   private readonly staleDisposalErrors: unknown[] = [];
   private readonly singletonCache: Map<Token, Promise<unknown>>;
+  private readonly childScopes = new Set<Container>();
   private disposePromise: Promise<void> | undefined;
   private disposed = false;
 
@@ -201,7 +202,9 @@ export class Container {
       throw new ContainerResolutionError('Container has been disposed and can no longer create request scopes.');
     }
 
-    return new Container(this, true, this.root().singletonCache);
+    const child = new Container(this, true, this.root().singletonCache);
+    this.root().childScopes.add(child);
+    return child;
   }
 
   async resolve<T>(token: Token<T>): Promise<T> {
@@ -219,7 +222,7 @@ export class Container {
     }
 
     this.disposed = true;
-    this.disposePromise = this.disposeCache(this.disposalCacheEntries());
+    this.disposePromise = this.disposeAll();
 
     try {
       await this.disposePromise;
@@ -227,6 +230,16 @@ export class Container {
       this.disposePromise = undefined;
       throw error;
     }
+  }
+
+  private async disposeAll(): Promise<void> {
+    // Dispose all live request-scope children first (root only)
+    if (!this.parent && this.childScopes.size > 0) {
+      await Promise.all(Array.from(this.childScopes).map((child) => child.dispose()));
+      this.childScopes.clear();
+    }
+
+    await this.disposeCache(this.disposalCacheEntries());
   }
 
   private hasMulti(token: Token): boolean {
