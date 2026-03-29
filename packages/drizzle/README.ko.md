@@ -71,11 +71,23 @@ export class UserRepository {
 ### 명시적 transaction
 
 ```typescript
-await this.db.transaction(async () => {
-  // 이 callback 안에서 db.current()는 tx handle을 반환한다
-  await userRepo.create(data);
-  await auditRepo.log(data.id);
-});
+import { DrizzleDatabase } from '@konekti/drizzle';
+import { profiles, users } from './schema';
+
+type NewUser = typeof users.$inferInsert;
+type NewProfile = typeof profiles.$inferInsert;
+
+export class UserService {
+  constructor(private readonly db: DrizzleDatabase) {}
+
+  async createWithProfile(user: NewUser, profile: NewProfile) {
+    return this.db.transaction(async () => {
+      const db = this.db.current();
+      await db.insert(users).values(user);
+      await db.insert(profiles).values(profile);
+    });
+  }
+}
 ```
 
 ### 자동 request-scoped transaction (opt-in)
