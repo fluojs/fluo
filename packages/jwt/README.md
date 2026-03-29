@@ -144,8 +144,8 @@ const verifier = new DefaultJwtVerifier({
 
 | Export | Location | Description |
 |---|---|---|
-| `DefaultJwtVerifier` | `src/verifier.ts` | `verifyAccessToken(token) → JwtPrincipal` |
-| `DefaultJwtSigner` | `src/signer.ts` | `signAccessToken(claims) → string` |
+| `DefaultJwtVerifier` | `src/verifier.ts` | `verifyAccessToken(token) → Promise<JwtPrincipal>` |
+| `DefaultJwtSigner` | `src/signer.ts` | `signAccessToken(claims) → Promise<string>` |
 | `createJwtCoreProviders(options)` | `src/module.ts` | Registers options, verifier, and signer in one call |
 | `JwtPrincipal` | `src/types.ts` | `{ subject, issuer?, audience?, roles?, scopes?, claims }` |
 | `JwtClaims` | `src/types.ts` | Raw claims shape |
