@@ -50,7 +50,7 @@ container.register(
   UserService,
 );
 
-const svc = container.resolve<UserService>(UserService);
+const svc = await container.resolve<UserService>(UserService);
 svc.greet('world');
 ```
 
@@ -60,7 +60,7 @@ svc.greet('world');
 const requestContainer = container.createRequestScope();
 
 // request-scoped providers are isolated per-request
-const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
+const handler = await requestContainer.resolve<RequestHandler>(RequestHandler);
 ```
 
 ## Key API
@@ -70,7 +70,7 @@ const handler = requestContainer.resolve<RequestHandler>(RequestHandler);
 | `Container` | `src/container.ts` | The DI container |
 | `container.register(...providers)` | `src/container.ts` | Register one or more providers |
 | `container.has(token)` | `src/container.ts` | Check if a token is registered |
-| `container.resolve<T>(token)` | `src/container.ts` | Resolve a token to an instance |
+| `container.resolve<T>(token)` | `src/container.ts` | Resolve a token to an instance asynchronously (`Promise<T>`) |
 | `container.createRequestScope()` | `src/container.ts` | Create a child container for a single request |
 | `ClassProvider` | `src/types.ts` | `{ provide, useClass, scope? }` |
 | `FactoryProvider` | `src/types.ts` | `{ provide, useFactory, inject?, scope? }` |
