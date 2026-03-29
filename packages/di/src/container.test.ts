@@ -317,6 +317,24 @@ describe('Container', () => {
       expect(a.b.value).toBe('b');
     });
 
+    it('fails fast for a true circular dependency even when both sides use forwardRef', async () => {
+      class ServiceA {
+        constructor(public b: ServiceB) {}
+      }
+
+      class ServiceB {
+        constructor(public a: ServiceA) {}
+      }
+
+      const container = new Container().register(
+        { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+        { provide: ServiceB, useClass: ServiceB, inject: [forwardRef(() => ServiceA)] },
+      );
+
+      await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
+      await expect(container.resolve(ServiceA)).rejects.toThrow(/forwardRef only defers token lookup/i);
+    });
+
     it('throws CircularDependencyError for a deep cycle (A -> B -> C -> A)', async () => {
       class ServiceA {
         constructor(public b: ServiceB) {}
@@ -435,6 +453,14 @@ describe('Container', () => {
       expect(requestResolved).toBe(requestOverride);
       expect(requestResolved).not.toBe(rootAfterOverride);
       expect(secondRequestResolved).toBe(rootAfterOverride);
+    });
+
+    it('throws ScopeMismatchError when registering a singleton on a request scope container', () => {
+      const token = Symbol('singleton-token');
+      const root = new Container();
+      const requestScope = root.createRequestScope();
+
+      expect(() => requestScope.register({ provide: token, useValue: 'request-only' })).toThrow(ScopeMismatchError);
     });
   });
 
@@ -594,6 +620,18 @@ describe('Container', () => {
 
       await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
       await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['child-only']);
+    });
+
+    it('child single override() stops parent multi-provider collection for that token', async () => {
+      const PLUGINS = Symbol('Plugins');
+      const root = new Container().register(
+        { provide: PLUGINS, useValue: 'root-a', multi: true },
+        { provide: PLUGINS, useValue: 'root-b', multi: true },
+      );
+      const child = root.createRequestScope().override({ provide: PLUGINS, useValue: 'child-only' });
+
+      await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
+      await expect(child.resolve<string>(PLUGINS)).resolves.toBe('child-only');
     });
 
     it('keeps request-scoped multi providers isolated per request scope', async () => {
