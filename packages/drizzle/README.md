@@ -71,11 +71,23 @@ export class UserRepository {
 ### Explicit transaction
 
 ```typescript
-await this.db.transaction(async () => {
-  // db.current() returns the tx handle inside this callback
-  await userRepo.create(data);
-  await auditRepo.log(data.id);
-});
+import { DrizzleDatabase } from '@konekti/drizzle';
+import { profiles, users } from './schema';
+
+type NewUser = typeof users.$inferInsert;
+type NewProfile = typeof profiles.$inferInsert;
+
+export class UserService {
+  constructor(private readonly db: DrizzleDatabase) {}
+
+  async createWithProfile(user: NewUser, profile: NewProfile) {
+    return this.db.transaction(async () => {
+      const db = this.db.current();
+      await db.insert(users).values(user);
+      await db.insert(profiles).values(profile);
+    });
+  }
+}
 ```
 
 ### Automatic request-scoped transaction (opt-in)

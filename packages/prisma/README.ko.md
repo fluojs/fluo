@@ -41,6 +41,7 @@ const AppModule = createPrismaModule({ client: prisma });
 ### 2. 리포지토리에서 `PrismaService` 사용
 
 ```typescript
+import { PrismaClient } from '@prisma/client';
 import { Inject } from '@konekti/core';
 import { PrismaService } from '@konekti/prisma';
 
@@ -61,6 +62,7 @@ export class UserRepository {
 ### 3. 서비스 메서드를 트랜잭션으로 감싸기
 
 ```typescript
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '@konekti/prisma';
 
 export class UserService {
@@ -68,9 +70,10 @@ export class UserService {
 
   async createWithProfile(data: CreateUserDto) {
     return this.prisma.transaction(async () => {
-      // 이 콜백 안에서 호출되는 모든 코드는 동일한 tx 클라이언트를 공유합니다
-      const user = await this.userRepo.create(data);
-      await this.profileRepo.create({ userId: user.id });
+      const user = await this.prisma.current().user.create({ data });
+      await this.prisma.current().profile.create({
+        data: { userId: user.id },
+      });
       return user;
     });
   }
