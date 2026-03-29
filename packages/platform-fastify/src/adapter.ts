@@ -889,9 +889,11 @@ function serializeResponseBody(
   }
 
   if (typeof body === 'string') {
+    const isJson = isJsonContentType(contentType);
+
     return {
-      defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
-      payload: body,
+      defaultContentType: isJson ? undefined : 'text/plain; charset=utf-8',
+      payload: isJson ? JSON.stringify(body) : body,
     };
   }
 
