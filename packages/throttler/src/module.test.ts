@@ -442,8 +442,73 @@ describe('ThrottlerGuard — Redis store mock', () => {
     expect(decodedHandler).toContain('path:%2Fv1%2Frate-limit');
     expect(decodedHandler).toContain('version:1');
     expect(decodedHandler).toContain('handler:hit');
-    expect(decodedHandler).toContain('module:');
-    expect(decodedHandler).toContain('controller:');
+    expect(decodedHandler).toContain('module:RateModule');
+    expect(decodedHandler).toContain('controller:RateController');
     expect(decodedClient).toBe('2001:db8::1');
+  });
+
+  it('builds the same store key even when handler discovery order differs across module instances', async () => {
+    const buildStore = (): ThrottlerStore => ({
+      consume: vi.fn(async (_key: string, input) => ({
+        count: 1,
+        resetAt: input.now + input.ttlSeconds * 1000,
+      })),
+    });
+
+    class WarmupController {
+      warmup() {}
+    }
+
+    class WarmupModule {}
+
+    class RateController {
+      hit() {}
+    }
+
+    class RateModule {}
+
+    vi.resetModules();
+    const { ThrottlerGuard: GuardA } = await import('./guard.js');
+    const storeA = buildStore();
+    const guardA = new GuardA({ limit: 2, store: storeA, ttl: 60 });
+
+    await guardA.canActivate(
+      createGuardContext(WarmupController, 'warmup', createRequestContext('2001:db8::10'), {
+        moduleType: WarmupModule,
+        routeMethod: 'GET',
+        routePath: '/warmup',
+        routeVersion: '1',
+      }),
+    );
+
+    await guardA.canActivate(
+      createGuardContext(RateController, 'hit', createRequestContext('2001:db8::1'), {
+        moduleType: RateModule,
+        routeMethod: 'POST',
+        routePath: '/v1/rate-limit',
+        routeVersion: '1',
+      }),
+    );
+
+    vi.resetModules();
+    const { ThrottlerGuard: GuardB } = await import('./guard.js');
+    const storeB = buildStore();
+    const guardB = new GuardB({ limit: 2, store: storeB, ttl: 60 });
+
+    await guardB.canActivate(
+      createGuardContext(RateController, 'hit', createRequestContext('2001:db8::1'), {
+        moduleType: RateModule,
+        routeMethod: 'POST',
+        routePath: '/v1/rate-limit',
+        routeVersion: '1',
+      }),
+    );
+
+    const keyA = vi.mocked(storeA.consume).mock.calls[1]?.[0];
+    const keyB = vi.mocked(storeB.consume).mock.calls[0]?.[0];
+
+    expect(keyA).toBeDefined();
+    expect(keyB).toBeDefined();
+    expect(keyA).toBe(keyB);
   });
 });

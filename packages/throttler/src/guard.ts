@@ -14,9 +14,6 @@ import type { ThrottlerModuleOptions, ThrottlerStore } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
-const functionIdentityMap = new WeakMap<Function, number>();
-let nextFunctionIdentity = 1;
-
 function getClassMetadataBag(target: object): MetadataBag | undefined {
   return (target as Record<symbol, MetadataBag | undefined>)[metadataSymbol];
 }
@@ -45,26 +42,16 @@ function buildStoreKey(handlerKey: string, clientKey: string): string {
   return `throttler:${encodedHandlerKey}:${encodedClientKey}`;
 }
 
-function getFunctionIdentity(value: Function): number {
-  const existing = functionIdentityMap.get(value);
-
-  if (existing !== undefined) {
-    return existing;
-  }
-
-  const assigned = nextFunctionIdentity;
-  nextFunctionIdentity += 1;
-  functionIdentityMap.set(value, assigned);
-
-  return assigned;
+function getTypeIdentity(value: Function): string {
+  return value.name || 'anonymous';
 }
 
 function buildHandlerKey(handler: GuardContext['handler']): string {
   const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
   const moduleIdentity = handler.metadata.moduleType
-    ? `module:${getFunctionIdentity(handler.metadata.moduleType)}`
+    ? `module:${getTypeIdentity(handler.metadata.moduleType)}`
     : 'module:none';
-  const controllerIdentity = `controller:${getFunctionIdentity(handler.controllerToken)}`;
+  const controllerIdentity = `controller:${getTypeIdentity(handler.controllerToken)}`;
 
   return [
     `method:${handler.route.method}`,
