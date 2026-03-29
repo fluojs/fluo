@@ -701,7 +701,17 @@ export class Container {
     }
   }
 
-  private resolveEffectiveProvider(token: Token): NormalizedProvider | undefined {
+  private resolveEffectiveProvider(
+    token: Token,
+    visited = new Set<Token>(),
+    chain: Token[] = [],
+  ): NormalizedProvider | undefined {
+    if (visited.has(token)) {
+      throw new CircularDependencyError([...chain, token]);
+    }
+
+    visited.add(token);
+
     const provider = this.lookupProvider(token);
 
     if (!provider) {
@@ -709,7 +719,7 @@ export class Container {
     }
 
     if (provider.type === 'existing' && provider.useExisting !== undefined) {
-      return this.resolveEffectiveProvider(provider.useExisting);
+      return this.resolveEffectiveProvider(provider.useExisting, visited, [...chain, token]);
     }
 
     return provider;
