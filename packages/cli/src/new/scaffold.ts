@@ -130,7 +130,7 @@ function createProjectPackageJson(
       ...packageManagerField,
       ...localOverrideConfig,
       scripts: {
-        build: "babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ./babel.config.cjs && tsc -p tsconfig.build.json",
+        build: 'babel src --extensions .ts --out-dir dist --config-file ./babel.config.cjs && tsc -p tsconfig.build.json',
         dev: 'node --env-file=.env --watch --watch-preserve-output --import tsx src/main.ts',
         test: 'vitest run',
         'test:watch': 'vitest',
@@ -192,6 +192,7 @@ function createProjectTsconfigBuild(): string {
 
 function createBabelConfig(): string {
   return `module.exports = {
+  ignore: ['src/**/*.test.ts'],
   presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
   plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
 };

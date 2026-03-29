@@ -130,6 +130,29 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
   });
 
+  it('keeps Babel test-file ignore rules in babel.config.cjs instead of shell-quoted build args', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    const exitCode = await runCli(['new', 'starter-app'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const projectDirectory = join(workspaceDirectory, 'starter-app');
+    const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8')) as {
+      scripts: { build: string };
+    };
+    const babelConfig = readFileSync(join(projectDirectory, 'babel.config.cjs'), 'utf8');
+
+    expect(exitCode).toBe(0);
+    expect(packageJson.scripts.build).not.toContain('--ignore');
+    expect(babelConfig).toContain("ignore: ['src/**/*.test.ts']");
+  });
+
   it('keeps explicit --target-directory when it appears before positional project name', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
