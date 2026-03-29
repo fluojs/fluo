@@ -240,6 +240,15 @@ export class AuthModule {}
 
 See `@konekti/passport` documentation for full refresh token lifecycle details.
 
+### Refresh token rotation modes
+
+`RefreshTokenService.rotateRefreshToken()` supports two distinct modes controlled by `refreshToken.rotation`:
+
+- **`rotation: true`** — one-time-use refresh tokens. A successful refresh atomically consumes the current token, issues a new refresh token in the same family, and returns `{ accessToken, refreshToken: <new token> }`. Replay / reuse detection is active in this mode and requires `store.consume()`.
+- **`rotation: false`** — reusable refresh tokens. A successful refresh returns a new access token but reuses the same refresh token string until it expires or is revoked. No new family member is issued on refresh, and the store record is not consumed as part of the refresh operation.
+
+Choose `rotation: true` when you want one-time-use refresh tokens with replay detection. Choose `rotation: false` only when reusable refresh tokens are an acceptable application policy tradeoff.
+
 ## Related packages
 
 - `@konekti/passport` — the auth strategy/guard layer that calls this token core, including refresh token lifecycle

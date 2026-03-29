@@ -127,6 +127,11 @@ The following areas remain application-specific:
 
 The `RefreshTokenStrategy` extracts refresh tokens from request body (`refreshToken`), `Authorization: Bearer` header, or a custom `x-refresh-token` header. The framework handles header shape normalization (string or string array) internally.
 
+Refresh token rotation is configurable:
+
+- **`rotation: true`** — refresh exchanges are one-time-use and return a newly issued refresh token in the same family. Replay detection is active in this mode.
+- **`rotation: false`** — refresh exchanges return a new access token but keep the same refresh token string until it expires or is revoked. This mode trades stronger replay protection for reusable refresh tokens and should be chosen deliberately.
+
 ## further reading
 
 - **`@konekti/jwt`**: `../../packages/jwt/README.md`

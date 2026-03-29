@@ -40,6 +40,8 @@ Scope note:
 - **Rotate**: Exchange refresh tokens for new access + refresh tokens with replay detection
 - **Revoke**: Invalidate specific tokens or all tokens for a subject (logout)
 
+When the underlying `@konekti/jwt` refresh-token configuration uses `rotation: false`, the refresh operation still returns a new access token but reuses the same refresh token string until expiry or revocation. Replay-detection semantics described in this section apply to rotation mode (`rotation: true`).
+
 ### Use the refresh token strategy
 
 ```typescript
