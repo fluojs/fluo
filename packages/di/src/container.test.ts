@@ -495,6 +495,62 @@ describe('Container', () => {
 
       expect(alias).toBe(original);
     });
+
+    it('resolves the original instance through a multi-hop alias chain', async () => {
+      class Logger {}
+
+      const LOGGER_ALIAS_A = Symbol('LoggerAliasA');
+      const LOGGER_ALIAS_B = Symbol('LoggerAliasB');
+
+      const container = new Container().register(
+        Logger,
+        { provide: LOGGER_ALIAS_A, useExisting: Logger },
+        { provide: LOGGER_ALIAS_B, useExisting: LOGGER_ALIAS_A },
+      );
+
+      const original = await container.resolve(Logger);
+      const alias = await container.resolve<Logger>(LOGGER_ALIAS_B);
+
+      expect(alias).toBe(original);
+    });
+
+    it('throws CircularDependencyError for cyclic useExisting chains during singleton scope checks', async () => {
+      const TOKEN_A = Symbol('TokenA');
+      const TOKEN_B = Symbol('TokenB');
+
+      class MyService {
+        constructor(readonly dependency: unknown) {}
+      }
+
+      const container = new Container().register(
+        { provide: TOKEN_A, useExisting: TOKEN_B },
+        { provide: TOKEN_B, useExisting: TOKEN_A },
+        { provide: MyService, useClass: MyService, inject: [TOKEN_A] },
+      );
+
+      await expect(container.resolve(MyService)).rejects.toThrow(CircularDependencyError);
+    });
+
+    it('applies singleton scope mismatch checks through alias chains', async () => {
+      const REQUEST_LOGGER = Symbol('RequestLogger');
+      const LOGGER_ALIAS_A = Symbol('LoggerAliasA');
+      const LOGGER_ALIAS_B = Symbol('LoggerAliasB');
+
+      class RequestLogger {}
+
+      class MyService {
+        constructor(readonly logger: RequestLogger) {}
+      }
+
+      const container = new Container().register(
+        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: Scope.REQUEST },
+        { provide: LOGGER_ALIAS_A, useExisting: REQUEST_LOGGER },
+        { provide: LOGGER_ALIAS_B, useExisting: LOGGER_ALIAS_A },
+        { provide: MyService, useClass: MyService, inject: [LOGGER_ALIAS_B] },
+      );
+
+      await expect(container.resolve(MyService)).rejects.toThrow(ScopeMismatchError);
+    });
   });
 
   describe('multi-provider', () => {
