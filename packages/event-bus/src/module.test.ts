@@ -878,6 +878,36 @@ describe('@konekti/event-bus', () => {
       expect(subscribedChannels).toEqual(['PasswordResetEvent', 'UserCreatedEvent']);
     });
 
+    it('fails bootstrap when transport subscription wiring fails', async () => {
+      const loggerEvents: string[] = [];
+      const transport = {
+        async publish(_channel: string, _payload: unknown) {},
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {
+          throw new Error('subscribe failed');
+        },
+        async close() {},
+      } satisfies EventBusTransport;
+
+      class Handler {
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [Handler],
+      });
+
+      await expect(
+        bootstrapApplication({ logger: createLogger(loggerEvents), rootModule: AppModule }),
+      ).rejects.toThrow('subscribe failed');
+
+      expect(
+        loggerEvents.some((event) => event.includes('EventBusTransport failed to subscribe to channel "UserCreatedEvent".')),
+      ).toBe(true);
+    });
+
     it('dispatches incoming transport messages to local handlers', async () => {
       const transport = createMockTransport();
 
