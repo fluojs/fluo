@@ -114,6 +114,7 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
 export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
+  private readonly multiOverriddenTokens = new Set<Token>();
   private readonly requestCache = new Map<Token, Promise<unknown>>();
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly staleDisposalTasks = new Set<Promise<void>>();
@@ -181,6 +182,7 @@ export class Container {
 
       if (normalized.multi) {
         this.multiRegistrations.set(normalized.provide, [normalized]);
+        this.multiOverriddenTokens.add(normalized.provide);
         continue;
       }
 
@@ -248,19 +250,19 @@ export class Container {
   }
 
   private collectMultiProviders(token: Token): NormalizedProvider[] {
-    const providers: NormalizedProvider[] = [];
-
-    if (this.parent) {
-      providers.push(...this.parent.collectMultiProviders(token));
-    }
-
     const local = this.multiRegistrations.get(token);
 
-    if (local) {
-      providers.push(...local);
+    if (this.multiOverriddenTokens.has(token)) {
+      return local ?? [];
     }
 
-    return providers;
+    const fromParent = this.parent ? this.parent.collectMultiProviders(token) : [];
+
+    if (local) {
+      return [...fromParent, ...local];
+    }
+
+    return fromParent;
   }
 
   private async resolveWithChain<T>(
