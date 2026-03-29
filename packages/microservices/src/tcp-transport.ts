@@ -124,10 +124,15 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
       const socket = new Socket();
       let settled = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let onAbort: (() => void) | undefined;
 
       const cleanup = () => {
         if (timeoutId) {
           clearTimeout(timeoutId);
+        }
+
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
         }
 
         socket.removeAllListeners();
@@ -156,9 +161,10 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
           return;
         }
 
-        signal.addEventListener('abort', () => {
+        onAbort = () => {
           fail(new Error('Microservice send aborted.'));
-        }, { once: true });
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
       }
 
       timeoutId = setTimeout(() => {
