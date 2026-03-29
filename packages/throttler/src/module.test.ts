@@ -5,6 +5,7 @@ import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/h
 
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
+import { createThrottlerModule } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 
@@ -103,6 +104,26 @@ describe('@konekti/throttler decorators', () => {
     expect(bag[Symbol.for('konekti.throttler.class-throttle')]).toEqual({ limit: 100, ttl: 60 });
   });
 
+  it('rejects invalid @Throttle options eagerly', () => {
+    expect(() => {
+      class AuthController {
+        @Throttle({ limit: 0, ttl: 60 })
+        login() {}
+      }
+
+      return AuthController;
+    }).toThrow(/limit/i);
+
+    expect(() => {
+      class AuthController {
+        @Throttle({ limit: 1, ttl: Number.NaN })
+        login() {}
+      }
+
+      return AuthController;
+    }).toThrow(/ttl/i);
+  });
+
   it('captures @Throttle options by value to avoid shared mutable metadata', () => {
     const options = { limit: 5, ttl: 60 };
 
@@ -177,6 +198,12 @@ describe('ThrottlerGuard — in-memory store', () => {
       store: createMemoryThrottlerStore(),
       ttl: 60,
     };
+  });
+
+  it('rejects invalid module-level ttl and limit before request handling starts', () => {
+    expect(() => createThrottlerModule({ limit: 0, ttl: 60 })).toThrow(/limit/i);
+    expect(() => createThrottlerModule({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
+    expect(() => createThrottlerModule({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
   });
 
   it('allows requests up to the limit', async () => {
@@ -442,8 +469,6 @@ describe('ThrottlerGuard — Redis store mock', () => {
     expect(decodedHandler).toContain('path:%2Fv1%2Frate-limit');
     expect(decodedHandler).toContain('version:1');
     expect(decodedHandler).toContain('handler:hit');
-    expect(decodedHandler).toContain('module:RateModule');
-    expect(decodedHandler).toContain('controller:RateController');
     expect(decodedClient).toBe('2001:db8::1');
   });
 

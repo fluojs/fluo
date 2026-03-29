@@ -221,9 +221,11 @@ function inferEnumValueType(value: unknown): 'boolean' | 'number' | 'string' {
 }
 
 function createEnumSchema(values: readonly unknown[]): OpenApiSchemaObject {
+  const typeSet = new Set(values.map((value) => inferEnumValueType(value)));
+
   return {
     enum: [...values],
-    type: inferEnumValueType(values[0]),
+    ...(typeSet.size === 1 && values.length > 0 ? { type: inferEnumValueType(values[0]) } : {}),
   };
 }
 

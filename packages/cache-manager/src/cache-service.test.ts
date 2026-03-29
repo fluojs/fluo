@@ -178,6 +178,25 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
       await expect(cache.get('key')).resolves.toBeUndefined();
     });
 
+    it('does not repopulate a key when del runs while remember is still loading', async () => {
+      let resolveLoader: ((value: { computed: boolean }) => void) | undefined;
+      const cache = createCacheService(createStore());
+      const loader = vi.fn(
+        () =>
+          new Promise<{ computed: boolean }>((resolve) => {
+            resolveLoader = resolve;
+          }),
+      );
+
+      const pending = cache.remember('key', loader);
+      await Promise.resolve();
+      await cache.del('key');
+      resolveLoader?.({ computed: true });
+
+      await expect(pending).resolves.toEqual({ computed: true });
+      await expect(cache.get('key')).resolves.toBeUndefined();
+    });
+
     it('set uses module default TTL when not specified', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
@@ -259,6 +278,34 @@ describe('CacheService — general cache contract (outside HTTP interceptor)', (
 
       await cache.set('complex', complexObject);
       await expect(cache.get('complex')).resolves.toEqual(complexObject);
+    });
+
+    it('does not leak cached object mutations back into subsequent reads', async () => {
+      const cache = createCacheService(createStore());
+      const complexObject = {
+        metadata: { total: 2 },
+        users: [{ id: 1, name: 'Alice' }],
+      };
+
+      await cache.set('complex', complexObject);
+      complexObject.metadata.total = 99;
+
+      const firstRead = await cache.get<typeof complexObject>('complex');
+      expect(firstRead).toEqual({
+        metadata: { total: 2 },
+        users: [{ id: 1, name: 'Alice' }],
+      });
+
+      if (!firstRead) {
+        throw new Error('Expected cached value to be defined.');
+      }
+
+      firstRead.users[0]!.name = 'Bob';
+
+      await expect(cache.get('complex')).resolves.toEqual({
+        metadata: { total: 2 },
+        users: [{ id: 1, name: 'Alice' }],
+      });
     });
 
     it('handles multiple independent key namespaces', async () => {

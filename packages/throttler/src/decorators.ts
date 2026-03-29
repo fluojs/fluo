@@ -1,4 +1,5 @@
 import type { ThrottlerHandlerOptions } from './types.js';
+import { validateThrottleOptions } from './validation.js';
 
 export const throttleRouteMetadataKey = Symbol.for('konekti.standard.route');
 const throttleKey = Symbol.for('konekti.throttler.throttle');
@@ -16,10 +17,10 @@ function getMetadataBag(metadata: unknown): StandardMetadataBag {
 }
 
 function cloneThrottleOptions(options: ThrottlerHandlerOptions): ThrottlerHandlerOptions {
-  return {
+  return validateThrottleOptions({
     limit: options.limit,
     ttl: options.ttl,
-  };
+  });
 }
 
 function getRouteRecord(metadata: unknown, name: string | symbol): StandardMetadataBag {

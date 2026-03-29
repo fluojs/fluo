@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsArray, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
+import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
 import { Controller, FromBody, Post, RequestDto, createHandlerMapping } from '@konekti/http';
 
 import { buildOpenApiDocument } from './schema-builder.js';
@@ -98,5 +98,46 @@ describe('buildOpenApiDocument', () => {
         "required": true,
       }
     `);
+  });
+
+  it('omits enum type when allowed values mix primitive kinds', () => {
+    enum NumericStatus {
+      Draft,
+      Published,
+    }
+
+    class UpdatePostRequest {
+      @FromBody('status')
+      @IsEnum(NumericStatus)
+      status = NumericStatus.Draft;
+    }
+
+    @Controller('/posts')
+    class PostsController {
+      @RequestDto(UpdatePostRequest)
+      @Post('/status')
+      update() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: PostsController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Enum API',
+      version: '1.0.0',
+    });
+
+    expect(document.components?.schemas?.UpdatePostRequest).toEqual({
+      additionalProperties: false,
+      properties: {
+        status: {
+          enum: ['Draft', 'Published', 0, 1],
+        },
+      },
+      required: ['status'],
+      type: 'object',
+    });
   });
 });

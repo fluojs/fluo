@@ -1,4 +1,5 @@
 import type { CacheStore } from './types.js';
+import { cloneCacheValue } from './clone.js';
 
 interface MemoryCacheEntry<T = unknown> {
   expiresAt?: number;
@@ -47,7 +48,7 @@ export class MemoryStore implements CacheStore {
       return undefined;
     }
 
-    return entry.value as T;
+    return cloneCacheValue(entry.value as T);
   }
 
   async set<T = unknown>(key: string, value: T, ttlSeconds = 0): Promise<void> {
@@ -58,7 +59,7 @@ export class MemoryStore implements CacheStore {
     }
 
     const entry: MemoryCacheEntry<T> = {
-      value,
+      value: cloneCacheValue(value),
     };
 
     if (ttlSeconds > 0) {

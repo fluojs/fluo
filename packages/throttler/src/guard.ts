@@ -11,6 +11,7 @@ import {
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore } from './types.js';
+import { validateThrottleOptions, validateThrottlerModuleOptions } from './validation.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
@@ -58,6 +59,7 @@ export class ThrottlerGuard implements Guard {
   private readonly store: ThrottlerStore;
 
   constructor(private readonly options: ThrottlerModuleOptions) {
+    validateThrottlerModuleOptions(options);
     this.store = options.store ?? createMemoryThrottlerStore();
   }
 
@@ -77,8 +79,12 @@ export class ThrottlerGuard implements Guard {
     const methodThrottle = methodBag ? getThrottleMetadata(methodBag) : undefined;
     const classThrottle = classBag ? getClassThrottleMetadata(classBag) : undefined;
 
-    const ttlSeconds = methodThrottle?.ttl ?? classThrottle?.ttl ?? this.options.ttl;
-    const limit = methodThrottle?.limit ?? classThrottle?.limit ?? this.options.limit;
+    const resolvedThrottle = validateThrottleOptions({
+      limit: methodThrottle?.limit ?? classThrottle?.limit ?? this.options.limit,
+      ttl: methodThrottle?.ttl ?? classThrottle?.ttl ?? this.options.ttl,
+    });
+    const ttlSeconds = resolvedThrottle.ttl;
+    const limit = resolvedThrottle.limit;
 
     const middlewareCtx: MiddlewareContext = {
       request: requestContext.request,

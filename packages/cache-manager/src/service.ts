@@ -6,6 +6,8 @@ import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 @Inject([CACHE_STORE, CACHE_OPTIONS])
 export class CacheService {
   private readonly inflight = new Map<string, Promise<unknown>>();
+  private readonly invalidationVersion = new Map<string, number>();
+  private resetVersion = 0;
 
   constructor(
     private readonly store: CacheStore,
@@ -31,6 +33,8 @@ export class CacheService {
     loader: () => Promise<T>,
     ttlSeconds?: number,
   ): Promise<T> {
+    const keyVersion = this.invalidationVersion.get(key) ?? 0;
+    const resetVersion = this.resetVersion;
     const cached = await this.get<T>(key);
 
     if (cached !== undefined) {
@@ -44,6 +48,12 @@ export class CacheService {
     }
 
     const promise = loader().then(async (value) => {
+      const currentKeyVersion = this.invalidationVersion.get(key) ?? 0;
+
+      if (currentKeyVersion !== keyVersion || this.resetVersion !== resetVersion) {
+        return value;
+      }
+
       await this.set(key, value, ttlSeconds);
       return value;
     }).finally(() => {
@@ -55,10 +65,13 @@ export class CacheService {
   }
 
   async del(key: string): Promise<void> {
+    this.invalidationVersion.set(key, (this.invalidationVersion.get(key) ?? 0) + 1);
     await this.store.del(key);
   }
 
   async reset(): Promise<void> {
+    this.resetVersion += 1;
+    this.invalidationVersion.clear();
     await this.store.reset();
   }
 }

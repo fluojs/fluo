@@ -62,4 +62,23 @@ describe('MemoryStore', () => {
 
     await expect(store.get('users:list')).resolves.toEqual({ count: 1 });
   });
+
+  it('returns immutable snapshots instead of leaking internal object references', async () => {
+    const store = new MemoryStore();
+    const value = { nested: { count: 1 } };
+
+    await store.set('users:list', value, 60);
+    value.nested.count = 99;
+
+    const first = await store.get<typeof value>('users:list');
+    expect(first).toEqual({ nested: { count: 1 } });
+
+    if (!first) {
+      throw new Error('Expected cached value to be defined.');
+    }
+
+    first.nested.count = 42;
+
+    await expect(store.get('users:list')).resolves.toEqual({ nested: { count: 1 } });
+  });
 });
