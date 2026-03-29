@@ -9,6 +9,7 @@ interface RedisPubSubMessage {
 }
 
 interface RedisLike {
+  off?(event: 'message', listener: (channel: string, message: string) => void): unknown;
   on(event: 'message', listener: (channel: string, message: string) => void): unknown;
   publish(channel: string, message: string): Promise<unknown>;
   subscribe(...channels: string[]): Promise<unknown>;
@@ -26,6 +27,9 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
+  private readonly messageListener = (channel: string, message: string) => {
+    void this.handleIncoming(channel, message);
+  };
   private readonly namespace: string;
   private readonly pending = new Map<string, { reject: (error: unknown) => void; resolve: (value: unknown) => void; timeout: ReturnType<typeof setTimeout> }>();
   private readonly requestTimeoutMs: number;
@@ -48,16 +52,19 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
     }
 
     this.listenPromise = (async () => {
-      this.options.subscribeClient.on('message', (channel, message) => {
-        void this.handleIncoming(channel, message);
-      });
+      this.options.subscribeClient.on('message', this.messageListener);
 
-      await this.options.subscribeClient.subscribe(
-        this.requestChannel,
-        this.responseChannel,
-        this.eventChannel,
-      );
-      this.listening = true;
+      try {
+        await this.options.subscribeClient.subscribe(
+          this.requestChannel,
+          this.responseChannel,
+          this.eventChannel,
+        );
+        this.listening = true;
+      } catch (error) {
+        this.options.subscribeClient.off?.('message', this.messageListener);
+        throw error;
+      }
     })();
 
     try {
@@ -147,6 +154,8 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
         this.eventChannel,
       );
     }
+
+    this.options.subscribeClient.off?.('message', this.messageListener);
 
     this.listening = false;
     this.handler = undefined;

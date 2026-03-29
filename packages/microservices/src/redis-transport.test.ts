@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 
 interface RedisLike {
+  off?(event: 'message', listener: (channel: string, message: string) => void): unknown;
   on(event: 'message', listener: (channel: string, message: string) => void): unknown;
   publish(channel: string, message: string): Promise<unknown>;
   subscribe(...channels: string[]): Promise<unknown>;
@@ -11,6 +12,10 @@ interface RedisLike {
 
 class InMemoryRedisBus {
   private readonly subscriberHandlers = new Set<(channel: string, message: string) => void>();
+
+  listenerCount(): number {
+    return this.subscriberHandlers.size;
+  }
 
   createClient(): {
     publishClient: RedisLike;
@@ -33,6 +38,11 @@ class InMemoryRedisBus {
         on: (event: 'message', listener: (channel: string, message: string) => void) => {
           if (event === 'message') {
             this.subscriberHandlers.add(listener);
+          }
+        },
+        off: (event: 'message', listener: (channel: string, message: string) => void) => {
+          if (event === 'message') {
+            this.subscriberHandlers.delete(listener);
           }
         },
         publish: async () => {},
@@ -245,6 +255,43 @@ describe('RedisPubSubMicroserviceTransport', () => {
     expect(subscribeClient.subscriptions.has('test-ns:requests')).toBe(false);
     expect(subscribeClient.subscriptions.has('test-ns:responses')).toBe(false);
     expect(subscribeClient.subscriptions.has('test-ns:events')).toBe(false);
+  });
+
+  it('removes the message listener on close so reconnect does not duplicate dispatch', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+      requestTimeoutMs: 1_000,
+    });
+
+    let handled = 0;
+
+    const handler = async (packet: Parameters<typeof transport.listen>[0] extends (arg: infer T) => unknown ? T : never) => {
+      if (packet.kind === 'message' && packet.pattern === 'math.sum') {
+        handled += 1;
+        return 7;
+      }
+
+      return undefined;
+    };
+
+    await transport.listen(handler);
+    expect(bus.listenerCount()).toBe(1);
+
+    await transport.close();
+    expect(bus.listenerCount()).toBe(0);
+
+    await transport.listen(handler);
+    expect(bus.listenerCount()).toBe(1);
+
+    await expect(transport.send('math.sum', { a: 2, b: 5 })).resolves.toBe(7);
+    expect(handled).toBe(1);
+
+    await transport.close();
+    expect(bus.listenerCount()).toBe(0);
   });
 
   it('does not send before listen() is called', async () => {
