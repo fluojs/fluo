@@ -36,10 +36,12 @@ function setHeaderIfValue(
 }
 
 export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
-  if (options.allowCredentials === true && options.allowOrigin === '*') {
-    throw new Error(
-      'CORS misconfiguration: allowCredentials cannot be true when allowOrigin is "*". Specify explicit origins instead.',
-    );
+  if (options.allowCredentials === true) {
+    if (options.allowOrigin === '*' || options.allowOrigin === undefined) {
+      throw new Error(
+        'CORS misconfiguration: allowCredentials cannot be true when allowOrigin is "*" or unset (defaults to "*"). Specify explicit origins instead.',
+      );
+    }
   }
 
   const allowMethods = options.allowMethods ?? ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
@@ -51,6 +53,11 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
       const origin = resolveOrigin(options, requestOrigin);
 
       if (origin) {
+        if (options.allowCredentials === true && origin === '*') {
+          throw new Error(
+            'CORS misconfiguration: allowCredentials cannot be true when allowOrigin function returns "*". Specify explicit origins instead.',
+          );
+        }
         context.response.setHeader('Access-Control-Allow-Origin', origin);
       }
 

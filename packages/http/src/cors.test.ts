@@ -92,4 +92,55 @@ describe('createCorsMiddleware', () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
   });
+
+  it('throws at config time when allowCredentials is true and allowOrigin is "*"', () => {
+    expect(() => createCorsMiddleware({ allowCredentials: true, allowOrigin: '*' })).toThrow(
+      'allowCredentials cannot be true',
+    );
+  });
+
+  it('throws at config time when allowCredentials is true and allowOrigin is omitted (defaults to "*")', () => {
+    expect(() => createCorsMiddleware({ allowCredentials: true })).toThrow(
+      'allowCredentials cannot be true',
+    );
+  });
+
+  it('throws at request time when allowCredentials is true and allowOrigin function returns "*"', async () => {
+    const middleware = createCorsMiddleware({
+      allowCredentials: true,
+      allowOrigin: () => '*',
+    });
+    const response = createResponse();
+
+    await expect(
+      middleware.handle(
+        {
+          request: createRequest('GET', 'https://app.example.com'),
+          requestContext: {} as never,
+          response,
+        },
+        async () => {},
+      ),
+    ).rejects.toThrow('allowCredentials cannot be true');
+  });
+
+  it('allows allowCredentials with an explicit list of origins', async () => {
+    const middleware = createCorsMiddleware({
+      allowCredentials: true,
+      allowOrigin: ['https://trusted.example.com'],
+    });
+    const response = createResponse();
+
+    await middleware.handle(
+      {
+        request: createRequest('GET', 'https://trusted.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {},
+    );
+
+    expect(response.headers['Access-Control-Allow-Credentials']).toBe('true');
+    expect(response.headers['Access-Control-Allow-Origin']).toBe('https://trusted.example.com');
+  });
 });
