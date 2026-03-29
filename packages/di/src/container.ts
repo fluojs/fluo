@@ -141,6 +141,13 @@ export class Container {
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
+      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT && normalized.multi !== true) {
+        throw new ScopeMismatchError(
+          `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container. ` +
+            'Register it on the root container or override it within the request scope instead.',
+        );
+      }
+
       this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
       if (normalized.multi) {
@@ -188,6 +195,7 @@ export class Container {
         continue;
       }
 
+      this.multiOverriddenTokens.add(normalized.provide);
       this.registrations.set(normalized.provide, normalized);
     }
 
@@ -329,14 +337,18 @@ export class Container {
   }
 
   private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
-    const multiProviders = this.collectMultiProviders(token);
+    const localSingleProvider = this.registrations.get(token);
 
-    if (multiProviders.length > 0) {
-      const instances = await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
-        this.resolveMultiProviderInstances(multiProviders, c, at),
-      );
+    if (!localSingleProvider) {
+      const multiProviders = this.collectMultiProviders(token);
 
-      return instances as T;
+      if (multiProviders.length > 0) {
+        const instances = await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
+          this.resolveMultiProviderInstances(multiProviders, c, at),
+        );
+
+        return instances as T;
+      }
     }
 
     const provider = this.requireProvider(token);
@@ -382,13 +394,10 @@ export class Container {
     }
 
     if (allowForwardRef) {
-      // A forwardRef dep is in the chain — return the partially-initialized
-      // instance from the singleton cache if it is already being constructed.
-      const cache = this.singletonCacheFor(token);
-
-      if (cache?.has(token)) {
-        return cache.get(token);
-      }
+      throw new CircularDependencyError(
+        [...chain, token],
+        'forwardRef only defers token lookup and does not resolve true circular construction.',
+      );
     }
 
     throw new CircularDependencyError([...chain, token]);
@@ -451,18 +460,6 @@ export class Container {
     }
 
     return cache.get(provider.provide);
-  }
-
-  private singletonCacheFor(token: Token): Map<Token, Promise<unknown>> | undefined {
-    const provider = this.lookupProvider(token);
-
-    if (!provider || provider.scope !== Scope.DEFAULT) return undefined;
-
-    if (this.requestScopeEnabled && this.registrations.has(token)) {
-      return this.requestCache;
-    }
-
-    return this.root().singletonCache;
   }
 
   private async resolveDepToken(

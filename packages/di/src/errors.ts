@@ -25,9 +25,12 @@ export class ScopeMismatchError extends KonektiCodeError {
 }
 
 export class CircularDependencyError extends KonektiCodeError {
-  constructor(chain: readonly unknown[]) {
+  constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
-    super(`Circular dependency detected: ${path}`, 'CIRCULAR_DEPENDENCY');
+    super(
+      detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`,
+      'CIRCULAR_DEPENDENCY',
+    );
   }
 }
 
