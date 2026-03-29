@@ -91,6 +91,35 @@ describe('serialize', () => {
     });
   });
 
+  it('recurses into class instances without metadata so decorated child fields are respected', () => {
+    class Inner {
+      @Exclude()
+      secret: string;
+
+      public: string;
+
+      constructor(secret: string, pub: string) {
+        this.secret = secret;
+        this.public = pub;
+      }
+    }
+
+    class Outer {
+      inner: Inner;
+
+      constructor(inner: Inner) {
+        this.inner = inner;
+      }
+    }
+
+    const result = serialize(new Outer(new Inner('should-not-appear', 'visible'))) as {
+      inner: Record<string, unknown>;
+    };
+
+    expect(result.inner.public).toBe('visible');
+    expect(result.inner.secret).toBeUndefined();
+  });
+
   it('does not alter plain objects without serialization metadata', () => {
     const plain = {
       id: 'p-1',

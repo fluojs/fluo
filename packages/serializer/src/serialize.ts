@@ -120,11 +120,7 @@ function serializeClassInstance(
   const hasMetadata = fieldMetadata.size > 0 || classOptions.excludeExtraneous === true;
 
   if (!hasMetadata) {
-    if (isPlainObject(value)) {
-      return serializeRecord(value, context);
-    }
-
-    return value;
+    return serializeRecord(value, context);
   }
 
   const serialized: Record<string | symbol, unknown> = {};
