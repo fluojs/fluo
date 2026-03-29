@@ -97,7 +97,7 @@ class AppBootstrap {
 ## Behavior
 
 - Rate limit key defaults to `socket.remoteAddress`. Provide `keyGenerator` for header-based keying (e.g. `x-api-key`).
-- Store keys are composed as `throttler:<encoded-handler-key>:<encoded-client-key>`. Both key segments are encoded with `encodeURIComponent(...)`, so client keys containing `:` (for example IPv6 addresses) cannot collide with separator boundaries. The decoded `<handler-key>` still includes route method/path/version and deterministic controller/module class-name identities to prevent collisions between handlers that share class or method names across instances.
+- Store keys are composed as `throttler:<encoded-handler-key>:<encoded-client-key>`. Both key segments are encoded with `encodeURIComponent(...)`, so client keys containing `:` (for example IPv6 addresses) cannot collide with separator boundaries. The decoded `<handler-key>` is composed from route `method`, `path`, `version`, and `handler` method name — all stable under minification, since they are data values rather than class-name identifiers.
 - When the limit is exceeded, `ThrottlerGuard` throws `TooManyRequestsException` (HTTP 429) and sets the `Retry-After` response header to the seconds remaining in the current window.
 - Method-level `@Throttle` overrides class-level `@Throttle`, which overrides module-level defaults — in that priority order.
 - `@SkipThrottle()` at either level wins unconditionally.
