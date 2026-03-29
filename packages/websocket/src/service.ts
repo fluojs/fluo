@@ -369,6 +369,7 @@ export class WebSocketGatewayLifecycleService
     if (state.queuedMessages.length >= limit) {
       if (policy === 'close') {
         socket.terminate();
+        state.queuedMessages = [];
         this.unregisterSocket(state.socketId);
         this.logger.warn(
           `WebSocket connection ${state.socketId} exceeded ready-state message queue limit (${String(limit)}). Connection terminated.`,
@@ -498,6 +499,7 @@ export class WebSocketGatewayLifecycleService
 
     if (policy === 'close') {
       socket.terminate();
+      state.bufferedMessages = [];
       this.logger.warn(
         `WebSocket connection ${state.socketId} exceeded pending message buffer limit (${String(limit)}). Connection terminated.`,
         'WebSocketGatewayLifecycleService',
