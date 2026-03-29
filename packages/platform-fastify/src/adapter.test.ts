@@ -508,7 +508,7 @@ describe('@konekti/platform-fastify', () => {
     await app.close();
   });
 
-  it('clears dispatcher only after fastify close settles when timeout wins', async () => {
+  it('keeps dispatcher until fastify close settles even when close() times out', async () => {
     const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
     const app = {
       close: () => Promise.resolve(),
@@ -529,7 +529,7 @@ describe('@konekti/platform-fastify', () => {
       return deferred.promise;
     };
 
-    await adapter.close();
+    await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
 
     expect(closeCallCount).toBe(1);
     expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
@@ -538,5 +538,61 @@ describe('@konekti/platform-fastify', () => {
     await Promise.resolve();
 
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+  });
+
+  it('fails close() when the fastify server does not stop within the shutdown timeout', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const deferred = createDeferred<void>();
+    const app = {
+      close: () => deferred.promise,
+      server: {
+        listening: true,
+      },
+    };
+
+    Reflect.set(adapter, 'app', app);
+    Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+    await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
+
+    deferred.resolve();
+    await Promise.resolve();
+  });
+
+  it('keeps malformed cookie values instead of failing the request', async () => {
+    @Controller('/cookies')
+    class CookieController {
+      @Get('/')
+      readCookies(_input: undefined, context: RequestContext) {
+        return context.request.cookies;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [CookieController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/cookies`, {
+      headers: {
+        cookie: 'good=hello%20world; bad=%E0%A4%A',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      bad: '%E0%A4%A',
+      good: 'hello world',
+    });
+
+    await app.close();
   });
 });

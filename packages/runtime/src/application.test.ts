@@ -231,6 +231,59 @@ describe('bootstrapApplication', () => {
     expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
   });
 
+  it('surfaces shutdown hook failures from close() instead of masking them as success', async () => {
+    class AppService {
+      onApplicationShutdown() {
+        throw new Error('shutdown hook failed');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [AppService],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    await expect(app.close('SIGTERM')).rejects.toThrow('shutdown hook failed');
+    expect(app.state).toBe('bootstrapped');
+  });
+
+  it('preserves the original startup failure when adapter close also fails during bootstrap cleanup', async () => {
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message, error, context) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : String(error)}`);
+      },
+      log() {},
+      warn() {},
+    };
+
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        throw new Error('adapter close failed');
+      },
+      async listen() {
+        throw new Error('listen failed');
+      },
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await bootstrapApplication({
+      adapter,
+      logger,
+      rootModule: AppModule,
+    });
+
+    await expect(app.listen()).rejects.toThrow('listen failed');
+    expect(loggerEvents).toContain('error:KonektiApplication:Failed to start the HTTP adapter.:listen failed');
+  });
+
   it('disposes container-managed instances when the application closes', async () => {
     class DisposableResource {
       destroyed = false;

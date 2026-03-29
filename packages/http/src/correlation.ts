@@ -19,9 +19,9 @@ export function createCorrelationMiddleware(): Middleware {
         context.requestContext.requestId = resolveInboundRequestId(context.request.headers);
       }
 
-      await next();
-
       context.response.setHeader(REQUEST_ID_HEADER, context.requestContext.requestId);
+
+      await next();
     },
   };
 }

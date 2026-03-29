@@ -264,7 +264,11 @@ export async function runNodeApplication(
     logger.error('Failed to start application.', error, 'KonektiFactory');
 
     if (app.state !== 'closed') {
-      await app.close('bootstrap-failed');
+      try {
+        await app.close('bootstrap-failed');
+      } catch (closeError) {
+        logger.error('Failed to close application after startup failure.', closeError, 'KonektiFactory');
+      }
     }
 
     throw error;

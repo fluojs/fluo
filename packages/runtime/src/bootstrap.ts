@@ -86,6 +86,104 @@ async function disposeContainer(container: Container): Promise<void> {
   await container.dispose();
 }
 
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function createLifecycleCloseError(errors: unknown[]): Error {
+  if (errors.length === 1) {
+    return toError(errors[0]);
+  }
+
+  return new AggregateError(errors, 'Application close failed for one or more shutdown steps.');
+}
+
+async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<unknown[]> {
+  const errors: unknown[] = [];
+
+  for (const cleanup of cleanups) {
+    try {
+      cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  return errors;
+}
+
+async function closeRuntimeResources(options: {
+  adapter?: HttpApplicationAdapter;
+  container: Container;
+  lifecycleInstances: readonly unknown[];
+  runtimeCleanup: readonly (() => void)[];
+  signal?: string;
+}): Promise<void> {
+  const errors: unknown[] = [];
+
+  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+
+  try {
+    await runShutdownHooks(options.lifecycleInstances, options.signal);
+  } catch (error) {
+    errors.push(error);
+  }
+
+  if (options.adapter) {
+    try {
+      await options.adapter.close(options.signal);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  try {
+    await disposeContainer(options.container);
+  } catch (error) {
+    errors.push(error);
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
+  }
+}
+
+async function runBootstrapFailureCleanup(options: {
+  container?: Container;
+  lifecycleInstances: readonly unknown[];
+  logger: ApplicationLogger;
+  runtimeCleanup: readonly (() => void)[];
+  scope: 'application' | 'application context';
+}): Promise<void> {
+  const errors: unknown[] = [];
+
+  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+
+  if (options.lifecycleInstances.length > 0) {
+    try {
+      await runShutdownHooks(options.lifecycleInstances, 'bootstrap-failed');
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (options.container) {
+    try {
+      await disposeContainer(options.container);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  for (const error of errors) {
+    options.logger.error(
+      `Failed to clean up after ${options.scope} bootstrap failure.`,
+      error,
+      'KonektiFactory',
+    );
+  }
+}
+
 function hasMethod<TName extends string>(
   value: unknown,
   methodName: TName,
@@ -357,17 +455,13 @@ class KonektiApplication implements Application {
     }
 
     this.closingPromise = (async () => {
-      for (const cleanup of this.runtimeCleanup) {
-        cleanup();
-      }
-
-      try {
-        await runShutdownHooks(this.lifecycleInstances, signal);
-      } catch (error) {
-        console.error('[konekti] shutdown hook threw an error:', error);
-      }
-      await this.adapter.close(signal);
-      await disposeContainer(this.container);
+      await closeRuntimeResources({
+        adapter: this.adapter,
+        container: this.container,
+        lifecycleInstances: this.lifecycleInstances,
+        runtimeCleanup: this.runtimeCleanup,
+        signal,
+      });
       this.closed = true;
       this.applicationState = 'closed';
     })();
@@ -408,16 +502,12 @@ class KonektiApplicationContext implements ApplicationContext {
     }
 
     this.closingPromise = (async () => {
-      for (const cleanup of this.runtimeCleanup) {
-        cleanup();
-      }
-
-      try {
-        await runShutdownHooks(this.lifecycleInstances, signal);
-      } catch (error) {
-        console.error('[konekti] shutdown hook threw an error:', error);
-      }
-      await disposeContainer(this.container);
+      await closeRuntimeResources({
+        container: this.container,
+        lifecycleInstances: this.lifecycleInstances,
+        runtimeCleanup: this.runtimeCleanup,
+        signal,
+      });
       this.closed = true;
     })();
 
@@ -563,7 +653,7 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
 /**
  * 종료 단계의 hook을 역순으로 실행해 이미 시작한 리소스를 정리한다.
  */
-async function runShutdownHooks(instances: unknown[], signal?: string): Promise<void> {
+async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
   for (const instance of [...instances].reverse()) {
     if (isOnModuleDestroy(instance)) {
       await instance.onModuleDestroy();
@@ -791,17 +881,13 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   } catch (error: unknown) {
     logger.error('Failed to bootstrap application.', error, 'KonektiFactory');
 
-    if (lifecycleInstances.length > 0) {
-      await runShutdownHooks(lifecycleInstances, 'bootstrap-failed');
-    }
-
-    if (bootstrappedContainer) {
-      await disposeContainer(bootstrappedContainer);
-    }
-
-    for (const cleanup of runtimeCleanup) {
-      cleanup();
-    }
+    await runBootstrapFailureCleanup({
+      container: bootstrappedContainer,
+      lifecycleInstances,
+      logger,
+      runtimeCleanup,
+      scope: 'application',
+    });
 
     throw error;
   }
@@ -850,17 +936,13 @@ export class KonektiFactory {
     } catch (error: unknown) {
       logger.error('Failed to bootstrap application context.', error, 'KonektiFactory');
 
-      if (lifecycleInstances.length > 0) {
-        await runShutdownHooks(lifecycleInstances, 'bootstrap-failed');
-      }
-
-      if (bootstrappedContainer) {
-        await disposeContainer(bootstrappedContainer);
-      }
-
-      for (const cleanup of runtimeCleanup) {
-        cleanup();
-      }
+      await runBootstrapFailureCleanup({
+        container: bootstrappedContainer,
+        lifecycleInstances,
+        logger,
+        runtimeCleanup,
+        scope: 'application context',
+      });
 
       throw error;
     }

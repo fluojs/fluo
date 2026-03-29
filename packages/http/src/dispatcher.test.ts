@@ -14,6 +14,7 @@ import type {
 import {
   FromBody,
   FromQuery,
+  createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
   Controller,
@@ -764,6 +765,36 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(events).toEqual(['start', 'match', 'handler', 'finish']);
+  });
+
+  it('sets the correlation response header before downstream code commits the response', async () => {
+    @Controller('/correlation')
+    class CorrelationController {
+      @Get('/')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(CorrelationController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [createCorrelationMiddleware()],
+      handlerMapping: createHandlerMapping([{ controllerToken: CorrelationController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+    response.setHeader = function setHeader(name, value) {
+      if (this.committed) {
+        throw new Error(`setHeader after commit: ${name}`);
+      }
+
+      this.headers[name] = value;
+    };
+
+    await dispatcher.dispatch(createRequest('/correlation', 'GET'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-request-id']).toEqual(expect.any(String));
   });
 
   it('passes matched handler metadata to request error observers', async () => {

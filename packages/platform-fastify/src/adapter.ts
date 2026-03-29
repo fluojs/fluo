@@ -299,7 +299,11 @@ export async function runFastifyApplication(
     logger.error('Failed to start application.', error, 'KonektiFactory');
 
     if (app.state !== 'closed') {
-      await app.close('bootstrap-failed');
+      try {
+        await app.close('bootstrap-failed');
+      } catch (closeError) {
+        logger.error('Failed to close application after startup failure.', closeError, 'KonektiFactory');
+      }
     }
 
     throw error;
@@ -538,7 +542,13 @@ function parseCookieHeader(cookieHeader: string | undefined): Record<string, str
           return [pair.trim(), ''] as [string, string];
         }
 
-        return [pair.slice(0, index).trim(), decodeURIComponent(pair.slice(index + 1).trim())] as [string, string];
+        const rawValue = pair.slice(index + 1).trim();
+
+        try {
+          return [pair.slice(0, index).trim(), decodeURIComponent(rawValue)] as [string, string];
+        } catch {
+          return [pair.slice(0, index).trim(), rawValue] as [string, string];
+        }
       }),
   );
 }
@@ -837,8 +847,10 @@ function delay(ms: number): Promise<void> {
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
   return Promise.race([
     closePromise,
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, timeoutMs);
+    new Promise<void>((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Fastify adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
     }),
   ]);
 }
