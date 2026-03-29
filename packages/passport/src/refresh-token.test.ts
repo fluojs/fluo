@@ -82,6 +82,19 @@ describe('RefreshTokenStrategy', () => {
       expect(service.rotateRefreshToken).toHaveBeenCalledWith('header-token');
     });
 
+    it('accepts lowercase bearer scheme in authorization header', async () => {
+      const service = createMockRefreshTokenService();
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
+      const context = createGuardContext(undefined, { authorization: 'bearer lowercase-token' });
+
+      const result = await strategy.authenticate(context);
+
+      expect(result).toMatchObject({
+        subject: 'user-1',
+      });
+      expect(service.rotateRefreshToken).toHaveBeenCalledWith('lowercase-token');
+    });
+
     it('authenticates with refresh token from custom header', async () => {
       const service = createMockRefreshTokenService();
       const strategy = new RefreshTokenStrategy(service, createMockVerifier());

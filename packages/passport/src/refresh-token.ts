@@ -77,7 +77,7 @@ export class RefreshTokenStrategy implements AuthStrategy {
 
     const authHeaderRaw = request.headers?.authorization;
     const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
-    if (authHeader?.startsWith('Bearer ')) {
+    if (authHeader?.toLowerCase().startsWith('bearer ')) {
       return authHeader.slice(7);
     }
 
