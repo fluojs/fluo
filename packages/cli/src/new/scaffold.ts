@@ -572,6 +572,16 @@ export async function scaffoldBootstrapApp(
 
   mkdirSync(targetDirectory, { recursive: true });
 
+  if (!options.force) {
+    const existingFiles = readdirSync(targetDirectory);
+    if (existingFiles.length > 0) {
+      throw new Error(
+        `Target directory "${targetDirectory}" is not empty. ` +
+        'Remove the existing files or use --force to overwrite.',
+      );
+    }
+  }
+
   for (const file of buildScaffoldFiles(options, releaseVersion, packageSpecs)) {
     writeTextFile(join(targetDirectory, file.path), file.content);
   }
