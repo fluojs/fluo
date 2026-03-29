@@ -616,8 +616,16 @@ describe('@konekti/microservices', () => {
   it('rejects send() when a matched singleton handler method is not callable', async () => {
     class BrokenHandler {
       @MessagePattern('broken.handler')
-      readonly handle = 'not-a-function';
+      handle() {
+        return 'ok';
+      }
     }
+
+    Object.defineProperty(BrokenHandler.prototype, 'handle', {
+      configurable: true,
+      value: 'not-a-function',
+      writable: true,
+    });
 
     const transport = new InMemoryLoopbackTransport();
 
