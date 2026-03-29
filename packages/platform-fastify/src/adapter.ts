@@ -394,7 +394,7 @@ async function createFrameworkRequest(
 
   const frameworkRequest: FrameworkRequest = {
     body,
-    cookies: parseCookieHeader(headers.cookie),
+    cookies: parseCookieHeader(Array.isArray(headers.cookie) ? headers.cookie[0] : headers.cookie),
     headers,
     method: request.method,
     params: {},
@@ -474,12 +474,12 @@ function isFastifyMultipartTooLargeError(error: unknown): boolean {
   return error.name === 'FastifyError' || error.message.includes('toobig') || error.message.includes('File too large');
 }
 
-function normalizeHeaders(headers: FastifyRequest['headers']): Record<string, string | undefined> {
-  const normalized: Record<string, string | undefined> = {};
+function normalizeHeaders(headers: FastifyRequest['headers']): Record<string, string | string[] | undefined> {
+  const normalized: Record<string, string | string[] | undefined> = {};
 
   for (const [name, value] of Object.entries(headers)) {
     if (Array.isArray(value)) {
-      normalized[name] = value.join(', ');
+      normalized[name] = value;
       continue;
     }
 
