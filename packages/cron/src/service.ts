@@ -193,7 +193,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
   }
 
   private discoverTaskDescriptors(): CronTaskDescriptor[] {
-    const seen = new Map<Token, Set<string>>();
+    const seen = new Map<Function, Set<string>>();
     const descriptors: CronTaskDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
@@ -213,14 +213,14 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
       for (const entry of entries) {
         const methodName = methodKeyToName(entry.propertyKey);
         const taskName = entry.metadata.options.name ?? buildDefaultTaskName(candidate.targetType.name, methodName);
-        const seenMethods = seen.get(candidate.token) ?? new Set<string>();
+        const seenMethods = seen.get(candidate.targetType) ?? new Set<string>();
 
         if (seenMethods.has(methodName)) {
           continue;
         }
 
         seenMethods.add(methodName);
-        seen.set(candidate.token, seenMethods);
+        seen.set(candidate.targetType, seenMethods);
         descriptors.push({
           afterRun: entry.metadata.options.afterRun,
           beforeRun: entry.metadata.options.beforeRun,
