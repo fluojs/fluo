@@ -66,6 +66,11 @@ interface NodeHttpServerLike {
 }
 
 const DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS = 5_000;
+const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 128;
+
+function isFinitePositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0;
+}
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
@@ -187,7 +192,7 @@ export class SocketIoLifecycleService
     await this.shutdown();
   }
 
-  joinRoom(socketId: string, room: string): void {
+  joinRoom(socketId: string, room: string, namespacePath?: string): void {
     const socket = this.resolveSocket(socketId);
 
     if (socket) {
@@ -195,11 +200,10 @@ export class SocketIoLifecycleService
       return;
     }
 
-    const namespace = this.resolveContextNamespace();
-    namespace?.in(socketId).socketsJoin(room);
+    this.resolveRequiredNamespace(namespacePath).in(socketId).socketsJoin(room);
   }
 
-  leaveRoom(socketId: string, room: string): void {
+  leaveRoom(socketId: string, room: string, namespacePath?: string): void {
     const socket = this.resolveSocket(socketId);
 
     if (socket) {
@@ -207,19 +211,11 @@ export class SocketIoLifecycleService
       return;
     }
 
-    const namespace = this.resolveContextNamespace();
-    namespace?.in(socketId).socketsLeave(room);
+    this.resolveRequiredNamespace(namespacePath).in(socketId).socketsLeave(room);
   }
 
-  broadcastToRoom(room: string, event: string, data: unknown): void {
-    const namespace = this.resolveContextNamespace();
-
-    if (namespace) {
-      namespace.to(room).emit(event, data);
-      return;
-    }
-
-    this.io?.to(room).emit(event, data);
+  broadcastToRoom(room: string, event: string, data: unknown, namespacePath?: string): void {
+    this.resolveRequiredNamespace(namespacePath).to(room).emit(event, data);
   }
 
   getRooms(socketId: string): ReadonlySet<string> {
@@ -281,6 +277,16 @@ export class SocketIoLifecycleService
     return this.resolveNamespace(namespaceName);
   }
 
+  private resolveRequiredNamespace(namespacePath?: string): Namespace {
+    const namespace = namespacePath ? this.resolveNamespace(normalizeGatewayPath(namespacePath)) : this.resolveContextNamespace();
+
+    if (!namespace) {
+      throw new Error('Socket.IO room helpers require an explicit namespace outside gateway handler context.');
+    }
+
+    return namespace;
+  }
+
   private resolveSocket(socketId: string): Socket | undefined {
     const registered = this.socketRegistry.get(socketId);
 
@@ -326,6 +332,12 @@ export class SocketIoLifecycleService
     };
   }
 
+  private maxPendingMessagesPerSocket(): number {
+    return isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
+      ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
+      : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
+  }
+
   private attachConnectionListeners(
     state: ConnectionHandlerState,
     resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
@@ -336,6 +348,36 @@ export class SocketIoLifecycleService
       const ack = typeof args.at(-1) === 'function' ? (args.at(-1) as (...callbackArgs: unknown[]) => void) : undefined;
 
       if (!state.handlersReady) {
+        const limit = this.maxPendingMessagesPerSocket();
+        const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
+
+        if (state.bufferedMessages.length >= limit) {
+          if (policy === 'close') {
+            socket.disconnect(true);
+            state.bufferedMessages = [];
+            this.socketRegistry.delete(socket.id);
+            this.logger.warn(
+              `Socket.IO connection ${socket.id} exceeded pending message buffer limit (${String(limit)}). Connection terminated.`,
+              'SocketIoLifecycleService',
+            );
+            return;
+          }
+
+          if (policy === 'drop-newest') {
+            this.logger.warn(
+              `Socket.IO connection ${socket.id} dropped an incoming message due to pending buffer limit (${String(limit)}).`,
+              'SocketIoLifecycleService',
+            );
+            return;
+          }
+
+          state.bufferedMessages.shift();
+          this.logger.warn(
+            `Socket.IO connection ${socket.id} dropped the oldest pending message because buffer limit (${String(limit)}) was reached.`,
+            'SocketIoLifecycleService',
+          );
+        }
+
         state.bufferedMessages.push({
           acknowledgement: ack,
           event,

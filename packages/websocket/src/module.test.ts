@@ -1,5 +1,6 @@
 import { createConnection, createServer } from 'node:net';
 import type { IncomingMessage } from 'node:http';
+import type { Duplex } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
@@ -130,12 +131,14 @@ function createTestLifecycleService(
 
 type MockSocketListeners = {
   close?: (code: number, reason: Buffer) => void;
+  error?: (error: Error) => void;
   message?: (data: unknown) => void;
   pong?: () => void;
 };
 
 function createMockSocket(): {
   emitClose: (code?: number, reason?: Buffer) => void;
+  emitError: (error: Error) => void;
   emitPong: () => void;
   ping: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
@@ -148,9 +151,11 @@ function createMockSocket(): {
   const terminate = vi.fn();
 
   const socketObject = {
-    on(event: 'close' | 'message' | 'pong', listener: (...args: unknown[]) => void) {
+    on(event: 'close' | 'error' | 'message' | 'pong', listener: (...args: unknown[]) => void) {
       if (event === 'close') {
         listeners.close = listener as (code: number, reason: Buffer) => void;
+      } else if (event === 'error') {
+        listeners.error = listener as (error: Error) => void;
       } else if (event === 'message') {
         listeners.message = listener as (data: unknown) => void;
       } else {
@@ -169,6 +174,9 @@ function createMockSocket(): {
   return {
     emitClose(code = 1000, reason = Buffer.alloc(0)) {
       listeners.close?.(code, reason);
+    },
+    emitError(error: Error) {
+      listeners.error?.(error);
     },
     emitPong() {
       listeners.pong?.();
@@ -964,7 +972,7 @@ describe('@konekti/websocket', () => {
     }
   });
 
-  it('rejects websocket upgrade requests for unmatched gateway paths', async () => {
+  it('delegates unmatched websocket upgrade requests to later listeners', async () => {
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       @OnMessage('ping')
@@ -984,6 +992,20 @@ describe('@konekti/websocket', () => {
     });
 
     await app.listen();
+
+    const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
+    const server = adapter.getServer?.() as {
+      on(event: 'upgrade', listener: (request: IncomingMessage, socket: Duplex) => void): void;
+    };
+    const delegated = createDeferred<void>();
+
+    server.on('upgrade', (request, socket) => {
+      if (request.url === '/missing') {
+        delegated.resolve();
+        socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+        socket.end();
+      }
+    });
 
     const response = await new Promise<string>((resolve, reject) => {
       const socket = createConnection({ host: '127.0.0.1', port }, () => {
@@ -1008,7 +1030,62 @@ describe('@konekti/websocket', () => {
       socket.on('error', reject);
     });
 
-    expect(response).toContain('HTTP/1.1 404 Not Found');
+    await delegated.promise;
+    expect(response).toContain('HTTP/1.1 426 Upgrade Required');
+
+    await app.close();
+  });
+
+
+  it('rejects malformed websocket upgrade URLs without crashing the server', async () => {
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createWebSocketModule()],
+      providers: [ChatGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const malformedResponse = await new Promise<string>((resolve, reject) => {
+      const socket = createConnection({ host: '127.0.0.1', port }, () => {
+        socket.write(
+          'GET http://%zz HTTP/1.1\r\n'
+            + 'Host: 127.0.0.1\r\n'
+            + 'Connection: Upgrade\r\n'
+            + 'Upgrade: websocket\r\n'
+            + 'Sec-WebSocket-Version: 13\r\n'
+            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+            + '\r\n',
+        );
+      });
+      const chunks: Buffer[] = [];
+
+      socket.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      socket.on('end', () => {
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+      socket.on('error', reject);
+    });
+
+    expect(malformedResponse).toContain('HTTP/1.1 400 Bad Request');
+
+    const followup = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+    await onceOpen(followup);
+    followup.close();
 
     await app.close();
   });
@@ -1048,5 +1125,20 @@ describe('@konekti/websocket', () => {
     await closed;
 
     expect(socket.readyState).toBe(WebSocket.CLOSED);
+  });
+
+  it('attaches a socket error listener so websocket error events do not escape', () => {
+    const loggerEvents: string[] = [];
+    const service = createTestLifecycleService({}, loggerEvents);
+    const { emitError, socket } = createMockSocket();
+    const state = Reflect.get(service, 'createConnectionHandlerState').call(service) as { socketId: string };
+
+    Reflect.get(service, 'socketRegistry').set(state.socketId, socket);
+    Reflect.get(service, 'attachConnectionListeners').call(service, state, socket, {} as IncomingMessage);
+
+    expect(() => emitError(new Error('socket exploded'))).not.toThrow();
+    expect(
+      loggerEvents.some((event) => event.includes('error:WebSocketGatewayLifecycleService:WebSocket gateway socket emitted an error.:socket exploded')),
+    ).toBe(true);
   });
 });
