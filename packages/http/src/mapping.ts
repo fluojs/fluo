@@ -308,7 +308,8 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   const seen = new Set<string>();
 
   for (const descriptor of descriptors) {
-    const routeKey = `${descriptor.route.method}:${descriptor.route.path}:${descriptor.route.version ?? '<none>'}`;
+    const routeVersion = descriptor.route.version === undefined ? '<none>' : normalizeVersionValue(descriptor.route.version);
+    const routeKey = `${descriptor.route.method}:${descriptor.route.path}:${routeVersion}`;
 
     if (seen.has(routeKey)) {
       throw new RouteConflictError(`Duplicate route registration detected for ${routeKey}.`);

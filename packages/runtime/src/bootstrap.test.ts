@@ -561,6 +561,24 @@ describe('KonektiFactory.createApplicationContext', () => {
       'app:shutdown:SIGTERM',
     ]);
   });
+
+  it('surfaces shutdown hook failures from application context close()', async () => {
+    class AppService {
+      onApplicationShutdown() {
+        throw new Error('context shutdown failed');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await KonektiFactory.createApplicationContext(AppModule, {
+    });
+
+    await expect(context.close('SIGTERM')).rejects.toThrow('context shutdown failed');
+  });
 });
 
 describe('KonektiFactory.createMicroservice', () => {

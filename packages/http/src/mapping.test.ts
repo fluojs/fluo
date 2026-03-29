@@ -149,6 +149,33 @@ describe('handler mapping', () => {
     expect(unversionedMatch).toBeUndefined();
   });
 
+  it('fails fast when URI version aliases normalize to the same route', () => {
+    @Version('1')
+    @Controller('/users')
+    class UsersV1Controller {
+      @Get('/')
+      listUsers() {
+        return [{ id: '1' }];
+      }
+    }
+
+    @Version('v1')
+    @Controller('/users')
+    class UsersAliasController {
+      @Get('/')
+      listUsersAlias() {
+        return [{ id: '1' }];
+      }
+    }
+
+    expect(() =>
+      createHandlerMapping([
+        { controllerToken: UsersV1Controller },
+        { controllerToken: UsersAliasController },
+      ]),
+    ).toThrow(RouteConflictError);
+  });
+
   it('resolves versions from configured request headers', () => {
     @Controller('/users')
     class UsersController {

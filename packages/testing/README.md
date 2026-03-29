@@ -148,6 +148,8 @@ The compiled test container.
 | `.has(token)` | Check whether a provider token is available in the compiled graph. |
 | `.dispatch(request)` | Run a request through the compiled module dispatcher (`createDispatcher`) and return a `TestResponse`. |
 
+`get()` is intentionally a **synchronous** convenience for tests that only touch synchronously-constructable providers. It does not await async factories and should not be treated as the same resolution path as `resolve()`. Use `resolve()` when provider identity must match the runtime container path or when async factories may be involved.
+
 ### Module introspection utilities
 
 Use these to extract module metadata for test setup without manually accessing metadata symbols:
