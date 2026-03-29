@@ -211,6 +211,27 @@ describe('RedisPubSubMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('removes abort listener after a request completes normally', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+    });
+
+    await transport.listen(async () => 'ok');
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    await expect(transport.send('success.pattern', {}, controller.signal)).resolves.toBe('ok');
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
   it('rejects all pending requests on close', async () => {
     const bus = new InMemoryRedisBus();
     const { publishClient, subscribeClient } = bus.createClient();

@@ -103,9 +103,15 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
         reject(new Error(`Redis request timed out after ${this.requestTimeoutMs}ms waiting for pattern "${pattern}".`));
       }, this.requestTimeoutMs);
 
+      let onAbort: (() => void) | undefined;
+
       const cleanup = () => {
         clearTimeout(timeout);
         this.pending.delete(requestId);
+
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
+        }
       };
 
       this.pending.set(requestId, {
@@ -127,7 +133,7 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
           return;
         }
 
-        const onAbort = () => {
+        onAbort = () => {
           cleanup();
           reject(new Error('Redis request aborted.'));
         };
