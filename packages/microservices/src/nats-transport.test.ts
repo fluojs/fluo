@@ -1,6 +1,6 @@
 import { TextDecoder, TextEncoder } from 'node:util';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { NatsMicroserviceTransport } from './nats-transport.js';
 
@@ -77,6 +77,10 @@ class InMemoryNatsClient {
 }
 
 describe('NatsMicroserviceTransport', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('supports request/reply and event dispatch', async () => {
     const nats = new InMemoryNatsClient();
     const codec = {
@@ -103,6 +107,58 @@ describe('NatsMicroserviceTransport', () => {
     await expect(transport.send('math.sum', { a: 2, b: 5 })).resolves.toBe(7);
     await transport.emit('audit.value', { value: 9 });
     expect(events).toEqual([9]);
+
+    await transport.close();
+  });
+
+  it('isolates event handler failures from the NATS subscription callback', async () => {
+    const nats = new InMemoryNatsClient();
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('nats event failed');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(logger).toHaveBeenCalled();
+
+    await transport.close();
+  });
+
+  it('isolates malformed inbound event frames from the NATS subscription callback', async () => {
+    const nats = new InMemoryNatsClient();
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    await transport.listen(async () => undefined);
+
+    nats.publish('konekti.microservices.events', new TextEncoder().encode('{not-json'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(logger).toHaveBeenCalled();
 
     await transport.close();
   });

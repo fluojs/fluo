@@ -7,10 +7,24 @@ class MockRedisClient {
   readonly publishes: Array<{ channel: string; message: string }> = [];
   readonly subscribedChannels: string[] = [];
   disconnectCalls = 0;
+  offCalls = 0;
 
   on(event: string, listener: (channel: string, message: string) => void): this {
     if (event === 'message') {
       this.messageListeners.push(listener);
+    }
+
+    return this;
+  }
+
+  off(event: string, listener: (channel: string, message: string) => void): this {
+    if (event === 'message') {
+      this.offCalls += 1;
+      const index = this.messageListeners.indexOf(listener);
+
+      if (index >= 0) {
+        this.messageListeners.splice(index, 1);
+      }
     }
 
     return this;
@@ -86,6 +100,7 @@ describe('RedisEventBusTransport', () => {
     });
 
     await transport.publish('AuditEvent', { ok: true });
+    await transport.subscribe('AuditEvent', async () => undefined);
 
     expect(publishClient.publishes).toEqual([{ channel: 'AuditEvent', message: '{"ok":true}' }]);
 
@@ -93,5 +108,7 @@ describe('RedisEventBusTransport', () => {
 
     expect(publishClient.disconnectCalls).toBe(1);
     expect(subscribeClient.disconnectCalls).toBe(1);
+    expect(subscribeClient.offCalls).toBe(1);
+    expect(subscribeClient.messageListeners).toHaveLength(0);
   });
 });

@@ -48,6 +48,16 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   private readonly requestTimeoutMs: number;
   private subscriptions: NatsSubscriptionLike[] = [];
 
+  private logEventHandlerFailure(error: unknown): void {
+    console.error('[konekti][NatsMicroserviceTransport] event handler failed:', error);
+  }
+
+  private handleEventMessageSafely(message: NatsMessageLike): void {
+    void this.handleEventMessage(message).catch((error) => {
+      this.logEventHandlerFailure(error);
+    });
+  }
+
   constructor(private readonly options: NatsMicroserviceTransportOptions) {
     this.eventSubject = options.eventSubject ?? 'konekti.microservices.events';
     this.messageSubject = options.messageSubject ?? 'konekti.microservices.messages';
@@ -62,7 +72,7 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     }
 
     const eventSubscription = this.options.client.subscribe(this.eventSubject, (message) => {
-      void this.handleEventMessage(message);
+      this.handleEventMessageSafely(message);
     });
     const messageSubscription = this.options.client.subscribe(this.messageSubject, (message) => {
       void this.handleRequestMessage(message);
@@ -125,11 +135,15 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    await this.handler({
-      kind: 'event',
-      pattern: packet.pattern,
-      payload: packet.payload,
-    });
+    try {
+      await this.handler({
+        kind: 'event',
+        pattern: packet.pattern,
+        payload: packet.payload,
+      });
+    } catch (error) {
+      this.logEventHandlerFailure(error);
+    }
   }
 
   private async handleRequestMessage(message: NatsMessageLike): Promise<void> {

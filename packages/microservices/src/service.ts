@@ -349,17 +349,17 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
 
   private async invokeResolvedHandler(instance: unknown | undefined, descriptor: HandlerDescriptor, payload: unknown): Promise<unknown> {
     if (!instance) {
-      return undefined;
+      throw new Error(
+        `Failed to resolve microservice target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+      );
     }
 
     const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
 
     if (typeof value !== 'function') {
-      this.logger.warn(
-        `Microservice handler ${descriptor.targetName}.${descriptor.methodName} is not callable and was skipped.`,
-        'MicroserviceLifecycleService',
+      throw new Error(
+        `Microservice handler ${descriptor.targetName}.${descriptor.methodName} must be a callable function.`,
       );
-      return undefined;
     }
 
     try {
@@ -393,7 +393,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         error,
         'MicroserviceLifecycleService',
       );
-      return undefined;
+      throw error;
     }
   }
 }

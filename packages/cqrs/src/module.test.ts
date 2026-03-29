@@ -563,6 +563,39 @@ describe('@konekti/cqrs', () => {
     await app.close();
   });
 
+  it('dispatches a CQRS event to all matching @EventHandler classes', async () => {
+    const seen: string[] = [];
+
+    @EventHandler(UserCreatedEvent)
+    class FirstEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`first:${event.name}`);
+      }
+    }
+
+    @EventHandler(UserCreatedEvent)
+    class SecondEventHandler implements IEventHandler<UserCreatedEvent> {
+      handle(event: UserCreatedEvent): void {
+        seen.push(`second:${event.name}`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCqrsModule()],
+      providers: [FirstEventHandler, SecondEventHandler],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await eventBus.publish(new UserCreatedEvent('alice'));
+
+    expect(seen).toEqual(['first:alice', 'second:alice']);
+
+    await app.close();
+  });
+
   it('processes saga events in a deterministic order under concurrent publish calls', async () => {
     class SequenceStore {
       seen: number[] = [];

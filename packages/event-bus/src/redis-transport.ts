@@ -52,6 +52,10 @@ export class RedisEventBusTransport implements EventBusTransport {
 
   async close(): Promise<void> {
     this.handlersByChannel.clear();
+    if (this.messageListenerAttached) {
+      this.subscribeClient.off('message', this.onMessage);
+      this.messageListenerAttached = false;
+    }
     this.subscribeClient.disconnect();
     this.publishClient.disconnect();
   }
