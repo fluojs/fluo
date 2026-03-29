@@ -43,11 +43,13 @@ interface GatewayAttachment {
 interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: RawData[];
+  bufferedMessagesStartIndex: number;
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
   processingMessageQueue: boolean;
   queuedMessages: RawData[];
+  queuedMessagesStartIndex: number;
   resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>;
   socketId: string;
 }
@@ -345,14 +347,57 @@ export class WebSocketGatewayLifecycleService
     return {
       bufferedDisconnect: undefined,
       bufferedMessages: [],
+      bufferedMessagesStartIndex: 0,
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
       processingMessageQueue: false,
       queuedMessages: [],
+      queuedMessagesStartIndex: 0,
       resolved: [],
       socketId: randomUUID(),
     };
+  }
+
+  private getBufferedMessageCount(state: ConnectionHandlerState): number {
+    return state.bufferedMessages.length - (state.bufferedMessagesStartIndex ?? 0);
+  }
+
+  private getQueuedMessageCount(state: ConnectionHandlerState): number {
+    return state.queuedMessages.length - (state.queuedMessagesStartIndex ?? 0);
+  }
+
+  private maybeCompactBufferedMessages(state: ConnectionHandlerState): void {
+    const startIndex = state.bufferedMessagesStartIndex ?? 0;
+
+    if (startIndex === 0 || startIndex < state.bufferedMessages.length / 2) {
+      return;
+    }
+
+    state.bufferedMessages = state.bufferedMessages.slice(startIndex);
+    state.bufferedMessagesStartIndex = 0;
+  }
+
+  private clearBufferedMessages(state: ConnectionHandlerState): void {
+    state.bufferedMessages = [];
+    state.bufferedMessagesStartIndex = 0;
+  }
+
+  private maybeCompactQueuedMessages(state: ConnectionHandlerState): void {
+    const startIndex = state.queuedMessagesStartIndex ?? 0;
+
+    if (startIndex === 0 || startIndex < state.queuedMessages.length / 2) {
+      return;
+    }
+
+    state.queuedMessages = state.queuedMessages.slice(startIndex);
+    state.queuedMessagesStartIndex = 0;
+  }
+
+  private clearQueuedMessages(state: ConnectionHandlerState): void {
+    state.queuedMessages = [];
+    state.queuedMessagesStartIndex = 0;
+    state.enqueuedMessageCount = 0;
   }
 
   private enqueueMessageDispatch(
@@ -366,10 +411,10 @@ export class WebSocketGatewayLifecycleService
       : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
     const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
 
-    if (state.queuedMessages.length >= limit) {
+    if (this.getQueuedMessageCount(state) >= limit) {
       if (policy === 'close') {
         socket.terminate();
-        state.queuedMessages = [];
+        this.clearQueuedMessages(state);
         this.unregisterSocket(state.socketId);
         this.logger.warn(
           `WebSocket connection ${state.socketId} exceeded ready-state message queue limit (${String(limit)}). Connection terminated.`,
@@ -379,7 +424,8 @@ export class WebSocketGatewayLifecycleService
       }
 
       if (policy === 'drop-oldest') {
-        state.queuedMessages.shift();
+        state.queuedMessagesStartIndex = (state.queuedMessagesStartIndex ?? 0) + 1;
+        this.maybeCompactQueuedMessages(state);
         this.logger.warn(
           `WebSocket connection ${state.socketId} dropped the oldest ready-state message because queue limit (${String(limit)}) was reached.`,
           'WebSocketGatewayLifecycleService',
@@ -394,7 +440,7 @@ export class WebSocketGatewayLifecycleService
     }
 
     state.queuedMessages.push(data);
-    state.enqueuedMessageCount = state.queuedMessages.length;
+    state.enqueuedMessageCount = this.getQueuedMessageCount(state);
 
     if (state.processingMessageQueue) {
       return;
@@ -404,7 +450,7 @@ export class WebSocketGatewayLifecycleService
     state.handlerQueue = this.drainMessageQueue(state, socket, request)
       .finally(() => {
         state.processingMessageQueue = false;
-        state.enqueuedMessageCount = state.queuedMessages.length;
+        state.enqueuedMessageCount = this.getQueuedMessageCount(state);
       })
       .catch((error) => {
         this.logger.error('WebSocket gateway message dispatch failed.', error, 'WebSocketGatewayLifecycleService');
@@ -416,10 +462,10 @@ export class WebSocketGatewayLifecycleService
     socket: WebSocket,
     request: IncomingMessage,
   ): Promise<void> {
-    while (state.queuedMessages.length > 0) {
-      const nextMessage = state.queuedMessages.shift();
-
-      state.enqueuedMessageCount = state.queuedMessages.length;
+    while ((state.queuedMessagesStartIndex ?? 0) < state.queuedMessages.length) {
+      const nextMessage = state.queuedMessages[state.queuedMessagesStartIndex ?? 0];
+      state.queuedMessagesStartIndex = (state.queuedMessagesStartIndex ?? 0) + 1;
+      state.enqueuedMessageCount = this.getQueuedMessageCount(state);
 
       if (nextMessage === undefined) {
         continue;
@@ -427,6 +473,8 @@ export class WebSocketGatewayLifecycleService
 
       await this.handleMessage(state.resolved, socket, request, nextMessage);
     }
+
+    this.clearQueuedMessages(state);
   }
 
   private enqueueDisconnectDispatch(
@@ -492,14 +540,14 @@ export class WebSocketGatewayLifecycleService
       : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
     const policy = this.moduleOptions.buffer?.overflowPolicy ?? 'drop-oldest';
 
-    if (state.bufferedMessages.length < limit) {
+    if (this.getBufferedMessageCount(state) < limit) {
       state.bufferedMessages.push(data);
       return;
     }
 
     if (policy === 'close') {
       socket.terminate();
-      state.bufferedMessages = [];
+      this.clearBufferedMessages(state);
       this.logger.warn(
         `WebSocket connection ${state.socketId} exceeded pending message buffer limit (${String(limit)}). Connection terminated.`,
         'WebSocketGatewayLifecycleService',
@@ -515,7 +563,8 @@ export class WebSocketGatewayLifecycleService
       return;
     }
 
-    state.bufferedMessages.shift();
+    state.bufferedMessagesStartIndex = (state.bufferedMessagesStartIndex ?? 0) + 1;
+    this.maybeCompactBufferedMessages(state);
     state.bufferedMessages.push(data);
     this.logger.warn(
       `WebSocket connection ${state.socketId} dropped the oldest pending message due to buffer limit (${String(limit)}).`,
@@ -551,18 +600,20 @@ export class WebSocketGatewayLifecycleService
     socket: WebSocket,
     request: IncomingMessage,
   ): void {
-    for (const message of state.bufferedMessages) {
+    for (let index = state.bufferedMessagesStartIndex ?? 0; index < state.bufferedMessages.length; index += 1) {
+      const message = state.bufferedMessages[index];
+
       this.enqueueMessageDispatch(state, socket, request, message);
     }
 
     if (state.bufferedDisconnect) {
       this.enqueueDisconnectDispatch(state, socket, state.bufferedDisconnect);
       state.bufferedDisconnect = undefined;
-      state.bufferedMessages = [];
+      this.clearBufferedMessages(state);
       return;
     }
 
-    state.bufferedMessages = [];
+    this.clearBufferedMessages(state);
 
     if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
       this.unregisterSocket(state.socketId);
