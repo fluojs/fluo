@@ -34,6 +34,10 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private readonly pending = new Map<string, { reject: (error: unknown) => void; resolve: (value: unknown) => void; timeout: ReturnType<typeof setTimeout> }>();
   private readonly requestTimeoutMs: number;
 
+  private logEventHandlerFailure(error: unknown): void {
+    console.error('[konekti][RedisPubSubMicroserviceTransport] event handler failed:', error);
+  }
+
   constructor(private readonly options: RedisPubSubMicroserviceTransportOptions) {
     this.namespace = options.namespace ?? 'konekti:microservices';
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
@@ -192,11 +196,15 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
     }
 
     if (channel === this.eventChannel && message.kind === 'event') {
-      await this.handler({
-        kind: 'event',
-        pattern: message.pattern,
-        payload: message.payload,
-      });
+      try {
+        await this.handler({
+          kind: 'event',
+          pattern: message.pattern,
+          payload: message.payload,
+        });
+      } catch (error) {
+        this.logEventHandlerFailure(error);
+      }
       return;
     }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 
@@ -63,6 +63,10 @@ class InMemoryRedisBus {
 }
 
 describe('RedisPubSubMicroserviceTransport', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('supports request/reply send() with response correlation', async () => {
     const bus = new InMemoryRedisBus();
     const { publishClient, subscribeClient } = bus.createClient();
@@ -114,6 +118,31 @@ describe('RedisPubSubMicroserviceTransport', () => {
     await transport.emit('audit.value', { value: 9 });
     await transport.emit('audit.value', { value: 42 });
     expect(events).toEqual([{ value: 9 }, { value: 42 }]);
+
+    await transport.close();
+  });
+
+  it('isolates event handler failures from the Redis message listener', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+    });
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('redis event failed');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(logger).toHaveBeenCalled();
 
     await transport.close();
   });

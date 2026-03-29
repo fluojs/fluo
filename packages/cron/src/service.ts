@@ -91,6 +91,12 @@ function hasRedisLockClient(value: unknown): value is RedisLockClient {
   return typeof client.set === 'function' && typeof client.eval === 'function';
 }
 
+function assertValidLockTtlMs(lockTtlMs: number): void {
+  if (!Number.isFinite(lockTtlMs) || !Number.isInteger(lockTtlMs) || lockTtlMs < 1_000) {
+    throw new Error('Cron distributed lockTtlMs must be a positive integer greater than or equal to 1000ms.');
+  }
+}
+
 @Inject([CRON_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CronLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly jobs: CronScheduledJob[] = [];
@@ -141,8 +147,17 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
 
   private async startLifecycle(): Promise<void> {
     await this.resolveDistributedClient();
+    this.validateDistributedLockConfiguration();
     this.scheduleTasks();
     this.started = true;
+  }
+
+  private validateDistributedLockConfiguration(): void {
+    if (!this.options.distributed.enabled) {
+      return;
+    }
+
+    assertValidLockTtlMs(this.options.distributed.lockTtlMs);
   }
 
   private handleStartupFailure(): void {
@@ -214,6 +229,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
         const methodName = methodKeyToName(entry.propertyKey);
         const taskName = entry.metadata.options.name ?? buildDefaultTaskName(candidate.targetType.name, methodName);
         const seenMethods = seen.get(candidate.targetType) ?? new Set<string>();
+        const lockTtlMs = entry.metadata.options.lockTtlMs ?? this.options.distributed.lockTtlMs;
 
         if (seenMethods.has(methodName)) {
           continue;
@@ -227,7 +243,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
           distributed: entry.metadata.options.distributed ?? true,
           expression: entry.metadata.expression,
           lockKey: createLockKey(this.options.distributed.keyPrefix, entry.metadata.options.key ?? taskName),
-          lockTtlMs: entry.metadata.options.lockTtlMs ?? this.options.distributed.lockTtlMs,
+          lockTtlMs,
           methodKey: entry.propertyKey,
           methodName,
           moduleName: candidate.moduleName,
@@ -238,6 +254,10 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
           timezone: entry.metadata.options.timezone,
           token: candidate.token,
         });
+
+        if (entry.metadata.options.distributed ?? true) {
+          assertValidLockTtlMs(lockTtlMs);
+        }
       }
     }
 

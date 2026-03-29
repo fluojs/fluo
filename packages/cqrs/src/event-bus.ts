@@ -7,9 +7,8 @@ import {
   type OnApplicationBootstrap,
 } from '@konekti/runtime';
 
-import { CqrsBusBase, createDuplicateHandlerMessage } from './discovery.js';
+import { CqrsBusBase } from './discovery.js';
 import { createIsolatedEvent } from './event-clone.js';
-import { DuplicateEventHandlerError } from './errors.js';
 import { getEventHandlerMetadata } from './metadata.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
 import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from './types.js';
@@ -24,7 +23,7 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
 
 @Inject([KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap {
-  private descriptors = new Map<CqrsEventType, EventHandlerDescriptor>();
+  private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
 
@@ -66,7 +65,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   private matchEventDescriptors(event: IEvent): EventHandlerDescriptor[] {
-    return Array.from(this.descriptors.values()).filter((descriptor) => event instanceof descriptor.eventType);
+    return this.descriptors.filter((descriptor) => event instanceof descriptor.eventType);
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -88,7 +87,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       this.descriptors = this.discoverEventDescriptors();
       this.handlerInstances.clear();
 
-      for (const descriptor of this.descriptors.values()) {
+      for (const descriptor of this.descriptors) {
         await this.preloadHandlerInstance(descriptor.token);
       }
 
@@ -98,8 +97,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
   }
 
-  private discoverEventDescriptors(): Map<CqrsEventType, EventHandlerDescriptor> {
-    const descriptors = new Map<CqrsEventType, EventHandlerDescriptor>();
+  private discoverEventDescriptors(): EventHandlerDescriptor[] {
+    const descriptors: EventHandlerDescriptor[] = [];
     const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
 
     for (const candidate of this.discoveryCandidates()) {
@@ -126,19 +125,12 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       seenEventTypes.add(metadata.eventType);
       seenByTarget.set(candidate.targetType, seenEventTypes);
 
-      const existing = descriptors.get(metadata.eventType);
+      const alreadyRegistered = descriptors.some(
+        (descriptor) => descriptor.eventType === metadata.eventType && descriptor.targetType === candidate.targetType,
+      );
 
-      if (existing && existing.targetType !== candidate.targetType) {
-        throw new DuplicateEventHandlerError(
-          createDuplicateHandlerMessage('event', metadata.eventType, existing, {
-            moduleName: candidate.moduleName,
-            targetType: candidate.targetType,
-          }),
-        );
-      }
-
-      if (!existing) {
-        descriptors.set(metadata.eventType, {
+      if (!alreadyRegistered) {
+        descriptors.push({
           eventType: metadata.eventType,
           moduleName: candidate.moduleName,
           targetType: candidate.targetType,

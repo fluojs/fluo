@@ -613,6 +613,28 @@ describe('@konekti/microservices', () => {
     await microservice.close();
   });
 
+  it('rejects send() when a matched singleton handler method is not callable', async () => {
+    class BrokenHandler {
+      @MessagePattern('broken.handler')
+      readonly handle = 'not-a-function';
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [BrokenHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    await expect(microservice.send('broken.handler', {})).rejects.toThrow(/must be a callable function/i);
+
+    await microservice.close();
+  });
+
   it('supports request-scoped @EventPattern handlers with per-event scope isolation', async () => {
     const createdIds: number[] = [];
     let nextId = 0;

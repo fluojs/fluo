@@ -764,6 +764,38 @@ describe('@konekti/cron', () => {
     }).toThrow('@Cron(): invalid cron expression "not-a-cron".');
   });
 
+  it('fails bootstrap when distributed lock TTL is not a safe positive duration', async () => {
+    const scheduler = createManualScheduler();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-invalid-ttl' })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-invalid-ttl',
+            lockTtlMs: 500,
+          },
+          scheduler: scheduler.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow(/lockTtlMs/i);
+    expect(scheduler.records).toHaveLength(0);
+  });
+
   it('runs lifecycle hooks around successful cron execution', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
