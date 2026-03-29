@@ -74,7 +74,7 @@ await this.conn.transaction(async () => {
   const session = this.conn.currentSession();
   
   // You must pass { session } to Mongoose operations that should participate
-  await User.create([{ email: 'ada@example.com' }], { session });
+  const [user] = await User.create([{ email: 'ada@example.com' }], { session });
   await AuditLog.create([{ userId: user.id }], { session });
 });
 ```
