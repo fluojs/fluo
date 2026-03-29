@@ -280,4 +280,35 @@ describe('KafkaMicroserviceTransport', () => {
 
     await transport.close();
   });
+
+  it('unsubscribes already-subscribed topics when a later subscribe fails during listen()', async () => {
+    const subscribed: string[] = [];
+    const unsubscribed: string[] = [];
+    let callCount = 0;
+
+    const transport = new KafkaMicroserviceTransport({
+      consumer: {
+        subscribe: async (topic) => {
+          callCount++;
+
+          if (callCount === 2) {
+            throw new Error('subscribe failed on second topic');
+          }
+
+          subscribed.push(topic);
+        },
+        unsubscribe: async (topic) => {
+          unsubscribed.push(topic);
+        },
+      },
+      producer: {
+        publish: async () => {},
+      },
+    });
+
+    await expect(transport.listen(() => Promise.resolve(undefined))).rejects.toThrow('subscribe failed on second topic');
+
+    expect(subscribed).toHaveLength(1);
+    expect(unsubscribed).toEqual(subscribed);
+  });
 });

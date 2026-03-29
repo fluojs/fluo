@@ -64,15 +64,30 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
     }
 
     this.listenPromise = (async () => {
-      await this.options.consumer.subscribe(this.eventTopic, (message) => {
-        void this.handleInboundEvent(message).catch(() => undefined);
-      });
-      await this.options.consumer.subscribe(this.messageTopic, (message) => {
-        void this.handleInboundRequest(message).catch(() => undefined);
-      });
-      await this.options.consumer.subscribe(this.responseTopic, (message) => {
-        void this.handleInboundResponse(message).catch(() => undefined);
-      });
+      const subscribed: string[] = [];
+
+      try {
+        await this.options.consumer.subscribe(this.eventTopic, (message) => {
+          void this.handleInboundEvent(message).catch(() => undefined);
+        });
+        subscribed.push(this.eventTopic);
+
+        await this.options.consumer.subscribe(this.messageTopic, (message) => {
+          void this.handleInboundRequest(message).catch(() => undefined);
+        });
+        subscribed.push(this.messageTopic);
+
+        await this.options.consumer.subscribe(this.responseTopic, (message) => {
+          void this.handleInboundResponse(message).catch(() => undefined);
+        });
+        subscribed.push(this.responseTopic);
+      } catch (error) {
+        for (const topic of subscribed) {
+          await this.options.consumer.unsubscribe(topic).catch(() => undefined);
+        }
+
+        throw error;
+      }
 
       this.listening = true;
     })();

@@ -343,4 +343,35 @@ describe('RabbitMqMicroserviceTransport', () => {
 
     await transport.close();
   });
+
+  it('cancels already-subscribed queues when a later consume fails during listen()', async () => {
+    const subscribed: string[] = [];
+    const cancelled: string[] = [];
+    let callCount = 0;
+
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        consume: async (queue) => {
+          callCount++;
+
+          if (callCount === 2) {
+            throw new Error('consume failed on second queue');
+          }
+
+          subscribed.push(queue);
+        },
+        cancel: async (queue) => {
+          cancelled.push(queue);
+        },
+      },
+      publisher: {
+        publish: async () => {},
+      },
+    });
+
+    await expect(transport.listen(() => Promise.resolve(undefined))).rejects.toThrow('consume failed on second queue');
+
+    expect(subscribed).toHaveLength(1);
+    expect(cancelled).toEqual(subscribed);
+  });
 });

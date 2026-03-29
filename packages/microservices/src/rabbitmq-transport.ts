@@ -64,12 +64,22 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     this.listenPromise = (async () => {
       const queues = new Set([this.eventQueue, this.messageQueue, this.responseQueue]);
 
-      for (const queue of queues) {
-        await this.options.consumer.consume(queue, (message) => {
-          void this.handleInboundMessage(message).catch(() => undefined);
-        });
+      try {
+        for (const queue of queues) {
+          await this.options.consumer.consume(queue, (message) => {
+            void this.handleInboundMessage(message).catch(() => undefined);
+          });
 
-        this.subscribedQueues.add(queue);
+          this.subscribedQueues.add(queue);
+        }
+      } catch (error) {
+        for (const queue of this.subscribedQueues) {
+          await this.options.consumer.cancel(queue).catch(() => undefined);
+        }
+
+        this.subscribedQueues.clear();
+
+        throw error;
       }
 
       this.listening = true;
