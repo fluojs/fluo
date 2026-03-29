@@ -43,6 +43,11 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
     option: '--target-directory <path>',
   },
   {
+    aliases: [],
+    description: 'Overwrite files in a non-empty target directory without prompting.',
+    option: '--force',
+  },
+  {
     aliases: ['-h'],
     description: 'Show help for the new command.',
     option: '--help',
@@ -61,8 +66,8 @@ function readOptionValue(argv: string[], index: number, option: '--name' | '--pa
   return value;
 }
 
-function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
-  const parsed: Partial<BootstrapAnswers> = {};
+function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolean } {
+  const parsed: Partial<BootstrapAnswers> & { force?: boolean } = {};
   let hasExplicitTargetDirectory = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -98,6 +103,9 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> {
         parsed.targetDirectory = readOptionValue(argv, index, '--target-directory');
         hasExplicitTargetDirectory = true;
         index += 1;
+        break;
+      case '--force':
+        parsed.force = true;
         break;
       default:
         if (arg.startsWith('-')) {
@@ -161,6 +169,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,
+      force: parsed.force ?? runtime.force,
       repoRoot: runtime.repoRoot,
       skipInstall: runtime.skipInstall,
       targetDirectory: resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory),

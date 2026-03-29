@@ -3,6 +3,7 @@ export type DependencySource = 'local' | 'published';
 
 export interface BootstrapOptions {
   dependencySource?: DependencySource;
+  force?: boolean;
   packageManager: PackageManager;
   projectName: string;
   repoRoot?: string;
@@ -23,6 +24,7 @@ export interface BootstrapAnswers {
 
 export interface NewCommandOptions {
   dependencySource?: DependencySource;
+  force?: boolean;
   repoRoot?: string;
   skipInstall?: boolean;
 }
