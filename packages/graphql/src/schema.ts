@@ -141,6 +141,13 @@ function pickFieldsByType(
 
       const outputType = scalarByName(deps, resolveOutputScalarType(handler));
 
+      if (Object.prototype.hasOwnProperty.call(fields, handler.fieldName)) {
+        throw new Error(
+          `GraphQL schema conflict: field "${handler.fieldName}" on ${handlerType} type is registered more than once. ` +
+            `Found duplicate in resolver "${descriptor.targetName}". Each field name must be unique across all resolvers.`,
+        );
+      }
+
       if (handler.type === 'subscription') {
         fields[handler.fieldName] = createSubscriptionField(descriptor, handler, args, outputType, invokeResolver);
 
