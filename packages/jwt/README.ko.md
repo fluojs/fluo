@@ -144,8 +144,8 @@ const verifier = new DefaultJwtVerifier({
 
 | 익스포트(Export) | 위치 | 설명 |
 |---|---|---|
-| `DefaultJwtVerifier` | `src/verifier.ts` | `verifyAccessToken(token) → JwtPrincipal` |
-| `DefaultJwtSigner` | `src/signer.ts` | `signAccessToken(claims) → string` |
+| `DefaultJwtVerifier` | `src/verifier.ts` | `verifyAccessToken(token) → Promise<JwtPrincipal>` |
+| `DefaultJwtSigner` | `src/signer.ts` | `signAccessToken(claims) → Promise<string>` |
 | `createJwtCoreProviders(options)` | `src/module.ts` | 옵션, 검증기, 서명기를 한 번에 등록 |
 | `JwtPrincipal` | `src/types.ts` | `{ subject, issuer?, audience?, roles?, scopes?, claims }` |
 | `JwtClaims` | `src/types.ts` | 로우(Raw) 클레임 형태 |
