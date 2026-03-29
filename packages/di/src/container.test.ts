@@ -527,6 +527,18 @@ describe('Container', () => {
       await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
       await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b', 'child-c']);
     });
+
+    it('child override() replaces parent multi providers for that token', async () => {
+      const PLUGINS = Symbol('Plugins');
+      const root = new Container().register(
+        { provide: PLUGINS, useValue: 'root-a', multi: true },
+        { provide: PLUGINS, useValue: 'root-b', multi: true },
+      );
+      const child = root.createRequestScope().override({ provide: PLUGINS, useValue: 'child-only', multi: true });
+
+      await expect(root.resolve<string[]>(PLUGINS)).resolves.toEqual(['root-a', 'root-b']);
+      await expect(child.resolve<string[]>(PLUGINS)).resolves.toEqual(['child-only']);
+    });
   });
 
   describe('dispose', () => {
