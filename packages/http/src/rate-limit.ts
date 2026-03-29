@@ -86,6 +86,19 @@ export function createRateLimitMiddleware(options: RateLimitOptions): Middleware
         const resetAt = now + options.windowMs;
 
         await store.set(key, { count: 1, resetAt });
+
+        if (1 > options.limit) {
+          const retryAfter = Math.ceil(options.windowMs / 1000);
+          const error = new TooManyRequestsException('Too Many Requests', {
+            meta: { retryAfter },
+          });
+
+          context.response.setHeader('Retry-After', String(retryAfter));
+          context.response.setStatus(429);
+          await context.response.send(createErrorResponse(error, context.requestContext.requestId));
+          return;
+        }
+
         return next();
       }
 
