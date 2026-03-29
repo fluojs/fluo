@@ -163,6 +163,7 @@ function normalizePathToTemplate(path: string, params: Readonly<Record<string, s
 
   const normalizedSegments: string[] = [];
   const paramEntries = Object.entries(params);
+  const usedParamKeys = new Set<string>();
 
   for (const segment of path.split('/')) {
     if (!segment) {
@@ -173,8 +174,13 @@ function normalizePathToTemplate(path: string, params: Readonly<Record<string, s
     let normalizedSegment = segment;
 
     for (const [paramKey, paramValue] of paramEntries) {
+      if (usedParamKeys.has(paramKey)) {
+        continue;
+      }
+
       if (segment === paramValue || decoded === paramValue) {
         normalizedSegment = `:${paramKey}`;
+        usedParamKeys.add(paramKey);
         break;
       }
     }
