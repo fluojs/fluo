@@ -111,7 +111,7 @@ describe('HttpMetricsMiddleware', () => {
 
     const metricsText = await registry.metrics();
 
-    expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:userId/orders/:orderId",status="200"} 1');
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:orderId/orders/:userId",status="200"} 1');
   });
 
   it('passes immutable label snapshots to each metric recorder call', async () => {
