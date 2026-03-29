@@ -8,7 +8,7 @@
 
 > 의존 컬럼은 `package.json`의 `dependencies` 기준이며, 내부 `peerDependencies`/`devDependencies`는 괄호로 보조 표기한다.
 
-### ① Foundation
+### ① Foundation Group
 
 모든 것의 근본. 다른 패키지 없이 독립적으로 존재.
 
@@ -111,8 +111,10 @@ HTTP 이외의 프로토콜로 서비스를 노출하는 어댑터.
 
 ## 층위 분석 (Dependency Layers)
 
+> 아래 Layer 0는 위의 ① Foundation Group과 동일한 패키지 그룹이 아니다. 그룹 분류는 역할 기준이고, 층위 분류는 의존성 기준이라 `dto-validator`, `config`까지 함께 묶는다.
+
 ```
-Layer 0 (Foundation — 모든 것의 뿌리)
+Layer 0 (Base Layer — 모든 것의 뿌리)
   ┌────────────────────────────────────────────────────────┐
   │  core          di          dto-validator     config    │
   └────────────────────────────────────────────────────────┘
@@ -172,7 +174,7 @@ Layer 4 (Tooling — 위에 떠 있는 도구)
 
 | 기존 그룹 (7개) | 새 그룹 (8개) | 변화 |
 |---|---|---|
-| Foundation (core, di) | ① Foundation (core, di) | 동일 |
+| Foundation (core, di) | ① Foundation Group (core, di) | 명칭 명확화 |
 | HTTP Runtime (http, runtime, config, platform-fastify, testing) | ③ HTTP Runtime & Platforms | terminus, metrics 추가 |
 | Request Pipeline (dto-validator, serializer, openapi, throttler) | ② Request Pipeline | cache-manager, graphql 추가 |
 | Auth & Identity (jwt, passport) | ④ Auth & Identity | 동일 |
