@@ -268,6 +268,8 @@ class CreateOrderDto {
 
 에러는 점 표기법 경로를 사용합니다: `{ field: 'address.city', ... }`.
 
+중첩 DTO를 변환할 때는 plain object payload만 nested 인스턴스에 복사합니다. non-plain 입력은 invalid data로 취급되며 DTO 필드에 암묵적으로 merge되지 않습니다.
+
 ### 중첩 객체 배열
 
 ```typescript

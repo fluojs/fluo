@@ -423,6 +423,18 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown): 
   return instance as T;
 }
 
+function materializeNestedDtoValue<T>(target: Constructor<T>, rawValue: unknown): unknown {
+  if (rawValue instanceof target) {
+    return rawValue;
+  }
+
+  if (!isPlainObject(rawValue)) {
+    return rawValue;
+  }
+
+  return createNestedDtoInstance(target, rawValue);
+}
+
 function getDtoBindingMap(target: Constructor): Map<MetadataPropertyKey, DtoFieldBindingMetadata> {
   return new Map(
     getDtoBindingSchema(target).map((entry: { propertyKey: MetadataPropertyKey; metadata: DtoFieldBindingMetadata }) => [entry.propertyKey, entry.metadata]),
@@ -443,7 +455,7 @@ function applyBindingValues(
 }
 
 function transformNestedValue(value: unknown, target: Constructor): unknown {
-  return value === undefined || value === null ? value : createNestedDtoInstance(target, value);
+  return value === undefined || value === null ? value : materializeNestedDtoValue(target, value);
 }
 
 function transformNestedEachValue(value: unknown, target: Constructor): unknown {
@@ -597,6 +609,12 @@ async function validateNestedRule(
   for (const [index, entry] of values.entries()) {
     if (entry === undefined || entry === null) continue;
     const nestedPath = rule.each ? `${fieldPath}[${String(index)}]` : fieldPath;
+
+    if (!(entry instanceof resolvedDto) && !isPlainObject(entry)) {
+      issues.push(buildIssue(describeValidator(rule, nestedPath), nestedPath, inheritedSource));
+      continue;
+    }
+
     const nestedDto = createNestedDtoInstance(resolvedDto, entry);
     issues.push(...(await collectValidationIssuesInternal(resolvedDto, nestedDto, { fieldPrefix: nestedPath, inheritedSource })));
   }
