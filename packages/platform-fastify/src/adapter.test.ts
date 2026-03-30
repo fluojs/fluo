@@ -10,6 +10,7 @@ import {
   bootstrapFastifyApplication,
   createFastifyAdapter,
   FastifyHttpApplicationAdapter,
+  isFastifyMultipartTooLargeError,
   runFastifyApplication,
 } from './adapter.js';
 
@@ -594,5 +595,14 @@ describe('@konekti/platform-fastify', () => {
     });
 
     await app.close();
+  });
+
+  it('classifies only explicit multipart limit errors as payload-too-large', () => {
+    expect(isFastifyMultipartTooLargeError(Object.assign(new Error('File too large'), { statusCode: 413 }))).toBe(true);
+    expect(isFastifyMultipartTooLargeError(Object.assign(new Error('Multipart boundary is invalid'), {
+      code: 'FST_INVALID_MULTIPART_CONTENT_TYPE',
+      name: 'FastifyError',
+      statusCode: 400,
+    }))).toBe(false);
   });
 });

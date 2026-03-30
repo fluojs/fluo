@@ -93,6 +93,11 @@ type FastifyFrameworkResponse = FrameworkResponse & {
   statusSet?: boolean;
 };
 
+type FastifyMultipartLikeError = Error & {
+  code?: unknown;
+  statusCode?: unknown;
+};
+
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -470,12 +475,22 @@ async function parseMultipartRequest(
   return { fields, files };
 }
 
-function isFastifyMultipartTooLargeError(error: unknown): boolean {
+export function isFastifyMultipartTooLargeError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
 
-  return error.name === 'FastifyError' || error.message.includes('toobig') || error.message.includes('File too large');
+  const candidate = error as FastifyMultipartLikeError;
+
+  if (candidate.statusCode === 413) {
+    return true;
+  }
+
+  if (typeof candidate.code === 'string' && /FILE_TOO_LARGE|LIMIT/i.test(candidate.code)) {
+    return true;
+  }
+
+  return error.message.includes('toobig') || error.message.includes('File too large');
 }
 
 function normalizeHeaders(headers: FastifyRequest['headers']): Record<string, string | string[] | undefined> {
