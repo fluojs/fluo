@@ -1,5 +1,5 @@
 import type { GuardContext, RequestContext } from '@konekti/http';
-import { Inject, type Token } from '@konekti/core';
+import { Inject, InvariantError, type Token } from '@konekti/core';
 import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
 import {
@@ -38,22 +38,26 @@ export class RefreshTokenStrategy implements AuthStrategy {
   async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
     const request = context.requestContext.request;
     const refreshToken = this.extractRefreshToken(request);
-    
+
     if (!refreshToken) {
       throw new AuthenticationRequiredError('Refresh token is required.');
     }
 
-    try {
-      const result = await this.refreshTokenService.rotateRefreshToken(refreshToken);
-      const subject = await this.extractVerifiedSubject(result.accessToken);
+    const result = await this.rotateRefreshToken(refreshToken);
+    const subject = await this.extractVerifiedSubject(result.accessToken);
 
-      return {
-        claims: {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-        },
-        subject,
-      };
+    return {
+      claims: {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+      },
+      subject,
+    };
+  }
+
+  private async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    try {
+      return await this.refreshTokenService.rotateRefreshToken(currentToken);
     } catch (error: unknown) {
       if (error instanceof AuthenticationRequiredError
         || error instanceof AuthenticationExpiredError
@@ -61,12 +65,12 @@ export class RefreshTokenStrategy implements AuthStrategy {
         throw error;
       }
       if (error instanceof JwtExpiredTokenError) {
-        throw new AuthenticationExpiredError('Refresh token has expired.');
+        throw new AuthenticationExpiredError('Refresh token has expired.', { cause: error });
       }
       if (error instanceof JwtInvalidTokenError) {
-        throw new AuthenticationFailedError('Refresh token is invalid or has been reused.');
+        throw new AuthenticationFailedError('Refresh token is invalid or has been reused.', { cause: error });
       }
-      throw new AuthenticationFailedError('Refresh token authentication failed.');
+      throw error;
     }
   }
 
@@ -89,7 +93,7 @@ export class RefreshTokenStrategy implements AuthStrategy {
     const principal = await this.verifier.verifyAccessToken(accessToken);
     const sub = principal.claims.sub;
     if (typeof sub !== 'string' || sub.length === 0) {
-      throw new AuthenticationFailedError('Access token is missing a valid subject claim.');
+      throw new InvariantError('Refresh token service returned an access token without a valid subject claim.');
     }
     return sub;
   }

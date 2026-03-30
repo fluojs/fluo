@@ -1,4 +1,4 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiError, type KonektiErrorOptions } from '@konekti/core';
 
 export class AuthStrategyResolutionError extends KonektiError {
   constructor(message: string) {
@@ -7,19 +7,19 @@ export class AuthStrategyResolutionError extends KonektiError {
 }
 
 export class AuthenticationRequiredError extends KonektiError {
-  constructor(message = 'Authentication required.') {
-    super(message, { code: 'AUTHENTICATION_REQUIRED' });
+  constructor(message = 'Authentication required.', options: Omit<KonektiErrorOptions, 'code'> = {}) {
+    super(message, { ...options, code: 'AUTHENTICATION_REQUIRED' });
   }
 }
 
 export class AuthenticationFailedError extends KonektiError {
-  constructor(message = 'Authentication failed.') {
-    super(message, { code: 'AUTHENTICATION_FAILED' });
+  constructor(message = 'Authentication failed.', options: Omit<KonektiErrorOptions, 'code'> = {}) {
+    super(message, { ...options, code: 'AUTHENTICATION_FAILED' });
   }
 }
 
 export class AuthenticationExpiredError extends KonektiError {
-  constructor(message = 'Authentication token has expired.') {
-    super(message, { code: 'AUTHENTICATION_EXPIRED' });
+  constructor(message = 'Authentication token has expired.', options: Omit<KonektiErrorOptions, 'code'> = {}) {
+    super(message, { ...options, code: 'AUTHENTICATION_EXPIRED' });
   }
 }
