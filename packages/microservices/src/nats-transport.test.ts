@@ -6,6 +6,7 @@ import { NatsMicroserviceTransport } from './nats-transport.js';
 
 class InMemoryNatsClient {
   private readonly subscriptions = new Map<string, Set<(message: { data: Uint8Array; respond(data: Uint8Array): void }) => void>>();
+  closeError: Error | undefined;
 
   subscribe(subject: string, handler: (message: { data: Uint8Array; respond(data: Uint8Array): void }) => void) {
     const handlers = this.subscriptions.get(subject) ?? new Set<typeof handler>();
@@ -73,6 +74,10 @@ class InMemoryNatsClient {
 
   close(): void {
     this.subscriptions.clear();
+
+    if (this.closeError) {
+      throw this.closeError;
+    }
   }
 }
 
@@ -161,5 +166,84 @@ describe('NatsMicroserviceTransport', () => {
     expect(logger).toHaveBeenCalled();
 
     await transport.close();
+  });
+
+  it('rejects pending requests when close() runs before a reply', async () => {
+    const nats = new InMemoryNatsClient();
+    let resolveRequestRelease!: () => void;
+    let resolveRequestStarted!: () => void;
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const requestRelease = new Promise<void>((resolve) => {
+      resolveRequestRelease = resolve;
+    });
+    const requestStarted = new Promise<void>((resolve) => {
+      resolveRequestStarted = resolve;
+    });
+
+    nats.request = vi.fn(async () => {
+      resolveRequestStarted();
+      await requestRelease;
+      return { data: codec.encode(JSON.stringify({ payload: { value: 1 } })) };
+    });
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec, requestTimeoutMs: 5_000 });
+    await transport.listen(async () => undefined);
+
+    const pending = transport.send('long.running', { value: 1 });
+    await requestStarted;
+    await transport.close();
+
+    await expect(pending).rejects.toThrow('NATS microservice transport closed before response.');
+
+    resolveRequestRelease();
+    await Promise.resolve();
+  });
+
+  it('still rejects pending requests when client.close fails during close', async () => {
+    const nats = new InMemoryNatsClient();
+    const closeError = new Error('close failed');
+    let resolveRequestRelease!: () => void;
+    let resolveRequestStarted!: () => void;
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const requestRelease = new Promise<void>((resolve) => {
+      resolveRequestRelease = resolve;
+    });
+    const requestStarted = new Promise<void>((resolve) => {
+      resolveRequestStarted = resolve;
+    });
+
+    nats.request = vi.fn(async () => {
+      resolveRequestStarted();
+      await requestRelease;
+      return { data: codec.encode(JSON.stringify({ payload: { value: 1 } })) };
+    });
+
+    nats.closeError = closeError;
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec, requestTimeoutMs: 5_000 });
+    await transport.listen(async () => undefined);
+
+    const pending = transport.send('long.running', { value: 1 });
+    await requestStarted;
+
+    await expect(transport.close()).rejects.toBe(closeError);
+    await expect(pending).rejects.toThrow('NATS microservice transport closed before response.');
+
+    resolveRequestRelease();
+    await Promise.resolve();
   });
 });

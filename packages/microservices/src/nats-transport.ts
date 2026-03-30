@@ -40,11 +40,18 @@ interface NatsTransportResponse {
   readonly payload?: unknown;
 }
 
+interface PendingRequest {
+  reject(error: unknown): void;
+  resolve(value: unknown): void;
+}
+
 export class NatsMicroserviceTransport implements MicroserviceTransport {
+  private closing = false;
   private handler: TransportHandler | undefined;
   private listening = false;
   private readonly eventSubject: string;
   private readonly messageSubject: string;
+  private readonly pending = new Map<string, PendingRequest>();
   private readonly requestTimeoutMs: number;
   private subscriptions: NatsSubscriptionLike[] = [];
 
@@ -65,6 +72,7 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   }
 
   async listen(handler: TransportHandler): Promise<void> {
+    this.closing = false;
     this.handler = handler;
 
     if (this.listening) {
@@ -83,24 +91,70 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   }
 
   async send(pattern: string, payload: unknown): Promise<unknown> {
+    if (this.closing) {
+      throw new Error('NATS microservice transport is closing. Wait for close() to complete before send().');
+    }
+
+    if (!this.listening) {
+      throw new Error('NatsMicroserviceTransport is not listening. Call listen() before send().');
+    }
+
     const request: NatsTransportMessage = {
       kind: 'message',
       pattern,
       payload,
     };
 
-    const responseMessage = await this.options.client.request(
-      this.messageSubject,
-      this.encode(request),
-      { timeout: this.requestTimeoutMs },
-    );
-    const response = this.decode<NatsTransportResponse>(responseMessage.data);
+    const requestId = crypto.randomUUID();
 
-    if (response.error) {
-      throw new Error(response.error);
-    }
+    return await new Promise<unknown>((resolve, reject) => {
+      let settled = false;
 
-    return response.payload;
+      const cleanup = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        this.pending.delete(requestId);
+      };
+
+      const entry: PendingRequest = {
+        reject: (error: unknown) => {
+          cleanup();
+          reject(error);
+        },
+        resolve: (value: unknown) => {
+          cleanup();
+          resolve(value);
+        },
+      };
+
+      this.pending.set(requestId, entry);
+
+      void Promise.resolve().then(async () => {
+        if (this.closing) {
+          entry.reject(new Error('NATS microservice transport closed before request dispatch.'));
+          return;
+        }
+
+        const responseMessage = await this.options.client.request(
+          this.messageSubject,
+          this.encode(request),
+          { timeout: this.requestTimeoutMs },
+        );
+        const response = this.decode<NatsTransportResponse>(responseMessage.data);
+
+        if (response.error) {
+          entry.reject(new Error(response.error));
+          return;
+        }
+
+        entry.resolve(response.payload);
+      }).catch((error: unknown) => {
+        entry.reject(error instanceof Error ? error : new Error('Failed to send NATS request.'));
+      });
+    });
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
@@ -114,14 +168,30 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
-    for (const subscription of this.subscriptions) {
-      subscription.unsubscribe();
+    this.closing = true;
+    let closeError: unknown;
+
+    try {
+      for (const subscription of this.subscriptions) {
+        subscription.unsubscribe();
+      }
+
+      this.options.client.close?.();
+    } catch (error) {
+      closeError = error;
+    } finally {
+      this.subscriptions = [];
+      this.listening = false;
+      this.handler = undefined;
+
+      for (const pending of [...this.pending.values()]) {
+        pending.reject(new Error('NATS microservice transport closed before response.'));
+      }
     }
 
-    this.subscriptions = [];
-    this.listening = false;
-    this.handler = undefined;
-    this.options.client.close?.();
+    if (closeError) {
+      throw closeError;
+    }
   }
 
   private async handleEventMessage(message: NatsMessageLike): Promise<void> {
