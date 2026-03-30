@@ -42,6 +42,17 @@ export class CookieAuthStrategy implements AuthStrategy {
     const request = context.requestContext.request;
     const cookies = request.cookies;
 
+    if (!cookies || typeof cookies !== 'object') {
+      if (this.options.requireAccessToken) {
+        throw new AuthenticationRequiredError('Access token cookie is required.');
+      }
+
+      return {
+        claims: {},
+        subject: 'anonymous',
+      };
+    }
+
     const accessToken = cookies[this.options.accessTokenCookieName];
 
     if (!accessToken) {

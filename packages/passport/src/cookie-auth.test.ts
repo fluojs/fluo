@@ -18,7 +18,7 @@ function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): Defaul
   } as unknown as DefaultJwtVerifier;
 }
 
-function createGuardContext(cookies: Record<string, string | undefined> = {}): GuardContext {
+function createGuardContext(cookies: Record<string, string | undefined> | null | undefined = {}): GuardContext {
   return {
     handler: {
       controllerToken: class {},
@@ -28,7 +28,7 @@ function createGuardContext(cookies: Record<string, string | undefined> = {}): G
     },
     requestContext: {
       request: {
-        cookies,
+        cookies: cookies as RequestContext['request']['cookies'],
         headers: {},
       } as RequestContext['request'],
       principal: undefined,
@@ -80,10 +80,39 @@ describe('CookieAuthStrategy', () => {
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
     });
 
+    it('throws AuthenticationRequiredError when the cookies bag is undefined', async () => {
+      const verifier = createMockVerifier();
+      const strategy = new CookieAuthStrategy(verifier);
+      const context = createGuardContext(undefined);
+
+      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
+    });
+
+    it('throws AuthenticationRequiredError when the cookies bag is null', async () => {
+      const verifier = createMockVerifier();
+      const strategy = new CookieAuthStrategy(verifier);
+      const context = createGuardContext(null);
+
+      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
+    });
+
     it('allows anonymous access when requireAccessToken is false', async () => {
       const verifier = createMockVerifier();
       const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
       const context = createGuardContext({});
+
+      const result = await strategy.authenticate(context);
+
+      expect(result).toMatchObject({
+        subject: 'anonymous',
+        claims: {},
+      });
+    });
+
+    it('allows anonymous access when cookies bag is undefined and requireAccessToken is false', async () => {
+      const verifier = createMockVerifier();
+      const strategy = new CookieAuthStrategy(verifier, { requireAccessToken: false });
+      const context = createGuardContext(undefined);
 
       const result = await strategy.authenticate(context);
 
