@@ -295,7 +295,7 @@ export class HealthRepo {
   findHealth(): HealthResponseDto {
     return {
       ok: true,
-      service: '${projectName}',
+      service: ${JSON.stringify(projectName)},
     };
   }
 }

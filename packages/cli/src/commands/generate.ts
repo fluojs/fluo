@@ -8,6 +8,28 @@ import { findGeneratorDefinition } from '../generators/manifest.js';
 import { ensureModuleImport, generateModuleFiles, registerInModule } from '../generators/module.js';
 import { toKebabCase, toPascalCase, toPlural } from '../generators/utils.js';
 
+function writeFileIfChanged(filePath: string, content: string): boolean {
+  if (existsSync(filePath) && readFileSync(filePath, 'utf8') === content) {
+    return false;
+  }
+
+  writeFileSync(filePath, content, 'utf8');
+  return true;
+}
+
+function createGeneratorOptions(
+  kind: GeneratorKind,
+  domainDirectory: string,
+  kebab: string,
+  options: GenerateOptions,
+): GenerateOptions {
+  return {
+    ...options,
+    hasRepo: options.hasRepo ?? (kind === 'service' ? existsSync(join(domainDirectory, `${kebab}.repo.ts`)) : undefined),
+    hasService: options.hasService ?? (kind === 'controller' ? existsSync(join(domainDirectory, `${kebab}.service.ts`)) : undefined),
+  };
+}
+
 function assertValidResourceName(name: string): string {
   const kebab = toKebabCase(name);
 
@@ -82,7 +104,8 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
 
   const resolvedBase = resolve(baseDirectory);
   const domainDirectory = join(resolvedBase, toPlural(kebab));
-  const files = generator.factory(normalizedName, options);
+  const generatorOptions = createGeneratorOptions(kind, domainDirectory, kebab, options);
+  const files = generator.factory(normalizedName, generatorOptions);
   const moduleRegistration = 'moduleRegistration' in generator ? generator.moduleRegistration : undefined;
 
   const moduleUpdate = moduleRegistration
@@ -98,12 +121,10 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
       return null;
     }
 
-    writeFileSync(filePath, file.content, 'utf8');
-    return filePath;
+    return writeFileIfChanged(filePath, file.content) ? filePath : null;
   }).filter((filePath): filePath is string => filePath !== null);
 
-  if (moduleUpdate) {
-    writeFileSync(moduleUpdate.modulePath, moduleUpdate.source, 'utf8');
+  if (moduleUpdate && writeFileIfChanged(moduleUpdate.modulePath, moduleUpdate.source)) {
 
     if (!writtenPaths.includes(moduleUpdate.modulePath)) {
       writtenPaths.push(moduleUpdate.modulePath);

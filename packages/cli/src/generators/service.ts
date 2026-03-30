@@ -9,7 +9,7 @@ export function generateServiceFiles(name: string, _options: GenerateOptions = {
   const pascal = `${resource}Service`;
   const repo = `${resource}Repo`;
 
-  const vars = { kebab, resource, pascal, repo };
+  const vars = { hasRepo: _options.hasRepo ?? false, kebab, resource, pascal, repo };
 
   return [
     {

@@ -613,6 +613,54 @@ describe('CLI command runner', () => {
     expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
   });
 
+  it('rejects traversal-style project names for `new` before scaffolding side effects', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', '../starter-app'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('must not contain path separators or traversal sequences');
+    expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('rejects traversal-style project names provided through `--name`', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', '--name', 'bad\\app'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('must not contain path separators or traversal sequences');
+    expect(existsSync(join(workspaceDirectory, 'bad\\app'))).toBe(false);
+  });
+
+  it('escapes generated TypeScript string literals for special project names', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    const exitCode = await runCli(['new', "starter'app"], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(join(workspaceDirectory, "starter'app", 'src', 'health', 'health.repo.ts'), 'utf8')).toContain('service: "starter\'app"');
+  });
+
   it('prints generate usage for an unknown schematic', async () => {
     const stderrBuffer: string[] = [];
 

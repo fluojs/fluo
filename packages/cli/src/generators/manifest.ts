@@ -31,7 +31,7 @@ export const generatorManifest = [
   {
     aliases: ['co'],
     description: 'Generate a controller and register it in the module controllers array.',
-    factory: (name) => generateControllerFiles(name),
+    factory: (name, options) => generateControllerFiles(name, options),
     kind: 'controller',
     moduleRegistration: { arrayKey: 'controllers', classSuffix: 'Controller' },
     schematic: 'controller',

@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import { <%- pascal %> } from './<%- kebab %>.controller';
 
+<% if (hasService) { %>
 class Fake<%- service %> {
   async list<%- resource %>s() {
     return [{ id: '<%- kebab %>-1' }];
   }
 }
+<% } %>
 
 describe('<%- pascal %>', () => {
   it('delegates to the service', async () => {
+<% if (hasService) { %>
     await expect(new <%- pascal %>(new Fake<%- service %>() as never).list<%- resource %>s()).resolves.toEqual([{ id: '<%- kebab %>-1' }]);
+<% } else { %>
+    await expect(new <%- pascal %>().list<%- resource %>s()).resolves.toEqual([]);
+<% } %>
   });
 });
