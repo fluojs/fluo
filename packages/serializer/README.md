@@ -79,6 +79,6 @@ await bootstrapApplication({
 ## non-goals and intentional limitations
 
 - No deep class instantiation — serialization walks the object graph but does not construct new class instances from plain objects; output is always JSON-safe plain data
-- No schema validation — `@Exclude` / `@Expose` / `@Transform` shape the output but do not validate input; use `@konekti/dto-validator` for input validation
+- No schema validation — `@Exclude` / `@Expose` / `@Transform` shape the output but do not validate input; use the `@konekti/dto` package for input validation
 - No async transform support — `@Transform(fn)` must return synchronously; async transforms are not supported
 - Symbol-keyed properties on class instances are not serialized — only plain-object symbol keys are included (class instances serialize only string-keyed properties)

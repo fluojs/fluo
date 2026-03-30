@@ -144,7 +144,7 @@ getProduct() { ... }
 
 동일한 핸들러에 여러 개의 `@ApiResponse` 데코레이터를 중첩해서 사용할 수 있습니다.
 
-### `@konekti/http`의 매핑된 DTO 헬퍼
+### `@konekti/dto` 패키지의 매핑된 DTO 헬퍼
 
 OpenAPI 생성 시 `PickType()`, `OmitType()`, `IntersectionType()`, `PartialType()` 요청 DTO의 메타데이터가 보존되므로, 파생된 요청 바디와 파라미터 스키마가 해결된 DTO 클래스를 기반으로 계속 렌더링됩니다.
 
@@ -206,7 +206,7 @@ createProduct() { ... }
 - **`operationId`**는 기본 태그, 핸들러 이름, HTTP 메서드, 정규화된 라우트 경로를 조합하여 자동으로 생성됩니다 (예: `Users_listUsers_get_v1_users`).
 - **`tags`**는 `@ApiTag`를 사용하지 않은 경우 컨트롤러 클래스 이름이 기본값으로 사용됩니다.
 - **`security`** 스킴은 최소 하나 이상의 핸들러가 `@ApiBearerAuth()`를 사용하는 경우에만 문서에 포함됩니다.
-- `@konekti/dto-validator`로 장식된 요청 DTO는 `components.schemas` 항목으로 생성되며 `requestBody`를 통해 연결됩니다.
+- `@konekti/dto` 패키지로 장식된 요청 DTO는 `components.schemas` 항목으로 생성되며 `requestBody`를 통해 연결됩니다.
 - 쿠키에 바인딩된 DTO 필드는 `in: cookie` 파라미터로 생성됩니다.
 - 요청 바디는 바인딩된 DTO 필드 중 최소 하나 이상이 필수인 경우에만 `required: true`로 표시됩니다.
 - 기본 오류 응답 (`400`, `401`, `403`, `404`, `500`)은 기본적으로 주입되며, `defaultErrorResponsesPolicy: 'omit'` 설정을 통해 비활성화할 수 있습니다.

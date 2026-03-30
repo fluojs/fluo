@@ -25,7 +25,7 @@ These packages are the current intended public release surface for the 0.x line:
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto-validator`
+- `@konekti/dto`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`

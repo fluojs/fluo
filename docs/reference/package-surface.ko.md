@@ -8,7 +8,7 @@
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto-validator`
+- `@konekti/dto`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
@@ -46,7 +46,7 @@
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
 - **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임.
-- **`@konekti/dto-validator`**: 유효성 검사 데코레이터 및 검증 엔진.
+- **`@konekti/dto` 패키지**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
 - **`@konekti/jwt`**: 핵심 JWT 로직.
 - **`@konekti/passport`**: 인증 전략 레지스트리 및 범용 가드 연결.
 - **`@konekti/openapi`**: 문서 생성 및 OpenAPI 데코레이터.

@@ -42,7 +42,7 @@
 
 - **바인딩**: `@konekti/http`가 요청 DTO 바인딩을 처리합니다.
 - **소스 데코레이터**: `@FromBody()`와 `@FromPath()`는 `@konekti/http`에서 제공합니다.
-- **유효성 검사**: `@IsString()`과 `@MinLength()`는 `@konekti/dto-validator`에서 제공합니다.
+- **유효성 검사**: `@IsString()`과 `@MinLength()`는 `@konekti/dto` 패키지에서 제공합니다.
 
 Konekti는 요청 DTO를 트랜스포트 계층과 애플리케이션 로직 사이의 명시적인 경계로 취급합니다.
 

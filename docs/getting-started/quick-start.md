@@ -81,7 +81,7 @@ Note that DTO binding and validation are handled by separate packages:
 
 ```ts
 import { FromBody } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/dto-validator';
+import { IsString, MinLength } from '@konekti/dto';
 ```
 
 ## upgrade policy

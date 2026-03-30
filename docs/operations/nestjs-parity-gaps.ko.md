@@ -76,7 +76,7 @@
 | A2. microservice / transport layer | `@konekti/microservices`에 TCP, Redis Pub/Sub, Kafka(요청/응답 + 이벤트), NATS, RabbitMQ(이벤트 전용) 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`, 공유 컨테이너 기반 하이브리드 구성 및 런타임 통합 테스트가 출하되었습니다. |
 | A3. platform adapter breadth | `@konekti/platform-fastify`에 전체 패리티 테스트 스위트를 갖춘 `HttpApplicationAdapter` 구현 Fastify 어댑터가 출하되었습니다. |
 | A4. HTTP versioning strategies beyond URI | URI, Header, Media type, Custom 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하되었습니다. |
-| A5. schema-based validation (ArkType) | `createArkTypeAdapter`가 `@konekti/dto-validator`에 선택적 피어로 출하되어 ArkType 파싱 에러를 표준 `ValidationIssue` 형태로 매핑합니다. |
+| A5. schema-based validation (ArkType) | `createArkTypeAdapter`가 `@konekti/dto` 패키지에 선택적 피어로 출하되어 ArkType 파싱 에러를 표준 `ValidationIssue` 형태로 매핑합니다. |
 | A6. request / transient provider scopes for GraphQL resolvers | `@konekti/graphql`이 오퍼레이션 컨텍스트마다 `createRequestScope()`를 연결합니다. `@Scope('request')`, `@Scope('transient')`, `@Scope('singleton')` 리졸버가 완전히 테스트되고 문서화되었습니다. |
 | A7. response serialization layer | `@konekti/serializer`에 `@Exclude`, `@Expose`, `@Transform`, `SerializerInterceptor`가 출하되었습니다. 전역 및 컨트롤러 단위 등록, 중첩 객체/배열 처리, 전체 테스트 커버리지를 포함합니다. |
 | A7 (prev). Distributed rate limiting | `@konekti/throttler`에 인메모리 및 Redis 스토어 어댑터가 출하되었습니다. |

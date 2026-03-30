@@ -39,7 +39,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - `@konekti/core`, `@konekti/config`, `@konekti/di`: standard-decorator metadata contracts and explicit token-based DI foundations.
 - `@konekti/http`, `@konekti/runtime`: predictable request pipeline, runtime-owned bootstrap, and starter health/readiness surfaces.
-- `@konekti/dto-validator`, `@konekti/testing`: DTO binding validation and test-first package support.
+- `@konekti/dto`, `@konekti/testing`: DTO binding validation and test-first package support.
 - `@konekti/jwt`, `@konekti/passport`: authentication foundations with package-local integration boundaries.
 - `@konekti/openapi`, `@konekti/graphql`, `@konekti/metrics`, `@konekti/cron`, `@konekti/event-bus`, `@konekti/websocket`, `@konekti/queue`: optional framework capabilities as explicit package APIs.
 - `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`: data adapter integrations with package-scoped contracts.

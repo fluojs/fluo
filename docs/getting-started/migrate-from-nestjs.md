@@ -17,7 +17,7 @@ This guide is for teams that already ship NestJS services and want a practical m
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` or `bootstrapApplication({ rootModule: AppModule, ... })` | Runtime owns adapter wiring and startup flow. |
 | `app.listen(3000)` | `runNodeApplication(...)` (built-in listen) or `await app.listen()` after `bootstrapApplication(...)` | Both are supported depending on how much control you need. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, and `@RequestDto(...)` + `@konekti/dto-validator` decorators | Konekti does not use a separate `@UsePipes()` decorator. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, and `@RequestDto(...)` + `@konekti/dto` package decorators | Konekti does not use a separate `@UsePipes()` decorator. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `createTestingModule({ rootModule })` from `@konekti/testing` | Override providers, compile graph, resolve tokens. |
 
 ## 1) module mapping
@@ -356,7 +356,7 @@ class UsersController {
 
 Nest usually applies validation through `ValidationPipe` (global or route-level).
 
-Konekti uses DTO request binding + validation decorators via `@RequestDto(...)` and `@konekti/dto-validator`. There is no separate `@UsePipes()` decorator in the current public API.
+Konekti uses DTO request binding + validation decorators via `@RequestDto(...)` and the `@konekti/dto` package. There is no separate `@UsePipes()` decorator in the current public API.
 
 ### NestJS
 
@@ -383,7 +383,7 @@ class UsersController {
 
 ```typescript
 import { Controller, FromBody, Post, RequestDto } from '@konekti/http';
-import { IsEmail } from '@konekti/dto-validator';
+import { IsEmail } from '@konekti/dto';
 
 class CreateUserDto {
   @FromBody()
@@ -488,7 +488,7 @@ const service = await moduleRef.resolve(UserService);
 - replace `@Injectable()` usage with provider registration in module metadata
 - convert DI metadata to explicit `@Inject([...])` token lists where needed
 - migrate guards/interceptors with `@UseGuards` and `@UseInterceptors`
-- move validation from Nest pipes to `@RequestDto` + `@konekti/dto-validator`
+- move validation from Nest pipes to `@RequestDto` + the `@konekti/dto` package
 - switch bootstrap to `runNodeApplication(...)` or `bootstrapApplication(...)`
 - migrate tests to `createTestingModule(...)` and provider overrides
 

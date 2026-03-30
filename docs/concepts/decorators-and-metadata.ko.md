@@ -2,7 +2,7 @@
 
 <p><a href="./decorators-and-metadata.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/core`, `@konekti/http`, 그리고 `@konekti/dto-validator`에서 사용되는 데코레이터와 메타데이터 모델을 설명합니다.
+이 가이드는 `@konekti/core`, `@konekti/http`, 그리고 `@konekti/dto` 패키지에서 사용되는 데코레이터와 메타데이터 모델을 설명합니다.
 
 ### 관련 문서
 
@@ -19,7 +19,7 @@ Konekti는 TC39 표준 데코레이터만을 기반으로 하는 데코레이터
 - **모듈 및 DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
 - **HTTP 라우팅**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
 - **DTO 바인딩**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
-- **유효성 검사**: `@konekti/dto-validator`에서 제공하는 데코레이터들
+- **유효성 검사**: `@konekti/dto` 패키지에서 제공하는 데코레이터들
 
 ## DTO 전략
 

@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./decorators-and-metadata.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the decorator and metadata model used in `@konekti/core`, `@konekti/http`, and `@konekti/dto-validator`.
+This guide outlines the decorator and metadata model used in `@konekti/core`, `@konekti/http`, and the `@konekti/dto` package.
 
 ### related documentation
 
@@ -19,7 +19,7 @@ Konekti uses a decorator-first approach based exclusively on TC39 standard decor
 - **Module and DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
 - **HTTP Routing**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
 - **DTO Binding**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
-- **Validation**: Decorators provided by `@konekti/dto-validator`
+- **Validation**: Decorators provided by the `@konekti/dto` package
 
 ## dto strategy
 

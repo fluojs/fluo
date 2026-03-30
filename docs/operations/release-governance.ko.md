@@ -24,7 +24,7 @@
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto-validator`
+- `@konekti/dto`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`

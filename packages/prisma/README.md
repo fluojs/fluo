@@ -190,7 +190,7 @@ Start here to understand the full package in ~15 minutes:
 | `@konekti/di` | DI container that resolves `PrismaService` and `PRISMA_CLIENT` |
 | `@konekti/http` | Interceptor system that `PrismaTransactionInterceptor` hooks into |
 | `@konekti/testing` | Use `overrideProvider(PRISMA_CLIENT, fakePrisma)` to inject a test double |
-| `@konekti/dto-validator` | Validates request DTOs before they reach the service layer in the vertical slice |
+| `@konekti/dto` package | Validates request DTOs before they reach the service layer in the vertical slice |
 
 ## One-liner mental model
 

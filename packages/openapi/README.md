@@ -144,7 +144,7 @@ getProduct() { ... }
 
 Multiple `@ApiResponse` decorators can be stacked on the same handler.
 
-### Mapped DTO helpers from `@konekti/http`
+### Mapped DTO helpers from the `@konekti/dto` package
 
 OpenAPI generation preserves metadata from `PickType()`, `OmitType()`, `IntersectionType()`, and `PartialType()` request DTOs, so derived request bodies and parameter schemas continue to render from the resolved DTO class.
 
@@ -206,7 +206,7 @@ The generated document follows OpenAPI 3.1.0:
 - **`operationId`** is auto-generated from the primary tag, handler name, HTTP method, and normalized route path (for example: `Users_listUsers_get_v1_users`).
 - **`tags`** default to the controller class name when `@ApiTag` is not used.
 - **`security`** schemes are only included in the document when at least one handler uses `@ApiBearerAuth()`.
-- Request DTOs decorated with `@konekti/dto-validator` are emitted as `components.schemas` entries and linked through `requestBody`.
+- Request DTOs decorated with the `@konekti/dto` package are emitted as `components.schemas` entries and linked through `requestBody`.
 - Cookie-bound DTO fields are emitted as `in: cookie` parameters.
 - Request bodies are only marked `required: true` when at least one body-bound DTO field is required.
 - Default error responses (`400`, `401`, `403`, `404`, `500`) are injected by default and can be disabled with `defaultErrorResponsesPolicy: 'omit'`.
