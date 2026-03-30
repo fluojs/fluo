@@ -152,12 +152,18 @@ export class PrismaService<
     signal: AbortSignal,
     options?: TTransactionOptions,
   ): Promise<T> {
+    let callbackInvoked = false;
+    const wrappedCallback = (transactionClient: TTransactionClient) => {
+      callbackInvoked = true;
+      return callback(transactionClient);
+    };
+
     try {
-      const result = await this.client.$transaction!<T>(callback, this.withTransactionAbortSignal(options, signal));
+      const result = await this.client.$transaction!<T>(wrappedCallback, this.withTransactionAbortSignal(options, signal));
       this.transactionAbortSignalSupport = 'supported';
       return result;
     } catch (error) {
-      if (!this.shouldRetryWithoutAbortSignal(error)) {
+      if (callbackInvoked || !this.shouldRetryWithoutAbortSignal(error)) {
         throw error;
       }
 
