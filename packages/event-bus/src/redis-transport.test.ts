@@ -6,6 +6,7 @@ class MockRedisClient {
   readonly messageListeners: Array<(channel: string, message: string) => void> = [];
   readonly publishes: Array<{ channel: string; message: string }> = [];
   readonly subscribedChannels: string[] = [];
+  readonly unsubscribedChannels: string[][] = [];
   disconnectCalls = 0;
   offCalls = 0;
 
@@ -37,6 +38,10 @@ class MockRedisClient {
 
   async subscribe(channel: string): Promise<void> {
     this.subscribedChannels.push(channel);
+  }
+
+  async unsubscribe(...channels: string[]): Promise<void> {
+    this.unsubscribedChannels.push(channels);
   }
 
   emitMessage(channel: string, payload: string): void {
@@ -91,7 +96,7 @@ describe('RedisEventBusTransport', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('serializes publish payloads and disconnects both clients on close', async () => {
+  it('serializes publish payloads and only cleans up transport-owned subscriptions on close', async () => {
     const publishClient = new MockRedisClient();
     const subscribeClient = new MockRedisClient();
     const transport = new RedisEventBusTransport({
@@ -106,8 +111,31 @@ describe('RedisEventBusTransport', () => {
 
     await transport.close();
 
-    expect(publishClient.disconnectCalls).toBe(1);
-    expect(subscribeClient.disconnectCalls).toBe(1);
+    expect(publishClient.disconnectCalls).toBe(0);
+    expect(subscribeClient.disconnectCalls).toBe(0);
+    expect(subscribeClient.unsubscribedChannels).toEqual([['AuditEvent']]);
+    expect(subscribeClient.offCalls).toBe(1);
+    expect(subscribeClient.messageListeners).toHaveLength(0);
+  });
+
+  it('still detaches listeners when unsubscribe fails during close', async () => {
+    const publishClient = new MockRedisClient();
+    const subscribeClient = new MockRedisClient();
+    const transport = new RedisEventBusTransport({
+      publishClient: publishClient as never,
+      subscribeClient: subscribeClient as never,
+    });
+
+    subscribeClient.unsubscribe = vi.fn(async () => {
+      throw new Error('unsubscribe failed');
+    });
+
+    await transport.subscribe('AuditEvent', async () => undefined);
+
+    await expect(transport.close()).rejects.toThrow('unsubscribe failed');
+
+    expect(publishClient.disconnectCalls).toBe(0);
+    expect(subscribeClient.disconnectCalls).toBe(0);
     expect(subscribeClient.offCalls).toBe(1);
     expect(subscribeClient.messageListeners).toHaveLength(0);
   });

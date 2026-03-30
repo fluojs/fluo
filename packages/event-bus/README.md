@@ -118,6 +118,8 @@ export class AppModule {}
 
 Two separate Redis clients are required because a client in subscribe mode cannot issue other commands.
 
+`RedisEventBusTransport` does not own the lifecycle of injected Redis clients. On `close()`, it unsubscribes the channels it registered and detaches its message listener, but it does not call `quit()` or `disconnect()` on caller-provided clients.
+
 ## Runtime behavior
 
 - Handler discovery runs during application bootstrap via `COMPILED_MODULES`.

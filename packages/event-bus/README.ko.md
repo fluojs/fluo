@@ -118,6 +118,8 @@ export class AppModule {}
 
 구독(subscribe) 모드의 클라이언트는 다른 명령을 실행할 수 없으므로 두 개의 별도 Redis 클라이언트가 필요합니다.
 
+`RedisEventBusTransport`는 주입받은 Redis client의 lifecycle을 소유하지 않습니다. `close()` 시 transport가 등록한 채널 구독과 message listener만 정리하며, 호출자가 제공한 client에 대해 `quit()`이나 `disconnect()`를 호출하지 않습니다.
+
 ## 런타임 동작
 
 - 핸들러 검색은 애플리케이션 부트스트랩 중에 `COMPILED_MODULES`를 통해 실행됩니다.
