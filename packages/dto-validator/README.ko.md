@@ -270,6 +270,8 @@ class CreateOrderDto {
 
 중첩 DTO를 변환할 때는 plain object payload만 nested 인스턴스에 복사합니다. non-plain 입력은 invalid data로 취급되며 DTO 필드에 암묵적으로 merge되지 않습니다.
 
+순환(cyclic) 중첩 payload도 invalid data로 취급하므로, 재귀 검증은 무한 재귀 대신 validation error로 실패합니다.
+
 ### 중첩 객체 배열
 
 ```typescript

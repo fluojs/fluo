@@ -301,6 +301,114 @@ describe('DefaultValidator', () => {
     });
   });
 
+  it('rejects cyclic nested payloads during validation instead of recursing indefinitely', async () => {
+    class NodeDto {
+      @MinLength(1)
+      name = '';
+
+      @ValidateNested(() => NodeDto)
+      child?: NodeDto;
+    }
+
+    const validator = new DefaultValidator();
+    const payload: { child?: unknown; name: string } = { name: 'root' };
+    payload.child = payload;
+
+    await expect(
+      validator.validate(Object.assign(new NodeDto(), payload), NodeDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child.child', message: 'child.child contains invalid nested data.' }],
+    });
+  });
+
+  it('rejects cyclic nested payloads during transform instead of recursing indefinitely', async () => {
+    class NodeDto {
+      @MinLength(1)
+      name = '';
+
+      @ValidateNested(() => NodeDto)
+      child?: NodeDto;
+    }
+
+    const validator = new DefaultValidator();
+    const payload: { child?: unknown; name: string } = { name: 'root' };
+    payload.child = payload;
+
+    await expect(
+      validator.transform<NodeDto>(payload, NodeDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child.child', message: 'child.child contains invalid nested data.' }],
+    });
+  });
+
+  it('rejects cyclic DTO instances during validation instead of recursing indefinitely', async () => {
+    class NodeDto {
+      @MinLength(1)
+      name = '';
+
+      @ValidateNested(() => NodeDto)
+      child?: NodeDto;
+    }
+
+    const validator = new DefaultValidator();
+    const root = Object.assign(new NodeDto(), { name: 'root' });
+    root.child = root;
+
+    await expect(
+      validator.validate(root, NodeDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
+    });
+  });
+
+  it('rejects cyclic nested collection entries during validation instead of recursing indefinitely', async () => {
+    class NodeDto {
+      @MinLength(1)
+      name = '';
+
+      @ValidateNested(() => NodeDto, { each: true })
+      children: NodeDto[] = [];
+    }
+
+    const validator = new DefaultValidator();
+    const root = Object.assign(new NodeDto(), { name: 'root' });
+    root.children = [root];
+
+    await expect(
+      validator.validate(root, NodeDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'children[0]', message: 'children[0] contains invalid nested data.' }],
+    });
+  });
+
+  it('allows shared nested payload objects across sibling fields', async () => {
+    class ChildDto {
+      @MinLength(1)
+      name = '';
+    }
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto)
+      left = new ChildDto();
+
+      @ValidateNested(() => ChildDto)
+      right = new ChildDto();
+    }
+
+    const shared = { name: 'ok' };
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ParentDto(), {
+          left: shared,
+          right: shared,
+        }),
+        ParentDto,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('reports stable field paths for deeply nested DTO validation failures', async () => {
     class Level3Dto {
       @MinLength(2, { message: 'leaf must have length at least 2' })

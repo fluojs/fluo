@@ -269,6 +269,8 @@ Errors use dot-notation paths: `{ field: 'address.city', ... }`.
 
 When transforming nested DTOs, only plain-object payloads are copied into the nested instance; non-plain inputs are treated as invalid data and are not implicitly merged into DTO fields.
 
+Cyclic nested payloads are treated as invalid data as well, so recursive validation fails with a validation error instead of recursing indefinitely.
+
 ### Arrays of Nested Objects
 
 ```typescript
