@@ -400,8 +400,10 @@ export class SocketIoLifecycleService
         return;
       }
 
-      void this.handleDisconnect(resolved, socket, reason, description);
-      this.socketRegistry.delete(socket.id);
+      void this.handleDisconnect(resolved, socket, reason, description)
+        .finally(() => {
+          this.socketRegistry.delete(socket.id);
+        });
     });
   }
 
