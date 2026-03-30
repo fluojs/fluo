@@ -414,7 +414,7 @@ function createMainFile(): string {
 
 import { AppModule } from './app';
 
-await runNodeApplication(AppModule);
+await runNodeApplication(AppModule, {});
 `;
 }
 
@@ -467,7 +467,7 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 
 describe('AppModule', () => {
   it('dispatches the runtime health and readiness routes', async () => {
-    const app = await KonektiFactory.create(AppModule);
+    const app = await KonektiFactory.create(AppModule, {});
     const healthResponse = createResponse();
     const readyResponse = createResponse();
 
@@ -481,7 +481,7 @@ describe('AppModule', () => {
   });
 
   it('dispatches the health-info route', async () => {
-    const app = await KonektiFactory.create(AppModule);
+    const app = await KonektiFactory.create(AppModule, {});
     const response = createResponse();
 
     await app.dispatch(createRequest('/health-info/'), response);
