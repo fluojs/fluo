@@ -384,6 +384,40 @@ describe('@konekti/prisma', () => {
     expect(optionsCalls[0]?.signal).toBeDefined();
   });
 
+  it('does not retry when a callback-originated error happens after the signal transaction starts', async () => {
+    const optionsCalls: Array<{ signal?: AbortSignal } | undefined> = [];
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const callbackError = new Error('callback saw unsupported signal payload');
+    let callbackCalls = 0;
+    const client = {
+      async $connect() {},
+      async $disconnect() {},
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { signal?: AbortSignal },
+      ): Promise<T> {
+        optionsCalls.push(options);
+        return callback(transactionClient);
+      },
+    };
+
+    const prisma = new PrismaService<typeof client, typeof transactionClient, { signal?: AbortSignal }>(client);
+    const requestAbortController = new AbortController();
+
+    await expect(
+      prisma.requestTransaction(async () => {
+        callbackCalls += 1;
+        throw callbackError;
+      }, requestAbortController.signal),
+    ).rejects.toBe(callbackError);
+
+    expect(callbackCalls).toBe(1);
+    expect(optionsCalls).toHaveLength(1);
+    expect(optionsCalls[0]?.signal).toBeDefined();
+  });
+
   it('rejects nested transaction options to avoid silent option drops', async () => {
     const transactionClient = {
       kind: 'transaction' as const,
