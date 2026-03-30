@@ -324,6 +324,97 @@ describe('@konekti/mongoose', () => {
     ]);
   });
 
+  it('preserves the commit failure when abort cleanup also fails', async () => {
+    const events: string[] = [];
+    const commitError = new Error('commit failed');
+    const abortError = new Error('abort failed');
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+        throw abortError;
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+        throw commitError;
+      },
+      endSession() {
+        events.push('session:end');
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    await expect(
+      mongoose.transaction(async () => {
+        events.push('tx:work');
+        return 'ok';
+      }),
+    ).rejects.toBe(commitError);
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'tx:work',
+      'transaction:commit',
+      'transaction:abort',
+      'session:end',
+    ]);
+  });
+
+  it('ends the session even when abort cleanup throws after a transaction error', async () => {
+    const events: string[] = [];
+    const abortError = new Error('abort failed');
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+        throw abortError;
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+      },
+      endSession() {
+        events.push('session:end');
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection);
+
+    await expect(
+      mongoose.transaction(async () => {
+        events.push('tx:work');
+        throw new Error('transaction failed');
+      }),
+    ).rejects.toThrow('transaction failed');
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'tx:work',
+      'transaction:abort',
+      'session:end',
+    ]);
+  });
+
   it('handles connection without startSession gracefully', async () => {
     const events: string[] = [];
 
