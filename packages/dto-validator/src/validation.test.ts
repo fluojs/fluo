@@ -150,7 +150,7 @@ describe('DefaultValidator', () => {
     expect(Array.from(result.previousAddressSet)[0]).toBeInstanceOf(AddressDto);
   });
 
-  it('does not copy non-plain nested input into DTO instances during transform', async () => {
+  it('rejects non-plain nested input during transform', async () => {
     class ChildDto {}
 
     class ParentDto {
@@ -159,15 +159,80 @@ describe('DefaultValidator', () => {
     }
 
     const validator = new DefaultValidator();
-    const result = await validator.transform<ParentDto>(
-      {
-        child: 'unsafe-string-input',
-      },
-      ParentDto,
-    );
+    await expect(
+      validator.transform<ParentDto>(
+        {
+          child: 'unsafe-string-input',
+        },
+        ParentDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
+    });
+  });
 
-    expect(result.child).toBeInstanceOf(ChildDto);
-    expect(Object.keys(result.child as object)).toEqual([]);
+  it('rejects non-plain object instances for nested validation', async () => {
+    class ChildDto {}
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto)
+      child = new ChildDto();
+    }
+
+    class UnsafeChildInput {
+      city = 'Seoul';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ParentDto(), {
+          child: new UnsafeChildInput(),
+        }),
+        ParentDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
+    });
+  });
+
+  it('rejects non-plain nested entries across array, set, and map collections', async () => {
+    class ChildDto {}
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto, { each: true })
+      childArray: ChildDto[] = [];
+
+      @ValidateNested(() => ChildDto, { each: true })
+      childSet = new Set<ChildDto>();
+
+      @ValidateNested(() => ChildDto, { each: true })
+      childMap = new Map<string, ChildDto>();
+    }
+
+    class UnsafeChildInput {
+      city = 'Seoul';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.transform<ParentDto>(
+        {
+          childArray: [new UnsafeChildInput()],
+          childMap: new Map([['home', new UnsafeChildInput()]]),
+          childSet: new Set([new UnsafeChildInput()]),
+        },
+        ParentDto,
+      ),
+    ).rejects.toMatchObject({
+      issues: [
+        { code: 'INVALID_NESTED', field: 'childArray[0]', message: 'childArray[0] contains invalid nested data.' },
+        { code: 'INVALID_NESTED', field: 'childSet[0]', message: 'childSet[0] contains invalid nested data.' },
+        { code: 'INVALID_NESTED', field: 'childMap[0]', message: 'childMap[0] contains invalid nested data.' },
+      ],
+    });
   });
 
   it('ignores dangerous keys when materializing nested DTO instances', async () => {
