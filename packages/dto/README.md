@@ -1,9 +1,9 @@
-# @konekti/dto-validator
+# @konekti/dto
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based DTO validation for TypeScript. Declare validation rules directly on class fields and get structured, typed errors — no schema files, no manual checks.
+Decorator-based DTO utilities for TypeScript. The `@konekti/dto` package provides validation rules, the validator engine, schema adapters, and mapped DTO helpers — no schema files, no manual checks.
 
 The package now also includes a schema validation extension surface so Zod, Valibot, or custom schema engines can map into the same `DtoValidationError` issue shape.
 
@@ -15,13 +15,13 @@ The package now also includes a schema validation extension surface so Zod, Vali
 ## Installation
 
 ```bash
-pnpm add @konekti/dto-validator
+pnpm add @konekti/dto
 ```
 
 ## Quick Start
 
 ```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto-validator';
+import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto';
 
 class CreateUserDto {
   @IsEmail()
@@ -93,7 +93,7 @@ interface Validator {
 
 Implement this interface to supply a custom validation strategy.
 
-### Schema adapters (`@konekti/dto-validator/schema`)
+### Schema adapters (`@konekti/dto/schema`)
 
 Use schema-based validation without `emitDecoratorMetadata` while keeping the same `DtoValidationError` contract.
 
@@ -107,7 +107,7 @@ import {
   createValibotSchemaValidator,
   createZodSchemaValidator,
   type SchemaValidator,
-} from '@konekti/dto-validator/schema';
+} from '@konekti/dto/schema';
 
 const zodSchema = z.object({
   email: z.string().email(),

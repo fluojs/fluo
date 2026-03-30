@@ -7,7 +7,7 @@ import type {
   GraphQLSchema as GraphQLSchemaType,
   GraphQLScalarType,
 } from 'graphql';
-import { DtoValidationError } from '@konekti/dto-validator';
+import { DtoValidationError } from '@konekti/dto';
 
 import { createGraphqlInput, resolveArgScalarType, resolveOutputScalarType } from './input-pipeline.js';
 import {

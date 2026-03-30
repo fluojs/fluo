@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
+import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto';
 import { Controller, FromBody, Post, RequestDto, createHandlerMapping } from '@konekti/http';
 
 import { buildOpenApiDocument } from './schema-builder.js';

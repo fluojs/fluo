@@ -1,9 +1,9 @@
-# @konekti/dto-validator
+# @konekti/dto
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-데코레이터 기반 TypeScript DTO 검증. 클래스 필드에 검증 규칙을 선언적으로 적고 구조화된 타입 에러를 얻습니다 — 별도 스키마 파일도, 수동 검사도 없습니다.
+데코레이터 기반 TypeScript DTO 유틸리티 패키지입니다. `@konekti/dto` 패키지는 검증 규칙, 검증 엔진, 스키마 어댑터, 매핑된 DTO 헬퍼를 제공합니다.
 
 이제 Zod, Valibot, 커스텀 스키마 엔진을 같은 `DtoValidationError` 이슈 형태로 연결하는 schema validation 확장 surface도 제공합니다.
 
@@ -15,13 +15,13 @@
 ## 설치
 
 ```bash
-pnpm add @konekti/dto-validator
+pnpm add @konekti/dto
 ```
 
 ## 빠른 시작
 
 ```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto-validator';
+import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto';
 
 class CreateUserDto {
   @IsEmail()
@@ -93,7 +93,7 @@ interface Validator {
 
 커스텀 검증 전략을 제공하려면 이 인터페이스를 구현하면 됩니다.
 
-### 스키마 어댑터 (`@konekti/dto-validator/schema`)
+### 스키마 어댑터 (`@konekti/dto/schema`)
 
 `emitDecoratorMetadata` 없이 스키마 기반 검증을 사용하면서 동일한 `DtoValidationError` 계약을 유지할 수 있습니다.
 
@@ -107,7 +107,7 @@ import {
   createValibotSchemaValidator,
   createZodSchemaValidator,
   type SchemaValidator,
-} from '@konekti/dto-validator/schema';
+} from '@konekti/dto/schema';
 
 const zodValidator = createZodSchemaValidator(
   z.object({

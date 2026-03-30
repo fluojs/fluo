@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsBoolean, IsInt, MinLength } from '@konekti/dto-validator';
+import { IsBoolean, IsInt, MinLength } from '@konekti/dto';
 
 import { Arg } from './decorators.js';
 import { createGraphqlInput, resolveArgScalarType } from './input-pipeline.js';
@@ -38,7 +38,7 @@ function createHandlerDescriptor(inputClass: Function): ResolverHandlerDescripto
 }
 
 describe('graphql input pipeline helpers', () => {
-  it('infers scalar types from dto-validator metadata', () => {
+it('infers scalar types from dto metadata', () => {
     const scalarHandler = createHandlerDescriptor(ScalarInput);
 
     expect(resolveArgScalarType(scalarHandler, 'count')).toBe('int');

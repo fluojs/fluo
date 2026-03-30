@@ -1,5 +1,5 @@
 import { getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
-import { DefaultValidator } from '@konekti/dto-validator';
+import { DefaultValidator } from '@konekti/dto';
 
 import type { GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
 

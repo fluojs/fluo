@@ -1,6 +1,6 @@
 import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@konekti/core';
 import type { RequestScopeContainer } from '@konekti/di';
-export type { ValidationIssue, Validator } from '@konekti/dto-validator';
+export type { ValidationIssue, Validator } from '@konekti/dto';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'ALL';
 

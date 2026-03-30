@@ -1,12 +1,12 @@
 {
-  "name": "@konekti/dto-validator",
+  "name": "@konekti/dto",
   "version": "0.0.0",
   "private": false,
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/konektijs/konekti.git",
-    "directory": "packages/dto-validator"
+    "directory": "packages/dto"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./mapped-types": {
+      "types": "./dist/mapped-types.d.ts",
+      "import": "./dist/mapped-types.js"
     },
     "./schema": {
       "types": "./dist/schema.d.ts",
