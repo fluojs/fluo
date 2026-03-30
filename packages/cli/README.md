@@ -143,6 +143,14 @@ konekti new:
 
 - **`@konekti/prisma`** / **`@konekti/drizzle`** — optional adapters that apps add when they need them
 
+## non-goals and intentional limitations
+
+- No current-directory-init mode — `konekti new` always scaffolds into a new subdirectory
+- No package-manager-specific scaffold template families — all package managers produce the same project structure; only install/run commands and lockfile differ
+- The `repo` generator is persistence-agnostic — it does not auto-wire Prisma, Drizzle, or any specific ORM adapter
+- Generators return `GeneratedFile[]` only — they never write to disk directly; the command layer owns filesystem writes
+- No in-process HMR — the generated `dev` script uses process restart, not hot module replacement
+
 ## One-liner mental model
 
 ```

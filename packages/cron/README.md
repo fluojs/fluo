@@ -61,3 +61,10 @@ To run in distributed mode, register `REDIS_CLIENT` (for example via `createRedi
 - `CronExpression` - common cron expression constants
 - `createCronModule(options?)` - registers cron lifecycle service and scheduler wiring
 - `createCronProviders(options?)` - returns raw providers for manual composition
+
+## non-goals and intentional limitations
+
+- No silent fallback to in-process scheduling — if distributed mode is enabled and `REDIS_CLIENT` is missing or incompatible, bootstrap fails explicitly rather than silently degrading
+- No sub-second scheduling — cron expressions follow standard 5-field cron syntax via `croner`; minimum resolution is one second
+- No built-in job queue or persistence — `@Cron` is a fire-and-forget tick scheduler; for durable job processing with retries and persistence, use `@konekti/queue`
+- No dynamic cron expression updates at runtime — expressions are resolved at bootstrap time from decorator metadata

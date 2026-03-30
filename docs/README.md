@@ -41,6 +41,7 @@ This directory contains framework-level information that spans multiple packages
 - `operations/testing-guide.md`
 - `operations/deployment.md`
 - `operations/release-governance.md`
+- `operations/behavioral-contract-policy.md`
 - `operations/third-party-extension-contract.md`
 
 ### contracts and conventions
