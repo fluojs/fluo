@@ -35,12 +35,20 @@ await runFastifyApplication(AppModule, {
 - `https`
 - `host`
 - `cors` (`false | string | string[] | CorsOptions`)
+- `shutdownTimeoutMs`
+
+`runFastifyApplication()`은 다음 옵션도 지원합니다.
+
+- `shutdownSignals`
+- `forceExitTimeoutMs`
 
 ## 패리티(Parity) 참고 사항
 
 - `rawBody`는 선택 사항(opt-in)이며 멀티파트가 아닌 요청에 대해서만 채워집니다.
 - 멀티파트 요청은 `request.body` 필드와 `request.files` (`UploadedFile[]`)를 노출합니다.
 - 시작 로그는 런타임 컨벤션을 따르며 와일드카드 호스트에 대한 바인딩 대상 상세 정보를 포함합니다.
+- 시그널 기반 종료는 `runNodeApplication()`과 같은 런타임 소유 graceful-close 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
+- `forceExitTimeoutMs`가 `shutdownTimeoutMs`보다 짧으면 전체 drain window가 끝나기 전에 watchdog이 의도적으로 프로세스를 종료할 수 있습니다.
 
 ## 벤치마크
 

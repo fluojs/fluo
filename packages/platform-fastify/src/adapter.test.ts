@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Controller, Get, Post, type FrameworkRequest, type RequestContext } from '@konekti/http';
 import { createHealthModule, defineModule, type ApplicationLogger } from '@konekti/runtime';
@@ -303,10 +303,10 @@ describe('@konekti/platform-fastify', () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
       debug() {},
-      error(message, error, context) {
+      error(message: string, error: unknown, context?: string) {
         loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
       },
-      log(message, context) {
+      log(message: string, context?: string) {
         loggerEvents.push(`log:${context}:${message}`);
       },
       warn() {},
@@ -466,10 +466,10 @@ describe('@konekti/platform-fastify', () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
       debug() {},
-      error(message, error, context) {
+      error(message: string, error: unknown, context?: string) {
         loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
       },
-      log(message, context) {
+      log(message: string, context?: string) {
         loggerEvents.push(`log:${context}:${message}`);
       },
       warn() {},
@@ -558,6 +558,63 @@ describe('@konekti/platform-fastify', () => {
 
     deferred.resolve();
     await Promise.resolve();
+  });
+
+  it('forces process exit when signal-driven shutdown exceeds forceExitTimeoutMs', async () => {
+    vi.useFakeTimers();
+
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message: string, error: unknown, context?: string) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+      },
+      log(message: string, context?: string) {
+        loggerEvents.push(`log:${context}:${message}`);
+      },
+      warn() {},
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const originalExitCode = process.exitCode;
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
+    const port = await findAvailablePort();
+    const app = await runFastifyApplication(AppModule, {
+      cors: false,
+      forceExitTimeoutMs: 25,
+      logger,
+      port,
+      shutdownSignals: ['SIGTERM'],
+    });
+
+    const originalClose = app.close.bind(app);
+    app.close = () => new Promise<void>(() => {});
+
+    try {
+      process.emit('SIGTERM', 'SIGTERM');
+      await vi.advanceTimersByTimeAsync(26);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(loggerEvents).toContain('error:KonektiFactory:Forced exit after 25ms shutdown timeout.:none');
+    } finally {
+      app.close = originalClose;
+      await app.close();
+      exitSpy.mockRestore();
+      process.exitCode = originalExitCode;
+      vi.useRealTimers();
+    }
   });
 
   it('keeps malformed cookie values instead of failing the request', async () => {

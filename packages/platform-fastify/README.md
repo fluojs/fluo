@@ -35,12 +35,20 @@ await runFastifyApplication(AppModule, {
 - `https`
 - `host`
 - `cors` (`false | string | string[] | CorsOptions`)
+- `shutdownTimeoutMs`
+
+`runFastifyApplication()` also supports:
+
+- `shutdownSignals`
+- `forceExitTimeoutMs`
 
 ## Parity notes
 
 - `rawBody` is opt-in and only populated for non-multipart requests.
 - Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
 - Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
+- Signal-driven shutdown follows the same runtime-owned graceful-close path as `runNodeApplication()`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
+- If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
 
 ## Benchmark
 

@@ -58,6 +58,7 @@ export interface FastifyAdapterOptions {
 export type FastifyApplicationSignal = 'SIGINT' | 'SIGTERM';
 export type CorsInput = false | string | string[] | CorsOptions;
 
+const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -80,6 +81,7 @@ export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicati
 }
 
 export interface RunFastifyApplicationOptions extends BootstrapFastifyApplicationOptions {
+  forceExitTimeoutMs?: number;
   shutdownSignals?: false | readonly FastifyApplicationSignal[];
 }
 
@@ -314,7 +316,12 @@ export async function runFastifyApplication(
     throw error;
   }
 
-  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals());
+  const unregisterShutdownSignals = registerShutdownSignals(
+    app,
+    logger,
+    options.shutdownSignals ?? defaultShutdownSignals(),
+    options.forceExitTimeoutMs,
+  );
   const close = app.close.bind(app);
   let shutdownSignalsUnregistered = false;
 
@@ -800,6 +807,7 @@ function registerShutdownSignals(
   app: Application,
   logger: ApplicationLogger,
   signals: false | readonly FastifyApplicationSignal[],
+  forceExitTimeoutMs: number = DEFAULT_FORCE_EXIT_TIMEOUT_MS,
 ): () => void {
   if (signals === false || signals.length === 0) {
     return () => {};
@@ -815,13 +823,7 @@ function registerShutdownSignals(
 
     seen.add(signal);
     const handler = () => {
-      void app.close(signal)
-        .then(() => {
-          logger.log(`Application closed after receiving ${signal}.`, 'KonektiFactory');
-        })
-        .catch((error: unknown) => {
-          logger.error(`Failed to close application after receiving ${signal}.`, error, 'KonektiFactory');
-        });
+      void closeFromSignal(app, logger, signal, forceExitTimeoutMs);
     };
 
     bindings.push({ signal, handler });
@@ -833,6 +835,38 @@ function registerShutdownSignals(
       process.off(binding.signal, binding.handler);
     }
   };
+}
+
+async function closeFromSignal(
+  app: Application,
+  logger: ApplicationLogger,
+  signal: FastifyApplicationSignal,
+  forceExitTimeoutMs: number,
+): Promise<void> {
+  if (app.state === 'closed') {
+    process.exitCode = 0;
+    return;
+  }
+
+  const forceExitTimer = setTimeout(() => {
+    logger.error(`Forced exit after ${String(forceExitTimeoutMs)}ms shutdown timeout.`, undefined, 'KonektiFactory');
+    process.exit(1);
+  }, forceExitTimeoutMs);
+
+  if (forceExitTimer.unref) {
+    forceExitTimer.unref();
+  }
+
+  try {
+    await app.close(signal);
+    clearTimeout(forceExitTimer);
+    logger.log(`Application closed after receiving ${signal}.`, 'KonektiFactory');
+    process.exitCode = 0;
+  } catch (error: unknown) {
+    clearTimeout(forceExitTimer);
+    logger.error('Failed to shut down the application cleanly.', error, 'KonektiFactory');
+    process.exitCode = 1;
+  }
 }
 
 function toHttpException(error: unknown): HttpException {
