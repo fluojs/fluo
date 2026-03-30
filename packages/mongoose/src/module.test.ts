@@ -8,16 +8,16 @@ import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
 
 function createFakeSession(events: string[]): MongooseSessionLike {
   return {
-    async startTransaction() {
+    startTransaction() {
       events.push('transaction:start');
     },
-    async commitTransaction() {
+    commitTransaction() {
       events.push('transaction:commit');
     },
-    async abortTransaction() {
+    abortTransaction() {
       events.push('transaction:abort');
     },
-    async endSession() {
+    endSession() {
       events.push('session:end');
     },
   };

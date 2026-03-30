@@ -87,16 +87,16 @@ describe('@konekti/mongoose vertical slice', () => {
 
     function createSession(events: string[]): MongooseSessionLike {
       return {
-        async startTransaction() {
+        startTransaction() {
           events.push('session:tx:start');
         },
-        async commitTransaction() {
+        commitTransaction() {
           events.push('session:tx:commit');
         },
-        async abortTransaction() {
+        abortTransaction() {
           events.push('session:tx:abort');
         },
-        async endSession() {
+        endSession() {
           events.push('session:end');
         },
       };

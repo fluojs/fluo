@@ -5,10 +5,10 @@ export interface MongooseConnectionLike {
 }
 
 export interface MongooseSessionLike {
-  startTransaction(): Promise<void>;
-  commitTransaction(): Promise<void>;
-  abortTransaction(): Promise<void>;
-  endSession(): Promise<void>;
+  startTransaction(): MaybePromise<void>;
+  commitTransaction(): MaybePromise<void>;
+  abortTransaction(): MaybePromise<void>;
+  endSession(): MaybePromise<void>;
 }
 
 export interface MongooseRuntimeOptions {
