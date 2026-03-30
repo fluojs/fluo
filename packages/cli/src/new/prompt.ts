@@ -5,6 +5,20 @@ import type { BootstrapAnswers, PackageManager } from './types.js';
 
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
 
+function assertValidProjectName(projectName: string): string {
+  const trimmed = projectName.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error('Project name is required.');
+  }
+
+  if (trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..')) {
+    throw new Error(`Invalid project name "${projectName}": must not contain path separators or traversal sequences.`);
+  }
+
+  return trimmed;
+}
+
 function parsePackageManager(value: string | undefined): PackageManager | undefined {
   if (!value) {
     return undefined;
@@ -91,7 +105,7 @@ export function resolveBootstrapAnswers(
     throw new Error('Project name is required.');
   }
 
-  const projectName = partial.projectName;
+  const projectName = assertValidProjectName(partial.projectName);
 
   return {
     packageManager: partial.packageManager ?? detectPackageManager(cwd, env),

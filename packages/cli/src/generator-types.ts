@@ -5,6 +5,8 @@ export interface GeneratedFile {
 
 export interface GenerateOptions {
   force?: boolean;
+  hasRepo?: boolean;
+  hasService?: boolean;
 }
 
 export type GeneratorFactory = (name: string, options?: GenerateOptions) => GeneratedFile[];
