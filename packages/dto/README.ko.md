@@ -93,57 +93,6 @@ interface Validator {
 
 커스텀 검증 전략을 제공하려면 이 인터페이스를 구현하면 됩니다.
 
-### 스키마 어댑터 (`@konekti/dto/schema`)
-
-`emitDecoratorMetadata` 없이 스키마 기반 검증을 사용하면서 동일한 `DtoValidationError` 계약을 유지할 수 있습니다.
-
-```typescript
-import { z } from 'zod';
-import { type } from 'arktype';
-import { object, pipe, safeParse, string, email } from 'valibot';
-import {
-  createArkTypeAdapter,
-  createSchemaValidator,
-  createValibotSchemaValidator,
-  createZodSchemaValidator,
-  type SchemaValidator,
-} from '@konekti/dto/schema';
-
-const zodValidator = createZodSchemaValidator(
-  z.object({
-    email: z.string().email(),
-  }),
-);
-
-const valibotValidator = createValibotSchemaValidator(
-  object({
-    email: pipe(string(), email()),
-  }),
-  safeParse,
-);
-
-const arkTypeValidator = createArkTypeAdapter(
-  type({
-    email: 'string.email',
-  }),
-);
-
-const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
-  parse(value) {
-    if (typeof (value as { name?: unknown }).name === 'string') {
-      return { success: true, value: { name: (value as { name: string }).name } };
-    }
-
-    return {
-      success: false,
-      issues: [{ code: 'REQUIRED', field: 'name', message: 'name is required' }],
-    };
-  },
-});
-```
-
----
-
 ## 데코레이터
 
 ### 타입 검사
@@ -238,6 +187,8 @@ const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator
 ### 커스텀 검증기
 
 ```typescript
+import { z } from 'zod';
+
 // 필드 레벨 커스텀 검증기
 @Validate(MyCustomValidator, options?)
 field = value;
@@ -245,7 +196,19 @@ field = value;
 // 클래스 레벨 커스텀 검증기
 @ValidateClass(MyClassValidator, options?)
 class MyDto { ... }
+
+// 클래스 레벨 Standard Schema 검증기
+@ValidateClass(z.object({
+  email: z.string().email(),
+}))
+class CreateUserDto {
+  email = '';
+}
 ```
+
+`@Validate(...)`는 필드 레벨에만 사용합니다. `@ValidateClass(...)`는 DTO 전체 invariant와 schema 연결 지점입니다.
+
+Zod, Valibot, ArkType처럼 Standard Schema를 구현한 검증기는 `@ValidateClass(schema)`를 통해 DTO 레벨에 직접 붙일 수 있습니다.
 
 ---
 
