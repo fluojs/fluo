@@ -55,6 +55,7 @@ interface ConnectionHandlerState {
 }
 
 interface NodeUpgradeServer {
+  listenerCount(event: 'upgrade'): number;
   off(event: 'upgrade', listener: NodeUpgradeListener): this;
   on(event: 'upgrade', listener: NodeUpgradeListener): this;
 }
@@ -162,7 +163,7 @@ function hasNodeUpgradeServer(value: unknown): value is NodeUpgradeServer {
 }
 
 function rejectUpgradeRequest(socket: Duplex): void {
-  if (socket.destroyed) {
+  if (socket.destroyed || socket.writableEnded) {
     return;
   }
 
@@ -171,7 +172,7 @@ function rejectUpgradeRequest(socket: Duplex): void {
 }
 
 function rejectBadUpgradeRequest(socket: Duplex): void {
-  if (socket.destroyed) {
+  if (socket.destroyed || socket.writableEnded) {
     return;
   }
 
@@ -228,7 +229,7 @@ export class WebSocketGatewayLifecycleService
 
   private attachUpgradeServerListener(attachmentsByPath: Map<string, GatewayAttachment>): void {
     const upgradeServer = this.resolveUpgradeServer();
-    const listener = this.createUpgradeListener(attachmentsByPath);
+    const listener = this.createUpgradeListener(upgradeServer, attachmentsByPath);
 
     upgradeServer.on('upgrade', listener);
     this.upgradeServer = upgradeServer;
@@ -277,7 +278,10 @@ export class WebSocketGatewayLifecycleService
     }
   }
 
-  private createUpgradeListener(attachmentsByPath: Map<string, GatewayAttachment>): NodeUpgradeListener {
+  private createUpgradeListener(
+    upgradeServer: NodeUpgradeServer,
+    attachmentsByPath: Map<string, GatewayAttachment>,
+  ): NodeUpgradeListener {
     return (request, socket, head) => {
       let attachment: GatewayAttachment | undefined;
 
@@ -291,6 +295,9 @@ export class WebSocketGatewayLifecycleService
       }
 
       if (!attachment) {
+        if (upgradeServer.listenerCount('upgrade') === 1) {
+          rejectUpgradeRequest(socket);
+        }
         return;
       }
 

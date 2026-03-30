@@ -1036,6 +1036,55 @@ describe('@konekti/websocket', () => {
     await app.close();
   });
 
+  it('rejects unmatched websocket upgrade requests with 404 when no later listener handles them', async () => {
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createWebSocketModule()],
+      providers: [ChatGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = createConnection({ host: '127.0.0.1', port }, () => {
+        socket.write(
+          'GET /missing HTTP/1.1\r\n'
+            + 'Host: 127.0.0.1\r\n'
+            + 'Connection: Upgrade\r\n'
+            + 'Upgrade: websocket\r\n'
+            + 'Sec-WebSocket-Version: 13\r\n'
+            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+            + '\r\n',
+        );
+      });
+      const chunks: Buffer[] = [];
+
+      socket.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      socket.on('end', () => {
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+      socket.on('error', reject);
+    });
+
+    expect(response).toContain('HTTP/1.1 404 Not Found');
+
+    await app.close();
+  });
+
 
   it('rejects malformed websocket upgrade URLs without crashing the server', async () => {
     @WebSocketGateway({ path: '/chat' })
