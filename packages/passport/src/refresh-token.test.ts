@@ -143,23 +143,37 @@ describe('RefreshTokenStrategy', () => {
     });
 
     it('throws AuthenticationExpiredError for expired tokens', async () => {
+      const originalError = new JwtExpiredTokenError('Refresh token has expired.');
       const service = createMockRefreshTokenService({
-        rotateRefreshToken: vi.fn().mockRejectedValue(new JwtExpiredTokenError('Refresh token has expired.')),
+        rotateRefreshToken: vi.fn().mockRejectedValue(originalError),
       });
       const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'expired-token' });
 
-      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationExpiredError);
+      try {
+        await strategy.authenticate(context);
+        expect.unreachable('Expected authenticate() to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthenticationExpiredError);
+        expect((error as Error).cause).toBe(originalError);
+      }
     });
 
     it('throws AuthenticationFailedError for reused tokens', async () => {
+      const originalError = new JwtInvalidTokenError('Refresh token reuse detected.');
       const service = createMockRefreshTokenService({
-        rotateRefreshToken: vi.fn().mockRejectedValue(new JwtInvalidTokenError('Refresh token reuse detected.')),
+        rotateRefreshToken: vi.fn().mockRejectedValue(originalError),
       });
       const strategy = new RefreshTokenStrategy(service, createMockVerifier());
       const context = createGuardContext({ refreshToken: 'reused-token' });
 
-      await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationFailedError);
+      try {
+        await strategy.authenticate(context);
+        expect.unreachable('Expected authenticate() to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthenticationFailedError);
+        expect((error as Error).cause).toBe(originalError);
+      }
     });
 
     it('throws AuthenticationFailedError for invalid tokens', async () => {
@@ -170,6 +184,39 @@ describe('RefreshTokenStrategy', () => {
       const context = createGuardContext({ refreshToken: 'invalid-token' });
 
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationFailedError);
+    });
+
+    it('rethrows refresh token infrastructure failures without converting them to auth failures', async () => {
+      const originalError = new Error('refresh store unavailable');
+      const service = createMockRefreshTokenService({
+        rotateRefreshToken: vi.fn().mockRejectedValue(originalError),
+      });
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
+      const context = createGuardContext({ refreshToken: 'valid-token' });
+
+      await expect(strategy.authenticate(context)).rejects.toBe(originalError);
+    });
+
+    it('rethrows access token verification failures without converting them to auth failures', async () => {
+      const originalError = new JwtInvalidTokenError('Invalid access token');
+      const service = createMockRefreshTokenService();
+      const verifier = createMockVerifier();
+      vi.mocked(verifier.verifyAccessToken).mockRejectedValue(originalError);
+      const strategy = new RefreshTokenStrategy(service, verifier);
+      const context = createGuardContext({ refreshToken: 'valid-token' });
+
+      await expect(strategy.authenticate(context)).rejects.toBe(originalError);
+    });
+
+    it('treats missing subject claims in rotated access tokens as internal contract failures', async () => {
+      const service = createMockRefreshTokenService();
+      const verifier = createMockVerifier('');
+      const strategy = new RefreshTokenStrategy(service, verifier);
+      const context = createGuardContext({ refreshToken: 'valid-token' });
+
+      await expect(strategy.authenticate(context)).rejects.toThrow(
+        'Refresh token service returned an access token without a valid subject claim.',
+      );
     });
   });
 
