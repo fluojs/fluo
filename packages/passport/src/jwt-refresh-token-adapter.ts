@@ -12,8 +12,9 @@ import type { RefreshTokenService } from './refresh-token.js';
 export const REFRESH_TOKEN_MODULE_OPTIONS = Symbol.for('konekti.passport.refresh-token-module-options');
 
 export interface RefreshTokenModuleOptions {
-  secret: string;
   expiresInSeconds?: number;
+  rotation?: boolean;
+  secret: string;
   store: RefreshTokenStore | 'memory';
 }
 
@@ -111,7 +112,7 @@ export class JwtRefreshTokenAdapter implements RefreshTokenService {
     this.service = new JwtRefreshTokenService(
       {
         expiresInSeconds: options.expiresInSeconds ?? 604800,
-        rotation: true,
+        rotation: options.rotation ?? true,
         secret: resolveSecret(options),
         store,
       },
