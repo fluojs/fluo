@@ -1,16 +1,28 @@
+<% if (hasService) { %>
 import { Inject } from '@konekti/core';
+<% } %>
 import { Controller, Get } from '@konekti/http';
 
+<% if (hasService) { %>
 import { <%- service %> } from './<%- kebab %>.service';
+<% } %>
 
 @Controller('/<%- kebab %>')
+<% if (hasService) { %>
 @Inject([<%- service %>])
+<% } %>
 class <%- pascal %> {
+<% if (hasService) { %>
   constructor(private readonly service: <%- service %>) {}
+<% } %>
 
   @Get('/')
   async list<%- resource %>s() {
+<% if (hasService) { %>
     return this.service.list<%- resource %>s();
+<% } else { %>
+    return [];
+<% } %>
   }
 }
 

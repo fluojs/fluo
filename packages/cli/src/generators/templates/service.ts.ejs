@@ -1,12 +1,24 @@
+<% if (hasRepo) { %>
 import { Inject } from '@konekti/core';
+<% } %>
 
+<% if (hasRepo) { %>
 import { <%- repo %> } from './<%- kebab %>.repo';
+<% } %>
 
+<% if (hasRepo) { %>
 @Inject([<%- repo %>])
+<% } %>
 export class <%- pascal %> {
+<% if (hasRepo) { %>
   constructor(private readonly repo: <%- repo %>) {}
+<% } %>
 
   async list<%- resource %>s() {
+<% if (hasRepo) { %>
     return this.repo.list<%- resource %>s();
+<% } else { %>
+    return [];
+<% } %>
   }
 }
