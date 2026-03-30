@@ -135,6 +135,10 @@ function resolveDefaultTargetDirectory(startDirectory: string): string {
     if (appDirectories.length === 1) {
       return join(appDirectories[0], 'src');
     }
+
+    if (appDirectories.length > 1) {
+      throw new Error('Multiple app targets were found under apps/. Use --target-directory to choose the app src directory explicitly.');
+    }
   }
 
   return resolvedStartDirectory;

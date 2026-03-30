@@ -57,6 +57,37 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Generated 4 file(s):');
   });
 
+  it('fails fast from a multi-app workspace root unless --target-directory is explicit', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'workspace-root', private: true, workspaces: ['apps/*'] }, null, 2),
+    );
+
+    for (const appName of ['starter-app', 'admin-app']) {
+      mkdirSync(join(workspaceDirectory, 'apps', appName, 'src'), { recursive: true });
+      writeFileSync(
+        join(workspaceDirectory, 'apps', appName, 'package.json'),
+        JSON.stringify({ name: appName, private: true }, null, 2),
+      );
+    }
+
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'repo', 'User'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Use --target-directory to choose the app src directory explicitly.');
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(existsSync(join(workspaceDirectory, 'users', 'user.repo.ts'))).toBe(false);
+  });
+
   it('auto-detects the package manager from the calling context when no flag is provided', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
