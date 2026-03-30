@@ -28,6 +28,8 @@ export interface RefreshTokenAuthResult {
   subject: string;
 }
 
+const MALFORMED_REFRESH_TOKEN = Symbol('MALFORMED_REFRESH_TOKEN');
+
 @Inject([REFRESH_TOKEN_SERVICE, DefaultJwtVerifier])
 export class RefreshTokenStrategy implements AuthStrategy {
   constructor(
@@ -38,6 +40,10 @@ export class RefreshTokenStrategy implements AuthStrategy {
   async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
     const request = context.requestContext.request;
     const refreshToken = this.extractRefreshToken(request);
+
+    if (refreshToken === MALFORMED_REFRESH_TOKEN) {
+      throw new AuthenticationFailedError('Refresh token is malformed.');
+    }
 
     if (!refreshToken) {
       throw new AuthenticationRequiredError('Refresh token is required.');
@@ -74,19 +80,31 @@ export class RefreshTokenStrategy implements AuthStrategy {
     }
   }
 
-  private extractRefreshToken(request: RequestContext['request']): string | undefined {
+  private extractRefreshToken(request: RequestContext['request']): string | typeof MALFORMED_REFRESH_TOKEN | undefined {
     if (request.body && typeof request.body === 'object' && 'refreshToken' in request.body) {
-      return (request.body as { refreshToken: string }).refreshToken;
+      return this.normalizeRefreshToken((request.body as { refreshToken?: unknown }).refreshToken);
     }
 
     const authHeaderRaw = request.headers?.authorization;
     const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
     if (authHeader?.toLowerCase().startsWith('bearer ')) {
-      return authHeader.slice(7);
+      return this.normalizeRefreshToken(authHeader.slice(7));
     }
 
     const customHeader = request.headers?.['x-refresh-token'];
-    return Array.isArray(customHeader) ? customHeader[0] : customHeader;
+    return this.normalizeRefreshToken(Array.isArray(customHeader) ? customHeader[0] : customHeader);
+  }
+
+  private normalizeRefreshToken(token: unknown): string | typeof MALFORMED_REFRESH_TOKEN | undefined {
+    if (token === undefined || token === null) {
+      return undefined;
+    }
+
+    if (typeof token !== 'string') {
+      return MALFORMED_REFRESH_TOKEN;
+    }
+
+    return token.length > 0 ? token : undefined;
   }
 
   private async extractVerifiedSubject(accessToken: string): Promise<string> {

@@ -142,6 +142,17 @@ describe('RefreshTokenStrategy', () => {
       await expect(strategy.authenticate(context)).rejects.toThrow(AuthenticationRequiredError);
     });
 
+    it('throws AuthenticationFailedError when request body refreshToken is malformed', async () => {
+      const service = createMockRefreshTokenService();
+      const strategy = new RefreshTokenStrategy(service, createMockVerifier());
+
+      for (const value of [{ token: 'bad' }, 123, ['token']]) {
+        await expect(strategy.authenticate(createGuardContext({ refreshToken: value }))).rejects.toThrow(AuthenticationFailedError);
+      }
+
+      expect(service.rotateRefreshToken).not.toHaveBeenCalled();
+    });
+
     it('throws AuthenticationExpiredError for expired tokens', async () => {
       const originalError = new JwtExpiredTokenError('Refresh token has expired.');
       const service = createMockRefreshTokenService({
