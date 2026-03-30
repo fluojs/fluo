@@ -2,8 +2,9 @@ import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto-validator';
-import { Controller, Get, IntersectionType, OmitType, PartialType, PickType, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 

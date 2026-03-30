@@ -9,7 +9,6 @@ export * from './exceptions.js';
 export * from './guards.js';
 export * from './interceptors.js';
 export * from './mapping.js';
-export * from './mapped-types.js';
 export * from './middleware.js';
 export * from './rate-limit.js';
 export * from './request-context.js';
