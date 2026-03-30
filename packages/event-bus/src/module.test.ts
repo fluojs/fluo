@@ -946,6 +946,54 @@ describe('@konekti/event-bus', () => {
       await app.close();
     });
 
+    it('isolates and logs handler failures for incoming transport messages', async () => {
+      const transport = createMockTransport();
+      const loggerEvents: string[] = [];
+
+      class EventStore {
+        successCalls = 0;
+      }
+
+      @Inject([EventStore])
+      class SuccessfulTransportHandler {
+        constructor(private readonly store: EventStore) {}
+
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          this.store.successCalls += 1;
+        }
+      }
+
+      class FailingTransportHandler {
+        @OnEvent(UserCreatedEvent)
+        onUserCreated(_event: UserCreatedEvent) {
+          throw new Error('transport handler failed');
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [createEventBusModule({ transport })],
+        providers: [EventStore, SuccessfulTransportHandler, FailingTransportHandler],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const store = await app.container.resolve(EventStore);
+
+      const incomingSubscription = transport.subscribed.find((entry) => entry.channel === 'UserCreatedEvent');
+      expect(incomingSubscription).toBeDefined();
+
+      await expect(incomingSubscription!.handler({ userId: 'transport-user-logged' })).resolves.toBeUndefined();
+
+      expect(store.successCalls).toBe(1);
+      expect(loggerEvents.some((event) => event.includes('Event handler FailingTransportHandler.onUserCreated failed.'))).toBe(true);
+
+      await app.close();
+    });
+
     it('keeps inherited handler matching consistent for transport messages', async () => {
       const transport = createMockTransport();
 
