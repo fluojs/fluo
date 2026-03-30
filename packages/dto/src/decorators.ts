@@ -10,12 +10,15 @@ import {
   type ValidationDecoratorOptions,
 } from '@konekti/core';
 
+import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
+
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
 type ClassDecoratorLike = StandardClassDecoratorFn;
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 type ValidatorJsRuleName = Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>['validator'];
+type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
 
 const standardDtoValidationMetadataKey = Symbol.for('konekti.standard.dto-validation');
 const standardClassValidationMetadataKey = Symbol.for('konekti.standard.class-validation');
@@ -66,6 +69,14 @@ function appendStandardDtoValidationRule(
 
 function appendStandardClassValidationRule(metadata: unknown, rule: ClassValidationRule): void {
   getStandardClassValidationList(metadata).push(rule);
+}
+
+function resolveClassValidator(validate: ValidateClassInput): CustomClassValidator {
+  if (!isStandardSchemaLike(validate)) {
+    return validate;
+  }
+
+  return createClassValidatorFromStandardSchema(validate);
 }
 
 function createValidationDecorator(ruleFactory: () => DtoFieldValidationRule): FieldDecoratorLike {
@@ -285,12 +296,12 @@ export function Validate(validate: CustomFieldValidator, options?: CustomValidat
   }));
 }
 
-export function ValidateClass(validate: CustomClassValidator, options?: ValidationDecoratorOptions): ClassDecoratorLike {
+export function ValidateClass(validate: ValidateClassInput, options?: ValidationDecoratorOptions): ClassDecoratorLike {
   const decorator = (_target: Function, context: ClassDecoratorContext) => {
     appendStandardClassValidationRule(context.metadata, {
       code: options?.code,
       message: options?.message,
-      validate,
+      validate: resolveClassValidator(validate),
     });
   };
 

@@ -1,4 +1,7 @@
+import { type } from 'arktype';
+import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
@@ -617,6 +620,61 @@ describe('DefaultValidator', () => {
       ),
     ).rejects.toMatchObject({
       issues: [{ code: 'NAMES_MISMATCH', message: 'name and confirmName must match' }],
+    });
+  });
+
+  it('supports class-level Standard Schema validators with Zod', async () => {
+    @ValidateClass(
+      z.object({
+        email: z.string().email(),
+      }),
+    )
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: 'INVALID_FORMAT', field: 'email' })],
+    });
+  });
+
+  it('supports class-level Standard Schema validators with Valibot', async () => {
+    @ValidateClass(
+      object({
+        email: pipe(string(), email()),
+      }),
+    )
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'hello@konekti.dev' }), CreateUserDto),
+    ).resolves.toBeUndefined();
+  });
+
+  it('supports class-level Standard Schema validators with ArkType function schemas', async () => {
+    @ValidateClass(
+      type({
+        email: 'string.email',
+      }),
+    )
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([expect.objectContaining({ field: 'email' })]),
     });
   });
 });
