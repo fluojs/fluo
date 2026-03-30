@@ -12,7 +12,7 @@ interface DiscoveryCandidate {
   token: Token;
 }
 
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
+function scopeFromProvider(provider: Provider, factoryResolverClass?: Function): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
   }
@@ -21,7 +21,11 @@ function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'trans
     return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
   }
 
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
+  if ('useFactory' in provider) {
+    return provider.scope ?? (factoryResolverClass ? getClassDiMetadata(factoryResolverClass)?.scope : undefined) ?? 'singleton';
+  }
+
+  return 'singleton';
 }
 
 function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
@@ -108,7 +112,7 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
         if (resolverClass) {
           candidates.push({
             moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
+            scope: scopeFromProvider(provider, resolverClass),
             targetType: resolverClass,
             token: provider.provide,
           });

@@ -176,7 +176,7 @@ class RequestScopedResolver {
 }
 ```
 
-When a resolver is declared with `@Scope('request')`, all its dependencies must also use `'request'` or `'transient'` scope. The DI container enforces this at bootstrap and throws `ScopeMismatchError` if a request-scoped provider depends on a singleton.
+When a resolver is declared with `@Scope('request')`, GraphQL resolves it from a per-operation child container. The DI container enforces the corresponding safety rule at bootstrap and throws `ScopeMismatchError` if a singleton provider depends on a request-scoped provider.
 
 ## Alternative Provider Registration
 
@@ -216,6 +216,8 @@ class AppModule {}
 ### useFactory
 
 `useFactory` providers use a factory function to create resolvers. Since the resolver class cannot be determined from the factory at discovery time, you must specify it explicitly via the `resolverClass` property.
+
+When `provider.scope` is omitted, GraphQL discovery and runtime scope handling fall back to the `@Scope()` metadata declared on `resolverClass`.
 
 ```typescript
 import { Module } from '@konekti/core';

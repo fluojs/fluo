@@ -72,7 +72,7 @@ function providerScope(provider: Provider): 'singleton' | 'request' | 'transient
   }
 
   if ('useFactory' in provider) {
-    return provider.scope ?? 'singleton';
+    return provider.scope ?? (provider.resolverClass ? getClassDiMetadata(provider.resolverClass)?.scope : undefined) ?? 'singleton';
   }
 
   return 'singleton';
