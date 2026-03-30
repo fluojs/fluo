@@ -69,6 +69,7 @@ export class AppModule {}
 - 연결된 네임스페이스 소켓마다 `@OnConnect()`, `@OnMessage(event?)`, `@OnDisconnect()` 핸들러를 바인딩합니다
 - 런타임 DI 컨테이너에서 게이트웨이 인스턴스를 resolve하며, singleton이 아닌 게이트웨이는 경고 후 건너뜁니다
 - 공용 `SocketIoRoomService` 추상화를 통해 room 헬퍼를 노출합니다
+- 소켓 단위 `error` 이벤트를 로깅하고, 오류가 난 소켓을 내부 레지스트리에서 제거합니다
 - 타임아웃을 고려한 종료 처리로 Socket.IO 서버를 닫습니다
 
 ## `@konekti/websocket`과의 차이
