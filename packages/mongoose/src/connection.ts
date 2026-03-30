@@ -35,8 +35,13 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
     const result = await fn();
     await session.commitTransaction();
     return result;
-  } catch (error) {
-    await session.abortTransaction();
+  } catch (error: unknown) {
+    try {
+      await session.abortTransaction();
+    } catch (abortError) {
+      void abortError;
+    }
+
     throw error;
   }
 }
