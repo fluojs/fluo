@@ -32,4 +32,4 @@ This glossary defines the core terminology and concepts used throughout the Kone
 
 - `../concepts/http-runtime.md`
 - `../concepts/decorators-and-metadata.md`
-- `./support-matrix.md`
+- `../operations/release-governance.md`

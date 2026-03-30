@@ -50,5 +50,5 @@ konekti g <schematic> <name>
 ## 추가 정보
 
 - `./quick-start.ko.md`
-- `../reference/naming-and-file-conventions.ko.md`
-- `../../packages/cli/README.md`
+- `./bootstrap-paths.ko.md`
+- `../reference/toolchain-contract-matrix.ko.md`

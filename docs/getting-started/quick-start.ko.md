@@ -61,7 +61,7 @@ pnpm test       # 테스트 실행
 
 `pnpm dev`는 생성된 Node watch 러너를 사용하므로, 소스 코드 변경은 인프로세스 HMR이 아니라 **프로세스 재시작**으로 반영됩니다.
 
-반면 `.env.dev` 같은 설정 파일 변경은 애플리케이션이 `watch: true`로 부트스트랩된 경우 더 좁은 범위의 **인프로세스 설정 reload** 경로를 사용할 수 있습니다.
+반면 설정 파일 변경은 애플리케이션이 `watch: true`로 부트스트랩된 경우 더 좁은 범위의 **인프로세스 설정 reload** 경로를 사용할 수 있습니다.
 
 소유권 분리와 현재 보장 범위는 `../concepts/dev-reload-architecture.ko.md`를 참고하세요.
 

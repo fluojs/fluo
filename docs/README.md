@@ -46,9 +46,7 @@ This directory contains framework-level information that spans multiple packages
 ### contracts and conventions
 
 - `reference/package-surface.md`
-- `reference/support-matrix.md`
 - `reference/toolchain-contract-matrix.md`
-- `reference/naming-and-file-conventions.md`
 - `reference/glossary-and-mental-model.md`
 
 ## authority rules

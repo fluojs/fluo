@@ -61,7 +61,7 @@ The scaffold generates a consistent layout compatible with `pnpm`, `npm`, and `y
 
 `pnpm dev` uses the generated Node watch runner, so source-code edits trigger a **process restart** rather than in-process HMR.
 
-Config file changes such as `.env.dev` can use a narrower **in-process config reload** path when the app bootstraps with `watch: true`.
+Config file changes can use a narrower **in-process config reload** path when the app bootstraps with `watch: true`.
 
 For the ownership split and exact guarantees, see `../concepts/dev-reload-architecture.md`.
 

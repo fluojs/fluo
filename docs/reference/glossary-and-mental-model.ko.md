@@ -32,4 +32,4 @@
 
 - `../concepts/http-runtime.md`
 - `../concepts/decorators-and-metadata.md`
-- `./support-matrix.ko.md`
+- `../operations/release-governance.ko.md`

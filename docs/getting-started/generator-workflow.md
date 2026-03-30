@@ -50,5 +50,5 @@ konekti g <schematic> <name>
 ## further reading
 
 - `./quick-start.md`
-- `../reference/naming-and-file-conventions.md`
-- `../../packages/cli/README.md`
+- `./bootstrap-paths.md`
+- `../reference/toolchain-contract-matrix.md`

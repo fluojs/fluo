@@ -51,6 +51,18 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/testing`
 - `@konekti/cli`
 
+## support and promotion policy
+
+Support-tier terminology (`official`, `preview`, `experimental`) is defined in `../reference/glossary-and-mental-model.md`.
+
+Promoting a runtime, adapter, or integration to a stronger support tier requires:
+
+- complete documentation and examples
+- full test coverage and CI validation
+- dedicated troubleshooting guidance
+
+Additional runtimes or integrations are not public guarantees unless they are explicitly documented in package READMEs or governance docs. Current official runtime support is limited to Node.js. Bun and fetch-style adapters remain in **preview**.
+
 The public bootstrap contract remains package-first: `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
 
 This package list must stay identical to `../reference/package-surface.md`.

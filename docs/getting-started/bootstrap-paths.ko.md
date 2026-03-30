@@ -77,4 +77,4 @@ pnpm dev
 
 - `./quick-start.ko.md`
 - `./generator-workflow.ko.md`
-- `../reference/naming-and-file-conventions.ko.md`
+- `../reference/toolchain-contract-matrix.ko.md`

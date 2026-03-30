@@ -29,9 +29,8 @@ This matrix locks the public toolchain contract for generated apps and release-c
 
 ## runtime and manifest parity notes
 
-- Node.js is the first official runtime.
-- Bun and fetch-style adapters remain preview surfaces.
-- The shared Babel decorators transform contract is the product contract; generated apps and official packages must use the same metadata transform model.
+- Runtime support tiers and bootstrap-policy changes are documented in `../operations/release-governance.md`.
+- The shared Babel decorators transform contract is the product contract.
 - Runtime helper reads remain the semantic source of truth.
 - Compile-time manifest generation may become an optimization later, but it must not change observable framework semantics.
 - Benchmark gains without semantic parity are not sufficient for manifest adoption.
@@ -41,3 +40,27 @@ This matrix locks the public toolchain contract for generated apps and release-c
 - `tooling/*` workspaces remain internal-only support packages
 - the current public bootstrap contract stays package-first through `@konekti/cli`
 - no additional public toolchain package surface is promised today
+
+## naming and generation conventions
+
+The Konekti CLI uses consistent suffix rules and a granular generation philosophy.
+
+### naming conventions
+
+Generated files follow these suffix patterns:
+
+- **Controllers**: `user.controller.ts`
+- **Services**: `user.service.ts`
+- **Repositories**: `user.repo.ts`
+- **Request DTOs**: `user.request.dto.ts`
+- **Response DTOs**: `user.response.dto.ts`
+
+### generator philosophy
+
+- **Granularity**: Use individual generators to build components.
+- **Explicit DTOs**: Request and response DTOs are managed via separate schematics.
+- **Simplicity**: Complex monolithic generators are avoided in favor of explicit composition.
+
+### package manager selection
+
+The scaffold auto-detects the active package manager by default. This behavior can be overridden using the `--package-manager` flag during `konekti new`.

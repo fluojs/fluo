@@ -67,4 +67,4 @@ pnpm dev
 
 - `./quick-start.md`
 - `./generator-workflow.md`
-- `../reference/naming-and-file-conventions.md`
+- `../reference/toolchain-contract-matrix.md`

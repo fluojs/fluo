@@ -45,9 +45,22 @@
 - `@konekti/redis`
 - `@konekti/prisma`
 - `@konekti/drizzle`
+- `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/testing`
 - `@konekti/cli`
+
+## 지원 및 승격 정책 (support and promotion policy)
+
+지원 티어 용어(`official`, `preview`, `experimental`)는 `../reference/glossary-and-mental-model.ko.md`에서 정의합니다.
+
+런타임, 어댑터, 통합을 더 높은 지원 티어로 승격시키려면 다음이 필요합니다:
+
+- 완전한 문서화 및 예제 제공
+- 전체 테스트 커버리지 및 CI 검증
+- 전용 트러블슈팅 가이드 제공
+
+추가 런타임이나 통합은 package README나 거버넌스 문서에 명시적으로 문서화되지 않는 한 공개 보장이 아닙니다. 현재 공식 런타임 지원은 Node.js로 제한되며, Bun 및 fetch 스타일 어댑터는 **preview** 상태로 유지됩니다.
 
 공개 부트스트랩 계약은 package-first를 유지합니다. `pnpm add -g @konekti/cli` 이후 `konekti new`를 사용하며, 릴리스 표면은 출판된 `@konekti/*` 패키지 제품군으로 한정됩니다.
 

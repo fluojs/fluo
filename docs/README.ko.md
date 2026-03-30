@@ -46,9 +46,7 @@
 ### 정확한 계약/명명 규칙이 필요하다면
 
 - `reference/package-surface.ko.md`
-- `reference/support-matrix.ko.md`
 - `reference/toolchain-contract-matrix.ko.md`
-- `reference/naming-and-file-conventions.ko.md`
 - `reference/glossary-and-mental-model.ko.md`
 
 ## 권한 규칙

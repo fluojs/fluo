@@ -28,9 +28,8 @@
 
 ## runtime and manifest parity notes
 
-- Node.js는 첫 번째 official runtime입니다.
-- Bun과 fetch-style adapters는 여전히 preview surface입니다.
-- 공유 Babel decorators transform 계약은 제품 계약이며, generated apps와 official packages는 같은 metadata transform 모델을 사용해야 합니다.
+- 런타임 지원 티어와 부트스트랩 정책 변경 사항은 `../operations/release-governance.ko.md`에서 문서화합니다.
+- 공유 Babel decorators transform 계약은 제품 계약입니다.
 - runtime helper reads는 semantic source of truth로 유지됩니다.
 - compile-time manifest generation은 이후 최적화가 될 수 있지만, observable framework semantics를 바꾸면 안 됩니다.
 - semantic parity 없는 benchmark 이득만으로는 manifest adoption을 정당화할 수 없습니다.
@@ -40,3 +39,27 @@
 - `tooling/*` 워크스페이스는 internal-only support package로 유지됩니다.
 - 현재 공개 bootstrap 계약은 `@konekti/cli`를 통한 package-first 경로를 유지합니다.
 - 추가 public toolchain package surface는 현재 약속하지 않습니다.
+
+## 명명 및 생성 규칙 (naming and generation conventions)
+
+Konekti CLI는 일관된 접미사 규칙과 세분화된 생성 철학을 따릅니다.
+
+### 명명 규칙 (naming conventions)
+
+생성된 파일은 다음 접미사 패턴을 따릅니다:
+
+- **Controllers**: `user.controller.ts`
+- **Services**: `user.service.ts`
+- **Repositories**: `user.repo.ts`
+- **Request DTOs**: `user.request.dto.ts`
+- **Response DTOs**: `user.response.dto.ts`
+
+### 생성기 철학 (generator philosophy)
+
+- **세분성 (Granularity)**: 개별 생성기를 사용하여 컴포넌트를 빌드합니다.
+- **명시적 DTO**: 요청 및 응답 DTO는 별도의 스키마틱을 통해 관리됩니다.
+- **단순성**: 복잡한 모놀리식 생성기보다는 명시적인 구성을 지향합니다.
+
+### 패키지 매니저 선택
+
+스캐폴드는 기본적으로 활성 패키지 매니저를 자동 감지합니다. 이 동작은 `konekti new` 실행 시 `--package-manager` 플래그를 사용하여 명시적으로 선택할 수 있습니다.
