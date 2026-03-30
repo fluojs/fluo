@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { Controller, Get, UnauthorizedException, createDispatcher, createHandlerMapping } from '@konekti/http';
 import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti/http';
 import { Container } from '@konekti/di';
+import { DefaultJwtVerifier } from '@konekti/jwt';
 
 import { RequireScopes, UseAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { createPassportProviders } from './module.js';
 import { createPassportJsStrategyBridge } from './passport-js.js';
+import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
 import type { AuthStrategy } from './types.js';
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
@@ -621,5 +623,113 @@ describe('AuthGuard', () => {
       expect(thrown).toBeInstanceOf(UnauthorizedException);
       expect((thrown as Error).cause).toBe(originalError);
     }
+  });
+
+  it('rethrows non-auth strategy errors without converting them to UnauthorizedException', async () => {
+    const originalError = new Error('refresh store unavailable');
+
+    class FailingStrategy implements AuthStrategy {
+      async authenticate(_context: GuardContext): Promise<never> {
+        throw originalError;
+      }
+    }
+
+    @Controller('/profile')
+    class ProtectedController {
+      @Get('/')
+      @UseAuth('mock')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      FailingStrategy,
+      ...createPassportProviders({ defaultStrategy: 'mock' }, [{ name: 'mock', token: FailingStrategy }]),
+    );
+    const guardContext = {
+      handler: {
+        controllerToken: ProtectedController,
+        methodName: 'getProfile',
+      },
+      requestContext: {
+        container: root,
+        principal: undefined,
+        request: createRequest('/profile'),
+        requestId: 'req-non-auth-direct',
+        response: createResponse(),
+      },
+    } as unknown as GuardContext;
+
+    const { AuthGuard } = await import('./guard.js');
+    const guard = new AuthGuard(
+      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
+      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
+    );
+
+    await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
+  });
+
+  it('rethrows refresh token infrastructure failures through the real guard path', async () => {
+    const originalError = new Error('refresh store unavailable');
+    const refreshTokenService: RefreshTokenService = {
+      issueRefreshToken: async () => 'unused',
+      rotateRefreshToken: async () => {
+        throw originalError;
+      },
+      revokeAllForSubject: async () => undefined,
+      revokeRefreshToken: async () => undefined,
+    };
+
+    @Controller('/auth')
+    class ProtectedController {
+      @Get('/refresh')
+      @UseAuth('refresh-token')
+      refresh() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      RefreshTokenStrategy,
+      {
+        provide: REFRESH_TOKEN_SERVICE,
+        useValue: refreshTokenService,
+      },
+      {
+        provide: DefaultJwtVerifier,
+        useValue: {
+          verifyAccessToken: async () => ({ claims: { sub: 'user-1' } }),
+          verifyRefreshToken: async () => ({ claims: { sub: 'user-1' } }),
+        },
+      },
+      ...createPassportProviders({ defaultStrategy: 'refresh-token' }, [{ name: 'refresh-token', token: RefreshTokenStrategy }]),
+    );
+    const guardContext = {
+      handler: {
+        controllerToken: ProtectedController,
+        methodName: 'refresh',
+      },
+      requestContext: {
+        container: root,
+        principal: undefined,
+        request: {
+          ...createRequest('/auth/refresh'),
+          body: { refreshToken: 'valid-token' },
+        },
+        requestId: 'req-refresh-infra-direct',
+        response: createResponse(),
+      },
+    } as unknown as GuardContext;
+
+    const { AuthGuard } = await import('./guard.js');
+    const guard = new AuthGuard(
+      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
+      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
+    );
+
+    await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
   });
 });
