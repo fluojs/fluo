@@ -40,6 +40,8 @@ Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 
 - **Rotate**: 재생 감지를 포함하여 refresh token을 새 access + refresh token으로 교환
 - **Revoke**: 특정 token 또는 subject의 모든 token 무효화(로그아웃)
 
+기반 `@konekti/jwt` refresh-token 설정이 `rotation: false`이면 refresh 작업은 새 access token만 반환하고 refresh token 문자열은 만료 또는 취소 시점까지 그대로 재사용합니다. 이 섹션의 replay-detection 의미는 rotation 모드(`rotation: true`)에 적용됩니다.
+
 ### Refresh token strategy 사용
 
 ```typescript

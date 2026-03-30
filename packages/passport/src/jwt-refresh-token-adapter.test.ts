@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { JwtConfigurationError, type DefaultJwtSigner, type DefaultJwtVerifier } from '@konekti/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, type RefreshTokenStore } from '@konekti/jwt';
 
 import { JwtRefreshTokenAdapter } from './jwt-refresh-token-adapter.js';
 
@@ -35,5 +35,48 @@ describe('JwtRefreshTokenAdapter', () => {
         store: 'memory',
       }),
     ).not.toThrow();
+  });
+
+  it('preserves rotation:false and reuses the same refresh token string', async () => {
+    const verifierStore: RefreshTokenStore = {
+      async find() {
+        return undefined;
+      },
+      async revoke() {},
+      async revokeBySubject() {},
+      async save() {},
+    };
+
+    const signer = new DefaultJwtSigner({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 3600,
+        rotation: false,
+        secret: 'refresh-secret',
+        store: verifierStore,
+      },
+      secret: 'access-secret',
+    });
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 3600,
+        rotation: false,
+        secret: 'refresh-secret',
+        store: verifierStore,
+      },
+      secret: 'access-secret',
+    });
+    const adapter = new JwtRefreshTokenAdapter(signer, verifier, {
+      rotation: false,
+      secret: 'refresh-secret',
+      store: 'memory',
+    });
+
+    const issued = await adapter.issueRefreshToken('user-1');
+    const rotated = await adapter.rotateRefreshToken(issued);
+
+    expect(rotated.accessToken).toContain('.');
+    expect(rotated.refreshToken).toBe(issued);
   });
 });
