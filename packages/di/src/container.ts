@@ -75,11 +75,13 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
   }
 
   if (isFactoryProvider(provider)) {
+    const metadata = provider.resolverClass ? getClassDiMetadata(provider.resolverClass) : undefined;
+
     return {
       inject: (provider.inject ?? []).map(normalizeInjectToken),
       multi: provider.multi,
       provide: provider.provide,
-      scope: provider.scope ?? Scope.DEFAULT,
+      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
       type: 'factory',
       useFactory: provider.useFactory,
     };

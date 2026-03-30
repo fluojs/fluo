@@ -857,6 +857,61 @@ describe('@konekti/graphql — provider scopes', () => {
     await app.close();
   });
 
+  it('inherits request scope from useFactory resolverClass metadata', async () => {
+    @Inject([])
+    @Scope('request')
+    class FactoryRequestCounter {
+      count = 0;
+    }
+
+    @Inject([FactoryRequestCounter])
+    @Scope('request')
+    @Resolver('FactoryRequestScopedResolver')
+    class FactoryRequestScopedResolver {
+      constructor(private readonly counter: FactoryRequestCounter) {}
+
+      @Query({ outputType: 'int' })
+      factoryRequestTick(): number {
+        this.counter.count += 1;
+        return this.counter.count;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createGraphqlModule()],
+      providers: [
+        FactoryRequestCounter,
+        {
+          provide: FactoryRequestScopedResolver,
+          inject: [FactoryRequestCounter],
+          useFactory: (...deps) => {
+            const [counter] = deps;
+
+            if (!(counter instanceof FactoryRequestCounter)) {
+              throw new Error('FactoryRequestScopedResolver requires FactoryRequestCounter.');
+            }
+
+            return new FactoryRequestScopedResolver(counter);
+          },
+          resolverClass: FactoryRequestScopedResolver,
+        },
+      ],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    const r1 = await postGraphql(port, '{ factoryRequestTick }');
+    const r2 = await postGraphql(port, '{ factoryRequestTick }');
+
+    expect(r1).toEqual({ data: { factoryRequestTick: 1 } });
+    expect(r2).toEqual({ data: { factoryRequestTick: 1 } });
+
+    await app.close();
+  });
+
   it('handles mixed provider registrations (class, useValue, useFactory) in same module', async () => {
     @Resolver('ClassResolver')
     class ClassResolver {
