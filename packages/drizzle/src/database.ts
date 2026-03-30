@@ -94,7 +94,7 @@ export class DrizzleDatabase<
     const transactionRunner = this.resolveTransactionRunner();
     if (!transactionRunner) {
       if (requestScoped) {
-        throw new Error(TRANSACTION_NOT_SUPPORTED_ERROR);
+        return this.executeRequestFallback(fn, signal);
       }
 
       return fn();
@@ -121,6 +121,18 @@ export class DrizzleDatabase<
         (transactionDatabase) => this.transactions.run(transactionDatabase, () => raceWithAbort(fn, abortContext.signal)),
         options,
       );
+    } finally {
+      abortContext.cleanup();
+      this.untrackActiveRequestTransaction(active);
+    }
+  }
+
+  private async executeRequestFallback<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const abortContext = createRequestAbortContext(signal);
+    const active = this.trackActiveRequestTransaction(abortContext.controller);
+
+    try {
+      return await raceWithAbort(fn, abortContext.signal);
     } finally {
       abortContext.cleanup();
       this.untrackActiveRequestTransaction(active);

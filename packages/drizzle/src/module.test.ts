@@ -199,22 +199,71 @@ describe('@konekti/drizzle', () => {
     await asyncApp.close();
   });
 
-  it('rejects requestTransaction when transaction support is unavailable even if strictTransactions is false', async () => {
+  it('falls back for requestTransaction when transaction support is unavailable and strictTransactions is false', async () => {
     const database = {};
     const drizzle = new DrizzleDatabase<typeof database>(database, undefined, {
       strictTransactions: false,
     });
     let invoked = false;
 
-    await expect(
-      drizzle.requestTransaction(async () => {
-        invoked = true;
-        return 'never';
-      }),
-    ).rejects.toThrow('Transaction not supported: Drizzle database does not implement transaction.');
-
+    await expect(drizzle.requestTransaction(async () => {
+      invoked = true;
+      return 'fallback-request';
+    })).resolves.toBe('fallback-request');
     await expect(drizzle.transaction(async () => 'fallback-transaction')).resolves.toBe('fallback-transaction');
-    expect(invoked).toBe(false);
+    expect(invoked).toBe(true);
+  });
+
+  it('still honors request abort signals on requestTransaction fallback when transaction support is unavailable', async () => {
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database, undefined, {
+      strictTransactions: false,
+    });
+    const controller = new AbortController();
+    controller.abort(new Error('request aborted before fallback'));
+
+    await expect(
+      drizzle.requestTransaction(async () => 'never', controller.signal),
+    ).rejects.toThrow('request aborted before fallback');
+  });
+
+  it('aborts unsupported requestTransaction fallback on shutdown before dispose', async () => {
+    const events: string[] = [];
+    const database = {};
+    let requestRejected = false;
+
+    const DrizzleModule = createDrizzleModule<typeof database>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [DrizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
+
+    const openTransaction = drizzle.requestTransaction(async () => {
+      events.push('request:start');
+      return new Promise<never>(() => undefined);
+    });
+
+    void openTransaction.catch(() => {
+      requestRejected = true;
+    });
+
+    await app.close();
+
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    expect(requestRejected).toBe(true);
+    expect(events).toEqual(['request:start', 'dispose']);
   });
 
   it('runs nested request and service transactions through a single transaction boundary', async () => {
