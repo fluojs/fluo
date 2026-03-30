@@ -42,10 +42,11 @@ await microservice.listen();
 - `@MessagePattern(pattern)` - 요청/응답 핸들러를 등록합니다.
 - `@EventPattern(pattern)` - 이벤트 핸들러를 등록합니다.
 - `TcpMicroserviceTransport` - TCP 트랜스포트 어댑터입니다.
-- `RedisPubSubMicroserviceTransport` - Redis pub/sub 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
+- `RedisPubSubMicroserviceTransport` - Redis pub/sub 이벤트 전용 트랜스포트 어댑터입니다.
 - `NatsMicroserviceTransport` - NATS 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
+- `RedisStreamsMicroserviceTransport` - Redis Streams 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 
 ## 런타임 동작
 
@@ -95,6 +96,7 @@ class PaymentsHandler {
 - `NatsMicroserviceTransport`는 NATS 요청/응답 및 pub/sub 주제를 통해 `send()`와 `emit()`을 모두 지원합니다.
 - `KafkaMicroserviceTransport`는 메시지, 응답, 이벤트 토픽을 분리하고 correlation 기반 라우팅을 사용해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
 - `RabbitMqMicroserviceTransport`는 요청/응답 상관관계(request/reply correlation)와 전용 요청/응답 큐를 사용해 `send()`와 `emit()`을 모두 지원합니다.
+- `RedisStreamsMicroserviceTransport`는 Redis Streams의 consumer group을 사용해 안전한 단일 소비자 요청/응답과 이벤트 fan-out을 지원합니다.
 
 ### Kafka
 
@@ -131,14 +133,27 @@ class PaymentsHandler {
 
 ### Redis
 
-- `RedisPubSubMicroserviceTransport`는 요청, 응답, 이벤트를 각각 다른 Redis 채널로 분리해 `send()`와 `emit()`을 모두 지원합니다.
-- `send()`는 고유한 `requestId`를 포함해 요청 채널로 publish하고, 응답 채널에서 같은 `requestId`를 가진 응답을 기다립니다.
-- 핸들러 실패는 에러 메시지로 직렬화되어 호출자 측 `send()`에서 reject됩니다.
-- `send()`는 `requestTimeoutMs`(기본값 3 000ms)를 적용하며, 타임아웃 또는 트랜스포트 종료 시 대기 중인 요청 Promise를 reject합니다.
-- `AbortSignal`을 지원합니다. 이미 abort된 시그널은 즉시 reject되고, 진행 중 abort는 해당 요청을 중단합니다.
-- `close()` 시점에는 대기 중인 요청 Promise를 모두 reject하고 구독을 정리합니다.
-- Redis Pub/Sub 요청/응답은 durable queue가 아닌 best-effort 전달 모델입니다. 타임아웃은 전송 계층 실패로 간주하고, 필요하면 idempotent 핸들러와 함께 재시도 전략을 적용하세요.
-- 트러블슈팅: Redis 타임아웃이 반복되면 패턴 responder 부재, 인스턴스 간 namespace 불일치, 응답 채널 구독 누락을 우선 확인하세요.
+- `RedisPubSubMicroserviceTransport`는 public 계약에서 **이벤트 전용**입니다.
+- `emit()`은 구성된 namespace 이벤트 채널로 이벤트 프레임을 publish합니다.
+- `send()`는 Redis Pub/Sub가 여러 subscriber 사이에서 안전한 단일 소비자 요청/응답 소유권을 제공하지 않기 때문에 즉시 throw됩니다.
+- `close()` 시 이벤트 구독과 메시지 리스너를 정리합니다.
+- Redis에서 요청/응답이 필요하면 `RedisStreamsMicroserviceTransport`를 사용하세요. 그 외 TCP, NATS, Kafka, RabbitMQ 트랜스포트도 요청/응답을 지원합니다.
+
+### Redis Streams
+
+- `RedisStreamsMicroserviceTransport`는 Redis Streams의 consumer group을 사용해 요청/응답 `send()`와 이벤트 `emit()`을 모두 지원합니다.
+- Redis Pub/Sub와 달리 Redis Streams는 consumer group당 단일 소비자 전달을 보장하므로, 여러 인스턴스에서도 요청/응답이 안전합니다.
+- 스트림 토폴로지는 namespace당 3개의 스트림을 사용합니다:
+  - `{namespace}:messages` — 인스턴스 간 요청 부하 분산을 위한 공유 consumer group.
+  - `{namespace}:events` — 모든 인스턴스로의 이벤트 fan-out을 위한 인스턴스별 consumer group.
+  - `{namespace}:responses:{consumerId}` — 응답 격리를 위한 인스턴스별 스트림.
+- `send()`는 메시지 스트림에 `{ kind: 'message', pattern, payload, requestId, replyStream }`을 publish하고, 인스턴스별 응답 스트림에서 상관 `{ kind: 'response', requestId, payload | error }` 프레임을 기다립니다.
+- `send()`는 `requestTimeoutMs`(기본값 3 000ms)를 적용하며, 타임아웃·abort·트랜스포트 종료·원격 핸들러 오류 시 reject됩니다.
+- `listen()`이 `send()` 전에 호출되어야 응답 consumer group이 활성화됩니다.
+- 트랜스포트는 2개의 `RedisStreamClientLike` 클라이언트가 필요합니다: blocking `XREADGROUP` 폴링용 `readerClient`와 `XADD`/그룹 관리용 `writerClient`.
+- 폴링 기반 소비: 트랜스포트가 내부 폴링 루프를 소유합니다 (`pollBlockMs`로 구성, 기본값 500ms).
+- `close()` 시 폴링 루프를 중지하고, 인스턴스별 consumer group(이벤트·응답)을 삭제하며, 대기 중인 요청을 모두 reject합니다. 공유 메시지 consumer group은 shutdown/reconnect 주기에서 의도적으로 보존됩니다.
+- 트러블슈팅: Redis Streams 요청 타임아웃이 반복되면 메시지 스트림의 responder 부재, namespace 설정 불일치, consumer group 경합을 우선 확인하세요.
 
 ## 하이브리드 모드
 

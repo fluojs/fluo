@@ -46,6 +46,7 @@ await microservice.listen();
 - `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
 - `KafkaMicroserviceTransport` - Kafka transport adapter (request/reply + event)
 - `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
+- `RedisStreamsMicroserviceTransport` - Redis Streams transport adapter (request/reply + event)
 
 ## Runtime behavior
 
@@ -132,10 +133,11 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 ## Transport notes
 
 - `TcpMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event).
-- `RedisPubSubMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via separate request, response, and event channels with correlation-based reply routing.
+- `RedisPubSubMicroserviceTransport` supports `emit()` (event) only. Request/reply `send()` is intentionally unsupported because Redis Pub/Sub does not provide safe single-consumer RPC semantics across instances.
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` via NATS request/reply and pub/sub subjects.
 - `KafkaMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via dedicated message, response, and event topics with correlation-based reply routing.
 - `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
+- `RedisStreamsMicroserviceTransport` supports both `send()` and `emit()` via Redis Streams with consumer groups for safe single-consumer request/reply and event fan-out.
 
 ### Kafka
 
@@ -172,14 +174,32 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 
 ### Redis
 
-- `RedisPubSubMicroserviceTransport` supports both `send()` and `emit()` using separate Redis channels for requests, responses, and events.
-- `send()` publishes a message with a unique `requestId` to the request channel and waits for a correlated response on the response channel.
-- Handler failures are serialized back as error messages and rejected at the caller side.
-- `send()` applies `requestTimeoutMs` (default 3 000 ms) and rejects pending promises if the timeout expires or the transport closes.
-- `AbortSignal` is supported: passing an already-aborted signal rejects immediately; passing a signal that fires later aborts the in-flight request.
-- On `close()`, all pending request promises are rejected and subscriptions are removed cleanly.
-- Redis request/reply over Pub/Sub is best-effort (not durable queue semantics). Treat timeouts as transport-level failures and pair retries with idempotent handlers when needed.
-- Troubleshooting: repeated Redis timeouts usually mean no active responder for the pattern, namespace mismatch across instances, or missing response-channel subscriptions.
+- `RedisPubSubMicroserviceTransport` is **event-only** in the public contract.
+- `emit()` publishes event frames to the configured namespace event channel.
+- `send()` intentionally throws immediately because Redis Pub/Sub does not provide safe single-consumer request/reply ownership across multiple subscribers.
+- On `close()`, the transport removes its event subscription and message listener cleanly.
+- If you need request/reply semantics with Redis, use `RedisStreamsMicroserviceTransport` instead. For other transports with request/reply support, see TCP, NATS, Kafka, or RabbitMQ.
+
+### Redis Streams
+
+- `RedisStreamsMicroserviceTransport` supports both request/reply `send()` and event `emit()` using Redis Streams with consumer groups.
+- Unlike Redis Pub/Sub, Redis Streams provides safe single-consumer delivery per consumer group, making request/reply semantics reliable across multiple instances.
+- Stream topology uses three streams per namespace:
+  - `{namespace}:messages` — shared consumer group for load-balanced request handling across instances.
+  - `{namespace}:events` — per-instance consumer group for event fan-out to all instances.
+  - `{namespace}:responses:{consumerId}` — per-instance stream for reply isolation.
+- `send()` publishes `{ kind: 'message', pattern, payload, requestId, replyStream }` to the message stream and waits for a correlated `{ kind: 'response', requestId, payload | error }` frame on the per-instance response stream.
+- Correlation identity is `requestId` (generated per call). Reply routing uses `replyStream` (auto-derived from the transport's `consumerId`).
+- `send()` applies `requestTimeoutMs` (default 3 000 ms) and rejects on timeout, abort, transport close, or serialized remote handler error.
+- `listen()` must run before `send()` so the response consumer group is active.
+- Inbound event handler failures are isolated at the transport boundary and do not round-trip back to the caller of `emit()`.
+- The transport requires two `RedisStreamClientLike` clients: `readerClient` for blocking `XREADGROUP` poll loops and `writerClient` for `XADD` and group management. Sharing a single connection for both may cause head-of-line blocking depending on your Redis client library.
+- Poll-based consumption: the transport owns internal poll loops (configurable via `pollBlockMs`, default 500 ms) that process entries from all three streams.
+- On `close()`, the transport stops poll loops, destroys per-instance consumer groups (event and response groups), and rejects all pending requests. The shared message consumer group is intentionally preserved across shutdown/reconnect cycles.
+- When to use Redis Streams vs Redis Pub/Sub:
+  - Redis Streams: use when you need request/reply semantics or durable single-consumer message handling with Redis.
+  - Redis Pub/Sub: use for fire-and-forget event broadcasting where all subscribers should receive every event.
+- Troubleshooting: repeated Redis Streams request timeouts usually indicate no active responder consuming from the message stream, misconfigured namespace, or consumer group contention.
 
 ## Hybrid mode
 
