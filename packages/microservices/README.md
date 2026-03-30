@@ -170,6 +170,7 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 
 - `NatsMicroserviceTransport` supports both `send()` and `emit()` by using separate request/reply and event subjects.
 - `send()` applies `requestTimeoutMs` and only propagates handler failures that the transport can serialize back as an error message.
+- `close()` rejects in-flight pending requests deterministically before returning control to the caller.
 - Reconnect behavior, buffering, and responder availability remain client/server concerns; if request/reply guarantees matter operationally, validate them against your chosen NATS client/runtime setup.
 
 ### Redis
