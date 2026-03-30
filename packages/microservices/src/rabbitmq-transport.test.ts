@@ -235,6 +235,37 @@ describe('RabbitMqMicroserviceTransport', () => {
     await expect(second).rejects.toThrow('RabbitMQ microservice transport closed before response.');
   });
 
+  it('still rejects pending requests when queue cancellation fails during close', async () => {
+    const bus = new InMemoryQueueBus();
+    const closeError = new Error('cancel failed');
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          await bus.unsubscribe(queue);
+          throw closeError;
+        },
+        async consume(queue, handler) {
+          await bus.subscribe(queue, handler);
+        },
+      },
+      publisher: {
+        async publish(queue, message) {
+          await bus.publish(queue, message);
+        },
+      },
+      requestTimeoutMs: 5_000,
+    });
+
+    await transport.listen(async () => {
+      await new Promise<void>(() => undefined);
+    });
+
+    const pending = transport.send('never.close', {});
+
+    await expect(transport.close()).rejects.toBe(closeError);
+    await expect(pending).rejects.toThrow('RabbitMQ microservice transport closed before response.');
+  });
+
   it('documents startup/reconnect/shutdown queue lifecycle behavior', async () => {
     const bus = new InMemoryQueueBus();
     const consumedQueues: string[] = [];

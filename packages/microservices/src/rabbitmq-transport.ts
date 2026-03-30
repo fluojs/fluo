@@ -171,20 +171,32 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   }
 
   async close(): Promise<void> {
+    let closeError: unknown;
+
     if (this.listenPromise) {
       await this.listenPromise;
     }
 
-    if (this.listening) {
-      for (const queue of this.subscribedQueues) {
-        await this.options.consumer.cancel(queue);
+    try {
+      if (this.listening) {
+        for (const queue of this.subscribedQueues) {
+          try {
+            await this.options.consumer.cancel(queue);
+          } catch (error) {
+            closeError ??= error;
+          }
+        }
       }
+    } finally {
+      this.subscribedQueues.clear();
+      this.rejectPendingRequests(new Error('RabbitMQ microservice transport closed before response.'));
+      this.listening = false;
+      this.handler = undefined;
     }
 
-    this.subscribedQueues.clear();
-    this.rejectPendingRequests(new Error('RabbitMQ microservice transport closed before response.'));
-    this.listening = false;
-    this.handler = undefined;
+    if (closeError) {
+      throw closeError;
+    }
   }
 
   private async handleInboundMessage(rawMessage: string): Promise<void> {

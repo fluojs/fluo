@@ -188,22 +188,33 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
 
   async close(): Promise<void> {
     this.closing = true;
+    let closeError: unknown;
 
     if (this.listenPromise) {
       await this.listenPromise;
     }
 
-    if (this.listening) {
-      for (const topic of new Set([this.eventTopic, this.messageTopic, this.responseTopic])) {
-        await this.options.consumer.unsubscribe(topic);
+    try {
+      if (this.listening) {
+        for (const topic of new Set([this.eventTopic, this.messageTopic, this.responseTopic])) {
+          try {
+            await this.options.consumer.unsubscribe(topic);
+          } catch (error) {
+            closeError ??= error;
+          }
+        }
+      }
+    } finally {
+      this.handler = undefined;
+      this.listening = false;
+
+      for (const pending of [...this.pending.values()]) {
+        pending.reject(new Error('Kafka microservice transport closed before response.'));
       }
     }
 
-    this.handler = undefined;
-    this.listening = false;
-
-    for (const pending of [...this.pending.values()]) {
-      pending.reject(new Error('Kafka microservice transport closed before response.'));
+    if (closeError) {
+      throw closeError;
     }
   }
 
