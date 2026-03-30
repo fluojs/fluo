@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
-import { ArrayUnique, IsEmail, IsNotEmpty, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayUnique, IsDateString, IsEmail, IsNotEmpty, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 
 describe('DefaultValidator', () => {
   it('validates basic rules without HTTP bindings', async () => {
@@ -16,6 +16,25 @@ describe('DefaultValidator', () => {
     await expect(
       validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
     ).rejects.toBeInstanceOf(DtoValidationError);
+  });
+
+  it('treats IsDateString as an ISO-8601 validator', async () => {
+    class CreateScheduleDto {
+      @IsDateString({ message: 'scheduledAt must be a valid ISO-8601 date string' })
+      scheduledAt = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateScheduleDto(), { scheduledAt: '2026-03-30T10:00:00.000Z' }), CreateScheduleDto),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      validator.validate(Object.assign(new CreateScheduleDto(), { scheduledAt: 'March 30, 2026' }), CreateScheduleDto),
+    ).rejects.toMatchObject({
+      issues: [{ field: 'scheduledAt', message: 'scheduledAt must be a valid ISO-8601 date string' }],
+    });
   });
 
   it('produces nested field paths and indexed paths', async () => {

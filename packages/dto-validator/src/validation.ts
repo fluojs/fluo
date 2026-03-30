@@ -488,7 +488,7 @@ function runValidatorJs(rule: Extract<DtoFieldValidationRule, { kind: 'validator
     case 'booleanString': return validator.isBoolean(value);
     case 'currency': return validator.isCurrency(value, rule.args?.[0] as validator.IsCurrencyOptions | undefined);
     case 'dataURI': return validator.isDataURI(value);
-    case 'dateString': return validator.isDate(value);
+    case 'dateString': return validator.isISO8601(value);
     case 'decimal': return validator.isDecimal(value);
     case 'email': return validator.isEmail(value, rule.args?.[0] as validator.IsEmailOptions | undefined);
     case 'fqdn': return validator.isFQDN(value, rule.args?.[0] as validator.IsFQDNOptions | undefined);
