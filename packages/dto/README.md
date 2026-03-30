@@ -93,56 +93,6 @@ interface Validator {
 
 Implement this interface to supply a custom validation strategy.
 
-### Schema adapters (`@konekti/dto/schema`)
-
-Use schema-based validation without `emitDecoratorMetadata` while keeping the same `DtoValidationError` contract.
-
-```typescript
-import { z } from 'zod';
-import { type } from 'arktype';
-import { object, pipe, safeParse, string, email } from 'valibot';
-import {
-  createArkTypeAdapter,
-  createSchemaValidator,
-  createValibotSchemaValidator,
-  createZodSchemaValidator,
-  type SchemaValidator,
-} from '@konekti/dto/schema';
-
-const zodSchema = z.object({
-  email: z.string().email(),
-});
-
-const zodValidator = createZodSchemaValidator(zodSchema);
-
-const valibotSchema = object({
-  email: pipe(string(), email()),
-});
-
-const valibotValidator = createValibotSchemaValidator(valibotSchema, safeParse);
-
-const arkTypeValidator = createArkTypeAdapter(
-  type({
-    email: 'string.email',
-  }),
-);
-
-const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator({
-  parse(value) {
-    if (typeof (value as { name?: unknown }).name === 'string') {
-      return { success: true, value: { name: (value as { name: string }).name } };
-    }
-
-    return {
-      success: false,
-      issues: [{ code: 'REQUIRED', field: 'name', message: 'name is required' }],
-    };
-  },
-});
-```
-
----
-
 ## Decorators
 
 ### Type Checks
@@ -237,6 +187,8 @@ const customValidator: SchemaValidator<{ name: string }> = createSchemaValidator
 ### Custom Validators
 
 ```typescript
+import { z } from 'zod';
+
 // Field-level custom validator
 @Validate(MyCustomValidator, options?)
 field = value;
@@ -244,7 +196,19 @@ field = value;
 // Class-level custom validator
 @ValidateClass(MyClassValidator, options?)
 class MyDto { ... }
+
+// Class-level Standard Schema validator
+@ValidateClass(z.object({
+  email: z.string().email(),
+}))
+class CreateUserDto {
+  email = '';
+}
 ```
+
+`@Validate(...)` stays field-level. `@ValidateClass(...)` is the DTO-level invariant and schema hook.
+
+Standard Schema-compatible validators such as Zod, Valibot, and ArkType can be attached directly at the DTO level through `@ValidateClass(schema)`.
 
 ---
 
