@@ -90,6 +90,7 @@ function createService(
   store: RefreshTokenStore,
   options: {
     accessMaxAgeSeconds?: number;
+    accessKeys?: Array<{ kid: string; secret: string }>;
     expiresInSeconds?: number;
     refreshSecret?: string;
     refreshVerifyMaxAgeSeconds?: number;
@@ -106,11 +107,13 @@ function createService(
 
   const signer = new DefaultJwtSigner({
     algorithms: ['HS256'],
+    keys: options.accessKeys,
     refreshToken: refreshOptions,
     secret: 'access-secret',
   });
   const verifier = new DefaultJwtVerifier({
     algorithms: ['HS256'],
+    keys: options.accessKeys,
     maxAge: options.accessMaxAgeSeconds,
     refreshToken: refreshOptions,
     secret: 'access-secret',
@@ -222,6 +225,20 @@ describe('RefreshTokenService', () => {
 
     await expect(verifier.verifyRefreshToken(token)).resolves.toMatchObject({ subject: 'user-1' });
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
+  it('verifies refresh tokens with refresh secret even when access verification uses multiple HMAC keys', async () => {
+    const store = new InMemoryRefreshTokenStore();
+    const { service, verifier } = createService(store, {
+      accessKeys: [
+        { kid: 'access-1', secret: 'access-secret-1' },
+        { kid: 'access-2', secret: 'access-secret-2' },
+      ],
+      refreshSecret: 'refresh-secret',
+    });
+    const token = await service.issueRefreshToken('user-1');
+
+    await expect(verifier.verifyRefreshToken(token)).resolves.toMatchObject({ subject: 'user-1' });
   });
 
   it('does not apply access maxAge to refresh verification by default', async () => {

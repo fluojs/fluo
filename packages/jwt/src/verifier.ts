@@ -226,6 +226,7 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
 export class DefaultJwtVerifier {
   private readonly jwksClient: JwksClient | undefined;
   private readonly keyResolutionState: KeyResolutionState;
+  private readonly refreshKeyResolutionState: KeyResolutionState;
   private readonly refreshVerificationOptions: JwtVerifierOptions | undefined;
 
   constructor(private readonly options: JwtVerifierOptions) {
@@ -235,10 +236,11 @@ export class DefaultJwtVerifier {
       options.refreshToken
         ? this.createRefreshVerificationOptions(normalizeRefreshTokenOptions(options.refreshToken))
         : undefined;
+    this.refreshKeyResolutionState = createKeyResolutionState(this.refreshVerificationOptions?.keys);
   }
 
   async verifyAccessToken(token: string): Promise<JwtPrincipal> {
-    return this.verifyToken(token, this.options, this.jwksClient);
+    return this.verifyToken(token, this.options, this.keyResolutionState, this.jwksClient);
   }
 
   async verifyRefreshToken(token: string): Promise<JwtPrincipal> {
@@ -246,7 +248,7 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('JWT refresh token options are not configured.');
     }
 
-    return this.verifyToken(token, this.refreshVerificationOptions, undefined);
+    return this.verifyToken(token, this.refreshVerificationOptions, this.refreshKeyResolutionState, undefined);
   }
 
   private createRefreshVerificationOptions(
@@ -268,6 +270,7 @@ export class DefaultJwtVerifier {
   private async verifyToken(
     token: string,
     options: JwtVerifierOptions,
+    keyResolutionState: KeyResolutionState,
     jwksClient: JwksClient | undefined,
   ): Promise<JwtPrincipal> {
     const [headerSegment, payloadSegment, signatureSegment] = this.parseTokenSegments(token);
@@ -285,6 +288,7 @@ export class DefaultJwtVerifier {
       signingInput,
       signatureSegment,
       options,
+      keyResolutionState,
       jwksClient,
     );
 
@@ -309,14 +313,15 @@ export class DefaultJwtVerifier {
     signingInput: string,
     signatureSegment: string,
     options: JwtVerifierOptions,
+    keyResolutionState: KeyResolutionState,
     jwksClient: JwksClient | undefined,
   ): Promise<void> {
     if (header.alg in HMAC_HASH) {
-      await this.verifyHmacTokenSignature(header, signingInput, signatureSegment, options);
+      await this.verifyHmacTokenSignature(header, signingInput, signatureSegment, options, keyResolutionState);
       return;
     }
 
-    await this.verifyAsymmetricTokenSignature(header, signingInput, signatureSegment, options, jwksClient);
+    await this.verifyAsymmetricTokenSignature(header, signingInput, signatureSegment, options, keyResolutionState, jwksClient);
   }
 
   private async verifyHmacTokenSignature(
@@ -324,6 +329,7 @@ export class DefaultJwtVerifier {
     signingInput: string,
     signatureSegment: string,
     options: JwtVerifierOptions,
+    keyResolutionState: KeyResolutionState,
   ): Promise<void> {
     const providerKey = await this.resolveProviderKey(options, header);
 
@@ -331,7 +337,7 @@ export class DefaultJwtVerifier {
       throw new JwtConfigurationError('secretOrKeyProvider must return a string for HMAC algorithms.');
     }
 
-    const secret = providerKey ?? resolveHmacSecret(options, this.keyResolutionState, header.kid);
+    const secret = providerKey ?? resolveHmacSecret(options, keyResolutionState, header.kid);
 
     if (!secret) {
       throw new JwtConfigurationError('JWT secret is not configured.');
@@ -345,6 +351,7 @@ export class DefaultJwtVerifier {
     signingInput: string,
     signatureSegment: string,
     options: JwtVerifierOptions,
+    keyResolutionState: KeyResolutionState,
     jwksClient: JwksClient | undefined,
   ): Promise<void> {
     const providerKey = await this.resolveProviderKey(options, header);
@@ -352,7 +359,7 @@ export class DefaultJwtVerifier {
       providerKey ??
       (jwksClient
         ? await this.resolveJwksPublicKey(header.kid, jwksClient)
-        : resolveStaticPublicKey(options, this.keyResolutionState, header.kid));
+        : resolveStaticPublicKey(options, keyResolutionState, header.kid));
 
     if (!publicKey) {
       throw new JwtConfigurationError('JWT public key is not configured.');
