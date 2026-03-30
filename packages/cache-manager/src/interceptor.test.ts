@@ -345,6 +345,70 @@ describe('CacheInterceptor', () => {
       expect(await cacheService.get('/products|principal:issuer-a:bob')).toEqual({ owner: 'bob' });
     });
 
+    it('applies principalScopeResolver to anonymous requests', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({
+        httpKeyStrategy: 'route',
+        principalScopeResolver: (context) => context.requestContext.metadata['tenantId'] as string | undefined,
+      });
+      const firstRequestContext = createRequestContext('GET', '/products', '/products');
+      const secondRequestContext = createRequestContext('GET', '/products', '/products');
+      firstRequestContext.metadata['tenantId'] = 'tenant-a';
+      secondRequestContext.metadata['tenantId'] = 'tenant-b';
+
+      const firstContext = createContext(ProductController, 'list', firstRequestContext);
+      const secondContext = createContext(ProductController, 'list', secondRequestContext);
+      const next: CallHandler = {
+        handle: vi
+          .fn<CallHandler['handle']>()
+          .mockResolvedValueOnce({ tenant: 'tenant-a' })
+          .mockResolvedValueOnce({ tenant: 'tenant-b' }),
+      };
+
+      await interceptor.intercept(firstContext, next);
+      await interceptor.intercept(secondContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products|principal:tenant-a')).toEqual({ tenant: 'tenant-a' });
+      expect(await cacheService.get('/products|principal:tenant-b')).toEqual({ tenant: 'tenant-b' });
+    });
+
+    it('falls back to the base key when anonymous principalScopeResolver returns undefined', async () => {
+      class ProductController {
+        @CacheTTL(120)
+        list() {}
+      }
+
+      const { interceptor, cacheService } = createInterceptor({
+        httpKeyStrategy: 'route',
+        principalScopeResolver: (context) => context.requestContext.metadata['tenantId'] as string | undefined,
+      });
+      const anonymousRequestContext = createRequestContext('GET', '/products', '/products');
+      const tenantScopedRequestContext = createRequestContext('GET', '/products', '/products');
+      tenantScopedRequestContext.metadata['tenantId'] = 'tenant-a';
+
+      const anonymousContext = createContext(ProductController, 'list', anonymousRequestContext);
+      const tenantScopedContext = createContext(ProductController, 'list', tenantScopedRequestContext);
+      const next: CallHandler = {
+        handle: vi
+          .fn<CallHandler['handle']>()
+          .mockResolvedValueOnce({ scope: 'base' })
+          .mockResolvedValueOnce({ scope: 'tenant-a' }),
+      };
+
+      await interceptor.intercept(anonymousContext, next);
+      await interceptor.intercept(tenantScopedContext, next);
+      await interceptor.intercept(anonymousContext, next);
+
+      expect(next.handle).toHaveBeenCalledTimes(2);
+      expect(await cacheService.get('/products')).toEqual({ scope: 'base' });
+      expect(await cacheService.get('/products|principal:tenant-a')).toEqual({ scope: 'tenant-a' });
+    });
+
     it('strategy "route+query" includes sorted query in cache key', async () => {
       class ProductController {
         @CacheTTL(120)

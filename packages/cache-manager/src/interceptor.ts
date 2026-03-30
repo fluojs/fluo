@@ -54,15 +54,15 @@ function appendPrincipalScope(
   context: InterceptorContext,
   resolver: PrincipalScopeResolver | undefined,
 ): string {
+  if (resolver) {
+    const scope = resolver(context);
+    return scope !== undefined ? `${key}|principal:${scope}` : key;
+  }
+
   const principal = context.requestContext.principal;
 
   if (!principal) {
     return key;
-  }
-
-  if (resolver) {
-    const scope = resolver(context);
-    return scope !== undefined ? `${key}|principal:${scope}` : key;
   }
 
   const issuer = encodeURIComponent(principal.issuer ?? 'unknown');
