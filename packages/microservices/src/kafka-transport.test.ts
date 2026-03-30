@@ -239,6 +239,42 @@ describe('KafkaMicroserviceTransport', () => {
     await expect(pending).rejects.toThrow(/Kafka microservice transport closed before/);
   });
 
+  it('still rejects pending requests when unsubscribe fails during close', async () => {
+    const bus = new InMemoryTopicBus();
+    const closeError = new Error('unsubscribe failed');
+    const consumer = {
+      subscribe: async (topic: string, handler: (message: string) => Promise<void> | void) => {
+        await bus.subscribe(topic, handler);
+      },
+      unsubscribe: async (topic: string) => {
+        await bus.unsubscribe(topic);
+        throw closeError;
+      },
+    };
+    const transport = new KafkaMicroserviceTransport({
+      consumer,
+      producer: {
+        publish: async (topic, message) => {
+          await bus.publish(topic, message);
+        },
+      },
+      requestTimeoutMs: 5_000,
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        await new Promise<void>(() => undefined);
+      }
+
+      return undefined;
+    });
+
+    const pending = transport.send('long.running', { value: 1 });
+
+    await expect(transport.close()).rejects.toBe(closeError);
+    await expect(pending).rejects.toThrow(/Kafka microservice transport closed before/);
+  });
+
   it('does not publish request frames once close() starts', async () => {
     const bus = new InMemoryTopicBus();
     const { published, transport } = createTransport(bus, {
