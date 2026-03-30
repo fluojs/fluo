@@ -136,7 +136,7 @@ export function ensureModuleImport(source: string, className: string, importPath
         ]),
       ),
       statement.moduleSpecifier,
-      statement.assertClause,
+      statement.attributes,
     );
 
     return replaceNodeText(source, sourceFile, statement, printer.printNode(ts.EmitHint.Unspecified, updatedImport, sourceFile));
