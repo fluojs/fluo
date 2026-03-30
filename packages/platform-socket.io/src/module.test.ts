@@ -385,6 +385,64 @@ describe('@konekti/platform-socket.io', () => {
     expect(loggerEvents).toContain('error:SocketIoLifecycleService:Socket.IO gateway socket emitted an error.:socket exploded');
   });
 
+  it('waits for disconnect handlers to settle before removing the socket from the registry', async () => {
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getServer() {
+          return {};
+        },
+      } as never,
+      {
+        transports: ['websocket'],
+      },
+    );
+    const deferred = createDeferred<void>();
+    const listeners: {
+      disconnect?: (reason: string, description: unknown) => void;
+      onAny?: (event: string, ...args: unknown[]) => void;
+    } = {};
+    const socket = {
+      id: 'socket-1',
+      disconnect: () => undefined,
+      on(event: 'disconnect', listener: (reason: string, description: unknown) => void) {
+        listeners.disconnect = listener;
+        return this;
+      },
+      onAny(listener: (event: string, ...args: unknown[]) => void) {
+        listeners.onAny = listener;
+        return this;
+      },
+    } as unknown as Socket;
+    const state = Reflect.get(service, 'createConnectionHandlerState').call(service);
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, Socket>;
+    let disconnectHandled = false;
+
+    Reflect.set(service, 'handleDisconnect', async () => {
+      disconnectHandled = true;
+      await deferred.promise;
+    });
+
+    state.handlersReady = true;
+    socketRegistry.set(socket.id, socket);
+    Reflect.get(service, 'attachConnectionListeners').call(service, state, [], socket, {} as never);
+
+    listeners.disconnect?.('client namespace disconnect', undefined);
+    await Promise.resolve();
+
+    expect(disconnectHandled).toBe(true);
+    expect(socketRegistry.has(socket.id)).toBe(true);
+
+    deferred.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(socketRegistry.has(socket.id)).toBe(false);
+  });
+
   it('isolates same room names across namespaces', async () => {
     class GatewayState {
       adminMessages: unknown[] = [];

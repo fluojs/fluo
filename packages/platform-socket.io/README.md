@@ -69,6 +69,7 @@ export class AppModule {}
 - Binds `@OnConnect()`, `@OnMessage(event?)`, and `@OnDisconnect()` handlers for each connected namespace socket
 - Resolves gateway instances from the runtime DI container and skips non-singleton gateways with warnings
 - Exposes room helpers through the shared `SocketIoRoomService` abstraction
+- Keeps room helpers available until async `@OnDisconnect()` handlers settle, then removes the socket from the internal registry
 - Logs socket-level `error` events and removes errored sockets from the internal registry
 - Closes the Socket.IO server with timeout-aware shutdown handling
 
