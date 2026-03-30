@@ -110,6 +110,7 @@ describe('CLI generators', () => {
 
   it('renders templates through ejs', () => {
     const rendered = renderTemplate('service.ts.ejs', {
+      hasRepo: true,
       kebab: 'user',
       pascal: 'UserService',
       repo: 'UserRepo',
@@ -118,6 +119,28 @@ describe('CLI generators', () => {
 
     expect(rendered).toContain("import { UserRepo } from './user.repo';");
     expect(rendered).toContain('export class UserService');
+  });
+
+  it('renders standalone controller and service templates without missing sibling imports', () => {
+    const controller = generateControllerFiles('User')[0]?.content ?? '';
+    const service = generateServiceFiles('User')[0]?.content ?? '';
+
+    expect(controller).not.toContain("from './user.service'");
+    expect(controller).not.toContain("from '@konekti/core'");
+    expect(controller).toContain('return [];');
+    expect(service).not.toContain("from './user.repo'");
+    expect(service).not.toContain("from '@konekti/core'");
+    expect(service).toContain('return [];');
+  });
+
+  it('renders controller and service templates with sibling imports when requested', () => {
+    const controller = generateControllerFiles('User', { hasService: true })[0]?.content ?? '';
+    const service = generateServiceFiles('User', { hasRepo: true })[0]?.content ?? '';
+
+    expect(controller).toContain("import { UserService } from './user.service';");
+    expect(controller).toContain('@Inject([UserService])');
+    expect(service).toContain("import { UserRepo } from './user.repo';");
+    expect(service).toContain('@Inject([UserRepo])');
   });
 
   describe('registerInModule', () => {
