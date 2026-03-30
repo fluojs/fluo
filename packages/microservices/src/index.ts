@@ -4,6 +4,7 @@ export * from './metadata.js';
 export * from './module.js';
 export * from './nats-transport.js';
 export * from './redis-transport.js';
+export * from './redis-streams-transport.js';
 export * from './rabbitmq-transport.js';
 export * from './service.js';
 export * from './tcp-transport.js';
