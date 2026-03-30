@@ -121,8 +121,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       );
     } finally {
       abortContext.cleanup();
-      this.untrackActiveRequestTransaction(active);
-      await acquiredSession?.endSession();
+
+      try {
+        await acquiredSession?.endSession();
+      } finally {
+        this.untrackActiveRequestTransaction(active);
+      }
     }
   }
 

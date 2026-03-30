@@ -146,6 +146,85 @@ describe('@konekti/mongoose', () => {
     ]);
   });
 
+  it('waits for async request session cleanup before dispose on shutdown', async () => {
+    const events: string[] = [];
+    let resolveEndSessionStarted!: () => void;
+    let resolveEndSession!: () => void;
+    const endSessionStarted = new Promise<void>((resolve) => {
+      resolveEndSessionStarted = resolve;
+    });
+    const endSessionDeferred = new Promise<void>((resolve) => {
+      resolveEndSession = resolve;
+    });
+
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+      },
+      async commitTransaction() {
+        events.push('transaction:commit');
+      },
+      async endSession() {
+        events.push('session:end:start');
+        resolveEndSessionStarted();
+        await endSessionDeferred;
+        events.push('session:end:done');
+      },
+      async startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const MongooseModule = createMongooseModule<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MongooseModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+
+    const openTransaction = mongoose.requestTransaction(async () => new Promise<never>(() => undefined));
+    const closePromise = app.close();
+
+    await endSessionStarted;
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'transaction:abort',
+      'session:end:start',
+    ]);
+
+    resolveEndSession();
+
+    await closePromise;
+    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'transaction:abort',
+      'session:end:start',
+      'session:end:done',
+      'dispose',
+    ]);
+  });
+
   it('enforces strictTransactions for sync and async module builders', async () => {
     const connection = {};
 
