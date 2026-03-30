@@ -134,6 +134,11 @@ interface NestedTraversalContext {
   readonly active: WeakSet<object>;
 }
 
+interface ValidationContext {
+  readonly fieldPrefix?: string;
+  readonly inheritedSource?: ValidationIssue['source'];
+}
+
 function enterTraversal(value: unknown, context?: NestedTraversalContext): boolean {
   if (!context || typeof value !== 'object' || value === null) {
     return true;
@@ -512,18 +517,10 @@ function transformNestedEachValue(value: unknown, target: Constructor, context?:
 }
 
 function describeValidator(rule: DtoFieldValidationRule, field: string): { code: string; message: string } {
-  if (rule.kind === 'validatorjs') {
-    const handler = getRuleHandler(rule);
-    return {
-      code: rule.code ?? rule.validator.toUpperCase(),
-      message: rule.message ?? handler.describe(field, rule),
-    };
-  }
-
   const handler = getRuleHandler(rule);
 
   return {
-    code: rule.code ?? handler.defaultCode,
+    code: rule.code ?? (rule.kind === 'validatorjs' ? rule.validator.toUpperCase() : handler.defaultCode),
     message: rule.message ?? handler.describe(field, rule),
   };
 }
@@ -723,15 +720,7 @@ async function applyPropertyRules(
   source: ValidationIssue['source'],
   context: NestedTraversalContext,
 ): Promise<ValidationIssue[]> {
-  const conditionallySkip = await (async () => {
-    for (const rule of rules) {
-      if (rule.kind === 'validateIf' && !(await rule.validateIf(dto, value))) {
-        return true;
-      }
-    }
-
-    return false;
-  })();
+  const conditionallySkip = await shouldConditionallySkip(rules, dto, value);
 
   if (rules.some((rule) => rule.kind === 'optional') && (value === undefined || value === null)) {
     return [];
@@ -756,6 +745,20 @@ async function validateClassRule(rule: ClassValidationRule, dto: unknown): Promi
   });
 }
 
+async function shouldConditionallySkip(
+  rules: readonly DtoFieldValidationRule[],
+  dto: unknown,
+  value: unknown,
+): Promise<boolean> {
+  for (const rule of rules) {
+    if (rule.kind === 'validateIf' && !(await rule.validateIf(dto, value))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function collectValidationIssues<T>(target: Constructor<T>, value: T): Promise<readonly ValidationIssue[]> {
   return collectValidationIssuesInternal(target, value, {}, { active: new WeakSet<object>() });
 }
@@ -763,7 +766,7 @@ async function collectValidationIssues<T>(target: Constructor<T>, value: T): Pro
 async function collectValidationIssuesInternal<T>(
   target: Constructor<T>,
   value: T,
-  context: { fieldPrefix?: string; inheritedSource?: ValidationIssue['source'] },
+  context: ValidationContext,
   traversal: NestedTraversalContext,
 ): Promise<readonly ValidationIssue[]> {
   if (!enterTraversal(value, traversal)) {

@@ -156,28 +156,15 @@ export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoCo
   }
 
   const validationSchema = getDtoValidationSchema(BaseDto);
-  const optionalProperties = new Set<MetadataPropertyKey>();
 
   for (const entry of validationSchema) {
-    let hasOptional = false;
-    for (const rule of entry.rules) {
-      if (rule.kind === 'optional') {
-        hasOptional = true;
-        break;
-      }
-    }
+    const hasOptional = entry.rules.some((rule) => rule.kind === 'optional');
 
-    if (hasOptional) {
-      optionalProperties.add(entry.propertyKey);
-    }
-  }
-
-  for (const entry of validationSchema) {
     for (const rule of entry.rules) {
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, rule);
     }
 
-    if (!optionalProperties.has(entry.propertyKey)) {
+    if (!hasOptional) {
       appendDtoFieldValidationRule(PartialDto.prototype, entry.propertyKey, { kind: 'optional' });
     }
   }

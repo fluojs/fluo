@@ -3,9 +3,9 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-데코레이터 기반 TypeScript DTO 유틸리티 패키지입니다. `@konekti/dto` 패키지는 검증 규칙, 검증 엔진, 스키마 어댑터, 매핑된 DTO 헬퍼를 제공합니다.
+데코레이터 기반 TypeScript DTO 유틸리티 패키지입니다. `@konekti/dto`는 DTO 검증 규칙, validation/transform 엔진, `@ValidateClass(schema)`를 통한 Standard Schema 호환 클래스 검증, 메타데이터를 보존하는 mapped DTO helper를 담당합니다.
 
-이제 Zod, Valibot, 커스텀 스키마 엔진을 같은 `DtoValidationError` 이슈 형태로 연결하는 schema validation 확장 surface도 제공합니다.
+반대로 request binding이나 transport별 입력 추출은 이 패키지 책임이 아닙니다. `@konekti/http` 같은 패키지가 자신의 binding decorator와 함께 DTO 메타데이터를 사용하고, `@konekti/dto`는 규칙을 `ValidationIssue` / `DtoValidationError`와 타입이 지정된 DTO 인스턴스로 연결하는 역할에 집중합니다.
 
 ## 관련 문서
 
@@ -17,6 +17,21 @@
 ```bash
 pnpm add @konekti/dto
 ```
+
+## 이 패키지가 하는 일
+
+- `@IsString()`, `@MinLength()`, `@ValidateNested()` 같은 필드 레벨 검증 데코레이터 제공
+- `@ValidateClass(...)`를 통한 클래스 레벨 검증 제공
+- 이미 DTO 형태를 가진 값을 검증하는 `DefaultValidator.validate(...)`
+- plain payload를 타입이 지정된 DTO 인스턴스로 변환한 뒤 검증하는 `DefaultValidator.transform(...)`
+- Zod, Valibot, ArkType 등 Standard Schema v1 호환 validator의 이슈 정규화
+- 메타데이터를 보존하는 mapped DTO helper: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
+
+## 이 패키지가 하지 않는 일
+
+- HTTP body/query/path/header/cookie에서 값을 읽는 일
+- transport 전용 binding decorator 정의
+- 400 변환이나 route dispatch 같은 request pipeline 책임
 
 ## 빠른 시작
 
@@ -50,6 +65,47 @@ try {
 }
 ```
 
+### plain payload를 DTO 인스턴스로 변환하기
+
+```typescript
+import { DefaultValidator, IsEmail, MinLength } from '@konekti/dto';
+
+class CreateUserDto {
+  @IsEmail()
+  email = '';
+
+  @MinLength(2)
+  name = '';
+}
+
+const validator = new DefaultValidator();
+const dto = await validator.transform(
+  { email: 'hello@example.com', name: 'Konekti' },
+  CreateUserDto,
+);
+
+console.log(dto instanceof CreateUserDto); // true
+```
+
+### `transform(...)`는 문자열 ID를 숫자로 강제 변환하지 않습니다
+
+```typescript
+import { DefaultValidator, DtoValidationError, IsNumber } from '@konekti/dto';
+
+class GetUserDto {
+  @IsNumber()
+  id = 0;
+}
+
+const validator = new DefaultValidator();
+
+await validator.transform({ id: 42 }, GetUserDto); // ok
+
+await validator.transform({ id: '42' }, GetUserDto); // throws DtoValidationError
+```
+
+`transform(...)`는 DTO 인스턴스 형태를 materialize하지만, 스칼라 값을 암묵적으로 coercion하지는 않습니다. transport layer에서 ID가 문자열로 들어오고 `id`를 숫자로 만들고 싶다면, DTO validation 전에 그 값을 명시적으로 변환해야 합니다.
+
 ## 핵심 API
 
 ### `DefaultValidator`
@@ -59,10 +115,13 @@ try {
 ```typescript
 class DefaultValidator implements Validator {
   async validate(value: unknown, target: Constructor): Promise<void>;
+  async transform<T>(value: unknown, target: Constructor<T>): Promise<T>;
 }
 ```
 
-검증 규칙이 실패하면 `DtoValidationError`를 throw합니다.
+`validate(...)`는 이미 DTO 형태를 가진 값을 검증합니다.
+
+`transform(...)`는 raw 값을 타입이 지정된 DTO 인스턴스로 materialize하고, nested DTO 필드를 재귀적으로 hydrate한 뒤 결과를 검증합니다. 검증 규칙이 실패하면 `DtoValidationError`를 throw합니다.
 
 ### `DtoValidationError`
 
@@ -88,10 +147,20 @@ interface ValidationIssue {
 ```typescript
 interface Validator {
   validate(value: unknown, target: Constructor): MaybePromise<void>;
+  transform<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
 }
 ```
 
 커스텀 검증 전략을 제공하려면 이 인터페이스를 구현하면 됩니다.
+
+### `validate`와 `transform` 비교
+
+| 메서드 | 입력 | 출력 | 중첩 DTO 변환 |
+|---|---|---|---|
+| `validate` | 기존 DTO 형태 값 | `void` | 아니오 |
+| `transform` | raw 값 / plain object payload | 타입이 지정된 DTO 인스턴스 | 예 |
+
+`transform`은 own-enumerable 속성만 안전하게 복사하며, `__proto__`, `constructor`, `prototype` 같은 위험한 키는 차단합니다.
 
 ## 데코레이터
 
@@ -100,11 +169,11 @@ interface Validator {
 | 데코레이터 | 설명 |
 |-----------|------|
 | `@IsString()` | 문자열이어야 함 |
-| `@IsNumber()` | 숫자여야 함 |
+| `@IsNumber({ allowNaN?: boolean })` | 숫자여야 함; 기본적으로 `NaN`은 거부되며 `allowNaN: true`일 때만 허용됨 |
 | `@IsBoolean()` | 불리언이어야 함 |
 | `@IsDate()` | `Date` 인스턴스여야 함 |
 | `@IsArray()` | 배열이어야 함 |
-| `@IsObject()` | null이 아니고 배열이 아닌 객체여야 함 |
+| `@IsObject()` | plain object(`{}` 또는 `Object.create(null)`)여야 함; 클래스 인스턴스는 통과하지 않음 |
 | `@IsInt()` | 정수여야 함 |
 | `@IsEnum(entity)` | 주어진 enum의 값이어야 함 |
 
@@ -163,6 +232,8 @@ interface Validator {
 
 `@IsAlpha`, `@IsAlphanumeric`, `@IsAscii`, `@IsBase64`, `@IsBooleanString`, `@IsDataURI`, `@IsDateString`, `@IsDecimal`, `@IsEmail`, `@IsFQDN`, `@IsHexColor`, `@IsHexadecimal`, `@IsJSON`, `@IsJWT`, `@IsLocale`, `@IsLowercase`, `@IsMagnetURI`, `@IsMimeType`, `@IsMongoId`, `@IsNumberString`, `@IsPort`, `@IsRFC3339`, `@IsSemVer`, `@IsUppercase`, `@IsISO8601`, `@IsLatitude`, `@IsLongitude`, `@IsLatLong`, `@IsIP`, `@IsISBN`, `@IsISSN`, `@IsMobilePhone`, `@IsPostalCode`, `@IsRgbColor`, `@IsUrl`, `@IsUUID`, `@IsCurrency`
 
+`@IsDateString()`는 ISO-8601 문자열만 검증합니다.
+
 ### 배열
 
 | 데코레이터 | 설명 |
@@ -172,9 +243,11 @@ interface Validator {
 | `@ArrayNotEmpty()` | 배열에 최소 한 개의 요소가 있어야 함 |
 | `@ArrayMinSize(n)` | 배열 길이 ≥ `n` |
 | `@ArrayMaxSize(n)` | 배열 길이 ≤ `n` |
-| `@ArrayUnique()` | 모든 배열 요소가 고유해야 함 |
+| `@ArrayUnique(selector?)` | 모든 배열 요소가 고유해야 함; `selector`로 비교 키를 지정할 수 있음 |
 
 `{ each: true }`는 `@MinLength(...)` 같은 스칼라 validator를 배열 요소별로 적용할 때 가장 유용합니다.
+
+`{ each: true }`는 `Set`과 `Map` 값에서도 동작합니다. `Map`의 경우 key가 아니라 각 value를 검증합니다.
 
 ### 중첩 및 조건부
 
@@ -182,7 +255,7 @@ interface Validator {
 |-----------|------|
 | `@ValidateNested(() => TargetClass)` | 중첩 객체를 재귀적으로 검증 |
 | `@ValidateNested(() => TargetClass, { each: true })` | 배열의 각 항목을 재귀적으로 검증 |
-| `@ValidateIf(condition)` | `condition(dto, value) === true`일 때만 데코레이터 적용 (동기/비동기 가능) |
+| `@ValidateIf(condition)` | `condition(dto, value)`가 falsy이면 해당 필드 validator를 건너뜀 (동기/비동기 가능) |
 
 ### 커스텀 검증기
 
@@ -262,6 +335,29 @@ class CreateOrderDto {
 
 에러: `{ field: 'tags[1]', ... }`.
 
+### selector 기반 배열 고유성 검사
+
+```typescript
+class UniqueItemsDto {
+  @ArrayUnique((item: { id: string }) => item.id)
+  items: Array<{ id: string }> = [];
+}
+```
+
+### `Set`과 `Map`에서의 `each: true`
+
+```typescript
+class CollectionDto {
+  @MinLength(2, { each: true })
+  tagsSet = new Set<string>();
+
+  @MinLength(2, { each: true })
+  tagsMap = new Map<string, string>();
+}
+```
+
+두 컬렉션 모두 에러 경로는 대괄호 표기법을 사용합니다: `{ field: 'tagsSet[1]', ... }`, `{ field: 'tagsMap[1]', ... }`.
+
 ### 커스텀 에러 메시지
 
 모든 데코레이터는 선택적 `message` 문자열을 가진 옵션 객체를 받습니다:
@@ -272,6 +368,39 @@ email = '';
 ```
 
 ---
+
+## Mapped DTO Helpers
+
+Mapped DTO helper는 기존 DTO 하나 이상에서 새 DTO 클래스를 파생하면서 검증 메타데이터와, companion package가 이미 붙여 둔 필드 binding 메타데이터를 함께 보존합니다.
+
+`@konekti/dto`에서 바로 import할 수도 있고, subpath export인 `@konekti/dto/mapped-types`를 사용할 수도 있습니다.
+
+```typescript
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+
+class CreateUserDto {
+  @IsEmail()
+  email = '';
+
+  @MinLength(2)
+  name = '';
+}
+
+class AddressDto {
+  @MinLength(1)
+  city = '';
+}
+
+const UserEmailDto = PickType(CreateUserDto, ['email']);
+const UserWithoutNameDto = OmitType(CreateUserDto, ['name']);
+const PartialUserDto = PartialType(CreateUserDto);
+const UserWithAddressDto = IntersectionType(CreateUserDto, AddressDto);
+```
+
+- `PickType()`은 선택한 필드만 유지합니다.
+- `OmitType()`은 선택한 필드를 제거합니다.
+- `PartialType()`은 상속된 필드를 validation과 companion-package binding 의미에서 optional로 만듭니다.
+- `IntersectionType()`은 여러 DTO의 필드와 메타데이터를 합칩니다.
 
 ## 의존성
 

@@ -13,10 +13,8 @@ import {
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
-type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
-type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
-type ClassDecoratorLike = StandardClassDecoratorFn;
-type FieldDecoratorLike = StandardFieldDecoratorFn;
+type ClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
+type FieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
 type ValidatorJsRuleName = Extract<DtoFieldValidationRule, { kind: 'validatorjs' }>['validator'];
 type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
 
@@ -79,18 +77,18 @@ function resolveClassValidator(validate: ValidateClassInput): CustomClassValidat
   return createClassValidatorFromStandardSchema(validate);
 }
 
-function createValidationDecorator(ruleFactory: () => DtoFieldValidationRule): FieldDecoratorLike {
+function createValidationDecorator(ruleFactory: () => DtoFieldValidationRule): FieldDecoratorFn {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
     appendStandardDtoValidationRule(context.metadata, context.name, ruleFactory());
   };
 
-  return decorator as FieldDecoratorLike;
+  return decorator as FieldDecoratorFn;
 }
 
 function createValidationOptionsWithConfigDecorator<T>(
   ruleFactory: (value: T, options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
 ) {
-  return (value: T, options?: ValidationDecoratorOptions): FieldDecoratorLike => {
+  return (value: T, options?: ValidationDecoratorOptions): FieldDecoratorFn => {
     return createValidationDecorator(() => ruleFactory(value, options));
   };
 }
@@ -98,7 +96,7 @@ function createValidationOptionsWithConfigDecorator<T>(
 function createFlagValidationDecorator(
   ruleFactory: (options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
 ) {
-  return (options?: ValidationDecoratorOptions): FieldDecoratorLike => {
+  return (options?: ValidationDecoratorOptions): FieldDecoratorFn => {
     return createValidationDecorator(() => ruleFactory(options));
   };
 }
@@ -106,13 +104,13 @@ function createFlagValidationDecorator(
 function createArrayValidationDecorator<T>(
   ruleFactory: (values: readonly T[], options: ValidationDecoratorOptions | undefined) => DtoFieldValidationRule,
 ) {
-  return (values: readonly T[], options?: ValidationDecoratorOptions): FieldDecoratorLike => {
+  return (values: readonly T[], options?: ValidationDecoratorOptions): FieldDecoratorFn => {
     return createValidationDecorator(() => ruleFactory(values, options));
   };
 }
 
 function createValidatorJsDecorator(validator: ValidatorJsRuleName) {
-  return (args?: readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorLike => {
+  return (args?: readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn => {
     return createValidationDecorator(() => ({
       args,
       kind: 'validatorjs',
@@ -122,15 +120,15 @@ function createValidatorJsDecorator(validator: ValidatorJsRuleName) {
   };
 }
 
-export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'string', ...options }));
 }
 
-export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorLike {
+export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'number', ...options }));
 }
 
-export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'boolean', ...options }));
 }
 
@@ -154,7 +152,7 @@ export const IsInt = createFlagValidationDecorator((options) => ({ kind: 'int', 
 export const IsPositive = createFlagValidationDecorator((options) => ({ kind: 'positive', ...options }));
 export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'negative', ...options }));
 
-export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
   const normalized = Array.isArray(values) ? values : Object.values(values);
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
 }
@@ -167,11 +165,11 @@ export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, 
 export const Contains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'contains', value, ...options }));
 export const NotContains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'notContains', value, ...options }));
 
-export function Length(min: number, max?: number, options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function Length(min: number, max?: number, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'length', max, min, ...options }));
 }
 
-export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     dto,
     kind: 'nested',
@@ -186,13 +184,15 @@ export function Matches(
   pattern: RegExp | string,
   modifiersOrOptions?: string | ValidationDecoratorOptions,
   options?: ValidationDecoratorOptions,
-): FieldDecoratorLike {
+): FieldDecoratorFn {
+  const resolvedOptions = typeof modifiersOrOptions === 'object' ? modifiersOrOptions : options;
+
   if (pattern instanceof RegExp) {
     return createValidationDecorator(() => ({
       args: [pattern.source, pattern.flags],
       kind: 'validatorjs',
       validator: 'matches',
-      ...(typeof modifiersOrOptions === 'object' ? modifiersOrOptions : options),
+      ...resolvedOptions,
     } as DtoFieldValidationRule));
   }
 
@@ -200,7 +200,7 @@ export function Matches(
     args: [pattern, typeof modifiersOrOptions === 'string' ? modifiersOrOptions : undefined].filter((value) => value !== undefined),
     kind: 'validatorjs',
     validator: 'matches',
-    ...(typeof modifiersOrOptions === 'object' ? modifiersOrOptions : options),
+    ...resolvedOptions,
   } as DtoFieldValidationRule));
 }
 
@@ -233,39 +233,39 @@ export const IsLatitude = (options?: ValidationDecoratorOptions) => createValida
 export const IsLongitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('longitude')(undefined, options);
 export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latLong')(undefined, options);
 
-export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('ip')(version ? [version] : undefined, options);
 }
 
-export function IsISBN(version?: 10 | 13, options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsISBN(version?: 10 | 13, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('isbn')(version ? [String(version)] : undefined, options);
 }
 
-export function IsISSN(options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsISSN(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('issn')(undefined, options);
 }
 
-export function IsMobilePhone(locale?: string | readonly string[], options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsMobilePhone(locale?: string | readonly string[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('mobilePhone')(locale ? [locale] : undefined, options);
 }
 
-export function IsPostalCode(locale?: string, options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsPostalCode(locale?: string, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('postalCode')(locale ? [locale] : undefined, options);
 }
 
-export function IsRgbColor(includePercentValues?: boolean, options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsRgbColor(includePercentValues?: boolean, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('rgbColor')(includePercentValues === undefined ? undefined : [includePercentValues], options);
 }
 
-export function IsUrl(options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsUrl(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('url')(undefined, options);
 }
 
-export function IsUUID(version?: '3' | '4' | '5' | 'all', options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsUUID(version?: '3' | '4' | '5' | 'all', options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('uuid')(version ? [version] : undefined, options);
 }
 
-export function IsCurrency(options?: ValidationDecoratorOptions): FieldDecoratorLike {
+export function IsCurrency(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('currency')(undefined, options);
 }
 
@@ -278,14 +278,14 @@ export const ArrayMaxSize = createValidationOptionsWithConfigDecorator<number>((
 export function ArrayUnique(
   selectorOrOptions?: ((value: unknown) => unknown) | ValidationDecoratorOptions,
   options?: ValidationDecoratorOptions,
-): FieldDecoratorLike {
+): FieldDecoratorFn {
   const selector = typeof selectorOrOptions === 'function' ? selectorOrOptions : undefined;
   const resolvedOptions = typeof selectorOrOptions === 'function' ? options : selectorOrOptions;
 
   return createValidationDecorator(() => ({ kind: 'arrayUnique', selector, ...resolvedOptions }));
 }
 
-export function Validate(validate: CustomFieldValidator, options?: CustomValidationDecoratorOptions): FieldDecoratorLike {
+export function Validate(validate: CustomFieldValidator, options?: CustomValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     code: options?.code,
     each: options?.each,
@@ -296,7 +296,7 @@ export function Validate(validate: CustomFieldValidator, options?: CustomValidat
   }));
 }
 
-export function ValidateClass(validate: ValidateClassInput, options?: ValidationDecoratorOptions): ClassDecoratorLike {
+export function ValidateClass(validate: ValidateClassInput, options?: ValidationDecoratorOptions): ClassDecoratorFn {
   const decorator = (_target: Function, context: ClassDecoratorContext) => {
     appendStandardClassValidationRule(context.metadata, {
       code: options?.code,
@@ -305,5 +305,5 @@ export function ValidateClass(validate: ValidateClassInput, options?: Validation
     });
   };
 
-  return decorator as ClassDecoratorLike;
+  return decorator as ClassDecoratorFn;
 }
