@@ -336,6 +336,55 @@ describe('@konekti/platform-socket.io', () => {
     expect(loggerEvents.some((event) => event.includes('dropped the oldest pending message'))).toBe(true);
   });
 
+  it('removes errored sockets from the registry and logs the error', () => {
+    const loggerEvents: string[] = [];
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger(loggerEvents),
+      {
+        async close() {},
+        getServer() {
+          return {};
+        },
+      } as never,
+      {
+        transports: ['websocket'],
+      },
+    );
+    const listeners: {
+      disconnect?: (reason: string, description: unknown) => void;
+      error?: (error: Error) => void;
+      onAny?: (event: string, ...args: unknown[]) => void;
+    } = {};
+    const socket = {
+      id: 'socket-1',
+      disconnect: () => undefined,
+      on(event: 'disconnect' | 'error', listener: ((reason: string, description: unknown) => void) | ((error: Error) => void)) {
+        if (event === 'disconnect') {
+          listeners.disconnect = listener as (reason: string, description: unknown) => void;
+        } else {
+          listeners.error = listener as (error: Error) => void;
+        }
+        return this;
+      },
+      onAny(listener: (event: string, ...args: unknown[]) => void) {
+        listeners.onAny = listener;
+        return this;
+      },
+    } as unknown as Socket;
+    const state = Reflect.get(service, 'createConnectionHandlerState').call(service);
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, Socket>;
+
+    socketRegistry.set(socket.id, socket);
+    Reflect.get(service, 'attachConnectionListeners').call(service, state, [], socket, {} as never);
+
+    listeners.error?.(new Error('socket exploded'));
+
+    expect(socketRegistry.has(socket.id)).toBe(false);
+    expect(loggerEvents).toContain('error:SocketIoLifecycleService:Socket.IO gateway socket emitted an error.:socket exploded');
+  });
+
   it('isolates same room names across namespaces', async () => {
     class GatewayState {
       adminMessages: unknown[] = [];

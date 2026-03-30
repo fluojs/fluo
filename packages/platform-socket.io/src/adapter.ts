@@ -389,6 +389,11 @@ export class SocketIoLifecycleService
       void this.handleMessage(resolved, socket, request, event, extractPayload(args), ack);
     });
 
+    socket.on('error', (error: Error) => {
+      this.socketRegistry.delete(socket.id);
+      this.logger.error('Socket.IO gateway socket emitted an error.', error, 'SocketIoLifecycleService');
+    });
+
     socket.on('disconnect', (reason: string, description: unknown) => {
       if (!state.handlersReady) {
         state.bufferedDisconnect = { description, reason };
