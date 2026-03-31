@@ -21,7 +21,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 4. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
 5. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
 
-For Node.js apps, `runNodeApplication()` is the canonical startup path. It handles the HTTP adapter, default CORS, startup logging, and graceful shutdown signal wiring.
+`KonektiFactory` is the canonical public startup facade. For Node.js HTTP apps, the default flow is `const app = await KonektiFactory.create(AppModule); await app.listen();`.
 
 ## Installation
 
@@ -35,7 +35,7 @@ npm install @konekti/runtime
 
 ```typescript
 import { Module, Global } from '@konekti/core';
-import { runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 import { Controller, Get } from '@konekti/http';
 import type { RequestContext } from '@konekti/http';
 
@@ -50,7 +50,8 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class AppModule {}
 
-await runNodeApplication(AppModule);
+const app = await KonektiFactory.create(AppModule);
+await app.listen();
 ```
 
 ### Global request converters
@@ -58,7 +59,7 @@ await runNodeApplication(AppModule);
 For HTTP apps, register transport-wide request converters through the runtime entrypoints users already call.
 
 ```typescript
-import { KonektiFactory, runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 
 class TrimStringConverter {
   convert(value: unknown) {
@@ -68,17 +69,15 @@ class TrimStringConverter {
 
 const app = await KonektiFactory.create(AppModule, {
   converters: [TrimStringConverter],
-});
-
-await runNodeApplication(AppModule, {
-  converters: [TrimStringConverter],
   port: 3000,
 });
+
+await app.listen();
 ```
 
 These converters are HTTP binding concerns. They run before DTO validation and apply per bound field.
 
-### Full bootstrap with manual listen
+### Advanced bootstrap with manual listen
 
 ```typescript
 import { bootstrapApplication } from '@konekti/runtime';
@@ -143,19 +142,18 @@ await microservice.listen();
 
 ```typescript
 import { KonektiFactory } from '@konekti/runtime';
-import { MICROSERVICE } from '@konekti/microservices';
 
 const app = await KonektiFactory.create(AppModule);
-const microservice = await app.container.resolve(MICROSERVICE);
-
-await Promise.all([app.listen(), microservice.listen()]);
+await app.connectMicroservice();
+await app.startAllMicroservices();
+await app.listen();
 ```
 
 ### Raw webhook body (opt-in)
 
 ```typescript
 import { Controller, Post, type RequestContext } from '@konekti/http';
-import { runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 
 @Controller('/webhooks')
 class WebhookController {
@@ -172,9 +170,11 @@ class WebhookController {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   rawBody: true,
 });
+
+await app.listen();
 ```
 
 `rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The Node adapter currently applies this to non-multipart bodies such as JSON and text, and leaves `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
@@ -184,7 +184,7 @@ await runNodeApplication(AppModule, {
 ```typescript
 import { readFileSync } from 'node:fs';
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   host: '127.0.0.1',
   https: {
     cert: readFileSync('./certs/dev.crt'),
@@ -192,6 +192,8 @@ await runNodeApplication(AppModule, {
   },
   port: 8443,
 });
+
+await app.listen();
 ```
 
 When `host` is set, the Node adapter binds explicitly to that host instead of the default all-interfaces behavior. When `https` is provided, the adapter starts an HTTPS server and the startup log reports an `https://...` URL. If the public URL differs from the actual bind target, the startup log includes both. The `https` object is passed through to Node's `node:https.createServer`, so callers must supply valid TLS material such as `key` and `cert`.
@@ -199,10 +201,12 @@ When `host` is set, the Node adapter binds explicitly to that host instead of th
 ### Global prefix for application routes
 
 ```typescript
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   globalPrefix: '/api',
   globalPrefixExclude: ['/internal/*'],
 });
+
+await app.listen();
 ```
 
 `globalPrefix` applies to all routes by default, so a controller route like `/app/info` becomes `/api/app/info` and runtime-owned endpoints such as `/health` become `/api/health`. Use `globalPrefixExclude` when specific paths should stay unprefixed.
@@ -227,9 +231,11 @@ class DomainExceptionFilter implements ExceptionFilterHandler {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   filters: [new DomainExceptionFilter()],
 });
+
+await app.listen();
 ```
 
 `filters` registers global exception filters that run in order when a handler, guard, interceptor, or middleware throws. Return `true` after writing the response to stop the chain; return `undefined` to fall through to the next filter and eventually the built-in HTTP exception serializer.
@@ -301,7 +307,8 @@ export class AppModule {}
 
 | Export | Location | Description |
 |---|---|---|
-| `runNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap + listen + shutdown wiring for Node |
+| `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | Canonical HTTP application entrypoint — returns `Application` |
+| `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
@@ -317,7 +324,7 @@ export class AppModule {}
 ### Bootstrap flow
 
 ```text
-runNodeApplication(options)  [or bootstrapApplication]
+KonektiFactory.create(options)  [or bootstrapApplication]
   → compileModuleGraph()
       → validate imports/exports visibility
       → detect circular imports
