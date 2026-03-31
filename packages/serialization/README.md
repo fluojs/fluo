@@ -2,15 +2,28 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Output-side response shaping and serialization for Konekti.
 
-Response serialization decorators and interceptor for Konekti.
+`@konekti/serialization` focuses on the **output** boundary. It handles turning internal class instances or complex object graphs back into clean, JSON-safe plain objects. While `@konekti/validation` ensures incoming data is safe, this package ensures outgoing data is correctly shaped and sensitive information is hidden.
 
-This package provides class-based response shaping similar to NestJS class serialization:
+## The Mental Model
 
-- `@Exclude()` removes fields from serialized output.
-- `@Expose()` marks fields to include, and supports class-level `excludeExtraneous` mode.
-- `@Transform(fn)` transforms a field value before recursive serialization.
-- `SerializerInterceptor` applies `serialize()` automatically to handler responses.
+Konekti splits data handling into two distinct phases:
+
+1. **Validation (Input)**: Materializing raw payloads into class instances and enforcing rules.
+2. **Serialization (Output)**: Shaping class instances back into plain data for the response.
+
+`@konekti/serialization` provides decorators like `@Exclude()`, `@Expose()`, and `@Transform()` to control the final response shape without modifying your domain models or business logic.
+
+## Relationship with @konekti/http
+
+This package provides an interceptor that automatically shapes your handler's return values.
+
+In a Konekti application:
+1. Your controller returns a class instance (or an array of them).
+2. The `SerializerInterceptor` (if registered) catches the result.
+3. It runs the `serialize()` engine, which applies your decorators.
+4. The resulting plain object is what actually gets sent as the HTTP JSON body.
 
 ## Installation
 
@@ -20,21 +33,28 @@ pnpm add @konekti/serialization
 
 ## Quick Start
 
+### Basic Usage
+
 ```typescript
 import { Controller, Get, UseInterceptors } from '@konekti/http';
 import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
 
+// Use @Expose({ excludeExtraneous: true }) to only include marked fields.
 @Expose({ excludeExtraneous: true })
 class UserView {
   @Expose()
   id: string;
 
-  @Exclude()
-  password: string;
+  @Expose()
+  email: string;
 
-  constructor(id: string, password: string) {
+  @Exclude() // Explicitly hidden, even if excludeExtraneous is false.
+  passwordHash: string;
+
+  constructor(id: string, email: string, passwordHash: string) {
     this.id = id;
-    this.password = password;
+    this.email = email;
+    this.passwordHash = passwordHash;
   }
 }
 
@@ -42,16 +62,46 @@ class UserView {
 class UsersController {
   @Get('/')
   @UseInterceptors(SerializerInterceptor)
-  listUsers() {
-    return [new UserView('u-1', 'secret')];
+  async getUser() {
+    return new UserView('u-1', 'hello@example.com', 'shhhh');
   }
 }
 ```
 
-## Global registration
+### Before vs After Serialization
 
-Register the serializer globally at bootstrap:
+When the controller above returns the `UserView` instance, the serialized output looks like this:
 
+**Before (Class Instance):**
+```typescript
+UserView {
+  id: 'u-1',
+  email: 'hello@example.com',
+  passwordHash: 'shhhh'
+}
+```
+
+**After (JSON Output):**
+```json
+{
+  "id": "u-1",
+  "email": "hello@example.com"
+}
+```
+
+## Core API
+
+### Decorators
+
+- `@Exclude()`: Removes the field from the serialized output.
+- `@Expose(options?)`: Marks a field to be included. If used on a class with `{ excludeExtraneous: true }`, only fields with `@Expose()` are kept.
+- `@Transform(({ value, obj }) => newValue)`: Dynamically transforms a value during serialization. Must return synchronously.
+
+### SerializerInterceptor
+
+The recommended way to use this package in a Konekti app. You can register it per-controller, per-route, or globally.
+
+**Global Registration:**
 ```typescript
 import { bootstrapApplication } from '@konekti/runtime';
 import { SerializerInterceptor } from '@konekti/serialization';
@@ -62,23 +112,25 @@ await bootstrapApplication({
 });
 ```
 
-## API
+### serialize()
 
-- `Exclude(): FieldDecorator` — removes fields from serialized output.
-- `Expose(options?): ClassDecorator | FieldDecorator` — marks fields to include and supports class-level `excludeExtraneous` mode.
-- `Transform(fn): FieldDecorator` — transforms a field value before recursive serialization.
-- `serialize(value: unknown): unknown` — manual serialization helper.
-- `class SerializerInterceptor implements Interceptor` — interceptor for automatic response serialization.
+The manual serialization helper used by the interceptor.
 
-## Serialization contract
+```typescript
+import { serialize } from '@konekti/serialization';
 
-- Cycles are cut to `undefined` at the cycle edge to ensure output remains JSON-safe.
-- Shared references are preserved. Revisiting an already-serialized object returns the same serialized node.
-- Enumerable symbol-keyed properties on plain objects are serialized alongside string keys.
+const plainObject = serialize(myClassInstance);
+```
 
-## non-goals and intentional limitations
+## Serialization Rules
 
-- No deep class instantiation — serialization walks the object graph but does not construct new class instances from plain objects; output is always JSON-safe plain data
-- No schema validation — `@Exclude` / `@Expose` / `@Transform` shape the output but do not validate input; use the `@konekti/validation` package for input validation
-- No async transform support — `@Transform(fn)` must return synchronously; async transforms are not supported
-- Symbol-keyed properties on class instances are not serialized — only plain-object symbol keys are included (class instances serialize only string-keyed properties)
+1. **JSON Safety**: Cycles are automatically cut to `undefined` to prevent infinite loops.
+2. **Reference Preservation**: If the same object appears multiple times in a graph, it is serialized consistently.
+3. **Symbols**: Enumerable symbol-keyed properties on plain objects are included.
+4. **Classes**: Only string-keyed properties on class instances are serialized.
+
+## Intentional Limitations
+
+- **No Deep Instantiation**: Serialization converts classes to plain objects. It does **not** do the reverse. For that, use `@konekti/validation`.
+- **No Schema Validation**: This package shapes data; it does not validate that the data is "correct" or "valid".
+- **Sync Only**: Transformations must be synchronous. Async operations are not supported during the serialization walk.
