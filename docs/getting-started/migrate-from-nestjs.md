@@ -14,8 +14,8 @@ This guide is for teams that already ship NestJS services and want a practical m
 | `@Controller()`, `@Get()`, `@Post()` | `@Controller()`, `@Get()`, `@Post()` from `@konekti/http` | Route decorator shape is intentionally familiar. |
 | `@Inject(TOKEN)` | `@Inject([TOKEN])` from `@konekti/core` | Konekti takes an explicit token list for constructor dependencies. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | Default remains singleton. |
-| `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` or `bootstrapApplication({ rootModule: AppModule, ... })` | Runtime owns adapter wiring and startup flow. |
-| `app.listen(3000)` | `runNodeApplication(...)` (built-in listen) or `await app.listen()` after `bootstrapApplication(...)` | Both are supported depending on how much control you need. |
+| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, options)` | Returns the Konekti `Application` shell without implicitly calling `listen()`. |
+| `app.listen(3000)` | `await app.listen()` | Startup remains explicit after application creation. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
 | `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)`, `@Convert(...)`, and global `converters` runtime options | Konekti keeps request conversion in the HTTP binding layer instead of a separate `@UsePipes()` decorator. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `createTestingModule({ rootModule })` from `@konekti/testing` | Override providers, compile graph, resolve tokens. |
@@ -186,9 +186,9 @@ export class RequestAuditService {}
 
 ## 4) bootstrap path
 
-Use `runNodeApplication()` as the canonical Node startup path when you want runtime-managed adapter setup, startup logging, and graceful shutdown wiring.
+Use `KonektiFactory.create()` as the canonical HTTP startup path.
 
-Use `bootstrapApplication()` when you want to control `listen()` yourself.
+Use `bootstrapApplication()` only when you explicitly want the lower-level bootstrap primitive.
 
 ### NestJS
 
@@ -204,15 +204,17 @@ async function bootstrap() {
 void bootstrap();
 ```
 
-### Konekti (`runNodeApplication`)
+### Konekti (`KonektiFactory.create`)
 
 ```typescript
-import { runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   port: 3000,
 });
+
+await app.listen();
 ```
 
 ### Konekti (`bootstrapApplication` + manual listen)
