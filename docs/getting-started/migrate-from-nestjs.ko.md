@@ -5,6 +5,33 @@
 
 이 가이드는 이미 NestJS 서비스를 운영 중인 팀이 Konekti로 옮길 때, 개념 차이와 실제 변경 지점을 빠르게 파악하도록 돕기 위한 실전 문서입니다.
 
+## codemod 빠른 시작 (`konekti migrate`)
+
+먼저 CLI codemod를 실행하고, warning에 나온 수동 후속 작업을 이어서 처리하세요.
+
+```bash
+# 기본 동작: dry-run
+konekti migrate ./src
+
+# 변경 사항 실제 반영
+konekti migrate ./src --apply
+
+# transform 선택/제외
+konekti migrate ./src --only imports,injectable,scope,bootstrap,testing,tsconfig
+konekti migrate ./src --skip testing
+```
+
+현재 1차 자동 변환 범위:
+
+1. import rewriting
+2. `@Injectable()` 제거
+3. scope enum 매핑
+4. 안전한 기본 startup 형태에서 `KonektiFactory.create(...)` + `await app.listen()` 기준 bootstrap rewrite
+5. 안전한 metadata/chain에 한한 testing rewrite (`Test.createTestingModule` → `createTestingModule`)
+6. `tsconfig.json` rewrite (`experimentalDecorators`, `emitDecoratorMetadata` 제거)
+
+또한 명령 출력에는 수동 마이그레이션 대상(`@Inject(TOKEN)` 파라미터 데코레이터, handler 파라미터의 Request DTO 전환, pipe/converter 전환 지점, 지원하지 않는 Nest bootstrap 변형, 지원하지 않는 Nest testing metadata/chain) 경고가 포함됩니다.
+
 ## 빠른 매핑 테이블
 
 | NestJS 패턴 | Konekti 패턴 | 설명 |

@@ -5,6 +5,33 @@
 
 This guide is for teams that already ship NestJS services and want a practical migration path to Konekti.
 
+## codemod quick start (`konekti migrate`)
+
+Use the CLI codemod first, then finish manual follow-ups reported by warnings.
+
+```bash
+# dry-run (default)
+konekti migrate ./src
+
+# apply changes
+konekti migrate ./src --apply
+
+# focus or exclude transforms
+konekti migrate ./src --only imports,injectable,scope,bootstrap,testing,tsconfig
+konekti migrate ./src --skip testing
+```
+
+Current first-phase automated transforms:
+
+1. import rewriting
+2. `@Injectable()` removal
+3. scope enum mapping
+4. bootstrap rewrite to `KonektiFactory.create(...)` + `await app.listen()` for safe default startup forms
+5. testing rewrite (`Test.createTestingModule` → `createTestingModule`) for safe metadata/chains only
+6. `tsconfig.json` rewrite (`experimentalDecorators`, `emitDecoratorMetadata` removal)
+
+The command also emits warning/report items for manual migration areas (`@Inject(TOKEN)` parameter decorators, Request DTO migration for handler parameters, pipe/converter hotspots, unsupported Nest bootstrap variants, and unsupported Nest testing metadata/chains).
+
 ## quick mapping table
 
 | NestJS pattern | Konekti pattern | Notes |

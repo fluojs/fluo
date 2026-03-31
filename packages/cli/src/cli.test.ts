@@ -883,4 +883,59 @@ describe('CLI command runner', () => {
     expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
   });
+
+  it('prints migrate usage for `help migrate`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help', 'migrate'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti migrate <path> [options]');
+    expect(stdoutBuffer.join('')).toContain('--apply');
+    expect(stdoutBuffer.join('')).toContain('--only <comma-list>');
+  });
+
+  it('runs migrate in dry-run by default and only writes with --apply', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const dryRunStdout: string[] = [];
+    const dryRunExitCode = await runCli(['migrate', './src'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => dryRunStdout.push(message) },
+    });
+
+    expect(dryRunExitCode).toBe(0);
+    expect(dryRunStdout.join('')).toContain('Mode: dry-run');
+    expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toContain('NestFactory.create');
+
+    const applyExitCode = await runCli(['migrate', './src', '--apply'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(applyExitCode).toBe(0);
+    expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toContain('KonektiFactory.create');
+    expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toContain('await app.listen();');
+  });
 });

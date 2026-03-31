@@ -13,10 +13,11 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 ## What this package does
 
-`@konekti/cli` provides three top-level commands plus aliases:
+`@konekti/cli` provides four top-level commands plus aliases:
 
 - **`konekti new`** — scaffold a starter project with defaults → install dependencies
 - **`konekti generate <kind> <name>`** — create one or more files and update the module when the generator kind participates in module registration
+- **`konekti migrate <path>`** — run safe NestJS → Konekti codemods (dry-run by default)
 - **`konekti help [command]`** — show top-level or command-specific help output
 
 The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
@@ -60,6 +61,30 @@ konekti generate response-dto user-profile
 Implemented generator kinds include `controller`, `guard`, `interceptor`, `middleware`, `module`, `repository`/`repo`, `request-dto`, `response-dto`, and `service`.
 
 Each generator produces one or more files with correctly kebab-cased names and PascalCase class names.
+
+### Run NestJS migration codemods
+
+```bash
+# dry-run (default)
+konekti migrate ./src
+
+# write changes
+konekti migrate ./src --apply
+
+# limit or exclude transforms
+konekti migrate ./src --only imports,bootstrap,testing
+konekti migrate ./src --skip testing
+```
+
+Current safe first-phase transforms:
+
+- import rewriting (`@nestjs/common` → `@konekti/core` / `@konekti/http`)
+- `@Injectable()` removal + scope mapping to `@Scope('singleton'|'request'|'transient')`
+- bootstrap rewrite for safe default startup forms (`NestFactory.create(AppModule[, options])` + `app.listen(port)` → `KonektiFactory.create(..., { port })` + `await app.listen()`)
+- testing rewrite for safe metadata/chains (`Test.createTestingModule({ imports: [RootModule] })` or `{ rootModule: RootModule }` → `createTestingModule({ rootModule: RootModule })`)
+- `tsconfig.json` rewrite (remove `experimentalDecorators`, `emitDecoratorMetadata`)
+
+The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
 
 ## Official generated testing templates
 
