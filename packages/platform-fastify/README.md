@@ -13,20 +13,25 @@ npm install @konekti/platform-fastify fastify
 ## Quick Start
 
 ```typescript
-import { runFastifyApplication } from '@konekti/platform-fastify';
+import { createFastifyAdapter } from '@konekti/platform-fastify';
+import { KonektiFactory } from '@konekti/runtime';
 
-await runFastifyApplication(AppModule, {
-  port: 3000,
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: 3000 }),
 });
+
+await app.listen();
 ```
 
 ## API
 
 - `createFastifyAdapter(options)` - create a Fastify `HttpApplicationAdapter`
-- `bootstrapFastifyApplication(rootModule, options)` - bootstrap without implicit shutdown signal wiring
-- `runFastifyApplication(rootModule, options)` - bootstrap + listen + startup logging + shutdown signal wiring
+- `bootstrapFastifyApplication(rootModule, options)` - advanced bootstrap helper without implicit shutdown signal wiring
+- `runFastifyApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
 
 ### Supported options
+
+`createFastifyAdapter()`, `runFastifyApplication()`, and `bootstrapFastifyApplication()` all remain supported. New application startup examples should prefer `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })` so the public startup story stays centered on the runtime facade.
 
 `runFastifyApplication()` and `bootstrapFastifyApplication()` support the same runtime option shapes as `runNodeApplication()` for:
 

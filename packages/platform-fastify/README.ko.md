@@ -13,20 +13,25 @@ npm install @konekti/platform-fastify fastify
 ## 빠른 시작
 
 ```typescript
-import { runFastifyApplication } from '@konekti/platform-fastify';
+import { createFastifyAdapter } from '@konekti/platform-fastify';
+import { KonektiFactory } from '@konekti/runtime';
 
-await runFastifyApplication(AppModule, {
-  port: 3000,
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: 3000 }),
 });
+
+await app.listen();
 ```
 
 ## API
 
 - `createFastifyAdapter(options)` - Fastify `HttpApplicationAdapter`를 생성합니다.
-- `bootstrapFastifyApplication(rootModule, options)` - 암시적 종료 시그널 연결 없이 부트스트랩합니다.
-- `runFastifyApplication(rootModule, options)` - 부트스트랩 + 수신(listen) + 시작 로그 + 종료 시그널 연결을 수행합니다.
+- `bootstrapFastifyApplication(rootModule, options)` - 고급 부트스트랩 헬퍼(암시적 종료 시그널 연결 없음)입니다.
+- `runFastifyApplication(rootModule, options)` - 부트스트랩 + 수신(listen) + 시작 로그 + 종료 시그널 연결을 위한 호환 헬퍼입니다.
 
 ### 지원 옵션
+
+새 애플리케이션 시작 예시는 `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`를 우선 사용해야 합니다. `runFastifyApplication()` 및 `bootstrapFastifyApplication()`은 호환 또는 고급 경로로 유지됩니다.
 
 `runFastifyApplication()` 및 `bootstrapFastifyApplication()`은 `runNodeApplication()`과 동일한 형태의 런타임 옵션을 지원합니다.
 
