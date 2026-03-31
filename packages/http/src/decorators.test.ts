@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { getClassValidationRules, getControllerMetadata, getDtoBindingSchema, getDtoValidationSchema, getRouteMetadata } from '@konekti/core';
 
 import {
+  Convert,
   Controller,
   FromBody,
   FromPath,
+  FromQuery,
   Get,
   Optional,
   Produces,
@@ -17,6 +19,12 @@ import {
 } from './decorators.js';
 import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 import { IsString, MinLength, ValidateClass } from '@konekti/validation';
+
+class NoopTestConverter {
+  convert(value: unknown) {
+    return value;
+  }
+}
 
 describe('http decorators', () => {
   it('writes controller and route metadata using decorator syntax', () => {
@@ -45,6 +53,7 @@ describe('http decorators', () => {
       id = '';
 
       @FromBody('note')
+      @Convert(NoopTestConverter)
       @IsString()
       @MinLength(1, { code: 'REQUIRED', message: 'note is required' })
       @Optional()
@@ -105,6 +114,7 @@ describe('http decorators', () => {
       {
         propertyKey: 'note',
         metadata: {
+          converter: NoopTestConverter,
           key: 'note',
           optional: true,
           source: 'body',
@@ -150,6 +160,7 @@ describe('http decorators', () => {
       id = '';
 
       @FromBody('name')
+      @Convert(NoopTestConverter)
       @IsString()
       @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
       name = '';
@@ -168,6 +179,7 @@ describe('http decorators', () => {
       {
         propertyKey: 'name',
         metadata: {
+          converter: NoopTestConverter,
           key: 'name',
           optional: undefined,
           source: 'body',
@@ -196,6 +208,7 @@ describe('http decorators', () => {
       {
         propertyKey: 'name',
         metadata: {
+          converter: NoopTestConverter,
           key: 'name',
           optional: undefined,
           source: 'body',
@@ -224,6 +237,7 @@ describe('http decorators', () => {
       {
         propertyKey: 'name',
         metadata: {
+          converter: NoopTestConverter,
           key: 'name',
           optional: undefined,
           source: 'body',
@@ -268,6 +282,7 @@ describe('http decorators', () => {
   it('makes inherited binding and validation metadata optional for PartialType', () => {
     class UpdateUserRequest {
       @FromBody('name')
+      @Convert(NoopTestConverter)
       @IsString()
       @MinLength(2, { code: 'NAME_MIN', message: 'name must be at least 2 chars' })
       name = '';
@@ -282,6 +297,7 @@ describe('http decorators', () => {
       {
         propertyKey: 'name',
         metadata: {
+          converter: NoopTestConverter,
           key: 'name',
           optional: true,
           source: 'body',
@@ -372,5 +388,25 @@ describe('http decorators', () => {
     }
 
     expect(optionalRules).toHaveLength(1);
+  });
+
+  it('stores converter metadata regardless of decorator lexical order', () => {
+    class OrderedRequest {
+      @Convert(NoopTestConverter)
+      @FromQuery('id')
+      id = 0;
+    }
+
+    expect(getDtoBindingSchema(OrderedRequest)).toEqual([
+      {
+        propertyKey: 'id',
+        metadata: {
+          converter: NoopTestConverter,
+          key: 'id',
+          optional: undefined,
+          source: 'query',
+        },
+      },
+    ]);
   });
 });

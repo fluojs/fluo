@@ -203,9 +203,14 @@ export interface ArgumentResolverContext {
   requestContext: RequestContext;
 }
 
+export type ConverterLike = Converter | Token<Converter>;
+
 export interface ConverterTarget {
   dto: Constructor;
+  handler: HandlerDescriptor;
+  key: string;
   propertyKey: MetadataPropertyKey;
+  requestContext: RequestContext;
   source: MetadataSource;
 }
 

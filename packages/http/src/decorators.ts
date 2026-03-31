@@ -7,7 +7,7 @@ import {
   type MetadataSource,
 } from '@konekti/core';
 
-import type { GuardLike, HttpMethod, InterceptorLike } from './types.js';
+import type { ConverterLike, GuardLike, HttpMethod, InterceptorLike } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
@@ -228,6 +228,14 @@ export const FromBody = createDtoFieldDecorator('body');
 export function Optional(): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
     mergeStandardDtoBinding(context.metadata, context.name, { optional: true });
+  };
+
+  return decorator as FieldDecoratorLike;
+}
+
+export function Convert(converter: ConverterLike): FieldDecoratorLike {
+  const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
+    mergeStandardDtoBinding(context.metadata, context.name, { converter });
   };
 
   return decorator as FieldDecoratorLike;
