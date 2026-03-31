@@ -179,10 +179,49 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 | `@FromHeader()` | 요청 헤더에서 필드 바인딩 |
 | `@FromCookie()` | 쿠키에서 필드 바인딩 |
 | `@Optional()` | 바인딩을 선택 사항으로 표시 (바인더 레벨) |
+| `@Convert()` | global converter 이후, validation 이전에 필드 전용 변환 적용 |
 
 > 검증 데코레이터 (`@IsString`, `@IsEmail` 등)는 이 패키지가 아닌 `@konekti/validation` 패키지에서 제공됩니다.
 
 바인딩은 소스 값의 형태를 명시적으로 유지합니다. 예를 들어, 반복되는 쿼리/헤더 값은 이를 정규화하는 명시적인 변환기를 제공하지 않는 한 배열(단일 요소 배열 포함)로 유지됩니다.
+
+### 요청 변환기 (Request converters)
+
+`@konekti/http`는 이제 요청 시점 변환을 위한 두 가지 seam을 제공합니다.
+
+1. **global converters** — 앱 부트스트랩 시 등록
+2. **field-level converters** — `@Convert(...)`로 선언
+
+field-level converter는 항상 **global converter 이후**, 그리고 `@konekti/validation` 검증 **이전**에 실행됩니다.
+
+```typescript
+import { Controller, Convert, FromQuery, Get, RequestDto } from '@konekti/http';
+import { IsNumber } from '@konekti/validation';
+
+class ParseIntConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? Number(value) : value;
+  }
+}
+
+class SearchRequest {
+  @FromQuery('id')
+  @Convert(ParseIntConverter)
+  @IsNumber()
+  id = 0;
+}
+
+@Controller('/search')
+class SearchController {
+  @Get('/')
+  @RequestDto(SearchRequest)
+  list(input: SearchRequest) {
+    return input;
+  }
+}
+```
+
+global converter는 문자열 trim, query primitive coercion 같은 transport-wide 정규화에 사용하고, `@Convert(...)`는 특정 DTO 필드에만 필요한 변환 규칙에 사용하세요.
 
 ### 런타임 헬퍼
 
@@ -261,8 +300,8 @@ class EventsController {
   → 모듈 미들웨어
   → 가드 체인 (허용 / 거부)
   → 인터셉터 체인 (전/후 래퍼)
-  → 요청 DTO 바인딩 (FromBody / FromPath / FromQuery / ...)
-→ DTO 검증 (`@konekti/validation` 패키지 경유)
+  → 요청 DTO 바인딩 + 변환 (FromBody / FromPath / FromQuery / ...)
+→ DTO 검증 (`@konekti/validation` 패키지 경유, 변환 이후)
   → 컨트롤러 메서드 호출(input, ctx)
   → 성공 상태 해결 (@HttpCode 오버라이드 또는 메서드 기본값)
   → 성공 응답 작성

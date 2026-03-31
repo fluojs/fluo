@@ -179,10 +179,49 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 | `@FromHeader()` | Bind field from request header |
 | `@FromCookie()` | Bind field from cookie |
 | `@Optional()` | Mark binding as optional (binder-level) |
+| `@Convert()` | Apply a field-level converter after global converters and before validation |
 
 > Validation decorators (`@IsString`, `@IsEmail`, etc.) come from the `@konekti/validation` package, not this package.
 
 Binding keeps source value shape explicit. For example, repeated query/header values remain arrays (including single-element arrays) unless you provide an explicit converter that normalizes them.
+
+### Request converters
+
+`@konekti/http` now exposes two request-time conversion seams:
+
+1. **Global converters** — configured at app bootstrap
+2. **Field-level converters** — declared with `@Convert(...)`
+
+Field-level converters always run **after** global converters and **before** `@konekti/validation` validates the DTO.
+
+```typescript
+import { Controller, Convert, FromQuery, Get, RequestDto } from '@konekti/http';
+import { IsNumber } from '@konekti/validation';
+
+class ParseIntConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? Number(value) : value;
+  }
+}
+
+class SearchRequest {
+  @FromQuery('id')
+  @Convert(ParseIntConverter)
+  @IsNumber()
+  id = 0;
+}
+
+@Controller('/search')
+class SearchController {
+  @Get('/')
+  @RequestDto(SearchRequest)
+  list(input: SearchRequest) {
+    return input;
+  }
+}
+```
+
+Use global converters for transport-wide normalization such as trimming strings or coercing query primitives. Use `@Convert(...)` when a specific DTO field needs a targeted conversion rule.
 
 ### Runtime helpers
 
@@ -261,8 +300,8 @@ incoming request
   → module middleware
   → guard chain  (allow / deny)
   → interceptor chain  (before/after wrapper)
-  → request DTO binding  (fromBody / fromPath / fromQuery / ...)
-→ DTO validation  (via the @konekti/validation package)
+  → request DTO binding + conversion  (fromBody / fromPath / fromQuery / ...)
+→ DTO validation  (via the @konekti/validation package, after conversion)
   → controller method(input, ctx)
   → success status resolution (`@HttpCode` override or method default)
   → success response write
