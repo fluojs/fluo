@@ -143,7 +143,10 @@ export interface Application {
   readonly dispatcher: Dispatcher;
 
   close(signal?: string): Promise<void>;
+  connectMicroservice(options?: CreateMicroserviceOptions): Promise<MicroserviceApplication>;
   dispatch: Dispatcher['dispatch'];
+  get<T>(token: Token<T>): Promise<T>;
+  startAllMicroservices(): Promise<void>;
   listen(): Promise<void>;
   ready(): Promise<void>;
 }
