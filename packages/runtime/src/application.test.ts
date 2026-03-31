@@ -8,6 +8,7 @@ import type { Container } from '@konekti/di';
 import {
   Controller,
   FromBody,
+  FromQuery,
   FromCookie,
   Get,
   Post,
@@ -20,6 +21,7 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
   type HttpApplicationAdapter,
+  type Converter,
 } from '@konekti/http';
 import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
@@ -366,6 +368,84 @@ describe('bootstrapApplication', () => {
     expect(app.rootModule).toBe(AppModule);
   });
 
+  it('applies global converters through KonektiFactory.create()', async () => {
+    class QueryNumberConverter implements Converter {
+      convert(value: unknown, target: { source: string }) {
+        if (target.source === 'query' && typeof value === 'string') {
+          return Number(value);
+        }
+
+        return value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @RequestDto(SearchRequest)
+      @Get('/')
+      list(input: SearchRequest) {
+        return { id: input.id, type: typeof input.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SearchController],
+    });
+
+    const app = await KonektiFactory.create(AppModule, {
+      converters: [QueryNumberConverter],
+    });
+
+    const response = {
+      committed: false,
+      headers: {},
+      redirect(status: number, location: string) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body: unknown) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name: string, value: string | string[]) {
+        this.headers[name] = value;
+      },
+      setStatus(code: number) {
+        this.statusCode = code;
+        this.statusSet = true;
+      },
+      statusCode: undefined,
+      statusSet: false,
+    } as FrameworkResponse & { body?: unknown };
+
+    await app.dispatch(
+      {
+        body: undefined,
+        cookies: {},
+        headers: {},
+        method: 'GET',
+        params: {},
+        path: '/search',
+        query: { id: '42' },
+        raw: {},
+        url: '/search?id=42',
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ id: 42, type: 'number' });
+
+    await app.close();
+  });
+
   it('creates node applications that parse JSON request bodies over HTTP', async () => {
     class CreateUserRequest {
       @FromBody('name')
@@ -435,6 +515,52 @@ describe('bootstrapApplication', () => {
       page: '1',
       tag: ['a', 'b', 'c'],
     });
+
+    await app.close();
+  });
+
+  it('applies global converters through runNodeApplication()', async () => {
+    class QueryNumberConverter implements Converter {
+      convert(value: unknown, target: { source: string }) {
+        if (target.source === 'query' && typeof value === 'string') {
+          return Number(value);
+        }
+
+        return value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    @Controller('/search')
+    class SearchController {
+      @RequestDto(SearchRequest)
+      @Get('/')
+      list(input: SearchRequest) {
+        return { id: input.id, type: typeof input.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SearchController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await runNodeApplication(AppModule, {
+      converters: [QueryNumberConverter],
+      cors: false,
+      port,
+      shutdownSignals: false,
+    });
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/search?id=42`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
 
     await app.close();
   });

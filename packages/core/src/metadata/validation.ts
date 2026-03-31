@@ -48,7 +48,10 @@ export function getDtoFieldBindingMetadata(target: object, propertyKey: Metadata
     return undefined;
   }
 
+  const converter = stored?.converter ?? standard?.converter;
+
   return {
+    ...(converter === undefined ? {} : { converter }),
     key: stored?.key ?? standard?.key,
     optional: stored?.optional ?? standard?.optional,
     source,
@@ -93,16 +96,19 @@ export function getDtoBindingSchema(dto: Constructor): DtoBindingSchemaEntry[] {
       return [];
     }
 
-    return [
-      {
-        propertyKey,
-        metadata: {
-          key: storedEntry?.key ?? standardEntry?.key,
-          optional: storedEntry?.optional ?? standardEntry?.optional,
-          source,
+      const converter = storedEntry?.converter ?? standardEntry?.converter;
+
+      return [
+        {
+          propertyKey,
+          metadata: {
+            ...(converter === undefined ? {} : { converter }),
+            key: storedEntry?.key ?? standardEntry?.key,
+            optional: storedEntry?.optional ?? standardEntry?.optional,
+            source,
+          },
         },
-      },
-    ];
+      ];
   });
 }
 

@@ -11,6 +11,7 @@ import { runMiddlewareChain } from './middleware.js';
 import { createRequestContext, runWithRequestContext } from './request-context.js';
 import { SseResponse } from './sse.js';
 import type {
+  Binder,
   ContentNegotiationOptions,
   Dispatcher,
   FrameworkRequest,
@@ -32,6 +33,7 @@ export type ErrorHandler = (error: unknown, request: FrameworkRequest, response:
 
 export interface CreateDispatcherOptions {
   appMiddleware?: MiddlewareLike[];
+  binder?: Binder;
   contentNegotiation?: ContentNegotiationOptions;
   handlerMapping: HandlerMapping;
   interceptors?: InterceptorLike[];
@@ -125,6 +127,7 @@ async function dispatchMatchedHandler(
   requestContext: RequestContext,
   observers: RequestObserverLike[],
   contentNegotiation: ResolvedContentNegotiation | undefined,
+  binder: Binder | undefined,
   globalInterceptors: InterceptorLike[] | undefined,
 ): Promise<void> {
   const guardContext: GuardContext = {
@@ -145,7 +148,7 @@ async function dispatchMatchedHandler(
   const interceptors = [...(globalInterceptors ?? []), ...(handler.route.interceptors ?? [])];
 
   const result = await runInterceptorChain(interceptors, interceptorContext, async () => {
-    return invokeControllerHandler(handler, requestContext);
+    return invokeControllerHandler(handler, requestContext, binder);
   });
 
   ensureRequestNotAborted(requestContext.request);
@@ -243,6 +246,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.requestContext,
         context.observers,
         context.contentNegotiation,
+        context.options.binder,
         context.options.interceptors,
       );
     });

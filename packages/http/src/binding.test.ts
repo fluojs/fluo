@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  Convert,
   FromBody,
   FromQuery,
   FromPath,
@@ -156,6 +157,81 @@ describe('DefaultBinder', () => {
     )) as SearchUsersRequest;
 
     expect(bound.tags).toEqual(['admin']);
+  });
+
+  it('applies global converters before assigning DTO fields', async () => {
+    class QueryNumberConverter {
+      convert(value: unknown, target: { source: string }) {
+        if (target.source === 'query' && typeof value === 'string') {
+          return Number(value);
+        }
+
+        return value;
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    const binder = new DefaultBinder([QueryNumberConverter]);
+    const bound = (await binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { id: '42' } })),
+    )) as SearchUsersRequest;
+
+    expect(bound.id).toBe(42);
+  });
+
+  it('applies field-level converters for bound DTO members', async () => {
+    class TrimStringConverter {
+      convert(value: unknown) {
+        return typeof value === 'string' ? value.trim() : value;
+      }
+    }
+
+    class CreateUserRequest {
+      @FromBody('name')
+      @Convert(TrimStringConverter)
+      name = '';
+    }
+
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(
+      CreateUserRequest,
+      createContext(createRequest({ body: { name: '  Ada  ' } })),
+    )) as CreateUserRequest;
+
+    expect(bound.name).toBe('Ada');
+  });
+
+  it('applies field-level converters after global converters', async () => {
+    class GlobalPrefixConverter {
+      convert(value: unknown) {
+        return typeof value === 'string' ? `global:${value}` : value;
+      }
+    }
+
+    class FieldPrefixConverter {
+      convert(value: unknown) {
+        return typeof value === 'string' ? `field:${value}` : value;
+      }
+    }
+
+    class CreateUserRequest {
+      @FromBody('name')
+      @Convert(FieldPrefixConverter)
+      name = '';
+    }
+
+    const binder = new DefaultBinder([new GlobalPrefixConverter()]);
+    const bound = (await binder.bind(
+      CreateUserRequest,
+      createContext(createRequest({ body: { name: 'Ada' } })),
+    )) as CreateUserRequest;
+
+    expect(bound.name).toBe('field:global:Ada');
   });
 });
 

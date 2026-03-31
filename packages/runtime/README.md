@@ -53,6 +53,31 @@ class AppModule {}
 await runNodeApplication(AppModule);
 ```
 
+### Global request converters
+
+For HTTP apps, register transport-wide request converters through the runtime entrypoints users already call.
+
+```typescript
+import { KonektiFactory, runNodeApplication } from '@konekti/runtime';
+
+class TrimStringConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? value.trim() : value;
+  }
+}
+
+const app = await KonektiFactory.create(AppModule, {
+  converters: [TrimStringConverter],
+});
+
+await runNodeApplication(AppModule, {
+  converters: [TrimStringConverter],
+  port: 3000,
+});
+```
+
+These converters are HTTP binding concerns. They run before DTO validation and apply per bound field.
+
 ### Full bootstrap with manual listen
 
 ```typescript

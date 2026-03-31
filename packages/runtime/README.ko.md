@@ -53,6 +53,31 @@ class AppModule {}
 await runNodeApplication(AppModule);
 ```
 
+### global request converters
+
+HTTP 앱에서는 사용자가 실제로 호출하는 런타임 entrypoint를 통해 transport-wide request converter를 등록합니다.
+
+```typescript
+import { KonektiFactory, runNodeApplication } from '@konekti/runtime';
+
+class TrimStringConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? value.trim() : value;
+  }
+}
+
+const app = await KonektiFactory.create(AppModule, {
+  converters: [TrimStringConverter],
+});
+
+await runNodeApplication(AppModule, {
+  converters: [TrimStringConverter],
+  port: 3000,
+});
+```
+
+이 converter는 HTTP 바인딩 concern입니다. 각 바인딩 필드마다 적용되며 DTO validation 전에 실행됩니다.
+
 ### 수동 수신(listen)을 포함한 전체 부트스트랩
 
 ```typescript

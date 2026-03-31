@@ -12,6 +12,7 @@ import type {
   RequestObservationContext,
 } from '@konekti/http';
 import {
+  Convert,
   FromBody,
   FromQuery,
   createCorrelationMiddleware,
@@ -31,7 +32,7 @@ import {
   assertRequestContext,
   getCurrentRequestContext,
 } from '@konekti/http';
-import { IsString, MinLength, ValidateNested } from '@konekti/validation';
+import { IsNumber, IsString, MinLength, ValidateNested } from '@konekti/validation';
 
 import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 import { forRoutes, runMiddlewareChain } from './middleware.js';
@@ -1331,6 +1332,55 @@ describe('dispatcher runtime', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ tags: ['one'] });
+  });
+
+  it('converts request values before validation in RequestDto flow', async () => {
+    class ParseIntConverter {
+      convert(value: unknown) {
+        return typeof value === 'string' ? Number(value) : value;
+      }
+    }
+
+    class SearchRequest {
+      @FromQuery('id')
+      @Convert(ParseIntConverter)
+      @IsNumber()
+      id = 0;
+    }
+
+    @Controller('/convert-before-validate')
+    class ConversionController {
+      @Get('/')
+      @RequestDto(SearchRequest)
+      getSearch(input: SearchRequest) {
+        return { id: input.id, type: typeof input.id };
+      }
+    }
+
+    const root = new Container().register(ConversionController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ConversionController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      {
+        body: undefined,
+        cookies: {},
+        headers: {},
+        method: 'GET',
+        params: {},
+        path: '/convert-before-validate',
+        query: { id: '42' },
+        raw: {},
+        url: '/convert-before-validate?id=42',
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ id: 42, type: 'number' });
   });
 
   it('returns nested validation field paths through the canonical error envelope', async () => {
