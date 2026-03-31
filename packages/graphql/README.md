@@ -15,7 +15,7 @@ pnpm add @konekti/graphql
 
 ```typescript
 import { Module } from '@konekti/core';
-import { MinLength } from '@konekti/dto';
+import { MinLength } from '@konekti/validation';
 import { bootstrapNodeApplication } from '@konekti/runtime';
 import { Arg, createGraphqlModule, Mutation, Query, Resolver } from '@konekti/graphql';
 
@@ -288,4 +288,4 @@ If `schema` is omitted, the module builds schema from discovered decorators. If 
 | `graphql-yoga` | HTTP transport/runtime |
 | `@konekti/runtime` | module lifecycle, container, compiled modules |
 | `@konekti/http` | request/response bridge |
-| `@konekti/dto` package | input validation pipeline |
+| `@konekti/validation` package | input validation pipeline |

@@ -190,7 +190,7 @@ Prisma Client
 | `@konekti/di` | `PrismaService`와 `PRISMA_CLIENT`를 resolve하는 DI 컨테이너 |
 | `@konekti/http` | `PrismaTransactionInterceptor`가 연결되는 인터셉터 시스템 |
 | `@konekti/testing` | `overrideProvider(PRISMA_CLIENT, fakePrisma)`로 테스트 더블 주입 |
-| `@konekti/dto` 패키지 | vertical slice에서 서비스 레이어에 도달하기 전에 요청 DTO를 검증 |
+| `@konekti/validation` 패키지 | vertical slice에서 서비스 레이어에 도달하기 전에 요청 DTO를 검증 |
 
 ## 한 줄 mental model
 

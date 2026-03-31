@@ -9,5 +9,5 @@ export interface ValidationIssue {
 
 export interface Validator {
   validate(value: unknown, target: Constructor): MaybePromise<void>;
-  transform<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
+  materialize<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
 }

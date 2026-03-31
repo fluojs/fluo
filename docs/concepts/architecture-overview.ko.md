@@ -23,7 +23,7 @@ Konekti는 공개되는 인터페이스를 좁게 유지하며, 대부분의 동
 
 ### 검증, 인증 및 문서화
 
-- `@konekti/dto`
+- `@konekti/validation`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`
@@ -46,7 +46,7 @@ Konekti는 공개되는 인터페이스를 좁게 유지하며, 대부분의 동
 - `@konekti/di`: 명시적인 토큰 기반 프로바이더 해결 및 스코프.
 - `@konekti/http`: 요청 실행, 바인딩, 유효성 검사 진입점, 예외, 라우트 메타데이터.
 - `@konekti/runtime`: 설정 조립, DI, 핸들러 매핑, 상태 확인(health/readiness), 어댑터 부트스트랩.
-- `@konekti/dto` 패키지: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
+- `@konekti/validation` 패키지: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
 - `@konekti/jwt`: 토큰 핵심 로직.
 - `@konekti/passport`: 범용 인증 전략 등록 및 가드 연결.
 - `@konekti/openapi`: 라우트 및 DTO 메타데이터로부터 문서 생성.

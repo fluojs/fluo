@@ -8,7 +8,7 @@
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto`
+- `@konekti/validation`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
@@ -25,7 +25,7 @@
 
 - `@konekti/openapi`
 - `@konekti/graphql`
-- `@konekti/serializer`
+- `@konekti/serialization`
 - `@konekti/cache-manager`
 - `@konekti/metrics`
 - `@konekti/cron`
@@ -46,12 +46,12 @@
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
 - **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임.
-- **`@konekti/dto` 패키지**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
+- **`@konekti/validation` 패키지**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
 - **`@konekti/jwt`**: 핵심 JWT 로직.
 - **`@konekti/passport`**: 인증 전략 레지스트리 및 범용 가드 연결.
 - **`@konekti/openapi`**: 문서 생성 및 OpenAPI 데코레이터.
 - **`@konekti/graphql`**: GraphQL 모듈, 스키마 노출, 실행 파이프라인.
-- **`@konekti/serializer`**: 클래스 기반 응답 직렬화 및 인터셉터.
+- **`@konekti/serialization`**: 클래스 기반 응답 직렬화 및 인터셉터.
 - **`@konekti/cache-manager`**: 메모리/Redis 스토어를 지원하는 데코레이터 기반 HTTP 응답 캐시.
 - **`@konekti/metrics`**: Prometheus 메트릭 노출.
 - **`@konekti/cron`**: 분산 락을 지원하는 데코레이터 기반 작업 스케줄링.

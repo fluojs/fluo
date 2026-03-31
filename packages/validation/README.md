@@ -1,11 +1,11 @@
-# @konekti/dto
+# @konekti/validation
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based DTO utilities for TypeScript. `@konekti/dto` owns DTO validation rules, the validation/transform engine, Standard Schema-compatible class validation via `@ValidateClass(schema)`, and metadata-preserving mapped DTO helpers.
+Decorator-based DTO utilities for TypeScript. `@konekti/validation` owns DTO validation rules, the validation/materialization engine, Standard Schema-compatible class validation via `@ValidateClass(schema)`, and metadata-preserving mapped DTO helpers.
 
-It does **not** own request binding or transport-specific input extraction. Packages such as `@konekti/http` use DTO metadata together with their own binding decorators, while `@konekti/dto` focuses on turning rules into `ValidationIssue` / `DtoValidationError` output and typed DTO instances.
+It does **not** own request binding or transport-specific input extraction. Packages such as `@konekti/http` use DTO metadata together with their own binding decorators, while `@konekti/validation` focuses on turning rules into `ValidationIssue` / `DtoValidationError` output and typed DTO instances.
 
 ## See also
 
@@ -15,7 +15,7 @@ It does **not** own request binding or transport-specific input extraction. Pack
 ## Installation
 
 ```bash
-pnpm add @konekti/dto
+pnpm add @konekti/validation
 ```
 
 ## What this package does
@@ -23,7 +23,7 @@ pnpm add @konekti/dto
 - field-level validation decorators such as `@IsString()`, `@MinLength()`, and `@ValidateNested()`
 - class-level validation via `@ValidateClass(...)`
 - `DefaultValidator.validate(...)` for validating an existing DTO-like value
-- `DefaultValidator.transform(...)` for turning plain payloads into typed DTO instances before validation
+- `DefaultValidator.materialize(...)` for turning plain payloads into typed DTO instances before validation
 - Standard Schema normalization for Zod, Valibot, ArkType, and other Standard Schema v1 compatible validators
 - metadata-preserving mapped DTO helpers: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
 
@@ -36,7 +36,7 @@ pnpm add @konekti/dto
 ## Quick Start
 
 ```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto';
+import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -65,10 +65,10 @@ try {
 }
 ```
 
-### Transform a plain payload into a DTO instance
+### Materialize a plain payload into a DTO instance
 
 ```typescript
-import { DefaultValidator, IsEmail, MinLength } from '@konekti/dto';
+import { DefaultValidator, IsEmail, MinLength } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -79,7 +79,7 @@ class CreateUserDto {
 }
 
 const validator = new DefaultValidator();
-const dto = await validator.transform(
+const dto = await validator.materialize(
   { email: 'hello@example.com', name: 'Konekti' },
   CreateUserDto,
 );
@@ -87,10 +87,10 @@ const dto = await validator.transform(
 console.log(dto instanceof CreateUserDto); // true
 ```
 
-### `transform(...)` does not coerce string IDs into numbers
+### `materialize(...)` does not coerce string IDs into numbers
 
 ```typescript
-import { DefaultValidator, DtoValidationError, IsNumber } from '@konekti/dto';
+import { DefaultValidator, DtoValidationError, IsNumber } from '@konekti/validation';
 
 class GetUserDto {
   @IsNumber()
@@ -99,12 +99,12 @@ class GetUserDto {
 
 const validator = new DefaultValidator();
 
-await validator.transform({ id: 42 }, GetUserDto); // ok
+await validator.materialize({ id: 42 }, GetUserDto); // ok
 
-await validator.transform({ id: '42' }, GetUserDto); // throws DtoValidationError
+await validator.materialize({ id: '42' }, GetUserDto); // throws DtoValidationError
 ```
 
-`transform(...)` materializes the DTO instance shape, but it does not perform implicit scalar coercion. If your transport layer receives IDs as strings and you want `id` to become a number, convert that value explicitly before DTO validation runs.
+`materialize(...)` materializes the DTO instance shape, but it does not perform implicit scalar coercion. If your transport layer receives IDs as strings and you want `id` to become a number, convert that value explicitly before DTO validation runs.
 
 ## Core API
 
@@ -115,13 +115,13 @@ The main validation engine. Implements the `Validator` interface.
 ```typescript
 class DefaultValidator implements Validator {
   async validate(value: unknown, target: Constructor): Promise<void>;
-  async transform<T>(value: unknown, target: Constructor<T>): Promise<T>;
+  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T>;
 }
 ```
 
 `validate(...)` checks an existing DTO-like value.
 
-`transform(...)` materializes a typed DTO instance from a raw value, recursively hydrates nested DTO fields, then validates the result. It throws `DtoValidationError` when any validation rule fails.
+`materialize(...)` materializes a typed DTO instance from a raw value, recursively hydrates nested DTO fields, then validates the result. It throws `DtoValidationError` when any validation rule fails.
 
 ### `DtoValidationError`
 
@@ -147,20 +147,20 @@ interface ValidationIssue {
 ```typescript
 interface Validator {
   validate(value: unknown, target: Constructor): MaybePromise<void>;
-  transform<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
+  materialize<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
 }
 ```
 
 Implement this interface to supply a custom validation strategy.
 
-### `validate` vs `transform`
+### `validate` vs `materialize`
 
 | Method | Input | Output | Nested DTO hydration |
 |---|---|---|---|
 | `validate` | Existing DTO-like value | `void` | No |
-| `transform` | Raw value / plain object payload | Typed DTO instance | Yes |
+| `materialize` | Raw value / plain object payload | Typed DTO instance | Yes |
 
-`transform` only copies safe own-enumerable properties and blocks dangerous keys such as `__proto__`, `constructor`, and `prototype`.
+`materialize` only copies safe own-enumerable properties and blocks dangerous keys such as `__proto__`, `constructor`, and `prototype`.
 
 ## Decorators
 
@@ -304,7 +304,7 @@ class CreateOrderDto {
 
 Errors use dot-notation paths: `{ field: 'address.city', ... }`.
 
-When transforming nested DTOs, only plain-object payloads are copied into the nested instance; non-plain inputs are treated as invalid data and are not implicitly merged into DTO fields.
+When materializing nested DTOs, only plain-object payloads are copied into the nested instance; non-plain inputs are treated as invalid data and are not implicitly merged into DTO fields.
 
 Cyclic nested payloads are treated as invalid data as well, so recursive validation fails with a validation error instead of recursing indefinitely.
 
@@ -373,10 +373,10 @@ email = '';
 
 Mapped DTO helpers derive a new DTO class from one or more existing DTOs while preserving validation metadata and any field-level binding metadata already attached by companion packages.
 
-They can be imported from `@konekti/dto` or from the subpath export `@konekti/dto/mapped-types`.
+They can be imported from `@konekti/validation` or from the subpath export `@konekti/validation/mapped-types`.
 
 ```typescript
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()

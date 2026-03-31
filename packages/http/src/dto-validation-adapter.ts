@@ -1,13 +1,9 @@
 import { getDtoBindingSchema, type Constructor } from '@konekti/core';
-import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/dto';
+import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/validation';
 
 import { BadRequestException } from './exceptions.js';
 import { toInputErrorDetail } from './input-error-detail.js';
 import type { ValidationIssue, Validator } from './types.js';
-
-type TransformCapableValidator = {
-  transform<T>(value: unknown, target: Constructor<T>): Promise<T>;
-};
 
 export class HttpDtoValidationAdapter implements Validator {
   private readonly validator = new BaseDefaultValidator();
@@ -35,7 +31,7 @@ export class HttpDtoValidationAdapter implements Validator {
     return filtered;
   }
 
-  async validate(value: unknown, target: Parameters<BaseDefaultValidator['validate']>[1]): Promise<void> {
+  async validate(value: unknown, target: Constructor): Promise<void> {
     try {
       const filteredValue = this.filterUnboundRequestDtoFields(value, target);
       await this.validator.validate(filteredValue, target);
@@ -48,10 +44,9 @@ export class HttpDtoValidationAdapter implements Validator {
     }
   }
 
-  async transform<T>(value: unknown, target: Constructor<T>): Promise<T> {
+  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
     try {
-      const validator = this.validator as unknown as TransformCapableValidator;
-      return await validator.transform(value, target);
+      return await this.validator.materialize(value, target);
     } catch (error: unknown) {
       if (error instanceof DtoValidationError) {
         this.throwBadRequestForValidationError(error);

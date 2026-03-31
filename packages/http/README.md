@@ -17,7 +17,7 @@ The HTTP execution layer that turns route metadata into a request processing cha
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
 - Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
-- Mapped DTO helpers from the `@konekti/dto` package (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
+- Mapped DTO helpers from the `@konekti/validation` package (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
 - Routing table construction (`createHandlerMapping`)
 - Request DTO binding and validation
 - The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
@@ -35,7 +35,7 @@ npm install @konekti/http
 
 ```typescript
 import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/dto';
+import { IsString, MinLength } from '@konekti/validation';
 import type { RequestContext } from '@konekti/http';
 
 class CreateUserDto {
@@ -140,7 +140,7 @@ URI behavior remains the default when no runtime `versioning` option is provided
 Konekti supports metadata-preserving mapped DTO helpers for common request-shape derivation.
 
 ```typescript
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 
 class CreateUserRequest {
   @FromBody('name')
@@ -180,7 +180,7 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 | `@FromCookie()` | Bind field from cookie |
 | `@Optional()` | Mark binding as optional (binder-level) |
 
-> Validation decorators (`@IsString`, `@IsEmail`, etc.) come from the `@konekti/dto` package, not this package.
+> Validation decorators (`@IsString`, `@IsEmail`, etc.) come from the `@konekti/validation` package, not this package.
 
 Binding keeps source value shape explicit. For example, repeated query/header values remain arrays (including single-element arrays) unless you provide an explicit converter that normalizes them.
 
@@ -262,7 +262,7 @@ incoming request
   → guard chain  (allow / deny)
   → interceptor chain  (before/after wrapper)
   → request DTO binding  (fromBody / fromPath / fromQuery / ...)
-→ DTO validation  (via the @konekti/dto package)
+→ DTO validation  (via the @konekti/validation package)
   → controller method(input, ctx)
   → success status resolution (`@HttpCode` override or method default)
   → success response write
@@ -313,7 +313,7 @@ The binder is not a simple field copy. Two policies are enforced:
 ## Related packages
 
 - `@konekti/core` — where route and DTO metadata is stored
-- `@konekti/dto` package — validation engine used by the DTO validation step
+- `@konekti/validation` package — validation engine used by the DTO validation step
 - `@konekti/runtime` — assembles the routing table and dispatcher during bootstrap
 - `@konekti/passport` — auth guard that plugs into the guard chain
 

@@ -15,8 +15,8 @@ import {
   UseInterceptors,
   getRouteProducesMetadata,
 } from './decorators.js';
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
-import { IsString, MinLength, ValidateClass } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
+import { IsString, MinLength, ValidateClass } from '@konekti/validation';
 
 describe('http decorators', () => {
   it('writes controller and route metadata using decorator syntax', () => {

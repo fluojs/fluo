@@ -24,7 +24,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 
 ### validation, auth, and docs
 
-- `@konekti/dto`
+- `@konekti/validation`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`
@@ -47,7 +47,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 - `@konekti/di`: explicit token-based provider resolution and scopes.
 - `@konekti/http`: request execution, binding, validation entrypoints, exceptions, and route metadata.
 - `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, adapter bootstrapping, and dev-mode config reload application.
-- `@konekti/dto` package: validation decorators, mapped DTO helpers, and engine.
+- `@konekti/validation` package: validation decorators, mapped DTO helpers, and engine.
 - `@konekti/jwt`: token-core concerns.
 - `@konekti/passport`: generic auth strategy registration and guard wiring.
 - `@konekti/openapi`: document production from route and DTO metadata.

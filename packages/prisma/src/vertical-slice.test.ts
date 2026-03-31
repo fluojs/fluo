@@ -15,7 +15,7 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
 } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/dto';
+import { IsString, MinLength } from '@konekti/validation';
 
 import { createPrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
 

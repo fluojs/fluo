@@ -50,7 +50,7 @@ describe('CLI generators', () => {
     const dto = generateRequestDtoFiles('User')[0]?.content ?? '';
 
     expect(dto).toContain("from '@konekti/http'");
-    expect(dto).toContain("from '@konekti/dto'");
+    expect(dto).toContain("from '@konekti/validation'");
     expect(dto).toContain('@FromBody(\'user\')');
     expect(dto).toContain('@MinLength(1');
   });

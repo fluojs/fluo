@@ -39,7 +39,7 @@
     "busboy": "^1.6.0"
   },
   "devDependencies": {
-    "@konekti/serializer": "workspace:*",
+    "@konekti/serialization": "workspace:*",
     "@types/busboy": "^1.5.4"
   }
 }

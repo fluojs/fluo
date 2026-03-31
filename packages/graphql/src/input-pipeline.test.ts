@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsBoolean, IsInt, MinLength } from '@konekti/dto';
+import { IsBoolean, IsInt, MinLength } from '@konekti/validation';
 
 import { Arg } from './decorators.js';
 import { createGraphqlInput, resolveArgScalarType } from './input-pipeline.js';

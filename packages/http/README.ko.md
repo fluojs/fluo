@@ -17,7 +17,7 @@
 
 - `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — 어댑터, 미들웨어, 가드, 인터셉터, 컨트롤러 간의 공통 언어
 - 라우트 및 DTO 데코레이터 (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath` 등)
-- `@konekti/dto` 패키지의 매핑된 DTO 헬퍼 (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
+- `@konekti/validation` 패키지의 매핑된 DTO 헬퍼 (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
 - 라우팅 테이블 구성 (`createHandlerMapping`)
 - 요청 DTO 바인딩 및 검증
 - 미들웨어 → 가드 → 인터셉터 → 바인드 → 검증 → 핸들러 호출을 순서대로 실행하는 디스패처
@@ -35,7 +35,7 @@ npm install @konekti/http
 
 ```typescript
 import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/dto';
+import { IsString, MinLength } from '@konekti/validation';
 import type { RequestContext } from '@konekti/http';
 
 class CreateUserDto {
@@ -140,7 +140,7 @@ class UsersController {
 Konekti는 일반적인 요청 형태 파생을 위해 메타데이터를 보존하는 매핑된 DTO 헬퍼를 지원합니다.
 
 ```typescript
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 
 class CreateUserRequest {
   @FromBody('name')
@@ -180,7 +180,7 @@ const UpdateUserRequest = PartialType(CreateUserRequest);
 | `@FromCookie()` | 쿠키에서 필드 바인딩 |
 | `@Optional()` | 바인딩을 선택 사항으로 표시 (바인더 레벨) |
 
-> 검증 데코레이터 (`@IsString`, `@IsEmail` 등)는 이 패키지가 아닌 `@konekti/dto` 패키지에서 제공됩니다.
+> 검증 데코레이터 (`@IsString`, `@IsEmail` 등)는 이 패키지가 아닌 `@konekti/validation` 패키지에서 제공됩니다.
 
 바인딩은 소스 값의 형태를 명시적으로 유지합니다. 예를 들어, 반복되는 쿼리/헤더 값은 이를 정규화하는 명시적인 변환기를 제공하지 않는 한 배열(단일 요소 배열 포함)로 유지됩니다.
 
@@ -262,7 +262,7 @@ class EventsController {
   → 가드 체인 (허용 / 거부)
   → 인터셉터 체인 (전/후 래퍼)
   → 요청 DTO 바인딩 (FromBody / FromPath / FromQuery / ...)
-→ DTO 검증 (`@konekti/dto` 패키지 경유)
+→ DTO 검증 (`@konekti/validation` 패키지 경유)
   → 컨트롤러 메서드 호출(input, ctx)
   → 성공 상태 해결 (@HttpCode 오버라이드 또는 메서드 기본값)
   → 성공 응답 작성
@@ -313,7 +313,7 @@ class EventsController {
 ## 관련 패키지
 
 - `@konekti/core` — 라우트 및 DTO 메타데이터가 저장되는 곳
-- `@konekti/dto` 패키지 — DTO 검증 단계에서 사용되는 검증 엔진
+- `@konekti/validation` 패키지 — DTO 검증 단계에서 사용되는 검증 엔진
 - `@konekti/runtime` — 부트스트랩 중 라우팅 테이블과 디스패처를 조립함
 - `@konekti/passport` — 가드 체인에 연결되는 인증 가드
 

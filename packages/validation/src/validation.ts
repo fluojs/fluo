@@ -802,7 +802,7 @@ export class DefaultValidator implements Validator {
     throw new DtoValidationError('Validation failed.', issues);
   }
 
-  async transform<T>(value: unknown, target: Constructor<T>): Promise<T> {
+  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
     const instance = createNestedDtoInstance(target, value, { active: new WeakSet<object>() });
     const issues = await collectValidationIssues(target, instance);
 

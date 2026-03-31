@@ -59,6 +59,6 @@ The OpenAPI generator extracts schema information from DTOs:
 
 ```text
 @konekti/http writes route metadata
-The `@konekti/dto` package writes validation metadata
+The `@konekti/validation` package writes validation metadata
 @konekti/openapi reads both to assemble the documentation
 ```

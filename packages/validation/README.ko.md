@@ -1,11 +1,11 @@
-# @konekti/dto
+# @konekti/validation
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-데코레이터 기반 TypeScript DTO 유틸리티 패키지입니다. `@konekti/dto`는 DTO 검증 규칙, validation/transform 엔진, `@ValidateClass(schema)`를 통한 Standard Schema 호환 클래스 검증, 메타데이터를 보존하는 mapped DTO helper를 담당합니다.
+데코레이터 기반 TypeScript DTO 유틸리티 패키지입니다. `@konekti/validation`는 DTO 검증 규칙, validation/materialization 엔진, `@ValidateClass(schema)`를 통한 Standard Schema 호환 클래스 검증, 메타데이터를 보존하는 mapped DTO helper를 담당합니다.
 
-반대로 request binding이나 transport별 입력 추출은 이 패키지 책임이 아닙니다. `@konekti/http` 같은 패키지가 자신의 binding decorator와 함께 DTO 메타데이터를 사용하고, `@konekti/dto`는 규칙을 `ValidationIssue` / `DtoValidationError`와 타입이 지정된 DTO 인스턴스로 연결하는 역할에 집중합니다.
+반대로 request binding이나 transport별 입력 추출은 이 패키지 책임이 아닙니다. `@konekti/http` 같은 패키지가 자신의 binding decorator와 함께 DTO 메타데이터를 사용하고, `@konekti/validation`는 규칙을 `ValidationIssue` / `DtoValidationError`와 타입이 지정된 DTO 인스턴스로 연결하는 역할에 집중합니다.
 
 ## 관련 문서
 
@@ -15,7 +15,7 @@
 ## 설치
 
 ```bash
-pnpm add @konekti/dto
+pnpm add @konekti/validation
 ```
 
 ## 이 패키지가 하는 일
@@ -23,7 +23,7 @@ pnpm add @konekti/dto
 - `@IsString()`, `@MinLength()`, `@ValidateNested()` 같은 필드 레벨 검증 데코레이터 제공
 - `@ValidateClass(...)`를 통한 클래스 레벨 검증 제공
 - 이미 DTO 형태를 가진 값을 검증하는 `DefaultValidator.validate(...)`
-- plain payload를 타입이 지정된 DTO 인스턴스로 변환한 뒤 검증하는 `DefaultValidator.transform(...)`
+- plain payload를 타입이 지정된 DTO 인스턴스로 변환한 뒤 검증하는 `DefaultValidator.materialize(...)`
 - Zod, Valibot, ArkType 등 Standard Schema v1 호환 validator의 이슈 정규화
 - 메타데이터를 보존하는 mapped DTO helper: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
 
@@ -36,7 +36,7 @@ pnpm add @konekti/dto
 ## 빠른 시작
 
 ```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/dto';
+import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -65,10 +65,10 @@ try {
 }
 ```
 
-### plain payload를 DTO 인스턴스로 변환하기
+### plain payload를 DTO 인스턴스로 materialize하기
 
 ```typescript
-import { DefaultValidator, IsEmail, MinLength } from '@konekti/dto';
+import { DefaultValidator, IsEmail, MinLength } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -79,7 +79,7 @@ class CreateUserDto {
 }
 
 const validator = new DefaultValidator();
-const dto = await validator.transform(
+const dto = await validator.materialize(
   { email: 'hello@example.com', name: 'Konekti' },
   CreateUserDto,
 );
@@ -87,10 +87,10 @@ const dto = await validator.transform(
 console.log(dto instanceof CreateUserDto); // true
 ```
 
-### `transform(...)`는 문자열 ID를 숫자로 강제 변환하지 않습니다
+### `materialize(...)`는 문자열 ID를 숫자로 강제 변환하지 않습니다
 
 ```typescript
-import { DefaultValidator, DtoValidationError, IsNumber } from '@konekti/dto';
+import { DefaultValidator, DtoValidationError, IsNumber } from '@konekti/validation';
 
 class GetUserDto {
   @IsNumber()
@@ -99,12 +99,12 @@ class GetUserDto {
 
 const validator = new DefaultValidator();
 
-await validator.transform({ id: 42 }, GetUserDto); // ok
+await validator.materialize({ id: 42 }, GetUserDto); // ok
 
-await validator.transform({ id: '42' }, GetUserDto); // throws DtoValidationError
+await validator.materialize({ id: '42' }, GetUserDto); // throws DtoValidationError
 ```
 
-`transform(...)`는 DTO 인스턴스 형태를 materialize하지만, 스칼라 값을 암묵적으로 coercion하지는 않습니다. transport layer에서 ID가 문자열로 들어오고 `id`를 숫자로 만들고 싶다면, DTO validation 전에 그 값을 명시적으로 변환해야 합니다.
+`materialize(...)`는 DTO 인스턴스 형태를 materialize하지만, 스칼라 값을 암묵적으로 coercion하지는 않습니다. transport layer에서 ID가 문자열로 들어오고 `id`를 숫자로 만들고 싶다면, DTO validation 전에 그 값을 명시적으로 변환해야 합니다.
 
 ## 핵심 API
 
@@ -115,13 +115,13 @@ await validator.transform({ id: '42' }, GetUserDto); // throws DtoValidationErro
 ```typescript
 class DefaultValidator implements Validator {
   async validate(value: unknown, target: Constructor): Promise<void>;
-  async transform<T>(value: unknown, target: Constructor<T>): Promise<T>;
+  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T>;
 }
 ```
 
 `validate(...)`는 이미 DTO 형태를 가진 값을 검증합니다.
 
-`transform(...)`는 raw 값을 타입이 지정된 DTO 인스턴스로 materialize하고, nested DTO 필드를 재귀적으로 hydrate한 뒤 결과를 검증합니다. 검증 규칙이 실패하면 `DtoValidationError`를 throw합니다.
+`materialize(...)`는 raw 값을 타입이 지정된 DTO 인스턴스로 materialize하고, nested DTO 필드를 재귀적으로 hydrate한 뒤 결과를 검증합니다. 검증 규칙이 실패하면 `DtoValidationError`를 throw합니다.
 
 ### `DtoValidationError`
 
@@ -147,20 +147,20 @@ interface ValidationIssue {
 ```typescript
 interface Validator {
   validate(value: unknown, target: Constructor): MaybePromise<void>;
-  transform<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
+  materialize<T>(value: unknown, target: Constructor<T>): MaybePromise<T>;
 }
 ```
 
 커스텀 검증 전략을 제공하려면 이 인터페이스를 구현하면 됩니다.
 
-### `validate`와 `transform` 비교
+### `validate`와 `materialize` 비교
 
 | 메서드 | 입력 | 출력 | 중첩 DTO 변환 |
 |---|---|---|---|
 | `validate` | 기존 DTO 형태 값 | `void` | 아니오 |
-| `transform` | raw 값 / plain object payload | 타입이 지정된 DTO 인스턴스 | 예 |
+| `materialize` | raw 값 / plain object payload | 타입이 지정된 DTO 인스턴스 | 예 |
 
-`transform`은 own-enumerable 속성만 안전하게 복사하며, `__proto__`, `constructor`, `prototype` 같은 위험한 키는 차단합니다.
+`materialize`는 own-enumerable 속성만 안전하게 복사하며, `__proto__`, `constructor`, `prototype` 같은 위험한 키는 차단합니다.
 
 ## 데코레이터
 
@@ -304,7 +304,7 @@ class CreateOrderDto {
 
 에러는 점 표기법 경로를 사용합니다: `{ field: 'address.city', ... }`.
 
-중첩 DTO를 변환할 때는 plain object payload만 nested 인스턴스에 복사합니다. non-plain 입력은 invalid data로 취급되며 DTO 필드에 암묵적으로 merge되지 않습니다.
+중첩 DTO를 materialize할 때는 plain object payload만 nested 인스턴스에 복사합니다. non-plain 입력은 invalid data로 취급되며 DTO 필드에 암묵적으로 merge되지 않습니다.
 
 순환(cyclic) 중첩 payload도 invalid data로 취급하므로, 재귀 검증은 무한 재귀 대신 validation error로 실패합니다.
 
@@ -373,10 +373,10 @@ email = '';
 
 Mapped DTO helper는 기존 DTO 하나 이상에서 새 DTO 클래스를 파생하면서 검증 메타데이터와, companion package가 이미 붙여 둔 필드 binding 메타데이터를 함께 보존합니다.
 
-`@konekti/dto`에서 바로 import할 수도 있고, subpath export인 `@konekti/dto/mapped-types`를 사용할 수도 있습니다.
+`@konekti/validation`에서 바로 import할 수도 있고, subpath export인 `@konekti/validation/mapped-types`를 사용할 수도 있습니다.
 
 ```typescript
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()

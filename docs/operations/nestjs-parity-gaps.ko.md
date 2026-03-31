@@ -78,7 +78,7 @@
 | A4. HTTP versioning strategies beyond URI | URI, Header, Media type, Custom 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하되었습니다. |
 | A5. schema-based validation (Standard Schema) | Standard Schema 호환 검증기는 `@ValidateClass(schema)`를 통해 DTO 레벨에 직접 붙일 수 있으므로, Zod·Valibot·ArkType 스키마를 별도 schema 서브패키지 없이 표준 `ValidationIssue` 형태로 매핑할 수 있습니다. |
 | A6. request / transient provider scopes for GraphQL resolvers | `@konekti/graphql`이 오퍼레이션 컨텍스트마다 `createRequestScope()`를 연결합니다. `@Scope('request')`, `@Scope('transient')`, `@Scope('singleton')` 리졸버가 완전히 테스트되고 문서화되었습니다. |
-| A7. response serialization layer | `@konekti/serializer`에 `@Exclude`, `@Expose`, `@Transform`, `SerializerInterceptor`가 출하되었습니다. 전역 및 컨트롤러 단위 등록, 중첩 객체/배열 처리, 전체 테스트 커버리지를 포함합니다. |
+| A7. response serialization layer | `@konekti/serialization`에 `@Exclude`, `@Expose`, `@Transform`, `SerializerInterceptor`가 출하되었습니다. 전역 및 컨트롤러 단위 등록, 중첩 객체/배열 처리, 전체 테스트 커버리지를 포함합니다. |
 | A7 (prev). Distributed rate limiting | `@konekti/throttler`에 인메모리 및 Redis 스토어 어댑터가 출하되었습니다. |
 | A8 (prev). External event bus transports | `@konekti/event-bus`에 Redis Pub/Sub 트랜스포트 어댑터가 출하되었습니다. |
 | B1. Migration path from NestJS | `docs/getting-started/migrate-from-nestjs.ko.md`에 모듈, 데코레이터, 스코프, 부트스트랩, 테스트 매핑이 포함되었습니다. |

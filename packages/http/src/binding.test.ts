@@ -14,7 +14,7 @@ import {
   MinLength,
   ValidateIf,
   ValidateNested,
-} from '@konekti/dto';
+} from '@konekti/validation';
 import { BadRequestException } from './exceptions.js';
 import { DefaultBinder } from './binding.js';
 import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';

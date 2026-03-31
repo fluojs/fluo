@@ -21,7 +21,7 @@ import {
   type FrameworkResponse,
   type HttpApplicationAdapter,
 } from '@konekti/http';
-import { Exclude, Expose, SerializerInterceptor } from '@konekti/serializer';
+import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health.js';

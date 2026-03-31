@@ -1,4 +1,4 @@
-# @konekti/serializer
+# @konekti/serialization
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
@@ -15,14 +15,14 @@ This package provides class-based response shaping similar to NestJS class seria
 ## Installation
 
 ```bash
-pnpm add @konekti/serializer
+pnpm add @konekti/serialization
 ```
 
 ## Quick Start
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { Exclude, Expose, SerializerInterceptor } from '@konekti/serializer';
+import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
 
 @Expose({ excludeExtraneous: true })
 class UserView {
@@ -54,7 +54,7 @@ Register the serializer globally at bootstrap:
 
 ```typescript
 import { bootstrapApplication } from '@konekti/runtime';
-import { SerializerInterceptor } from '@konekti/serializer';
+import { SerializerInterceptor } from '@konekti/serialization';
 
 await bootstrapApplication({
   rootModule: AppModule,
@@ -79,6 +79,6 @@ await bootstrapApplication({
 ## non-goals and intentional limitations
 
 - No deep class instantiation — serialization walks the object graph but does not construct new class instances from plain objects; output is always JSON-safe plain data
-- No schema validation — `@Exclude` / `@Expose` / `@Transform` shape the output but do not validate input; use the `@konekti/dto` package for input validation
+- No schema validation — `@Exclude` / `@Expose` / `@Transform` shape the output but do not validate input; use the `@konekti/validation` package for input validation
 - No async transform support — `@Transform(fn)` must return synchronously; async transforms are not supported
 - Symbol-keyed properties on class instances are not serialized — only plain-object symbol keys are included (class instances serialize only string-keyed properties)

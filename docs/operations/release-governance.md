@@ -25,7 +25,7 @@ These packages are the current intended public release surface for the 0.x line:
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto`
+- `@konekti/validation`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
@@ -36,7 +36,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/graphql`
-- `@konekti/serializer`
+- `@konekti/serialization`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`

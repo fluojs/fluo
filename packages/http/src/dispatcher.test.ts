@@ -31,9 +31,9 @@ import {
   assertRequestContext,
   getCurrentRequestContext,
 } from '@konekti/http';
-import { IsString, MinLength, ValidateNested } from '@konekti/dto';
+import { IsString, MinLength, ValidateNested } from '@konekti/validation';
 
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/dto';
+import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 import { forRoutes, runMiddlewareChain } from './middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {

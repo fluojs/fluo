@@ -42,7 +42,7 @@ Use `@HttpCode(code)` to override these defaults. Note that status resolution ha
 
 - **Binding**: `@konekti/http` handles request DTO binding.
 - **Source Decorators**: `@FromBody()` and `@FromPath()` are provided by `@konekti/http`.
-- **Validation**: `@IsString()` and `@MinLength()` are provided by the `@konekti/dto` package.
+- **Validation**: `@IsString()` and `@MinLength()` are provided by the `@konekti/validation` package.
 
 Konekti treats request DTOs as an explicit boundary between the transport layer and application logic.
 

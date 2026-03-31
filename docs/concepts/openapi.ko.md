@@ -59,6 +59,6 @@ OpenAPI 생성기는 DTO에서 스키마 정보를 추출합니다:
 
 ```text
 @konekti/http는 라우트 메타데이터를 기록합니다.
-`@konekti/dto` 패키지는 검증 메타데이터를 기록합니다.
+`@konekti/validation` 패키지는 검증 메타데이터를 기록합니다.
 @konekti/openapi는 문서를 조립하기 위해 이 둘을 읽습니다.
 ```

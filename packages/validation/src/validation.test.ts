@@ -82,20 +82,20 @@ describe('DefaultValidator', () => {
     });
   });
 
-  it('transform returns a typed DTO instance from plain object', async () => {
+  it('materialize returns a typed DTO instance from plain object', async () => {
     class CreateUserDto {
       @IsEmail()
       email = '';
     }
 
     const validator = new DefaultValidator();
-    const result = await validator.transform<CreateUserDto>({ email: 'hello@example.com' }, CreateUserDto);
+    const result = await validator.materialize<CreateUserDto>({ email: 'hello@example.com' }, CreateUserDto);
 
     expect(result).toBeInstanceOf(CreateUserDto);
     expect(result.email).toBe('hello@example.com');
   });
 
-  it('transform recursively transforms nested DTOs', async () => {
+  it('materialize recursively hydrates nested DTOs', async () => {
     class AddressDto {
       @MinLength(1)
       city = '';
@@ -110,7 +110,7 @@ describe('DefaultValidator', () => {
     }
 
     const validator = new DefaultValidator();
-    const result = await validator.transform<CreateOrderDto>(
+    const result = await validator.materialize<CreateOrderDto>(
       {
         address: { city: 'Seoul' },
         previousAddresses: [{ city: 'Busan' }],
@@ -123,7 +123,7 @@ describe('DefaultValidator', () => {
     expect(result.previousAddresses[0]).toBeInstanceOf(AddressDto);
   });
 
-  it('transform recursively transforms nested Set and Map DTO collections', async () => {
+  it('materialize recursively hydrates nested Set and Map DTO collections', async () => {
     class AddressDto {
       @MinLength(1)
       city = '';
@@ -138,7 +138,7 @@ describe('DefaultValidator', () => {
     }
 
     const validator = new DefaultValidator();
-    const result = await validator.transform<CreateOrderDto>(
+    const result = await validator.materialize<CreateOrderDto>(
       {
         previousAddressMap: new Map<string, { city: string }>([['home', { city: 'Seoul' }]]),
         previousAddressSet: new Set([{ city: 'Busan' }]),
@@ -153,7 +153,7 @@ describe('DefaultValidator', () => {
     expect(Array.from(result.previousAddressSet)[0]).toBeInstanceOf(AddressDto);
   });
 
-  it('rejects non-plain nested input during transform', async () => {
+  it('rejects non-plain nested input during materialize', async () => {
     class ChildDto {}
 
     class ParentDto {
@@ -163,7 +163,7 @@ describe('DefaultValidator', () => {
 
     const validator = new DefaultValidator();
     await expect(
-      validator.transform<ParentDto>(
+      validator.materialize<ParentDto>(
         {
           child: 'unsafe-string-input',
         },
@@ -221,7 +221,7 @@ describe('DefaultValidator', () => {
     const validator = new DefaultValidator();
 
     await expect(
-      validator.transform<ParentDto>(
+      validator.materialize<ParentDto>(
         {
           childArray: [new UnsafeChildInput()],
           childMap: new Map([['home', new UnsafeChildInput()]]),
@@ -254,7 +254,7 @@ describe('DefaultValidator', () => {
       child: { city: string; __proto__: { polluted: boolean } };
     };
 
-    const result = await validator.transform<ParentDto>(payload, ParentDto);
+    const result = await validator.materialize<ParentDto>(payload, ParentDto);
 
     expect(result.child).toBeInstanceOf(ChildDto);
     expect(result.child.city).toBe('Seoul');
@@ -262,7 +262,7 @@ describe('DefaultValidator', () => {
     expect('polluted' in (result.child as object)).toBe(false);
   });
 
-  it('transform throws DtoValidationError on invalid input', async () => {
+  it('materialize throws DtoValidationError on invalid input', async () => {
     class CreateUserDto {
       @IsEmail()
       email = '';
@@ -270,7 +270,7 @@ describe('DefaultValidator', () => {
 
     const validator = new DefaultValidator();
 
-    await expect(validator.transform({ email: 'not-an-email' }, CreateUserDto)).rejects.toBeInstanceOf(DtoValidationError);
+    await expect(validator.materialize({ email: 'not-an-email' }, CreateUserDto)).rejects.toBeInstanceOf(DtoValidationError);
   });
 
   it('resolves lazy circular nested references at validation time', async () => {
@@ -324,7 +324,7 @@ describe('DefaultValidator', () => {
     });
   });
 
-  it('rejects cyclic nested payloads during transform instead of recursing indefinitely', async () => {
+  it('rejects cyclic nested payloads during materialize instead of recursing indefinitely', async () => {
     class NodeDto {
       @MinLength(1)
       name = '';
@@ -338,7 +338,7 @@ describe('DefaultValidator', () => {
     payload.child = payload;
 
     await expect(
-      validator.transform<NodeDto>(payload, NodeDto),
+      validator.materialize<NodeDto>(payload, NodeDto),
     ).rejects.toMatchObject({
       issues: [{ code: 'INVALID_NESTED', field: 'child.child', message: 'child.child contains invalid nested data.' }],
     });

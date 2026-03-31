@@ -24,7 +24,7 @@
 
 - `@konekti/core`
 - `@konekti/config`
-- `@konekti/dto`
+- `@konekti/validation`
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
@@ -35,7 +35,7 @@
 - `@konekti/passport`
 - `@konekti/openapi`
 - `@konekti/graphql`
-- `@konekti/serializer`
+- `@konekti/serialization`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`

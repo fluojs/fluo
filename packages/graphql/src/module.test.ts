@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@konekti/core';
-import { IsInt, MinLength } from '@konekti/dto';
+import { IsInt, MinLength } from '@konekti/validation';
 import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 

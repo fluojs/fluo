@@ -15,7 +15,7 @@ pnpm add @konekti/graphql
 
 ```typescript
 import { Module } from '@konekti/core';
-import { MinLength } from '@konekti/dto';
+import { MinLength } from '@konekti/validation';
 import { bootstrapNodeApplication } from '@konekti/runtime';
 import { Arg, createGraphqlModule, Mutation, Query, Resolver } from '@konekti/graphql';
 
@@ -232,4 +232,4 @@ createGraphqlModule({
 | `graphql-yoga` | HTTP transport/runtime |
 | `@konekti/runtime` | 모듈 라이프사이클, 컨테이너, compiled modules |
 | `@konekti/http` | request/response 브리지 |
-| `@konekti/dto` 패키지 | 입력 검증 파이프라인 |
+| `@konekti/validation` 패키지 | 입력 검증 파이프라인 |

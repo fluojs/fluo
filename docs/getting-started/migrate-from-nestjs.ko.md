@@ -17,7 +17,7 @@
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` 또는 `bootstrapApplication({ rootModule: AppModule, ... })` | 런타임이 어댑터 wiring과 시작 흐름을 소유합니다. |
 | `app.listen(3000)` | `runNodeApplication(...)` (내장 listen) 또는 `bootstrapApplication(...)` 후 `await app.listen()` | 제어 수준에 따라 선택할 수 있습니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)` + `@konekti/dto` 패키지 | 현재 공개 API에는 별도의 `@UsePipes()` 데코레이터가 없습니다. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)` + `@konekti/validation` 패키지 | 현재 공개 API에는 별도의 `@UsePipes()` 데코레이터가 없습니다. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `@konekti/testing`의 `createTestingModule({ rootModule })` | provider override, compile, token resolve 흐름이 유사합니다. |
 
 ## 1) 모듈 매핑
@@ -356,7 +356,7 @@ class UsersController {
 
 Nest는 보통 `ValidationPipe`(전역 또는 라우트 단위)로 검증을 적용합니다.
 
-Konekti는 `@RequestDto(...)`와 `@konekti/dto` 패키지 데코레이터를 결합해 DTO 바인딩/검증을 수행합니다. 현재 공개 API에는 별도 `@UsePipes()` 데코레이터가 없습니다.
+Konekti는 `@RequestDto(...)`와 `@konekti/validation` 패키지 데코레이터를 결합해 DTO 바인딩/검증을 수행합니다. 현재 공개 API에는 별도 `@UsePipes()` 데코레이터가 없습니다.
 
 ### NestJS
 
@@ -383,7 +383,7 @@ class UsersController {
 
 ```typescript
 import { Controller, FromBody, Post, RequestDto } from '@konekti/http';
-import { IsEmail } from '@konekti/dto';
+import { IsEmail } from '@konekti/validation';
 
 class CreateUserDto {
   @FromBody()
@@ -488,7 +488,7 @@ const service = await moduleRef.resolve(UserService);
 - `@Injectable()` 의존을 줄이고 provider 등록 중심으로 정리
 - 필요한 클래스에 `@Inject([...])` 토큰 목록 명시
 - 가드/인터셉터를 `@UseGuards`/`@UseInterceptors`로 이전
-- Nest pipe 기반 검증을 `@RequestDto` + `@konekti/dto` 패키지로 이전
+- Nest pipe 기반 검증을 `@RequestDto` + `@konekti/validation` 패키지로 이전
 - 부트스트랩을 `runNodeApplication(...)` 또는 `bootstrapApplication(...)`로 전환
 - 테스트를 `createTestingModule(...)` + provider override 패턴으로 전환
 
