@@ -1,6 +1,7 @@
 import type { Constructor, MaybePromise, Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import type {
+  ConverterLike,
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
@@ -99,6 +100,7 @@ export interface BootstrapApplicationOptions {
    * one that returns `true` (handled) stops the chain.
    */
   filters?: ExceptionFilterHandler[];
+  converters?: readonly ConverterLike[];
   interceptors?: InterceptorLike[];
   logger?: ApplicationLogger;
   middleware?: MiddlewareLike[];
@@ -111,7 +113,7 @@ export interface BootstrapApplicationOptions {
 export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'rootModule'>;
 
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'filters' | 'middleware' | 'observers' | 'rootModule'> {
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'converters' | 'filters' | 'middleware' | 'observers' | 'rootModule'> {
 }
 
 export interface MicroserviceRuntime {

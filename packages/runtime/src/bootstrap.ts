@@ -1,6 +1,7 @@
 import { Container, type Provider } from '@konekti/di';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
 import {
+  DefaultBinder,
   createDispatcher,
   createHandlerMapping,
   createNoopHttpApplicationAdapter,
@@ -805,6 +806,7 @@ function createRuntimeDispatcherOptions(
 ): ErrorAwareDispatcherOptions {
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    binder: new DefaultBinder(options.converters ?? []),
     handlerMapping,
     interceptors: options.interceptors ?? [],
     observers: options.observers ?? [],
