@@ -17,7 +17,7 @@
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` 또는 `bootstrapApplication({ rootModule: AppModule, ... })` | 런타임이 어댑터 wiring과 시작 흐름을 소유합니다. |
 | `app.listen(3000)` | `runNodeApplication(...)` (내장 listen) 또는 `bootstrapApplication(...)` 후 `await app.listen()` | 제어 수준에 따라 선택할 수 있습니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)` + `@konekti/validation` 패키지 | 현재 공개 API에는 별도의 `@UsePipes()` 데코레이터가 없습니다. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)`, `@Convert(...)`, global `converters` 런타임 옵션 | Konekti는 별도의 `@UsePipes()` 데코레이터 대신 HTTP 바인딩 계층에서 요청 변환을 처리합니다. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `@konekti/testing`의 `createTestingModule({ rootModule })` | provider override, compile, token resolve 흐름이 유사합니다. |
 
 ## 1) 모듈 매핑
@@ -226,6 +226,40 @@ const app = await bootstrapApplication({
 });
 
 await app.listen();
+```
+
+## 4.5) pipes 대신 요청 변환
+
+NestJS에서는 `ParseIntPipe`나 `ValidationPipe({ transform: true })`처럼 요청 값을 validation 전에 정규화하는 패턴이 흔합니다.
+
+Konekti는 이 책임을 HTTP 바인딩 계층에 둡니다.
+
+- **global conversion**: `KonektiFactory.create(..., { converters })` 또는 `runNodeApplication(..., { converters })`
+- **field conversion**: DTO 필드의 `@Convert(...)`
+- **validation**: 그 이후 `@konekti/validation`이 실행
+
+즉 validator는 raw transport value가 아니라 **변환이 끝난 값**을 기준으로 동작합니다.
+
+### Konekti
+
+```typescript
+class ParseIntConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? Number(value) : value;
+  }
+}
+
+class SearchRequest {
+  @FromQuery('id')
+  @Convert(ParseIntConverter)
+  @IsNumber()
+  id = 0;
+}
+
+await runNodeApplication(AppModule, {
+  converters: [ParseIntConverter],
+  port: 3000,
+});
 ```
 
 ## 5) HTTP 예외

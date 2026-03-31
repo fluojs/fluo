@@ -17,7 +17,7 @@ This guide is for teams that already ship NestJS services and want a practical m
 | `NestFactory.create(AppModule)` | `runNodeApplication(AppModule, options)` or `bootstrapApplication({ rootModule: AppModule, ... })` | Runtime owns adapter wiring and startup flow. |
 | `app.listen(3000)` | `runNodeApplication(...)` (built-in listen) or `await app.listen()` after `bootstrapApplication(...)` | Both are supported depending on how much control you need. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
-| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, and `@RequestDto(...)` + `@konekti/validation` package decorators | Konekti does not use a separate `@UsePipes()` decorator. |
+| `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)`, `@Convert(...)`, and global `converters` runtime options | Konekti keeps request conversion in the HTTP binding layer instead of a separate `@UsePipes()` decorator. |
 | `@nestjs/testing` (`Test.createTestingModule`) | `createTestingModule({ rootModule })` from `@konekti/testing` | Override providers, compile graph, resolve tokens. |
 
 ## 1) module mapping
@@ -226,6 +226,42 @@ const app = await bootstrapApplication({
 });
 
 await app.listen();
+```
+
+## 5) HTTP exceptions
+
+## 4.5) request conversion instead of pipes
+
+NestJS commonly uses pipes such as `ParseIntPipe` or `ValidationPipe({ transform: true })` to normalize request values before validation.
+
+Konekti keeps that responsibility in the HTTP binding layer:
+
+- **global conversion** via `KonektiFactory.create(..., { converters })` or `runNodeApplication(..., { converters })`
+- **field conversion** via `@Convert(...)` on a DTO field
+- **validation** still runs afterward through `@konekti/validation`
+
+This means validators always see the **post-convert value**, not the raw transport value.
+
+### Konekti
+
+```typescript
+class ParseIntConverter {
+  convert(value: unknown) {
+    return typeof value === 'string' ? Number(value) : value;
+  }
+}
+
+class SearchRequest {
+  @FromQuery('id')
+  @Convert(ParseIntConverter)
+  @IsNumber()
+  id = 0;
+}
+
+await runNodeApplication(AppModule, {
+  converters: [ParseIntConverter],
+  port: 3000,
+});
 ```
 
 ## 5) HTTP exceptions
