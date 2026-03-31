@@ -21,12 +21,13 @@ The request execution path follows this sequence:
 5.  **Module middleware** execution.
 6.  **Guard chain** validation.
 7.  **Interceptor chain** execution.
-8.  **Request DTO binding**.
-9.  **DTO validation**.
+8.  **Input binding and materialization**.
+9.  **Input validation**.
 10. **Controller invocation**.
-11. **Success status resolution**.
-12. **Response write**.
-13. **Exception mapping** (if an error occurs).
+11. **Response serialization** (if an interceptor applies).
+12. **Success status resolution**.
+13. **Response write**.
+14. **Exception mapping** (if an error occurs).
 
 ## success status defaults
 
@@ -38,13 +39,14 @@ Unless overridden, the dispatcher uses method-based defaults:
 
 Use `@HttpCode(code)` to override these defaults. Note that status resolution happens after the interceptor chain, so interceptors can still influence the final status code.
 
-## dto boundaries
+## input and output boundaries
 
-- **Binding**: `@konekti/http` handles request DTO binding.
+- **Binding / Materialization**: `@konekti/http` extracts raw request values and coordinates input materialization.
 - **Source Decorators**: `@FromBody()` and `@FromPath()` are provided by `@konekti/http`.
 - **Validation**: `@IsString()` and `@MinLength()` are provided by the `@konekti/validation` package.
+- **Serialization**: Output shaping is a separate concern, typically handled by `@konekti/serialization` interceptors.
 
-Konekti treats request DTOs as an explicit boundary between the transport layer and application logic.
+Konekti treats request models as an explicit input boundary between the transport layer and application logic. Output shaping is handled later as a distinct response-side phase.
 
 ## starter app policies
 

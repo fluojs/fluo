@@ -22,9 +22,10 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 - `@konekti/runtime`
 - `@konekti/testing`
 
-### validation, auth, and docs
+### validation, serialization, auth, and docs
 
 - `@konekti/validation`
+- `@konekti/serialization`
 - `@konekti/jwt`
 - `@konekti/passport`
 - `@konekti/openapi`
@@ -45,12 +46,13 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 
 - `@konekti/core`: shared decorators, metadata helpers, and stable framework primitives.
 - `@konekti/di`: explicit token-based provider resolution and scopes.
-- `@konekti/http`: request execution, binding, validation entrypoints, exceptions, and route metadata.
+- `@konekti/http`: request execution, validation/materialization entrypoints, exceptions, and route metadata.
 - `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, adapter bootstrapping, and dev-mode config reload application.
-- `@konekti/validation` package: validation decorators, mapped DTO helpers, and engine.
+- `@konekti/validation` package: input materialization and validation engine.
+- `@konekti/serialization` package: output shaping and response serialization decorators plus interceptor support.
 - `@konekti/jwt`: token-core concerns.
 - `@konekti/passport`: generic auth strategy registration and guard wiring.
-- `@konekti/openapi`: document production from route and DTO metadata.
+- `@konekti/openapi`: document production from route and schema metadata.
 - `@konekti/metrics`: Prometheus metrics via runtime-owned HTTP routes.
 - `@konekti/cron`: decorator-based background task scheduling and optional distributed cron locks.
 - `@konekti/redis`: Redis client lifecycle and DI token surface.
@@ -60,7 +62,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 The runtime execution path follows this sequence:
 
 ```text
-bootstrap -> handler mapping -> app middleware -> route match -> module middleware -> guard -> interceptor -> DTO bind/validate -> controller -> response write
+bootstrap -> handler mapping -> app middleware -> route match -> module middleware -> guard -> interceptor -> input binding/materialization -> input validation -> controller -> response serialization -> response write
 ```
 
 Implementation details are located in:
