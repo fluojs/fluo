@@ -1,8 +1,8 @@
-import { getDtoBindingSchema, type Constructor, type MetadataPropertyKey, type MetadataSource } from '@konekti/core';
+import { InvariantError, getDtoBindingSchema, type Constructor, type MetadataPropertyKey, type MetadataSource, type Token } from '@konekti/core';
 
 import { BadRequestException, type HttpExceptionDetail } from './exceptions.js';
 import { toInputErrorDetail } from './input-error-detail.js';
-import type { ArgumentResolverContext, Binder, Converter, ConverterTarget, FrameworkRequest } from './types.js';
+import type { ArgumentResolverContext, Binder, Converter, ConverterLike, ConverterTarget, FrameworkRequest } from './types.js';
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -100,18 +100,77 @@ export class DefaultConverter implements Converter {
   }
 }
 
+function isConverter(value: unknown): value is Converter {
+  return typeof value === 'object' && value !== null && 'convert' in value && typeof (value as { convert?: unknown }).convert === 'function';
+}
+
+function isConverterToken(value: unknown): value is Token<Converter> {
+  return typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol';
+}
+
+async function resolveConverter(
+  value: unknown,
+  context: ArgumentResolverContext,
+  cache: Map<unknown, Converter>,
+): Promise<Converter | undefined> {
+  if (!value) {
+    return undefined;
+  }
+
+  if (cache.has(value)) {
+    return cache.get(value);
+  }
+
+  if (isConverter(value)) {
+    cache.set(value, value);
+    return value;
+  }
+
+  if (!isConverterToken(value)) {
+    throw new InvariantError('Converter metadata must be a converter instance or DI token.');
+  }
+
+  try {
+    const resolved = await context.requestContext.container.resolve(value as Token<Converter>);
+
+    if (!isConverter(resolved)) {
+      throw new InvariantError('Resolved converter token does not implement convert().');
+    }
+
+    cache.set(value, resolved);
+    return resolved;
+  } catch (error) {
+    if (typeof value === 'function') {
+      const instantiated = new (value as Constructor<Converter>)();
+
+      if (!isConverter(instantiated)) {
+        throw new InvariantError('Converter class must implement convert(value, target).');
+      }
+
+      cache.set(value, instantiated);
+      return instantiated;
+    }
+
+    throw error;
+  }
+}
+
 export class DefaultBinder implements Binder {
-  constructor(private readonly converter: Converter = new DefaultConverter()) {}
+  constructor(private readonly converters: readonly ConverterLike[] = []) {}
 
   async bind(dto: Constructor, context: ArgumentResolverContext): Promise<unknown> {
     const schema = getDtoBindingSchema(dto);
     type BindingSchemaEntry = (typeof schema)[number];
     const value = new dto() as Record<string | symbol, unknown>;
+    const converterCache = new Map<unknown, Converter>();
     const bodyKeys = new Set<string>(
       schema
         .filter((entry: BindingSchemaEntry) => entry.metadata.source === 'body')
         .map((entry: BindingSchemaEntry) => resolveSourceKey(entry.propertyKey, entry.metadata.key)),
     );
+    const globalConverters = (
+      await Promise.all(this.converters.map((converter) => resolveConverter(converter, context, converterCache)))
+    ).filter((converter): converter is Converter => Boolean(converter));
 
     validateBodyKeys(context.requestContext.request, bodyKeys);
 
@@ -141,11 +200,28 @@ export class DefaultBinder implements Binder {
         continue;
       }
 
-      value[entry.propertyKey] = await this.converter.convert(rawValue, {
+      const target: ConverterTarget = {
         dto,
+        handler: context.handler,
+        key: resolveSourceKey(entry.propertyKey, entry.metadata.key),
         propertyKey: entry.propertyKey,
+        requestContext: context.requestContext,
         source: entry.metadata.source,
-      });
+      };
+
+      let convertedValue: unknown = rawValue;
+
+      for (const converter of globalConverters) {
+        convertedValue = await converter.convert(convertedValue, target);
+      }
+
+      const fieldConverter = await resolveConverter(entry.metadata.converter, context, converterCache);
+
+      if (fieldConverter) {
+        convertedValue = await fieldConverter.convert(convertedValue, target);
+      }
+
+      value[entry.propertyKey] = convertedValue;
     }
 
     if (details.length > 0) {
