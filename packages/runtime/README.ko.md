@@ -21,7 +21,7 @@
 4. `@konekti/http`에서 `createHandlerMapping()`과 `createDispatcher()`를 호출합니다.
 5. `dispatch()`, `listen()`, `ready()`, `close()`를 포함하는 `KonektiApplication` 셸을 반환합니다.
 
-`KonektiFactory`는 canonical public startup facade입니다. Node.js HTTP 앱의 기본 흐름은 `const app = await KonektiFactory.create(AppModule); await app.listen();` 입니다.
+`KonektiFactory`는 canonical public startup facade입니다. HTTP 앱의 기본 흐름은 `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`이며, `@konekti/platform-fastify`나 `@konekti/platform-express` 같은 트랜스포트 패키지를 선택할 때는 `options.adapter`를 전달합니다.
 
 ## 설치
 
@@ -53,6 +53,21 @@ class AppModule {}
 const app = await KonektiFactory.create(AppModule);
 await app.listen();
 ```
+
+### Adapter-first 시작 경로 (Express 예시)
+
+```typescript
+import { createExpressAdapter } from '@konekti/platform-express';
+import { KonektiFactory } from '@konekti/runtime';
+
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+`@konekti/platform-fastify`, `@konekti/platform-express`처럼 트랜스포트 패키지를 사용할 때는 위 adapter-first 형태를 사용하세요. canonical startup path는 계속 `KonektiFactory.create(...)`이며, 트랜스포트별 `run*Application()` 헬퍼는 호환/고급 경로로 유지됩니다.
 
 ### global request converters
 
@@ -177,7 +192,7 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-`rawBody`는 선택 사항(opt-in)이며 파싱된 `request.body`와 함께 원래의 요청 바이트를 보존합니다. Node 어댑터는 현재 이를 JSON 및 텍스트와 같은 멀티파트가 아닌 바디에 적용하며, 옵션이 비활성화되어 있거나 요청이 멀티파트 파싱을 사용하는 경우에는 `request.rawBody`를 설정하지 않은 상태로 둡니다.
+`rawBody`는 선택 사항(opt-in)이며 파싱된 `request.body`와 함께 원래의 요청 바이트를 보존합니다. 내장 Node 어댑터와 Fastify/Express 플랫폼 어댑터는 이를 JSON/텍스트 같은 멀티파트가 아닌 바디에 적용하며, 옵션이 비활성화되어 있거나 요청이 멀티파트 파싱을 사용하는 경우에는 `request.rawBody`를 설정하지 않습니다.
 
 ### 호스트 바인딩 및 HTTPS
 

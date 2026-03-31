@@ -30,6 +30,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/platform-express`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
