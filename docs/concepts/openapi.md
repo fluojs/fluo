@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./openapi.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the OpenAPI generation model used in `@konekti/openapi`, `@konekti/http`, and the request DTO metadata system.
+This guide outlines the OpenAPI generation model used in `@konekti/openapi`, `@konekti/http`, and the input validation metadata system.
 
 ### related documentation
 
@@ -30,35 +30,37 @@ Konekti provides several decorators specifically for OpenAPI metadata:
 
 These decorators only affect documentation and do not change runtime behavior.
 
-## dto schema extraction
+## schema extraction from route and validation metadata
 
-The OpenAPI generator extracts schema information from DTOs:
+The OpenAPI generator extracts schema information from route metadata and input validation metadata:
 
-- **Metadata Reading**: Request DTO metadata is accessed via normalized helper APIs.
+- **Metadata Reading**: Request binding and input validation metadata are accessed via normalized helper APIs.
 - **Component Schemas**: Validator metadata (e.g., `@IsString()`) is used to populate `components.schemas`.
 - **Request Bodies**: Linked via `requestBody`.
-- **Parameters**: Cookie-bound DTO fields are mapped to cookie parameters.
-- **Responses**: Response DTOs can be specified using `@ApiResponse(..., { type: ... })`.
-- **Nesting**: Nested DTOs and arrays are represented as schema references.
+- **Parameters**: Bound input fields are mapped into parameter definitions.
+- **Responses**: Response models can be documented using `@ApiResponse(..., { type: ... })`.
+- **Nesting**: Nested models and arrays are represented as schema references.
 
 ## generation process
 
 - **Route Metadata**: Extracted from handler descriptors.
 - **Versioning**: Versioning defined via `@Version(...)` is reflected in URI paths (e.g., `/v1/users`).
-- **Composition**: Tags, operations, responses, and DTO schemas are combined into a single OpenAPI 3.1 document.
+- **Composition**: Tags, operations, responses, and schema metadata are combined into a single OpenAPI 3.1 document.
 - **Lifecycle**: The document is generated once at startup and served statically.
 
 ## architectural boundaries
 
 - **`@konekti/openapi`**: Handles schema generation and the serving layer.
 - **`@konekti/http`**: Manages the writing of route and request metadata.
+- **`@konekti/validation`**: Supplies input validation metadata that OpenAPI can read as schema hints.
+- **Output shaping**: Runtime response serialization is separate from documentation generation.
 - **Decoupling**: `@konekti/openapi` interacts only with normalized metadata and does not access internal package storage.
 - **Auth Schemes**: Authentication schemes are declared at the application level using OpenAPI decorators.
 
 ## conceptual flow
 
 ```text
-@konekti/http writes route metadata
-The `@konekti/validation` package writes validation metadata
-@konekti/openapi reads both to assemble the documentation
+@konekti/http writes route and binding metadata
+@konekti/validation writes input validation metadata
+@konekti/openapi reads both plus explicit response schema declarations to assemble the documentation
 ```
