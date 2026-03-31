@@ -410,11 +410,12 @@ export class HealthModule {}
 }
 
 function createMainFile(): string {
-  return `import { runNodeApplication } from '@konekti/runtime';
+  return `import { KonektiFactory } from '@konekti/runtime';
 
 import { AppModule } from './app';
 
-await runNodeApplication(AppModule, {});
+const app = await KonektiFactory.create(AppModule, {});
+await app.listen();
 `;
 }
 

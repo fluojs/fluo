@@ -661,4 +661,35 @@ describe('KonektiFactory.createMicroservice', () => {
 
     await app.close();
   });
+
+  it('provides connectMicroservice() and startAllMicroservices() on the application shell', async () => {
+    const events: string[] = [];
+    const MICROSERVICE_TOKEN = Symbol.for('konekti.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async listen(): Promise<void> {
+        events.push('micro:listen');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const app = await KonektiFactory.create(AppModule);
+    const microservice = await app.connectMicroservice();
+
+    await app.startAllMicroservices();
+
+    expect(microservice.state).toBe('ready');
+    expect(events).toEqual(['micro:listen']);
+
+    await app.close();
+  });
 });

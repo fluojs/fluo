@@ -2244,6 +2244,20 @@ describe('bootstrapApplication', () => {
   });
 });
 
+describe('KonektiFactory facade', () => {
+  it('creates an application shell without requiring options', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await KonektiFactory.create(AppModule);
+
+    expect(app.rootModule).toBe(AppModule);
+    await expect(app.get(RUNTIME_CONTAINER)).resolves.toBeDefined();
+
+    await app.close();
+  });
+});
+
 describe('exception filter pipeline', () => {
   it('calls the filter and stops the chain when the filter returns true', async () => {
     const caughtErrors: unknown[] = [];

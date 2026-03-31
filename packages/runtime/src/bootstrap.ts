@@ -387,6 +387,7 @@ class KonektiApplication implements Application {
   private closed = false;
   private closingPromise: Promise<void> | undefined;
   private readonly lifecycleInstances: unknown[];
+  private readonly connectedMicroservices: MicroserviceApplication[] = [];
 
   constructor(
     readonly container: Container,
@@ -405,6 +406,10 @@ class KonektiApplication implements Application {
     return this.applicationState;
   }
 
+  async get<T>(token: Token<T>): Promise<T> {
+    return this.container.resolve(token);
+  }
+
   /**
    * 애플리케이션이 더 이상 닫힌 상태가 아닌지 확인한다.
    */
@@ -412,6 +417,24 @@ class KonektiApplication implements Application {
     if (this.applicationState === 'closed') {
       throw new InvariantError('Application cannot become ready after it has been closed.');
     }
+  }
+
+  async connectMicroservice(options: CreateMicroserviceOptions = {}): Promise<MicroserviceApplication> {
+    const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
+    const runtime = await this.container.resolve<unknown>(microserviceToken);
+
+    if (!isMicroserviceRuntime(runtime)) {
+      throw new InvariantError('Resolved microservice token does not implement listen().');
+    }
+
+    const microservice = new KonektiMicroserviceApplication(this, this.logger, runtime);
+    this.connectedMicroservices.push(microservice);
+
+    return microservice;
+  }
+
+  async startAllMicroservices(): Promise<void> {
+    await Promise.all(this.connectedMicroservices.map(async (microservice) => microservice.listen()));
   }
 
   /**
@@ -896,7 +919,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 }
 
 export class KonektiFactory {
-  static async create(rootModule: ModuleType, options: CreateApplicationOptions): Promise<Application> {
+  static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
     return bootstrapApplication({
       ...options,
       rootModule,
