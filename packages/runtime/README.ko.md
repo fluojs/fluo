@@ -21,7 +21,7 @@
 4. `@konekti/http`에서 `createHandlerMapping()`과 `createDispatcher()`를 호출합니다.
 5. `dispatch()`, `listen()`, `ready()`, `close()`를 포함하는 `KonektiApplication` 셸을 반환합니다.
 
-Node.js 앱의 경우 `runNodeApplication()`이 표준 시작 경로입니다. HTTP 어댑터, 기본 CORS, 시작 로깅, 그리고 정상 종료 시그널 연결(graceful shutdown signal wiring)을 처리합니다.
+`KonektiFactory`는 canonical public startup facade입니다. Node.js HTTP 앱의 기본 흐름은 `const app = await KonektiFactory.create(AppModule); await app.listen();` 입니다.
 
 ## 설치
 
@@ -35,7 +35,7 @@ npm install @konekti/runtime
 
 ```typescript
 import { Module, Global } from '@konekti/core';
-import { runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 import { Controller, Get } from '@konekti/http';
 import type { RequestContext } from '@konekti/http';
 
@@ -50,7 +50,8 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class AppModule {}
 
-await runNodeApplication(AppModule);
+const app = await KonektiFactory.create(AppModule);
+await app.listen();
 ```
 
 ### global request converters
@@ -58,7 +59,7 @@ await runNodeApplication(AppModule);
 HTTP 앱에서는 사용자가 실제로 호출하는 런타임 entrypoint를 통해 transport-wide request converter를 등록합니다.
 
 ```typescript
-import { KonektiFactory, runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 
 class TrimStringConverter {
   convert(value: unknown) {
@@ -68,17 +69,15 @@ class TrimStringConverter {
 
 const app = await KonektiFactory.create(AppModule, {
   converters: [TrimStringConverter],
-});
-
-await runNodeApplication(AppModule, {
-  converters: [TrimStringConverter],
   port: 3000,
 });
+
+await app.listen();
 ```
 
 이 converter는 HTTP 바인딩 concern입니다. 각 바인딩 필드마다 적용되며 DTO validation 전에 실행됩니다.
 
-### 수동 수신(listen)을 포함한 전체 부트스트랩
+### 고급 부트스트랩 + 수동 listen
 
 ```typescript
 import { bootstrapApplication } from '@konekti/runtime';
@@ -143,19 +142,18 @@ await microservice.listen();
 
 ```typescript
 import { KonektiFactory } from '@konekti/runtime';
-import { MICROSERVICE } from '@konekti/microservices';
 
 const app = await KonektiFactory.create(AppModule);
-const microservice = await app.container.resolve(MICROSERVICE);
-
-await Promise.all([app.listen(), microservice.listen()]);
+await app.connectMicroservice();
+await app.startAllMicroservices();
+await app.listen();
 ```
 
 ### 로우(Raw) 웹훅 바디 (선택 사항)
 
 ```typescript
 import { Controller, Post, type RequestContext } from '@konekti/http';
-import { runNodeApplication } from '@konekti/runtime';
+import { KonektiFactory } from '@konekti/runtime';
 
 @Controller('/webhooks')
 class WebhookController {
@@ -172,9 +170,11 @@ class WebhookController {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   rawBody: true,
 });
+
+await app.listen();
 ```
 
 `rawBody`는 선택 사항(opt-in)이며 파싱된 `request.body`와 함께 원래의 요청 바이트를 보존합니다. Node 어댑터는 현재 이를 JSON 및 텍스트와 같은 멀티파트가 아닌 바디에 적용하며, 옵션이 비활성화되어 있거나 요청이 멀티파트 파싱을 사용하는 경우에는 `request.rawBody`를 설정하지 않은 상태로 둡니다.
@@ -184,7 +184,7 @@ await runNodeApplication(AppModule, {
 ```typescript
 import { readFileSync } from 'node:fs';
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   host: '127.0.0.1',
   https: {
     cert: readFileSync('./certs/dev.crt'),
@@ -192,6 +192,8 @@ await runNodeApplication(AppModule, {
   },
   port: 8443,
 });
+
+await app.listen();
 ```
 
 `host`가 설정되면 Node 어댑터는 기본 인터페이스 바인딩 대신 해당 호스트에 명시적으로 바인딩합니다. `https`가 제공되면 어댑터는 HTTPS 서버를 시작하고 시작 로그에 `https://...` URL을 보고합니다. 공개 URL이 실제 바인딩 대상과 다른 경우 시작 로그에 두 URL이 모두 포함됩니다. `https` 객체는 Node의 `node:https.createServer`로 전달되므로 호출자는 `key`와 `cert` 같은 유효한 TLS 자료를 제공해야 합니다.
@@ -199,10 +201,12 @@ await runNodeApplication(AppModule, {
 ### 애플리케이션 라우트를 위한 글로벌 접두사(Prefix)
 
 ```typescript
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   globalPrefix: '/api',
   globalPrefixExclude: ['/internal/*'],
 });
+
+await app.listen();
 ```
 
 `globalPrefix`는 모든 라우트에 기본적으로 적용되므로, `/app/info`와 같은 컨트롤러 라우트는 `/api/app/info`가 되고 `/health` 같은 런타임 소유 엔드포인트도 `/api/health`가 됩니다. 특정 경로를 접두사 없이 유지하려면 `globalPrefixExclude`를 사용하세요.
@@ -227,9 +231,11 @@ class DomainExceptionFilter implements ExceptionFilterHandler {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
   filters: [new DomainExceptionFilter()],
 });
+
+await app.listen();
 ```
 
 `filters`는 핸들러, 가드, 인터셉터 또는 미들웨어에서 예외가 발생할 때 순서대로 실행되는 글로벌 예외 필터를 등록합니다. 응답을 작성한 후 체인을 중단하려면 `true`를 반환하고, 다음 필터로 넘어가서 최종적으로 내장 HTTP 예외 직렬화기(serializer)에 도달하게 하려면 `undefined`를 반환하세요.
@@ -301,7 +307,8 @@ export class AppModule {}
 
 | 익스포트(Export) | 위치 | 설명 |
 |---|---|---|
-| `runNodeApplication(rootModule, options)` | `src/node.ts` | Node를 위한 부트스트랩 + 수신(listen) + 종료 연결 |
+| `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | canonical HTTP 애플리케이션 진입점 — `Application` 반환 |
+| `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | HTTP 런타임 없이 DI/생명주기 컨텍스트 부트스트랩 |
@@ -317,7 +324,7 @@ export class AppModule {}
 ### 부트스트랩 흐름
 
 ```text
-runNodeApplication(options)  [또는 bootstrapApplication]
+KonektiFactory.create(options)  [또는 bootstrapApplication]
   → compileModuleGraph()
       → 임포트/익스포트 가시성 검증
       → 순환 참조 감지
@@ -361,7 +368,7 @@ runNodeApplication(options)  [또는 bootstrapApplication]
 
 ### 런타임이 소유하는 Node 시작 관심사
 
-`runNodeApplication()`은 애플리케이션 코드에 있어서는 안 될 Node 전용 시작 세부사항들을 통합합니다.
+`KonektiFactory.create(...); await app.listen();` 경로는 여전히 런타임이 소유하는 Node 전용 시작 세부사항 위에서 동작합니다. `runNodeApplication()`은 같은 동작을 묶은 호환 래퍼로 유지됩니다.
 - HTTP 어댑터 생성 및 바인딩
 - 기본 CORS 미들웨어
 - 런타임 옵션(`port`, 기본 `3000`)으로 포트 결정
