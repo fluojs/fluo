@@ -265,6 +265,41 @@ describe('metadata helpers', () => {
     ]);
   });
 
+  it('round-trips DTO binding metadata including converter references', () => {
+    class TrimConverter {
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class ExampleDto {}
+
+    defineDtoFieldBindingMetadata(ExampleDto.prototype, 'name', {
+      converter: TrimConverter,
+      key: 'name',
+      optional: true,
+      source: 'body',
+    });
+
+    expect(getDtoFieldBindingMetadata(ExampleDto.prototype, 'name')).toEqual({
+      converter: TrimConverter,
+      key: 'name',
+      optional: true,
+      source: 'body',
+    });
+    expect(getDtoBindingSchema(ExampleDto)).toEqual([
+      {
+        propertyKey: 'name',
+        metadata: {
+          converter: TrimConverter,
+          key: 'name',
+          optional: true,
+          source: 'body',
+        },
+      },
+    ]);
+  });
+
   it('round-trips class DI metadata', () => {
     class ExampleService {}
 

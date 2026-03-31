@@ -44,6 +44,7 @@ export interface DtoFieldBindingMetadata {
   source: MetadataSource;
   key?: string;
   optional?: boolean;
+  converter?: Token | { convert(value: unknown, target: unknown): MaybePromise<unknown> };
 }
 
 export interface ValidationIssueMetadata {
