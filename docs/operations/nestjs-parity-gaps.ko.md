@@ -74,7 +74,7 @@
 |---|---|
 | A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)`가 `@konekti/runtime`에 출하되었습니다. HTTP 어댑터 없이 모듈 그래프를 부트스트랩하고, 라이프사이클 훅을 실행하며, 타입이 지정된 `get<T>()` + `close()` 컨텍스트를 반환합니다. |
 | A2. microservice / transport layer | `@konekti/microservices`에 TCP, Redis Pub/Sub, Kafka(요청/응답 + 이벤트), NATS, RabbitMQ(이벤트 전용) 트랜스포트, `@MessagePattern` / `@EventPattern` 데코레이터, `KonektiFactory.createMicroservice()`, 공유 컨테이너 기반 하이브리드 구성 및 런타임 통합 테스트가 출하되었습니다. |
-| A3. platform adapter breadth | `@konekti/platform-fastify`에 전체 패리티 테스트 스위트를 갖춘 `HttpApplicationAdapter` 구현 Fastify 어댑터가 출하되었습니다. |
+| A3. platform adapter breadth | `@konekti/platform-fastify`와 `@konekti/platform-express`가 패리티 중심 런타임 테스트를 갖춘 `HttpApplicationAdapter` 구현을 제공합니다. |
 | A4. HTTP versioning strategies beyond URI | URI, Header, Media type, Custom 4가지 전략 모두 `@konekti/http`와 `@konekti/runtime`에 출하되었습니다. |
 | A5. schema-based validation (Standard Schema) | Standard Schema 호환 검증기는 `@ValidateClass(schema)`를 통해 DTO 레벨에 직접 붙일 수 있으므로, Zod·Valibot·ArkType 스키마를 별도 schema 서브패키지 없이 표준 `ValidationIssue` 형태로 매핑할 수 있습니다. |
 | A6. request / transient provider scopes for GraphQL resolvers | `@konekti/graphql`이 오퍼레이션 컨텍스트마다 `createRequestScope()`를 연결합니다. `@Scope('request')`, `@Scope('transient')`, `@Scope('singleton')` 리졸버가 완전히 테스트되고 문서화되었습니다. |

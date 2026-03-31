@@ -74,7 +74,7 @@ The following items were previously listed as open gaps and have since been ship
 |---|---|
 | A1. standalone application context | `KonektiFactory.createApplicationContext(rootModule, options?)` is shipped in `@konekti/runtime`. Boots the module graph without an HTTP adapter, runs lifecycle hooks, and returns a typed `get<T>()` + `close()` context. |
 | A2. microservice / transport layer | `@konekti/microservices` ships TCP, Redis Pub/Sub, Kafka (request/reply + event), NATS, and RabbitMQ (event-only) transports, `@MessagePattern` / `@EventPattern` decorators, `KonektiFactory.createMicroservice()`, and shared-container hybrid composition with runtime integration tests. |
-| A3. platform adapter breadth | `@konekti/platform-fastify` ships a Fastify adapter implementing `HttpApplicationAdapter` with full parity test suite. |
+| A3. platform adapter breadth | `@konekti/platform-fastify` and `@konekti/platform-express` ship `HttpApplicationAdapter` implementations with parity-focused runtime tests. |
 | A4. HTTP versioning strategies beyond URI | All four strategies (URI, Header, Media type, Custom) are shipped in `@konekti/http` and `@konekti/runtime`. |
 | A5. schema-based validation (Standard Schema) | Standard Schema-compatible validators can be attached directly at the DTO level through `@ValidateClass(schema)`, so Zod, Valibot, and ArkType schemas all map into the standard `ValidationIssue` shape without a separate schema subpackage. |
 | A6. request / transient provider scopes for GraphQL resolvers | `@konekti/graphql` wires `createRequestScope()` per operation context. `@Scope('request')`, `@Scope('transient')`, and `@Scope('singleton')` resolvers are fully tested and documented. |

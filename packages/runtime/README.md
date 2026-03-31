@@ -21,7 +21,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 4. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
 5. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
 
-`KonektiFactory` is the canonical public startup facade. For Node.js HTTP apps, the default flow is `const app = await KonektiFactory.create(AppModule); await app.listen();`.
+`KonektiFactory` is the canonical public startup facade. For HTTP apps, the default flow is `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`, with optional `options.adapter` when selecting a transport package such as `@konekti/platform-fastify` or `@konekti/platform-express`.
 
 ## Installation
 
@@ -53,6 +53,21 @@ class AppModule {}
 const app = await KonektiFactory.create(AppModule);
 await app.listen();
 ```
+
+### Adapter-first startup (Express example)
+
+```typescript
+import { createExpressAdapter } from '@konekti/platform-express';
+import { KonektiFactory } from '@konekti/runtime';
+
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
+});
+
+await app.listen();
+```
+
+Use this adapter-first form when you need a transport package (`@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
 
 ### Global request converters
 
@@ -177,7 +192,7 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-`rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The Node adapter currently applies this to non-multipart bodies such as JSON and text, and leaves `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
+`rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The built-in Node adapter and the Fastify/Express platform adapters apply this to non-multipart bodies such as JSON and text, and leave `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
 
 ### Host binding and HTTPS
 

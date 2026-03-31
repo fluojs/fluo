@@ -15,6 +15,7 @@ This guide is for teams that already ship NestJS services and want a practical m
 | `@Inject(TOKEN)` | `@Inject([TOKEN])` from `@konekti/core` | Konekti takes an explicit token list for constructor dependencies. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | Default remains singleton. |
 | `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, options)` | Returns the Konekti `Application` shell without implicitly calling `listen()`. |
+| `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | Keep startup on the runtime facade while selecting an Express transport adapter explicitly. |
 | `app.listen(3000)` | `await app.listen()` | Startup remains explicit after application creation. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
 | `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)`, `@Convert(...)`, and global `converters` runtime options | Konekti keeps request conversion in the HTTP binding layer instead of a separate `@UsePipes()` decorator. |
@@ -212,6 +213,20 @@ import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   port: 3000,
+});
+
+await app.listen();
+```
+
+### Konekti (`KonektiFactory.create` + Express adapter)
+
+```typescript
+import { createExpressAdapter } from '@konekti/platform-express';
+import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
+
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
 });
 
 await app.listen();
@@ -527,7 +542,7 @@ const service = await moduleRef.resolve(UserService);
 - convert DI metadata to explicit `@Inject([...])` token lists where needed
 - migrate guards/interceptors with `@UseGuards` and `@UseInterceptors`
 - move validation from Nest pipes to `@RequestDto` + the `@konekti/validation` package
-- switch bootstrap to `runNodeApplication(...)` or `bootstrapApplication(...)`
+- switch bootstrap to `KonektiFactory.create(..., { adapter? })` and keep `runNodeApplication(...)` / `bootstrapApplication(...)` as compatibility or low-level paths
 - migrate tests to `createTestingModule(...)` and provider overrides
 
 ## related docs
