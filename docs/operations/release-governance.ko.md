@@ -29,6 +29,7 @@
 - `@konekti/di`
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
+- `@konekti/platform-express`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`

@@ -15,6 +15,7 @@
 | `@Inject(TOKEN)` | `@konekti/core`의 `@Inject([TOKEN])` | 생성자 의존성 토큰 목록을 명시적으로 선언합니다. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | 기본값은 singleton입니다. |
 | `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, options)` | `listen()`을 암시적으로 호출하지 않고 `Application` 셸을 반환합니다. |
+| `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | 런타임 facade 기반 시작 경로를 유지하면서 Express 트랜스포트 어댑터를 명시적으로 선택합니다. |
 | `app.listen(3000)` | `await app.listen()` | 애플리케이션 생성 이후 실행은 명시적으로 유지됩니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
 | `@UseGuards()`, `@UseInterceptors()`, validation pipes | `@UseGuards()`, `@UseInterceptors()`, `@RequestDto(...)`, `@Convert(...)`, global `converters` 런타임 옵션 | Konekti는 별도의 `@UsePipes()` 데코레이터 대신 HTTP 바인딩 계층에서 요청 변환을 처리합니다. |
@@ -212,6 +213,20 @@ import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   port: 3000,
+});
+
+await app.listen();
+```
+
+### Konekti (`KonektiFactory.create` + Express adapter)
+
+```typescript
+import { createExpressAdapter } from '@konekti/platform-express';
+import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
+
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createExpressAdapter({ port: 3000 }),
 });
 
 await app.listen();
@@ -527,7 +542,7 @@ const service = await moduleRef.resolve(UserService);
 - 필요한 클래스에 `@Inject([...])` 토큰 목록 명시
 - 가드/인터셉터를 `@UseGuards`/`@UseInterceptors`로 이전
 - Nest pipe 기반 검증을 `@RequestDto` + `@konekti/validation` 패키지로 이전
-- 부트스트랩을 `runNodeApplication(...)` 또는 `bootstrapApplication(...)`로 전환
+- 부트스트랩을 `KonektiFactory.create(..., { adapter? })` 중심으로 전환하고, `runNodeApplication(...)` / `bootstrapApplication(...)`은 호환·저수준 경로로 유지
 - 테스트를 `createTestingModule(...)` + provider override 패턴으로 전환
 
 ## 관련 문서
