@@ -4,11 +4,12 @@ import { Inject, Scope, defineControllerMetadata } from '@konekti/core';
 import { REDIS_CLIENT } from '@konekti/redis';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
-import { Cron } from './decorators.js';
+import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
-import { getCronTaskMetadataEntries } from './metadata.js';
+import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
 import { createCronModule } from './module.js';
-import type { CronScheduleOptions, CronScheduledJob, CronScheduler } from './types.js';
+import { SCHEDULING_REGISTRY } from './tokens.js';
+import type { CronScheduleOptions, CronScheduledJob, CronScheduler, SchedulingRegistry } from './types.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -238,6 +239,7 @@ describe('@konekti/cron', () => {
       {
         metadata: {
           expression: CronExpression.EVERY_10_SECONDS,
+          kind: 'cron',
           options: {
             name: 'heartbeat',
             timezone: 'UTC',
@@ -246,6 +248,81 @@ describe('@konekti/cron', () => {
         propertyKey: 'heartbeat',
       },
     ]);
+  });
+
+  it('writes interval and timeout metadata using standard decorators', () => {
+    class TaskService {
+      @Interval(1_000, { name: 'heartbeat-interval' })
+      heartbeat() {}
+
+      @Timeout(5_000, { name: 'initial-timeout' })
+      startupSync() {}
+    }
+
+    const entries = getSchedulingTaskMetadataEntries(TaskService.prototype);
+
+    expect(entries).toEqual([
+      {
+        metadata: {
+          kind: 'interval',
+          ms: 1_000,
+          options: {
+            name: 'heartbeat-interval',
+          },
+        },
+        propertyKey: 'heartbeat',
+      },
+      {
+        metadata: {
+          kind: 'timeout',
+          ms: 5_000,
+          options: {
+            name: 'initial-timeout',
+          },
+        },
+        propertyKey: 'startupSync',
+      },
+    ]);
+  });
+
+  it('throws during decoration when @Interval() or @Timeout() receives invalid ms', () => {
+    expect(() => {
+      class InvalidIntervalTask {
+        @Interval(0)
+        run() {}
+      }
+
+      return InvalidIntervalTask;
+    }).toThrow('@Interval(): ms must be a positive integer.');
+
+    expect(() => {
+      class InvalidTimeoutTask {
+        @Timeout(-1)
+        run() {}
+      }
+
+      return InvalidTimeoutTask;
+    }).toThrow('@Timeout(): ms must be a positive integer.');
+  });
+
+  it('rejects private methods for @Interval() and @Timeout()', () => {
+    expect(() => {
+      class InvalidIntervalTask {
+        @Interval(1_000)
+        #run() {}
+      }
+
+      return InvalidIntervalTask;
+    }).toThrow('@Interval() cannot be used on private methods.');
+
+    expect(() => {
+      class InvalidTimeoutTask {
+        @Timeout(1_000)
+        #run() {}
+      }
+
+      return InvalidTimeoutTask;
+    }).toThrow('@Timeout() cannot be used on private methods.');
   });
 
   it('discovers cron tasks across imported modules and resolves DI-backed instances', async () => {
@@ -431,7 +508,7 @@ describe('@konekti/cron', () => {
     expect(
       loggerEvents.some((event) =>
         event.includes(
-          'warn:CronLifecycleService:ReportService in module AppModule declares @Cron() methods but is registered with transient scope.',
+          'warn:CronLifecycleService:ReportService in module AppModule declares scheduling methods (@Cron/@Interval/@Timeout) but is registered with transient scope.',
         ),
       ),
     ).toBe(true);
@@ -473,14 +550,14 @@ describe('@konekti/cron', () => {
     expect(
       loggerEvents.some((event) =>
         event.includes(
-          'warn:CronLifecycleService:RequestScopedReportController in module AppModule declares @Cron() methods but is registered with request scope.',
+          'warn:CronLifecycleService:RequestScopedReportController in module AppModule declares scheduling methods (@Cron/@Interval/@Timeout) but is registered with request scope.',
         ),
       ),
     ).toBe(true);
     expect(
       loggerEvents.some((event) =>
         event.includes(
-          'warn:CronLifecycleService:TransientExportController in module AppModule declares @Cron() methods but is registered with transient scope.',
+          'warn:CronLifecycleService:TransientExportController in module AppModule declares scheduling methods (@Cron/@Interval/@Timeout) but is registered with transient scope.',
         ),
       ),
     ).toBe(true);
@@ -1279,4 +1356,332 @@ describe('@konekti/cron', () => {
 
     await app.close();
   });
-});
+
+  it('schedules @Interval() and @Timeout() tasks through lifecycle bootstrap', async () => {
+    vi.useFakeTimers();
+
+    class TickStore {
+      intervalCount = 0;
+      timeoutCount = 0;
+    }
+
+    @Inject([TickStore])
+    class TaskService {
+      constructor(private readonly store: TickStore) {}
+
+      @Interval(100)
+      onInterval() {
+        this.store.intervalCount += 1;
+      }
+
+      @Timeout(250)
+      onTimeout() {
+        this.store.timeoutCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule()],
+      providers: [TickStore, TaskService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const store = await app.container.resolve(TickStore);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.intervalCount).toBe(1);
+    expect(store.timeoutCount).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(150);
+    expect(store.intervalCount).toBe(2);
+    expect(store.timeoutCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(store.timeoutCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('fails bootstrap on duplicate task names across cron/interval/timeout decorators', async () => {
+    class DuplicateTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'duplicate-task' })
+      cronTask() {}
+
+      @Interval(1_000, { name: 'duplicate-task' })
+      intervalTask() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule()],
+      providers: [DuplicateTaskService],
+    });
+
+    await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(/Duplicate scheduling task name/i);
+  });
+
+  it('exposes scheduling registry runtime controls and rejects updateCronExpression for non-cron tasks', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
+      events.push('cron');
+    });
+
+    expect(registry.get('dynamic-cron')?.kind).toBe('cron');
+    expect(scheduled.records.some((record) => record.options.name === 'dynamic-cron')).toBe(true);
+
+    registry.updateCronExpression('dynamic-cron', CronExpression.EVERY_5_SECONDS);
+    expect(registry.get('dynamic-cron')?.expression).toBe(CronExpression.EVERY_5_SECONDS);
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+    registry.addTimeout('dynamic-timeout', 5_000, () => {
+      events.push('timeout');
+    });
+
+    expect(registry.getAll().map((task: { name: string }) => task.name).sort()).toEqual([
+      'dynamic-cron',
+      'dynamic-interval',
+      'dynamic-timeout',
+    ]);
+
+    expect(() => registry.updateCronExpression('dynamic-interval', CronExpression.EVERY_10_SECONDS)).toThrow(
+      /supports only cron tasks/i,
+    );
+
+    expect(registry.disable('dynamic-cron')).toBe(true);
+    expect(registry.get('dynamic-cron')?.enabled).toBe(false);
+
+    expect(registry.enable('dynamic-cron')).toBe(true);
+    expect(registry.get('dynamic-cron')?.enabled).toBe(true);
+
+    expect(registry.remove('dynamic-timeout')).toBe(true);
+    expect(registry.get('dynamic-timeout')).toBeUndefined();
+
+    await app.close();
+  });
+
+  it('keeps timeout definitions in registry after firing and allows re-enable with full delay', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    let count = 0;
+
+    registry.addTimeout('dynamic-once', 500, () => {
+      count += 1;
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(count).toBe(1);
+    expect(registry.get('dynamic-once')?.enabled).toBe(false);
+
+    expect(registry.enable('dynamic-once')).toBe(true);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(count).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(count).toBe(2);
+    expect(registry.get('dynamic-once')?.enabled).toBe(false);
+
+    await app.close();
+  });
+
+  it('cleans up cron, interval, and timeout schedules during shutdown', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+
+    class TickStore {
+      intervalCount = 0;
+      timeoutCount = 0;
+    }
+
+    @Inject([TickStore])
+    class TaskService {
+      constructor(private readonly store: TickStore) {}
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'shutdown-cron' })
+      cronTask() {}
+
+      @Interval(100)
+      intervalTask() {
+        this.store.intervalCount += 1;
+      }
+
+      @Timeout(1_000)
+      timeoutTask() {
+        this.store.timeoutCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      providers: [TickStore, TaskService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const store = await app.container.resolve(TickStore);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.intervalCount).toBe(1);
+
+    await app.close();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(store.intervalCount).toBe(1);
+    expect(store.timeoutCount).toBe(0);
+    expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses distributed lock path for dynamic interval tasks across nodes', async () => {
+    vi.useFakeTimers();
+
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+
+    class Store {
+      count = 0;
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-distributed-interval',
+            lockTtlMs: 60_000,
+          },
+        }),
+      ],
+      providers: [Store],
+    });
+
+    class SecondAppModule {}
+    defineModule(SecondAppModule, {
+      imports: [
+        createCronModule({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-distributed-interval',
+            lockTtlMs: 60_000,
+          },
+        }),
+      ],
+      providers: [Store],
+    });
+
+    const appOne = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const appTwo = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: SecondAppModule,
+    });
+
+    const registryOne = await appOne.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const registryTwo = await appTwo.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const storeOne = await appOne.container.resolve(Store);
+    const storeTwo = await appTwo.container.resolve(Store);
+
+    registryOne.addInterval('dynamic-distributed-task', 100, async () => {
+      storeOne.count += 1;
+      started.resolve();
+      await release.promise;
+    }, { distributed: true });
+    registryTwo.addInterval('dynamic-distributed-task', 100, () => {
+      storeTwo.count += 1;
+    }, { distributed: true });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(100);
+    release.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(storeOne.count + storeTwo.count).toBe(1);
+
+    await appOne.close();
+    await appTwo.close();
+  });
+
+  it('warns and skips @Interval/@Timeout on non-singleton providers', async () => {
+    vi.useFakeTimers();
+
+    const loggerEvents: string[] = [];
+
+    class NonSingletonTaskService {
+      @Interval(100)
+      onInterval() {}
+
+      @Timeout(100)
+      onTimeout() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule()],
+      providers: [
+        {
+          provide: NonSingletonTaskService,
+          scope: 'transient',
+          useClass: NonSingletonTaskService,
+        },
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+
+    expect(
+      loggerEvents.some((event) =>
+        event.includes(
+          'warn:CronLifecycleService:NonSingletonTaskService in module AppModule declares scheduling methods (@Cron/@Interval/@Timeout) but is registered with transient scope.',
+        ),
+      ),
+    ).toBe(true);
+
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    expect(registry.getAll()).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it('enforces global duplicate names for dynamic runtime registrations', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCronModule()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('global-duplicate', CronExpression.EVERY_SECOND, () => {});
+
+    expect(() => registry.addInterval('global-duplicate', 1_000, () => {})).toThrow(/Duplicate scheduling task name/i);
+    expect(() => registry.addTimeout('global-duplicate', 1_000, () => {})).toThrow(/Duplicate scheduling task name/i);
+
+    await app.close();
+  });
+
+  });
