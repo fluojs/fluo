@@ -23,6 +23,12 @@ function run(command: string, args: string[], cwd: string): void {
   }
 }
 
+const inspectFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-app.module.mjs',
+);
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -288,6 +294,87 @@ describe('CLI command runner', () => {
 
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
     expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
+  });
+
+  it('prints inspect usage for `help inspect`', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help', 'inspect'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: konekti inspect <module-path> [options]');
+    expect(stdoutBuffer.join('')).toContain('--mermaid');
+    expect(stdoutBuffer.join('')).toContain('--timing');
+  });
+
+  it('emits runtime diagnostics graph JSON for inspect by default', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      rootModule: string;
+      version: number;
+    };
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(payload.version).toBe(1);
+    expect(payload.rootModule).toBe('AppModule');
+  });
+
+  it('emits Mermaid graph output for inspect', async () => {
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('graph TD');
+    expect(stdoutBuffer.join('')).toContain('AppModule');
+  });
+
+  it('emits bootstrap timing diagnostics for inspect --timing', async () => {
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--timing'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const timing = JSON.parse(stdoutBuffer.join('')) as {
+      phases: Array<{ durationMs: number; name: string }>;
+      totalMs: number;
+      version: number;
+    };
+
+    expect(exitCode).toBe(0);
+    expect(timing.version).toBe(1);
+    expect(timing.totalMs).toBeGreaterThanOrEqual(0);
+    expect(timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+  });
+
+  it('rejects conflicting inspect output modes', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Choose only one inspect output mode');
   });
 
   it('prints generate usage for `generate --help`', async () => {

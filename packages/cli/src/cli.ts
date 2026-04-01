@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runGenerateCommand } from './commands/generate.js';
+import { inspectUsage, runInspectCommand } from './commands/inspect.js';
 import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
 import { generatorManifest, resolveGeneratorKind } from './generators/manifest.js';
@@ -34,6 +35,10 @@ type ParsedCommand =
   | {
       argv: string[];
       command: 'migrate';
+    }
+  | {
+      argv: string[];
+      command: 'inspect';
     }
   | {
       argv: string[];
@@ -78,6 +83,7 @@ const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: ['create'], command: 'new', description: 'Scaffold a new Konekti application.' },
   { aliases: ['g'], command: 'generate', description: 'Generate files inside an existing Konekti application.' },
+  { aliases: [], command: 'inspect', description: 'Inspect a module graph and emit diagnostics.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-Konekti codemods on existing files.' },
   { aliases: [], command: 'help', description: 'Show command-specific help output.' },
 ];
@@ -228,6 +234,13 @@ function parseCommand(argv: string[]): ParsedCommand {
     };
   }
 
+  if (command === 'inspect') {
+    return {
+      argv: argv.slice(1),
+      command: 'inspect',
+    };
+  }
+
   return {
     argv,
     command: 'generate',
@@ -266,6 +279,11 @@ export async function runCli(
         return 0;
       }
 
+      if (topic === 'inspect') {
+        stdout.write(`${inspectUsage()}\n`);
+        return 0;
+      }
+
       stdout.write(`${usage()}\n`);
       return 0;
     }
@@ -285,6 +303,11 @@ export async function runCli(
       return 0;
     }
 
+    if (argv[0] === 'inspect' && argv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${inspectUsage()}\n`);
+      return 0;
+    }
+
     const parsedCommand = parseCommand(argv);
 
     if (parsedCommand.command === 'new') {
@@ -293,6 +316,10 @@ export async function runCli(
 
     if (parsedCommand.command === 'migrate') {
       return runMigrateCommand(parsedCommand.argv, runtime);
+    }
+
+    if (parsedCommand.command === 'inspect') {
+      return runInspectCommand(parsedCommand.argv, runtime);
     }
 
     const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
