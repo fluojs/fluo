@@ -60,10 +60,7 @@ The OpenAPI generator extracts schema information from route metadata and input 
 - **Decoupling**: `@konekti/openapi` interacts only with normalized metadata and does not access internal package storage.
 - **Auth Schemes**: Authentication schemes are declared at the application level using OpenAPI decorators.
 - **Security scheme breadth**: OpenAPI security schemes can be registered in module/document options (`securitySchemes`) for API key, HTTP, OAuth2, and OpenID Connect.
-
-## intentionally out of scope
-
-- A generic OpenAPI document transform/post-processing hook (for example `documentTransform`) is intentionally out of scope.
+- **Document post-processing**: A generated document can be post-processed once at build time via `documentTransform` in module/document options.
 
 ## conceptual flow
 

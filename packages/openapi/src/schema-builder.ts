@@ -124,6 +124,7 @@ export interface BuildOpenApiDocumentOptions {
   version: string;
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
 }
 
 export type DefaultErrorResponsesPolicy = 'inject' | 'omit';
@@ -1057,7 +1058,7 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
 
   const components = createOpenApiComponents(componentSchemas, hasBearerAuth, options.securitySchemes);
 
-  return {
+  const document: OpenApiDocument = {
     ...(Object.keys(components).length > 0 && { components }),
     info: {
       title: options.title,
@@ -1066,4 +1067,6 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     openapi: '3.1.0',
     paths,
   };
+
+  return options.documentTransform ? options.documentTransform(document) : document;
 }

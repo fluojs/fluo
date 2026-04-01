@@ -83,6 +83,7 @@ interface OpenApiModuleOptions {
   sources?: readonly HandlerSource[];          // createHandlerMapping()에서 사용하는 핸들러 소스 모델
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
   ui?: boolean;                                 // /docs에서 Swagger UI 제공 (기본값: false)
 }
 
@@ -258,6 +259,7 @@ interface BuildOpenApiDocumentOptions {
   descriptors: readonly HandlerDescriptor[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
   title: string;
   version: string;
 }
@@ -285,12 +287,6 @@ interface MethodApiMetadata {
   excludeEndpoint?: boolean;
 }
 ```
-
-## 명시적 범위 제외
-
-- `documentTransform` 같은 범용 문서 후처리 훅은 현재 패키지 범위에서 의도적으로 제외됩니다.
-
----
 
 ## 의존성
 

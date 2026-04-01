@@ -83,6 +83,7 @@ interface OpenApiModuleOptions {
   sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
   ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
 }
 
@@ -258,6 +259,7 @@ interface BuildOpenApiDocumentOptions {
   descriptors: readonly HandlerDescriptor[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
   title: string;
   version: string;
 }
@@ -285,12 +287,6 @@ interface MethodApiMetadata {
   excludeEndpoint?: boolean;
 }
 ```
-
-## Explicitly out of scope
-
-- Generic document post-processing hooks (for example `documentTransform`) are intentionally out of scope in this package surface.
-
----
 
 ## Dependencies
 
