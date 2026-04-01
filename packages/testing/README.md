@@ -18,6 +18,18 @@ The public contract stays intentionally focused. Official CLI-generated template
 
 It does **not** participate in the production runtime — the testing module exists only in test environments. It is intentionally a baseline: a stable foundation to build on, not a complete fixture library. It already includes helper exports such as `makeRequest`, `createMock`, `createDeepMock`, `mockToken`, and `asMock`, but it does not try to be a full fixture framework.
 
+### Mock helper quick examples
+
+```typescript
+import { asMock, createDeepMock, createMock, mockToken } from '@konekti/testing';
+import { vi } from 'vitest';
+
+const repo = createMock<UserRepository>({ findById: vi.fn() });
+const mailer = createDeepMock(MailService);
+const typedFn = asMock(vi.fn<(id: string) => Promise<User | null>>());
+const repoProvider = mockToken(USER_REPOSITORY, { findById: vi.fn() });
+```
+
 ## Installation
 
 ```bash

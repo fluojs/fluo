@@ -83,7 +83,7 @@ interface OpenApiModuleOptions {
   sources?: readonly HandlerSource[];          // createHandlerMapping()에서 사용하는 핸들러 소스 모델
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // 문서 생성 후 실행되며, 지정하지 않으면 no-op입니다
   ui?: boolean;                                 // /docs에서 Swagger UI 제공 (기본값: false)
 }
 
@@ -259,7 +259,7 @@ interface BuildOpenApiDocumentOptions {
   descriptors: readonly HandlerDescriptor[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // 문서 생성 후 실행되며, 지정하지 않으면 no-op입니다
   title: string;
   version: string;
 }

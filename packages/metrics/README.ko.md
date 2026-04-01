@@ -101,7 +101,7 @@ MetricsModule.forRoot({
 
 ### HTTP 라벨 정규화
 
-`http` 메트릭을 활성화하면 path 라벨은 기본적으로 request params를 사용한 template 정규화(예: `/users/123` -> `/users/:id`)를 적용해 cardinality drift를 줄입니다.
+`http` 메트릭을 활성화하면 `HttpMetricsMiddleware`가 기본적으로 request params를 사용한 template 정규화(예: `/users/123` -> `/users/:id`)를 적용해 cardinality drift를 줄입니다.
 
 ```typescript
 MetricsModule.forRoot({
@@ -111,7 +111,7 @@ MetricsModule.forRoot({
 })
 ```
 
-커스텀 normalizer로 라벨 전략을 덮어쓸 수도 있습니다:
+커스텀 normalizer로 `HttpMetricsMiddleware` 라벨 전략을 덮어쓸 수도 있습니다:
 
 ```typescript
 MetricsModule.forRoot({
@@ -123,7 +123,7 @@ MetricsModule.forRoot({
 
 높은 cardinality를 의도적으로 감수하는 경우에만 `pathLabelMode: 'raw'`를 사용하세요.
 
-`unknownPathLabel`의 기본값은 `UNKNOWN`입니다. 커스텀 normalizer가 빈 문자열을 반환하면 이 라벨로 폴백합니다.
+`unknownPathLabel`의 기본값은 `UNKNOWN`입니다. 커스텀 normalizer가 빈 문자열을 반환하면 `HttpMetricsMiddleware`는 이 라벨로 폴백합니다.
 
 ### Provider 계약
 
