@@ -1,5 +1,6 @@
 import { Container, type Provider } from '@konekti/di';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
+import { performance } from 'node:perf_hooks';
 import {
   DefaultBinder,
   createDispatcher,
@@ -13,6 +14,7 @@ import {
 } from '@konekti/http';
 
 import { DuplicateProviderError } from './errors.js';
+import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './diagnostics.js';
 import { createConsoleApplicationLogger } from './logger.js';
 import { compileModuleGraph, createRuntimeTokenSet, providerToken } from './module-graph.js';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
@@ -394,6 +396,7 @@ class KonektiApplication implements Application {
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
     readonly dispatcher: Dispatcher,
+    readonly bootstrapTiming: Application['bootstrapTiming'],
     private readonly adapter: HttpApplicationAdapter,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
@@ -507,6 +510,7 @@ class KonektiApplicationContext implements ApplicationContext {
     readonly container: Container,
     readonly modules: CompiledModule[],
     readonly rootModule: ModuleType,
+    readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
     private readonly runtimeCleanup: Array<() => void>,
   ) {}
@@ -874,30 +878,76 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   let bootstrappedContainer: Container | undefined;
   const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
   const runtimeCleanup: Array<() => void> = [];
+  const timingEnabled = options.diagnostics?.timing === true;
+  const timingStart = timingEnabled ? performance.now() : 0;
+  const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
     logger.log('Starting Konekti application...', 'KonektiFactory');
     const runtimeProviders = createRuntimeProviders(options, logger);
 
+    const moduleBootstrapStart = timingEnabled ? performance.now() : 0;
     const bootstrapped = bootstrapModule(options.rootModule, {
       duplicateProviderPolicy: options.duplicateProviderPolicy,
       logger,
       providers: runtimeProviders,
       validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
     });
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: performance.now() - moduleBootstrapStart,
+        name: 'bootstrap_module',
+      });
+    }
+
+    const registerTokensStart = timingEnabled ? performance.now() : 0;
     registerRuntimeBootstrapTokens(bootstrapped, adapter);
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: performance.now() - registerTokensStart,
+        name: 'register_runtime_tokens',
+      });
+    }
 
     bootstrappedContainer = bootstrapped.container;
-    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
-    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
 
+    const resolveLifecycleStart = timingEnabled ? performance.now() : 0;
+    lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: performance.now() - resolveLifecycleStart,
+        name: 'resolve_lifecycle_instances',
+      });
+    }
+
+    const lifecycleStart = timingEnabled ? performance.now() : 0;
+    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: performance.now() - lifecycleStart,
+        name: 'run_bootstrap_lifecycle',
+      });
+    }
+
+    const dispatcherStart = timingEnabled ? performance.now() : 0;
     const dispatcher = createRuntimeDispatcher(bootstrapped, options, logger);
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: performance.now() - dispatcherStart,
+        name: 'create_dispatcher',
+      });
+    }
+
+    const bootstrapTiming = timingEnabled
+      ? createBootstrapTimingDiagnostics(timingPhases, performance.now() - timingStart)
+      : undefined;
 
     return new KonektiApplication(
       bootstrapped.container,
       bootstrapped.modules,
       options.rootModule,
       dispatcher,
+      bootstrapTiming,
       adapter,
       lifecycleInstances,
       logger,
@@ -934,27 +984,66 @@ export class KonektiFactory {
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     const runtimeCleanup: Array<() => void> = [];
+    const timingEnabled = options.diagnostics?.timing === true;
+    const timingStart = timingEnabled ? performance.now() : 0;
+    const timingPhases: BootstrapTimingPhase[] = [];
 
     try {
       logger.log('Starting Konekti application context...', 'KonektiFactory');
       const runtimeProviders = createRuntimeProviders(options, logger);
 
+      const moduleBootstrapStart = timingEnabled ? performance.now() : 0;
       const bootstrapped = bootstrapModule(rootModule, {
         duplicateProviderPolicy: options.duplicateProviderPolicy,
         logger,
         providers: runtimeProviders,
         validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES],
       });
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: performance.now() - moduleBootstrapStart,
+          name: 'bootstrap_module',
+        });
+      }
+
+      const registerTokensStart = timingEnabled ? performance.now() : 0;
       registerRuntimeApplicationContextTokens(bootstrapped);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: performance.now() - registerTokensStart,
+          name: 'register_runtime_tokens',
+        });
+      }
 
       bootstrappedContainer = bootstrapped.container;
+
+      const resolveLifecycleStart = timingEnabled ? performance.now() : 0;
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: performance.now() - resolveLifecycleStart,
+          name: 'resolve_lifecycle_instances',
+        });
+      }
+
+      const lifecycleStart = timingEnabled ? performance.now() : 0;
       await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
+      if (timingEnabled) {
+        timingPhases.push({
+          durationMs: performance.now() - lifecycleStart,
+          name: 'run_bootstrap_lifecycle',
+        });
+      }
+
+      const bootstrapTiming = timingEnabled
+        ? createBootstrapTimingDiagnostics(timingPhases, performance.now() - timingStart)
+        : undefined;
 
       return new KonektiApplicationContext(
         bootstrapped.container,
         bootstrapped.modules,
         rootModule,
+        bootstrapTiming,
         lifecycleInstances,
         runtimeCleanup,
       );
