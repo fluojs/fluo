@@ -114,3 +114,13 @@ Summary:
 - Assemble the application shell.
 
 While low-level APIs are available, the recommended development experience is decorator-based.
+
+## diagnostics graph and bootstrap timing
+
+`@konekti/runtime` now exposes a versioned diagnostics export (`version: 1`) derived from the compiled module graph (`CompiledModule[]`).
+
+- `createRuntimeDiagnosticsGraph(modules, rootModule)` exports machine-readable module relationships, provider/token membership, export relationships, and provider scope/type annotations.
+- `renderRuntimeDiagnosticsMermaid(graph)` emits a module-level Mermaid graph (module nodes + module import edges).
+- Bootstrap timing is opt-in through `KonektiFactory.createApplicationContext(..., { diagnostics: { timing: true } })` or `KonektiFactory.create(..., { diagnostics: { timing: true } })`; default bootstrap paths do not collect timing data.
+
+The CLI `konekti inspect` command is a thin wrapper over this runtime diagnostics surface.

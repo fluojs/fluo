@@ -43,7 +43,7 @@
 - **`@konekti/config`**: 설정 로딩 및 타입 안전성이 보장된 설정 접근.
 - **`@konekti/di`**: 프로바이더 해결(resolution) 및 라이프사이클 스코프.
 - **`@konekti/http`**: HTTP 실행, 바인딩, 예외, 라우트 메타데이터.
-- **`@konekti/runtime`**: 애플리케이션 부트스트랩 및 런타임 오케스트레이션.
+- **`@konekti/runtime`**: 애플리케이션 부트스트랩/런타임 오케스트레이션 + 버전 고정 모듈 진단 내보내기 + opt-in 부트스트랩 타이밍.
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
 - **`@konekti/platform-express`**: Express 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
@@ -64,7 +64,7 @@
 - **데이터 통합**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`.
 - **`@konekti/terminus`**: 헬스 인디케이터 조합과 런타임 헬스 응답 집계를 확장하는 운영 헬스 패키지.
 - **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티.
-- **`@konekti/cli`**: 애플리케이션 부트스트랩 및 생성 명령어.
+- **`@konekti/cli`**: 애플리케이션 부트스트랩/생성/마이그레이션 + 런타임 진단 inspect 명령어.
 
 ## boundary and documentation rules
 

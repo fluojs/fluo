@@ -114,3 +114,13 @@ Konekti는 런타임 타입 리플렉션 대신 명시적인 토큰 메타데이
 - 애플리케이션 쉘 조립.
 
 저수준 API를 사용할 수도 있지만, 권장되는 개발 경험은 데코레이터 기반 방식입니다.
+
+## 진단 그래프와 부트스트랩 타이밍
+
+`@konekti/runtime`은 컴파일된 모듈 그래프(`CompiledModule[]`)를 기반으로 버전 고정(`version: 1`) 진단 내보내기를 제공합니다.
+
+- `createRuntimeDiagnosticsGraph(modules, rootModule)`는 모듈 관계, 프로바이더/토큰 소속, export 관계, 프로바이더 scope/type 주석을 기계 판독 가능한 형태로 출력합니다.
+- `renderRuntimeDiagnosticsMermaid(graph)`는 모듈 노드 + 모듈 import 엣지 중심의 모듈 레벨 Mermaid 그래프를 출력합니다.
+- 부트스트랩 타이밍은 `KonektiFactory.createApplicationContext(..., { diagnostics: { timing: true } })` 또는 `KonektiFactory.create(..., { diagnostics: { timing: true } })`에서만 수집되는 opt-in 기능이며, 기본 경로에서는 타이밍 수집 오버헤드가 없습니다.
+
+CLI의 `konekti inspect` 명령은 이 런타임 진단 표면을 그대로 호출하는 얇은 래퍼입니다.

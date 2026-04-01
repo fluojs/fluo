@@ -127,6 +127,29 @@ await context.close();
 
 `createApplicationContext()` bootstraps the module graph and lifecycle hooks without creating the HTTP dispatcher/adapter. Use it for CLI scripts, background workers, migrations, and tests that only need DI.
 
+### Runtime diagnostics graph + bootstrap timing
+
+```typescript
+import {
+  KonektiFactory,
+  createRuntimeDiagnosticsGraph,
+  renderRuntimeDiagnosticsMermaid,
+} from '@konekti/runtime';
+
+const context = await KonektiFactory.createApplicationContext(AppModule, {
+  diagnostics: { timing: true },
+});
+
+const graph = createRuntimeDiagnosticsGraph(context.modules, context.rootModule);
+console.log(JSON.stringify(graph, null, 2));
+console.log(renderRuntimeDiagnosticsMermaid(graph));
+console.log(context.bootstrapTiming); // undefined unless diagnostics.timing is true
+
+await context.close();
+```
+
+`createRuntimeDiagnosticsGraph()` produces a versioned (`version: 1`) machine-readable module graph derived from `CompiledModule[]`, including module imports, module exports, provider membership, provider scope/type annotations, and controller membership. `renderRuntimeDiagnosticsMermaid()` emits a module-level Mermaid graph intended for quick topology inspection.
+
 ### Microservice factory (non-HTTP transport)
 
 ```typescript
@@ -326,6 +349,8 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
+| `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | Export versioned runtime diagnostics graph from compiled modules |
+| `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | Emit module-level Mermaid graph text from diagnostics payload |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context and attach a transport-backed microservice runtime |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | Lower-level: compile module graph + build container |

@@ -127,6 +127,29 @@ await context.close();
 
 `createApplicationContext()`는 HTTP 디스패처/어댑터를 생성하지 않고 모듈 그래프와 생명주기 훅만 부트스트랩합니다. CLI 스크립트, 백그라운드 워커, 마이그레이션, 그리고 DI만 필요한 테스트에 사용하세요.
 
+### 런타임 진단 그래프 + 부트스트랩 타이밍
+
+```typescript
+import {
+  KonektiFactory,
+  createRuntimeDiagnosticsGraph,
+  renderRuntimeDiagnosticsMermaid,
+} from '@konekti/runtime';
+
+const context = await KonektiFactory.createApplicationContext(AppModule, {
+  diagnostics: { timing: true },
+});
+
+const graph = createRuntimeDiagnosticsGraph(context.modules, context.rootModule);
+console.log(JSON.stringify(graph, null, 2));
+console.log(renderRuntimeDiagnosticsMermaid(graph));
+console.log(context.bootstrapTiming); // diagnostics.timing이 true일 때만 채워짐
+
+await context.close();
+```
+
+`createRuntimeDiagnosticsGraph()`는 `CompiledModule[]`를 기준으로 버전 고정(`version: 1`)된 기계 판독용 모듈 그래프를 생성합니다. 여기에는 모듈 import/export 관계, 프로바이더/토큰 소속, 프로바이더 scope/type 주석, 컨트롤러 소속 관계가 포함됩니다. `renderRuntimeDiagnosticsMermaid()`는 빠른 구조 확인을 위한 모듈 레벨 Mermaid 그래프를 출력합니다.
+
 ### 마이크로서비스 팩토리 (비 HTTP 트랜스포트)
 
 ```typescript
@@ -326,6 +349,8 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
+| `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | 컴파일된 모듈에서 버전 고정 런타임 진단 그래프 내보내기 |
+| `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | 진단 페이로드에서 모듈 레벨 Mermaid 그래프 텍스트 생성 |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | HTTP 런타임 없이 DI/생명주기 컨텍스트 부트스트랩 |
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | DI/생명주기 컨텍스트를 부트스트랩하고 트랜스포트 기반 마이크로서비스 런타임 연결 |
 | `bootstrapModule(module)` | `src/bootstrap.ts` | 하위 레벨: 모듈 그래프 컴파일 + 컨테이너 빌드 |
