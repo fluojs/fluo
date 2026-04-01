@@ -35,6 +35,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/queue`
 - `@konekti/testing`
 - `@konekti/cli`
+- `@konekti/studio`
 
 ## package responsibilities
 
@@ -67,6 +68,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
 - **`@konekti/testing`**: Testing module and helper utilities.
 - **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
+- **`@konekti/studio`**: File-first diagnostics viewer for runtime graph/timing JSON exports.
 
 ## boundary and documentation rules
 
