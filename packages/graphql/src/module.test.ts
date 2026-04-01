@@ -181,6 +181,18 @@ class IncrementInput {
   count = 0;
 }
 
+const OperationPayloadType = new GraphQLObjectType({
+  fields: {
+    status: {
+      type: GraphQLString,
+    },
+    value: {
+      type: GraphQLString,
+    },
+  },
+  name: 'OperationPayload',
+});
+
 @Inject([ResolverState])
 @Resolver('RootResolver')
 class GraphqlResolver {
@@ -210,6 +222,34 @@ class GraphqlResolver {
   @Subscription()
   async *pingStream(): AsyncGenerator<string, void, void> {
     yield 'ping';
+  }
+}
+
+@Inject([])
+@Resolver('ObjectOutputResolver')
+class ObjectOutputResolver {
+  @Query({ outputType: OperationPayloadType })
+  summary(): { status: string; value: string } {
+    return {
+      status: 'ok',
+      value: 'query',
+    };
+  }
+
+  @Mutation({ outputType: OperationPayloadType })
+  updateSummary(): { status: string; value: string } {
+    return {
+      status: 'updated',
+      value: 'mutation',
+    };
+  }
+
+  @Subscription({ outputType: OperationPayloadType })
+  async *summaryStream(): AsyncGenerator<{ status: string; value: string }, void, void> {
+    yield {
+      status: 'streaming',
+      value: 'subscription',
+    };
   }
 }
 
@@ -315,6 +355,81 @@ describe('@konekti/graphql', () => {
     expect(missingArgResult.errors[0]?.extensions?.code).toBe('BAD_USER_INPUT');
     expect(missingArgResult.data.echo).toBeNull();
 
+    await app.close();
+  });
+
+  it('supports named object output types for root query/mutation/subscription', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [ObjectOutputResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [ObjectOutputResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, '{ summary { status value } }')).resolves.toEqual({
+      data: {
+        summary: {
+          status: 'ok',
+          value: 'query',
+        },
+      },
+    });
+
+    await expect(postGraphql(port, 'mutation { updateSummary { status value } }')).resolves.toEqual({
+      data: {
+        updateSummary: {
+          status: 'updated',
+          value: 'mutation',
+        },
+      },
+    });
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'object-sub-1',
+      payload: {
+        query: 'subscription { summaryStream { status value } }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'object-sub-1',
+        payload: {
+          data: {
+            summaryStream: {
+              status: 'streaming',
+              value: 'subscription',
+            },
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'object-sub-1',
+        type: 'complete',
+      },
+    ]);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
     await app.close();
   });
 
@@ -924,7 +1039,7 @@ describe('@konekti/graphql — provider scopes', () => {
         {
           provide: FactoryRequestScopedResolver,
           inject: [FactoryRequestCounter],
-          useFactory: (...deps) => {
+          useFactory: (...deps: unknown[]) => {
             const [counter] = deps;
 
             if (!(counter instanceof FactoryRequestCounter)) {

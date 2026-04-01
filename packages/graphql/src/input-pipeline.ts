@@ -1,7 +1,7 @@
 import { getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
 import { DefaultValidator } from '@konekti/validation';
 
-import type { GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
+import type { GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
 
 const defaultValidator = new DefaultValidator();
 
@@ -67,7 +67,8 @@ export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName
   }
 
   const validationEntry = getDtoValidationSchema(handler.inputClass as Constructor).find(
-    (entry) => entry.propertyKey === toPropertyKey(mappedFieldName),
+    (entry: { propertyKey: MetadataPropertyKey; rules: readonly DtoFieldValidationRule[] }) =>
+      entry.propertyKey === toPropertyKey(mappedFieldName),
   );
   const inferredFromRules = validationEntry ? inferScalarFromValidationRules(validationEntry.rules) : undefined;
 
@@ -83,7 +84,7 @@ export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName
   }
 }
 
-export function resolveOutputScalarType(handler: ResolverHandlerDescriptor): GraphqlScalarTypeName {
+export function resolveOutputType(handler: ResolverHandlerDescriptor): GraphqlRootOutputType {
   return handler.outputType ?? 'string';
 }
 

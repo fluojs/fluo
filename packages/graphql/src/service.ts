@@ -390,15 +390,13 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {
-    if (this.options.schema && typeof this.options.schema === 'object') {
-      patchGraphqlInstanceOf();
-    }
+    patchGraphqlInstanceOf();
 
     return resolveSchema(deps, this.options.schema, () => this.createCodeFirstSchema(deps), markAllowedCrossRealmGraphqlObjects);
   }
 
   private createCodeFirstSchema(deps: GraphqlDeps): GraphQLSchemaType {
-    return createCodeFirstSchema(deps, this.runtimeContainer, this.discoverResolverDescriptors());
+    return createCodeFirstSchema(deps, this.runtimeContainer, this.discoverResolverDescriptors(), markAllowedCrossRealmGraphqlObjects);
   }
 
   private discoverResolverDescriptors(): ResolverDescriptor[] {

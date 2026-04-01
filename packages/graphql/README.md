@@ -128,13 +128,13 @@ interface ResolverMethodOptions {
   input?: Function;
   topics?: string | string[];
   argTypes?: Record<string, 'string' | 'int' | 'float' | 'boolean' | 'id'>;
-  outputType?: 'string' | 'int' | 'float' | 'boolean' | 'id';
+  outputType?: 'string' | 'int' | 'float' | 'boolean' | 'id' | GraphQLObjectType;
 }
 ```
 
 - `input`: DTO class for argument mapping + validation.
 - `argTypes`: overrides inferred scalar type per argument.
-- `outputType`: overrides resolver return scalar type (default: `string`).
+- `outputType`: overrides resolver return type (default: `string`). Scalar literals are supported, and named `GraphQLObjectType` can be used for root operation object payloads.
 
 ### `@Arg(argName?)`
 
@@ -255,7 +255,7 @@ The GraphQL package does not add a Konekti-specific complexity API; plugin compo
 
 ## Explicitly out of scope
 
-- GraphQL type-system rewrites (object/list/union expansion)
+- GraphQL type-system rewrites (list/union expansion)
 - `@FieldResolver`
 - Federation
 - Built-in DataLoader abstraction/decorator

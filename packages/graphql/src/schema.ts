@@ -2,14 +2,17 @@ import type { Container } from '@konekti/di';
 import type { MetadataPropertyKey } from '@konekti/core';
 import type {
   GraphQLFieldConfigMap,
+  GraphQLFieldConfig,
   GraphQLError as GraphQLErrorType,
+  GraphQLFieldConfigArgumentMap,
   GraphQLObjectType as GraphQLObjectTypeType,
+  GraphQLOutputType,
   GraphQLSchema as GraphQLSchemaType,
   GraphQLScalarType,
 } from 'graphql';
 import { DtoValidationError } from '@konekti/validation';
 
-import { createGraphqlInput, resolveArgScalarType, resolveOutputScalarType } from './input-pipeline.js';
+import { createGraphqlInput, resolveArgScalarType, resolveOutputType } from './input-pipeline.js';
 import {
   GRAPHQL_OPERATION_CONTAINER,
   type GraphQLContext,
@@ -50,6 +53,67 @@ function scalarByName(deps: YogaGraphqlDeps, scalar: 'string' | 'int' | 'float' 
   }
 }
 
+function builtinScalarByGraphqlName(deps: YogaGraphqlDeps, scalarName: string): GraphQLScalarType | undefined {
+  switch (scalarName) {
+    case 'String':
+      return deps.GraphQLString;
+    case 'Int':
+      return deps.GraphQLInt;
+    case 'Float':
+      return deps.GraphQLFloat;
+    case 'Boolean':
+      return deps.GraphQLBoolean;
+    case 'ID':
+      return deps.GraphQLID;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeFieldOutputType(deps: YogaGraphqlDeps, type: GraphQLOutputType): GraphQLOutputType {
+  const maybeScalarName = (type as { name?: unknown }).name;
+  if (typeof maybeScalarName === 'string') {
+    return builtinScalarByGraphqlName(deps, maybeScalarName) ?? type;
+  }
+
+  return type;
+}
+
+function normalizeObjectOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
+  outputType: GraphQLObjectTypeType,
+): GraphQLOutputType {
+  const outputTypeName = outputType.name;
+  const cached = outputTypeCache.get(outputTypeName);
+  if (cached) {
+    return cached;
+  }
+
+  const config = outputType.toConfig();
+  const clonedFields = Object.fromEntries(
+    Object.entries(config.fields).map(([fieldName, fieldConfig]) => {
+      const field = fieldConfig as GraphQLFieldConfig<unknown, GraphQLContext>;
+
+      return [
+        fieldName,
+        {
+          ...field,
+          type: normalizeFieldOutputType(deps, field.type),
+        },
+      ];
+    }),
+  ) as GraphQLFieldConfigMap<unknown, GraphQLContext>;
+
+  const normalized = new deps.GraphQLObjectType({
+    ...config,
+    fields: clonedFields,
+  });
+  outputTypeCache.set(outputTypeName, normalized);
+
+  return normalized;
+}
+
 function createFieldArgs(deps: YogaGraphqlDeps, handler: ResolverHandlerDescriptor) {
   return Object.fromEntries(
     handler.argFields.map((argField) => [
@@ -64,8 +128,8 @@ function createFieldArgs(deps: YogaGraphqlDeps, handler: ResolverHandlerDescript
 function createSubscriptionField(
   descriptor: ResolverDescriptor,
   handler: ResolverHandlerDescriptor,
-  args: ReturnType<typeof createFieldArgs>,
-  outputType: GraphQLScalarType,
+  args: GraphQLFieldConfigArgumentMap,
+  outputType: GraphQLOutputType,
   invokeResolver: (
     descriptor: ResolverDescriptor,
     handler: ResolverHandlerDescriptor,
@@ -98,8 +162,8 @@ function createSubscriptionField(
 function createOperationField(
   descriptor: ResolverDescriptor,
   handler: ResolverHandlerDescriptor,
-  args: ReturnType<typeof createFieldArgs>,
-  outputType: GraphQLScalarType,
+  args: GraphQLFieldConfigArgumentMap,
+  outputType: GraphQLOutputType,
   invokeResolver: (
     descriptor: ResolverDescriptor,
     handler: ResolverHandlerDescriptor,
@@ -122,6 +186,8 @@ function pickFieldsByType(
   deps: YogaGraphqlDeps,
   descriptors: ResolverDescriptor[],
   handlerType: ResolverHandlerType,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
+  outputTypeCache: Map<string, GraphQLOutputType>,
   invokeResolver: (
     descriptor: ResolverDescriptor,
     handler: ResolverHandlerDescriptor,
@@ -139,7 +205,14 @@ function pickFieldsByType(
 
       const args = createFieldArgs(deps, handler);
 
-      const outputType = scalarByName(deps, resolveOutputScalarType(handler));
+      const outputRef = resolveOutputType(handler);
+      if (typeof outputRef === 'object') {
+        markAllowedCrossRealmGraphqlObjects(outputRef);
+      }
+      const outputType: GraphQLOutputType =
+        typeof outputRef === 'string'
+          ? scalarByName(deps, outputRef)
+          : normalizeObjectOutputType(deps, outputTypeCache, outputRef);
 
       if (Object.prototype.hasOwnProperty.call(fields, handler.fieldName)) {
         throw new Error(
@@ -308,16 +381,39 @@ export function createCodeFirstSchema(
   deps: YogaGraphqlDeps,
   runtimeContainer: Container,
   resolverDescriptors: ResolverDescriptor[],
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void = () => {},
 ): GraphQLSchemaType {
   if (resolverDescriptors.length === 0) {
     throw new Error('GraphQL module requires either schema or at least one resolver decorated with @Resolver().');
   }
 
   const invokeResolver = createResolverInvoker(deps, runtimeContainer);
+  const outputTypeCache = new Map<string, GraphQLOutputType>();
 
-  const queryFields = pickFieldsByType(deps, resolverDescriptors, 'query', invokeResolver);
-  const mutationFields = pickFieldsByType(deps, resolverDescriptors, 'mutation', invokeResolver);
-  const subscriptionFields = pickFieldsByType(deps, resolverDescriptors, 'subscription', invokeResolver);
+  const queryFields = pickFieldsByType(
+    deps,
+    resolverDescriptors,
+    'query',
+    markAllowedCrossRealmGraphqlObjects,
+    outputTypeCache,
+    invokeResolver,
+  );
+  const mutationFields = pickFieldsByType(
+    deps,
+    resolverDescriptors,
+    'mutation',
+    markAllowedCrossRealmGraphqlObjects,
+    outputTypeCache,
+    invokeResolver,
+  );
+  const subscriptionFields = pickFieldsByType(
+    deps,
+    resolverDescriptors,
+    'subscription',
+    markAllowedCrossRealmGraphqlObjects,
+    outputTypeCache,
+    invokeResolver,
+  );
 
   const queryType = createQueryRootType(deps, queryFields);
   const mutationType = createOptionalRootType(deps, 'Mutation', mutationFields);
