@@ -103,7 +103,7 @@ MetricsModule.forRoot({
 
 ### HTTP label normalization
 
-When `http` metrics are enabled, path labels default to template-style normalization using request params (for example `/users/123` -> `/users/:id`) to reduce cardinality drift.
+When `http` metrics are enabled, `HttpMetricsMiddleware` normalizes path labels to template style by default using request params (for example `/users/123` -> `/users/:id`) to reduce cardinality drift.
 
 ```typescript
 MetricsModule.forRoot({
@@ -113,7 +113,7 @@ MetricsModule.forRoot({
 })
 ```
 
-You can override the label strategy with a custom normalizer:
+You can override `HttpMetricsMiddleware` label strategy with a custom normalizer:
 
 ```typescript
 MetricsModule.forRoot({
@@ -125,7 +125,7 @@ MetricsModule.forRoot({
 
 Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality labels.
 
-`unknownPathLabel` defaults to `UNKNOWN`. If a custom normalizer returns a blank string, the middleware falls back to that label.
+`unknownPathLabel` defaults to `UNKNOWN`. If a custom normalizer returns a blank string, `HttpMetricsMiddleware` falls back to that label.
 
 ### Provider contract
 

@@ -83,7 +83,7 @@ interface OpenApiModuleOptions {
   sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // runs after document generation; no-op when omitted
   ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
 }
 
@@ -259,7 +259,7 @@ interface BuildOpenApiDocumentOptions {
   descriptors: readonly HandlerDescriptor[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // runs after document generation; no-op when omitted
   title: string;
   version: string;
 }
