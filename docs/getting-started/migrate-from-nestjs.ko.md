@@ -5,6 +5,8 @@
 
 이 가이드는 이미 NestJS 서비스를 운영 중인 팀이 Konekti로 옮길 때, 개념 차이와 실제 변경 지점을 빠르게 파악하도록 돕기 위한 실전 문서입니다.
 
+codemod 이후 Konekti 테스트 작성 레시피는 `../operations/testing-guide.ko.md`와 `../../packages/testing/README.ko.md`를 함께 참고하세요.
+
 ## codemod 빠른 시작 (`konekti migrate`)
 
 먼저 CLI codemod를 실행하고, warning에 나온 수동 후속 작업을 이어서 처리하세요.

@@ -32,6 +32,7 @@ pnpm dlx @konekti/cli new starter-app
 
 - `./bootstrap-paths.md`
 - `./generator-workflow.md`
+- `../operations/testing-guide.md`
 - `../reference/package-surface.md`
 
 ## generated starter structure
@@ -43,6 +44,8 @@ A newly generated application includes:
 - Built-in `/health` and `/ready` endpoints.
 - A sample `health/` module at `/health-info/`.
 - A baseline test suite to verify application startup and dispatching.
+
+Starter testing templates are documented in `../operations/testing-guide.md` (unit templates, runtime integration template, `createTestApp` e2e-style template, and generated repository slice templates).
 
 ## project commands
 

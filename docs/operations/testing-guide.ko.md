@@ -22,18 +22,129 @@ pnpm verify:release-readiness
 `@konekti/testing`은 현재 다음과 같은 최소하지만 실용적인 공개 테스트 인터페이스를 제공합니다:
 
 - `createTestingModule(...)`
-- 프로바이더 오버라이드(override) 지원
-- `TestingModuleRef.resolve(...)`
+- 프로바이더 오버라이드(단건/배치)
+- `TestingModuleRef.resolve(...)`, `resolveAll(...)`
 - `TestingModuleRef.dispatch(...)`
 - 엔드투엔드 스타일 요청 실행을 위한 `createTestApp(...)`
 - 빌더 없이 직접 요청을 실행하는 `TestApp.dispatch(...)`
 - 요청 principal 주입을 포함한 플루언트 request 빌더
 - `createTestApp().close()`를 통한 예측 가능한 정리(cleanup)
+- 모듈 메타데이터 유틸리티: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
+- 목 유틸리티: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
+
+## 레시피 카탈로그
+
+### 1) provider 오버라이드 기반 유닛 테스트
+
+실제 모듈 wiring은 유지하고 외부 의존성만 fake로 바꿀 때 권장 패턴입니다.
+
+```ts
+import { createTestingModule } from '@konekti/testing';
+import { vi } from 'vitest';
+
+const fakeUserRepo = {
+  create: vi.fn().mockResolvedValue({ id: '1' }),
+  findById: vi.fn(),
+};
+
+const moduleRef = await createTestingModule({ rootModule: AppModule })
+  .overrideProvider(USER_REPOSITORY, fakeUserRepo)
+  .compile();
+
+const service = await moduleRef.resolve(UserService);
+```
+
+여러 토큰을 바꿀 때는 `overrideProviders([...])`를 우선 사용하세요.
+
+### 2) 가드/인터셉터/필터 테스트
+
+요청 경로를 결정론적으로 고정하려면 override 헬퍼를 사용합니다.
+
+```ts
+const moduleRef = await createTestingModule({ rootModule: AppModule })
+  .overrideGuard(AuthGuard)
+  .overrideInterceptor(LoggingInterceptor)
+  .overrideFilter(AppExceptionFilter, { catch: () => ({ ok: false }) })
+  .compile();
+```
+
+### 3) `createTestApp()` 기반 HTTP 슬라이스 테스트
+
+```ts
+import { createTestApp } from '@konekti/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('GET', '/users/me')
+  .principal({ subject: 'user-1', roles: ['member'] })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+이미 완성된 요청 객체가 있다면 플루언트 빌더 대신 `app.dispatch({...})`를 사용하세요.
+
+### 4) GraphQL 모듈 테스트 패턴
+
+GraphQL은 `/graphql` 요청 흐름 단위 검증을 권장합니다(`packages/graphql/src/module.test.ts` 참고).
+
+```ts
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/graphql')
+  .header('content-type', 'application/json')
+  .body({ query: '{ echo(value: "hello") }' })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+### 5) Prisma / Drizzle / Redis 테스트 경계
+
+영속성/캐시 모듈 테스트는 모듈 그래프는 유지하고 외부 핸들만 오버라이드하세요.
+
+- Prisma: `PRISMA_CLIENT`
+- Drizzle: `DRIZZLE_DATABASE`(종료 경로 검증 시 `DRIZZLE_DISPOSE` 포함)
+- Redis: `REDIS_CLIENT` 또는 `REDIS_SERVICE`
+
+### 6) OpenAPI 문서 검증
+
+`/openapi.json`은 동적 필드 정규화 전에는 스냅샷보다 구조 단언을 권장합니다(`packages/openapi/src/openapi-module.test.ts` 참고).
+
+```ts
+const app = await createTestApp({ rootModule: AppModule });
+const response = await app.request('GET', '/openapi.json').send();
+
+expect(response.status).toBe(200);
+expect(response.body).toEqual(
+  expect.objectContaining({
+    openapi: '3.1.0',
+    paths: expect.any(Object),
+  }),
+);
+```
+
+## 러너/템플릿 정합성
+
+- 저장소 기본 예시는 Vitest 기준입니다(`vi.fn`, `vi.spyOn`, `vi.mock`).
+- 스타터 스캐폴드의 요청 흐름 템플릿은 두 가지입니다.
+  - `src/app.test.ts`: 런타임 통합 스타일 dispatch 테스트
+  - `src/app.e2e.test.ts`: `createTestApp()` 기반 e2e 스타일 테스트
+- `konekti g repo <Name>`는 다음 템플릿을 생성합니다.
+  - `<name>.repo.test.ts` (unit)
+  - `<name>.repo.slice.test.ts` (`createTestingModule` 기반 slice/integration)
 
 현재 public boundary:
 
 - `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
 - 공개 표면은 모듈 컴파일, dispatch, 경량 request 헬퍼에 집중합니다.
+- 모듈 메타데이터 추출 유틸리티는 내부 헬퍼가 아니라 안정적인 공개 API입니다.
 - 현재 공식 generated 템플릿은 다음을 포함합니다:
   - 스타터 unit 템플릿: `src/health/*.test.ts`
   - 스타터 integration 템플릿: `src/app.test.ts`

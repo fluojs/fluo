@@ -16,7 +16,7 @@ The public contract stays intentionally focused. Official CLI-generated template
 
 `@konekti/testing` provides a minimal, focused API for building isolated test environments within the Konekti module graph. You hand it a root module, override whichever providers you want to replace with fakes or spies, compile the graph, and then resolve tokens to get the instances you want to assert against.
 
-It does **not** participate in the production runtime — the testing module exists only in test environments. It is intentionally a baseline: a stable foundation to build on, not a complete fixture library. It already includes small helper exports such as `makeRequest`, `createMock`, and `asMock`, but it does not try to be a full fixture framework.
+It does **not** participate in the production runtime — the testing module exists only in test environments. It is intentionally a baseline: a stable foundation to build on, not a complete fixture library. It already includes helper exports such as `makeRequest`, `createMock`, `createDeepMock`, `mockToken`, and `asMock`, but it does not try to be a full fixture framework.
 
 ## Installation
 
@@ -30,6 +30,7 @@ npm install --save-dev @konekti/testing
 
 ```typescript
 import { createTestingModule } from '@konekti/testing';
+import { vi } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { UserService } from '../src/user/user.service';
 import { USER_REPOSITORY } from '../src/user/tokens';
@@ -37,8 +38,8 @@ import { USER_REPOSITORY } from '../src/user/tokens';
 describe('UserService', () => {
   it('creates a user', async () => {
     const fakeRepo = {
-      create: jest.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
-      findById: jest.fn(),
+      create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+      findById: vi.fn(),
     };
 
     const module = await createTestingModule({ rootModule: AppModule })
@@ -77,6 +78,99 @@ const module = await createTestingModule({ rootModule: AppModule })
     [CONFIG_TOKEN, { dbUrl: 'sqlite::memory:' }],
   ])
   .compile();
+```
+
+### Guard / interceptor / filter testing recipes
+
+Use override helpers when you want request-path tests without real auth, side effects, or production error formatting.
+
+```typescript
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideGuard(AuthGuard)
+  .overrideInterceptor(LoggingInterceptor)
+  .overrideFilter(AppExceptionFilter, {
+    catch() {
+      throw new Error('mapped in test');
+    },
+  })
+  .compile();
+```
+
+### HTTP slice recipe with `createTestApp()`
+
+`createTestApp()` is the shortest path for route-level checks while still using the real Konekti dispatch stack.
+
+```typescript
+import { createTestApp } from '@konekti/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('GET', '/users/me')
+  .principal({ subject: 'user-1', roles: ['member'] })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+### GraphQL request-flow recipe
+
+For GraphQL modules, prefer request-level assertions through `/graphql` (see `packages/graphql/src/module.test.ts` for canonical patterns).
+
+```typescript
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/graphql')
+  .header('content-type', 'application/json')
+  .body({ query: '{ echo(value: "hello") }' })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+### Prisma / Drizzle / Redis override recipe
+
+For persistence-backed modules, keep integration boundaries but replace external handles:
+
+- Prisma: override `PRISMA_CLIENT` with a fake client.
+- Drizzle: override `DRIZZLE_DATABASE` (and optionally `DRIZZLE_DISPOSE`) with test doubles.
+- Redis: override `REDIS_CLIENT` or `REDIS_SERVICE` with in-memory doubles.
+
+The module graph remains real; only explicit external tokens are replaced.
+
+### OpenAPI document snapshot-ish recipe
+
+Prefer stable structural assertions against `/openapi.json` (as in `packages/openapi/src/openapi-module.test.ts`), and use snapshots only for carefully normalized output:
+
+```typescript
+const app = await createTestApp({ rootModule: AppModule });
+const response = await app.request('GET', '/openapi.json').send();
+
+expect(response.status).toBe(200);
+expect(response.body).toEqual(
+  expect.objectContaining({
+    openapi: '3.1.0',
+    paths: expect.any(Object),
+  }),
+);
+```
+
+### Vitest decorators plugin (`@konekti/testing/vitest`)
+
+Starter projects use the subpath export below in `vitest.config.ts`:
+
+```ts
+import { defineConfig } from 'vitest/config';
+import { konektiBabelDecoratorsPlugin } from '@konekti/testing/vitest';
+
+export default defineConfig({
+  plugins: [konektiBabelDecoratorsPlugin()],
+});
 ```
 
 ### Resolving tokens directly

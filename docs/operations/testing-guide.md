@@ -33,6 +33,120 @@ Generated starter projects expose the same commands through the selected package
 - Module introspection utilities: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
 - Mock utilities: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
 
+## recipe catalog
+
+### 1) Unit testing a provider with overrides
+
+Use this pattern when you want real module wiring but fake external collaborators.
+
+```ts
+import { createTestingModule } from '@konekti/testing';
+import { vi } from 'vitest';
+
+const fakeUserRepo = {
+  create: vi.fn().mockResolvedValue({ id: '1' }),
+  findById: vi.fn(),
+};
+
+const moduleRef = await createTestingModule({ rootModule: AppModule })
+  .overrideProvider(USER_REPOSITORY, fakeUserRepo)
+  .compile();
+
+const service = await moduleRef.resolve(UserService);
+```
+
+If multiple tokens are involved, prefer one `overrideProviders([...])` call over repeated single overrides.
+
+### 2) Guard/interceptor/filter testing
+
+Use override helpers to force deterministic request paths:
+
+```ts
+const moduleRef = await createTestingModule({ rootModule: AppModule })
+  .overrideGuard(AuthGuard)
+  .overrideInterceptor(LoggingInterceptor)
+  .overrideFilter(AppExceptionFilter, { catch: () => ({ ok: false }) })
+  .compile();
+```
+
+This is the closest Konekti equivalent to common NestJS `overrideProvider()` / `overrideGuard()` test setups.
+
+### 3) Slice-style HTTP testing with `createTestApp()`
+
+```ts
+import { createTestApp } from '@konekti/testing';
+
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('GET', '/users/me')
+  .principal({ subject: 'user-1', roles: ['member'] })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+Use `app.dispatch({...})` when a test already has a full request object and does not need the fluent builder.
+
+### 4) GraphQL module testing pattern
+
+For GraphQL, validate request flows through `/graphql` and assert response payloads (`packages/graphql/src/module.test.ts` is the canonical anchor):
+
+```ts
+const app = await createTestApp({ rootModule: AppModule });
+
+const response = await app
+  .request('POST', '/graphql')
+  .header('content-type', 'application/json')
+  .body({ query: '{ echo(value: "hello") }' })
+  .send();
+
+expect(response.status).toBe(200);
+
+await app.close();
+```
+
+### 5) Prisma / Drizzle / Redis integration boundaries
+
+For persistence/cache-backed tests, keep module wiring real and override only external handles:
+
+- Prisma: override `PRISMA_CLIENT`
+- Drizzle: override `DRIZZLE_DATABASE` (and `DRIZZLE_DISPOSE` when shutdown behavior matters)
+- Redis: override `REDIS_CLIENT` or `REDIS_SERVICE`
+
+This keeps transaction/lifecycle behavior in the graph while removing external network/database coupling.
+
+### 6) OpenAPI document verification
+
+Prefer stable structural assertions against `/openapi.json` (`packages/openapi/src/openapi-module.test.ts`) and use snapshots only after normalizing dynamic fields.
+
+```ts
+const app = await createTestApp({ rootModule: AppModule });
+const response = await app.request('GET', '/openapi.json').send();
+
+expect(response.status).toBe(200);
+expect(response.body).toEqual(
+  expect.objectContaining({
+    openapi: '3.1.0',
+    paths: expect.any(Object),
+  }),
+);
+```
+
+## runner and tooling alignment
+
+- Default examples in this repo use Vitest (`vi.fn`, `vi.spyOn`, `vi.mock`) and should avoid Jest-only syntax.
+- Starter scaffold keeps two complementary request-flow templates:
+  - `src/app.test.ts`: runtime integration-style dispatch test.
+  - `src/app.e2e.test.ts`: `@konekti/testing` `createTestApp()`-based e2e-style test.
+- `konekti g repo <Name>` adds:
+  - `<name>.repo.test.ts` (unit template)
+  - `<name>.repo.slice.test.ts` (`createTestingModule` slice/integration template)
+
+Use these generated files as the baseline story when documenting new test recipes.
+
 Current public boundary:
 
 - keep `@konekti/testing` as the public testing baseline
