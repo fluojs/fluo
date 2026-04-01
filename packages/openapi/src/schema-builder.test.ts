@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/validation';
-import { Controller, FromBody, Post, RequestDto, createHandlerMapping } from '@konekti/http';
+import { Controller, FromBody, Get, Post, RequestDto, createHandlerMapping } from '@konekti/http';
 
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiSecurity } from './decorators.js';
 import { buildOpenApiDocument } from './schema-builder.js';
 
 describe('buildOpenApiDocument', () => {
@@ -138,6 +139,128 @@ describe('buildOpenApiDocument', () => {
       },
       required: ['status'],
       type: 'object',
+    });
+  });
+
+  it('supports endpoint exclusion, operation deprecation, generic security schemes, and extra model registration', () => {
+    class ExtraModel {
+      @IsString()
+      name = '';
+    }
+
+    @Controller('/admin')
+    class AdminController {
+      @ApiOperation({ deprecated: true, summary: 'Visible endpoint' })
+      @ApiSecurity('apiKeyAuth')
+      @Get('/visible')
+      visible() {
+        return { ok: true };
+      }
+
+      @ApiExcludeEndpoint()
+      @Get('/internal')
+      internal() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: AdminController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      extraModels: [ExtraModel],
+      securitySchemes: {
+        apiKeyAuth: {
+          in: 'header',
+          name: 'x-api-key',
+          type: 'apiKey',
+        },
+        oauth2Auth: {
+          flows: {
+            clientCredentials: {
+              scopes: {
+                'read:admin': 'Read admin data',
+              },
+              tokenUrl: 'https://example.com/oauth/token',
+            },
+          },
+          type: 'oauth2',
+        },
+      },
+      title: 'Admin API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/admin/visible']?.get?.deprecated).toBe(true);
+    expect(document.paths['/admin/visible']?.get?.security).toEqual([{ apiKeyAuth: [] }]);
+    expect(document.paths['/admin/internal']).toBeUndefined();
+    expect(document.components?.schemas?.ExtraModel).toEqual({
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: 'string',
+        },
+      },
+      required: ['name'],
+      type: 'object',
+    });
+    expect(document.components?.securitySchemes).toEqual({
+      apiKeyAuth: {
+        in: 'header',
+        name: 'x-api-key',
+        type: 'apiKey',
+      },
+      oauth2Auth: {
+        flows: {
+          clientCredentials: {
+            scopes: {
+              'read:admin': 'Read admin data',
+            },
+            tokenUrl: 'https://example.com/oauth/token',
+          },
+        },
+        type: 'oauth2',
+      },
+    });
+  });
+
+  it('keeps ApiBearerAuth compatibility while merging configured security schemes', () => {
+    @Controller('/secure')
+    class SecureController {
+      @ApiBearerAuth()
+      @Get('/')
+      getSecure() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: SecureController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      securitySchemes: {
+        apiKeyAuth: {
+          in: 'header',
+          name: 'x-api-key',
+          type: 'apiKey',
+        },
+      },
+      title: 'Secure API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/secure']?.get?.security).toEqual([{ bearerAuth: [] }]);
+    expect(document.components?.securitySchemes).toEqual({
+      apiKeyAuth: {
+        in: 'header',
+        name: 'x-api-key',
+        type: 'apiKey',
+      },
+      bearerAuth: {
+        bearerFormat: 'JWT',
+        scheme: 'bearer',
+        type: 'http',
+      },
     });
   });
 });
