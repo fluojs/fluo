@@ -10,6 +10,16 @@ Transport-driven microservice message consumers for Konekti with decorator-based
 npm install @konekti/microservices
 ```
 
+Optional transport peers:
+
+```bash
+# gRPC transport
+npm install @konekti/microservices @grpc/grpc-js @grpc/proto-loader
+
+# MQTT transport
+npm install @konekti/microservices mqtt
+```
+
 ## Quick Start
 
 ```typescript
@@ -47,6 +57,8 @@ await microservice.listen();
 - `KafkaMicroserviceTransport` - Kafka transport adapter (request/reply + event)
 - `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
 - `RedisStreamsMicroserviceTransport` - Redis Streams transport adapter (request/reply + event)
+- `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention)
+- `MqttMicroserviceTransport` - MQTT transport adapter (request/reply + event)
 
 ## Runtime behavior
 
@@ -138,6 +150,8 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `KafkaMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via dedicated message, response, and event topics with correlation-based reply routing.
 - `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
 - `RedisStreamsMicroserviceTransport` supports both `send()` and `emit()` via Redis Streams with consumer groups for safe single-consumer request/reply and event fan-out.
+- `GrpcMicroserviceTransport` supports unary-only `send()` and unary `emit()` by using `<Service>.<Method>` routing with metadata kind (`x-konekti-kind`) to distinguish message/event packets.
+- `MqttMicroserviceTransport` supports `send()` and `emit()` with JSON-envelope correlation (`requestId`, `replyTopic`) and a per-instance reply topic.
 
 ### Kafka
 
@@ -201,6 +215,31 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
   - Redis Streams: use when you need request/reply semantics or durable single-consumer message handling with Redis.
   - Redis Pub/Sub: use for fire-and-forget event broadcasting where all subscribers should receive every event.
 - Troubleshooting: repeated Redis Streams request timeouts usually indicate no active responder consuming from the message stream, misconfigured namespace, or consumer group contention.
+
+### gRPC
+
+- `GrpcMicroserviceTransport` lazily loads `@grpc/grpc-js` and `@grpc/proto-loader` at runtime. These are optional peers and are only required when you use this transport.
+- Pattern format is strictly `<Service>.<Method>` and must match unary proto service/method names under the configured `packageName`.
+- v1 supports unary RPC only. Streaming methods are intentionally not registered.
+- `listen()` loads the proto package and registers unary handlers for discovered services. If startup fails during bind, partial startup is rolled back via server shutdown.
+- Inbound packets use metadata key `x-konekti-kind` (`message` or `event`) to map into `TransportPacket.kind` without changing payload schemas.
+- `send()` uses unary RPC request/reply, applies timeout via deadline, supports abort via call cancellation, and rejects deterministically on close.
+- `emit()` is a Konekti convention implemented as best-effort unary call: response payload is discarded, transport-level call failures are still surfaced.
+
+### MQTT
+
+- `MqttMicroserviceTransport` lazily loads `mqtt` at runtime when it must create a client internally (`options.client` not provided).
+- Transport contract uses a JSON envelope:
+  `{ kind, pattern, payload, requestId?, replyTopic?, error? }`.
+- `emit()` publishes event envelopes (fire-and-forget semantics).
+- `send()` publishes message envelopes and waits for correlated response envelopes on a per-instance reply topic.
+- Default reply topic is per-transport-instance: `konekti.microservices.responses.<uuid>` (or your configured namespace/topic override).
+- Default QoS/retain behavior is conservative and configurable: request/reply QoS 1, event QoS 0, retain disabled unless explicitly enabled.
+- Correlation correctness in v1 relies on the JSON envelope (`requestId` + `replyTopic`), not MQTT v5 response-topic/correlationData properties.
+- Lifecycle guarantees:
+  - `listen()` has reentrancy guards and rolls back already-subscribed topics if a later subscription fails.
+  - `close()` always rejects pending requests deterministically.
+  - If the transport created the MQTT client internally, `close()` ends it. If a client is provided, subscriptions/listeners are cleaned up but client ownership remains with the caller.
 
 ## Hybrid mode
 

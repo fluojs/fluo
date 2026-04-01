@@ -10,6 +10,16 @@
 npm install @konekti/microservices
 ```
 
+선택적 트랜스포트 peer dependency:
+
+```bash
+# gRPC 트랜스포트
+npm install @konekti/microservices @grpc/grpc-js @grpc/proto-loader
+
+# MQTT 트랜스포트
+npm install @konekti/microservices mqtt
+```
+
 ## 빠른 시작
 
 ```typescript
@@ -47,6 +57,8 @@ await microservice.listen();
 - `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RedisStreamsMicroserviceTransport` - Redis Streams 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
+- `GrpcMicroserviceTransport` - gRPC 트랜스포트 어댑터입니다 (unary 요청/응답 + unary 이벤트 규약).
+- `MqttMicroserviceTransport` - MQTT 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 
 ## 런타임 동작
 
@@ -54,17 +66,20 @@ await microservice.listen();
 - `@MessagePattern`은 단일 핸들러와 매칭되며 해당 값을 호출자에게 반환합니다.
 - `@MessagePattern`은 singleton, request, transient 핸들러를 지원합니다. request/transient 핸들러는 메시지별 child DI scope 안에서 실행되고, 핸들러 완료 후 해당 scope가 dispose됩니다.
 - 여러 `@MessagePattern` 핸들러가 동일한 패턴에 매칭되는 경우, 임의로 선택하지 않고 명시적으로 디스패치에 실패합니다.
-- `@EventPattern`은 매칭되는 모든 핸들러로 디스패치하지만, 현재 런타임에서는 이벤트 핸들러를 여전히 singleton-only로 제한합니다.
+- `@EventPattern`은 매칭되는 모든 핸들러로 디스패치합니다.
+- `@EventPattern`은 singleton, request, transient 핸들러를 지원합니다. request/transient 핸들러는 이벤트별 공유 child DI scope 안에서 실행되고, 매칭된 모든 핸들러가 완료된 뒤 해당 scope가 dispose됩니다.
+- 여러 scoped 핸들러가 같은 이벤트에 매칭되면 동일한 per-event scope 인스턴스를 공유하므로, fan-out 이벤트 안에서 컨텍스트를 공유할 수 있습니다.
+- 서로 다른 이벤트는 격리된 scope를 사용하므로 동시 처리 간 상태 누수가 없습니다.
 - 패턴은 정확한 문자열 또는 `RegExp` 매칭을 지원합니다.
 - 트랜스포트 생명주기는 애플리케이션 시작 및 종료 시점에 관리됩니다.
 
 ## 마이크로서비스 핸들러의 provider scope
 
 - **Singleton** (기본값): 모든 인바운드 메시지와 이벤트에서 하나의 인스턴스를 공유합니다.
-- **Request**: 인바운드 `@MessagePattern` 핸들러에서만 지원됩니다. 각 메시지는 새로운 child DI scope를 만들고, 핸들러 성공/실패 후 해당 scope를 dispose합니다.
-- **Transient**: 인바운드 `@MessagePattern` 핸들러에서만 지원됩니다. 핸들러와 transient 의존성은 같은 메시지별 child scope 경계에서 resolve되므로, 각 메시지마다 새로운 인스턴스 그래프를 가집니다.
+- **Request**: 각 핸들러 호출마다 새로운 child DI scope를 사용합니다. `@MessagePattern`에서는 메시지별 scope를, `@EventPattern`에서는 같은 이벤트에 매칭된 fan-out 핸들러 전체가 공유하는 per-event scope를 사용합니다.
+- **Transient**: 같은 scope 경계 안에서 항상 새로운 인스턴스 그래프를 resolve합니다. `@MessagePattern`에서는 메시지별, `@EventPattern`에서는 이벤트별 공유 scope 경계를 사용합니다.
 
-`@EventPattern` 핸들러는 아직 singleton-only입니다. request/transient event 핸들러는 현재 event 경로가 여러 핸들러로 fan-out되면서도 per-event shared context 계약을 정의하지 않았기 때문에 warning과 함께 skip됩니다.
+request/transient scope를 사용하는 핸들러의 의존성도 request 또는 transient scope여야 합니다. singleton이 request-scoped provider에 의존하면 DI 컨테이너는 `ScopeMismatchError`를 던집니다.
 
 ```typescript
 import { Inject, Scope } from '@konekti/core';
@@ -87,16 +102,18 @@ class PaymentsHandler {
 }
 ```
 
-`@MessagePattern` 핸들러가 request scope를 사용할 때, 모든 의존성도 request 또는 transient scope여야 합니다. singleton이 request-scoped provider에 의존하면 DI 컨테이너는 여전히 `ScopeMismatchError`를 던집니다.
+여러 scoped `@EventPattern` 핸들러가 같은 이벤트에 매칭되면 하나의 per-event scope를 공유합니다.
 
 ## 트랜스포트 참고 사항
 
 - `TcpMicroserviceTransport`는 `send()` (요청/응답)와 `emit()` (이벤트)를 모두 지원합니다.
-- `RedisPubSubMicroserviceTransport`는 Redis의 요청/응답 채널, 응답 채널, 이벤트 채널을 분리해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
+- `RedisPubSubMicroserviceTransport`는 `emit()`(이벤트)만 지원합니다. Redis Pub/Sub는 여러 인스턴스 사이에서 안전한 단일 소비자 RPC ownership을 보장하지 않으므로 `send()`는 의도적으로 지원하지 않습니다.
 - `NatsMicroserviceTransport`는 NATS 요청/응답 및 pub/sub 주제를 통해 `send()`와 `emit()`을 모두 지원합니다.
 - `KafkaMicroserviceTransport`는 메시지, 응답, 이벤트 토픽을 분리하고 correlation 기반 라우팅을 사용해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
 - `RabbitMqMicroserviceTransport`는 요청/응답 상관관계(request/reply correlation)와 전용 요청/응답 큐를 사용해 `send()`와 `emit()`을 모두 지원합니다.
 - `RedisStreamsMicroserviceTransport`는 Redis Streams의 consumer group을 사용해 안전한 단일 소비자 요청/응답과 이벤트 fan-out을 지원합니다.
+- `GrpcMicroserviceTransport`는 `<Service>.<Method>` 패턴과 metadata kind(`x-konekti-kind`)를 사용해 unary `send()`와 unary `emit()` 규약을 지원합니다.
+- `MqttMicroserviceTransport`는 JSON envelope 기반 상관관계(`requestId`, `replyTopic`)와 인스턴스별 reply topic을 사용해 `send()`/`emit()`을 지원합니다.
 
 ### Kafka
 
@@ -155,6 +172,31 @@ class PaymentsHandler {
 - 폴링 기반 소비: 트랜스포트가 내부 폴링 루프를 소유합니다 (`pollBlockMs`로 구성, 기본값 500ms).
 - `close()` 시 폴링 루프를 중지하고, 인스턴스별 consumer group(이벤트·응답)을 삭제하며, 대기 중인 요청을 모두 reject합니다. 공유 메시지 consumer group은 shutdown/reconnect 주기에서 의도적으로 보존됩니다.
 - 트러블슈팅: Redis Streams 요청 타임아웃이 반복되면 메시지 스트림의 responder 부재, namespace 설정 불일치, consumer group 경합을 우선 확인하세요.
+
+### gRPC
+
+- `GrpcMicroserviceTransport`는 `@grpc/grpc-js`, `@grpc/proto-loader`를 런타임에 지연 로드합니다. 이 의존성은 optional peer이며 gRPC 트랜스포트를 사용할 때만 필요합니다.
+- 패턴 형식은 반드시 `<Service>.<Method>`여야 하며, 설정된 `packageName` 아래 proto unary 서비스/메서드 이름과 일치해야 합니다.
+- v1은 unary RPC만 지원합니다. streaming 메서드는 의도적으로 등록하지 않습니다.
+- `listen()`은 proto 패키지를 로드하고 unary 핸들러를 등록합니다. bind 단계에서 실패하면 서버 shutdown으로 부분 시작 상태를 롤백합니다.
+- 인바운드 패킷은 metadata 키 `x-konekti-kind`(`message`/`event`)를 사용해 payload 스키마 변경 없이 `TransportPacket.kind`로 매핑됩니다.
+- `send()`는 unary 요청/응답, deadline 기반 timeout, cancel 기반 abort를 지원하며 `close()` 시 pending 요청을 결정적으로 reject합니다.
+- `emit()`은 Konekti 규약으로 구현된 best-effort unary 호출입니다. 응답 payload는 버리지만, 호출 자체의 transport-level 실패는 여전히 표면화됩니다.
+
+### MQTT
+
+- `MqttMicroserviceTransport`는 내부 클라이언트를 생성해야 할 때(`options.client` 미제공) `mqtt`를 런타임 지연 로드합니다.
+- 트랜스포트 계약은 JSON envelope를 사용합니다:
+  `{ kind, pattern, payload, requestId?, replyTopic?, error? }`.
+- `emit()`은 이벤트 envelope를 publish하는 fire-and-forget 경로입니다.
+- `send()`는 메시지 envelope를 publish하고 인스턴스별 reply topic에서 상관관계 응답 envelope를 기다립니다.
+- 기본 reply topic은 인스턴스별 `konekti.microservices.responses.<uuid>`이며 namespace/topic 옵션으로 오버라이드할 수 있습니다.
+- 기본 QoS/retain 동작은 보수적으로 설정되며 구성 가능합니다: 요청/응답 QoS 1, 이벤트 QoS 0, retain 기본 비활성화.
+- v1 상관관계의 정합성은 MQTT v5 전용 response-topic/correlationData가 아니라 JSON envelope(`requestId` + `replyTopic`)를 기준으로 합니다.
+- 생명주기 보장:
+  - `listen()`은 재진입 가드를 가지며, 중간 subscribe 실패 시 이미 구독된 토픽을 롤백합니다.
+  - `close()`는 pending 요청을 항상 결정적으로 reject합니다.
+  - 내부 생성 클라이언트는 `close()`에서 종료하고, 외부 주입 클라이언트는 구독/리스너만 정리하며 소유권은 호출자에게 남깁니다.
 
 ## 하이브리드 모드
 

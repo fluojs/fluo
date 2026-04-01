@@ -20,9 +20,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./grpc": {
+      "types": "./dist/grpc-transport.d.ts",
+      "import": "./dist/grpc-transport.js"
+    },
     "./kafka": {
       "types": "./dist/kafka-transport.d.ts",
       "import": "./dist/kafka-transport.js"
+    },
+    "./mqtt": {
+      "types": "./dist/mqtt-transport.d.ts",
+      "import": "./dist/mqtt-transport.js"
     },
     "./nats": {
       "types": "./dist/nats-transport.d.ts",
@@ -57,10 +65,22 @@
     "@konekti/runtime": "workspace:*"
   },
   "peerDependencies": {
-    "ioredis": "^5.0.0"
+    "@grpc/grpc-js": "^1.0.0",
+    "@grpc/proto-loader": "^0.8.0",
+    "ioredis": "^5.0.0",
+    "mqtt": "^5.0.0"
   },
   "peerDependenciesMeta": {
+    "@grpc/grpc-js": {
+      "optional": true
+    },
+    "@grpc/proto-loader": {
+      "optional": true
+    },
     "ioredis": {
+      "optional": true
+    },
+    "mqtt": {
       "optional": true
     }
   }
