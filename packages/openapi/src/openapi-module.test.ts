@@ -8,7 +8,7 @@ import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkReq
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag } from './decorators.js';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
 import { OpenApiModule } from './openapi-module.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
@@ -1520,6 +1520,93 @@ describe('OpenApiModule', () => {
         },
       }),
     );
+  });
+
+  it('forRoot options support custom security schemes, extraModels, and excluded endpoints', async () => {
+    class ExtraModel {
+      @IsString()
+      name = '';
+    }
+
+    @Controller('/admin')
+    class AdminController {
+      @ApiOperation({ deprecated: true, summary: 'Visible' })
+      @ApiSecurity('apiKeyAuth')
+      @Get('/visible')
+      visible() {
+        return { ok: true };
+      }
+
+      @ApiExcludeEndpoint()
+      @Get('/internal')
+      internal() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      extraModels: [ExtraModel],
+      securitySchemes: {
+        apiKeyAuth: {
+          in: 'header',
+          name: 'x-api-key',
+          type: 'apiKey',
+        },
+      },
+      sources: [{ controllerToken: AdminController }],
+      title: 'Admin API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [AdminController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          schemas: expect.objectContaining({
+            ExtraModel: {
+              additionalProperties: false,
+              properties: {
+                name: {
+                  type: 'string',
+                },
+              },
+              required: ['name'],
+              type: 'object',
+            },
+          }),
+          securitySchemes: {
+            apiKeyAuth: {
+              in: 'header',
+              name: 'x-api-key',
+              type: 'apiKey',
+            },
+          },
+        }),
+        paths: {
+          '/admin/visible': {
+            get: expect.objectContaining({
+              deprecated: true,
+              security: [{ apiKeyAuth: [] }],
+            }),
+          },
+        },
+      }),
+    );
+
+    const paths = (response.body as { paths: Record<string, unknown> }).paths;
+    expect(paths['/admin/internal']).toBeUndefined();
   });
 
   it('propagates async option factory errors during bootstrap', async () => {
