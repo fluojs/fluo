@@ -24,9 +24,11 @@ OpenAPI 문서는 애플리케이션 시작 시점에 핸들러 디스크립터(
 Konekti는 OpenAPI 메타데이터를 위해 특화된 몇 가지 데코레이터를 제공합니다:
 
 - **`@ApiTag(tag)`**: 작업을 그룹화합니다.
-- **`@ApiOperation({ summary, description })`**: 엔드포인트의 목적을 설명합니다.
+- **`@ApiOperation({ summary, description, deprecated })`**: 엔드포인트의 목적과 deprecated 상태를 설명합니다.
 - **`@ApiResponse(status, { description, schema, type })`**: 가능한 응답 코드와 구조를 문서화합니다.
 - **`@ApiBearerAuth()`**: 작업에 대해 Bearer 인증을 선언합니다.
+- **`@ApiSecurity(name, scopes?)`**: API key/OAuth2/OpenID Connect 이름 등 일반화된 OpenAPI 보안 요구사항을 선언합니다.
+- **`@ApiExcludeEndpoint()`**: 해당 핸들러를 생성되는 `paths`에서 제외합니다.
 
 이 데코레이터들은 문서화에만 영향을 미치며 런타임 동작을 변경하지 않습니다.
 
@@ -40,6 +42,7 @@ OpenAPI 생성기는 라우트 메타데이터와 입력 유효성 검사 메타
 - **파라미터**: 바인딩된 입력 필드는 파라미터 정의로 매핑됩니다.
 - **응답**: 응답 모델은 `@ApiResponse(..., { type: ... })`를 사용하여 문서화할 수 있습니다.
 - **중첩**: 중첩된 모델과 배열은 스키마 참조로 표현됩니다.
+- **추가 모델 등록**: `extraModels` 옵션으로 요청/응답 메타데이터에서 자동 탐색되지 않는 스키마를 컴포넌트에 등록할 수 있습니다.
 
 ## 생성 프로세스
 
@@ -56,6 +59,11 @@ OpenAPI 생성기는 라우트 메타데이터와 입력 유효성 검사 메타
 - **출력 형태 조정**: 런타임 응답 직렬화는 문서 생성과 별개의 관심사입니다.
 - **디커플링**: `@konekti/openapi`는 정규화된 메타데이터와만 상호작용하며 패키지 내부 저장소에 접근하지 않습니다.
 - **인증 방식**: 인증 스킴(scheme)은 OpenAPI 데코레이터를 사용하여 애플리케이션 레벨에서 선언됩니다.
+- **보안 스킴 확장성**: 모듈/문서 옵션의 `securitySchemes`를 통해 API key, HTTP, OAuth2, OpenID Connect 스킴을 등록할 수 있습니다.
+
+## 의도적으로 범위에서 제외한 항목
+
+- `documentTransform` 같은 범용 OpenAPI 문서 후처리 훅은 현재 범위에서 제외됩니다.
 
 ## 개념적 흐름
 

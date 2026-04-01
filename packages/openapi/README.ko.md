@@ -81,6 +81,8 @@ interface OpenApiModuleOptions {
   defaultErrorResponsesPolicy?: 'inject' | 'omit'; // 기본값: 'inject'
   descriptors?: readonly HandlerDescriptor[];  // createHandlerMapping()의 핸들러 디스크립터
   sources?: readonly HandlerSource[];          // createHandlerMapping()에서 사용하는 핸들러 소스 모델
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
   ui?: boolean;                                 // /docs에서 Swagger UI 제공 (기본값: false)
 }
 
@@ -118,6 +120,7 @@ class ProductsController { ... }
 interface ApiOperationOptions {
   summary?: string;
   description?: string;
+  deprecated?: boolean;
 }
 
 @ApiOperation({ summary: 'ID로 상품 조회', description: '단일 상품 정보를 반환합니다.' })
@@ -175,6 +178,27 @@ class UsersController {
 createProduct() { ... }
 ```
 
+### `@ApiSecurity(name, scopes?)`
+
+런타임 인증 동작을 바꾸지 않고 OpenAPI 보안 요구사항을 일반화하여 선언합니다.
+
+```typescript
+@ApiSecurity('apiKeyAuth')
+@ApiSecurity('oauth2Auth', ['users:read'])
+@Get('/')
+listProducts() { ... }
+```
+
+### `@ApiExcludeEndpoint()`
+
+핸들러를 생성된 OpenAPI `paths`에서 제외합니다.
+
+```typescript
+@ApiExcludeEndpoint()
+@Get('/internal')
+getInternalHealth() { ... }
+```
+
 ---
 
 ## 문서 구조
@@ -205,12 +229,16 @@ createProduct() { ... }
 
 - **`operationId`**는 기본 태그, 핸들러 이름, HTTP 메서드, 정규화된 라우트 경로를 조합하여 자동으로 생성됩니다 (예: `Users_listUsers_get_v1_users`).
 - **`tags`**는 `@ApiTag`를 사용하지 않은 경우 컨트롤러 클래스 이름이 기본값으로 사용됩니다.
-- **`security`** 스킴은 최소 하나 이상의 핸들러가 `@ApiBearerAuth()`를 사용하는 경우에만 문서에 포함됩니다.
+- **`security`** 요구사항은 `@ApiBearerAuth()` 또는 `@ApiSecurity(...)`로 선언할 수 있습니다.
+- **`securitySchemes`**는 모듈/문서 옵션으로 등록할 수 있습니다(API key, HTTP, OAuth2, OpenID Connect). `@ApiBearerAuth()`가 사용되면 `bearerAuth`는 기존처럼 자동 등록됩니다.
 - `@konekti/validation` 패키지로 장식된 요청 DTO는 `components.schemas` 항목으로 생성되며 `requestBody`를 통해 연결됩니다.
+- `extraModels`로 요청/응답 DTO 탐색에 직접 연결되지 않은 모델도 `components.schemas`에 미리 등록할 수 있습니다.
 - 쿠키에 바인딩된 DTO 필드는 `in: cookie` 파라미터로 생성됩니다.
 - 요청 바디는 바인딩된 DTO 필드 중 최소 하나 이상이 필수인 경우에만 `required: true`로 표시됩니다.
 - 기본 오류 응답 (`400`, `401`, `403`, `404`, `500`)은 기본적으로 주입되며, `defaultErrorResponsesPolicy: 'omit'` 설정을 통해 비활성화할 수 있습니다.
 - 바디가 아닌 파라미터 필드는 런타임 호환 스칼라/배열 형태로 생성됩니다. 쿼리/헤더/쿠키/경로 파라미터에 대해서는 중첩된 객체 참조가 생성되지 않습니다.
+- `@ApiOperation({ deprecated: true })`는 OpenAPI operation deprecation 메타데이터를 출력합니다.
+- `@ApiExcludeEndpoint()`는 해당 핸들러를 문서화 대상에서 제외합니다.
 
 ---
 
@@ -228,6 +256,8 @@ createProduct() { ... }
 interface BuildOpenApiDocumentOptions {
   defaultErrorResponsesPolicy?: 'inject' | 'omit'; // 기본값: 'inject'
   descriptors: readonly HandlerDescriptor[];
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
   title: string;
   version: string;
 }
@@ -251,8 +281,14 @@ interface MethodApiMetadata {
   operation?: ApiOperationOptions;
   responses: ApiResponseMetadata[];
   security?: string[];
+  securityRequirements?: Record<string, string[]>[];
+  excludeEndpoint?: boolean;
 }
 ```
+
+## 명시적 범위 제외
+
+- `documentTransform` 같은 범용 문서 후처리 훅은 현재 패키지 범위에서 의도적으로 제외됩니다.
 
 ---
 
