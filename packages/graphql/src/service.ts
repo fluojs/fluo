@@ -366,6 +366,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
         contextValue[GRAPHQL_CONTEXT_OVERRIDE] ?? this.buildGraphqlContext(contextValue.request),
       graphqlEndpoint: '/graphql',
       graphiql: this.resolveGraphiqlEnabled(),
+      ...(this.options.plugins && this.options.plugins.length > 0 ? { plugins: this.options.plugins } : {}),
       schema,
     });
 
