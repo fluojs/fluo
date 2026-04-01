@@ -6,13 +6,15 @@ Welcome to the Konekti cross-package documentation hub.
 
 This directory contains framework-level information that spans multiple packages. For package-specific APIs and examples, refer to `../packages/*/README.md`.
 
+If you are starting for the first time, begin with `getting-started/quick-start.md`. That guide is the canonical install -> `konekti new` -> `cd` -> `pnpm dev` path.
+
 ## choose your path
 
 ### quick start
 
-- `getting-started/quick-start.md`
-- `getting-started/bootstrap-paths.md`
-- `getting-started/generator-workflow.md`
+- `getting-started/quick-start.md` - start here for the canonical first run
+- `getting-started/bootstrap-paths.md` - bootstrap reference and advanced/secondary paths
+- `getting-started/generator-workflow.md` - what to generate after the app is running
 
 ### nestjs migration
 

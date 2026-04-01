@@ -68,6 +68,8 @@ class UsersService {
 
 ## quick start
 
+The canonical first-run path is: install the CLI -> `konekti new` -> `cd` into the new app -> `pnpm dev`.
+
 ```sh
 pnpm add -g @konekti/cli
 konekti new starter-app
@@ -91,10 +93,10 @@ The generated `dev` script uses a watch-driven process restart path for source c
 - **Composable package boundaries**: add auth, OpenAPI, metrics, queues, microservices, Redis, Prisma, Drizzle, and more as needed.
 - **CLI-first onboarding**: create, generate, run, and verify with a consistent workflow.
 
-## start here (docs-first)
+## start here
 
-- `docs/README.md` - reading order and documentation map
-- `docs/getting-started/quick-start.md` - fastest path from installation to a running app
+- `docs/getting-started/quick-start.md` - the canonical install -> new -> dev path
+- `docs/README.md` - documentation map after your first run succeeds
 - `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
 - `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
 - `docs/reference/package-surface.md` - public package surface reference

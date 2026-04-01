@@ -31,9 +31,19 @@ pnpm add -g @konekti/cli
 
 After installation, use the `konekti` binary directly.
 
+The canonical first-run path is: install the CLI -> `konekti new my-app` -> `cd my-app` -> `pnpm dev`.
+
 ## Quick Start
 
 ### Bootstrap a new project
+
+```bash
+konekti new my-app
+cd my-app
+pnpm dev
+```
+
+For the first run, use the flow above. Optional overrides are available when you need them:
 
 ```bash
 konekti new my-app
@@ -46,7 +56,9 @@ konekti new my-app
 
 The generated `dev` script is a runner-level restart path based on Node watch mode and `tsx`. That starter workflow restarts the process for source edits; it is not a promise of in-process HMR.
 
-For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported.
+For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported as a secondary path.
+
+For the broader onboarding flow, start with `../../docs/getting-started/quick-start.md`.
 
 ### Generate a file inside an existing project
 

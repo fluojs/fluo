@@ -2,24 +2,37 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./bootstrap-paths.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide document describes the supported methods for bootstrapping and verifying a Konekti application.
+This page records the supported bootstrap paths for Konekti after you know the canonical first-run flow.
 
-## primary bootstrap path
+## canonical first-run path
 
 The recommended method is using the globally installed CLI:
 
 ```sh
 pnpm add -g @konekti/cli
 konekti new my-app
+cd my-app
+pnpm dev
 ```
 
-For one-off use without a global installation, `dlx` is also supported:
+This is the primary public onboarding path.
+
+For one-off use without a global installation, `dlx` is also supported as a secondary path:
 
 ```sh
 pnpm dlx @konekti/cli new my-app
 ```
 
-While `dlx` is convenient, the global CLI installation is the canonical entry point. There is no separate `create-konekti` wrapper; any future compatibility wrappers will be documented separately.
+While `dlx` is convenient, the global CLI installation remains the canonical entry point. There is no separate `create-konekti` wrapper; any future compatibility wrappers will be documented separately.
+
+## next steps
+
+After bootstrapping, the CLI prints package-manager-aware next steps. Example:
+
+```text
+cd my-app
+pnpm dev
+```
 
 ## input resolution
 
@@ -54,17 +67,8 @@ pnpm --dir packages/cli run sandbox:verify
 
 These are for framework contributors and are not part of the public bootstrap API.
 
-## next steps
-
-After bootstrapping, the CLI provides package-manager-aware instructions:
-
-```text
-cd my-app
-pnpm dev
-```
-
 ## further reading
 
-- `./quick-start.md`
+- `./quick-start.md` - return to the canonical first-run guide
 - `./generator-workflow.md`
 - `../reference/toolchain-contract-matrix.md`

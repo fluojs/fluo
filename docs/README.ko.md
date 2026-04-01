@@ -6,13 +6,15 @@
 
 여러 패키지에 걸친 프레임워크 수준 정보는 이곳을 사용하세요. 패키지별 API와 예제는 `../packages/*/README.ko.md`를 기준으로 보세요.
 
+처음 시작한다면 `getting-started/quick-start.ko.md`부터 보세요. 이 문서가 install -> `konekti new` -> `cd` -> `pnpm dev` 표준 경로입니다.
+
 ## 목적별 진입점
 
 ### 빨리 실행해보고 싶다면
 
-- `getting-started/quick-start.ko.md`
-- `getting-started/bootstrap-paths.ko.md`
-- `getting-started/generator-workflow.ko.md`
+- `getting-started/quick-start.ko.md` - 첫 실행을 위한 표준 시작점
+- `getting-started/bootstrap-paths.ko.md` - 부트스트랩 규칙과 보조 경로 참고 문서
+- `getting-started/generator-workflow.ko.md` - 앱이 실행된 뒤 생성 흐름 보기
 
 ### NestJS에서 옮기고 있다면
 

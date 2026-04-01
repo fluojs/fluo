@@ -22,7 +22,9 @@ cd starter-app
 pnpm dev
 ```
 
-또는 전역 설치 없이 `dlx`를 사용하여 일회성으로 실행할 수 있습니다:
+위 명령이 공개 온보딩의 기본 경로입니다. 특별히 전역 설치 없이 한 번만 실행하려는 경우에만 아래 보조 경로를 사용하세요.
+
+전역 설치 없이 `dlx`를 사용한 일회성 실행도 계속 지원됩니다:
 
 ```sh
 pnpm dlx @konekti/cli new starter-app
@@ -30,7 +32,7 @@ pnpm dlx @konekti/cli new starter-app
 
 ### 관련 문서
 
-- `./bootstrap-paths.ko.md`
+- `./bootstrap-paths.ko.md` - 부트스트랩 규칙과 보조 경로 참고
 - `./generator-workflow.ko.md`
 - `../operations/testing-guide.ko.md`
 - `../reference/package-surface.ko.md`

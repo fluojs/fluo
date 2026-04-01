@@ -68,6 +68,8 @@ class UsersService {
 
 ## 빠른 시작
 
+처음 실행하는 표준 경로는 다음과 같습니다: CLI 설치 -> `konekti new` -> 새 앱 디렉터리로 이동 -> `pnpm dev`.
+
 ```sh
 pnpm add -g @konekti/cli
 konekti new starter-app
@@ -91,15 +93,15 @@ pnpm dev
 - **패키지 경계가 명확한 확장**: auth, OpenAPI, metrics, queue, microservices, Redis, Prisma, Drizzle 등을 필요한 만큼 조합
 - **CLI 우선 온보딩**: 생성 -> 개발 -> 검증 흐름이 일관됨
 
-## 문서부터 보는 경로
+## 시작 경로
 
-- `docs/README.md` - 전체 읽기 순서와 문서 소유권 맵
-- `docs/getting-started/quick-start.md` - 가장 빠른 실행 경로
-- `docs/concepts/architecture-overview.md` - 아키텍처/패키지 경계
-- `docs/concepts/dev-reload-architecture.md` - 개발 중 재시작과 config reload 책임 경계
-- `docs/reference/package-surface.md` - 현재 공개 패키지 표면
+- `docs/getting-started/quick-start.ko.md` - install -> new -> dev 표준 경로
+- `docs/README.ko.md` - 첫 실행 후 이어서 읽는 문서 맵
+- `docs/concepts/architecture-overview.ko.md` - 아키텍처/패키지 경계
+- `docs/concepts/dev-reload-architecture.ko.md` - 개발 중 재시작과 config reload 책임 경계
+- `docs/reference/package-surface.ko.md` - 현재 공개 패키지 표면
 
-패키지별 API 상세는 `packages/*/README.md`를 각 패키지의 단일 출처로 참고하세요.
+패키지별 API 상세는 `packages/*/README.ko.md`를 각 패키지의 단일 출처로 참고하세요.
 
 ## 릴리스 히스토리
 

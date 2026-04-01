@@ -22,7 +22,9 @@ cd starter-app
 pnpm dev
 ```
 
-Alternatively, you can use `dlx` for a one-time execution without a global installation:
+This is the primary public onboarding path. Use the commands above for the first run unless you specifically want a one-off no-install bootstrap.
+
+For a one-time execution without a global installation, `dlx` remains supported as a secondary path:
 
 ```sh
 pnpm dlx @konekti/cli new starter-app
@@ -30,7 +32,7 @@ pnpm dlx @konekti/cli new starter-app
 
 ### related documentation
 
-- `./bootstrap-paths.md`
+- `./bootstrap-paths.md` - bootstrap rules and secondary paths
 - `./generator-workflow.md`
 - `../operations/testing-guide.md`
 - `../reference/package-surface.md`
