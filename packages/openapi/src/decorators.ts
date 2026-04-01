@@ -13,6 +13,19 @@ export interface ApiResponseOptions {
   type?: Constructor;
 }
 
+export interface ApiParameterOptions {
+  description?: string;
+  required?: boolean;
+  schema?: Record<string, unknown>;
+}
+
+export interface ApiBodyOptions {
+  description?: string;
+  required?: boolean;
+  schema?: Record<string, unknown>;
+  content?: Record<string, { schema: Record<string, unknown> }>;
+}
+
 export interface ApiOperationMetadata {
   summary?: string;
   description?: string;
@@ -30,9 +43,26 @@ export interface ApiResponseMetadata {
   type?: Constructor;
 }
 
+export interface ApiParameterMetadata {
+  name: string;
+  in: 'cookie' | 'header' | 'path' | 'query';
+  description?: string;
+  required?: boolean;
+  schema?: Record<string, unknown>;
+}
+
+export interface ApiBodyMetadata {
+  description?: string;
+  required?: boolean;
+  schema?: Record<string, unknown>;
+  content?: Record<string, { schema: Record<string, unknown> }>;
+}
+
 export interface MethodApiMetadata {
   operation?: ApiOperationMetadata;
   responses: ApiResponseMetadata[];
+  parameters?: ApiParameterMetadata[];
+  requestBody?: ApiBodyMetadata;
   security?: string[];
   securityRequirements?: ApiSecurityRequirementMetadata[];
   excludeEndpoint?: boolean;
@@ -41,6 +71,8 @@ export interface MethodApiMetadata {
 const openApiControllerTagsKey = Symbol.for('konekti.openapi.controller-tags');
 const openApiMethodOperationKey = Symbol.for('konekti.openapi.method-operation');
 const openApiMethodResponsesKey = Symbol.for('konekti.openapi.method-responses');
+const openApiMethodParametersKey = Symbol.for('konekti.openapi.method-parameters');
+const openApiMethodRequestBodyKey = Symbol.for('konekti.openapi.method-request-body');
 const openApiMethodSecurityKey = Symbol.for('konekti.openapi.method-security');
 const openApiMethodSecurityRequirementsKey = Symbol.for('konekti.openapi.method-security-requirements');
 const openApiMethodExcludeEndpointKey = Symbol.for('konekti.openapi.method-exclude-endpoint');
@@ -107,6 +139,25 @@ function cloneApiResponseMetadata(response: ApiResponseMetadata): ApiResponseMet
   };
 }
 
+function cloneApiParameterMetadata(parameter: ApiParameterMetadata): ApiParameterMetadata {
+  return {
+    description: parameter.description,
+    in: parameter.in,
+    name: parameter.name,
+    required: parameter.required,
+    schema: cloneUnknown(parameter.schema),
+  };
+}
+
+function cloneApiBodyMetadata(requestBody: ApiBodyMetadata): ApiBodyMetadata {
+  return {
+    ...(requestBody.content !== undefined ? { content: cloneUnknown(requestBody.content) } : {}),
+    ...(requestBody.description !== undefined ? { description: requestBody.description } : {}),
+    ...(requestBody.required !== undefined ? { required: requestBody.required } : {}),
+    ...(requestBody.schema !== undefined ? { schema: cloneUnknown(requestBody.schema) } : {}),
+  };
+}
+
 /** Read tags registered via `@ApiTag` on a controller class. */
 export function getControllerTags(target: Function): string[] | undefined {
   const bag = getMetadataBag(target);
@@ -120,6 +171,8 @@ export function getMethodApiMetadata(target: Function, propertyKey: MetadataProp
 
   const operationMap = bag?.[openApiMethodOperationKey] as Map<MetadataPropertyKey, ApiOperationMetadata> | undefined;
   const responsesMap = bag?.[openApiMethodResponsesKey] as Map<MetadataPropertyKey, ApiResponseMetadata[]> | undefined;
+  const parametersMap = bag?.[openApiMethodParametersKey] as Map<MetadataPropertyKey, ApiParameterMetadata[]> | undefined;
+  const requestBodyMap = bag?.[openApiMethodRequestBodyKey] as Map<MetadataPropertyKey, ApiBodyMetadata> | undefined;
   const securityMap = bag?.[openApiMethodSecurityKey] as Map<MetadataPropertyKey, string[]> | undefined;
   const securityRequirementsMap = bag?.[openApiMethodSecurityRequirementsKey] as
     | Map<MetadataPropertyKey, ApiSecurityRequirementMetadata[]>
@@ -128,17 +181,21 @@ export function getMethodApiMetadata(target: Function, propertyKey: MetadataProp
 
   const operation = operationMap?.get(propertyKey);
   const responses = responsesMap?.get(propertyKey);
+  const parameters = parametersMap?.get(propertyKey);
+  const requestBody = requestBodyMap?.get(propertyKey);
   const security = securityMap?.get(propertyKey);
   const securityRequirements = securityRequirementsMap?.get(propertyKey);
   const excludeEndpoint = excludeEndpointMap?.get(propertyKey);
 
-  if (!operation && !responses && !security && !securityRequirements && !excludeEndpoint) {
+  if (!operation && !responses && !parameters && !requestBody && !security && !securityRequirements && !excludeEndpoint) {
     return undefined;
   }
 
   return {
     operation: cloneApiOperationMetadata(operation),
     responses: (responses ?? []).map((response) => cloneApiResponseMetadata(response)),
+    parameters: parameters?.map((parameter) => cloneApiParameterMetadata(parameter)),
+    requestBody: requestBody ? cloneApiBodyMetadata(requestBody) : undefined,
     security: security ? [...security] : undefined,
     securityRequirements: securityRequirements?.map((requirement) => cloneApiSecurityRequirementMetadata(requirement)),
     excludeEndpoint,
@@ -218,6 +275,76 @@ export function ApiSecurity(name: string, scopes: string[] = []): MethodDecorato
     const existingRequirements = requirementsMap.get(context.name) ?? [];
 
     requirementsMap.set(context.name, [...existingRequirements, { [name]: [...scopes] }]);
+  };
+}
+
+function registerMethodParameter(parameter: ApiParameterMetadata): MethodDecoratorFn {
+  return (_value, context) => {
+    const bag = context.metadata as MetadataBag;
+    let map = bag[openApiMethodParametersKey] as Map<MetadataPropertyKey, ApiParameterMetadata[]> | undefined;
+
+    if (!map) {
+      map = new Map();
+      bag[openApiMethodParametersKey] = map;
+    }
+
+    const existing = map.get(context.name) ?? [];
+
+    map.set(context.name, [...existing, cloneApiParameterMetadata(parameter)]);
+  };
+}
+
+export function ApiParam(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
+  return registerMethodParameter({
+    description: options.description,
+    in: 'path',
+    name,
+    required: options.required ?? true,
+    schema: options.schema,
+  });
+}
+
+export function ApiQuery(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
+  return registerMethodParameter({
+    description: options.description,
+    in: 'query',
+    name,
+    required: options.required,
+    schema: options.schema,
+  });
+}
+
+export function ApiHeader(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
+  return registerMethodParameter({
+    description: options.description,
+    in: 'header',
+    name,
+    required: options.required,
+    schema: options.schema,
+  });
+}
+
+export function ApiCookie(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
+  return registerMethodParameter({
+    description: options.description,
+    in: 'cookie',
+    name,
+    required: options.required,
+    schema: options.schema,
+  });
+}
+
+export function ApiBody(options: ApiBodyOptions): MethodDecoratorFn {
+  return (_value, context) => {
+    const bag = context.metadata as MetadataBag;
+    let map = bag[openApiMethodRequestBodyKey] as Map<MetadataPropertyKey, ApiBodyMetadata> | undefined;
+
+    if (!map) {
+      map = new Map();
+      bag[openApiMethodRequestBodyKey] = map;
+    }
+
+    map.set(context.name, cloneApiBodyMetadata(options));
   };
 }
 

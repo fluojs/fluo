@@ -1,6 +1,7 @@
 import { getDtoBindingSchema, getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
 import type { HandlerDescriptor, HttpMethod } from '@konekti/http';
 import {
+  type ApiParameterMetadata,
   getControllerTags,
   getMethodApiMetadata,
   type ApiResponseMetadata,
@@ -52,6 +53,7 @@ export interface OpenApiMediaTypeObject {
 }
 
 export interface OpenApiRequestBodyObject {
+  description?: string;
   content: Record<string, OpenApiMediaTypeObject>;
   required?: boolean;
 }
@@ -814,6 +816,34 @@ function createRequestBody(
   };
 }
 
+function createExplicitRequestBody(methodMeta: MethodApiMetadata | undefined): OpenApiRequestBodyObject | undefined {
+  const requestBodyMeta = methodMeta?.requestBody;
+
+  if (!requestBodyMeta) {
+    return undefined;
+  }
+
+  const content = requestBodyMeta.content
+    ? requestBodyMeta.content
+    : requestBodyMeta.schema
+      ? {
+          'application/json': {
+            schema: requestBodyMeta.schema,
+          },
+        }
+      : undefined;
+
+  if (!content) {
+    return undefined;
+  }
+
+  return {
+    content,
+    ...(requestBodyMeta.description !== undefined ? { description: requestBodyMeta.description } : {}),
+    ...(requestBodyMeta.required !== undefined ? { required: requestBodyMeta.required } : {}),
+  };
+}
+
 function scalarizeArraySchemaItems(items: OpenApiSchemaObject | undefined): OpenApiSchemaObject {
   if (!items || items.$ref !== undefined || items.type === undefined || items.type === 'array' || items.type === 'object') {
     return { type: 'string' };
@@ -854,6 +884,62 @@ function alignParameterSchemaWithRuntimeBindingContract(
   }
 
   return aligned;
+}
+
+function createExplicitParameter(parameter: ApiParameterMetadata): OpenApiParameterObject {
+  const source = parameter.in;
+  const schema = alignParameterSchemaWithRuntimeBindingContract(parameter.schema ?? { type: 'string' }, source);
+  const isRequired = source === 'path' ? true : parameter.required;
+
+  return {
+    in: source,
+    name: parameter.name,
+    ...(parameter.description !== undefined ? { description: parameter.description } : {}),
+    ...(isRequired !== undefined ? { required: isRequired } : {}),
+    schema,
+  };
+}
+
+function mergeOperationParameters(
+  inferred: OpenApiParameterObject[],
+  explicit: ApiParameterMetadata[] | undefined,
+): OpenApiParameterObject[] {
+  if (!explicit || explicit.length === 0) {
+    return inferred;
+  }
+
+  const merged = new Map<string, OpenApiParameterObject>();
+
+  for (const parameter of inferred) {
+    merged.set(`${parameter.in}:${parameter.name}`, parameter);
+  }
+
+  for (const parameter of explicit) {
+    const explicitParameter = createExplicitParameter(parameter);
+    merged.set(`${explicitParameter.in}:${explicitParameter.name}`, explicitParameter);
+  }
+
+  return Array.from(merged.values());
+}
+
+function mergeOperationRequestBody(
+  inferred: OpenApiRequestBodyObject | undefined,
+  methodMeta: MethodApiMetadata | undefined,
+): OpenApiRequestBodyObject | undefined {
+  const explicit = createExplicitRequestBody(methodMeta);
+
+  if (!explicit) {
+    return inferred;
+  }
+
+  if (!inferred) {
+    return explicit;
+  }
+
+  return {
+    ...inferred,
+    ...explicit,
+  };
 }
 
 function createResponseObject(
@@ -931,8 +1017,11 @@ function createOperationObject(
   security: OpenApiSecurityRequirementObject[] | undefined,
   context: BuildSchemaContext,
 ): OpenApiOperationObject {
-  const parameters = createParameters(descriptor.route.request, context);
-  const requestBody = createRequestBody(descriptor.route.request, componentSchemas, context);
+  const parameters = mergeOperationParameters(createParameters(descriptor.route.request, context), methodMeta?.parameters);
+  const requestBody = mergeOperationRequestBody(
+    createRequestBody(descriptor.route.request, componentSchemas, context),
+    methodMeta,
+  );
 
   return {
     operationId: normalizeOperationId(descriptor),

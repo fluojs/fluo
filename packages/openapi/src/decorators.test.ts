@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiCookie,
   ApiExcludeEndpoint,
+  ApiHeader,
   ApiOperation,
+  ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiSecurity,
   ApiTag,
@@ -23,6 +28,11 @@ describe('OpenAPI decorator metadata readers', () => {
     @ApiTag('users')
     class UsersController {
       @ApiOperation({ deprecated: true, summary: 'List users' })
+      @ApiParam('id', { description: 'User identifier', schema: { type: 'integer' } })
+      @ApiQuery('expand', { schema: { enum: ['profile'], type: 'string' } })
+      @ApiHeader('x-request-id', { required: true, schema: { type: 'string' } })
+      @ApiCookie('session', { schema: { type: 'string' } })
+      @ApiBody({ description: 'Explicit body', required: true, schema: { properties: { name: { type: 'string' } }, type: 'object' } })
       @ApiBearerAuth()
       @ApiSecurity('oauth2Auth', ['read:users'])
       @ApiExcludeEndpoint()
@@ -76,26 +86,90 @@ describe('OpenAPI decorator metadata readers', () => {
       firstMeta.securityRequirements.push({ apiKeyAuth: [] });
     }
 
+    if (firstMeta.parameters) {
+      firstMeta.parameters[0] = {
+        ...firstMeta.parameters[0],
+        name: 'mutated',
+      };
+    }
+
+    firstMeta.requestBody = {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'string',
+          },
+        },
+      },
+    };
+
     const secondMeta = getMethodApiMetadata(UsersController, 'list');
 
-    expect(secondMeta).toEqual({
-      excludeEndpoint: true,
-      operation: { deprecated: true, description: undefined, summary: 'List users' },
-      responses: [
-        {
-          description: 'OK',
+    expect(secondMeta).toEqual(
+      expect.objectContaining({
+        excludeEndpoint: true,
+        operation: { deprecated: true, description: undefined, summary: 'List users' },
+        responses: [
+          {
+            description: 'OK',
+            schema: {
+              properties: {
+                id: { type: 'string' },
+              },
+              type: 'object',
+            },
+            status: 200,
+            type: undefined,
+          },
+        ],
+        security: ['oauth2Auth', 'bearerAuth'],
+        securityRequirements: [{ oauth2Auth: ['read:users'] }, { bearerAuth: [] }],
+        requestBody: {
+          description: 'Explicit body',
+          required: true,
           schema: {
             properties: {
-              id: { type: 'string' },
+              name: {
+                type: 'string',
+              },
             },
             type: 'object',
           },
-          status: 200,
-          type: undefined,
         },
-      ],
-      security: ['oauth2Auth', 'bearerAuth'],
-      securityRequirements: [{ oauth2Auth: ['read:users'] }, { bearerAuth: [] }],
-    });
+      }),
+    );
+
+    expect(secondMeta?.parameters).toEqual(
+      expect.arrayContaining([
+        {
+          description: 'User identifier',
+          in: 'path',
+          name: 'id',
+          required: true,
+          schema: { type: 'integer' },
+        },
+        {
+          description: undefined,
+          in: 'query',
+          name: 'expand',
+          required: undefined,
+          schema: { enum: ['profile'], type: 'string' },
+        },
+        {
+          description: undefined,
+          in: 'header',
+          name: 'x-request-id',
+          required: true,
+          schema: { type: 'string' },
+        },
+        {
+          description: undefined,
+          in: 'cookie',
+          name: 'session',
+          required: undefined,
+          schema: { type: 'string' },
+        },
+      ]),
+    );
   });
 });

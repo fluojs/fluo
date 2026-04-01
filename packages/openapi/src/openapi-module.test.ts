@@ -8,7 +8,19 @@ import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkReq
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 
-import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCookie,
+  ApiExcludeEndpoint,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiSecurity,
+  ApiTag,
+} from './decorators.js';
 import { OpenApiModule } from './openapi-module.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
@@ -1108,6 +1120,112 @@ describe('OpenApiModule', () => {
         },
       ]),
     );
+  });
+
+  it('allows explicit request decorators to override inferred request docs', async () => {
+    class UpdateUserRequest {
+      @FromPath('id')
+      @IsString()
+      id = '';
+
+      @FromBody('name')
+      @IsString()
+      name = '';
+    }
+
+    @Controller('/users')
+    class UsersController {
+      @Post('/:id')
+      @RequestDto(UpdateUserRequest)
+      @ApiParam('id', { description: 'Numeric user id', schema: { type: 'integer' } })
+      @ApiQuery('expand', { schema: { enum: ['profile'], type: 'string' } })
+      @ApiHeader('x-request-id', { required: true, schema: { type: 'string' } })
+      @ApiCookie('session', { schema: { type: 'string' } })
+      @ApiBody({
+        description: 'Explicitly documented body',
+        required: true,
+        schema: {
+          properties: {
+            displayName: { type: 'string' },
+          },
+          required: ['displayName'],
+          type: 'object',
+        },
+      })
+      updateUser() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
+      title: 'Explicit request docs API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.body as {
+      paths: Record<string, { post?: { parameters?: unknown[]; requestBody?: unknown } }>;
+    };
+    const operation = document.paths['/users/{id}']?.post;
+
+    expect(operation?.parameters).toEqual(
+      expect.arrayContaining([
+        {
+          description: 'Numeric user id',
+          in: 'path',
+          name: 'id',
+          required: true,
+          schema: { type: 'integer' },
+        },
+        {
+          in: 'query',
+          name: 'expand',
+          schema: { enum: ['profile'], type: 'string' },
+        },
+        {
+          in: 'header',
+          name: 'x-request-id',
+          required: true,
+          schema: { type: 'string' },
+        },
+        {
+          in: 'cookie',
+          name: 'session',
+          schema: { type: 'string' },
+        },
+      ]),
+    );
+    expect(operation?.requestBody).toEqual({
+      content: {
+        'application/json': {
+          schema: {
+            properties: {
+              displayName: { type: 'string' },
+            },
+            required: ['displayName'],
+            type: 'object',
+          },
+        },
+      },
+      description: 'Explicitly documented body',
+      required: true,
+    });
   });
 
   it('adds default error responses when @ApiResponse is absent', async () => {
