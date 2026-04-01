@@ -1,0 +1,179 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #0b1020;
+  color: #e5e7eb;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1,
+h2,
+h3 {
+  margin-top: 0;
+}
+
+code {
+  background: #1f2937;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.card {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #111827;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.split-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  background: #2563eb;
+  border: none;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+label {
+  display: block;
+  margin-bottom: 10px;
+}
+
+input[type='text'] {
+  width: 100%;
+  margin-top: 6px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e5e7eb;
+  padding: 8px 10px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid #334155;
+  text-align: left;
+  font-size: 13px;
+  padding: 6px;
+}
+
+pre {
+  overflow: auto;
+  max-height: 300px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.notice {
+  margin-top: 8px;
+  color: #93c5fd;
+}
+
+.uploader.drag-active {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35) inset;
+}
+
+#graph-host {
+  overflow: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.edge-line {
+  stroke: #64748b;
+  stroke-width: 1.6;
+}
+
+.edge-arrow {
+  fill: #64748b;
+}
+
+.module-node {
+  fill: #1e293b;
+  stroke: #64748b;
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+
+.module-root {
+  stroke: #3b82f6;
+  stroke-width: 2.6;
+}
+
+.module-global {
+  fill: #14532d;
+}
+
+.module-selected {
+  stroke: #f59e0b;
+  stroke-width: 3;
+}
+
+.module-label {
+  fill: #e5e7eb;
+  font-size: 11px;
+  pointer-events: none;
+}

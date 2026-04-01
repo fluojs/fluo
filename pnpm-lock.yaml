@@ -455,6 +455,12 @@ importers:
         specifier: workspace:*
         version: link:../http
 
+  packages/studio:
+    devDependencies:
+      '@konekti-internal/tooling-vite':
+        specifier: workspace:*
+        version: link:../../tooling/vite
+
   packages/terminus:
     dependencies:
       '@konekti/core':
