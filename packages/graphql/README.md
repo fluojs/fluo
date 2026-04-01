@@ -127,14 +127,25 @@ interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
   topics?: string | string[];
-  argTypes?: Record<string, 'string' | 'int' | 'float' | 'boolean' | 'id'>;
-  outputType?: 'string' | 'int' | 'float' | 'boolean' | 'id' | GraphQLObjectType;
+  argTypes?: Record<string, GraphqlArgType>; // scalar or listOf(scalar)
+  outputType?: GraphqlRootOutputType; // scalar/object or listOf(scalar/object)
 }
 ```
 
 - `input`: DTO class for argument mapping + validation.
-- `argTypes`: overrides inferred scalar type per argument.
-- `outputType`: overrides resolver return type (default: `string`). Scalar literals are supported, and named `GraphQLObjectType` can be used for root operation object payloads.
+- `argTypes`: overrides inferred argument type per argument. Use scalar literals (e.g. `'string'`) or `listOf('string')` for list args.
+- `outputType`: overrides resolver return type (default: `string`). Scalar literals, named `GraphQLObjectType`, and `listOf(...)` wrappers are supported for root operation payloads.
+
+List wrapper helper:
+
+```typescript
+import { listOf } from '@konekti/graphql';
+
+@Query({ input: SearchInput, argTypes: { terms: listOf('string') }, outputType: listOf('string') })
+search(input: SearchInput): string[] {
+  return input.terms;
+}
+```
 
 ### `@Arg(argName?)`
 
@@ -255,7 +266,7 @@ The GraphQL package does not add a Konekti-specific complexity API; plugin compo
 
 ## Explicitly out of scope
 
-- GraphQL type-system rewrites (list/union expansion)
+- GraphQL type-system rewrites (union expansion)
 - `@FieldResolver`
 - Federation
 - Built-in DataLoader abstraction/decorator

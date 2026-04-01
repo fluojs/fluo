@@ -22,6 +22,7 @@ import type {
   GraphQLFloat as GraphQLFloatType,
   GraphQLID as GraphQLIDType,
   GraphQLInt as GraphQLIntType,
+  GraphQLList as GraphQLListType,
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLSchema as GraphQLSchemaType,
   GraphQLString as GraphQLStringType,
@@ -145,6 +146,7 @@ interface GraphqlDeps {
   GraphQLFloat: typeof GraphQLFloatType;
   GraphQLID: typeof GraphQLIDType;
   GraphQLInt: typeof GraphQLIntType;
+  GraphQLList: typeof GraphQLListType;
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: typeof GraphQLStringType;
@@ -274,6 +276,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
     GraphQLFloat: graphqlMod.GraphQLFloat,
     GraphQLID: graphqlMod.GraphQLID,
     GraphQLInt: graphqlMod.GraphQLInt,
+    GraphQLList: graphqlMod.GraphQLList,
     GraphQLObjectType: graphqlMod.GraphQLObjectType,
     GraphQLSchema: graphqlMod.GraphQLSchema,
     GraphQLString: graphqlMod.GraphQLString,

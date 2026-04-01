@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { IsBoolean, IsInt, MinLength } from '@konekti/validation';
 
 import { Arg } from './decorators.js';
-import { createGraphqlInput, resolveArgScalarType } from './input-pipeline.js';
+import { createGraphqlInput, resolveArgScalarType, resolveArgType } from './input-pipeline.js';
+import { listOf } from './types.js';
 import type { ResolverHandlerDescriptor } from './types.js';
 
 class ScalarInput {
@@ -49,5 +50,14 @@ it('infers scalar types from dto metadata', () => {
     await expect(
       createGraphqlInput(TextInput, { value: 'ab' }, [{ argName: 'value', fieldName: 'value' }]),
     ).rejects.toThrow('Validation failed.');
+  });
+
+  it('resolves explicit list arg types from decorator metadata', () => {
+    const handler = createHandlerDescriptor(ScalarInput);
+    handler.argTypes = {
+      value: listOf('string'),
+    };
+
+    expect(resolveArgType(handler, 'value')).toEqual(listOf('string'));
   });
 });

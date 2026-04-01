@@ -5,6 +5,7 @@ import {
   GraphQLFloat,
   GraphQLID,
   GraphQLInt,
+  GraphQLList,
   GraphQLObjectType,
   GraphQLSchema,
   GraphQLString,
@@ -14,6 +15,7 @@ import {
 import type { Container } from '@konekti/di';
 
 import { createCodeFirstSchema } from './schema.js';
+import { listOf } from './types.js';
 import type { ResolverDescriptor } from './types.js';
 
 const deps = {
@@ -22,6 +24,7 @@ const deps = {
   GraphQLFloat,
   GraphQLID,
   GraphQLInt,
+  GraphQLList,
   GraphQLObjectType,
   GraphQLSchema,
   GraphQLString,
@@ -33,12 +36,18 @@ const fakeContainer = {} as unknown as Container;
 function makeDescriptor(
   targetName: string,
   fieldName: string,
-  options?: { outputType?: ResolverDescriptor['handlers'][number]['outputType']; type?: ResolverDescriptor['handlers'][number]['type'] },
+  options?: {
+    argTypes?: ResolverDescriptor['handlers'][number]['argTypes'];
+    argFields?: ResolverDescriptor['handlers'][number]['argFields'];
+    outputType?: ResolverDescriptor['handlers'][number]['outputType'];
+    type?: ResolverDescriptor['handlers'][number]['type'];
+  },
 ): ResolverDescriptor {
   return {
     handlers: [
       {
-        argFields: [],
+        argFields: options?.argFields ?? [],
+        argTypes: options?.argTypes,
         fieldName,
         methodKey: 'resolve',
         methodName: 'resolve',
@@ -118,5 +127,50 @@ describe('createCodeFirstSchema – root object output foundation', () => {
     expect('name' in (subscriptionOutput ?? {}) ? (subscriptionOutput as { name: string }).name : undefined).toBe(
       'RootOperationPayload',
     );
+  });
+
+  it('supports list arg types and list outputs for root operations', () => {
+    const payloadType = new GraphQLObjectType({
+      fields: {
+        status: { type: GraphQLString },
+      },
+      name: 'ListPayload',
+    });
+
+    const schema = createCodeFirstSchema(deps, fakeContainer, [
+      makeDescriptor('QueryResolver', 'tags', {
+        argFields: [{ argName: 'values', fieldName: 'values' }],
+        argTypes: {
+          values: listOf('string'),
+        },
+        outputType: listOf('string'),
+        type: 'query',
+      }),
+      makeDescriptor('MutationResolver', 'updateItems', {
+        outputType: listOf(payloadType),
+        type: 'mutation',
+      }),
+      makeDescriptor('SubscriptionResolver', 'itemStream', {
+        outputType: listOf(payloadType),
+        type: 'subscription',
+      }),
+    ]);
+
+    const valuesArgType = schema.getQueryType()?.getFields().tags?.args[0]?.type;
+    const queryOutput = schema.getQueryType()?.getFields().tags?.type;
+    const mutationOutput = schema.getMutationType()?.getFields().updateItems?.type;
+    const subscriptionOutput = schema.getSubscriptionType()?.getFields().itemStream?.type;
+
+    expect(valuesArgType instanceof GraphQLList).toBe(true);
+    expect(valuesArgType?.toString()).toBe('[String]');
+
+    expect(queryOutput instanceof GraphQLList).toBe(true);
+    expect(queryOutput?.toString()).toBe('[String]');
+
+    expect(mutationOutput instanceof GraphQLList).toBe(true);
+    expect(mutationOutput?.toString()).toBe('[ListPayload]');
+
+    expect(subscriptionOutput instanceof GraphQLList).toBe(true);
+    expect(subscriptionOutput?.toString()).toBe('[ListPayload]');
   });
 });

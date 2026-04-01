@@ -1,7 +1,8 @@
 import { getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
 import { DefaultValidator } from '@konekti/validation';
 
-import type { GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
+import { isGraphqlListTypeRef } from './types.js';
+import type { GraphqlArgType, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
 
 const defaultValidator = new DefaultValidator();
 
@@ -52,7 +53,7 @@ function toPropertyKey(fieldName: string): MetadataPropertyKey {
 export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName: string): GraphqlScalarTypeName {
   const explicit = handler.argTypes?.[argName];
 
-  if (explicit) {
+  if (explicit && !isGraphqlListTypeRef(explicit)) {
     return explicit;
   }
 
@@ -82,6 +83,15 @@ export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName
   } catch {
     return 'string';
   }
+}
+
+export function resolveArgType(handler: ResolverHandlerDescriptor, argName: string): GraphqlArgType {
+  const explicit = handler.argTypes?.[argName];
+  if (explicit) {
+    return explicit;
+  }
+
+  return resolveArgScalarType(handler, argName);
 }
 
 export function resolveOutputType(handler: ResolverHandlerDescriptor): GraphqlRootOutputType {

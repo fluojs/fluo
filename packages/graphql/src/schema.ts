@@ -5,6 +5,8 @@ import type {
   GraphQLFieldConfig,
   GraphQLError as GraphQLErrorType,
   GraphQLFieldConfigArgumentMap,
+  GraphQLInputType,
+  GraphQLList as GraphQLListType,
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLOutputType,
   GraphQLSchema as GraphQLSchemaType,
@@ -12,10 +14,14 @@ import type {
 } from 'graphql';
 import { DtoValidationError } from '@konekti/validation';
 
-import { createGraphqlInput, resolveArgScalarType, resolveOutputType } from './input-pipeline.js';
+import { createGraphqlInput, resolveArgType, resolveOutputType } from './input-pipeline.js';
 import {
   GRAPHQL_OPERATION_CONTAINER,
+  isGraphqlListTypeRef,
   type GraphQLContext,
+  type GraphqlArgType,
+  type GraphqlRootOutputNamedType,
+  type GraphqlScalarTypeName,
   type ResolverDescriptor,
   type ResolverHandlerDescriptor,
   type ResolverHandlerType,
@@ -27,6 +33,7 @@ type YogaGraphqlDeps = {
   GraphQLFloat: GraphQLScalarType;
   GraphQLID: GraphQLScalarType;
   GraphQLInt: GraphQLScalarType;
+  GraphQLList: typeof GraphQLListType;
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: GraphQLScalarType;
@@ -114,12 +121,53 @@ function normalizeObjectOutputType(
   return normalized;
 }
 
+function resolveArgGraphqlType(deps: YogaGraphqlDeps, argType: GraphqlArgType): GraphQLInputType {
+  if (isGraphqlListTypeRef(argType)) {
+    return new deps.GraphQLList(scalarByName(deps, argType.ofType as GraphqlScalarTypeName));
+  }
+
+  return scalarByName(deps, argType as GraphqlScalarTypeName);
+}
+
+function resolveNamedRootOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
+  outputRef: GraphqlRootOutputNamedType,
+): GraphQLOutputType {
+  if (typeof outputRef === 'string') {
+    return scalarByName(deps, outputRef as GraphqlScalarTypeName);
+  }
+
+  markAllowedCrossRealmGraphqlObjects(outputRef);
+  return normalizeObjectOutputType(deps, outputTypeCache, outputRef);
+}
+
+function resolveRootOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
+  markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
+  outputRef: ReturnType<typeof resolveOutputType>,
+): GraphQLOutputType {
+  if (isGraphqlListTypeRef(outputRef)) {
+    const listItemType = resolveNamedRootOutputType(
+      deps,
+      outputTypeCache,
+      markAllowedCrossRealmGraphqlObjects,
+      outputRef.ofType as GraphqlRootOutputNamedType,
+    );
+    return new deps.GraphQLList(listItemType);
+  }
+
+  return resolveNamedRootOutputType(deps, outputTypeCache, markAllowedCrossRealmGraphqlObjects, outputRef);
+}
+
 function createFieldArgs(deps: YogaGraphqlDeps, handler: ResolverHandlerDescriptor) {
   return Object.fromEntries(
     handler.argFields.map((argField) => [
       argField.argName,
       {
-        type: scalarByName(deps, resolveArgScalarType(handler, argField.argName)),
+        type: resolveArgGraphqlType(deps, resolveArgType(handler, argField.argName)),
       },
     ]),
   );
@@ -206,13 +254,7 @@ function pickFieldsByType(
       const args = createFieldArgs(deps, handler);
 
       const outputRef = resolveOutputType(handler);
-      if (typeof outputRef === 'object') {
-        markAllowedCrossRealmGraphqlObjects(outputRef);
-      }
-      const outputType: GraphQLOutputType =
-        typeof outputRef === 'string'
-          ? scalarByName(deps, outputRef)
-          : normalizeObjectOutputType(deps, outputTypeCache, outputRef);
+      const outputType = resolveRootOutputType(deps, outputTypeCache, markAllowedCrossRealmGraphqlObjects, outputRef);
 
       if (Object.prototype.hasOwnProperty.call(fields, handler.fieldName)) {
         throw new Error(
