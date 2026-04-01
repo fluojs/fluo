@@ -111,6 +111,8 @@ interface GraphQLContext {
 
 - `createGraphqlProviders(options)`
 - `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`
+- `getRequestScopedDataLoader(context, key, createLoader)`
+- `createRequestScopedDataLoaderFactory(key, createLoader)`
 
 ## 데코레이터
 
@@ -246,6 +248,41 @@ class UserResolver {
 ```
 
 resolver와 loader factory가 모두 request scope이므로 GraphQL operation마다 DataLoader 캐시가 분리됩니다.
+
+선택적으로 사용할 수 있는 얇은 helper(데코레이터 없음):
+
+```typescript
+import DataLoader from 'dataloader';
+import { Inject } from '@konekti/core';
+import { Arg, Query, Resolver, type GraphQLContext, getRequestScopedDataLoader } from '@konekti/graphql';
+
+const USER_BY_ID_LOADER = Symbol('user-by-id-loader');
+
+class UserByIdInput {
+  @Arg('id')
+  id = '';
+}
+
+@Inject([UserRepository])
+@Resolver('UserResolver')
+class UserResolver {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Query()
+  async userName(input: UserByIdInput, context: GraphQLContext): Promise<string> {
+    const loader = getRequestScopedDataLoader(context, USER_BY_ID_LOADER, () =>
+      new DataLoader<string, User | null>(async (ids) => {
+        const users = await this.repo.findManyByIds(ids);
+        const map = new Map(users.map((user) => [user.id, user]));
+        return ids.map((item) => map.get(item) ?? null);
+      }),
+    );
+
+    const user = await loader.load(input.id);
+    return user?.name ?? 'unknown';
+  }
+}
+```
 
 ## 플러그인 기반 complexity/depth 제한
 
