@@ -60,10 +60,7 @@ OpenAPI 생성기는 라우트 메타데이터와 입력 유효성 검사 메타
 - **디커플링**: `@konekti/openapi`는 정규화된 메타데이터와만 상호작용하며 패키지 내부 저장소에 접근하지 않습니다.
 - **인증 방식**: 인증 스킴(scheme)은 OpenAPI 데코레이터를 사용하여 애플리케이션 레벨에서 선언됩니다.
 - **보안 스킴 확장성**: 모듈/문서 옵션의 `securitySchemes`를 통해 API key, HTTP, OAuth2, OpenID Connect 스킴을 등록할 수 있습니다.
-
-## 의도적으로 범위에서 제외한 항목
-
-- `documentTransform` 같은 범용 OpenAPI 문서 후처리 훅은 현재 범위에서 제외됩니다.
+- **문서 후처리**: 생성된 문서는 모듈/문서 옵션의 `documentTransform`으로 빌드 시점에 한 번 후처리할 수 있습니다.
 
 ## 개념적 흐름
 
