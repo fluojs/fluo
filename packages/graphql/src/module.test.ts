@@ -6,7 +6,7 @@ import { WebSocket } from 'ws';
 import { Inject, Scope } from '@konekti/core';
 import { IsInt, MinLength } from '@konekti/validation';
 import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
-import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
+import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { createGraphqlModule } from './module.js';
@@ -198,6 +198,39 @@ const OperationPayloadType = new GraphQLObjectType({
   name: 'OperationPayload',
 });
 
+const UnionSuccessPayloadType = new GraphQLObjectType({
+  fields: {
+    status: {
+      type: GraphQLString,
+    },
+    value: {
+      type: GraphQLString,
+    },
+  },
+  name: 'UnionSuccessPayload',
+});
+
+const UnionErrorPayloadType = new GraphQLObjectType({
+  fields: {
+    code: {
+      type: GraphQLString,
+    },
+    message: {
+      type: GraphQLString,
+    },
+  },
+  name: 'UnionErrorPayload',
+});
+
+const OperationResultUnionType = new GraphQLUnionType({
+  name: 'OperationResultUnion',
+  resolveType: (value) => {
+    const candidate = value as { __typename?: string };
+    return candidate.__typename;
+  },
+  types: [UnionSuccessPayloadType, UnionErrorPayloadType],
+});
+
 @Inject([ResolverState])
 @Resolver('RootResolver')
 class GraphqlResolver {
@@ -279,6 +312,51 @@ class ListOutputResolver {
     yield [
       { status: 'streaming', value: 'subscription-1' },
       { status: 'streaming', value: 'subscription-2' },
+    ];
+  }
+}
+
+@Inject([])
+@Resolver('UnionOutputResolver')
+class UnionOutputResolver {
+  @Query({ outputType: OperationResultUnionType })
+  summaryResult(): { __typename: 'UnionSuccessPayload'; status: string; value: string } {
+    return {
+      __typename: 'UnionSuccessPayload',
+      status: 'ok',
+      value: 'query',
+    };
+  }
+
+  @Mutation({ outputType: OperationResultUnionType })
+  updateResult(): { __typename: 'UnionErrorPayload'; code: string; message: string } {
+    return {
+      __typename: 'UnionErrorPayload',
+      code: 'E_UPDATE',
+      message: 'mutation failed',
+    };
+  }
+
+  @Subscription({ outputType: listOf(OperationResultUnionType) })
+  async *summaryResultStream(): AsyncGenerator<
+    Array<
+      | { __typename: 'UnionSuccessPayload'; status: string; value: string }
+      | { __typename: 'UnionErrorPayload'; code: string; message: string }
+    >,
+    void,
+    void
+  > {
+    yield [
+      {
+        __typename: 'UnionSuccessPayload',
+        status: 'streaming',
+        value: 'subscription',
+      },
+      {
+        __typename: 'UnionErrorPayload',
+        code: 'E_STREAM',
+        message: 'subscription warning',
+      },
     ];
   }
 }
@@ -526,6 +604,102 @@ describe('@konekti/graphql', () => {
       },
       {
         id: 'list-sub-1',
+        type: 'complete',
+      },
+    ]);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
+    await app.close();
+  });
+
+  it('supports root union outputs for query/mutation/subscription', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [UnionOutputResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [UnionOutputResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(
+      postGraphql(
+        port,
+        '{ summaryResult { __typename ... on UnionSuccessPayload { status value } ... on UnionErrorPayload { code message } } }',
+      ),
+    ).resolves.toEqual({
+      data: {
+        summaryResult: {
+          __typename: 'UnionSuccessPayload',
+          status: 'ok',
+          value: 'query',
+        },
+      },
+    });
+
+    await expect(
+      postGraphql(
+        port,
+        'mutation { updateResult { __typename ... on UnionSuccessPayload { status value } ... on UnionErrorPayload { code message } } }',
+      ),
+    ).resolves.toEqual({
+      data: {
+        updateResult: {
+          __typename: 'UnionErrorPayload',
+          code: 'E_UPDATE',
+          message: 'mutation failed',
+        },
+      },
+    });
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'union-sub-1',
+      payload: {
+        query:
+          'subscription { summaryResultStream { __typename ... on UnionSuccessPayload { status value } ... on UnionErrorPayload { code message } } }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'union-sub-1',
+        payload: {
+          data: {
+            summaryResultStream: [
+              {
+                __typename: 'UnionSuccessPayload',
+                status: 'streaming',
+                value: 'subscription',
+              },
+              {
+                __typename: 'UnionErrorPayload',
+                code: 'E_STREAM',
+                message: 'subscription warning',
+              },
+            ],
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'union-sub-1',
         type: 'complete',
       },
     ]);
