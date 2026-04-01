@@ -48,6 +48,7 @@ interface MetricsModuleOptions {
       method: string;
       path: string;
       params: Readonly<Record<string, string>>;
+      request: FrameworkRequest;
     }) => string;
     unknownPathLabel?: string;
   };
@@ -55,6 +56,7 @@ interface MetricsModuleOptions {
   provider?: 'prometheus';    // 현재 지원되는 provider
   defaultMetrics?: boolean;   // Node.js 기본 메트릭 수집 (기본값: true)
   middleware?: MiddlewareLike[];
+  registry?: Registry;        // 커스텀 메트릭과 공유할 외부 Prometheus registry
 }
 
 class MetricsModule {
@@ -121,6 +123,8 @@ MetricsModule.forRoot({
 
 높은 cardinality를 의도적으로 감수하는 경우에만 `pathLabelMode: 'raw'`를 사용하세요.
 
+`unknownPathLabel`의 기본값은 `UNKNOWN`입니다. 커스텀 normalizer가 빈 문자열을 반환하면 이 라벨로 폴백합니다.
+
 ### Provider 계약
 
 `MetricsModule`은 현재 Prometheus meter provider만 지원합니다. `prometheus`가 아닌 provider 값을 넘기면 런타임에서 예외를 던집니다.
@@ -135,12 +139,72 @@ MetricsModule.forRoot({
 
 ## 커스텀 메트릭
 
-`MetricsModule`은 `forRoot()` 호출마다 전용 `prom-client` `Registry` 인스턴스를 생성합니다. 현재 public API는 그 내부 레지스트리를 노출하지 않으므로, 커스텀 메트릭과 내장 엔드포인트가 같은 레지스트리를 공유하는 방식은 아직 공식 지원되지 않습니다.
+`MetricsModule`은 기본적으로 `forRoot()` 호출마다 전용 `prom-client` `Registry` 인스턴스를 생성합니다. 필요하면 외부 `Registry`를 전달해 프레임워크 메트릭과 애플리케이션 메트릭을 하나의 스크레이프 엔드포인트로 합칠 수 있습니다.
+
+### 공유 Registry (권장)
+
+외부 `Registry`를 `forRoot()`에 전달하면, 커스텀 메트릭과 프레임워크 메트릭이 동일 엔드포인트를 공유합니다.
+
+```typescript
+import { Counter, Registry } from 'prom-client';
+import { MetricsModule } from '@konekti/metrics';
+
+const sharedRegistry = new Registry();
+
+const httpRequests = new Counter({
+  name: 'http_requests_total',
+  help: '총 HTTP 요청 수',
+  labelNames: ['method', 'status'],
+  registers: [sharedRegistry],
+});
+
+httpRequests.inc({ method: 'GET', status: '200' });
+
+@Module({
+  imports: [
+    MetricsModule.forRoot({ registry: sharedRegistry }),
+  ],
+})
+class AppModule {}
+// GET /metrics → framework metrics + http_requests_total
+```
+
+### 공유 Registry에서 MetricsService 사용
+
+공유 registry를 전달하면 `MetricsService`와 `METER_PROVIDER`가 같은 registry를 사용합니다.
+
+```typescript
+import { METRICS_SERVICE, MetricsService } from '@konekti/metrics';
+
+@Inject([METRICS_SERVICE])
+class OrderService {
+  constructor(private readonly metrics: MetricsService) {
+    this.orderCounter = this.metrics.counter({
+      name: 'orders_created_total',
+      help: '총 주문 생성 수',
+      labelNames: ['status'],
+    });
+  }
+}
+```
+
+### Registry 직접 접근
+
+`MetricsService.getRegistry()`로 내부 `prom-client` `Registry`에 접근할 수 있습니다.
+
+```typescript
+const metricsService = await app.container.resolve(METRICS_SERVICE);
+const registry = metricsService.getRegistry();
+```
+
+### 격리 Registry (기본값)
+
+`registry` 옵션을 생략하면 각 `forRoot()` 호출은 별도 registry를 생성합니다.
 
 ```typescript
 import { Counter } from 'prom-client';
 
-// 전역 레지스트리 사용 (MetricsModule의 내부 레지스트리와 별개)
+// 전역 registry 사용 (MetricsModule 내부 registry와 별개)
 const httpRequests = new Counter({
   name: 'http_requests_total',
   help: '총 HTTP 요청 수',
@@ -150,7 +214,25 @@ const httpRequests = new Counter({
 httpRequests.inc({ method: 'GET', status: '200' });
 ```
 
-> **참고:** `MetricsModule`은 자체 격리된 `Registry`를 사용합니다. 하나의 엔드포인트에서 공유 레지스트리를 쓰고 싶다면, 직접 레지스트리 배선을 추가하도록 이 모듈을 확장하거나 래핑해야 합니다.
+> **참고:** 격리 registry 모드에서는 모듈 외부에서 등록한 메트릭이 내장 `/metrics` 엔드포인트에 나타나지 않습니다. 통합 스크레이프가 필요하면 공유 registry를 사용하세요.
+
+### 중복 Metric 이름
+
+Prometheus는 metric 이름의 전역 유일성을 요구합니다. 공유 registry에서 같은 이름을 두 번 등록하면 예외가 발생합니다.
+
+```typescript
+import { Counter } from 'prom-client';
+
+const registry = new Registry();
+
+new Counter({ name: 'my_counter', help: 'help', registers: [registry] });
+
+// Throws: 'A metric with the name my_counter has already been registered.'
+MetricsModule.forRoot({ registry }).container.resolve(METRICS_SERVICE)
+  .counter({ name: 'my_counter', help: 'duplicate' });
+```
+
+이 동작은 `prom-client`와 동일하며, 조용한 metric 충돌을 방지합니다.
 
 ---
 

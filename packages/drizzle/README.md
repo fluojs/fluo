@@ -50,6 +50,23 @@ const db = drizzle(pool);
 export class AppModule {}
 ```
 
+### Async module registration
+
+```typescript
+import { createDrizzleModuleAsync } from '@konekti/drizzle';
+
+const DrizzleModule = createDrizzleModuleAsync({
+  inject: [ConfigService],
+  useFactory: async (config: ConfigService) => ({
+    database: createDrizzleHandle(config.get('DATABASE_URL')),
+    strictTransactions: true,
+    dispose: async (database) => {
+      await closeDrizzleHandle(database);
+    },
+  }),
+});
+```
+
 ### Using the database in a repository
 
 ```typescript
@@ -106,12 +123,13 @@ class UsersController {}
 |---|---|---|
 | `DrizzleDatabase` | `src/database.ts` | Wrapper with `current()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()` |
 | `createDrizzleModule(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
+| `createDrizzleModuleAsync(options)` | `src/module.ts` | Async variant that resolves module options once and registers the same provider surface |
 | `createDrizzleProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
 | `DRIZZLE_DATABASE` | `src/tokens.ts` | DI token for the raw Drizzle database handle |
 | `DRIZZLE_DISPOSE` | `src/tokens.ts` | DI token for the optional cleanup hook |
 | `DRIZZLE_OPTIONS` | `src/tokens.ts` | DI token for normalized Drizzle module options |
-| `DrizzleDatabaseLike` | `src/types.ts` | Seam type — any object with a `transaction` callback |
+| `DrizzleDatabaseLike` | `src/types.ts` | Seam type — object with optional `transaction` callback |
 | `DrizzleModuleOptions` | `src/types.ts` | `{ database, dispose?, strictTransactions? }` |
 | `DrizzleHandleProvider` | `src/types.ts` | Public transaction-aware handle contract |
 
@@ -131,8 +149,13 @@ DrizzleDatabase.transaction(fn)
   → AsyncLocalStorage stores tx handle
   → current() returns tx handle within the callback
 
+DrizzleDatabase.requestTransaction(fn)
+  → same boundary behavior with AbortSignal support
+  → if transaction runner is missing and strict mode is off, falls back to abort-aware direct execution
+
 app.close()
   → onApplicationShutdown()
+  → aborts active request transactions and waits for settlement
   → calls dispose(database) if provided
 ```
 
@@ -146,6 +169,13 @@ Separating the cleanup hook from the database value means:
 ### Transaction semantics
 
 `DrizzleDatabase` uses `AsyncLocalStorage` to track the active transaction context. Service and repository code calls `current()` without knowing whether they are inside a transaction or not — the ALS store handles the switch transparently.
+
+`strictTransactions` controls fallback behavior when the wrapped handle does not implement `transaction`:
+
+- `false` (default): `transaction()` runs `fn()` directly; `requestTransaction()` runs abort-aware direct execution.
+- `true`: `transaction()` and `requestTransaction()` throw `Transaction not supported...`.
+
+Nested transaction option overrides are rejected while already inside an active transaction context.
 
 ## File reading order for contributors
 

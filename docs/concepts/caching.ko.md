@@ -40,6 +40,7 @@
 - raw ioredis 스타일 클라이언트 메서드(`get`, `set`, `del`, `scan`)를 사용합니다.
 - 만료 시각이 포함된 JSON 코덱 엔트리를 저장합니다.
 - 파괴적인 전역 flush 대신, prefix 범위의 `SCAN` + `DEL` 리셋 전략을 사용합니다.
+- `store: 'redis'` 모드에서 런타임 Redis client 라이프사이클은 cache-manager가 아니라 `@konekti/redis`가 소유합니다(lazy bootstrap connect + graceful shutdown 시맨틱).
 
 ## 모듈 연결
 
@@ -89,6 +90,8 @@ createCacheModule({ store: 'redis' });
 ```
 
 Redis 모드를 선택했는데 Redis 클라이언트를 찾지 못하면, 부트스트랩 초기에 명확한 설정 오류로 실패합니다.
+
+백킹 Redis 모듈이 존재하면 `wait` 상태에서 bootstrap 연결을 시도하고, 연결 오류를 fail-fast로 드러냅니다. 종료 시에는 `quit()` 우선 + `disconnect()` 폴백을 사용합니다.
 
 ## 설계 경계
 

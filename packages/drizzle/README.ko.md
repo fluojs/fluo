@@ -50,6 +50,23 @@ const db = drizzle(pool);
 export class AppModule {}
 ```
 
+### 비동기 모듈 등록
+
+```typescript
+import { createDrizzleModuleAsync } from '@konekti/drizzle';
+
+const DrizzleModule = createDrizzleModuleAsync({
+  inject: [ConfigService],
+  useFactory: async (config: ConfigService) => ({
+    database: createDrizzleHandle(config.get('DATABASE_URL')),
+    strictTransactions: true,
+    dispose: async (database) => {
+      await closeDrizzleHandle(database);
+    },
+  }),
+});
+```
+
 ### Repository에서 database 사용
 
 ```typescript
@@ -106,12 +123,13 @@ class UsersController {}
 |---|---|---|
 | `DrizzleDatabase` | `src/database.ts` | `current()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()`을 가진 wrapper |
 | `createDrizzleModule(options)` | `src/module.ts` | 모든 provider를 포함한 importable Konekti 모듈 생성 |
+| `createDrizzleModuleAsync(options)` | `src/module.ts` | async 옵션을 1회 해석해 동일한 provider surface를 등록하는 비동기 변형 |
 | `createDrizzleProviders(options)` | `src/module.ts` | 수동 등록을 위한 raw provider 배열 반환 |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | 자동 per-request transaction을 위한 opt-in interceptor |
 | `DRIZZLE_DATABASE` | `src/tokens.ts` | raw Drizzle database handle을 위한 DI 토큰 |
 | `DRIZZLE_DISPOSE` | `src/tokens.ts` | optional cleanup hook을 위한 DI 토큰 |
 | `DRIZZLE_OPTIONS` | `src/tokens.ts` | 정규화된 Drizzle module option을 위한 DI 토큰 |
-| `DrizzleDatabaseLike` | `src/types.ts` | seam 타입 — `transaction` callback이 있는 임의의 객체 |
+| `DrizzleDatabaseLike` | `src/types.ts` | seam 타입 — optional `transaction` callback을 가진 객체 |
 | `DrizzleModuleOptions` | `src/types.ts` | `{ database, dispose?, strictTransactions? }` |
 | `DrizzleHandleProvider` | `src/types.ts` | public transaction-aware handle 계약 |
 
@@ -131,8 +149,13 @@ DrizzleDatabase.transaction(fn)
   → AsyncLocalStorage에 tx handle 저장
   → callback 안에서 current()가 tx handle 반환
 
+DrizzleDatabase.requestTransaction(fn)
+  → 같은 경계 시맨틱 + AbortSignal 지원
+  → transaction runner가 없고 strict 모드가 꺼져 있으면 abort-aware 직접 실행으로 폴백
+
 app.close()
   → onApplicationShutdown()
+  → 활성 request transaction abort + settle 대기
   → dispose가 있으면 dispose(database) 호출
 ```
 
@@ -146,6 +169,13 @@ cleanup hook을 database value에서 분리하면:
 ### Transaction 시맨틱
 
 `DrizzleDatabase`는 활성 transaction context를 추적하기 위해 `AsyncLocalStorage`를 사용한다. service와 repository 코드는 transaction 안인지 아닌지를 알 필요 없이 `current()`를 호출하면 되고, ALS store가 전환을 투명하게 처리한다.
+
+`strictTransactions`는 wrapped handle이 `transaction`을 제공하지 않을 때의 동작을 제어한다.
+
+- `false`(기본값): `transaction()`은 `fn()` 직접 실행, `requestTransaction()`은 abort-aware 직접 실행으로 폴백
+- `true`: `transaction()`과 `requestTransaction()` 모두 `Transaction not supported...` 예외 발생
+
+이미 활성 transaction context 안에서는 중첩 transaction 옵션 오버라이드를 허용하지 않는다.
 
 ## 파일 읽기 순서 (기여자용)
 

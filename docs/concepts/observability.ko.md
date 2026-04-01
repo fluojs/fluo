@@ -47,7 +47,9 @@ interface ApplicationLogger {
 ## 메트릭 (Metrics)
 
 - **엔드포인트**: `@konekti/metrics`는 `GET /metrics` 엔드포인트를 제공합니다.
-- **수집**: `prom-client`를 사용하여 기본 메트릭을 격리된 레지스트리에 수집합니다.
+- **수집**: `prom-client`를 사용하며, 기본적으로 호출 단위 격리 registry에 기본 메트릭을 수집합니다.
+- **공유 registry 옵션**: `MetricsModule.forRoot({ registry })`로 외부 `Registry`를 전달하면 프레임워크 메트릭과 애플리케이션 메트릭을 하나의 스크레이프 타겟에서 노출할 수 있습니다.
+- **HTTP 메트릭 라벨**: `HttpMetricsMiddleware`는 low-cardinality path 정규화를 사용합니다(기본 `template`, opt-in `raw`). 기록 라벨은 `method`, `path`, `status`입니다.
 - **격리**: 메트릭 노출은 헬스 체크와 독립적이며 미들웨어로 보호할 수 있습니다.
 
 ## 책임 범위

@@ -67,7 +67,7 @@ export class CacheService {
 | `createRedisProviders(options)` | `src/module.ts` | Returns the raw provider list for manual composition |
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
 | `REDIS_SERVICE` | `src/redis-service.ts` | DI token for the Redis facade service |
-| `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers |
+| `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers + `getRawClient()` escape hatch |
 | `RedisModuleOptions` | `src/types.ts` | `ioredis` options without `lazyConnect` |
 
 ## RedisService codec behavior
@@ -76,12 +76,14 @@ export class CacheService {
 - `get(key)` returns parsed JSON for valid JSON payloads.
 - `get(key)` returns the raw stored string for non-JSON or malformed JSON payloads.
 - `set(key, value)` always stores `JSON.stringify(value)` and uses Redis `EX` when `ttlSeconds > 0`.
+- `getRawClient()` returns the shared raw `ioredis` client for commands outside the facade surface.
 
 ## Lifecycle behavior
 
 - `createRedisModule()` always creates the client with `lazyConnect: true`.
 - `onModuleInit()` calls `connect()` only in `wait` state, so bootstrap fails early if Redis is required and connect fails.
 - `onApplicationShutdown()` skips work when already `end`, disconnects directly for non-quittable states, and otherwise prefers `quit()` with `disconnect()` fallback.
+- If `quit()` fails and the client still does not close, the original quit error is rethrown.
 
 ## Architecture
 

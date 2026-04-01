@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./transactions.ko.md"><kbd>한국어</kbd></a></p>
 
-이 가이드는 런타임 및 공식 ORM 통합에서 사용되는 트랜잭션 의미론을 설명합니다.
+이 가이드는 런타임 및 공식 ORM 통합(특히 `@konekti/prisma`, `@konekti/drizzle`)에서 사용되는 트랜잭션 의미론을 설명합니다.
 
 ### 관련 문서
 
@@ -40,12 +40,15 @@
 - 가드가 성공적으로 실행된 후 인터셉터 경계에서 시작됩니다.
 - 트랜잭션 핸들은 패키지별 방식으로 해결됩니다.
 - 인증 실패는 트랜잭션 시작을 방지하여 불필요한 롤백 로직을 피합니다.
+- Prisma 통합(`requestTransaction`)은 abort-aware 실행을 사용하며, 드라이버가 transaction `signal` 옵션을 거부하면 `signal` 없이 1회 재시도합니다.
+- Drizzle 통합(`requestTransaction`)은 abort-aware이며, wrapped handle에 `transaction` runner가 없으면(strict 모드가 아닐 때) abort-aware 직접 실행으로 폴백합니다.
 
 ## 커밋 및 롤백
 
 - **커밋**: 래핑된 요청 경로가 성공적으로 종료된 후 발생합니다.
 - **롤백**: 컨트롤러 또는 인터셉터 실패, 검증 에러, 또는 완료 전 요청 중단에 의해 트리거됩니다.
 - **정리**: 중단된 요청이 고립된 트랜잭션을 남겨두어서는 안 됩니다.
+- **셧다운 안전성**: Prisma/Drizzle 통합은 애플리케이션 종료 시 활성 request transaction을 abort하고 settle 완료를 기다린 뒤 disconnect/dispose 정리를 진행합니다.
 
 ## 스트리밍 및 장기 실행 요청
 

@@ -38,6 +38,22 @@ const prisma = new PrismaClient();
 const AppModule = createPrismaModule({ client: prisma });
 ```
 
+### 1-a. 의존성이 필요하면 비동기 모듈 등록 사용
+
+```typescript
+import { createPrismaModuleAsync } from '@konekti/prisma';
+
+const AppModule = createPrismaModuleAsync({
+  inject: [ConfigService],
+  useFactory: async (config: ConfigService) => ({
+    client: new PrismaClient({
+      datasourceUrl: config.get('DATABASE_URL'),
+    }),
+    strictTransactions: true,
+  }),
+});
+```
+
 ### 2. 리포지토리에서 `PrismaService` 사용
 
 ```typescript
@@ -98,7 +114,7 @@ class UserController {}
 |---|---|---|
 | `current()` | `() => TClient \| TTransactionClient` | 활성 트랜잭션 클라이언트(ALS에서)를 반환하거나, 트랜잭션이 없으면 루트 클라이언트를 반환 |
 | `transaction()` | `(fn: () => Promise<T>) => Promise<T>` | Prisma 인터랙티브 트랜잭션 안에서 `fn`을 실행하고, tx 클라이언트를 ALS에 저장 |
-| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | `transaction()`과 동일하나, 인터셉터가 요청 경계에서 사용하도록 설계됨 |
+| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | 요청 경계용 `transaction()`. abort-aware 실행을 사용하고, Prisma 드라이버가 signal 옵션을 거부하면 `signal` 없이 1회 재시도 |
 
 ### `PRISMA_CLIENT`
 
@@ -124,11 +140,20 @@ import { createPrismaProviders } from '@konekti/prisma';
 const providers = createPrismaProviders({ client: prisma });
 ```
 
-### `createPrismaModule(options)`
+### `createPrismaModule(options)` / `createPrismaModuleAsync(options)`
 
-`createPrismaProviders`를 호출하고 결과를 Konekti 모듈 정의로 감싸는 편의 함수입니다.
+sync는 `createPrismaProviders`를 직접 감싸고, async는 비동기 factory로 같은 옵션을 해석한 뒤 Konekti 모듈 정의로 감싸는 편의 함수입니다.
 
-`PrismaModuleOptions`는 `strictTransactions?: boolean`도 지원하며, public package는 `PRISMA_OPTIONS`, `PrismaTransactionClient`, `PrismaModuleOptions`, `PrismaHandleProvider`도 export합니다.
+`createPrismaModuleAsync(...)`는 모듈 인스턴스 기준으로 async factory 결과를 1회 memoize합니다.
+
+`PrismaModuleOptions`는 `strictTransactions?: boolean`을 지원합니다.
+
+- `false`(기본값): `$transaction`이 없으면 `transaction()` / `requestTransaction()`이 직접 실행으로 폴백
+- `true`: `$transaction`이 없으면 즉시 예외 발생
+
+이미 활성 트랜잭션 컨텍스트 안에서는 중첩 트랜잭션 옵션 오버라이드를 허용하지 않습니다.
+
+public package는 `PRISMA_OPTIONS`, `PrismaTransactionClient`, `PrismaModuleOptions`, `PrismaHandleProvider`도 export합니다.
 
 ### `PrismaTransactionInterceptor`
 
@@ -136,13 +161,13 @@ HTTP 인터셉터(`src/transaction.ts`). 각 요청을 `prismaService.requestTra
 
 ### `PrismaClientLike`
 
-`PrismaService`가 제네릭으로 받는 seam 인터페이스입니다. `$connect`, `$disconnect`, `$transaction`만 요구하므로, 전체 `PrismaClient` 대신 최소한의 테스트 스텁으로 대체할 수 있습니다.
+`PrismaService`가 제네릭으로 받는 seam 인터페이스입니다. `$connect`, `$disconnect`, `$transaction`은 optional이며, 라이프사이클/트랜잭션 기능이 없는 최소 스텁이나 폴백 시나리오도 표현할 수 있습니다.
 
 ```typescript
 interface PrismaClientLike {
-  $connect(): Promise<void>;
-  $disconnect(): Promise<void>;
-  $transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
+  $connect?(): Promise<void>;
+  $disconnect?(): Promise<void>;
+  $transaction?<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
 }
 ```
 
@@ -168,8 +193,8 @@ Prisma Client
 ```
 
 **라이프사이클 훅:**
-- `OnModuleInit` → `$connect()` — Konekti 모듈이 초기화될 때 호출
-- `OnApplicationShutdown` → `$disconnect()` — 그레이스풀 셧다운 시 호출
+- `OnModuleInit` → `$connect()` (구현된 경우)
+- `OnApplicationShutdown` → 진행 중 요청 트랜잭션 abort + settle 대기 후 `$disconnect()` 호출 (구현된 경우)
 
 ## 파일 읽기 순서 (기여자용)
 

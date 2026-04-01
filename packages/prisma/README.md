@@ -38,6 +38,22 @@ const prisma = new PrismaClient();
 const AppModule = createPrismaModule({ client: prisma });
 ```
 
+### 1-a. Register asynchronously when dependencies are needed
+
+```typescript
+import { createPrismaModuleAsync } from '@konekti/prisma';
+
+const AppModule = createPrismaModuleAsync({
+  inject: [ConfigService],
+  useFactory: async (config: ConfigService) => ({
+    client: new PrismaClient({
+      datasourceUrl: config.get('DATABASE_URL'),
+    }),
+    strictTransactions: true,
+  }),
+});
+```
+
 ### 2. Use `PrismaService` in a repository
 
 ```typescript
@@ -98,7 +114,7 @@ class UserController {}
 |---|---|---|
 | `current()` | `() => TClient \| TTransactionClient` | Returns the active transaction client (from ALS), or the root client if no transaction is open |
 | `transaction()` | `(fn: () => Promise<T>) => Promise<T>` | Runs `fn` inside a Prisma interactive transaction; stores the tx client in ALS |
-| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | Like `transaction()`, intended for use by interceptors at the request boundary |
+| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | Like `transaction()`, intended for request boundaries. Uses abort-aware execution and retries once without `signal` when a Prisma driver rejects signal options |
 
 ### `PRISMA_CLIENT`
 
@@ -124,11 +140,20 @@ import { createPrismaProviders } from '@konekti/prisma';
 const providers = createPrismaProviders({ client: prisma });
 ```
 
-### `createPrismaModule(options)`
+### `createPrismaModule(options)` / `createPrismaModuleAsync(options)`
 
-Convenience wrapper that calls `createPrismaProviders` and wraps the result in a Konekti module definition.
+Convenience wrappers that call `createPrismaProviders` (sync) or resolve the same options through an async factory (async) and wrap the result in a Konekti module definition.
 
-`PrismaModuleOptions` also supports `strictTransactions?: boolean`, and the public package exports `PRISMA_OPTIONS`, `PrismaTransactionClient`, `PrismaModuleOptions`, and `PrismaHandleProvider`.
+`createPrismaModuleAsync(...)` memoizes the async factory result once per module instance.
+
+`PrismaModuleOptions` supports `strictTransactions?: boolean`:
+
+- `false` (default): if `$transaction` is missing, `transaction()` / `requestTransaction()` fall back to direct execution.
+- `true`: missing `$transaction` throws immediately.
+
+Nested transaction option overrides are rejected while already inside an active transaction context.
+
+The public package also exports `PRISMA_OPTIONS`, `PrismaTransactionClient`, `PrismaModuleOptions`, and `PrismaHandleProvider`.
 
 ### `PrismaTransactionInterceptor`
 
@@ -136,13 +161,13 @@ HTTP interceptor (`src/transaction.ts`) that wraps each request in `prismaServic
 
 ### `PrismaClientLike`
 
-Seam interface that `PrismaService` is generic over. Requires only `$connect`, `$disconnect`, and `$transaction` — allows testing with a minimal stub instead of a full `PrismaClient`.
+Seam interface that `PrismaService` is generic over. `$connect`, `$disconnect`, and `$transaction` are optional — allowing lightweight test seams and fallback behavior when lifecycle/transaction capabilities are absent.
 
 ```typescript
 interface PrismaClientLike {
-  $connect(): Promise<void>;
-  $disconnect(): Promise<void>;
-  $transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
+  $connect?(): Promise<void>;
+  $disconnect?(): Promise<void>;
+  $transaction?<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
 }
 ```
 
@@ -168,8 +193,8 @@ Prisma Client
 ```
 
 **Lifecycle hooks:**
-- `OnModuleInit` → `$connect()` — called when the Konekti module initializes
-- `OnApplicationShutdown` → `$disconnect()` — called on graceful shutdown
+- `OnModuleInit` → `$connect()` (if implemented)
+- `OnApplicationShutdown` → aborts in-flight request transactions, waits for settlement, then calls `$disconnect()` (if implemented)
 
 ## File Reading Order (for contributors)
 
