@@ -30,6 +30,7 @@ export interface OpenApiModuleOptions {
   sources?: readonly HandlerSource[];
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
   extraModels?: Constructor[];
+  documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
 }
 
 type OpenApiOptionsProvider =
@@ -159,6 +160,7 @@ export class OpenApiModule {
             registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
 
             return buildOpenApiDocument({
+              documentTransform: options.documentTransform,
               defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
               descriptors: registry.getDescriptors(),
               extraModels: options.extraModels,
