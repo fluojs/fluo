@@ -89,32 +89,30 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 - deprecations must be announced before removal unless the package is still explicitly experimental/preview
 - docs and scaffold output should be updated in the same release window as surface changes
 - root `CHANGELOG.md` is the public source of release history and follows Keep a Changelog structure
-- `pnpm verify:release-candidate` updates the `CHANGELOG.md` draft release-candidate entry in `## [Unreleased]`
+- `pnpm verify:release-readiness` updates the `CHANGELOG.md` draft release-readiness entry in `## [Unreleased]`
 
 ## release checklist
 
-1. `pnpm verify:release-candidate`
+1. `pnpm verify:release-readiness`
 2. confirm docs match the current package surface and bootstrap contract
 3. confirm any manifest decision note still matches benchmark evidence
 4. confirm release tag has a matching GitHub Release body derived from `CHANGELOG.md`
-5. attach `tooling/release/release-candidate-summary.md` to the GitHub Release
+5. attach `tooling/release/release-readiness-summary.md` to the GitHub Release
 
-## release-candidate gate
+## release-readiness gate
 
-`pnpm verify:release-candidate` currently proves:
+`pnpm verify:release-readiness` currently proves:
 
 - package typecheck + build succeed from the monorepo root
-- scaffolded starter projects are verified through the packed CLI entrypoint and starter scaffolding exercised by the CLI test suite that runs inside `pnpm verify:release-candidate`
+- scaffolded starter projects are verified through the packed CLI entrypoint and starter scaffolding exercised by the CLI test suite that runs inside `pnpm verify:release-readiness`
 - the `pnpm` starter project path passes `typecheck`, `build`, `test`, and `konekti g repo ...`, while CLI tests separately cover package-manager selection behavior
 - generated starter projects expose runtime-owned `/health` + `/ready` and the starter-owned `/health-info/` route
 - CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution
 
-The command also writes `tooling/release/release-candidate-summary.md`, and CI publishes that summary as both a workflow summary and an artifact.
-
-The matching CI entry lives at `.github/workflows/release-candidate.yml`.
+The command also writes `tooling/release/release-readiness-summary.md`.
 
 ## GitHub Releases
 
-- tag-based releases use `.github/workflows/github-release.yml`
+- tag-based releases are managed by maintainers through repository release operations
 - each `v*` tag creates a GitHub Release whose body is extracted from the matching `CHANGELOG.md` section
-- each GitHub Release uploads `tooling/release/release-candidate-summary.md` as a release asset
+- each GitHub Release should include `tooling/release/release-readiness-summary.md` as a release asset when available

@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./toolchain-contract-matrix.ko.md"><kbd>한국어</kbd></a></p>
 
 
-This matrix locks the public toolchain contract for generated apps and release-candidate examples.
+This matrix locks the public toolchain contract for generated apps and release-readiness examples.
 
 | Surface | Status | Contract |
 | --- | --- | --- |
@@ -15,16 +15,16 @@ This matrix locks the public toolchain contract for generated apps and release-c
 | Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` keep the current single-app command shape |
 | `@konekti/cli` prompt flow | `public contract` | Canonical path is `pnpm add -g @konekti/cli` then `konekti new` |
 | Workspace root TypeScript / Vite / Vitest wiring | `internal-only` | Root repo config files support package development and are not copied into generated apps |
-| Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*` is testing support for release-candidate verification only |
+| Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*` is testing support for release-readiness verification only |
 
 ## unsupported or narrower-guarantee combinations
 
 - `esbuild` instead of Babel for generated apps — unsupported today because the decorators transform and generated build contract are verified only with Babel.
-- `Jest` instead of Vitest for generated apps — unsupported today because the starter test harness and release-candidate gate are built around Vitest.
+- `Jest` instead of Vitest for generated apps — unsupported today because the starter test harness and release-readiness gate are built around Vitest.
 
 ## official-example contract
 
-- The generated starter and the release-candidate scaffold tests pin the same TypeScript/Babel/Vite/Vitest versions listed above.
+- The generated starter and the release-readiness scaffold tests pin the same TypeScript/Babel/Vite/Vitest versions listed above.
 - Official examples are expected to use the same config shapes as generated apps unless a guide explicitly marks a file as `internal-only`.
 
 ## runtime and manifest parity notes

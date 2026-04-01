@@ -34,7 +34,7 @@ Each item notes its current Konekti state, what closing the gap requires, accept
 
 **Acceptance criteria**:
 - `CHANGELOG.md` at the repo root follows Keep a Changelog format and has a populated `## [Unreleased]` section.
-- Each GitHub Release has a body extracted from the matching `CHANGELOG.md` section (already automated via `.github/workflows/github-release.yml`).
+- Each GitHub Release has a body extracted from the matching `CHANGELOG.md` section.
 - `docs/operations/release-governance.md` explicitly states the `0.x` vs `1.0` stability contract in the first section (not buried in a sub-heading).
 - `README.md` links to `CHANGELOG.md` and to the GitHub Releases page.
 

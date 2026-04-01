@@ -13,7 +13,7 @@ From the repository root:
 pnpm test
 pnpm typecheck
 pnpm build
-pnpm verify:release-candidate
+pnpm verify:release-readiness
 ```
 
 Generated starter projects expose the same commands through the selected package manager.
@@ -78,4 +78,4 @@ That command refreshes `starter-app` directly at the temp sandbox path from loca
 
 `KONEKTI_CLI_SANDBOX_ROOT=/path` is still available for advanced local setups, but it must point to a dedicated directory outside the monorepo workspace. Repo-internal paths are warned on and automatically replaced with the temp sandbox root so contributor verification keeps using a standalone app.
 
-For the outside-the-monorepo gate, use `pnpm verify:release-candidate`. That command is the current CI-facing public release candidate check, and it relies on the CLI test suite to exercise the packed CLI entrypoint and starter scaffolding that back the documented `@konekti/cli` flow. The command emits `tooling/release/release-candidate-summary.md` so CI can publish a checklist artifact, and updates the draft release candidate entry in root `CHANGELOG.md` (`## [Unreleased]`).
+For the outside-the-monorepo gate, use `pnpm verify:release-readiness`. That command is the current public release-readiness check, and it relies on the CLI test suite to exercise the packed CLI entrypoint and starter scaffolding that back the documented `@konekti/cli` flow. The command emits `tooling/release/release-readiness-summary.md` and updates the draft release-readiness entry in root `CHANGELOG.md` (`## [Unreleased]`).

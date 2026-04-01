@@ -88,32 +88,30 @@
 - 패키지가 여전히 명시적으로 experimental/preview 상태가 아닌 한, 제거 전에 deprecation을 먼저 공지해야 합니다.
 - 문서와 스캐폴드 출력은 인터페이스 변경이 있는 동일한 릴리스 주기에 업데이트되어야 합니다.
 - 루트 `CHANGELOG.md`는 공개 릴리스 히스토리의 소스이며 Keep a Changelog 구조를 따릅니다.
-- `pnpm verify:release-candidate`는 `CHANGELOG.md`의 `## [Unreleased]`에 있는 릴리스 후보 드래프트를 업데이트합니다.
+- `pnpm verify:release-readiness`는 `CHANGELOG.md`의 `## [Unreleased]`에 있는 릴리스 준비도 드래프트를 업데이트합니다.
 
 ## release checklist
 
-1. `pnpm verify:release-candidate` 실행
+1. `pnpm verify:release-readiness` 실행
 2. 문서가 현재 패키지 표면 및 부트스트랩 계약과 일치하는지 확인
 3. 매니페스트 결정 노트가 여전히 벤치마크 증거와 일치하는지 확인
 4. 릴리스 태그에 대응하는 GitHub Release 본문이 `CHANGELOG.md`에서 파생되었는지 확인
-5. `tooling/release/release-candidate-summary.md`를 GitHub Release에 첨부
+5. `tooling/release/release-readiness-summary.md`를 GitHub Release에 첨부
 
-## release-candidate gate
+## release-readiness gate
 
-`pnpm verify:release-candidate`는 현재 다음을 검증합니다:
+`pnpm verify:release-readiness`는 현재 다음을 검증합니다:
 
 - 모노레포 루트에서 패키지 타입 체크 및 빌드 성공
-- 패키징된 CLI 엔트리포인트를 통해 스캐폴딩된 스타터 프로젝트 검증 및 CLI 테스트 스위트를 통한 스타터 스캐폴딩 확인
+- 패키징된 CLI 엔트리포인트를 통해 스캐폴딩된 스타터 프로젝트 검증 및 `pnpm verify:release-readiness`에서 실행되는 CLI 테스트 스위트를 통한 스타터 스캐폴딩 확인
 - `pnpm` 스타터 프로젝트 경로가 `typecheck`, `build`, `test`, `konekti g repo ...`를 통과하며, CLI 테스트가 패키지 매니저 선택 동작을 별도로 커버함
 - 생성된 스타터 프로젝트가 런타임 소유의 `/health` + `/ready`와 스타터 소유의 `/health-info/` 라우트를 노출함
 - CLI 바이너리와 패키징된 아티팩트가 `src` 직접 실행이 아닌 `dist` 출력물에서 작동함
 
-이 명령어는 또한 `tooling/release/release-candidate-summary.md`를 작성하며, CI는 이 요약본을 워크플로 요약 및 아티팩트로 게시합니다.
-
-관련 CI 항목은 `.github/workflows/release-candidate.yml`에 위치합니다.
+이 명령어는 또한 `tooling/release/release-readiness-summary.md`를 작성합니다.
 
 ## GitHub Releases
 
-- 태그 기반 릴리스는 `.github/workflows/github-release.yml`을 사용합니다.
+- 태그 기반 릴리스는 유지보수자가 저장소 릴리스 운영 절차로 관리합니다.
 - 각 `v*` 태그는 `CHANGELOG.md`의 해당 섹션을 본문으로 사용하는 GitHub Release를 생성합니다.
-- 각 GitHub Release는 `tooling/release/release-candidate-summary.md`를 릴리스 에셋으로 업로드합니다.
+- 가능하면 각 GitHub Release에 `tooling/release/release-readiness-summary.md`를 릴리스 에셋으로 포함합니다.

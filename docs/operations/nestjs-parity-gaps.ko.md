@@ -34,7 +34,7 @@
 
 **Acceptance criteria**:
 - 레포 루트의 `CHANGELOG.md`가 Keep a Changelog 형식을 따르고 `## [Unreleased]` 섹션이 작성되어 있습니다.
-- 각 GitHub Release에 해당 `CHANGELOG.md` 섹션에서 추출된 본문이 있습니다 (`.github/workflows/github-release.yml`로 이미 자동화됨).
+- 각 GitHub Release에 해당 `CHANGELOG.md` 섹션에서 추출된 본문이 있습니다.
 - `docs/operations/release-governance.ko.md`가 첫 섹션에서 `0.x` vs `1.0` 안정성 계약을 명시합니다 (하위 헤딩에 묻혀 있지 않아야 함).
 - `README.ko.md`가 `CHANGELOG.md`와 GitHub Releases 페이지에 링크합니다.
 

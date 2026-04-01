@@ -12,7 +12,7 @@
 pnpm test
 pnpm typecheck
 pnpm build
-pnpm verify:release-candidate
+pnpm verify:release-readiness
 ```
 
 생성된 스타터 프로젝트도 선택한 패키지 매니저를 통해 동일한 명령을 제공합니다.
@@ -73,4 +73,4 @@ pnpm --dir packages/cli run sandbox:test
 
 고급 로컬 설정을 위해 `KONEKTI_CLI_SANDBOX_ROOT=/path`를 여전히 사용할 수 있지만, 반드시 모노레포 워크스페이스 외부의 전용 디렉터리를 가리켜야 합니다. 레포 내부 경로는 경고와 함께 자동으로 임시 샌드박스 루트로 대체되어, 기여자 검증이 독립된 앱 환경에서 유지되도록 합니다.
 
-모노레포 외부 게이트의 경우 `pnpm verify:release-candidate`를 사용하세요. 이 명령은 현재 CI용 공개 릴리스 후보 체크이며, 문서화된 `@konekti/cli` 흐름을 지원하는 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 CLI 테스트 스위트로 실행합니다. 또한 CI에서 체크리스트 아티팩트로 게시할 수 있도록 `tooling/release/release-candidate-summary.md`를 생성하고, 루트 `CHANGELOG.md`의 `## [Unreleased]`에 릴리스 후보 드래프트 항목을 갱신합니다.
+모노레포 외부 게이트의 경우 `pnpm verify:release-readiness`를 사용하세요. 이 명령은 현재 공개 릴리스 준비도 체크이며, 문서화된 `@konekti/cli` 흐름을 지원하는 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 CLI 테스트 스위트로 실행합니다. 또한 `tooling/release/release-readiness-summary.md`를 생성하고, 루트 `CHANGELOG.md`의 `## [Unreleased]`에 릴리스 준비도 드래프트 항목을 갱신합니다.

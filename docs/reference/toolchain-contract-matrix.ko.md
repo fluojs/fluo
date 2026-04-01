@@ -2,7 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./toolchain-contract-matrix.md"><kbd>English</kbd></a></p>
 
-이 매트릭스는 생성된 앱 및 릴리스 후보 예시를 위한 공개 툴체인 계약을 고정합니다.
+이 매트릭스는 생성된 앱 및 릴리스 준비도 예시를 위한 공개 툴체인 계약을 고정합니다.
 
 | Surface | Status | Contract |
 | --- | --- | --- |
@@ -14,16 +14,16 @@
 | Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` 등 현재의 단일 앱 명령 형태 유지 |
 | `@konekti/cli` prompt flow | `public contract` | 정식 경로는 `pnpm add -g @konekti/cli` 후 `konekti new` |
 | Workspace root TypeScript / Vite / Vitest wiring | `internal-only` | 패키지 개발을 위한 루트 레포 설정 파일이며 생성된 앱으로 복사되지 않음 |
-| Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*`는 릴리스 후보 검증만을 위한 테스트 지원용임 |
+| Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*`는 릴리스 준비도 검증만을 위한 테스트 지원용임 |
 
 ## unsupported or narrower-guarantee combinations
 
 - 생성 앱에 Babel 대신 `esbuild` 사용 — 현재 데코레이터 변환 및 생성된 빌드 계약이 Babel에서만 검증되었으므로 지원하지 않음
-- 생성 앱에 Vitest 대신 `Jest` 사용 — 스타터 테스트 하네스 및 릴리스 후보 게이트가 Vitest 기반으로 구축되었으므로 지원하지 않음
+- 생성 앱에 Vitest 대신 `Jest` 사용 — 스타터 테스트 하네스 및 릴리스 준비도 게이트가 Vitest 기반으로 구축되었으므로 지원하지 않음
 
 ## official-example contract
 
-- 생성된 스타터 및 릴리스 후보 스캐폴드 테스트는 위에 나열된 것과 동일한 TypeScript/Babel/Vite/Vitest 버전을 고정함
+- 생성된 스타터 및 릴리스 준비도 스캐폴드 테스트는 위에 나열된 것과 동일한 TypeScript/Babel/Vite/Vitest 버전을 고정함
 - 공식 예시는 가이드에서 특정 파일을 `internal-only`로 명시하지 않는 한, 생성된 앱과 동일한 설정 형태를 사용해야 함
 
 ## runtime and manifest parity notes
