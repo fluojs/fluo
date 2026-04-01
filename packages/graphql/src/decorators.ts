@@ -5,7 +5,7 @@ import {
   handlerMetadataSymbol,
   resolverMetadataSymbol,
 } from './metadata.js';
-import type { ArgFieldMetadata, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
+import type { ArgFieldMetadata, GraphqlArgType, GraphqlRootOutputType, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
@@ -16,7 +16,7 @@ export interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
   topics?: string | string[];
-  argTypes?: Record<string, GraphqlScalarTypeName>;
+  argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
 }
 

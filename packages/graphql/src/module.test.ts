@@ -10,7 +10,7 @@ import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { createGraphqlModule } from './module.js';
-import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER, listOf } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -181,6 +181,11 @@ class IncrementInput {
   count = 0;
 }
 
+class ValuesInput {
+  @Arg('values')
+  values: string[] = [];
+}
+
 const OperationPayloadType = new GraphQLObjectType({
   fields: {
     status: {
@@ -250,6 +255,31 @@ class ObjectOutputResolver {
       status: 'streaming',
       value: 'subscription',
     };
+  }
+}
+
+@Inject([])
+@Resolver('ListOutputResolver')
+class ListOutputResolver {
+  @Query({ input: ValuesInput, argTypes: { values: listOf('string') }, outputType: listOf('string') })
+  echoValues(input: ValuesInput): string[] {
+    return input.values;
+  }
+
+  @Mutation({ outputType: listOf(OperationPayloadType) })
+  batchUpdateSummary(): Array<{ status: string; value: string }> {
+    return [
+      { status: 'updated', value: 'mutation-1' },
+      { status: 'updated', value: 'mutation-2' },
+    ];
+  }
+
+  @Subscription({ outputType: listOf(OperationPayloadType) })
+  async *batchSummaryStream(): AsyncGenerator<Array<{ status: string; value: string }>, void, void> {
+    yield [
+      { status: 'streaming', value: 'subscription-1' },
+      { status: 'streaming', value: 'subscription-2' },
+    ];
   }
 }
 
@@ -424,6 +454,78 @@ describe('@konekti/graphql', () => {
       },
       {
         id: 'object-sub-1',
+        type: 'complete',
+      },
+    ]);
+
+    socket.close();
+    await onceWebSocketClosed(socket);
+    await app.close();
+  });
+
+  it('supports list args and list outputs for root operations', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          resolvers: [ListOutputResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [ListOutputResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, '{ echoValues(values: ["alpha", "beta"]) }')).resolves.toEqual({
+      data: {
+        echoValues: ['alpha', 'beta'],
+      },
+    });
+
+    await expect(postGraphql(port, 'mutation { batchUpdateSummary { status value } }')).resolves.toEqual({
+      data: {
+        batchUpdateSummary: [
+          { status: 'updated', value: 'mutation-1' },
+          { status: 'updated', value: 'mutation-2' },
+        ],
+      },
+    });
+
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'list-sub-1',
+      payload: {
+        query: 'subscription { batchSummaryStream { status value } }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'list-sub-1',
+        payload: {
+          data: {
+            batchSummaryStream: [
+              { status: 'streaming', value: 'subscription-1' },
+              { status: 'streaming', value: 'subscription-2' },
+            ],
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'list-sub-1',
         type: 'complete',
       },
     ]);

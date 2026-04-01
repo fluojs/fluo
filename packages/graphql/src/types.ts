@@ -38,14 +38,38 @@ export interface ResolverMetadata {
 export type ResolverHandlerType = 'query' | 'mutation' | 'subscription';
 
 export type GraphqlScalarTypeName = 'string' | 'int' | 'float' | 'boolean' | 'id';
-export type GraphqlRootOutputType = GraphqlScalarTypeName | GraphQLObjectType;
+
+export interface GraphqlListTypeRef<TType> {
+  kind: 'list';
+  ofType: TType;
+}
+
+export function listOf<TType>(ofType: TType): GraphqlListTypeRef<TType> {
+  return {
+    kind: 'list',
+    ofType,
+  };
+}
+
+export function isGraphqlListTypeRef(value: unknown): value is GraphqlListTypeRef<unknown> {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as { kind?: unknown; ofType?: unknown };
+  return candidate.kind === 'list' && 'ofType' in candidate;
+}
+
+export type GraphqlArgType = GraphqlScalarTypeName | GraphqlListTypeRef<GraphqlScalarTypeName>;
+export type GraphqlRootOutputNamedType = GraphqlScalarTypeName | GraphQLObjectType;
+export type GraphqlRootOutputType = GraphqlRootOutputNamedType | GraphqlListTypeRef<GraphqlRootOutputNamedType>;
 
 export interface ResolverHandlerMetadata {
   type: ResolverHandlerType;
   fieldName?: string;
   topics?: string | string[];
   inputClass?: Function;
-  argTypes?: Record<string, GraphqlScalarTypeName>;
+  argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
 }
 
@@ -62,7 +86,7 @@ export interface ResolverHandlerDescriptor {
   topics?: string | string[];
   inputClass?: Function;
   argFields: ArgFieldMetadata[];
-  argTypes?: Record<string, GraphqlScalarTypeName>;
+  argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
 }
 
