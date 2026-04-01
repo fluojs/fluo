@@ -271,6 +271,10 @@ The GraphQL package does not add a Konekti-specific complexity API; plugin compo
 - Federation
 - Built-in DataLoader abstraction/decorator
 
+## Design-only RFCs
+
+- `@FieldResolver`: [field-resolver-rfc.md](./field-resolver-rfc.md)
+
 ## Alternative Provider Registration
 
 In addition to plain class providers and `useClass` registrations, GraphQL resolver discovery supports `useValue` and `useFactory` providers.
