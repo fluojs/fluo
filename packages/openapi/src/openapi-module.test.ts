@@ -1727,6 +1727,114 @@ describe('OpenApiModule', () => {
     expect(paths['/admin/internal']).toBeUndefined();
   });
 
+  it('forRoot composes descriptors and sources when both are provided', async () => {
+    @Controller('/from-sources')
+    class SourcesController {
+      @Get('/')
+      getSources() {
+        return { from: 'sources' };
+      }
+    }
+
+    @Controller('/from-descriptors')
+    class DescriptorsController {
+      @Get('/')
+      getDescriptors() {
+        return { from: 'descriptors' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      descriptors: createHandlerMapping([{ controllerToken: DescriptorsController }]).descriptors,
+      sources: [{ controllerToken: SourcesController }],
+      title: 'Composed API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [SourcesController, DescriptorsController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        paths: expect.objectContaining({
+          '/from-sources': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+          '/from-descriptors': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('forRootAsync composes descriptors and sources when both are provided', async () => {
+    @Controller('/async-sources')
+    class AsyncSourcesController {
+      @Get('/')
+      getSources() {
+        return { from: 'sources' };
+      }
+    }
+
+    @Controller('/async-descriptors')
+    class AsyncDescriptorsController {
+      @Get('/')
+      getDescriptors() {
+        return { from: 'descriptors' };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRootAsync({
+      useFactory: async () => ({
+        descriptors: createHandlerMapping([{ controllerToken: AsyncDescriptorsController }]).descriptors,
+        sources: [{ controllerToken: AsyncSourcesController }],
+        title: 'Async Composed API',
+        version: '1.0.0',
+      }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [AsyncSourcesController, AsyncDescriptorsController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        info: {
+          title: 'Async Composed API',
+          version: '1.0.0',
+        },
+        paths: expect.objectContaining({
+          '/async-sources': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+          '/async-descriptors': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('forRoot options apply documentTransform after document generation', async () => {
     @Controller('/health')
     class HealthController {

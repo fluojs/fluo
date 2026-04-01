@@ -86,6 +86,21 @@ function isOpenApiModuleOptions(value: unknown): value is OpenApiModuleOptions {
   return typeof options.title === 'string' && typeof options.version === 'string';
 }
 
+function resolveOpenApiDescriptors(options: OpenApiModuleOptions): readonly HandlerDescriptor[] {
+  const sourceDescriptors = createHandlerMapping([...(options.sources ?? [])]).descriptors;
+  const explicitDescriptors = [...(options.descriptors ?? [])];
+
+  if (sourceDescriptors.length === 0) {
+    return explicitDescriptors;
+  }
+
+  if (explicitDescriptors.length === 0) {
+    return sourceDescriptors;
+  }
+
+  return [...sourceDescriptors, ...explicitDescriptors];
+}
+
 export class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     return this.createModule({
@@ -151,13 +166,9 @@ export class OpenApiModule {
               throw new Error('OpenApiModule options provider must resolve title and version.');
             }
 
-            if (options.descriptors && options.sources) {
-              throw new Error('OpenApiModule.forRoot() accepts either descriptors or sources, but not both.');
-            }
-
             const registry = new OpenApiHandlerRegistry();
 
-            registry.setDescriptors(options.descriptors ?? createHandlerMapping([...(options.sources ?? [])]).descriptors);
+            registry.setDescriptors(resolveOpenApiDescriptors(options));
 
             return buildOpenApiDocument({
               documentTransform: options.documentTransform,
