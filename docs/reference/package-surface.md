@@ -55,7 +55,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/serialization`**: Class-based response serialization and interceptors.
 - **`@konekti/cache-manager`**: Decorator-driven HTTP response caching with memory and Redis stores.
 - **`@konekti/metrics`**: Prometheus metrics exposure.
-- **`@konekti/cron`**: Decorator-based task scheduling with distributed lock support.
+- **`@konekti/cron`**: Decorator-based (`@Cron`, `@Interval`, `@Timeout`) and runtime-registry task scheduling with distributed lock support.
 - **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery, saga/process-manager support, and event-bus delegation.
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
 - **`@konekti/websocket`**: Decorator-based WebSocket gateway discovery and Node upgrade wiring.

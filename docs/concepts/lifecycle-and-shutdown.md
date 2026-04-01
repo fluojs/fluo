@@ -68,3 +68,4 @@ The default drain window in the Node adapter is 10 seconds. You can customize th
 - ORM clients should be integrated into the provider lifecycle.
 - Active transactions must be resolved or cleaned up before the database disconnects.
 - Runtime-owned adapters are responsible for mapping request abort or close signals to the internal framework model.
+- Lifecycle-managed schedulers (for example cron/interval/timeout tasks in `@konekti/cron`) stop accepting new ticks during shutdown, wait for in-flight executions, and then release owned distributed locks.

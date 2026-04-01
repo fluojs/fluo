@@ -1,6 +1,10 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
 
-export interface CronTaskOptions {
+export type SchedulingTaskKind = 'cron' | 'interval' | 'timeout';
+
+export type SchedulingTaskCallback = () => void | Promise<void>;
+
+export interface SchedulingTaskOptions {
   afterRun?: () => void | Promise<void>;
   beforeRun?: () => void | Promise<void>;
   distributed?: boolean;
@@ -9,13 +13,35 @@ export interface CronTaskOptions {
   name?: string;
   onError?: (error: unknown) => void | Promise<void>;
   onSuccess?: () => void | Promise<void>;
+}
+
+export interface CronTaskOptions extends SchedulingTaskOptions {
   timezone?: string;
 }
 
+export type IntervalTaskOptions = SchedulingTaskOptions;
+
+export type TimeoutTaskOptions = SchedulingTaskOptions;
+
 export interface CronTaskMetadata {
+  kind: 'cron';
   expression: string;
   options: CronTaskOptions;
 }
+
+export interface IntervalTaskMetadata {
+  kind: 'interval';
+  ms: number;
+  options: IntervalTaskOptions;
+}
+
+export interface TimeoutTaskMetadata {
+  kind: 'timeout';
+  ms: number;
+  options: TimeoutTaskOptions;
+}
+
+export type SchedulingTaskMetadata = CronTaskMetadata | IntervalTaskMetadata | TimeoutTaskMetadata;
 
 export interface CronDistributedOptions {
   enabled?: boolean;
@@ -51,19 +77,50 @@ export interface NormalizedCronModuleOptions {
 }
 
 export interface CronTaskDescriptor {
+  callback?: SchedulingTaskCallback;
+  kind: SchedulingTaskKind;
   afterRun?: () => void | Promise<void>;
   beforeRun?: () => void | Promise<void>;
   distributed: boolean;
-  expression: string;
+  expression?: string;
+  ms?: number;
   lockKey: string;
   lockTtlMs: number;
-  methodKey: MetadataPropertyKey;
-  methodName: string;
-  moduleName: string;
+  methodKey?: MetadataPropertyKey;
+  methodName?: string;
+  moduleName?: string;
   onError?: (error: unknown) => void | Promise<void>;
   onSuccess?: () => void | Promise<void>;
   taskName: string;
   timezone?: string;
-  targetName: string;
-  token: Token;
+  targetName?: string;
+  token?: Token;
+}
+
+export interface SchedulingTaskDescriptor {
+  enabled: boolean;
+  kind: SchedulingTaskKind;
+  name: string;
+  source: 'decorator' | 'dynamic';
+  distributed: boolean;
+  lockKey: string;
+  lockTtlMs: number;
+  expression?: string;
+  ms?: number;
+  timezone?: string;
+  moduleName?: string;
+  targetName?: string;
+  methodName?: string;
+}
+
+export interface SchedulingRegistry {
+  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options?: CronTaskOptions): void;
+  addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options?: IntervalTaskOptions): void;
+  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options?: TimeoutTaskOptions): void;
+  remove(name: string): boolean;
+  enable(name: string): boolean;
+  disable(name: string): boolean;
+  get(name: string): SchedulingTaskDescriptor | undefined;
+  getAll(): SchedulingTaskDescriptor[];
+  updateCronExpression(name: string, expression: string): void;
 }
