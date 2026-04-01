@@ -263,4 +263,39 @@ describe('buildOpenApiDocument', () => {
       },
     });
   });
+
+  it('applies documentTransform when provided and keeps defaults when absent', () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: HealthController }]).descriptors;
+    const withoutTransform = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Health API',
+      version: '1.0.0',
+    });
+    const withTransform = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      documentTransform: (document) => ({
+        ...document,
+        info: {
+          ...document.info,
+          title: `${document.info.title} (Transformed)`,
+        },
+      }),
+      title: 'Health API',
+      version: '1.0.0',
+    });
+
+    expect(withoutTransform.info.title).toBe('Health API');
+    expect(withTransform.info.title).toBe('Health API (Transformed)');
+    expect(withTransform.paths).toEqual(withoutTransform.paths);
+  });
 });

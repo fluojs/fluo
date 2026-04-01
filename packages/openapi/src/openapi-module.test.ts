@@ -1609,6 +1609,56 @@ describe('OpenApiModule', () => {
     expect(paths['/admin/internal']).toBeUndefined();
   });
 
+  it('forRoot options apply documentTransform after document generation', async () => {
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      documentTransform: (document) => ({
+        ...document,
+        info: {
+          ...document.info,
+          title: `${document.info.title} (Transformed)`,
+        },
+      }),
+      sources: [{ controllerToken: HealthController }],
+      title: 'Health API',
+      version: '1.0.0',
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [HealthController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        info: {
+          title: 'Health API (Transformed)',
+          version: '1.0.0',
+        },
+        paths: expect.objectContaining({
+          '/health': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('propagates async option factory errors during bootstrap', async () => {
     const openApiModule = OpenApiModule.forRootAsync({
       useFactory: async () => {
