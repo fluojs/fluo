@@ -32,6 +32,7 @@ pnpm dlx @konekti/cli new starter-app
 
 - `./bootstrap-paths.ko.md`
 - `./generator-workflow.ko.md`
+- `../operations/testing-guide.ko.md`
 - `../reference/package-surface.ko.md`
 
 ## 생성된 스타터 앱 구조
@@ -43,6 +44,8 @@ pnpm dlx @konekti/cli new starter-app
 - 기본 제공되는 `/health` 및 `/ready` 엔드포인트.
 - `/health-info/`에 위치한 예제 `health/` 모듈.
 - 애플리케이션 시작 및 디스패칭을 검증하는 기본 테스트 스위트.
+
+스타터 테스트 템플릿 설명은 `../operations/testing-guide.ko.md`를 참고하세요(unit 템플릿, 런타임 integration 템플릿, `createTestApp` 기반 e2e 스타일 템플릿, repo slice 템플릿 포함).
 
 ## 프로젝트 명령어
 

@@ -5,6 +5,8 @@
 
 This guide is for teams that already ship NestJS services and want a practical migration path to Konekti.
 
+For concrete Konekti-side testing recipes after codemod migration, see `../operations/testing-guide.md` and `../../packages/testing/README.md`.
+
 ## codemod quick start (`konekti migrate`)
 
 Use the CLI codemod first, then finish manual follow-ups reported by warnings.
