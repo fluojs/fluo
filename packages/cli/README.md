@@ -13,10 +13,11 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 ## What this package does
 
-`@konekti/cli` provides four top-level commands plus aliases:
+`@konekti/cli` provides five top-level commands plus aliases:
 
 - **`konekti new`** — scaffold a starter project with defaults → install dependencies
 - **`konekti generate <kind> <name>`** — create one or more files and update the module when the generator kind participates in module registration
+- **`konekti inspect <module-path>`** — emit runtime diagnostics from a module graph (JSON or Mermaid) or opt-in bootstrap timing
 - **`konekti migrate <path>`** — run safe NestJS → Konekti codemods (dry-run by default)
 - **`konekti help [command]`** — show top-level or command-specific help output
 
@@ -85,6 +86,16 @@ Current safe first-phase transforms:
 - `tsconfig.json` rewrite (remove `experimentalDecorators`, `emitDecoratorMetadata`)
 
 The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
+
+### Inspect runtime module diagnostics
+
+```bash
+konekti inspect ./src/app.module.mjs --json
+konekti inspect ./src/app.module.mjs --mermaid
+konekti inspect ./src/app.module.mjs --timing
+```
+
+`inspect` uses the same `@konekti/runtime` diagnostics surface (`createRuntimeDiagnosticsGraph`, `renderRuntimeDiagnosticsMermaid`) used by runtime consumers. `--json` and `--mermaid` inspect the compiled module graph, while `--timing` bootstraps an application context and emits the versioned timing payload. Pass `--export <symbol>` when the root module export is not `AppModule`.
 
 ## Official generated testing templates
 
