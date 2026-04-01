@@ -7,11 +7,16 @@ import {
   type HandlerSource,
   type RequestContext,
 } from '@konekti/http';
-import { Inject, type AsyncModuleOptions, type MaybePromise, type Token } from '@konekti/core';
+import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@konekti/core';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
-import { buildOpenApiDocument, type DefaultErrorResponsesPolicy, type OpenApiDocument } from './schema-builder.js';
+import {
+  buildOpenApiDocument,
+  type DefaultErrorResponsesPolicy,
+  type OpenApiDocument,
+  type OpenApiSecuritySchemeObject,
+} from './schema-builder.js';
 
 const SWAGGER_UI_CSS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css';
 const SWAGGER_UI_BUNDLE_JS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js';
@@ -23,6 +28,8 @@ export interface OpenApiModuleOptions {
   ui?: boolean;
   descriptors?: readonly HandlerDescriptor[];
   sources?: readonly HandlerSource[];
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
 }
 
 type OpenApiOptionsProvider =
@@ -154,6 +161,8 @@ export class OpenApiModule {
             return buildOpenApiDocument({
               defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
               descriptors: registry.getDescriptors(),
+              extraModels: options.extraModels,
+              securitySchemes: options.securitySchemes,
               title: options.title,
               version: options.version,
             });

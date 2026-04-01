@@ -81,6 +81,8 @@ interface OpenApiModuleOptions {
   defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
   descriptors?: readonly HandlerDescriptor[];  // handler descriptors from createHandlerMapping()
   sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
   ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
 }
 
@@ -118,6 +120,7 @@ Documents a handler's operation object.
 interface ApiOperationOptions {
   summary?: string;
   description?: string;
+  deprecated?: boolean;
 }
 
 @ApiOperation({ summary: 'Get product by ID', description: 'Returns a single product.' })
@@ -175,6 +178,27 @@ Marks a handler as requiring Bearer token authentication. Adds `bearerAuth` to t
 createProduct() { ... }
 ```
 
+### `@ApiSecurity(name, scopes?)`
+
+Declares generic OpenAPI security requirements without affecting runtime authentication behavior.
+
+```typescript
+@ApiSecurity('apiKeyAuth')
+@ApiSecurity('oauth2Auth', ['users:read'])
+@Get('/')
+listProducts() { ... }
+```
+
+### `@ApiExcludeEndpoint()`
+
+Excludes a handler from generated OpenAPI `paths`.
+
+```typescript
+@ApiExcludeEndpoint()
+@Get('/internal')
+getInternalHealth() { ... }
+```
+
 ---
 
 ## Document Structure
@@ -205,12 +229,16 @@ The generated document follows OpenAPI 3.1.0:
 
 - **`operationId`** is auto-generated from the primary tag, handler name, HTTP method, and normalized route path (for example: `Users_listUsers_get_v1_users`).
 - **`tags`** default to the controller class name when `@ApiTag` is not used.
-- **`security`** schemes are only included in the document when at least one handler uses `@ApiBearerAuth()`.
+- **`security`** requirements can be declared with `@ApiBearerAuth()` and/or `@ApiSecurity(...)`.
+- **`securitySchemes`** can be registered via module/document options (API key, HTTP, OAuth2, OpenID Connect). `bearerAuth` is still auto-added when needed by `@ApiBearerAuth()`.
 - Request DTOs decorated with the `@konekti/validation` package are emitted as `components.schemas` entries and linked through `requestBody`.
+- `extraModels` can register additional schema components even when they are not referenced by request/response DTO discovery.
 - Cookie-bound DTO fields are emitted as `in: cookie` parameters.
 - Request bodies are only marked `required: true` when at least one body-bound DTO field is required.
 - Default error responses (`400`, `401`, `403`, `404`, `500`) are injected by default and can be disabled with `defaultErrorResponsesPolicy: 'omit'`.
 - Non-body parameter fields are emitted as runtime-compatible scalar/array shapes; nested object refs are not emitted for query/header/cookie/path params.
+- `@ApiOperation({ deprecated: true })` emits OpenAPI operation deprecation metadata.
+- `@ApiExcludeEndpoint()` omits a handler from generated operations.
 
 ---
 
@@ -228,6 +256,8 @@ Builds the OpenAPI document directly from handler descriptors without mounting a
 interface BuildOpenApiDocumentOptions {
   defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
   descriptors: readonly HandlerDescriptor[];
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
   title: string;
   version: string;
 }
@@ -251,8 +281,14 @@ interface MethodApiMetadata {
   operation?: ApiOperationOptions;
   responses: ApiResponseMetadata[];
   security?: string[];
+  securityRequirements?: Record<string, string[]>[];
+  excludeEndpoint?: boolean;
 }
 ```
+
+## Explicitly out of scope
+
+- Generic document post-processing hooks (for example `documentTransform`) are intentionally out of scope in this package surface.
 
 ---
 

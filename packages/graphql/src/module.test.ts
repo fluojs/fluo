@@ -214,6 +214,45 @@ class GraphqlResolver {
 }
 
 describe('@konekti/graphql', () => {
+  it('invokes configured Yoga/Envelop plugins during request execution', async () => {
+    const pluginHooks: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        createGraphqlModule({
+          plugins: [
+            {
+              onParse() {
+                pluginHooks.push('onParse');
+              },
+            },
+          ],
+          resolvers: [GraphqlResolver],
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, '{ echo(value: "hello") }')).resolves.toEqual({
+      data: {
+        echo: 'hello',
+      },
+    });
+
+    expect(pluginHooks).toEqual(['onParse']);
+
+    await app.close();
+  });
+
   it('handles query and mutation through /graphql middleware', async () => {
     class AppModule {}
     defineModule(AppModule, {

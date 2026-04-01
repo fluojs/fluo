@@ -57,9 +57,36 @@ export interface OpenApiRequestBodyObject {
 }
 
 export interface OpenApiSecuritySchemeObject {
-  type: 'http';
-  scheme: 'bearer';
+  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
+  description?: string;
+  in?: 'cookie' | 'header' | 'query';
+  name?: string;
+  scheme?: string;
   bearerFormat?: string;
+  flows?: {
+    implicit?: {
+      authorizationUrl: string;
+      refreshUrl?: string;
+      scopes: Record<string, string>;
+    };
+    password?: {
+      tokenUrl: string;
+      refreshUrl?: string;
+      scopes: Record<string, string>;
+    };
+    clientCredentials?: {
+      tokenUrl: string;
+      refreshUrl?: string;
+      scopes: Record<string, string>;
+    };
+    authorizationCode?: {
+      authorizationUrl: string;
+      tokenUrl: string;
+      refreshUrl?: string;
+      scopes: Record<string, string>;
+    };
+  };
+  openIdConnectUrl?: string;
 }
 
 export interface OpenApiComponentsObject {
@@ -72,6 +99,7 @@ export interface OpenApiOperationObject {
   tags: string[];
   summary?: string;
   description?: string;
+  deprecated?: boolean;
   parameters?: OpenApiParameterObject[];
   responses: Record<string, OpenApiResponseObject>;
   requestBody?: OpenApiRequestBodyObject;
@@ -94,6 +122,8 @@ export interface BuildOpenApiDocumentOptions {
   descriptors: readonly HandlerDescriptor[];
   title: string;
   version: string;
+  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
+  extraModels?: Constructor[];
 }
 
 export type DefaultErrorResponsesPolicy = 'inject' | 'omit';
@@ -877,6 +907,10 @@ function createOperationResponses(
 function createOperationSecurity(
   methodMeta: MethodApiMetadata | undefined,
 ): OpenApiSecurityRequirementObject[] | undefined {
+  if (methodMeta?.securityRequirements && methodMeta.securityRequirements.length > 0) {
+    return methodMeta.securityRequirements.map((requirement) => ({ ...requirement }));
+  }
+
   if (!methodMeta?.security || methodMeta.security.length === 0) {
     return undefined;
   }
@@ -905,6 +939,7 @@ function createOperationObject(
     tags: resolveControllerTags(descriptor),
     ...(methodMeta?.operation?.summary !== undefined && { summary: methodMeta.operation.summary }),
     ...(methodMeta?.operation?.description !== undefined && { description: methodMeta.operation.description }),
+    ...(methodMeta?.operation?.deprecated !== undefined && { deprecated: methodMeta.operation.deprecated }),
     ...(parameters.length > 0 && { parameters }),
     ...(requestBody !== undefined && { requestBody }),
     ...(security !== undefined && { security }),
@@ -923,10 +958,14 @@ function buildOperationEntry(
   componentSchemas: Record<string, OpenApiSchemaObject>,
   defaultErrorResponsesPolicy: DefaultErrorResponsesPolicy,
   context: BuildSchemaContext,
-): BuiltOperationEntry {
+): BuiltOperationEntry | undefined {
   const openApiPath = expressPathToOpenApi(descriptor.route.path);
   const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
   const methodMeta = getMethodApiMetadata(descriptor.controllerToken, descriptor.methodName);
+
+  if (methodMeta?.excludeEndpoint === true) {
+    return undefined;
+  }
 
   const responses = createOperationResponses(
     descriptor,
@@ -949,21 +988,35 @@ function buildOperationEntry(
 function createOpenApiComponents(
   componentSchemas: Record<string, OpenApiSchemaObject>,
   hasBearerAuth: boolean,
+  configuredSecuritySchemes: Record<string, OpenApiSecuritySchemeObject> | undefined,
 ): OpenApiComponentsObject {
-  return {
-    ...(Object.keys(componentSchemas).length > 0 && { schemas: componentSchemas }),
-    ...(hasBearerAuth
+  const securitySchemes = {
+    ...(configuredSecuritySchemes ?? {}),
+    ...(hasBearerAuth && !(configuredSecuritySchemes && 'bearerAuth' in configuredSecuritySchemes)
       ? {
-          securitySchemes: {
-            bearerAuth: {
-              bearerFormat: 'JWT',
-              scheme: 'bearer',
-              type: 'http',
-            },
-          },
+          bearerAuth: {
+            bearerFormat: 'JWT',
+            scheme: 'bearer',
+            type: 'http',
+          } satisfies OpenApiSecuritySchemeObject,
         }
       : {}),
   };
+
+  return {
+    ...(Object.keys(componentSchemas).length > 0 && { schemas: componentSchemas }),
+    ...(Object.keys(securitySchemes).length > 0 && { securitySchemes }),
+  };
+}
+
+function registerExtraModels(
+  extraModels: readonly Constructor[] | undefined,
+  componentSchemas: Record<string, OpenApiSchemaObject>,
+  context: BuildSchemaContext,
+): void {
+  for (const model of extraModels ?? []) {
+    ensureComponentSchema(model, componentSchemas, context);
+  }
 }
 
 export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
@@ -977,13 +1030,21 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
   };
   let hasBearerAuth = false;
 
+  registerExtraModels(options.extraModels, componentSchemas, context);
+
   for (const descriptor of options.descriptors) {
-    const { method, openApiPath, operation, requiresBearerAuth } = buildOperationEntry(
+    const entry = buildOperationEntry(
       descriptor,
       componentSchemas,
       defaultErrorResponsesPolicy,
       context,
     );
+
+    if (!entry) {
+      continue;
+    }
+
+    const { method, openApiPath, operation, requiresBearerAuth } = entry;
 
     if (requiresBearerAuth) {
       hasBearerAuth = true;
@@ -994,7 +1055,7 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     paths[openApiPath] = pathItem;
   }
 
-  const components = createOpenApiComponents(componentSchemas, hasBearerAuth);
+  const components = createOpenApiComponents(componentSchemas, hasBearerAuth, options.securitySchemes);
 
   return {
     ...(Object.keys(components).length > 0 && { components }),

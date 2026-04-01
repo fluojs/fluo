@@ -72,6 +72,7 @@ interface GraphqlModuleOptions {
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;
+  plugins?: unknown[];
   subscriptions?: {
     websocket?: {
       connectionInitWaitTimeoutMs?: number;
@@ -101,6 +102,7 @@ interface GraphQLContext {
 - `resolvers`: optional allowlist for code-first discovery.
 - `context`: adds custom GraphQL context values for each request.
 - `graphiql`: explicit GraphiQL toggle. Default is `false`. Set to `true` to enable GraphiQL (e.g. in development).
+- `plugins`: passthrough Yoga/Envelop plugins forwarded to `createYoga(...)`.
 - `subscriptions.websocket.enabled`: enables `graphql-ws` transport on the shared Node HTTP server while keeping SSE support available on `/graphql`.
 - `subscriptions.websocket.keepAliveMs`: custom websocket ping interval for `graphql-ws` keepalive frames.
 - `subscriptions.websocket.connectionInitWaitTimeoutMs`: custom timeout for the initial `connection_init` message.
@@ -149,6 +151,25 @@ Maps DTO fields to GraphQL argument names for input binding.
 - Registration rule: class providers, controllers, `useValue` providers (via instance constructor), and `useFactory` providers (with explicit `resolverClass`) are all discoverable.
 - Shutdown: Yoga state and any enabled GraphQL websocket listeners are released during application shutdown.
 
+## Yoga / Envelop plugin passthrough
+
+Use `plugins` to attach Yoga/Envelop plugins directly:
+
+```typescript
+createGraphqlModule({
+  resolvers: [AppResolver],
+  plugins: [
+    {
+      onParse() {
+        // plugin hook
+      },
+    },
+  ],
+});
+```
+
+When `plugins` is omitted or empty, GraphQL module defaults stay unchanged.
+
 ## Provider Scopes in Resolvers
 
 GraphQL resolvers respect the same `@Scope()` semantics as HTTP providers.
@@ -177,6 +198,67 @@ class RequestScopedResolver {
 ```
 
 When a resolver is declared with `@Scope('request')`, GraphQL resolves it from a per-operation child container. The DI container enforces the corresponding safety rule at bootstrap and throws `ScopeMismatchError` if a singleton provider depends on a request-scoped provider.
+
+## Request-scoped DataLoader pattern
+
+Konekti does not provide a built-in DataLoader decorator/subsystem. Use request scope to build loaders per GraphQL operation:
+
+```typescript
+import DataLoader from 'dataloader';
+import { Inject, Scope } from '@konekti/core';
+import { Query, Resolver } from '@konekti/graphql';
+
+@Inject([UserRepository])
+@Scope('request')
+class UserLoaderFactory {
+  constructor(private readonly repo: UserRepository) {}
+
+  readonly byId = new DataLoader<string, User | null>(async (ids) => {
+    const users = await this.repo.findManyByIds(ids);
+    const map = new Map(users.map((user) => [user.id, user]));
+    return ids.map((id) => map.get(id) ?? null);
+  });
+}
+
+@Inject([UserLoaderFactory])
+@Scope('request')
+@Resolver('UserResolver')
+class UserResolver {
+  constructor(private readonly loaders: UserLoaderFactory) {}
+
+  @Query()
+  async userName(id: string): Promise<string> {
+    const user = await this.loaders.byId.load(id);
+    return user?.name ?? 'unknown';
+  }
+}
+```
+
+Because both resolver and loader factory are request-scoped, each GraphQL operation gets isolated DataLoader caches.
+
+## Complexity / depth limiting with plugins
+
+Complexity and depth limiting are supported through Yoga/Envelop plugins passed via `plugins`.
+
+```typescript
+import { useDepthLimit } from '@graphile/depth-limit';
+
+createGraphqlModule({
+  resolvers: [AppResolver],
+  plugins: [
+    useDepthLimit({ maxDepth: 8 }),
+  ],
+});
+```
+
+The GraphQL package does not add a Konekti-specific complexity API; plugin composition is the supported path.
+
+## Explicitly out of scope
+
+- GraphQL type-system rewrites (object/list/union expansion)
+- `@FieldResolver`
+- Federation
+- Built-in DataLoader abstraction/decorator
 
 ## Alternative Provider Registration
 
