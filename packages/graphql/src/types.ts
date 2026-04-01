@@ -4,6 +4,7 @@ import type { FrameworkRequest, Principal } from '@konekti/http';
 import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
 
 export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('konekti.graphql.operation.container');
+export const GRAPHQL_REQUEST_SCOPED_LOADER_CACHE = Symbol.for('konekti.graphql.request_scoped_loader_cache');
 
 export interface GraphqlRequestContext {
   request: FrameworkRequest;
@@ -17,6 +18,7 @@ export interface GraphQLContext {
   connectionParams?: Record<string, unknown>;
   principal?: Principal;
   [GRAPHQL_OPERATION_CONTAINER]?: Container;
+  [GRAPHQL_REQUEST_SCOPED_LOADER_CACHE]?: Map<string | symbol, unknown>;
   [key: string]: unknown;
   socket?: unknown;
 }
