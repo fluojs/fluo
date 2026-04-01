@@ -54,14 +54,17 @@
 - **`@konekti/openapi`**: 문서 생성 및 OpenAPI 데코레이터.
 - **`@konekti/graphql`**: GraphQL 모듈, 스키마 노출, 실행 파이프라인.
 - **`@konekti/serialization`**: 클래스 기반 응답 직렬화 및 인터셉터.
-- **`@konekti/cache-manager`**: 메모리/Redis 스토어를 지원하는 데코레이터 기반 HTTP 응답 캐시.
-- **`@konekti/metrics`**: Prometheus 메트릭 노출.
+- **`@konekti/cache-manager`**: 데코레이터 기반 HTTP 응답 캐시 + 독립형 cache service/store API, 메모리/Redis 백엔드 지원.
+- **`@konekti/metrics`**: 기본 격리 registry + 선택적 공유 registry 배선을 지원하는 Prometheus 메트릭 패키지이며, low-cardinality HTTP 메트릭 미들웨어를 제공합니다.
 - **`@konekti/cron`**: 분산 락을 지원하는 데코레이터 기반 작업 스케줄링.
 - **`@konekti/cqrs`**: 부트스트랩 시점 핸들러 탐색, saga/process-manager 지원, event-bus 위임을 제공하는 command/query 버스.
 - **`@konekti/event-bus`**: 프로세스 내 이벤트 발행 및 탐색.
 - **`@konekti/websocket`**: 데코레이터 기반 WebSocket 게이트웨이 탐색 및 Node 업그레이드 연결.
 - **`@konekti/queue`**: 워커 탐색과 DLQ(Dead Letter Queue)를 지원하는 Redis 기반 백그라운드 작업.
-- **데이터 통합**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`.
+- **`@konekti/redis`**: 앱 범위 Redis lifecycle 소유(`lazyConnect` 부트스트랩 + graceful shutdown), raw 토큰 주입, `getRawClient()` escape hatch가 있는 `RedisService` facade 제공.
+- **`@konekti/prisma`**: Prisma lifecycle + ALS 기반 트랜잭션 컨텍스트 통합(비동기 모듈 팩토리, strict transaction 모드, abort-aware request transaction 처리 포함).
+- **`@konekti/drizzle`**: Drizzle handle을 ALS 트랜잭션 컨텍스트에 통합(비동기 모듈 팩토리, strict/fallback 트랜잭션 동작, optional `dispose` 셧다운 훅).
+- **`@konekti/mongoose`**: 런타임/DI 연결을 위한 Mongoose 통합 패키지.
 - **`@konekti/terminus`**: 헬스 인디케이터 조합과 런타임 헬스 응답 집계를 확장하는 운영 헬스 패키지.
 - **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티.
 - **`@konekti/cli`**: 애플리케이션 부트스트랩/생성/마이그레이션 + 런타임 진단 inspect 명령어.

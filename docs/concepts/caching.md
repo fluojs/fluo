@@ -40,6 +40,7 @@ This guide explains Konekti's HTTP response caching model powered by `@konekti/c
 - Uses raw ioredis-style client methods (`get`, `set`, `del`, `scan`).
 - Stores JSON-coded cache entries with expiration timestamps.
 - Uses scoped `SCAN` + `DEL` reset strategy (prefix-bound) rather than destructive global flush.
+- In `store: 'redis'` mode, runtime client lifecycle is owned by `@konekti/redis` (lazy bootstrap connect + graceful shutdown semantics) rather than by cache-manager itself.
 
 ## module wiring
 
@@ -89,6 +90,8 @@ createCacheModule({ store: 'redis' });
 ```
 
 When Redis mode is selected without a resolvable Redis client, bootstrap fails early with an explicit configuration error.
+
+When the backing Redis module is present, bootstrap connects in `wait` state and fails fast on connection errors; shutdown prefers `quit()` with `disconnect()` fallback.
 
 ## design boundaries
 

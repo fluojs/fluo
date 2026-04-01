@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./transactions.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the transaction semantics used across the runtime and official ORM integrations.
+This guide outlines the transaction semantics used across the runtime and official ORM integrations, especially `@konekti/prisma` and `@konekti/drizzle`.
 
 ### related documentation
 
@@ -40,12 +40,15 @@ The following propagation types are currently not supported as standard defaults
 - Begins at the interceptor boundary, after successful guard execution.
 - Transaction handles are resolved in a package-specific manner.
 - Authentication failures prevent the transaction from starting, avoiding unnecessary rollback logic.
+- Prisma integration (`requestTransaction`) is abort-aware and retries once without transaction `signal` options when a driver rejects them.
+- Drizzle integration (`requestTransaction`) is abort-aware and falls back to direct abort-aware execution when the wrapped handle lacks a `transaction` runner (unless strict mode is enabled).
 
 ## commit and rollback
 
 - **Commit**: Occurs after the wrapped request path finishes successfully.
 - **Rollback**: Triggered by controller or interceptor failures, validation errors, or request abortions before completion.
 - **Clean-up**: Aborted requests must not leave orphaned transactions.
+- **Shutdown safety**: Prisma and Drizzle integrations abort active request transactions and wait for settlement during application shutdown before disconnect/dispose cleanup proceeds.
 
 ## streaming and long-lived requests
 

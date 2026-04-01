@@ -48,6 +48,7 @@ interface MetricsModuleOptions {
       method: string;
       path: string;
       params: Readonly<Record<string, string>>;
+      request: FrameworkRequest;
     }) => string;
     unknownPathLabel?: string;
   };
@@ -83,6 +84,8 @@ MetricsModule.forRoot({ path: '/internal/metrics' })
 ### Disable default metrics
 
 By default, `prom-client`'s `collectDefaultMetrics()` is called, which registers standard Node.js process and GC metrics. In `prom-client` v15 these values are collected on scrape rather than by a background interval. Disable default metrics if you want the built-in endpoint to expose only metrics registered by the module itself:
+
+Default metrics are guarded per registry, so repeated `forRoot()` calls with the same registry do not double-register default collectors.
 
 ```typescript
 MetricsModule.forRoot({ defaultMetrics: false })
@@ -121,6 +124,8 @@ MetricsModule.forRoot({
 ```
 
 Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality labels.
+
+`unknownPathLabel` defaults to `UNKNOWN`. If a custom normalizer returns a blank string, the middleware falls back to that label.
 
 ### Provider contract
 

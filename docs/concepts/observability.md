@@ -47,7 +47,9 @@ Liveness and readiness are separate concerns. A failed readiness check affects `
 ## metrics
 
 - **Endpoint**: `@konekti/metrics` provides the `GET /metrics` endpoint.
-- **Collection**: Uses `prom-client` to collect default metrics into isolated registries.
+- **Collection**: Uses `prom-client` to collect default metrics into isolated registries by default.
+- **Shared registry option**: You can pass a `Registry` to `MetricsModule.forRoot({ registry })` so framework metrics and application metrics share one scrape target.
+- **HTTP metric labels**: `HttpMetricsMiddleware` uses low-cardinality path normalization (`template` by default, `raw` opt-in) and records `method`, `path`, `status`.
 - **Isolation**: Metrics exposure is independent of health checks and can be secured with middleware.
 
 ## responsibilities

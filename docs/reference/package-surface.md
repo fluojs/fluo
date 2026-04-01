@@ -53,14 +53,17 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/openapi`**: Document generation and OpenAPI decorators.
 - **`@konekti/graphql`**: GraphQL module, schema exposure, and execution pipeline.
 - **`@konekti/serialization`**: Class-based response serialization and interceptors.
-- **`@konekti/cache-manager`**: Decorator-driven HTTP response caching with memory and Redis stores.
-- **`@konekti/metrics`**: Prometheus metrics exposure.
+- **`@konekti/cache-manager`**: Decorator-driven HTTP response caching plus standalone cache service/store APIs, with memory and Redis backends.
+- **`@konekti/metrics`**: Prometheus metrics exposure with isolated registries by default, optional shared registry wiring, and low-cardinality HTTP metric middleware.
 - **`@konekti/cron`**: Decorator-based (`@Cron`, `@Interval`, `@Timeout`) and runtime-registry task scheduling with distributed lock support.
 - **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery, saga/process-manager support, and event-bus delegation.
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
 - **`@konekti/websocket`**: Decorator-based WebSocket gateway discovery and Node upgrade wiring.
 - **`@konekti/queue`**: Redis-backed background jobs with worker discovery and DLQ support.
-- **Data Integrations**: `@konekti/redis`, `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`.
+- **`@konekti/redis`**: App-scoped Redis lifecycle ownership (`lazyConnect` bootstrap + graceful shutdown), raw token injection, and `RedisService` facade with `getRawClient()` escape hatch.
+- **`@konekti/prisma`**: Prisma lifecycle and ALS-backed transaction context, including async module factory, strict transaction mode, and abort-aware request transaction handling.
+- **`@konekti/drizzle`**: Drizzle handle integration with ALS transaction context, async module factory, strict/fallback transaction behavior, and optional `dispose` shutdown hook.
+- **`@konekti/mongoose`**: Mongoose integration package for runtime/DI wiring.
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
 - **`@konekti/testing`**: Testing module and helper utilities.
 - **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
