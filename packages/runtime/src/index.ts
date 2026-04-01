@@ -1,6 +1,7 @@
 export * from './abort.js';
 export * from './bootstrap.js';
 export * from './compression.js';
+export * from './diagnostics.js';
 export * from './errors.js';
 export * from './health.js';
 export * from './json-logger.js';

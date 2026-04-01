@@ -12,6 +12,8 @@ import type {
   VersioningOptions,
 } from '@konekti/http';
 
+import type { BootstrapTimingDiagnostics } from './diagnostics.js';
+
 export type ModuleType = Constructor & { definition?: ModuleDefinition };
 export type ControllerType = Constructor;
 
@@ -107,6 +109,9 @@ export interface BootstrapApplicationOptions {
   observers?: RequestObserverLike[];
   providers?: Provider[];
   rootModule: ModuleType;
+  diagnostics?: {
+    timing?: boolean;
+  };
   versioning?: VersioningOptions;
 }
 
@@ -127,6 +132,7 @@ export interface CreateMicroserviceOptions extends CreateApplicationContextOptio
 }
 
 export interface ApplicationContext {
+  readonly bootstrapTiming?: BootstrapTimingDiagnostics;
   readonly container: Container;
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;
@@ -136,6 +142,7 @@ export interface ApplicationContext {
 }
 
 export interface Application {
+  readonly bootstrapTiming?: BootstrapTimingDiagnostics;
   readonly container: Container;
   readonly modules: CompiledModule[];
   readonly rootModule: ModuleType;

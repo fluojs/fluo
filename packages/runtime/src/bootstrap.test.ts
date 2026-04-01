@@ -562,6 +562,34 @@ describe('KonektiFactory.createApplicationContext', () => {
     ]);
   });
 
+  it('does not collect bootstrap timing diagnostics by default', async () => {
+    class AppModule {}
+    defineModuleMetadata(AppModule, {});
+
+    const context = await KonektiFactory.createApplicationContext(AppModule);
+
+    expect(context.bootstrapTiming).toBeUndefined();
+
+    await context.close();
+  });
+
+  it('collects bootstrap timing diagnostics when enabled', async () => {
+    class AppModule {}
+    defineModuleMetadata(AppModule, {});
+
+    const context = await KonektiFactory.createApplicationContext(AppModule, {
+      diagnostics: {
+        timing: true,
+      },
+    });
+
+    expect(context.bootstrapTiming?.version).toBe(1);
+    expect(context.bootstrapTiming?.totalMs ?? 0).toBeGreaterThanOrEqual(0);
+    expect(context.bootstrapTiming?.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+
+    await context.close();
+  });
+
   it('surfaces shutdown hook failures from application context close()', async () => {
     class AppService {
       onApplicationShutdown() {
