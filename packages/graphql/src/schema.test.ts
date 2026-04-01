@@ -30,7 +30,11 @@ const deps = {
 
 const fakeContainer = {} as unknown as Container;
 
-function makeDescriptor(targetName: string, fieldName: string): ResolverDescriptor {
+function makeDescriptor(
+  targetName: string,
+  fieldName: string,
+  options?: { outputType?: ResolverDescriptor['handlers'][number]['outputType']; type?: ResolverDescriptor['handlers'][number]['type'] },
+): ResolverDescriptor {
   return {
     handlers: [
       {
@@ -38,7 +42,8 @@ function makeDescriptor(targetName: string, fieldName: string): ResolverDescript
         fieldName,
         methodKey: 'resolve',
         methodName: 'resolve',
-        type: 'query',
+        outputType: options?.outputType,
+        type: options?.type ?? 'query',
       },
     ],
     moduleName: 'TestModule',
@@ -85,5 +90,33 @@ describe('createCodeFirstSchema – duplicate fieldName detection', () => {
     ];
 
     expect(() => createCodeFirstSchema(deps, fakeContainer, descriptors)).not.toThrow();
+  });
+});
+
+describe('createCodeFirstSchema – root object output foundation', () => {
+  it('supports named object output types for query/mutation/subscription fields', () => {
+    const payloadType = new GraphQLObjectType({
+      fields: {
+        status: { type: GraphQLString },
+        value: { type: GraphQLInt },
+      },
+      name: 'RootOperationPayload',
+    });
+
+    const schema = createCodeFirstSchema(deps, fakeContainer, [
+      makeDescriptor('QueryResolver', 'summary', { outputType: payloadType, type: 'query' }),
+      makeDescriptor('MutationResolver', 'updateSummary', { outputType: payloadType, type: 'mutation' }),
+      makeDescriptor('SubscriptionResolver', 'summaryStream', { outputType: payloadType, type: 'subscription' }),
+    ]);
+
+    const queryOutput = schema.getQueryType()?.getFields().summary?.type;
+    const mutationOutput = schema.getMutationType()?.getFields().updateSummary?.type;
+    const subscriptionOutput = schema.getSubscriptionType()?.getFields().summaryStream?.type;
+
+    expect('name' in (queryOutput ?? {}) ? (queryOutput as { name: string }).name : undefined).toBe('RootOperationPayload');
+    expect('name' in (mutationOutput ?? {}) ? (mutationOutput as { name: string }).name : undefined).toBe('RootOperationPayload');
+    expect('name' in (subscriptionOutput ?? {}) ? (subscriptionOutput as { name: string }).name : undefined).toBe(
+      'RootOperationPayload',
+    );
   });
 });

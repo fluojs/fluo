@@ -1,7 +1,7 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
 import type { Container } from '@konekti/di';
 import type { FrameworkRequest, Principal } from '@konekti/http';
-import type { GraphQLSchema } from 'graphql';
+import type { GraphQLObjectType, GraphQLSchema } from 'graphql';
 
 export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('konekti.graphql.operation.container');
 
@@ -38,6 +38,7 @@ export interface ResolverMetadata {
 export type ResolverHandlerType = 'query' | 'mutation' | 'subscription';
 
 export type GraphqlScalarTypeName = 'string' | 'int' | 'float' | 'boolean' | 'id';
+export type GraphqlRootOutputType = GraphqlScalarTypeName | GraphQLObjectType;
 
 export interface ResolverHandlerMetadata {
   type: ResolverHandlerType;
@@ -45,7 +46,7 @@ export interface ResolverHandlerMetadata {
   topics?: string | string[];
   inputClass?: Function;
   argTypes?: Record<string, GraphqlScalarTypeName>;
-  outputType?: GraphqlScalarTypeName;
+  outputType?: GraphqlRootOutputType;
 }
 
 export interface ArgFieldMetadata {
@@ -62,7 +63,7 @@ export interface ResolverHandlerDescriptor {
   inputClass?: Function;
   argFields: ArgFieldMetadata[];
   argTypes?: Record<string, GraphqlScalarTypeName>;
-  outputType?: GraphqlScalarTypeName;
+  outputType?: GraphqlRootOutputType;
 }
 
 export interface ResolverDescriptor {
