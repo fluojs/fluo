@@ -24,9 +24,11 @@ The OpenAPI document is constructed during application startup from handler desc
 Konekti provides several decorators specifically for OpenAPI metadata:
 
 - `@ApiTag(tag)`: Groups operations.
-- `@ApiOperation({ summary, description })`: Describes an endpoint's purpose.
+- `@ApiOperation({ summary, description, deprecated })`: Describes an endpoint's purpose and deprecation state.
 - `@ApiResponse(status, { description, schema, type })`: Documents possible response codes and structures.
 - `@ApiBearerAuth()`: Declares Bearer authentication for an operation.
+- `@ApiSecurity(name, scopes?)`: Declares generic OpenAPI security requirements (for example API key/OAuth2/OpenID Connect scheme names).
+- `@ApiExcludeEndpoint()`: Omits a handler from the generated `paths` map.
 
 These decorators only affect documentation and do not change runtime behavior.
 
@@ -40,6 +42,7 @@ The OpenAPI generator extracts schema information from route metadata and input 
 - **Parameters**: Bound input fields are mapped into parameter definitions.
 - **Responses**: Response models can be documented using `@ApiResponse(..., { type: ... })`.
 - **Nesting**: Nested models and arrays are represented as schema references.
+- **Extra models**: `extraModels` option can register schema components that are not discovered from request/response metadata.
 
 ## generation process
 
@@ -56,6 +59,11 @@ The OpenAPI generator extracts schema information from route metadata and input 
 - **Output shaping**: Runtime response serialization is separate from documentation generation.
 - **Decoupling**: `@konekti/openapi` interacts only with normalized metadata and does not access internal package storage.
 - **Auth Schemes**: Authentication schemes are declared at the application level using OpenAPI decorators.
+- **Security scheme breadth**: OpenAPI security schemes can be registered in module/document options (`securitySchemes`) for API key, HTTP, OAuth2, and OpenID Connect.
+
+## intentionally out of scope
+
+- A generic OpenAPI document transform/post-processing hook (for example `documentTransform`) is intentionally out of scope.
 
 ## conceptual flow
 

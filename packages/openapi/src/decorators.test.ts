@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTag, getControllerTags, getMethodApiMetadata } from './decorators.js';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiResponse,
+  ApiSecurity,
+  ApiTag,
+  getControllerTags,
+  getMethodApiMetadata,
+} from './decorators.js';
 
 describe('OpenAPI decorator metadata readers', () => {
   it('returns defensive copies and preserves write-time snapshots', () => {
@@ -13,8 +22,10 @@ describe('OpenAPI decorator metadata readers', () => {
 
     @ApiTag('users')
     class UsersController {
-      @ApiOperation({ summary: 'List users' })
+      @ApiOperation({ deprecated: true, summary: 'List users' })
       @ApiBearerAuth()
+      @ApiSecurity('oauth2Auth', ['read:users'])
+      @ApiExcludeEndpoint()
       @ApiResponse(200, { description: 'OK', schema: responseSchema })
       list() {
         return [{ id: '1' }];
@@ -61,10 +72,15 @@ describe('OpenAPI decorator metadata readers', () => {
       firstMeta.security.push('mutatedSecurity');
     }
 
+    if (firstMeta.securityRequirements) {
+      firstMeta.securityRequirements.push({ apiKeyAuth: [] });
+    }
+
     const secondMeta = getMethodApiMetadata(UsersController, 'list');
 
     expect(secondMeta).toEqual({
-      operation: { summary: 'List users' },
+      excludeEndpoint: true,
+      operation: { deprecated: true, description: undefined, summary: 'List users' },
       responses: [
         {
           description: 'OK',
@@ -78,7 +94,8 @@ describe('OpenAPI decorator metadata readers', () => {
           type: undefined,
         },
       ],
-      security: ['bearerAuth'],
+      security: ['oauth2Auth', 'bearerAuth'],
+      securityRequirements: [{ oauth2Auth: ['read:users'] }, { bearerAuth: [] }],
     });
   });
 });

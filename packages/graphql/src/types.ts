@@ -79,5 +79,6 @@ export interface GraphqlModuleOptions {
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;
+  plugins?: unknown[];
   subscriptions?: GraphqlSubscriptionsOptions;
 }
