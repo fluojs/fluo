@@ -47,7 +47,7 @@
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
 - **`@konekti/platform-express`**: Express 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
-- **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임.
+- **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임. 서브패스 export는 `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, `./mqtt` 트랜스포트 엔트리포인트를 포함합니다.
 - **`@konekti/validation` 패키지**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
 - **`@konekti/jwt`**: 핵심 JWT 로직.
 - **`@konekti/passport`**: 인증 전략 레지스트리 및 범용 가드 연결.

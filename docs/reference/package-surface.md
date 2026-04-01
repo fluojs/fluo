@@ -46,7 +46,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
-- **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime.
+- **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
 - **`@konekti/validation` package**: Validation decorators, mapped DTO helpers, and validation engine.
 - **`@konekti/jwt`**: Core JWT logic.
 - **`@konekti/passport`**: Authentication strategy registry and generic guard wiring.
