@@ -11,6 +11,7 @@ import type {
   GraphQLOutputType,
   GraphQLSchema as GraphQLSchemaType,
   GraphQLScalarType,
+  GraphQLUnionType as GraphQLUnionTypeType,
 } from 'graphql';
 import { DtoValidationError } from '@konekti/validation';
 
@@ -37,6 +38,7 @@ type YogaGraphqlDeps = {
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: GraphQLScalarType;
+  GraphQLUnionType: typeof GraphQLUnionTypeType;
   buildSchema: (source: string) => GraphQLSchemaType;
 };
 
@@ -121,6 +123,56 @@ function normalizeObjectOutputType(
   return normalized;
 }
 
+function normalizeUnionOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
+  outputType: GraphQLUnionTypeType,
+): GraphQLOutputType {
+  const outputTypeName = outputType.name;
+  const cached = outputTypeCache.get(outputTypeName);
+  if (cached) {
+    return cached;
+  }
+
+  const config = outputType.toConfig();
+  const normalizedTypes = config.types.map((itemType) => normalizeObjectOutputType(deps, outputTypeCache, itemType));
+  const normalizedTypeByName = new Set(
+    normalizedTypes
+      .map((itemType) => (itemType as { name?: unknown }).name)
+      .filter((name): name is string => typeof name === 'string'),
+  );
+
+  const normalized = new deps.GraphQLUnionType({
+    ...config,
+    resolveType: async (...args) => {
+      if (!config.resolveType) {
+        return undefined;
+      }
+
+      const resolved = await config.resolveType(...args);
+
+      if (typeof resolved === 'string' || resolved === null || resolved === undefined) {
+        return typeof resolved === 'string' && normalizedTypeByName.has(resolved) ? resolved : resolved;
+      }
+
+      const resolvedName = (resolved as { name?: unknown }).name;
+      if (typeof resolvedName === 'string') {
+        return normalizedTypeByName.has(resolvedName) ? resolvedName : undefined;
+      }
+
+      return undefined;
+    },
+    types: normalizedTypes as GraphQLObjectTypeType[],
+  });
+  outputTypeCache.set(outputTypeName, normalized);
+
+  return normalized;
+}
+
+function isUnionOutputType(value: GraphqlRootOutputNamedType): value is GraphQLUnionTypeType {
+  return typeof value === 'object' && typeof (value as { getTypes?: unknown }).getTypes === 'function';
+}
+
 function resolveArgGraphqlType(deps: YogaGraphqlDeps, argType: GraphqlArgType): GraphQLInputType {
   if (isGraphqlListTypeRef(argType)) {
     return new deps.GraphQLList(scalarByName(deps, argType.ofType as GraphqlScalarTypeName));
@@ -140,6 +192,10 @@ function resolveNamedRootOutputType(
   }
 
   markAllowedCrossRealmGraphqlObjects(outputRef);
+  if (isUnionOutputType(outputRef)) {
+    return normalizeUnionOutputType(deps, outputTypeCache, outputRef);
+  }
+
   return normalizeObjectOutputType(deps, outputTypeCache, outputRef);
 }
 

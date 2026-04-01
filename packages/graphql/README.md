@@ -128,13 +128,13 @@ interface ResolverMethodOptions {
   input?: Function;
   topics?: string | string[];
   argTypes?: Record<string, GraphqlArgType>; // scalar or listOf(scalar)
-  outputType?: GraphqlRootOutputType; // scalar/object or listOf(scalar/object)
+  outputType?: GraphqlRootOutputType; // scalar/object/union or listOf(...)
 }
 ```
 
 - `input`: DTO class for argument mapping + validation.
 - `argTypes`: overrides inferred argument type per argument. Use scalar literals (e.g. `'string'`) or `listOf('string')` for list args.
-- `outputType`: overrides resolver return type (default: `string`). Scalar literals, named `GraphQLObjectType`, and `listOf(...)` wrappers are supported for root operation payloads.
+- `outputType`: overrides resolver return type (default: `string`). Scalar literals, named `GraphQLObjectType`, named `GraphQLUnionType`, and `listOf(...)` wrappers are supported for root operation payloads. Union payloads require a schema-defined `resolveType` contract.
 
 List wrapper helper:
 
@@ -266,7 +266,7 @@ The GraphQL package does not add a Konekti-specific complexity API; plugin compo
 
 ## Explicitly out of scope
 
-- GraphQL type-system rewrites (union expansion)
+- Automatic GraphQL type-system rewrites remain out of scope; root-operation union outputs are supported only when union members and `resolveType` are explicitly defined.
 - `@FieldResolver`
 - Federation
 - Built-in DataLoader abstraction/decorator

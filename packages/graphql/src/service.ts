@@ -26,6 +26,7 @@ import type {
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLSchema as GraphQLSchemaType,
   GraphQLString as GraphQLStringType,
+  GraphQLUnionType as GraphQLUnionTypeType,
   DocumentNode,
   ExecutionArgs,
 } from 'graphql';
@@ -150,6 +151,7 @@ interface GraphqlDeps {
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: typeof GraphQLStringType;
+  GraphQLUnionType: typeof GraphQLUnionTypeType;
   buildSchema: (source: string) => GraphQLSchemaType;
   createYoga: (options: Record<string, unknown>) => YogaLike;
   execute: (args: ExecutionArgs) => OperationResult;
@@ -280,6 +282,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
     GraphQLObjectType: graphqlMod.GraphQLObjectType,
     GraphQLSchema: graphqlMod.GraphQLSchema,
     GraphQLString: graphqlMod.GraphQLString,
+    GraphQLUnionType: graphqlMod.GraphQLUnionType,
     buildSchema: graphqlMod.buildSchema,
     createYoga: yogaMod.createYoga as (options: Record<string, unknown>) => YogaLike,
     execute: graphqlMod.execute,

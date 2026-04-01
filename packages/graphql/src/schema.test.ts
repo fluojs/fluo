@@ -9,6 +9,7 @@ import {
   GraphQLObjectType,
   GraphQLSchema,
   GraphQLString,
+  GraphQLUnionType,
   buildSchema,
 } from 'graphql';
 
@@ -28,6 +29,7 @@ const deps = {
   GraphQLObjectType,
   GraphQLSchema,
   GraphQLString,
+  GraphQLUnionType,
   buildSchema,
 };
 
@@ -172,5 +174,49 @@ describe('createCodeFirstSchema – root object output foundation', () => {
 
     expect(subscriptionOutput instanceof GraphQLList).toBe(true);
     expect(subscriptionOutput?.toString()).toBe('[ListPayload]');
+  });
+
+  it('supports union outputs for query/mutation/subscription and list wrappers', () => {
+    const successType = new GraphQLObjectType({
+      fields: {
+        status: { type: GraphQLString },
+        value: { type: GraphQLString },
+      },
+      name: 'UnionSuccessPayload',
+    });
+    const errorType = new GraphQLObjectType({
+      fields: {
+        code: { type: GraphQLString },
+        message: { type: GraphQLString },
+      },
+      name: 'UnionErrorPayload',
+    });
+    const unionPayloadType = new GraphQLUnionType({
+      name: 'RootOperationUnionPayload',
+      resolveType: (value) => {
+        const candidate = value as { __typename?: string };
+        return candidate.__typename;
+      },
+      types: [successType, errorType],
+    });
+
+    const schema = createCodeFirstSchema(deps, fakeContainer, [
+      makeDescriptor('QueryResolver', 'result', { outputType: unionPayloadType, type: 'query' }),
+      makeDescriptor('MutationResolver', 'updateResult', { outputType: unionPayloadType, type: 'mutation' }),
+      makeDescriptor('SubscriptionResolver', 'resultStream', { outputType: listOf(unionPayloadType), type: 'subscription' }),
+    ]);
+
+    const queryOutput = schema.getQueryType()?.getFields().result?.type;
+    const mutationOutput = schema.getMutationType()?.getFields().updateResult?.type;
+    const subscriptionOutput = schema.getSubscriptionType()?.getFields().resultStream?.type;
+
+    expect(queryOutput instanceof GraphQLUnionType).toBe(true);
+    expect(queryOutput?.toString()).toBe('RootOperationUnionPayload');
+
+    expect(mutationOutput instanceof GraphQLUnionType).toBe(true);
+    expect(mutationOutput?.toString()).toBe('RootOperationUnionPayload');
+
+    expect(subscriptionOutput instanceof GraphQLList).toBe(true);
+    expect(subscriptionOutput?.toString()).toBe('[RootOperationUnionPayload]');
   });
 });

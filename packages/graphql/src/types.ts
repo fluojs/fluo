@@ -1,7 +1,7 @@
 import type { MetadataPropertyKey, Token } from '@konekti/core';
 import type { Container } from '@konekti/di';
 import type { FrameworkRequest, Principal } from '@konekti/http';
-import type { GraphQLObjectType, GraphQLSchema } from 'graphql';
+import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
 
 export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('konekti.graphql.operation.container');
 
@@ -61,7 +61,7 @@ export function isGraphqlListTypeRef(value: unknown): value is GraphqlListTypeRe
 }
 
 export type GraphqlArgType = GraphqlScalarTypeName | GraphqlListTypeRef<GraphqlScalarTypeName>;
-export type GraphqlRootOutputNamedType = GraphqlScalarTypeName | GraphQLObjectType;
+export type GraphqlRootOutputNamedType = GraphqlScalarTypeName | GraphQLObjectType | GraphQLUnionType;
 export type GraphqlRootOutputType = GraphqlRootOutputNamedType | GraphqlListTypeRef<GraphqlRootOutputNamedType>;
 
 export interface ResolverHandlerMetadata {
