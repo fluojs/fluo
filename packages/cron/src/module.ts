@@ -3,7 +3,7 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { CronLifecycleService } from './service.js';
 import { defaultCronScheduler } from './scheduler.js';
-import { CRON_OPTIONS } from './tokens.js';
+import { CRON_OPTIONS, SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronDistributedOptions, CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
 
 function randomId(): string {
@@ -50,7 +50,10 @@ export function createCronProviders(options: CronModuleOptions = {}): Provider[]
       provide: CRON_OPTIONS,
       useValue: normalizeCronModuleOptions(options),
     },
-    CronLifecycleService,
+    {
+      provide: SCHEDULING_REGISTRY,
+      useClass: CronLifecycleService,
+    },
   ];
 }
 
@@ -58,6 +61,7 @@ export function createCronModule(options: CronModuleOptions = {}): ModuleType {
   class CronModule {}
 
   return defineModule(CronModule, {
+    exports: [SCHEDULING_REGISTRY],
     providers: createCronProviders(options),
   });
 }

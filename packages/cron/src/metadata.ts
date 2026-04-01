@@ -1,17 +1,34 @@
 import { ensureSymbolMetadataPolyfill, metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
 
-import type { CronTaskMetadata } from './types.js';
+import type { CronTaskMetadata, SchedulingTaskMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 void ensureSymbolMetadataPolyfill();
 
-const standardCronMetadataKey = Symbol.for('konekti.cron.standard.task');
-const cronMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, CronTaskMetadata>>();
+const standardSchedulingMetadataKey = Symbol.for('konekti.cron.standard.task');
+const schedulingMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, SchedulingTaskMetadata>>();
 
-function cloneTaskMetadata(metadata: CronTaskMetadata): CronTaskMetadata {
+function cloneTaskMetadata(metadata: SchedulingTaskMetadata): SchedulingTaskMetadata {
+  if (metadata.kind === 'cron') {
+    return {
+      expression: metadata.expression,
+      kind: 'cron',
+      options: { ...metadata.options },
+    };
+  }
+
+  if (metadata.kind === 'interval') {
+    return {
+      kind: 'interval',
+      ms: metadata.ms,
+      options: { ...metadata.options },
+    };
+  }
+
   return {
-    expression: metadata.expression,
+    kind: 'timeout',
+    ms: metadata.ms,
     options: { ...metadata.options },
   };
 }
@@ -20,32 +37,40 @@ function getStandardMetadataBag(target: object): StandardMetadataBag | undefined
   return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
 }
 
-function getStandardCronMap(target: object): Map<MetadataPropertyKey, CronTaskMetadata> | undefined {
+function getStandardSchedulingMap(target: object): Map<MetadataPropertyKey, SchedulingTaskMetadata> | undefined {
   const constructor = (target as { constructor?: object }).constructor;
 
   return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardCronMetadataKey] as Map<MetadataPropertyKey, CronTaskMetadata> | undefined)
+    ? (getStandardMetadataBag(constructor)?.[standardSchedulingMetadataKey] as Map<MetadataPropertyKey, SchedulingTaskMetadata> | undefined)
     : undefined;
 }
 
-function getOrCreateCronMap(target: object): Map<MetadataPropertyKey, CronTaskMetadata> {
-  let map = cronMetadataStore.get(target);
+function getOrCreateSchedulingMap(target: object): Map<MetadataPropertyKey, SchedulingTaskMetadata> {
+  let map = schedulingMetadataStore.get(target);
 
   if (!map) {
-    map = new Map<MetadataPropertyKey, CronTaskMetadata>();
-    cronMetadataStore.set(target, map);
+    map = new Map<MetadataPropertyKey, SchedulingTaskMetadata>();
+    schedulingMetadataStore.set(target, map);
   }
 
   return map;
 }
 
-export function defineCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: CronTaskMetadata): void {
-  getOrCreateCronMap(target).set(propertyKey, cloneTaskMetadata(metadata));
+export function defineSchedulingTaskMetadata(
+  target: object,
+  propertyKey: MetadataPropertyKey,
+  metadata: SchedulingTaskMetadata,
+): void {
+  getOrCreateSchedulingMap(target).set(propertyKey, cloneTaskMetadata(metadata));
 }
 
-export function getCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey): CronTaskMetadata | undefined {
-  const stored = cronMetadataStore.get(target)?.get(propertyKey);
-  const standard = getStandardCronMap(target)?.get(propertyKey);
+export function defineCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey, metadata: CronTaskMetadata): void {
+  defineSchedulingTaskMetadata(target, propertyKey, metadata);
+}
+
+export function getSchedulingTaskMetadata(target: object, propertyKey: MetadataPropertyKey): SchedulingTaskMetadata | undefined {
+  const stored = schedulingMetadataStore.get(target)?.get(propertyKey);
+  const standard = getStandardSchedulingMap(target)?.get(propertyKey);
 
   if (!stored && !standard) {
     return undefined;
@@ -54,17 +79,32 @@ export function getCronTaskMetadata(target: object, propertyKey: MetadataPropert
   return cloneTaskMetadata(stored ?? standard!);
 }
 
-export function getCronTaskMetadataEntries(target: object): Array<{ metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey }> {
-  const stored = cronMetadataStore.get(target) ?? new Map<MetadataPropertyKey, CronTaskMetadata>();
-  const standard = getStandardCronMap(target) ?? new Map<MetadataPropertyKey, CronTaskMetadata>();
+export function getCronTaskMetadata(target: object, propertyKey: MetadataPropertyKey): CronTaskMetadata | undefined {
+  const metadata = getSchedulingTaskMetadata(target, propertyKey);
+
+  return metadata?.kind === 'cron' ? metadata : undefined;
+}
+
+export function getSchedulingTaskMetadataEntries(
+  target: object,
+): Array<{ metadata: SchedulingTaskMetadata; propertyKey: MetadataPropertyKey }> {
+  const stored = schedulingMetadataStore.get(target) ?? new Map<MetadataPropertyKey, SchedulingTaskMetadata>();
+  const standard = getStandardSchedulingMap(target) ?? new Map<MetadataPropertyKey, SchedulingTaskMetadata>();
   const keys = new Set<MetadataPropertyKey>([...stored.keys(), ...standard.keys()]);
 
   return Array.from(keys)
     .map((propertyKey) => ({
-      metadata: getCronTaskMetadata(target, propertyKey),
+      metadata: getSchedulingTaskMetadata(target, propertyKey),
       propertyKey,
     }))
-    .filter((entry): entry is { metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey } => entry.metadata !== undefined);
+    .filter((entry): entry is { metadata: SchedulingTaskMetadata; propertyKey: MetadataPropertyKey } => entry.metadata !== undefined);
 }
 
-export const cronMetadataSymbol = standardCronMetadataKey;
+export function getCronTaskMetadataEntries(target: object): Array<{ metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey }> {
+  return getSchedulingTaskMetadataEntries(target).filter(
+    (entry): entry is { metadata: CronTaskMetadata; propertyKey: MetadataPropertyKey } => entry.metadata.kind === 'cron',
+  );
+}
+
+export const schedulingMetadataSymbol = standardSchedulingMetadataKey;
+export const cronMetadataSymbol = standardSchedulingMetadataKey;
