@@ -1,6 +1,7 @@
 import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
+import { Cron as CronValidator } from 'croner';
 import {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
@@ -12,9 +13,18 @@ import {
   type OnModuleDestroy,
 } from '@konekti/runtime';
 
-import { getCronTaskMetadataEntries } from './metadata.js';
+import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { CRON_OPTIONS } from './tokens.js';
-import type { CronScheduleOptions, CronScheduledJob, CronTaskDescriptor, NormalizedCronModuleOptions } from './types.js';
+import type {
+  CronTaskDescriptor,
+  CronTaskOptions,
+  IntervalTaskOptions,
+  NormalizedCronModuleOptions,
+  SchedulingRegistry,
+  SchedulingTaskCallback,
+  SchedulingTaskDescriptor,
+  TimeoutTaskOptions,
+} from './types.js';
 
 interface RedisLockClient {
   eval(script: string, keysLength: number, ...keysAndArgs: string[]): Promise<unknown>;
@@ -52,6 +62,18 @@ interface ResolvedTaskInvocation {
 }
 
 type LockRenewalOutcome = 'renewed' | 'ownership-lost' | 'renewal-failed';
+
+interface RuntimeScheduledTask {
+  stop(): void;
+}
+
+interface RuntimeTaskState {
+  descriptor: CronTaskDescriptor;
+  enabled: boolean;
+  running: boolean;
+  scheduledHandle: RuntimeScheduledTask | undefined;
+  source: 'decorator' | 'dynamic';
+}
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
@@ -97,9 +119,31 @@ function assertValidLockTtlMs(lockTtlMs: number): void {
   }
 }
 
+function assertValidTaskName(name: string): void {
+  if (name.trim().length === 0) {
+    throw new Error('Scheduling task name must be a non-empty string.');
+  }
+}
+
+function assertValidMs(ms: number, context: string): void {
+  if (!Number.isFinite(ms) || !Number.isInteger(ms) || ms <= 0) {
+    throw new Error(`${context}: ms must be a positive integer.`);
+  }
+}
+
+function assertValidCronExpression(expression: string): void {
+  try {
+    new CronValidator(expression, { maxRuns: 0 });
+  } catch {
+    throw new Error(`@Cron(): invalid cron expression "${expression}".`);
+  }
+}
+
 @Inject([CRON_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
-export class CronLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
-  private readonly jobs: CronScheduledJob[] = [];
+export class CronLifecycleService
+  implements SchedulingRegistry, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy
+{
+  private readonly tasks = new Map<string, RuntimeTaskState>();
   private readonly activeTasks = new Set<Promise<void>>();
   private readonly ownedLockKeys = new Set<string>();
   private started = false;
@@ -112,6 +156,154 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
   ) {}
+
+  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options: CronTaskOptions = {}): void {
+    assertValidTaskName(name);
+    assertValidCronExpression(expression);
+
+    this.registerTask(
+      {
+        afterRun: options.afterRun,
+        beforeRun: options.beforeRun,
+        callback,
+        distributed: options.distributed ?? true,
+        expression,
+        kind: 'cron',
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
+        onError: options.onError,
+        onSuccess: options.onSuccess,
+        taskName: name,
+        timezone: options.timezone,
+      },
+      'dynamic',
+    );
+  }
+
+  addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options: IntervalTaskOptions = {}): void {
+    assertValidTaskName(name);
+    assertValidMs(ms, 'scheduling registry');
+
+    this.registerTask(
+      {
+        afterRun: options.afterRun,
+        beforeRun: options.beforeRun,
+        callback,
+        distributed: options.distributed ?? true,
+        kind: 'interval',
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
+        ms,
+        onError: options.onError,
+        onSuccess: options.onSuccess,
+        taskName: name,
+      },
+      'dynamic',
+    );
+  }
+
+  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options: TimeoutTaskOptions = {}): void {
+    assertValidTaskName(name);
+    assertValidMs(ms, 'scheduling registry');
+
+    this.registerTask(
+      {
+        afterRun: options.afterRun,
+        beforeRun: options.beforeRun,
+        callback,
+        distributed: options.distributed ?? true,
+        kind: 'timeout',
+        lockKey: createLockKey(this.options.distributed.keyPrefix, options.key ?? name),
+        lockTtlMs: options.lockTtlMs ?? this.options.distributed.lockTtlMs,
+        ms,
+        onError: options.onError,
+        onSuccess: options.onSuccess,
+        taskName: name,
+      },
+      'dynamic',
+    );
+  }
+
+  remove(name: string): boolean {
+    const task = this.tasks.get(name);
+
+    if (!task) {
+      return false;
+    }
+
+    this.unscheduleTask(task);
+    this.tasks.delete(name);
+    return true;
+  }
+
+  enable(name: string): boolean {
+    const task = this.tasks.get(name);
+
+    if (!task) {
+      return false;
+    }
+
+    if (task.enabled) {
+      return true;
+    }
+
+    task.enabled = true;
+
+    if (this.started) {
+      this.scheduleTask(task);
+    }
+
+    return true;
+  }
+
+  disable(name: string): boolean {
+    const task = this.tasks.get(name);
+
+    if (!task) {
+      return false;
+    }
+
+    if (!task.enabled && !task.scheduledHandle) {
+      return true;
+    }
+
+    task.enabled = false;
+    this.unscheduleTask(task);
+    return true;
+  }
+
+  get(name: string): SchedulingTaskDescriptor | undefined {
+    const task = this.tasks.get(name);
+
+    return task ? this.toSchedulingTaskDescriptor(task) : undefined;
+  }
+
+  getAll(): SchedulingTaskDescriptor[] {
+    return Array.from(this.tasks.values()).map((task) => this.toSchedulingTaskDescriptor(task));
+  }
+
+  updateCronExpression(name: string, expression: string): void {
+    assertValidCronExpression(expression);
+
+    const task = this.tasks.get(name);
+
+    if (!task) {
+      throw new Error(`Scheduling task \"${name}\" does not exist.`);
+    }
+
+    if (task.descriptor.kind !== 'cron') {
+      throw new Error(`updateCronExpression() supports only cron tasks. Received ${task.descriptor.kind} task \"${name}\".`);
+    }
+
+    task.descriptor.expression = expression;
+
+    if (!task.enabled || !this.started) {
+      return;
+    }
+
+    this.unscheduleTask(task);
+    this.scheduleTask(task);
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     if (this.started) {
@@ -134,6 +326,24 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     await this.shutdown();
   }
 
+  private toSchedulingTaskDescriptor(task: RuntimeTaskState): SchedulingTaskDescriptor {
+    return {
+      distributed: task.descriptor.distributed,
+      enabled: task.enabled,
+      expression: task.descriptor.expression,
+      kind: task.descriptor.kind,
+      lockKey: task.descriptor.lockKey,
+      lockTtlMs: task.descriptor.lockTtlMs,
+      methodName: task.descriptor.methodName,
+      moduleName: task.descriptor.moduleName,
+      ms: task.descriptor.ms,
+      name: task.descriptor.taskName,
+      source: task.source,
+      targetName: task.descriptor.targetName,
+      timezone: task.descriptor.timezone,
+    };
+  }
+
   private async shutdown(): Promise<void> {
     if (this.shutdownPromise) {
       await this.shutdownPromise;
@@ -148,8 +358,9 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
   private async startLifecycle(): Promise<void> {
     await this.resolveDistributedClient();
     this.validateDistributedLockConfiguration();
-    this.scheduleTasks();
+    this.registerDecoratorTasks();
     this.started = true;
+    this.scheduleEnabledTasks();
   }
 
   private validateDistributedLockConfiguration(): void {
@@ -161,12 +372,15 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
   }
 
   private handleStartupFailure(): void {
-    this.stopAllJobs();
+    this.started = false;
+    this.stopAllScheduledTasks();
+    this.tasks.clear();
     this.redisClient = undefined;
   }
 
   private async runShutdownLifecycle(): Promise<void> {
-    this.stopAllJobs();
+    this.started = false;
+    this.stopAllScheduledTasks();
     await this.waitForActiveTasks();
     await this.releaseOwnedLocks();
   }
@@ -189,21 +403,132 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     this.redisClient = redisClient;
   }
 
-  private scheduleTasks(): void {
+  private registerDecoratorTasks(): void {
     const descriptors = this.discoverTaskDescriptors();
 
     for (const descriptor of descriptors) {
-      const scheduleOptions: CronScheduleOptions = {
-        name: descriptor.taskName,
-        protect: true,
-        timezone: descriptor.timezone,
+      this.registerTask(descriptor, 'decorator');
+    }
+  }
+
+  private registerTask(descriptor: CronTaskDescriptor, source: 'decorator' | 'dynamic'): void {
+    this.assertTaskNameAvailable(descriptor.taskName);
+
+    if (descriptor.distributed) {
+      assertValidLockTtlMs(descriptor.lockTtlMs);
+    }
+
+    const task: RuntimeTaskState = {
+      descriptor,
+      enabled: true,
+      running: false,
+      scheduledHandle: undefined,
+      source,
+    };
+
+    this.tasks.set(descriptor.taskName, task);
+
+    if (this.started) {
+      this.scheduleTask(task);
+    }
+  }
+
+  private assertTaskNameAvailable(taskName: string): void {
+    if (this.tasks.has(taskName)) {
+      throw new Error(`Duplicate scheduling task name detected: \"${taskName}\". Task names must be unique globally.`);
+    }
+  }
+
+  private scheduleEnabledTasks(): void {
+    for (const task of this.tasks.values()) {
+      if (task.enabled) {
+        this.scheduleTask(task);
+      }
+    }
+  }
+
+  private scheduleTask(task: RuntimeTaskState): void {
+    if (!task.enabled || task.scheduledHandle) {
+      return;
+    }
+
+    if (task.descriptor.kind === 'cron') {
+      const expression = task.descriptor.expression;
+
+      if (!expression) {
+        throw new Error(`Cron task \"${task.descriptor.taskName}\" is missing a cron expression.`);
+      }
+
+      const scheduled = this.options.scheduler(
+        expression,
+        {
+          name: task.descriptor.taskName,
+          protect: true,
+          timezone: task.descriptor.timezone,
+        },
+        async () => {
+          await this.handleTaskTick(task.descriptor.taskName);
+        },
+      );
+
+      task.scheduledHandle = scheduled;
+      return;
+    }
+
+    const ms = task.descriptor.ms;
+
+    if (!ms) {
+      throw new Error(`${task.descriptor.kind} task \"${task.descriptor.taskName}\" is missing interval duration.`);
+    }
+
+    if (task.descriptor.kind === 'interval') {
+      const timer = setInterval(() => {
+        void this.handleTaskTick(task.descriptor.taskName);
+      }, ms);
+
+      task.scheduledHandle = {
+        stop: () => {
+          clearInterval(timer);
+        },
       };
+      return;
+    }
 
-      const job = this.options.scheduler(descriptor.expression, scheduleOptions, async () => {
-        await this.handleTaskTick(descriptor);
+    const timer = setTimeout(() => {
+      void this.handleTaskTick(task.descriptor.taskName).finally(() => {
+        this.completeTimeoutTask(task.descriptor.taskName);
       });
+    }, ms);
 
-      this.jobs.push(job);
+    task.scheduledHandle = {
+      stop: () => {
+        clearTimeout(timer);
+      },
+    };
+  }
+
+  private completeTimeoutTask(taskName: string): void {
+    const task = this.tasks.get(taskName);
+
+    if (!task || task.descriptor.kind !== 'timeout') {
+      return;
+    }
+
+    task.scheduledHandle = undefined;
+    task.enabled = false;
+  }
+
+  private unscheduleTask(task: RuntimeTaskState): void {
+    if (!task.scheduledHandle) {
+      return;
+    }
+
+    try {
+      task.scheduledHandle.stop();
+    } catch (error) {
+      this.logger.error('Failed to stop scheduled task during shutdown.', error, 'CronLifecycleService');
+    } finally {
+      task.scheduledHandle = undefined;
     }
   }
 
@@ -212,12 +537,12 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     const descriptors: CronTaskDescriptor[] = [];
 
     for (const candidate of this.discoveryCandidates()) {
-      const entries = getCronTaskMetadataEntries(candidate.targetType.prototype);
+      const entries = getSchedulingTaskMetadataEntries(candidate.targetType.prototype);
 
       if (candidate.scope !== 'singleton') {
         if (entries.length > 0) {
           this.logger.warn(
-            `${candidate.targetType.name} in module ${candidate.moduleName} declares @Cron() methods but is registered with ${candidate.scope} scope. Cron tasks are scheduled only for singleton providers.`,
+            `${candidate.targetType.name} in module ${candidate.moduleName} declares scheduling methods (@Cron/@Interval/@Timeout) but is registered with ${candidate.scope} scope. Scheduling tasks are run only for singleton providers.`,
             'CronLifecycleService',
           );
         }
@@ -237,11 +562,12 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
 
         seenMethods.add(methodName);
         seen.set(candidate.targetType, seenMethods);
-        descriptors.push({
+
+        const descriptor: CronTaskDescriptor = {
           afterRun: entry.metadata.options.afterRun,
           beforeRun: entry.metadata.options.beforeRun,
           distributed: entry.metadata.options.distributed ?? true,
-          expression: entry.metadata.expression,
+          kind: entry.metadata.kind,
           lockKey: createLockKey(this.options.distributed.keyPrefix, entry.metadata.options.key ?? taskName),
           lockTtlMs,
           methodKey: entry.propertyKey,
@@ -251,13 +577,17 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
           onSuccess: entry.metadata.options.onSuccess,
           targetName: candidate.targetType.name,
           taskName,
-          timezone: entry.metadata.options.timezone,
           token: candidate.token,
-        });
+        };
 
-        if (entry.metadata.options.distributed ?? true) {
-          assertValidLockTtlMs(lockTtlMs);
+        if (entry.metadata.kind === 'cron') {
+          descriptor.expression = entry.metadata.expression;
+          descriptor.timezone = entry.metadata.options.timezone;
+        } else {
+          descriptor.ms = entry.metadata.ms;
         }
+
+        descriptors.push(descriptor);
       }
     }
 
@@ -302,31 +632,39 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     return candidates;
   }
 
-  private async handleTaskTick(descriptor: CronTaskDescriptor): Promise<void> {
-    const task = this.runTaskTick(descriptor);
+  private async handleTaskTick(taskName: string): Promise<void> {
+    const taskState = this.tasks.get(taskName);
+
+    if (!taskState || !taskState.enabled || taskState.running) {
+      return;
+    }
+
+    const task = this.runTaskTick(taskState.descriptor, taskState);
+    taskState.running = true;
     this.activeTasks.add(task);
 
     try {
       await task;
     } finally {
+      taskState.running = false;
       this.activeTasks.delete(task);
     }
   }
 
-  private async runTaskTick(descriptor: CronTaskDescriptor): Promise<void> {
+  private async runTaskTick(descriptor: CronTaskDescriptor, taskState: RuntimeTaskState): Promise<void> {
     if (!this.shouldUseDistributedExecution(descriptor)) {
-      await this.executeTask(descriptor);
+      await this.executeTask(descriptor, taskState);
       return;
     }
 
-    await this.runDistributedTaskTick(descriptor);
+    await this.runDistributedTaskTick(descriptor, taskState);
   }
 
   private shouldUseDistributedExecution(descriptor: CronTaskDescriptor): boolean {
     return this.options.distributed.enabled && descriptor.distributed && this.redisClient !== undefined;
   }
 
-  private async runDistributedTaskTick(descriptor: CronTaskDescriptor): Promise<void> {
+  private async runDistributedTaskTick(descriptor: CronTaskDescriptor, taskState: RuntimeTaskState): Promise<void> {
     const lockAcquired = await this.tryAcquireLock(descriptor);
 
     if (!lockAcquired) {
@@ -336,7 +674,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     const lockRenewalMonitor = this.startLockRenewalMonitor(descriptor);
 
     try {
-      await this.executeTask(descriptor, async () => {
+      await this.executeTask(descriptor, taskState, async () => {
         lockRenewalMonitor.stop();
         return await lockRenewalMonitor.getPostRunError();
       });
@@ -463,6 +801,7 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
 
   private async executeTask(
     descriptor: CronTaskDescriptor,
+    taskState: RuntimeTaskState,
     postRunErrorProvider?: () => Error | Promise<Error | undefined> | undefined,
   ): Promise<void> {
     const taskInvocation = await this.resolveTaskInvocation(descriptor);
@@ -478,9 +817,30 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     );
     await this.runTaskErrorHook(descriptor, taskError);
     await this.runTaskAfterHook(descriptor);
+
+    if (descriptor.kind === 'timeout') {
+      taskState.enabled = false;
+      taskState.scheduledHandle = undefined;
+    }
   }
 
   private async resolveTaskInvocation(descriptor: CronTaskDescriptor): Promise<ResolvedTaskInvocation | undefined> {
+    if (descriptor.callback) {
+      return {
+        callable: descriptor.callback as (this: unknown) => Promise<void>,
+        instance: undefined,
+      };
+    }
+
+    if (!descriptor.token || descriptor.methodKey === undefined || !descriptor.targetName || !descriptor.moduleName || !descriptor.methodName) {
+      this.logger.error(
+        `Scheduling task ${descriptor.taskName} is missing invocation metadata and was skipped.`,
+        undefined,
+        'CronLifecycleService',
+      );
+      return undefined;
+    }
+
     let instance: unknown;
 
     try {
@@ -696,13 +1056,9 @@ export class CronLifecycleService implements OnApplicationBootstrap, OnApplicati
     }
   }
 
-  private stopAllJobs(): void {
-    for (const job of this.jobs.splice(0)) {
-      try {
-        job.stop();
-      } catch (error) {
-        this.logger.error('Failed to stop cron job during shutdown.', error, 'CronLifecycleService');
-      }
+  private stopAllScheduledTasks(): void {
+    for (const task of this.tasks.values()) {
+      this.unscheduleTask(task);
     }
   }
 }
