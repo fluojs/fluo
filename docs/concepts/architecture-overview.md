@@ -7,6 +7,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 ### related documentation
 
 - `./http-runtime.md`
+- `./platform-consistency-design.md`
 - `./dev-reload-architecture.md`
 - `./auth-and-jwt.md`
 - `../reference/package-surface.md`
