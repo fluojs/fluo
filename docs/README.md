@@ -48,6 +48,7 @@ If you are starting for the first time, begin with `getting-started/quick-start.
 
 ### contracts and conventions
 
+- `reference/package-chooser.md` - pick packages by task (start here if you know what you want to build)
 - `reference/package-surface.md`
 - `reference/toolchain-contract-matrix.md`
 - `reference/glossary-and-mental-model.md`

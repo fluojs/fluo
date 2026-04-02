@@ -47,6 +47,7 @@
 
 ### 정확한 계약/명명 규칙이 필요하다면
 
+- `reference/package-chooser.ko.md` - 작업 기준으로 패키지 고르기 (만들고 싶은 게 있으면 여기서 시작)
 - `reference/package-surface.ko.md`
 - `reference/toolchain-contract-matrix.ko.md`
 - `reference/glossary-and-mental-model.ko.md`

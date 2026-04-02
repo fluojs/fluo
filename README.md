@@ -100,6 +100,7 @@ The generated `dev` script uses a watch-driven process restart path for source c
 - `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
 - `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
 - `docs/reference/package-surface.md` - public package surface reference
+- `docs/reference/package-chooser.md` - pick packages by task
 
 For package-level API details, see `packages/*/README.md` in each package directory.
 
