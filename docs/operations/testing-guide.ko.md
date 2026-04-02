@@ -33,6 +33,7 @@ pnpm verify:release-readiness
 - `TestingModuleRef.dispatch(...)`
 - 엔드투엔드 스타일 요청 실행을 위한 `createTestApp(...)`
 - 빌더 없이 직접 요청을 실행하는 `TestApp.dispatch(...)`
+- 공유 플랫폼 계약 conformance 단언을 위한 `createPlatformConformanceHarness(...)`
 - 요청 principal 주입을 포함한 플루언트 request 빌더
 - `createTestApp().close()`를 통한 예측 가능한 정리(cleanup)
 - 모듈 메타데이터 유틸리티: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
@@ -165,7 +166,10 @@ expect(response.body).toEqual(
 - `packages/testing/src/app.ts`
 - `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/src/platform-conformance.test.ts`
 - `packages/testing/README.ko.md`
+
+플랫폼-지향 패키지의 체크리스트와 PR 증거 기준은 `./platform-conformance-authoring-checklist.ko.md`를 참고하세요.
 
 ## runtime and slice coverage
 

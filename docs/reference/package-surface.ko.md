@@ -70,7 +70,7 @@
 - **`@konekti/mongoose`**: 런타임/DI 연결을 위한 Mongoose 통합 패키지.
 - **`@konekti/terminus`**: 헬스 인디케이터 조합과 런타임 헬스 응답 집계를 확장하는 운영 헬스 패키지.
 - **`@konekti/throttler`**: 인메모리/Redis 스토어 어댑터를 지원하는 데코레이터 기반 속도 제한.
-- **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티.
+- **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티, 그리고 라이프사이클/진단/스냅샷 계약 검증을 위한 공유 platform conformance harness(`createPlatformConformanceHarness`).
 - **`@konekti/cli`**: 애플리케이션 부트스트랩/생성/마이그레이션 + 런타임 진단 inspect 명령어.
 - **`@konekti/studio`**: 런타임 그래프/타이밍 JSON 내보내기를 파일 기반으로 확인하는 diagnostics viewer.
 

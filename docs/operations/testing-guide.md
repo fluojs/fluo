@@ -34,6 +34,7 @@ Generated starter projects expose the same commands through the selected package
 - `TestingModuleRef.dispatch(...)`
 - `createTestApp(...)` for end-to-end style request dispatch
 - `TestApp.dispatch(...)` for direct request execution without fluent builder
+- `createPlatformConformanceHarness(...)` for shared platform contract conformance assertions
 - Fluent request building with request principal injection
 - Predictable cleanup through `createTestApp`'s `close()` lifecycle path
 - Module introspection utilities: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
@@ -172,8 +173,11 @@ Primary evidence:
 - `packages/testing/src/app.ts`
 - `packages/testing/src/http.ts`
 - `packages/testing/src/module.test.ts`
+- `packages/testing/src/platform-conformance.test.ts`
 - `packages/testing/README.md`
 - `packages/testing/README.ko.md`
+
+See `./platform-conformance-authoring-checklist.md` for the package-level checklist and PR evidence requirements for platform-facing packages.
 
 ## runtime and slice coverage
 

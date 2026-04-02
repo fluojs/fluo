@@ -70,7 +70,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/mongoose`**: Mongoose integration package for runtime/DI wiring.
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
 - **`@konekti/throttler`**: Decorator-based rate limiting with in-memory and Redis store adapters.
-- **`@konekti/testing`**: Testing module and helper utilities.
+- **`@konekti/testing`**: Testing module and helper utilities, including the shared platform conformance harness (`createPlatformConformanceHarness`) for lifecycle/diagnostics/snapshot contract checks.
 - **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
 - **`@konekti/studio`**: File-first diagnostics viewer for runtime graph/timing JSON exports.
 
