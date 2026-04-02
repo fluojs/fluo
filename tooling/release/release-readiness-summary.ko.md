@@ -1,23 +1,18 @@
-# release readiness summary
+# 릴리즈 준비도 검증 요약
 
-<p><strong><kbd>한국어</kbd></strong> <a href="./release-readiness-summary.md"><kbd>English</kbd></a></p>
+<p><a href="./release-readiness-summary.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-## checklist
+- [x] Canonical bootstrap docs — The quick start guide documents the public `pnpm add -g @konekti/cli` + `konekti new` path.
+- [x] Repo-local smoke path docs — The repo-local sandbox path is documented in the CLI README as monorepo-only verification support.
+- [x] Starter shape and runtime ownership — The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.
+- [x] Generic-first bootstrap contract — Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.
+- [x] Toolchain contract lock — The toolchain contract matrix is locked with public/generated/internal statuses.
+- [x] Manifest benchmark evidence — Release docs still point at the benchmark-backed manifest decision snapshot.
+- [x] Dist-based package entrypoints — CLI manifest and bin prove a dist-backed public entrypoint.
+- [x] Root OSS license file — A repository-level OSS license file exists at the root.
+- [x] Public changelog baseline — CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.
+- [x] Public package surface docs are synchronized — release-governance and package-surface docs declare the same @konekti public package list.
+- [x] Documented public packages exist in workspace — Every documented public package maps to an existing workspace package manifest.
 
-- [x] **Canonical bootstrap documentation**: 빠른 시작 가이드는 `pnpm add -g @konekti/cli` 및 `konekti new` 경로를 다룹니다.
-- [x] **Internal verification documentation**: 레포지토리 로컬 샌드박스 경로는 프레임워크 개발을 위해 CLI README에 문서화되어 있습니다.
-- [x] **Starter structure and ownership**: 생성된 스캐폴드는 런타임 소유의 부트스트랩 헬퍼와 로컬화된 헬스 모듈을 사용합니다.
-- [x] **Simplified bootstrap contract**: 초기 프로젝트 생성 시 ORM/DB 선택 및 지원 티어에 대한 프롬프트를 제거했습니다.
-- [x] **Toolchain stability**: 툴체인 계약 매트릭스가 명시적인 공개, 생성 및 내부 상태와 함께 확정되었습니다.
-- [x] **Benchmark evidence**: 릴리스 문서에는 벤치마크 기반의 매니페스트 결정 스냅샷 링크가 포함되어 있습니다.
-- [x] **Distribution-based entry points**: CLI 매니페스트 및 바이너리가 `dist` 폴더를 올바르게 가리킵니다.
-- [x] **Open Source license**: 레포지토리 루트 레벨에 OSS 라이선스 파일이 존재합니다.
-- [x] **Public package synchronization**: `release-governance.ko.md` 및 `package-surface.ko.md` 문서에 일치하는 패키지 목록이 포함되어 있습니다.
-- [x] **Workspace verification**: 문서화된 모든 공개 패키지가 워크스페이스 내에 해당 매니페스트를 가지고 있습니다.
-
-## verification commands
-
-이 후보에 대해 다음 명령어들이 성공적으로 실행되었습니다:
-- `pnpm typecheck`
-- `pnpm build`
-- `pnpm test`
+- 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`
+- 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신

@@ -112,6 +112,10 @@
 
 이 명령어는 또한 `tooling/release/release-readiness-summary.md`를 작성합니다.
 
+### PR CI 자동화
+
+`.github/workflows/ci.yml`은 `main` 브랜치를 대상으로 하는 모든 풀 리퀘스트와 `main`으로의 모든 푸시에서 검증 표면을 자동으로 실행합니다. 워크플로우는 `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:release-readiness`를 순차적으로 실행하여 릴리스 시점이 아닌 머지 전에 회귀를 잡아냅니다.
+
 ## GitHub Releases
 
 - 태그 기반 릴리스는 유지보수자가 저장소 릴리스 운영 절차로 관리합니다.

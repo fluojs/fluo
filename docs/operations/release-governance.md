@@ -51,6 +51,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/testing`
+- `@konekti/throttler`
 - `@konekti/cli`
 - `@konekti/studio`
 
@@ -112,6 +113,10 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 - CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution
 
 The command also writes `tooling/release/release-readiness-summary.md`.
+
+### PR CI automation
+
+`.github/workflows/ci.yml` runs the verification surface automatically on every pull request targeting `main` and on every push to `main`. The workflow executes `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm verify:release-readiness` in sequence, so regressions are caught before merge rather than at release time.
 
 ## GitHub Releases
 
