@@ -50,6 +50,7 @@
 - `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/testing`
+- `@konekti/throttler`
 - `@konekti/cli`
 - `@konekti/studio`
 

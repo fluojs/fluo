@@ -84,6 +84,39 @@ function extractHeadings(relativePath) {
     });
 }
 
+function parsePackageListFromSection(markdown, sectionTitle) {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+
+  if (start < 0) {
+    return [];
+  }
+
+  const packages = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+
+    if (line.startsWith('## ')) {
+      break;
+    }
+
+    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+    if (match) {
+      packages.push(match[1]);
+    }
+  }
+
+  return packages.sort((left, right) => left.localeCompare(right));
+}
+
+function areSameStringArrays(left, right) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(`Platform consistency governance check failed: ${message}`);
@@ -219,9 +252,25 @@ function enforceAlignmentClaimsBackedByHarness(changedFiles) {
   }
 }
 
+function enforceReleaseGovernancePublishSurfaceSync() {
+  const releaseGovernance = readFileSync(join(repoRoot, 'docs/operations/release-governance.md'), 'utf8');
+  const releaseGovernanceKo = readFileSync(join(repoRoot, 'docs/operations/release-governance.ko.md'), 'utf8');
+
+  const englishPublishSurface = parsePackageListFromSection(releaseGovernance, 'intended publish surface');
+  const koreanPublishSurface = parsePackageListFromSection(releaseGovernanceKo, 'intended publish surface');
+
+  assert(englishPublishSurface.length > 0, 'release-governance.md must define an intended publish surface list.');
+  assert(koreanPublishSurface.length > 0, 'release-governance.ko.md must define an intended publish surface list.');
+  assert(
+    areSameStringArrays(englishPublishSurface, koreanPublishSurface),
+    'release-governance.md and release-governance.ko.md must declare the same intended publish surface package list.',
+  );
+}
+
 const changedFiles = changedFilesFromGit();
 
 enforceSsotMirrorStructure();
+enforceReleaseGovernancePublishSurfaceSync();
 enforceContractCompanionUpdates(changedFiles);
 enforceAlignmentClaimsBackedByHarness(changedFiles);
 
