@@ -1,5 +1,14 @@
 {
   "name": "@konekti/redis",
+  "description": "App-scoped Redis lifecycle management, raw client injection, and RedisService facade for Konekti.",
+  "keywords": [
+    "konekti",
+    "redis",
+    "ioredis",
+    "cache",
+    "connection",
+    "lifecycle"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

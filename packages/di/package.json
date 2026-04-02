@@ -1,5 +1,14 @@
 {
   "name": "@konekti/di",
+  "description": "Minimal token-based dependency injection container powering every Konekti application.",
+  "keywords": [
+    "konekti",
+    "di",
+    "dependency-injection",
+    "ioc",
+    "container",
+    "provider"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

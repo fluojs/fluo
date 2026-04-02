@@ -1,5 +1,14 @@
 {
   "name": "@konekti/cron",
+  "description": "Decorator-based task scheduling for Konekti with cron, interval, and timeout triggers and optional distributed locking.",
+  "keywords": [
+    "konekti",
+    "cron",
+    "scheduler",
+    "interval",
+    "timeout",
+    "distributed-lock"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

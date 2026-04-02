@@ -1,5 +1,14 @@
 {
   "name": "@konekti/runtime",
+  "description": "Application bootstrap and runtime orchestration — module graph compilation, DI wiring, and diagnostics export for Konekti.",
+  "keywords": [
+    "konekti",
+    "runtime",
+    "bootstrap",
+    "application",
+    "module-graph",
+    "orchestration"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

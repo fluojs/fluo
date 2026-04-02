@@ -1,5 +1,18 @@
 {
   "name": "@konekti/microservices",
+  "description": "Transport-driven microservice runtime with pattern decorators and multi-transport support for Konekti.",
+  "keywords": [
+    "konekti",
+    "microservices",
+    "transport",
+    "tcp",
+    "redis",
+    "nats",
+    "kafka",
+    "rabbitmq",
+    "grpc",
+    "mqtt"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

@@ -1,6 +1,13 @@
 {
   "name": "@konekti/event-bus",
-  "description": "In-process only event publishing for Konekti applications.",
+  "description": "In-process event publishing and handler discovery for Konekti applications.",
+  "keywords": [
+    "konekti",
+    "event-bus",
+    "events",
+    "pubsub",
+    "in-process"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

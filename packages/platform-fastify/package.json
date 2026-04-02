@@ -1,5 +1,13 @@
 {
   "name": "@konekti/platform-fastify",
+  "description": "Fastify-based HTTP adapter for the Konekti runtime.",
+  "keywords": [
+    "konekti",
+    "fastify",
+    "http-adapter",
+    "platform",
+    "server"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

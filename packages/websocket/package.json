@@ -1,5 +1,14 @@
 {
   "name": "@konekti/websocket",
+  "description": "Decorator-based WebSocket gateway discovery and Node HTTP upgrade wiring for Konekti.",
+  "keywords": [
+    "konekti",
+    "websocket",
+    "ws",
+    "gateway",
+    "realtime",
+    "upgrade"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

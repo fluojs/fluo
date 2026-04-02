@@ -23,7 +23,6 @@
 - `@konekti/drizzle`
 - `@konekti/mongoose`
 - `@konekti/terminus`
-
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serialization`
@@ -34,6 +33,7 @@
 - `@konekti/event-bus`
 - `@konekti/websocket`
 - `@konekti/queue`
+- `@konekti/throttler`
 - `@konekti/testing`
 - `@konekti/cli`
 - `@konekti/studio`
@@ -49,7 +49,7 @@
 - **`@konekti/platform-express`**: Express 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.
 - **`@konekti/microservices`**: 트랜스포트 추상화, 패턴 데코레이터, 마이크로서비스 런타임. 서브패스 export는 `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, `./mqtt` 트랜스포트 엔트리포인트를 포함합니다.
-- **`@konekti/validation` 패키지**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
+- **`@konekti/validation`**: 유효성 검사 데코레이터, 매핑된 DTO 헬퍼, 검증 엔진.
 - **`@konekti/jwt`**: 핵심 JWT 로직.
 - **`@konekti/passport`**: 인증 전략 레지스트리 및 범용 가드 연결.
 - **`@konekti/openapi`**: 문서 생성 및 OpenAPI 데코레이터.
@@ -67,6 +67,7 @@
 - **`@konekti/drizzle`**: Drizzle handle을 ALS 트랜잭션 컨텍스트에 통합(비동기 모듈 팩토리, strict/fallback 트랜잭션 동작, optional `dispose` 셧다운 훅).
 - **`@konekti/mongoose`**: 런타임/DI 연결을 위한 Mongoose 통합 패키지.
 - **`@konekti/terminus`**: 헬스 인디케이터 조합과 런타임 헬스 응답 집계를 확장하는 운영 헬스 패키지.
+- **`@konekti/throttler`**: 인메모리/Redis 스토어 어댑터를 지원하는 데코레이터 기반 속도 제한.
 - **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티.
 - **`@konekti/cli`**: 애플리케이션 부트스트랩/생성/마이그레이션 + 런타임 진단 inspect 명령어.
 - **`@konekti/studio`**: 런타임 그래프/타이밍 JSON 내보내기를 파일 기반으로 확인하는 diagnostics viewer.

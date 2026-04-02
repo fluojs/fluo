@@ -1,5 +1,14 @@
 {
   "name": "@konekti/jwt",
+  "description": "HTTP-agnostic JWT signing and verification core for Konekti authentication.",
+  "keywords": [
+    "konekti",
+    "jwt",
+    "authentication",
+    "token",
+    "signing",
+    "verification"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

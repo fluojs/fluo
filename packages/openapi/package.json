@@ -1,5 +1,14 @@
 {
   "name": "@konekti/openapi",
+  "description": "Decorator-based OpenAPI 3.1 document generation and Swagger UI for Konekti applications.",
+  "keywords": [
+    "konekti",
+    "openapi",
+    "swagger",
+    "api-docs",
+    "documentation",
+    "rest"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

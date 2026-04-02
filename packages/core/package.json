@@ -1,5 +1,14 @@
 {
   "name": "@konekti/core",
+  "description": "Shared contracts, decorators, and metadata helpers that form the foundation of every Konekti package.",
+  "keywords": [
+    "konekti",
+    "core",
+    "decorators",
+    "metadata",
+    "types",
+    "foundation"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",
