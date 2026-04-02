@@ -12,6 +12,8 @@ import { RuntimePlatformShell } from './platform-shell.js';
 
 class StubPlatformComponent implements PlatformComponent {
   private currentState: PlatformState = 'created';
+  private startFailuresRemaining: number;
+  private stopFailuresRemaining: number;
 
   constructor(
     readonly id: string,
@@ -20,7 +22,14 @@ class StubPlatformComponent implements PlatformComponent {
     private readonly readinessReport: PlatformReadinessReport,
     private readonly healthReport: PlatformHealthReport,
     private readonly validation: PlatformValidationResult = { ok: true, issues: [] },
-  ) {}
+    options: {
+      failStartTimes?: number;
+      failStopTimes?: number;
+    } = {},
+  ) {
+    this.startFailuresRemaining = options.failStartTimes ?? 0;
+    this.stopFailuresRemaining = options.failStopTimes ?? 0;
+  }
 
   async health(): Promise<PlatformHealthReport> {
     return this.healthReport;
@@ -51,6 +60,12 @@ class StubPlatformComponent implements PlatformComponent {
   }
 
   async start(): Promise<void> {
+    if (this.startFailuresRemaining > 0) {
+      this.startFailuresRemaining -= 1;
+      this.events.push(`start-fail:${this.id}`);
+      throw new Error(`start failed for ${this.id}`);
+    }
+
     this.currentState = 'ready';
     this.events.push(`start:${this.id}`);
   }
@@ -60,6 +75,12 @@ class StubPlatformComponent implements PlatformComponent {
   }
 
   async stop(): Promise<void> {
+    if (this.stopFailuresRemaining > 0) {
+      this.stopFailuresRemaining -= 1;
+      this.events.push(`stop-fail:${this.id}`);
+      throw new Error(`stop failed for ${this.id}`);
+    }
+
     this.currentState = 'stopped';
     this.events.push(`stop:${this.id}`);
   }
@@ -154,5 +175,45 @@ describe('RuntimePlatformShell', () => {
     expect(snapshot.components.find((component) => component.id === 'search.default')?.dependencies).toEqual(['cache.default']);
 
     await shell.stop();
+  });
+
+  it('keeps the original start failure as primary and allows follow-up cleanup when rollback stop fails', async () => {
+    const events: string[] = [];
+    const redis = new StubPlatformComponent(
+      'redis.default',
+      'redis',
+      events,
+      { critical: true, status: 'ready' },
+      { status: 'healthy' },
+      { ok: true, issues: [] },
+      { failStopTimes: 1 },
+    );
+    const queue = new StubPlatformComponent(
+      'queue.default',
+      'queue',
+      events,
+      { critical: true, status: 'ready' },
+      { status: 'healthy' },
+      { ok: true, issues: [] },
+      { failStartTimes: 1 },
+    );
+
+    const shell = RuntimePlatformShell.fromInputs([
+      { component: queue, dependencies: ['redis.default'] },
+      { component: redis, dependencies: [] },
+    ]);
+
+    await expect(shell.start()).rejects.toThrow('Platform component "queue.default" failed to start: start failed for queue.default');
+
+    await expect(shell.stop()).resolves.toBeUndefined();
+
+    expect(events).toEqual([
+      'validate:queue.default',
+      'validate:redis.default',
+      'start:redis.default',
+      'start-fail:queue.default',
+      'stop-fail:redis.default',
+      'stop:redis.default',
+    ]);
   });
 });

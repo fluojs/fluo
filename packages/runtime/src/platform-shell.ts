@@ -134,6 +134,7 @@ export class RuntimePlatformShell implements PlatformShell {
   private started = false;
   private stopped = false;
   private orderedComponents: RegisteredPlatformComponent[] = [];
+  private rollbackPendingComponents: RegisteredPlatformComponent[] = [];
   private readonly diagnostics: PlatformDiagnosticIssue[] = [];
 
   constructor(private readonly registeredComponents: RegisteredPlatformComponent[]) {}
@@ -149,6 +150,10 @@ export class RuntimePlatformShell implements PlatformShell {
   async start(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
+    }
+
+    if (this.rollbackPendingComponents.length > 0) {
+      await this.stop();
     }
 
     this.validateIdentityAndDependencies();
@@ -169,24 +174,44 @@ export class RuntimePlatformShell implements PlatformShell {
         startedComponents.push(component);
       } catch (error) {
         this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start', error));
-        await this.stopStartedComponents(startedComponents);
-        throw new InvariantError(
+        const startFailure = new InvariantError(
           `Platform component "${component.component.id}" failed to start: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
+
+        try {
+          await this.stopStartedComponents(startedComponents);
+          this.rollbackPendingComponents = [];
+        } catch (rollbackError) {
+          this.rollbackPendingComponents = [...startedComponents];
+          this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
+        }
+
+        throw startFailure;
       }
     }
 
     this.started = true;
     this.stopped = false;
+    this.rollbackPendingComponents = [];
   }
 
   async stop(): Promise<void> {
-    if (!this.started || this.stopped) {
+    const hasRollbackPending = this.rollbackPendingComponents.length > 0;
+
+    if ((!this.started && !hasRollbackPending) || this.stopped) {
       return;
     }
 
-    const toStop = this.orderedComponents.length > 0 ? [...this.orderedComponents] : [...this.registeredComponents];
+    const toStop = hasRollbackPending
+      ? [...this.rollbackPendingComponents]
+      : this.orderedComponents.length > 0
+      ? [...this.orderedComponents]
+      : [...this.registeredComponents];
+
     await this.stopStartedComponents(toStop);
+    this.rollbackPendingComponents = [];
+    this.started = false;
     this.stopped = true;
   }
 
