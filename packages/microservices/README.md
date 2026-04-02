@@ -51,13 +51,14 @@ await microservice.listen();
 - `MICROSERVICE` - DI token for the runtime microservice service
 - `@MessagePattern(pattern)` - request/reply handler registration
 - `@EventPattern(pattern)` - event handler registration
+- `@ServerStreamPattern(pattern)` - gRPC server-streaming handler registration
 - `TcpMicroserviceTransport` - TCP transport adapter
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub event transport adapter
 - `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
 - `KafkaMicroserviceTransport` - Kafka transport adapter (request/reply + event)
 - `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
 - `RedisStreamsMicroserviceTransport` - Redis Streams transport adapter (request/reply + event)
-- `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention)
+- `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention + server streaming)
 - `MqttMicroserviceTransport` - MQTT transport adapter (request/reply + event)
 
 ## Runtime behavior
@@ -150,7 +151,7 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `KafkaMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via dedicated message, response, and event topics with correlation-based reply routing.
 - `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
 - `RedisStreamsMicroserviceTransport` supports both `send()` and `emit()` via Redis Streams with consumer groups for safe single-consumer request/reply and event fan-out.
-- `GrpcMicroserviceTransport` supports unary-only `send()` and unary `emit()` by using `<Service>.<Method>` routing with metadata kind (`x-konekti-kind`) to distinguish message/event packets.
+- `GrpcMicroserviceTransport` supports unary `send()`, unary `emit()`, and server-streaming `serverStream()` by using `<Service>.<Method>` routing with metadata kind (`x-konekti-kind`) to distinguish message/event packets.
 - `MqttMicroserviceTransport` supports `send()` and `emit()` with JSON-envelope correlation (`requestId`, `replyTopic`) and a per-instance reply topic.
 
 ### Kafka
@@ -219,12 +220,73 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 ### gRPC
 
 - `GrpcMicroserviceTransport` lazily loads `@grpc/grpc-js` and `@grpc/proto-loader` at runtime. These are optional peers and are only required when you use this transport.
-- Pattern format is strictly `<Service>.<Method>` and must match unary proto service/method names under the configured `packageName`.
-- v1 supports unary RPC only. Streaming methods are intentionally not registered.
-- `listen()` loads the proto package and registers unary handlers for discovered services. If startup fails during bind, partial startup is rolled back via server shutdown.
+- Pattern format is strictly `<Service>.<Method>` and must match proto service/method names under the configured `packageName`.
+- `listen()` loads the proto package and registers unary handlers and server-streaming handlers for discovered services. Client-streaming and bidirectional-streaming methods are not registered. If startup fails during bind, partial startup is rolled back via server shutdown.
 - Inbound packets use metadata key `x-konekti-kind` (`message` or `event`) to map into `TransportPacket.kind` without changing payload schemas.
 - `send()` uses unary RPC request/reply, applies timeout via deadline, supports abort via call cancellation, and rejects deterministically on close.
 - `emit()` is a Konekti convention implemented as best-effort unary call: response payload is discarded, transport-level call failures are still surfaced.
+- `serverStream()` returns an `AsyncIterable<unknown>` that yields each message from the server. Supports abort via `AbortSignal`. The iterator's `return()` cancels the underlying gRPC call.
+
+#### Server streaming
+
+Server-streaming support allows a gRPC method to send a sequence of response messages for a single request. Use `@ServerStreamPattern` to register a server-streaming handler and `serverStream()` to consume the stream from the client side.
+
+**Server-side handler:**
+
+```typescript
+import { Module } from '@konekti/core';
+import { KonektiFactory } from '@konekti/runtime';
+import {
+  createMicroservicesModule,
+  ServerStreamPattern,
+  GrpcMicroserviceTransport,
+} from '@konekti/microservices';
+import type { ServerStreamWriter } from '@konekti/microservices';
+
+class MetricsHandler {
+  @ServerStreamPattern('Metrics.StreamCpuUsage')
+  async streamCpu(payload: { intervalMs: number }, writer: ServerStreamWriter) {
+    for (let i = 0; i < 5; i++) {
+      writer.write({ cpu: Math.random() * 100, tick: i });
+    }
+    writer.end();
+  }
+}
+
+const transport = new GrpcMicroserviceTransport({
+  url: '0.0.0.0:50051',
+  packageName: 'monitoring',
+  protoPath: './monitoring.proto',
+});
+
+@Module({
+  imports: [createMicroservicesModule({ transport })],
+  providers: [MetricsHandler],
+})
+class ServerModule {}
+
+const microservice = await KonektiFactory.createMicroservice(ServerModule);
+await microservice.listen();
+```
+
+**Client-side consumption:**
+
+```typescript
+const transport = new GrpcMicroserviceTransport({
+  url: 'localhost:50051',
+  packageName: 'monitoring',
+  protoPath: './monitoring.proto',
+});
+await transport.listen(async () => {});
+
+for await (const message of transport.serverStream('Metrics.StreamCpuUsage', { intervalMs: 1000 })) {
+  console.log('cpu sample:', message);
+}
+```
+
+- The handler receives `(payload, writer)` where `writer` provides `write(data)`, `end()`, and `error(err)` methods.
+- `serverStream()` requires the transport to be listening. It rejects if the transport is closed or not yet started.
+- Client-streaming and bidirectional-streaming methods are deferred to a future release (see issue #620).
 
 ### MQTT
 

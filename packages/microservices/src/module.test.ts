@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { Inject, Scope, defineControllerMetadata, defineModuleMetadata } from '@konekti/core';
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
-import { EventPattern, MessagePattern } from './decorators.js';
+import { EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './kafka-transport.js';
 import { createMicroservicesModule } from './module.js';
 import { MICROSERVICE } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 import { TcpMicroserviceTransport } from './tcp-transport.js';
-import type { MicroserviceTransport, TransportHandler } from './types.js';
+import type { MicroserviceTransport, ServerStreamWriter, TransportHandler, TransportServerStreamHandler } from './types.js';
 
 class InMemoryPubSubRedisClient {
   private static subscriptions = new Map<string, Set<InMemoryPubSubRedisClient>>();
@@ -98,9 +98,14 @@ class InMemoryKafkaBus {
 
 class InMemoryLoopbackTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
+  private serverStreamHandler: TransportServerStreamHandler | undefined;
 
   async listen(handler: TransportHandler): Promise<void> {
     this.handler = handler;
+  }
+
+  listenServerStreaming(handler: TransportServerStreamHandler): void {
+    this.serverStreamHandler = handler;
   }
 
   async send(pattern: string, payload: unknown): Promise<unknown> {
@@ -119,8 +124,17 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
     await this.handler({ kind: 'event', pattern, payload });
   }
 
+  async dispatchServerStream(pattern: string, payload: unknown, writer: ServerStreamWriter): Promise<void> {
+    if (!this.serverStreamHandler) {
+      throw new Error('Server stream handler is not listening.');
+    }
+
+    await this.serverStreamHandler(pattern, payload, writer);
+  }
+
   async close(): Promise<void> {
     this.handler = undefined;
+    this.serverStreamHandler = undefined;
   }
 }
 
@@ -853,6 +867,159 @@ describe('@konekti/microservices', () => {
 
     expect(instanceIds).toHaveLength(2);
     expect(instanceIds[0]).not.toBe(instanceIds[1]);
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after server-stream handler completes normally', async () => {
+    const disposed: number[] = [];
+
+    @Scope('request')
+    class StreamContext {
+      static counter = 0;
+      readonly id = ++StreamContext.counter;
+
+      onDestroy(): void {
+        disposed.push(this.id);
+      }
+    }
+
+    @Inject([StreamContext])
+    @Scope('request')
+    class StreamHandler {
+      constructor(private readonly ctx: StreamContext) {}
+
+      @ServerStreamPattern('stream.data')
+      handle(_payload: unknown, writer: ServerStreamWriter) {
+        writer.write({ scopeId: this.ctx.id });
+        writer.end();
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [StreamContext, StreamHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    const written: unknown[] = [];
+    const writer: ServerStreamWriter = {
+      write(data) { written.push(data); },
+      end() {},
+      error() {},
+    };
+
+    await transport.dispatchServerStream('stream.data', {}, writer);
+    await transport.dispatchServerStream('stream.data', {}, writer);
+
+    expect(written).toEqual([{ scopeId: 1 }, { scopeId: 2 }]);
+    expect(disposed).toEqual([1, 2]);
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after server-stream handler throws', async () => {
+    const onDestroy = vi.fn();
+
+    @Scope('request')
+    class StreamContext {
+      onDestroy(): void {
+        onDestroy();
+      }
+    }
+
+    @Inject([StreamContext])
+    @Scope('request')
+    class FailingStreamHandler {
+      constructor(private readonly ctx: StreamContext) {}
+
+      @ServerStreamPattern('stream.fail')
+      handle() {
+        void this.ctx;
+        throw new Error('stream handler failed');
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [StreamContext, FailingStreamHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    let receivedError: Error | undefined;
+    const writer: ServerStreamWriter = {
+      write() {},
+      end() {},
+      error(err) { receivedError = err; },
+    };
+
+    await transport.dispatchServerStream('stream.fail', {}, writer);
+
+    expect(onDestroy).toHaveBeenCalledTimes(1);
+    expect(receivedError?.message).toBe('stream handler failed');
+
+    await microservice.close();
+  });
+
+  it('creates an isolated request scope per @ServerStreamPattern invocation', async () => {
+    let created = 0;
+
+    @Scope('request')
+    class StreamState {
+      readonly id = ++created;
+    }
+
+    @Inject([StreamState])
+    @Scope('request')
+    class ScopedStreamHandler {
+      constructor(private readonly state: StreamState) {}
+
+      @ServerStreamPattern('stream.scope')
+      handle(_payload: unknown, writer: ServerStreamWriter) {
+        writer.write({ scopeId: this.state.id });
+        writer.end();
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [StreamState, ScopedStreamHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    const firstWritten: unknown[] = [];
+    const secondWritten: unknown[] = [];
+
+    await transport.dispatchServerStream('stream.scope', {}, {
+      write(data) { firstWritten.push(data); },
+      end() {},
+      error() {},
+    });
+
+    await transport.dispatchServerStream('stream.scope', {}, {
+      write(data) { secondWritten.push(data); },
+      end() {},
+      error() {},
+    });
+
+    expect(firstWritten).toEqual([{ scopeId: 1 }]);
+    expect(secondWritten).toEqual([{ scopeId: 2 }]);
+    expect(created).toBe(2);
 
     await microservice.close();
   });
