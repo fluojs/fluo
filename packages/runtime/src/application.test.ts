@@ -1925,7 +1925,9 @@ describe('bootstrapApplication', () => {
       'module:destroy',
       'app:shutdown:bootstrap-failed',
     ]);
-    expect(loggerEvents).toContain('error:KonektiFactory:Failed to bootstrap application.:boom');
+    expect(loggerEvents).toContain(
+      'error:KonektiFactory:Failed to bootstrap application. Check the error below for what failed and how to fix it.:boom',
+    );
   });
 
   it('logs startup milestones, route mappings, and adapter start failures', async () => {
