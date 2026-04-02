@@ -4,6 +4,8 @@
 
 This page provides an overview of the current public package family within the Konekti ecosystem.
 
+> **Looking for packages by task?** See [`package-chooser.md`](./package-chooser.md) to pick packages based on what you are building.
+
 ## public package family
 
 - `@konekti/core`
