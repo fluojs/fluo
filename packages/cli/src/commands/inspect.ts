@@ -3,11 +3,10 @@ import { resolve } from 'node:path';
 
 import {
   KonektiFactory,
-  bootstrapModule,
-  createRuntimeDiagnosticsGraph,
-  renderRuntimeDiagnosticsMermaid,
   type BootstrapTimingDiagnostics,
   type ModuleType,
+  type PlatformShellSnapshot,
+  PLATFORM_SHELL,
 } from '@konekti/runtime';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
@@ -39,12 +38,12 @@ type InspectOptionHelpEntry = {
 const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
   {
     aliases: [],
-    description: 'Emit the module graph as a JSON diagnostics payload (default when no output mode is selected).',
+    description: 'Emit the runtime platform snapshot/diagnostics payload as JSON (default when no output mode is selected).',
     option: '--json',
   },
   {
     aliases: [],
-    description: 'Emit the module graph as a Mermaid diagram.',
+    description: 'Emit platform component dependency chains as a Mermaid diagram.',
     option: '--mermaid',
   },
   {
@@ -175,6 +174,54 @@ function stringifyTiming(timing: BootstrapTimingDiagnostics | undefined): string
   return JSON.stringify(value, null, 2);
 }
 
+function stringifySnapshot(snapshot: PlatformShellSnapshot): string {
+  return JSON.stringify(snapshot, null, 2);
+}
+
+function renderPlatformSnapshotMermaid(snapshot: PlatformShellSnapshot): string {
+  const lines: string[] = ['graph TD'];
+
+  if (snapshot.components.length === 0) {
+    lines.push('  EMPTY["No registered platform components"]');
+    return lines.join('\n');
+  }
+
+  const nodeByComponentId = new Map<string, string>();
+
+  for (const [index, component] of snapshot.components.entries()) {
+    const nodeId = `C${String(index + 1)}`;
+    nodeByComponentId.set(component.id, nodeId);
+
+    const summary = [
+      component.id,
+      `kind: ${component.kind}`,
+      `state: ${component.state}`,
+      `readiness: ${component.readiness.status}`,
+      `health: ${component.health.status}`,
+    ].join('\\n');
+
+    lines.push(`  ${nodeId}["${summary}"]`);
+  }
+
+  for (const component of snapshot.components) {
+    const from = nodeByComponentId.get(component.id);
+    if (!from) {
+      continue;
+    }
+
+    for (const dependency of component.dependencies) {
+      const to = nodeByComponentId.get(dependency);
+      if (!to) {
+        continue;
+      }
+
+      lines.push(`  ${from} --> ${to}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export async function runInspectCommand(argv: string[], runtime: InspectCommandRuntimeOptions = {}): Promise<number> {
   const stdout = runtime.stdout ?? process.stdout;
   const stderr = runtime.stderr ?? process.stderr;
@@ -211,7 +258,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
       return 0;
     }
 
-    const bootstrapped = bootstrapModule(rootModule, {
+    const context = await KonektiFactory.createApplicationContext(rootModule, {
       logger: {
         debug() {},
         error() {},
@@ -219,14 +266,20 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
         warn() {},
       },
     });
-    const graph = createRuntimeDiagnosticsGraph(bootstrapped.modules, bootstrapped.rootModule);
 
-    if (parsed.json) {
-      stdout.write(`${JSON.stringify(graph, null, 2)}\n`);
-    }
+    try {
+      const platformShell = await context.get(PLATFORM_SHELL);
+      const snapshot = await platformShell.snapshot();
 
-    if (parsed.mermaid) {
-      stdout.write(`${renderRuntimeDiagnosticsMermaid(graph)}\n`);
+      if (parsed.json) {
+        stdout.write(`${stringifySnapshot(snapshot)}\n`);
+      }
+
+      if (parsed.mermaid) {
+        stdout.write(`${renderPlatformSnapshotMermaid(snapshot)}\n`);
+      }
+    } finally {
+      await context.close();
     }
 
     return 0;

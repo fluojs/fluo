@@ -1,62 +1,22 @@
-export type Scope = 'singleton' | 'request' | 'transient';
-export type ProviderType = 'class' | 'factory' | 'value' | 'existing';
+import type {
+  BootstrapTimingDiagnostics,
+  PlatformDiagnosticIssue,
+  PlatformShellSnapshot,
+  PlatformSnapshot,
+} from '@konekti/runtime';
 
-export interface RuntimeDiagnosticsProvider {
-  token: string;
-  type: ProviderType;
-  scope: Scope;
-  multi: boolean;
-}
-
-export interface RuntimeDiagnosticsModule {
-  name: string;
-  global: boolean;
-  imports: string[];
-  controllers: string[];
-  providers: RuntimeDiagnosticsProvider[];
-  exports: string[];
-}
-
-export interface RuntimeDiagnosticsRelationships {
-  moduleImports: Array<{ from: string; to: string }>;
-  moduleExports: Array<{ module: string; token: string }>;
-  moduleProviders: Array<{ module: string; token: string; providerType: ProviderType; scope: Scope; multi: boolean }>;
-  moduleControllers: Array<{ controller: string; module: string }>;
-}
-
-export interface RuntimeDiagnosticsGraph {
-  version: 1;
-  rootModule: string;
-  modules: RuntimeDiagnosticsModule[];
-  relationships: RuntimeDiagnosticsRelationships;
-}
-
-export interface BootstrapTimingPhase {
-  durationMs: number;
-  name:
-    | 'bootstrap_module'
-    | 'register_runtime_tokens'
-    | 'resolve_lifecycle_instances'
-    | 'run_bootstrap_lifecycle'
-    | 'create_dispatcher';
-}
-
-export interface BootstrapTimingDiagnostics {
-  phases: BootstrapTimingPhase[];
-  totalMs: number;
-  version: 1;
-}
+export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
+export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];
 
 export interface StudioPayload {
-  graph?: RuntimeDiagnosticsGraph;
+  snapshot?: PlatformShellSnapshot;
   timing?: BootstrapTimingDiagnostics;
 }
 
 export interface FilterState {
   query: string;
-  scopes: Scope[];
-  types: ProviderType[];
-  globalsOnly: boolean;
+  readinessStatuses: PlatformReadinessStatus[];
+  severities: PlatformDiagnosticSeverity[];
 }
 
 export interface ParsedPayload {
@@ -72,37 +32,103 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 }
 
-function validateGraph(value: unknown): RuntimeDiagnosticsGraph | null {
+function isReadinessStatus(value: unknown): value is PlatformReadinessStatus {
+  return value === 'ready' || value === 'not-ready' || value === 'degraded';
+}
+
+function isHealthStatus(value: unknown): value is PlatformSnapshot['health']['status'] {
+  return value === 'healthy' || value === 'unhealthy' || value === 'degraded';
+}
+
+function isDiagnosticSeverity(value: unknown): value is PlatformDiagnosticSeverity {
+  return value === 'error' || value === 'warning' || value === 'info';
+}
+
+function validateSnapshot(value: unknown): PlatformShellSnapshot | null {
   if (!isRecord(value)) {
     return null;
   }
 
-  if (value.version !== 1) {
-    throw new Error('Unsupported diagnostics graph version. Expected version: 1.');
+  if (
+    typeof value.generatedAt !== 'string'
+    || !isRecord(value.readiness)
+    || !isRecord(value.health)
+    || !Array.isArray(value.components)
+    || !Array.isArray(value.diagnostics)
+  ) {
+    throw new Error('Invalid platform snapshot payload.');
   }
 
-  if (typeof value.rootModule !== 'string' || !Array.isArray(value.modules) || !isRecord(value.relationships)) {
-    throw new Error('Invalid diagnostics graph payload.');
+  if (!isReadinessStatus(value.readiness.status) || typeof value.readiness.critical !== 'boolean') {
+    throw new Error('Invalid aggregate readiness in platform snapshot payload.');
   }
 
-  for (const module of value.modules) {
-    if (!isRecord(module)) {
-      throw new Error('Invalid module entry in diagnostics graph.');
+  if (!isHealthStatus(value.health.status)) {
+    throw new Error('Invalid aggregate health in platform snapshot payload.');
+  }
+
+  for (const component of value.components) {
+    if (!isRecord(component)) {
+      throw new Error('Invalid component entry in platform snapshot payload.');
     }
 
     if (
-      typeof module.name !== 'string'
-      || typeof module.global !== 'boolean'
-      || !isStringArray(module.imports)
-      || !isStringArray(module.controllers)
-      || !isStringArray(module.exports)
-      || !Array.isArray(module.providers)
+      typeof component.id !== 'string'
+      || typeof component.kind !== 'string'
+      || typeof component.state !== 'string'
+      || !isRecord(component.readiness)
+      || !isRecord(component.health)
+      || !isStringArray(component.dependencies)
+      || !isRecord(component.telemetry)
+      || !isRecord(component.ownership)
+      || !isRecord(component.details)
     ) {
-      throw new Error('Invalid module shape in diagnostics graph.');
+      throw new Error('Invalid component shape in platform snapshot payload.');
+    }
+
+    if (!isReadinessStatus(component.readiness.status) || typeof component.readiness.critical !== 'boolean') {
+      throw new Error('Invalid component readiness in platform snapshot payload.');
+    }
+
+    if (!isHealthStatus(component.health.status)) {
+      throw new Error('Invalid component health in platform snapshot payload.');
+    }
+
+    if (
+      typeof component.telemetry.namespace !== 'string'
+      || !isRecord(component.telemetry.tags)
+      || typeof component.ownership.ownsResources !== 'boolean'
+      || typeof component.ownership.externallyManaged !== 'boolean'
+    ) {
+      throw new Error('Invalid component telemetry/ownership in platform snapshot payload.');
     }
   }
 
-  return value as unknown as RuntimeDiagnosticsGraph;
+  for (const issue of value.diagnostics) {
+    if (!isRecord(issue)) {
+      throw new Error('Invalid diagnostics issue entry in platform snapshot payload.');
+    }
+
+    if (
+      typeof issue.code !== 'string'
+      || !isDiagnosticSeverity(issue.severity)
+      || typeof issue.componentId !== 'string'
+      || typeof issue.message !== 'string'
+    ) {
+      throw new Error('Invalid diagnostics issue shape in platform snapshot payload.');
+    }
+
+    if (
+      (issue.cause !== undefined && typeof issue.cause !== 'string')
+      || (issue.fixHint !== undefined && typeof issue.fixHint !== 'string')
+      || (issue.docsUrl !== undefined && typeof issue.docsUrl !== 'string')
+      || (issue.dependsOn !== undefined && !isStringArray(issue.dependsOn))
+    ) {
+      throw new Error('Invalid optional diagnostics issue fields in platform snapshot payload.');
+    }
+  }
+
+  return value as unknown as PlatformShellSnapshot;
 }
 
 function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
@@ -131,39 +157,27 @@ export function parseStudioPayload(rawJson: string): ParsedPayload {
   const parsed = JSON.parse(rawJson) as unknown;
   const envelope = isRecord(parsed) ? parsed : undefined;
 
-  const graph = validateGraph(envelope?.graph ?? parsed);
-  const timing = validateTiming(envelope?.timing ?? (!graph ? parsed : undefined));
+  const snapshot = validateSnapshot(envelope?.snapshot ?? parsed);
+  const timing = validateTiming(envelope?.timing ?? (!snapshot ? parsed : undefined));
 
-  if (!graph && !timing) {
-    throw new Error('Unsupported file format. Expected diagnostics graph JSON or timing JSON.');
+  if (!snapshot && !timing) {
+    throw new Error('Unsupported file format. Expected platform snapshot JSON or timing JSON.');
   }
 
   return {
     payload: {
-      ...(graph ? { graph } : {}),
+      ...(snapshot ? { snapshot } : {}),
       ...(timing ? { timing } : {}),
     },
     rawJson,
   };
 }
 
-export function applyFilters(graph: RuntimeDiagnosticsGraph, filter: FilterState): RuntimeDiagnosticsGraph {
+export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterState): PlatformShellSnapshot {
   const query = filter.query.trim().toLowerCase();
 
-  const modules = graph.modules.filter((module) => {
-    if (filter.globalsOnly && !module.global) {
-      return false;
-    }
-
-    const scopeMatch = filter.scopes.length === 0
-      || module.providers.some((provider) => filter.scopes.includes(provider.scope));
-    if (!scopeMatch) {
-      return false;
-    }
-
-    const typeMatch = filter.types.length === 0
-      || module.providers.some((provider) => filter.types.includes(provider.type));
-    if (!typeMatch) {
+  const components = snapshot.components.filter((component: PlatformSnapshot) => {
+    if (filter.readinessStatuses.length > 0 && !filter.readinessStatuses.includes(component.readiness.status)) {
       return false;
     }
 
@@ -171,48 +185,100 @@ export function applyFilters(graph: RuntimeDiagnosticsGraph, filter: FilterState
       return true;
     }
 
-    return module.name.toLowerCase().includes(query)
-      || module.providers.some((provider) => provider.token.toLowerCase().includes(query));
+    return component.id.toLowerCase().includes(query)
+      || component.kind.toLowerCase().includes(query)
+      || component.dependencies.some((dependency: string) => dependency.toLowerCase().includes(query));
   });
 
-  const moduleNames = new Set(modules.map((module) => module.name));
+  const diagnostics = snapshot.diagnostics.filter((issue: PlatformDiagnosticIssue) => {
+    if (filter.severities.length > 0 && !filter.severities.includes(issue.severity)) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return issue.code.toLowerCase().includes(query)
+      || issue.componentId.toLowerCase().includes(query)
+      || issue.message.toLowerCase().includes(query)
+      || (issue.cause?.toLowerCase().includes(query) ?? false)
+      || (issue.fixHint?.toLowerCase().includes(query) ?? false)
+      || (issue.docsUrl?.toLowerCase().includes(query) ?? false)
+      || (issue.dependsOn?.some((dependency: string) => dependency.toLowerCase().includes(query)) ?? false);
+  });
 
   return {
-    ...graph,
-    modules,
-    relationships: {
-      ...graph.relationships,
-      moduleImports: graph.relationships.moduleImports.filter((edge) => moduleNames.has(edge.from) && moduleNames.has(edge.to)),
-      moduleExports: graph.relationships.moduleExports.filter((edge) => moduleNames.has(edge.module)),
-      moduleProviders: graph.relationships.moduleProviders.filter((edge) => moduleNames.has(edge.module)),
-      moduleControllers: graph.relationships.moduleControllers.filter((edge) => moduleNames.has(edge.module)),
-    },
+    ...snapshot,
+    components,
+    diagnostics,
   };
 }
 
-export function renderMermaid(graph: RuntimeDiagnosticsGraph): string {
-  const lines: string[] = ['graph TD'];
-  const nodeByModule = new Map<string, string>();
+function escapeMermaidText(value: string): string {
+  return value.replaceAll('"', '\\"');
+}
 
-  for (const [index, module] of graph.modules.entries()) {
-    const nodeId = `M${String(index + 1)}`;
-    nodeByModule.set(module.name, nodeId);
-    lines.push(`  ${nodeId}["${module.name}\\nproviders: ${String(module.providers.length)}\\ncontrollers: ${String(module.controllers.length)}\\nexports: ${String(module.exports.length)}"]`);
+export function renderMermaid(snapshot: PlatformShellSnapshot): string {
+  const lines: string[] = ['graph TD'];
+  const nodeByComponent = new Map<string, string>();
+
+  if (snapshot.components.length === 0) {
+    lines.push('  EMPTY["No registered platform components"]');
+    return lines.join('\n');
   }
 
-  for (const relation of graph.relationships.moduleImports) {
-    const from = nodeByModule.get(relation.from);
-    const to = nodeByModule.get(relation.to);
+  for (const [index, component] of snapshot.components.entries()) {
+    const nodeId = `C${String(index + 1)}`;
+    nodeByComponent.set(component.id, nodeId);
+    lines.push(`  ${nodeId}["${escapeMermaidText(component.id)}\\nkind: ${escapeMermaidText(component.kind)}\\nreadiness: ${component.readiness.status}\\nhealth: ${component.health.status}"]`);
+  }
 
-    if (from && to) {
-      lines.push(`  ${from} --> ${to}`);
+  for (const component of snapshot.components) {
+    const from = nodeByComponent.get(component.id);
+    if (!from) {
+      continue;
+    }
+
+    for (const dependency of component.dependencies) {
+      const to = nodeByComponent.get(dependency);
+
+      if (to) {
+        lines.push(`  ${from} --> ${to}`);
+        continue;
+      }
+
+      const externalNode = `EXT_${dependency.replaceAll(/[^a-zA-Z0-9_]/g, '_')}`;
+      lines.push(`  ${externalNode}["${escapeMermaidText(dependency)}"]`);
+      lines.push(`  ${from} --> ${externalNode}`);
     }
   }
 
-  const rootNodeId = nodeByModule.get(graph.rootModule);
-  if (rootNodeId) {
-    lines.push(`  class ${rootNodeId} rootModule`);
-    lines.push('  classDef rootModule stroke:#2563eb,stroke-width:2px');
+  const degradedNodes: string[] = [];
+  const notReadyNodes: string[] = [];
+  for (const component of snapshot.components) {
+    const nodeId = nodeByComponent.get(component.id);
+    if (!nodeId) {
+      continue;
+    }
+
+    if (component.readiness.status === 'degraded') {
+      degradedNodes.push(nodeId);
+    }
+
+    if (component.readiness.status === 'not-ready') {
+      notReadyNodes.push(nodeId);
+    }
+  }
+
+  if (degradedNodes.length > 0) {
+    lines.push(`  class ${degradedNodes.join(',')} degraded`);
+    lines.push('  classDef degraded stroke:#f59e0b,stroke-width:2px');
+  }
+
+  if (notReadyNodes.length > 0) {
+    lines.push(`  class ${notReadyNodes.join(',')} notReady`);
+    lines.push('  classDef notReady stroke:#ef4444,stroke-width:2px');
   }
 
   return lines.join('\n');

@@ -85,7 +85,7 @@ const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: ['create'], command: 'new', description: 'Scaffold a new Konekti application and install dependencies.' },
   { aliases: ['g'], command: 'generate', description: 'Generate a schematic inside an existing Konekti application.' },
-  { aliases: [], command: 'inspect', description: 'Inspect the module graph and emit diagnostics.' },
+  { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-Konekti codemods (dry-run by default).' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
 ];

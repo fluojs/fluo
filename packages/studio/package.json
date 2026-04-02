@@ -1,6 +1,6 @@
 {
   "name": "@konekti/studio",
-  "description": "File-first diagnostics viewer for Konekti runtime graph and timing JSON exports.",
+  "description": "File-first diagnostics viewer for Konekti runtime platform snapshot and timing JSON exports.",
   "keywords": [
     "konekti",
     "studio",
@@ -32,6 +32,9 @@
     "dev": "pnpm exec vite",
     "preview": "pnpm exec vite preview",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@konekti/runtime": "workspace:*"
   },
   "devDependencies": {
     "@konekti-internal/tooling-vite": "workspace:*"

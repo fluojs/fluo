@@ -500,6 +500,10 @@ importers:
         version: link:../http
 
   packages/studio:
+    dependencies:
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       '@konekti-internal/tooling-vite':
         specifier: workspace:*

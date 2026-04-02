@@ -163,8 +163,16 @@ pre {
   stroke-width: 2.6;
 }
 
-.module-global {
+.component-ready {
   fill: #14532d;
+}
+
+.component-degraded {
+  fill: #7c2d12;
+}
+
+.component-not-ready {
+  fill: #7f1d1d;
 }
 
 .module-selected {
@@ -176,4 +184,29 @@ pre {
   fill: #e5e7eb;
   font-size: 11px;
   pointer-events: none;
+}
+
+.diagnostics-list {
+  display: grid;
+  gap: 12px;
+}
+
+.issue {
+  margin-bottom: 0;
+}
+
+.issue.severity-error {
+  border-color: #ef4444;
+}
+
+.issue.severity-warning {
+  border-color: #f59e0b;
+}
+
+.issue.severity-info {
+  border-color: #3b82f6;
+}
+
+a {
+  color: #93c5fd;
 }
