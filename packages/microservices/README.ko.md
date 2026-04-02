@@ -62,6 +62,7 @@ await microservice.listen();
 - `RedisStreamsMicroserviceTransport` - Redis Streams 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `GrpcMicroserviceTransport` - gRPC 트랜스포트 어댑터입니다 (unary 요청/응답 + unary 이벤트 규약 + 서버 스트리밍 + 클라이언트 스트리밍 + 양방향 스트리밍).
 - `MqttMicroserviceTransport` - MQTT 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
+- `createMicroservicePlatformStatusSnapshot(input)` - transport lifecycle/capability/handler 가시성을 공통 platform snapshot 필드로 매핑합니다.
 
 ## 런타임 동작
 
@@ -408,3 +409,12 @@ await Promise.all([app.listen(), microservice.listen()]);
 ```
 
 이 구성에서 앱과 마이크로서비스 런타임은 동일한 컨테이너에서 핸들러를 해결하므로, 싱글톤 프로바이더가 HTTP 및 마이크로서비스 흐름 전반에서 공유됩니다.
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createMicroservicePlatformStatusSnapshot(...)`(또는 `MicroserviceLifecycleService#createPlatformStatusSnapshot()`)으로 transport lifecycle 및 capability 상태를 공통 platform snapshot 형태로 노출할 수 있습니다.
+
+- `readiness`: listener lifecycle(`created`/`starting`/`ready`/`stopping`/`stopped`/`failed`)을 구성 객체 생성 여부와 분리해 명시적으로 노출합니다.
+- `health`: startup/shutdown 전이 구간은 `degraded`; listener 실패/중지 상태는 `unhealthy`로 표시합니다.
+- `details`: 핸들러 종류별 카운트와 transport capability(`send`/`emit`/streaming 지원)를 포함합니다.
+- `dependencies`: 플랫폼 툴링을 위해 외부 transport 의존성 엣지를 명시적으로 노출합니다.

@@ -52,6 +52,7 @@ export class AppModule {}
 - `EventBus` - `publish(event, options?)` 메서드를 포함하는 인터페이스입니다.
 - `EventBusTransport` - 외부 트랜스포트 어댑터를 위한 인터페이스입니다.
 - `@OnEvent(EventClass)` - 프로바이더/컨트롤러 메서드를 이벤트 핸들러로 표시합니다.
+- `createEventBusPlatformStatusSnapshot(input)` - 로컬/트랜스포트 lifecycle 및 degraded transport 진단을 공통 platform snapshot 필드로 매핑합니다.
 
 ### 모듈 옵션
 
@@ -139,3 +140,12 @@ export class AppModule {}
 - 큐잉, 재생(replay), 와일드카드 또는 순서 보장을 제공하지 않습니다.
 - 명령형 `subscribe()` 또는 `unsubscribe()` API를 제공하지 않습니다.
 - 내구성이나 영속성을 제공하지 않습니다 (이벤트는 크래시 발생 시 유실됩니다).
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createEventBusPlatformStatusSnapshot(...)`(또는 `EventBusLifecycleService#createPlatformStatusSnapshot()`)으로 event-bus 라이프사이클 상태를 공통 platform snapshot 형태로 노출할 수 있습니다.
+
+- `operationMode`: local-only 모드와 transport-backed 모드를 구분합니다.
+- `readiness`: transport subscribe 실패를 `degraded`로 표면화합니다(무음 처리하지 않음).
+- `health`: publish/subscribe/close 단계의 transport 실패를 degraded health 신호로 집계합니다.
+- `details`: 탐색된 핸들러 수, 구독 채널 수, 기본 wait 모드, transport 실패 카운터를 포함합니다.

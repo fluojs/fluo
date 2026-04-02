@@ -55,6 +55,7 @@ export class AppModule {}
 - `QUEUE` - queue enqueue를 위한 DI 토큰입니다
 - `Queue` - `enqueue(job)`를 제공하는 인터페이스입니다
 - `@QueueWorker(JobClass, options?)` - 특정 job type을 처리할 singleton worker 클래스를 표시합니다
+- `createQueuePlatformStatusSnapshot(input)` - queue lifecycle/dependency/drain 신호를 공통 platform snapshot 필드로 매핑합니다
 
 ## 런타임 동작
 
@@ -72,3 +73,12 @@ export class AppModule {}
 - job payload는 DTO처럼 JSON 직렬화 가능한 형태여야 합니다
 - queue worker는 singleton만 지원하며 `onApplicationBootstrap()` 단계에서 탐색됩니다
 - BullMQ는 내부 구현 세부사항이며, 공개 API는 Konekti 표면만 노출합니다
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createQueuePlatformStatusSnapshot(...)`(또는 `QueueLifecycleService#createPlatformStatusSnapshot()`)으로 queue 라이프사이클 상태를 공통 platform snapshot 형태로 노출할 수 있습니다.
+
+- `ownership`: queue 리소스는 프레임워크 소유입니다 (`ownsResources: true`, `externallyManaged: false`).
+- `readiness`: worker가 시작된 경우만 `ready`; startup은 `degraded`; shutdown/idle/stopped는 `not-ready`로 표시됩니다.
+- `health`: 런타임/종료 중 dead-letter drain 대기는 `degraded`; 완전 중지는 `unhealthy`로 표시됩니다.
+- `details`: 명시적 의존성 엣지(`redis.default`), worker 탐색/준비 카운트, pending dead-letter drain 카운트를 포함합니다.

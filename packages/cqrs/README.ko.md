@@ -124,6 +124,7 @@ export class AppModule {}
 - `@QueryHandler(QueryClass)` - 클래스에 query handler 메타데이터를 기록합니다.
 - `@EventHandler(EventClass)` - 클래스에 CQRS event handler 메타데이터를 기록합니다.
 - `@Saga(EventClass | EventClass[])` - 하나 이상의 이벤트 타입에 반응하는 클래스 기반 saga/process-manager 메타데이터를 기록합니다.
+- `createCqrsPlatformStatusSnapshot(input)` - CQRS event/saga lifecycle 의존성 및 drain 가시성을 공통 platform snapshot 필드로 매핑합니다.
 
 ### 모듈 옵션 동작
 
@@ -255,3 +256,12 @@ export class AppModule {}
 - saga 클래스는 singleton 스코프여야 합니다.
 - saga 클래스는 `handle(...)`를 구현해야 합니다.
 - `@EventHandler()` 클래스 핸들러는 `@konekti/event-bus`의 메서드 레벨 `@OnEvent()`와 함께 사용할 수 있습니다.
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createCqrsPlatformStatusSnapshot(...)`(또는 `CqrsEventBusService#createPlatformStatusSnapshot()`)으로 CQRS event/saga lifecycle 상태를 공통 platform snapshot 형태로 노출할 수 있습니다.
+
+- `dependencies`: `event-bus.default` 의존성 엣지를 명시적으로 노출합니다.
+- `readiness`: discovery/startup 및 shutdown drain 상태를 명시적으로 표면화합니다.
+- `health`: event/saga 파이프라인 비가용 상태를 무음 no-op 대신 unhealthy로 보고합니다.
+- `details`: 탐색된 CQRS event-handler/saga 수와 drain 구간의 in-flight saga 실행 수를 포함합니다.
