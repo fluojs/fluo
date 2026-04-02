@@ -46,7 +46,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/config`**: Configuration loading and typed access.
 - **`@konekti/di`**: Provider resolution and lifecycle scopes.
 - **`@konekti/http`**: HTTP execution, binding, exceptions, and route metadata.
-- **`@konekti/runtime`**: Application bootstrap/runtime orchestration plus versioned module diagnostics export and opt-in bootstrap timing.
+- **`@konekti/runtime`**: Application bootstrap/runtime orchestration plus the shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
