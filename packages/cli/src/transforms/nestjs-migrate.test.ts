@@ -4,7 +4,14 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { MIGRATION_TRANSFORMS, runNestJsMigration } from './nestjs-migrate.js';
+import {
+  MIGRATION_TRANSFORMS,
+  WARNING_CATEGORIES,
+  getWarningCategoryLabel,
+  groupWarningsByCategory,
+  runNestJsMigration,
+  type MigrationWarning,
+} from './nestjs-migrate.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -331,5 +338,178 @@ describe('users', () => {
     });
 
     expect(secondReport.changedFiles).toBe(0);
+  });
+
+  it('attaches correct warning categories to each warning type', () => {
+    const workspaceDirectory = createMigrationFixture();
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+
+    const allWarnings = report.fileResults.flatMap((result) => result.warnings);
+
+    expect(allWarnings.length).toBeGreaterThan(0);
+
+    for (const warning of allWarnings) {
+      expect(WARNING_CATEGORIES).toContain(warning.category);
+      expect(warning.category).toBeTruthy();
+    }
+
+    const categories = new Set(allWarnings.map((w) => w.category));
+    expect(categories.has('inject-token')).toBe(true);
+    expect(categories.has('request-dto')).toBe(true);
+    expect(categories.has('pipe-converter')).toBe(true);
+  });
+
+  it('attaches bootstrap-unsupported category to unsupported NestFactory.create variants', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter());
+  await app.listen(3000);
+}
+
+void bootstrap();
+`,
+    );
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+
+    const allWarnings = report.fileResults.flatMap((result) => result.warnings);
+    const bootstrapWarnings = allWarnings.filter((w) => w.category === 'bootstrap-unsupported');
+    expect(bootstrapWarnings.length).toBeGreaterThan(0);
+  });
+
+  it('attaches bootstrap-port category when listen port cannot be folded', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { port: 4000 });
+  await app.listen(3000);
+}
+
+void bootstrap();
+`,
+    );
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+
+    const allWarnings = report.fileResults.flatMap((result) => result.warnings);
+    const portWarnings = allWarnings.filter((w) => w.category === 'bootstrap-port');
+    expect(portWarnings.length).toBeGreaterThan(0);
+  });
+
+  it('attaches testing-unsupported category to unsupported testing patterns', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'users.spec.ts'),
+      `import { Test } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+describe('users', () => {
+  it('works', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
+      .useMocker(() => ({}))
+      .compile();
+
+    expect(moduleRef).toBeDefined();
+  });
+});
+`,
+    );
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: workspaceDirectory,
+    });
+
+    const allWarnings = report.fileResults.flatMap((result) => result.warnings);
+    const testingWarnings = allWarnings.filter((w) => w.category === 'testing-unsupported');
+    expect(testingWarnings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('getWarningCategoryLabel', () => {
+  it('returns human-readable labels for all warning categories', () => {
+    for (const category of WARNING_CATEGORIES) {
+      const label = getWarningCategoryLabel(category);
+      expect(label).toBeTruthy();
+      expect(typeof label).toBe('string');
+      expect(label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('returns expected label for inject-token category', () => {
+    expect(getWarningCategoryLabel('inject-token')).toBe('DI token migration (@Inject)');
+  });
+
+  it('returns expected label for bootstrap-unsupported category', () => {
+    expect(getWarningCategoryLabel('bootstrap-unsupported')).toBe('Unsupported bootstrap variant');
+  });
+});
+
+describe('groupWarningsByCategory', () => {
+  it('groups warnings by their category field', () => {
+    const warnings: MigrationWarning[] = [
+      { category: 'inject-token', filePath: 'a.ts', line: 1, message: 'msg1' },
+      { category: 'inject-token', filePath: 'b.ts', line: 2, message: 'msg2' },
+      { category: 'request-dto', filePath: 'c.ts', line: 3, message: 'msg3' },
+      { category: 'pipe-converter', filePath: 'd.ts', line: 4, message: 'msg4' },
+    ];
+
+    const grouped = groupWarningsByCategory(warnings);
+
+    expect(grouped.size).toBe(3);
+    expect(grouped.get('inject-token')).toHaveLength(2);
+    expect(grouped.get('request-dto')).toHaveLength(1);
+    expect(grouped.get('pipe-converter')).toHaveLength(1);
+  });
+
+  it('returns empty map for empty input', () => {
+    const grouped = groupWarningsByCategory([]);
+    expect(grouped.size).toBe(0);
+  });
+
+  it('preserves warning order within each group', () => {
+    const warnings: MigrationWarning[] = [
+      { category: 'inject-token', filePath: 'first.ts', line: 1, message: 'first' },
+      { category: 'inject-token', filePath: 'second.ts', line: 2, message: 'second' },
+    ];
+
+    const grouped = groupWarningsByCategory(warnings);
+    const group = grouped.get('inject-token')!;
+    expect(group[0].filePath).toBe('first.ts');
+    expect(group[1].filePath).toBe('second.ts');
   });
 });
