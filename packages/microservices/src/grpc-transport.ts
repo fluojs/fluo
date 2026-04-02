@@ -337,8 +337,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
           void this.handleInboundBidiStream(serviceName, methodName, call).catch((error) => {
             try {
               const grpcError = this.mapGrpcHandlerError(error);
-              call.end();
-              void grpcError;
+              const mapped = Object.assign(new Error(grpcError.message), { code: grpcError.code });
+
+              if (call.destroy) {
+                call.destroy(mapped);
+              } else {
+                call.end();
+              }
             } catch {
               call.end();
             }
@@ -506,8 +511,11 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         call.end();
       },
       error(err: Error): void {
-        void err;
-        call.end();
+        if (call.destroy) {
+          call.destroy(err);
+        } else {
+          call.end();
+        }
       },
     };
 

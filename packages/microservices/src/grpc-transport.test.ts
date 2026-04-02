@@ -191,6 +191,18 @@ class FakeBidiHalf extends FakeReadableStream {
       this.peer?.emit('end');
     }
   }
+
+  destroy(err?: Error): void {
+    if (!this.writeEnded) {
+      this.writeEnded = true;
+    }
+
+    if (err) {
+      this.peer?.emit('error', err);
+    } else {
+      this.peer?.emit('end');
+    }
+  }
 }
 
 class FakeGrpcRuntime {
@@ -1012,6 +1024,37 @@ describe('GrpcMicroserviceTransport', () => {
       { pattern: 'MathService.StreamBidi', doubled: 4 },
       { pattern: 'MathService.StreamBidi', doubled: 6 },
     ]);
+
+    await transport.close();
+  });
+
+  it('bidi-stream handler throw surfaces as an error on the client reader, not a clean EOF', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async (_pattern, _reader, _writer) => {
+      throw new Error('handler explosion');
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi');
+    writer.write({ value: 1 });
+    writer.end();
+
+    const collected: unknown[] = [];
+    let caughtError: Error | undefined;
+
+    try {
+      for await (const item of reader) {
+        collected.push(item);
+      }
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError!.message).toContain('handler explosion');
+    expect(collected).toEqual([]);
 
     await transport.close();
   });
