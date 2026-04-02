@@ -32,6 +32,21 @@ Inside `packages/cli/`:
 - `pnpm sandbox:test`: Runs integration tests against the sandbox app.
 - `pnpm sandbox:clean`: Removes the sandbox directory.
 
+### example verification
+
+Canonical examples in `examples/` are first-class workspace members and verification targets. They participate in the monorepo dependency graph, TypeScript type-checking, and Vitest test runs.
+
+- **Typecheck**: `pnpm typecheck` includes `tsc -p examples/tsconfig.json --noEmit`. Examples share path-mapped workspace packages, so editor resolution and CI catch type errors in example code.
+- **Tests**: `pnpm test` runs `vitest run`, which includes the `examples` project defined in `vitest.config.ts`. Each example has tests in `src/app.test.ts`.
+- **Dependencies**: Each example has a `package.json` with `workspace:*` dependencies on `@konekti/*` packages. Run `pnpm install` after adding or changing example dependencies.
+
+When modifying core packages, verify that examples still pass:
+
+```sh
+pnpm vitest run examples/
+pnpm typecheck
+```
+
 ### using worktrees
 
 We recommend using `git worktree` for multi-tasking or resolving issues in isolation.

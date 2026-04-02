@@ -1,0 +1,23 @@
+{
+  "name": "@konekti/example-realworld-api",
+  "description": "Realistic Konekti application with CRUD, validation, and config — canonical verification target.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@konekti/config": "workspace:*",
+    "@konekti/core": "workspace:*",
+    "@konekti/http": "workspace:*",
+    "@konekti/runtime": "workspace:*",
+    "@konekti/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@konekti/testing": "workspace:*"
+  }
+}

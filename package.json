@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/*' --if-present run build",
-    "typecheck": "tsc -p tsconfig.tools.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
+    "typecheck": "tsc -p tsconfig.tools.json --noEmit && tsc -p examples/tsconfig.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "pnpm -r --if-present run lint",
