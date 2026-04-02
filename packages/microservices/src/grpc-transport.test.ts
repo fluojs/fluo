@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { GrpcMicroserviceTransport } from './grpc-transport.js';
+import type { ServerStreamWriter } from './types.js';
 
 class FakeGrpcMetadata {
   private readonly values = new Map<string, unknown[]>();
@@ -24,8 +25,12 @@ type UnaryImplementation = (
   callback: (error: { code?: number; message?: string } | null, payload?: unknown) => void,
 ) => void;
 
+type ServerStreamImplementation = (
+  call: { metadata?: FakeGrpcMetadata; request: unknown; write(data: unknown): boolean; end(): void },
+) => void;
+
 class FakeGrpcServer {
-  readonly services = new Map<string, Record<string, UnaryImplementation>>();
+  readonly services = new Map<string, Record<string, UnaryImplementation | ServerStreamImplementation>>();
   bindError: Error | undefined;
   shutdownError: Error | undefined;
   shutdownCount = 0;
@@ -33,13 +38,13 @@ class FakeGrpcServer {
   constructor(private readonly runtime: FakeGrpcRuntime) {}
 
   addService(definition: Record<string, FakeGrpcMethodDefinition>, implementation: Record<string, unknown>): void {
-    const methods = new Map<string, UnaryImplementation>();
+    const methods = new Map<string, UnaryImplementation | ServerStreamImplementation>();
 
     for (const [methodName] of Object.entries(definition)) {
       const candidate = implementation[methodName];
 
       if (typeof candidate === 'function') {
-        methods.set(methodName, candidate as UnaryImplementation);
+        methods.set(methodName, candidate as UnaryImplementation | ServerStreamImplementation);
       }
     }
 
@@ -68,9 +73,36 @@ class FakeGrpcServer {
     callback(this.shutdownError);
   }
 
-  resolveImplementation(serviceDefinition: Record<string, FakeGrpcMethodDefinition>, methodName: string): UnaryImplementation | undefined {
+  resolveImplementation(serviceDefinition: Record<string, FakeGrpcMethodDefinition>, methodName: string): UnaryImplementation | ServerStreamImplementation | undefined {
     const key = Object.keys(serviceDefinition).sort().join(',');
     return this.services.get(key)?.[methodName];
+  }
+}
+
+class FakeReadableStream {
+  private readonly listeners = new Map<string, ((...args: unknown[]) => void)[]>();
+  private cancelled = false;
+
+  on(event: string, listener: (...args: unknown[]) => void): this {
+    const list = this.listeners.get(event) ?? [];
+    list.push(listener);
+    this.listeners.set(event, list);
+    return this;
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    if (this.cancelled) {
+      return;
+    }
+
+    for (const listener of this.listeners.get(event) ?? []) {
+      listener(...args);
+    }
+  }
+
+  cancel(): void {
+    this.cancelled = true;
+    this.emit('error', new Error('cancelled'));
   }
 }
 
@@ -116,7 +148,29 @@ class FakeGrpcRuntime {
       [methodName: string]: unknown;
 
       constructor(private readonly address: string) {
-        for (const methodName of Object.keys(serviceDefinition)) {
+        for (const [methodName, methodDef] of Object.entries(serviceDefinition)) {
+          if (methodDef.responseStream && !methodDef.requestStream) {
+            this[methodName] = (
+              payload: unknown,
+              metadata: FakeGrpcMetadata,
+            ) => {
+              const stream = new FakeReadableStream();
+
+              void runtime.dispatchServerStream(
+                this.address,
+                serviceDefinition,
+                serviceName,
+                methodName,
+                payload,
+                metadata,
+                stream,
+              );
+
+              return stream;
+            };
+            continue;
+          }
+
           this[methodName] = (
             payload: unknown,
             metadata: FakeGrpcMetadata,
@@ -224,7 +278,51 @@ class FakeGrpcRuntime {
       return;
     }
 
-    implementation({ request: payload, metadata }, callback);
+    (implementation as UnaryImplementation)({ request: payload, metadata }, callback);
+  }
+
+  private async dispatchServerStream(
+    address: string,
+    serviceDefinition: Record<string, FakeGrpcMethodDefinition>,
+    serviceName: string,
+    methodName: string,
+    payload: unknown,
+    metadata: FakeGrpcMetadata,
+    stream: FakeReadableStream,
+  ): Promise<void> {
+    void serviceName;
+
+    const server = this.boundServers.get(address);
+
+    if (!server) {
+      stream.emit('error', new Error('server not listening'));
+      return;
+    }
+
+    const implementation = server.resolveImplementation(serviceDefinition, methodName);
+
+    if (!implementation) {
+      stream.emit('error', new Error('method not implemented'));
+      return;
+    }
+
+    // Yield to microtask queue so the caller has time to register 'data'/'end' listeners
+    // on the FakeReadableStream before events fire, matching real gRPC async behavior.
+    await Promise.resolve();
+
+    const call = {
+      request: payload,
+      metadata,
+      write(data: unknown): boolean {
+        stream.emit('data', data);
+        return true;
+      },
+      end(): void {
+        stream.emit('end');
+      },
+    };
+
+    (implementation as ServerStreamImplementation)(call);
   }
 }
 
@@ -233,6 +331,7 @@ function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicro
     static readonly service = {
       Notify: { requestStream: false, responseStream: false },
       StreamAll: { requestStream: true, responseStream: false },
+      StreamData: { requestStream: false, responseStream: true },
       Sum: { requestStream: false, responseStream: false },
     } satisfies Record<string, FakeGrpcMethodDefinition>;
   };
@@ -438,5 +537,158 @@ describe('GrpcMicroserviceTransport', () => {
 
     await expect(transport.listen(async () => undefined)).rejects.toThrow('bind failed');
     expect(server.shutdownCount).toBe(1);
+  });
+
+  it('registers server-streaming handlers and streams data to client via serverStream()', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenServerStreaming(async (pattern, payload, writer) => {
+      const input = payload as { count: number };
+
+      for (let i = 0; i < input.count; i++) {
+        writer.write({ index: i, pattern });
+      }
+
+      writer.end();
+    });
+
+    await transport.listen(async () => undefined);
+
+    const results: unknown[] = [];
+
+    for await (const item of transport.serverStream('MathService.StreamData', { count: 3 })) {
+      results.push(item);
+    }
+
+    expect(results).toEqual([
+      { index: 0, pattern: 'MathService.StreamData' },
+      { index: 1, pattern: 'MathService.StreamData' },
+      { index: 2, pattern: 'MathService.StreamData' },
+    ]);
+
+    await transport.close();
+  });
+
+  it('serverStream() rejects invalid pattern format', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    expect(() => transport.serverStream('invalid-pattern', {})).toThrow(
+      'Invalid gRPC pattern "invalid-pattern". Expected "<Service>.<Method>"',
+    );
+
+    await transport.close();
+  });
+
+  it('serverStream() throws when transport is not listening', () => {
+    const { transport } = createGrpcTransport();
+
+    expect(() => transport.serverStream('MathService.StreamData', {})).toThrow(
+      'GrpcMicroserviceTransport is not listening. Call listen() before serverStream().',
+    );
+  });
+
+  it('serverStream() throws when transport is closing', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    const closePromise = transport.close();
+
+    expect(() => transport.serverStream('MathService.StreamData', {})).toThrow(
+      'GrpcMicroserviceTransport is closing. Wait for close() to complete before serverStream().',
+    );
+
+    await closePromise;
+  });
+
+  it('serverStream() supports abort via AbortSignal', async () => {
+    const { transport } = createGrpcTransport();
+    let writerRef: ServerStreamWriter | undefined;
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      writerRef = writer;
+      writer.write({ index: 0 });
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const results: unknown[] = [];
+    let streamError: Error | undefined;
+
+    const iterable = transport.serverStream('MathService.StreamData', { count: 100 }, controller.signal);
+    const iterator = iterable[Symbol.asyncIterator]();
+
+    const firstResult = await iterator.next();
+
+    if (!firstResult.done) {
+      results.push(firstResult.value);
+    }
+
+    controller.abort();
+
+    try {
+      await iterator.next();
+    } catch (error) {
+      streamError = error as Error;
+    }
+
+    expect(results).toEqual([{ index: 0 }]);
+    expect(streamError?.message).toBe('gRPC server stream aborted.');
+
+    void writerRef;
+    await transport.close();
+  });
+
+  it('server-streaming handler end signals completion to async iterator', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      writer.write({ value: 'first' });
+      writer.write({ value: 'second' });
+      writer.end();
+    });
+
+    await transport.listen(async () => undefined);
+
+    const results: unknown[] = [];
+
+    for await (const item of transport.serverStream('MathService.StreamData', {})) {
+      results.push(item);
+    }
+
+    expect(results).toEqual([{ value: 'first' }, { value: 'second' }]);
+
+    await transport.close();
+  });
+
+  it('serverStream() iterator return() cancels the stream', async () => {
+    const { transport } = createGrpcTransport();
+    let writerRef: ServerStreamWriter | undefined;
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      writerRef = writer;
+      writer.write({ value: 'first' });
+      writer.write({ value: 'second' });
+      writer.write({ value: 'third' });
+      writer.end();
+    });
+
+    await transport.listen(async () => undefined);
+
+    const results: unknown[] = [];
+
+    for await (const item of transport.serverStream('MathService.StreamData', {})) {
+      results.push(item);
+
+      if (results.length === 1) {
+        break;
+      }
+    }
+
+    expect(results).toEqual([{ value: 'first' }]);
+
+    void writerRef;
+    await transport.close();
   });
 });

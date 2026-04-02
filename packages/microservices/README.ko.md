@@ -51,13 +51,14 @@ await microservice.listen();
 - `MICROSERVICE` - 런타임 마이크로서비스 서비스를 위한 DI 토큰입니다.
 - `@MessagePattern(pattern)` - 요청/응답 핸들러를 등록합니다.
 - `@EventPattern(pattern)` - 이벤트 핸들러를 등록합니다.
+- `@ServerStreamPattern(pattern)` - gRPC 서버 스트리밍 핸들러를 등록합니다.
 - `TcpMicroserviceTransport` - TCP 트랜스포트 어댑터입니다.
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub 이벤트 전용 트랜스포트 어댑터입니다.
 - `NatsMicroserviceTransport` - NATS 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `KafkaMicroserviceTransport` - Kafka 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RabbitMqMicroserviceTransport` - RabbitMQ 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `RedisStreamsMicroserviceTransport` - Redis Streams 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
-- `GrpcMicroserviceTransport` - gRPC 트랜스포트 어댑터입니다 (unary 요청/응답 + unary 이벤트 규약).
+- `GrpcMicroserviceTransport` - gRPC 트랜스포트 어댑터입니다 (unary 요청/응답 + unary 이벤트 규약 + 서버 스트리밍).
 - `MqttMicroserviceTransport` - MQTT 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 
 ## 런타임 동작
@@ -112,7 +113,7 @@ class PaymentsHandler {
 - `KafkaMicroserviceTransport`는 메시지, 응답, 이벤트 토픽을 분리하고 correlation 기반 라우팅을 사용해 `send()`(요청/응답)와 `emit()`(이벤트)를 모두 지원합니다.
 - `RabbitMqMicroserviceTransport`는 요청/응답 상관관계(request/reply correlation)와 전용 요청/응답 큐를 사용해 `send()`와 `emit()`을 모두 지원합니다.
 - `RedisStreamsMicroserviceTransport`는 Redis Streams의 consumer group을 사용해 안전한 단일 소비자 요청/응답과 이벤트 fan-out을 지원합니다.
-- `GrpcMicroserviceTransport`는 `<Service>.<Method>` 패턴과 metadata kind(`x-konekti-kind`)를 사용해 unary `send()`와 unary `emit()` 규약을 지원합니다.
+- `GrpcMicroserviceTransport`는 `<Service>.<Method>` 패턴과 metadata kind(`x-konekti-kind`)를 사용해 unary `send()`, unary `emit()`, 그리고 서버 스트리밍 `serverStream()`을 지원합니다.
 - `MqttMicroserviceTransport`는 JSON envelope 기반 상관관계(`requestId`, `replyTopic`)와 인스턴스별 reply topic을 사용해 `send()`/`emit()`을 지원합니다.
 
 ### Kafka
@@ -176,12 +177,73 @@ class PaymentsHandler {
 ### gRPC
 
 - `GrpcMicroserviceTransport`는 `@grpc/grpc-js`, `@grpc/proto-loader`를 런타임에 지연 로드합니다. 이 의존성은 optional peer이며 gRPC 트랜스포트를 사용할 때만 필요합니다.
-- 패턴 형식은 반드시 `<Service>.<Method>`여야 하며, 설정된 `packageName` 아래 proto unary 서비스/메서드 이름과 일치해야 합니다.
-- v1은 unary RPC만 지원합니다. streaming 메서드는 의도적으로 등록하지 않습니다.
-- `listen()`은 proto 패키지를 로드하고 unary 핸들러를 등록합니다. bind 단계에서 실패하면 서버 shutdown으로 부분 시작 상태를 롤백합니다.
+- 패턴 형식은 반드시 `<Service>.<Method>`여야 하며, 설정된 `packageName` 아래 proto 서비스/메서드 이름과 일치해야 합니다.
+- `listen()`은 proto 패키지를 로드하고 unary 핸들러와 서버 스트리밍 핸들러를 등록합니다. 클라이언트 스트리밍 및 양방향 스트리밍 메서드는 등록하지 않습니다. bind 단계에서 실패하면 서버 shutdown으로 부분 시작 상태를 롤백합니다.
 - 인바운드 패킷은 metadata 키 `x-konekti-kind`(`message`/`event`)를 사용해 payload 스키마 변경 없이 `TransportPacket.kind`로 매핑됩니다.
 - `send()`는 unary 요청/응답, deadline 기반 timeout, cancel 기반 abort를 지원하며 `close()` 시 pending 요청을 결정적으로 reject합니다.
 - `emit()`은 Konekti 규약으로 구현된 best-effort unary 호출입니다. 응답 payload는 버리지만, 호출 자체의 transport-level 실패는 여전히 표면화됩니다.
+- `serverStream()`은 서버에서 전송하는 각 메시지를 yield하는 `AsyncIterable<unknown>`을 반환합니다. `AbortSignal`을 통한 abort를 지원하며, iterator의 `return()`은 하위 gRPC 호출을 cancel합니다.
+
+#### 서버 스트리밍
+
+서버 스트리밍은 하나의 요청에 대해 gRPC 메서드가 여러 개의 응답 메시지를 보낼 수 있게 합니다. `@ServerStreamPattern`으로 서버 스트리밍 핸들러를 등록하고, 클라이언트 쪽에서 `serverStream()`으로 스트림을 소비합니다.
+
+**서버 측 핸들러:**
+
+```typescript
+import { Module } from '@konekti/core';
+import { KonektiFactory } from '@konekti/runtime';
+import {
+  createMicroservicesModule,
+  ServerStreamPattern,
+  GrpcMicroserviceTransport,
+} from '@konekti/microservices';
+import type { ServerStreamWriter } from '@konekti/microservices';
+
+class MetricsHandler {
+  @ServerStreamPattern('Metrics.StreamCpuUsage')
+  async streamCpu(payload: { intervalMs: number }, writer: ServerStreamWriter) {
+    for (let i = 0; i < 5; i++) {
+      writer.write({ cpu: Math.random() * 100, tick: i });
+    }
+    writer.end();
+  }
+}
+
+const transport = new GrpcMicroserviceTransport({
+  url: '0.0.0.0:50051',
+  packageName: 'monitoring',
+  protoPath: './monitoring.proto',
+});
+
+@Module({
+  imports: [createMicroservicesModule({ transport })],
+  providers: [MetricsHandler],
+})
+class ServerModule {}
+
+const microservice = await KonektiFactory.createMicroservice(ServerModule);
+await microservice.listen();
+```
+
+**클라이언트 측 소비:**
+
+```typescript
+const transport = new GrpcMicroserviceTransport({
+  url: 'localhost:50051',
+  packageName: 'monitoring',
+  protoPath: './monitoring.proto',
+});
+await transport.listen(async () => {});
+
+for await (const message of transport.serverStream('Metrics.StreamCpuUsage', { intervalMs: 1000 })) {
+  console.log('cpu sample:', message);
+}
+```
+
+- 핸들러는 `(payload, writer)`를 받으며, `writer`는 `write(data)`, `end()`, `error(err)` 메서드를 제공합니다.
+- `serverStream()`은 트랜스포트가 listening 상태여야 합니다. 트랜스포트가 종료되었거나 아직 시작되지 않았으면 reject합니다.
+- 클라이언트 스트리밍 및 양방향 스트리밍은 향후 릴리스에서 추가됩니다 (issue #620 참조).
 
 ### MQTT
 

@@ -18,6 +18,7 @@ import type {
   Microservice,
   MicroserviceModuleOptions,
   Pattern,
+  ServerStreamWriter,
   TransportPacket,
 } from './types.js';
 
@@ -83,7 +84,18 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     this.listenPromise = (async () => {
       this.descriptors.length = 0;
       this.descriptors.push(...this.discoverHandlerDescriptors());
-      await this.moduleOptions.transport.listen(async (packet) => this.dispatchPacket(packet));
+
+      const transport = this.moduleOptions.transport;
+
+      if (transport.listenServerStreaming) {
+        transport.listenServerStreaming(
+          async (pattern: string, payload: unknown, writer: ServerStreamWriter) => {
+            await this.dispatchServerStream(pattern, clonePayload(payload), writer);
+          },
+        );
+      }
+
+      await transport.listen(async (packet) => this.dispatchPacket(packet));
       this.listening = true;
     })();
 
@@ -115,6 +127,16 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     await this.moduleOptions.transport.emit(pattern, clonePayload(payload));
   }
 
+  serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
+    const transport = this.moduleOptions.transport;
+
+    if (!transport.serverStream) {
+      throw new Error('The configured transport does not support server streaming. Use a transport that implements serverStream().');
+    }
+
+    return transport.serverStream(pattern, clonePayload(payload), signal);
+  }
+
   private async dispatchPacket(packet: TransportPacket): Promise<unknown> {
     const matches = this.descriptors.filter((descriptor) =>
       descriptor.kind === packet.kind && this.matchesPattern(descriptor.pattern, packet.pattern));
@@ -138,6 +160,63 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
 
     return await this.dispatchEventHandlers(matches, clonePayload(packet.payload));
+  }
+
+  private async dispatchServerStream(pattern: string, payload: unknown, writer: ServerStreamWriter): Promise<void> {
+    const matches = this.descriptors.filter((descriptor) =>
+      descriptor.kind === 'server-stream' && this.matchesPattern(descriptor.pattern, pattern));
+
+    if (matches.length > 1) {
+      const errorMsg = `Multiple server-stream handlers matched pattern "${pattern}": ${matches
+        .map((descriptor) => `${descriptor.targetName}.${descriptor.methodName}`)
+        .join(', ')}.`;
+      writer.error(new Error(errorMsg));
+      return;
+    }
+
+    const first = matches[0];
+
+    if (!first) {
+      writer.error(new Error(`No server-stream handler registered for pattern "${pattern}".`));
+      return;
+    }
+
+    try {
+      await this.invokeServerStreamHandler(first, payload, writer);
+    } catch (error) {
+      this.logger.error(
+        `Server-stream handler ${first.targetName}.${first.methodName} failed.`,
+        error,
+        'MicroserviceLifecycleService',
+      );
+      writer.error(error instanceof Error ? error : new Error('Server-stream handler failed.'));
+    }
+  }
+
+  private async invokeServerStreamHandler(
+    descriptor: HandlerDescriptor,
+    payload: unknown,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    const instance = descriptor.scope === 'singleton'
+      ? await this.resolveSingletonHandlerInstance(descriptor)
+      : await this.runtimeContainer.createRequestScope().resolve(descriptor.token);
+
+    if (!instance) {
+      throw new Error(
+        `Failed to resolve microservice target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+      );
+    }
+
+    const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
+
+    if (typeof value !== 'function') {
+      throw new Error(
+        `Microservice handler ${descriptor.targetName}.${descriptor.methodName} must be a callable function.`,
+      );
+    }
+
+    await Promise.resolve((value as (input: unknown, w: ServerStreamWriter) => unknown).call(instance, payload, writer));
   }
 
   private async dispatchEventHandlers(descriptors: HandlerDescriptor[], payload: unknown): Promise<undefined> {
