@@ -2,55 +2,60 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉토리는 Konekti의 패키지 간 문서 허브입니다.
+이 디렉토리는 Konekti의 패키지 간 문서 허브입니다. 여러 패키지에 걸친 프레임워크 수준 정보를 다룹니다. 패키지별 API와 예제는 `../packages/*/README.ko.md`를 참고하세요.
 
-여러 패키지에 걸친 프레임워크 수준 정보는 이곳을 사용하세요. 패키지별 API와 예제는 `../packages/*/README.ko.md`를 기준으로 보세요.
+## 시작하기
 
-처음 시작한다면 `getting-started/quick-start.ko.md`부터 보세요. 이 문서가 install -> `konekti new` -> `cd` -> `pnpm dev` 표준 경로입니다.
+Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션을 실행해 보세요.
 
-## 목적별 진입점
+- `getting-started/quick-start.ko.md` - **표준 시작 경로**: install -> `new` -> `dev`.
+- `getting-started/bootstrap-paths.ko.md` - 부트스트랩 규칙과 고급 실행 경로.
+- `reference/glossary-and-mental-model.ko.md` - 핵심 용어와 멘탈 모델.
 
-### 빨리 실행해보고 싶다면
+## 주요 작업
 
-- `getting-started/quick-start.ko.md` - 첫 실행을 위한 표준 시작점
-- `getting-started/bootstrap-paths.ko.md` - 부트스트랩 규칙과 보조 경로 참고 문서
-- `getting-started/generator-workflow.ko.md` - 앱이 실행된 뒤 생성 흐름 보기
+애플리케이션 실행 후 일상적인 개발에 필요한 실무 가이드입니다.
 
-### NestJS에서 옮기고 있다면
+- `getting-started/generator-workflow.ko.md` - CLI를 사용한 모듈 및 프로바이더 생성.
+- `operations/testing-guide.ko.md` - 단위 및 통합 테스트 패턴.
+- `operations/deployment.ko.md` - 로컬 개발에서 운영 환경으로의 배포.
+- `concepts/auth-and-jwt.ko.md` - 인증 및 세션 관리 구현.
+- `concepts/openapi.ko.md` - API 명세 작성 및 노출.
 
-- `getting-started/migrate-from-nestjs.ko.md`
-- `operations/nestjs-parity-gaps.ko.md`
+## 패키지
 
-### 아키텍처와 런타임 흐름을 이해하고 싶다면
+Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
+- `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
+- `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.
+- `reference/toolchain-contract-matrix.ko.md` - 에코시스템 버전 관리 및 호환성 매트릭스.
+
+## 마이그레이션
+
+기존 애플리케이션을 Konekti 표준 데코레이터 모델로 옮기기 위한 가이드입니다.
+
+- `getting-started/migrate-from-nestjs.ko.md` - NestJS 개발자를 위한 단계별 가이드.
+- `operations/nestjs-parity-gaps.ko.md` - 알려진 차이점과 해결 방법.
+
+## 레퍼런스
+
+아키텍처, 런타임 동작 및 거버넌스 정책에 대한 심층 문서입니다.
+
+### 아키텍처 및 런타임
 - `concepts/architecture-overview.ko.md`
 - `concepts/dev-reload-architecture.ko.md`
+- `concepts/di-and-modules.ko.md`
+- `concepts/http-runtime.ko.md`
 - `concepts/cqrs.ko.md`
 - `concepts/caching.ko.md`
-- `concepts/http-runtime.ko.md`
-- `concepts/di-and-modules.ko.md`
 - `concepts/lifecycle-and-shutdown.ko.md`
 
-### 인증/검증/OpenAPI 동작이 궁금하다면
-
-- `concepts/auth-and-jwt.ko.md`
+### 동작 및 정책
 - `concepts/decorators-and-metadata.ko.md`
 - `concepts/error-responses.ko.md`
-- `concepts/openapi.ko.md`
-
-### 운영과 릴리스 기준이 필요하다면
-
-- `operations/testing-guide.ko.md`
-- `operations/deployment.ko.md`
 - `operations/release-governance.ko.md`
+- `operations/behavioral-contract-policy.ko.md`
 - `operations/third-party-extension-contract.ko.md`
-
-### 정확한 계약/명명 규칙이 필요하다면
-
-- `reference/package-chooser.ko.md` - 작업 기준으로 패키지 고르기 (만들고 싶은 게 있으면 여기서 시작)
-- `reference/package-surface.ko.md`
-- `reference/toolchain-contract-matrix.ko.md`
-- `reference/glossary-and-mental-model.ko.md`
 
 ## 권한 규칙
 
