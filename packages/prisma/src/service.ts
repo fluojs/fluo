@@ -9,6 +9,7 @@ import {
 import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
+import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import type { PrismaClientLike, PrismaHandleProvider } from './types.js';
 
@@ -42,6 +43,7 @@ export class PrismaService<
   private readonly transactions = new AsyncLocalStorage<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
+  private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
   constructor(
     private readonly client: TClient,
@@ -83,9 +85,13 @@ export class PrismaService<
     if (typeof this.client.$connect === 'function') {
       await this.client.$connect();
     }
+
+    this.lifecycleState = 'ready';
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'shutting-down';
+
     for (const transaction of this.activeRequestTransactions) {
       transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
     }
@@ -95,6 +101,20 @@ export class PrismaService<
     if (typeof this.client.$disconnect === 'function') {
       await this.client.$disconnect();
     }
+
+    this.lifecycleState = 'stopped';
+  }
+
+  createPlatformStatusSnapshot() {
+    return createPrismaPlatformStatusSnapshot({
+      activeRequestTransactions: this.activeRequestTransactions.size,
+      lifecycleState: this.lifecycleState,
+      strictTransactions: this.serviceOptions.strictTransactions,
+      supportsConnect: typeof this.client.$connect === 'function',
+      supportsDisconnect: typeof this.client.$disconnect === 'function',
+      supportsTransaction: typeof this.client.$transaction === 'function',
+      transactionAbortSignalSupport: this.transactionAbortSignalSupport,
+    });
   }
 
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {

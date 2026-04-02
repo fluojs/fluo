@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { Global, Inject, Module } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
-import { createDrizzleModule, createDrizzleModuleAsync, DrizzleDatabase } from './index.js';
+import {
+  createDrizzleModule,
+  createDrizzleModuleAsync,
+  createDrizzlePlatformStatusSnapshot,
+  DrizzleDatabase,
+} from './index.js';
 
 describe('@konekti/drizzle', () => {
   it('exposes current database handles, transaction callbacks, and optional disposal', async () => {
@@ -346,6 +351,49 @@ describe('@konekti/drizzle', () => {
         async () => drizzle.requestTransaction(async () => new Promise<never>(() => undefined), controller.signal),
       ),
     ).rejects.toThrow('nested request aborted');
+  });
+
+  it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
+    const snapshot = createDrizzlePlatformStatusSnapshot({
+      activeRequestTransactions: 2,
+      lifecycleState: 'ready',
+      strictTransactions: false,
+      supportsTransaction: true,
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.details).toMatchObject({
+      activeRequestTransactions: 2,
+      strictTransactions: false,
+      transactionContext: 'als',
+    });
+  });
+
+  it('marks strict transaction mismatch as not-ready', () => {
+    const snapshot = createDrizzlePlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'ready',
+      strictTransactions: true,
+      supportsTransaction: false,
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.readiness.reason).toContain('strictTransactions');
+    expect(snapshot.health.status).toBe('healthy');
+  });
+
+  it('marks shutdown state as not-ready and degraded health', () => {
+    const snapshot = createDrizzlePlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'shutting-down',
+      strictTransactions: false,
+      supportsTransaction: true,
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('degraded');
   });
 });
 

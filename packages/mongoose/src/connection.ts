@@ -10,6 +10,7 @@ import type { OnApplicationShutdown } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
+import { createMongoosePlatformStatusSnapshot } from './status.js';
 import type {
   MongooseConnectionLike,
   MongooseHandleProvider,
@@ -52,6 +53,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 {
   private readonly sessions = new AsyncLocalStorage<MongooseSessionLike>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
+  private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
   constructor(
     private readonly connection: TConnection,
@@ -68,6 +70,8 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'shutting-down';
+
     for (const transaction of this.activeRequestTransactions) {
       transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
     }
@@ -77,6 +81,18 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     if (this.dispose) {
       await this.dispose(this.connection);
     }
+
+    this.lifecycleState = 'stopped';
+  }
+
+  createPlatformStatusSnapshot() {
+    return createMongoosePlatformStatusSnapshot({
+      activeRequestTransactions: this.activeRequestTransactions.size,
+      hasActiveSession: this.sessions.getStore() !== undefined,
+      lifecycleState: this.lifecycleState,
+      strictTransactions: this.connectionOptions.strictTransactions,
+      supportsStartSession: typeof this.connection.startSession === 'function',
+    });
   }
 
   async transaction<T>(fn: () => Promise<T>): Promise<T> {

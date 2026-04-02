@@ -125,6 +125,7 @@ class UsersController {}
 | `createDrizzleModule(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
 | `createDrizzleModuleAsync(options)` | `src/module.ts` | Async variant that resolves module options once and registers the same provider surface |
 | `createDrizzleProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
+| `createDrizzlePlatformStatusSnapshot(input)` | `src/status.ts` | Maps ownership/readiness/health/details to the shared platform snapshot shape |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
 | `DRIZZLE_DATABASE` | `src/tokens.ts` | DI token for the raw Drizzle database handle |
 | `DRIZZLE_DISPOSE` | `src/tokens.ts` | DI token for the optional cleanup hook |
@@ -176,6 +177,15 @@ Separating the cleanup hook from the database value means:
 - `true`: `transaction()` and `requestTransaction()` throw `Transaction not supported...`.
 
 Nested transaction option overrides are rejected while already inside an active transaction context.
+
+## Platform status snapshot semantics
+
+Use `createDrizzlePlatformStatusSnapshot(...)` (or `drizzleDatabase.createPlatformStatusSnapshot()`) to emit ownership/readiness/health data in the shared platform contract shape.
+
+- `ownership`: Drizzle handle ownership is externally supplied (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: strict transaction mode with missing `database.transaction` is explicitly `not-ready`.
+- `health`: shutdown drain is reported as `degraded`; stopped/disposed state is reported as `unhealthy`.
+- `details`: includes ALS transaction-context usage, strict/fallback mode indicators, and active request transaction count.
 
 ## File reading order for contributors
 
