@@ -341,6 +341,28 @@ export class UsersModule {}
 export class AppModule {}
 ```
 
+### 런타임 소유 플랫폼 셸 등록
+
+```typescript
+import type { PlatformComponent } from '@konekti/runtime';
+
+const redisComponent: PlatformComponent = createRedisPlatformComponent();
+const queueComponent: PlatformComponent = createQueuePlatformComponent();
+
+const app = await KonektiFactory.create(AppModule, {
+  platform: {
+    components: [
+      { component: redisComponent, dependencies: [] },
+      { component: queueComponent, dependencies: ['redis.default'] },
+    ],
+  },
+});
+
+await app.listen();
+```
+
+런타임은 컴포넌트 ID/의존성 엣지를 검증하고, 부트스트랩 시 의존성 순서대로 컴포넌트를 시작하며, 종료 시 역순으로 중지합니다. 이제 `listen()`은 이 런타임 소유 플랫폼 셸의 critical readiness를 강제합니다.
+
 ## 주요 API
 
 | 익스포트(Export) | 위치 | 설명 |
@@ -349,7 +371,8 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
-| `PlatformOptionsBase`, `PlatformComponent`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot` | `src/platform-contract.ts` | 런타임, CLI, Studio 정렬 툴링에서 공유하는 플랫폼 계약 spine 타입. |
+| `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | 런타임, CLI, Studio 정렬 툴링에서 공유하는 플랫폼 계약 spine 타입. |
+| `PLATFORM_SHELL` | `src/tokens.ts` | 현재 플랫폼 셸 오케스트레이터와 snapshot/report API를 노출하는 런타임 토큰. |
 | `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | 컴파일된 모듈에서 버전 고정 런타임 진단 그래프 내보내기 |
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | 진단 페이로드에서 모듈 레벨 Mermaid 그래프 텍스트 생성 |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | HTTP 런타임 없이 DI/생명주기 컨텍스트 부트스트랩 |
