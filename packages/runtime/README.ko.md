@@ -349,6 +349,7 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
+| `PlatformOptionsBase`, `PlatformComponent`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot` | `src/platform-contract.ts` | 런타임, CLI, Studio 정렬 툴링에서 공유하는 플랫폼 계약 spine 타입. |
 | `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | 컴파일된 모듈에서 버전 고정 런타임 진단 그래프 내보내기 |
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | 진단 페이로드에서 모듈 레벨 Mermaid 그래프 텍스트 생성 |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | HTTP 런타임 없이 DI/생명주기 컨텍스트 부트스트랩 |
