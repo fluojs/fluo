@@ -113,6 +113,7 @@ For package-level API details, see `packages/*/README.md` in each package direct
 
 ## contributing
 
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup and maintainer workflows.
 - Update `docs/` when cross-package contracts change.
 - Update `packages/*/README*.md` when package API surfaces change.
 - Track future work in GitHub Issues rather than in-repo prose.
