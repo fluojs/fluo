@@ -1,33 +1,14 @@
-interface PlatformReadinessReport {
-  status: 'ready' | 'not-ready' | 'degraded';
-  critical: boolean;
-  reason?: string;
-}
-
-interface PlatformHealthReport {
-  status: 'healthy' | 'unhealthy' | 'degraded';
-  reason?: string;
-}
-
-interface PlatformDiagnosticIssue {
-  code: string;
-  severity: 'error' | 'warning' | 'info';
-  componentId: string;
-  message: string;
-  cause?: string;
-  fixHint?: string;
-  dependsOn?: string[];
-}
-
-interface PlatformOwnership {
-  ownsResources: boolean;
-  externallyManaged: boolean;
-}
+import type {
+  PlatformDiagnosticIssue,
+  PlatformHealthReport,
+  PlatformReadinessReport,
+  PlatformSnapshot,
+} from '@konekti/runtime';
 
 export interface JwtPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
-  ownership: PlatformOwnership;
+  ownership: PlatformSnapshot['ownership'];
   details: Record<string, unknown>;
 }
 

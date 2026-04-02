@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*"
+    "@konekti/di": "workspace:*",
+    "@konekti/runtime": "workspace:*"
   }
 }
