@@ -285,7 +285,12 @@ function collectProvidersForContainer(
         const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
 
         if (policy === 'throw') {
-          throw new DuplicateProviderError(message);
+          throw new DuplicateProviderError(message, {
+            module: compiledModule.type.name,
+            token,
+            phase: 'provider registration',
+            hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
+          });
         }
 
         if (policy === 'warn') {
@@ -954,7 +959,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       runtimeCleanup,
     );
   } catch (error: unknown) {
-    logger.error('Failed to bootstrap application.', error, 'KonektiFactory');
+    logger.error(
+      'Failed to bootstrap application. Check the error below for what failed and how to fix it.',
+      error,
+      'KonektiFactory',
+    );
 
     await runBootstrapFailureCleanup({
       container: bootstrappedContainer,
@@ -1048,7 +1057,11 @@ export class KonektiFactory {
         runtimeCleanup,
       );
     } catch (error: unknown) {
-      logger.error('Failed to bootstrap application context.', error, 'KonektiFactory');
+      logger.error(
+        'Failed to bootstrap application context. Check the error below for what failed and how to fix it.',
+        error,
+        'KonektiFactory',
+      );
 
       await runBootstrapFailureCleanup({
         container: bootstrappedContainer,
@@ -1080,7 +1093,11 @@ export class KonektiFactory {
       return new KonektiMicroserviceApplication(context, logger, runtime);
     } catch (error) {
       await context.close('bootstrap-failed');
-      logger.error('Failed to bootstrap microservice context.', error, 'KonektiFactory');
+      logger.error(
+        'Failed to bootstrap microservice context. Check the error below for what failed and how to fix it.',
+        error,
+        'KonektiFactory',
+      );
       throw error;
     }
   }

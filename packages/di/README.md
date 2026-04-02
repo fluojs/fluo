@@ -117,6 +117,22 @@ factory → resolve inject deps, then call useFactory(...deps)
 class   → resolve inject deps, then call new useClass(...deps)
 ```
 
+### Recovery-oriented error output
+
+Every DI error includes structured context to help diagnose failures without reading source code. When a resolution, scope, or registration error occurs, the error message appends:
+
+- **Token** — the token that failed to resolve or was misconfigured
+- **Scope** — the scope context where the failure occurred (e.g. `singleton`, `request`)
+- **Hint** — a plain-language recovery action (e.g. "Register a provider for this token" or "Use container.createRequestScope()")
+
+Errors also carry a machine-readable `meta` object with the same fields, suitable for structured logging or monitoring. Example:
+
+```text
+ContainerResolutionError: No provider registered for token UserService.
+  Token: UserService
+  Hint: Register a provider for this token using container.register(), or check that the owning module exports it and is imported by the consuming module.
+```
+
 ## File reading order for contributors
 
 1. `packages/core/src/decorators.ts` — `@Inject()` and `@Scope()` decorator definitions

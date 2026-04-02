@@ -107,6 +107,11 @@ function validateClassInjectionMetadata(
 
   throw new ModuleInjectionMetadataError(
     `${subject} in ${scope} declares ${required} constructor ${parameterWord} but only ${configured} injection ${tokenWord} configured. Add ${remedy} for constructor parameter #${missingIndex}.`,
+    {
+      module: scope,
+      phase: 'injection metadata validation',
+      hint: `Ensure ${subject} has a matching @Inject([...]) decorator or provider.inject array that covers all ${required} constructor parameters.`,
+    },
   );
 }
 
@@ -180,7 +185,14 @@ function compileModule(
   }
 
   if (visiting.has(moduleType)) {
-    throw new ModuleGraphError(`Circular module import detected for ${moduleType.name}.`);
+    throw new ModuleGraphError(
+      `Circular module import detected for ${moduleType.name}.`,
+      {
+        module: moduleType.name,
+        phase: 'module graph compilation',
+        hint: 'Break the import cycle by extracting shared providers into a separate module that both sides can import independently.',
+      },
+    );
   }
 
   visiting.add(moduleType);
@@ -215,7 +227,14 @@ function resolveImportedModules(
     const importedModule = compiledByType.get(imported);
 
     if (!importedModule) {
-      throw new ModuleGraphError(`Imported module ${imported.name} was not compiled.`);
+      throw new ModuleGraphError(
+        `Imported module ${imported.name} was not compiled.`,
+        {
+          module: imported.name,
+          phase: 'module graph validation',
+          hint: `Ensure ${imported.name} is decorated with @Module() and included in the imports array of a compiled module.`,
+        },
+      );
     }
 
     return importedModule;
@@ -258,6 +277,12 @@ function validateProviderVisibility(
           `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
             token,
           )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          {
+            module: compiledModule.type.name,
+            token,
+            phase: 'provider visibility validation',
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global() to make its exports universally visible.`,
+          },
         );
       }
     }
@@ -280,6 +305,12 @@ function validateControllerVisibility(
           `Controller ${controller.name} in module ${compiledModule.type.name} cannot access token ${String(
             token,
           )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          {
+            module: compiledModule.type.name,
+            token,
+            phase: 'controller visibility validation',
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global().`,
+          },
         );
       }
     }
@@ -298,6 +329,12 @@ function createExportedTokenSet(
         `Module ${compiledModule.type.name} cannot export token ${String(
           token,
         )} because it is neither local nor re-exported from an imported module.`,
+        {
+          module: compiledModule.type.name,
+          token,
+          phase: 'export validation',
+          hint: `Either add a provider for ${String(token)} to ${compiledModule.type.name}'s providers array, or import a module that exports ${String(token)} so it can be re-exported.`,
+        },
       );
     }
 

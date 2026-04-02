@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Inject, Scope as ScopeDecorator } from '@konekti/core';
 
 import { Container } from './container.js';
-import { CircularDependencyError, DuplicateProviderError, ScopeMismatchError } from './errors.js';
+import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
 import { Scope, forwardRef, optional } from './types.js';
 
 describe('Container', () => {
@@ -983,5 +983,133 @@ describe('Container', () => {
 
       expect(events.filter((e) => e === 'plugin-a')).toHaveLength(1);
     });
+  });
+});
+
+describe('Recovery-oriented error context', () => {
+  it('ContainerResolutionError for missing provider includes token name and hint', async () => {
+    const TOKEN = Symbol('MissingService');
+    const container = new Container();
+
+    const error = await container.resolve(TOKEN).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ContainerResolutionError);
+    const message = (error as ContainerResolutionError).message;
+    expect(message).toContain('MissingService');
+    expect(message).toContain('Hint:');
+    expect(message).toContain('provider');
+  });
+
+  it('ContainerResolutionError for disposed container includes hint', async () => {
+    const container = new Container();
+    await container.dispose();
+
+    const error = await container.resolve(Symbol('any')).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ContainerResolutionError);
+    expect((error as ContainerResolutionError).message).toContain('Hint:');
+  });
+
+  it('RequestScopeResolutionError includes token name and hint about createRequestScope', async () => {
+    class RequestService {}
+
+    const root = new Container().register({
+      provide: RequestService,
+      scope: 'request',
+      useClass: RequestService,
+    });
+
+    const error = await root.resolve(RequestService).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(RequestScopeResolutionError);
+    const message = (error as RequestScopeResolutionError).message;
+    expect(message).toContain('RequestService');
+    expect(message).toContain('Hint:');
+    expect(message).toContain('createRequestScope');
+  });
+
+  it('ScopeMismatchError includes token names and hint when singleton depends on request-scoped', async () => {
+    class RequestDep {}
+    class SingletonService {
+      constructor(readonly dep: RequestDep) {}
+    }
+
+    const container = new Container().register(
+      { provide: RequestDep, scope: 'request', useClass: RequestDep },
+      { provide: SingletonService, useClass: SingletonService, inject: [RequestDep] },
+    );
+
+    const error = await container.resolve(SingletonService).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScopeMismatchError);
+    const message = (error as ScopeMismatchError).message;
+    expect(message).toContain('SingletonService');
+    expect(message).toContain('RequestDep');
+    expect(message).toContain('Hint:');
+  });
+
+  it('ScopeMismatchError includes hint when registering singleton on request scope', () => {
+    const token = Symbol('singleton-token');
+    const root = new Container();
+    const requestScope = root.createRequestScope();
+
+    try {
+      requestScope.register({ provide: token, useValue: 'value' });
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ScopeMismatchError);
+      expect((error as ScopeMismatchError).message).toContain('Hint:');
+      expect((error as ScopeMismatchError).message).toContain('root container');
+    }
+  });
+
+  it('DuplicateProviderError includes token name and hint', () => {
+    class MyService {}
+
+    try {
+      new Container().register(MyService, MyService);
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DuplicateProviderError);
+      const message = (error as DuplicateProviderError).message;
+      expect(message).toContain('MyService');
+      expect(message).toContain('Hint:');
+      expect(message).toContain('override');
+    }
+  });
+
+  it('CircularDependencyError includes dependency chain and hint', async () => {
+    class ServiceA {
+      constructor(public b: ServiceB) {}
+    }
+
+    class ServiceB {
+      constructor(public a: ServiceA) {}
+    }
+
+    const container = new Container().register(
+      { provide: ServiceA, useClass: ServiceA, inject: [ServiceB] },
+      { provide: ServiceB, useClass: ServiceB, inject: [ServiceA] },
+    );
+
+    const error = await container.resolve(ServiceA).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CircularDependencyError);
+    const message = (error as CircularDependencyError).message;
+    expect(message).toContain('Dependency chain:');
+    expect(message).toContain('Hint:');
+    expect(message).toContain('forwardRef');
+  });
+
+  it('error meta includes machine-readable token for ContainerResolutionError', async () => {
+    const TOKEN = Symbol('MyToken');
+    const container = new Container();
+
+    const error = await container.resolve(TOKEN).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ContainerResolutionError);
+    expect((error as ContainerResolutionError).meta).toBeDefined();
+    expect((error as ContainerResolutionError).meta!['token']).toContain('MyToken');
+    expect((error as ContainerResolutionError).meta!['hint']).toBeDefined();
   });
 });
