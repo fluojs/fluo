@@ -198,10 +198,40 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     payload: unknown,
     writer: ServerStreamWriter,
   ): Promise<void> {
-    const instance = descriptor.scope === 'singleton'
-      ? await this.resolveSingletonHandlerInstance(descriptor)
-      : await this.runtimeContainer.createRequestScope().resolve(descriptor.token);
+    if (descriptor.scope === 'singleton') {
+      return await this.invokeResolvedServerStreamHandler(
+        await this.resolveSingletonHandlerInstance(descriptor),
+        descriptor,
+        payload,
+        writer,
+      );
+    }
 
+    const streamScope = this.runtimeContainer.createRequestScope();
+
+    try {
+      const instance = await streamScope.resolve(descriptor.token);
+
+      await this.invokeResolvedServerStreamHandler(instance, descriptor, payload, writer);
+    } finally {
+      try {
+        await streamScope.dispose();
+      } catch (error) {
+        this.logger.error(
+          `Failed to dispose microservice server-stream scope for ${descriptor.targetName}.${descriptor.methodName}.`,
+          error,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+  }
+
+  private async invokeResolvedServerStreamHandler(
+    instance: unknown | undefined,
+    descriptor: HandlerDescriptor,
+    payload: unknown,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
     if (!instance) {
       throw new Error(
         `Failed to resolve microservice target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
