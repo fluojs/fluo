@@ -204,7 +204,9 @@ assertCheck(
 assertCheck(
   checks,
   'Starter shape and runtime ownership',
-  scaffoldSource.includes('runNodeApplication') &&
+  scaffoldSource.includes("const app = await KonektiFactory.create(AppModule, {});") &&
+    scaffoldSource.includes('await app.listen();') &&
+    scaffoldSource.includes('KonektiFactory.create(..., { cors })') &&
     scaffoldSource.includes('createHealthModule') &&
     scaffoldSource.includes("@Controller('/health-info')") &&
     !scaffoldSource.includes('MetricsModule.forRoot') &&

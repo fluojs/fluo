@@ -12,6 +12,9 @@
 | 생성된 앱의 `vitest.config.ts` | `generated (stable)` | Node 테스트 환경, `src/**/*.test.ts`, Konekti 데코레이터 플러그인 사용 |
 | Generated dev dependencies | `public contract` | `@babel/cli ^7.26.4`, `@babel/core ^7.26.10`, `@babel/plugin-proposal-decorators ^7.28.0`, `@babel/preset-typescript ^7.27.1`, `@types/babel__core ^7.20.5`, `@types/node ^22.13.10`, `tsx ^4.20.4`, `typescript ^5.8.2`, `vite ^6.2.1`, `vitest ^3.0.8` |
 | Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` 등 현재의 단일 앱 명령 형태 유지 |
+| Generated starter bootstrap entry (`src/main.ts`) | `public contract` | `const app = await KonektiFactory.create(AppModule, {}); await app.listen();` |
+| Generated starter route ownership | `public contract` | 런타임 소유 `/health` + `/ready`와 스타터 소유 `/health-info/` |
+| Generated starter testing templates | `public contract` | `src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts` |
 | `@konekti/cli` prompt flow | `public contract` | 정식 경로는 `pnpm add -g @konekti/cli` 후 `konekti new` |
 | Workspace root TypeScript / Vite / Vitest wiring | `internal-only` | 패키지 개발을 위한 루트 레포 설정 파일이며 생성된 앱으로 복사되지 않음 |
 | Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*`는 릴리스 준비도 검증만을 위한 테스트 지원용임 |

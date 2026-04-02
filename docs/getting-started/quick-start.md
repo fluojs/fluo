@@ -22,7 +22,7 @@ cd starter-app
 pnpm dev
 ```
 
-This is the primary public onboarding path. Use the commands above for the first run unless you specifically want a one-off no-install bootstrap.
+This is the canonical public bootstrap flow and the primary public onboarding path. Use the commands above for the first run unless you specifically want a one-off no-install bootstrap.
 
 For a one-time execution without a global installation, `dlx` remains supported as a secondary path:
 

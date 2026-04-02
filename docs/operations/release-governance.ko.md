@@ -37,6 +37,7 @@
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serialization`
+- `@konekti/cache-manager`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`
@@ -50,6 +51,7 @@
 - `@konekti/terminus`
 - `@konekti/testing`
 - `@konekti/cli`
+- `@konekti/studio`
 
 ## 지원 및 승격 정책 (support and promotion policy)
 

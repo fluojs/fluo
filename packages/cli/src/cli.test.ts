@@ -607,6 +607,11 @@ describe('CLI command runner', () => {
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
 
+    const readmeContent = readFileSync(join(projectDirectory, 'README.md'), 'utf8');
+    const mainContent = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
+    const appTestContent = readFileSync(join(projectDirectory, 'src', 'app.test.ts'), 'utf8');
+    const appE2eTestContent = readFileSync(join(projectDirectory, 'src', 'app.e2e.test.ts'), 'utf8');
+
     expect(exitCode).toBe(0);
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/runtime');
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/prisma');
@@ -616,9 +621,24 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
     expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.response.dto.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
+    expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
+    expect(readmeContent).toContain('KonektiFactory.create(..., { cors })');
+    expect(readmeContent).not.toContain('runNodeApplication');
+    expect(mainContent).toContain('const app = await KonektiFactory.create(AppModule, {});');
+    expect(mainContent).toContain('await app.listen();');
+    expect(appTestContent).toContain("createRequest('/health')");
+    expect(appTestContent).toContain("createRequest('/ready')");
+    expect(appTestContent).toContain("createRequest('/health-info/')");
+    expect(appE2eTestContent).toContain("path: '/health'");
+    expect(appE2eTestContent).toContain("path: '/ready'");
+    expect(appE2eTestContent).toContain("path: '/health-info/'");
 
     run('pnpm', ['typecheck'], projectDirectory);
     run('pnpm', ['build'], projectDirectory);

@@ -23,6 +23,8 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
 
+That stable starter shape includes `src/main.ts` using `const app = await KonektiFactory.create(AppModule, {}); await app.listen();`, runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`).
+
 ## Installation
 
 ```bash

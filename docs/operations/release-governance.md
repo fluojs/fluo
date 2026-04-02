@@ -38,6 +38,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/openapi`
 - `@konekti/graphql`
 - `@konekti/serialization`
+- `@konekti/cache-manager`
 - `@konekti/metrics`
 - `@konekti/cron`
 - `@konekti/cqrs`
@@ -51,6 +52,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/terminus`
 - `@konekti/testing`
 - `@konekti/cli`
+- `@konekti/studio`
 
 ## support and promotion policy
 
