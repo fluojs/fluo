@@ -564,15 +564,66 @@ const moduleRef = await createTestingModule({ rootModule: AppModule })
 const service = await moduleRef.resolve(UserService);
 ```
 
-## 마이그레이션 체크리스트
+## 포스트 코드모드 체크리스트
 
-- 모듈 선언(`@Module`)을 먼저 옮기고 경계를 명시적으로 유지
-- `@Injectable()` 의존을 줄이고 provider 등록 중심으로 정리
-- 필요한 클래스에 `@Inject([...])` 토큰 목록 명시
-- 가드/인터셉터를 `@UseGuards`/`@UseInterceptors`로 이전
-- Nest pipe 기반 검증을 `@RequestDto` + `@konekti/validation` 패키지로 이전
-- 부트스트랩을 `KonektiFactory.create(..., { adapter? })` 중심으로 전환하고, `runNodeApplication(...)` / `bootstrapApplication(...)`은 호환·저수준 경로로 유지
-- 테스트를 `createTestingModule(...)` + provider override 패턴으로 전환
+`konekti migrate` 실행 후 CLI 출력은 경고를 카테고리별로 그룹화합니다. 이 체크리스트를 사용하여 각 항목을 처리하세요. ✅ 표시된 항목은 코드모드가 자동으로 처리하며, 나머지는 수동 후속 작업이 필요합니다.
+
+### 코드모드가 자동 처리 (별도 작업 불필요)
+
+- ✅ import 재작성 (`@nestjs/common` → `@konekti/core` / `@konekti/http`)
+- ✅ `@Injectable()` 제거
+- ✅ scope enum 매핑 (`Scope.REQUEST` → `@Scope('request')`)
+- ✅ 안전한 기본 형태의 bootstrap 재작성 (`NestFactory.create` → `KonektiFactory.create`)
+- ✅ 안전한 metadata의 testing 재작성 (`Test.createTestingModule` → `createTestingModule`)
+- ✅ `tsconfig.json` 레거시 플래그 제거 (`experimentalDecorators`, `emitDecoratorMetadata`)
+
+### 경고 카테고리별 수동 후속 작업
+
+아래 각 카테고리는 `konekti migrate` 출력의 경고 그룹에 대응합니다. 코드모드 완료 후 순서대로 처리하세요.
+
+#### DI 토큰 마이그레이션 (`@Inject`)
+
+- CLI 경고 카테고리: **DI token migration (@Inject)**
+- 생성자 `@Inject(TOKEN)` 파라미터 데코레이터를 클래스 수준 `@Inject([TOKEN])`으로 전환해야 합니다.
+- [섹션 2: `@Inject(TOKEN)` → 명시적 토큰 목록](#injecttoken---명시적-토큰-목록)의 before/after 패턴을 참고하세요.
+
+#### Request DTO 마이그레이션 (핸들러 파라미터 데코레이터)
+
+- CLI 경고 카테고리: **Request DTO migration (handler parameter decorators)**
+- 핸들러 파라미터 데코레이터(`@Body()`, `@Param()`, `@Query()`)를 `@RequestDto` + DTO 필드 데코레이터 전환 관점에서 검토해야 합니다.
+- [섹션 4.5: pipe 대신 요청 변환](#45-pipe-대신-요청-변환)의 Konekti DTO 바인딩 패턴을 참고하세요.
+
+#### Pipe/converter 마이그레이션
+
+- CLI 경고 카테고리: **Pipe/converter migration**
+- `@UsePipes()`, `ValidationPipe`, `Parse*Pipe` 사용을 Konekti converter + `@RequestDto` 검증으로 수동 전환해야 합니다.
+- Konekti는 별도의 `@UsePipes()` 데코레이터 대신 HTTP 바인딩 계층(`@Convert(...)`, global `converters` 옵션)에서 요청 변환을 처리합니다.
+
+#### 지원하지 않는 bootstrap 변형
+
+- CLI 경고 카테고리: **Unsupported bootstrap variant**
+- 타입 인자(`NestFactory.create<NestExpressApplication>(...)`)나 어댑터 전용 생성자를 사용하는 bootstrap 형태는 자동 재작성되지 않습니다.
+- `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })`를 명시적 어댑터 경로로 사용하세요.
+- [섹션 4: bootstrap 경로](#4-bootstrap-경로)에서 지원하는 모든 Konekti bootstrap 형태를 확인하세요.
+
+#### 지원하지 않는 testing 패턴
+
+- CLI 경고 카테고리: **Unsupported testing pattern**
+- 지원 범위를 벗어나는 메서드(예: `.useMocker()`)나 비표준 metadata 형태를 사용하는 testing builder chain은 자동 재작성되지 않습니다.
+- `@konekti/testing`의 `createTestingModule({ rootModule })`를 사용하여 수동으로 재작성하세요.
+- [섹션 8: testing](#8-testing)의 Konekti 테스팅 패턴을 참고하세요.
+
+#### Bootstrap 포트 접기 문제
+
+- CLI 경고 카테고리: **Bootstrap port folding issue**
+- 코드모드가 `listen(port)` 인자를 `KonektiFactory.create` 옵션으로 옮기지 못했습니다(예: 옵션 객체에 이미 `port` 속성이 있는 경우).
+- bootstrap 파일을 수동으로 확인하고 `create()` 옵션에 port가 전달되도록 하세요.
+
+#### 기타 경고
+
+- **Unsupported import form**: 코드모드가 재작성할 수 없는 비명명 `@nestjs/common` import입니다. 수동으로 재작성하세요.
+- **@Injectable options removed**: `scope` 이외의 `@Injectable()` 옵션이 제거되었습니다. 동작을 수동으로 확인하세요.
+- **tsconfig parse failure**: 코드모드가 `tsconfig.json`을 파싱하지 못했습니다. 레거시 플래그를 수동으로 제거하세요.
 
 ## 관련 문서
 

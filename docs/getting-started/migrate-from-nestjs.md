@@ -564,15 +564,66 @@ const moduleRef = await createTestingModule({ rootModule: AppModule })
 const service = await moduleRef.resolve(UserService);
 ```
 
-## migration checklist
+## post-codemod checklist
 
-- move module declarations first (`@Module`) and keep boundaries explicit
-- replace `@Injectable()` usage with provider registration in module metadata
-- convert DI metadata to explicit `@Inject([...])` token lists where needed
-- migrate guards/interceptors with `@UseGuards` and `@UseInterceptors`
-- move validation from Nest pipes to `@RequestDto` + the `@konekti/validation` package
-- switch bootstrap to `KonektiFactory.create(..., { adapter? })` and keep `runNodeApplication(...)` / `bootstrapApplication(...)` as compatibility or low-level paths
-- migrate tests to `createTestingModule(...)` and provider overrides
+After running `konekti migrate`, the CLI output groups warnings by category. Use this checklist to address each one. Items marked with ✅ are handled automatically by the codemod; the rest require manual follow-up.
+
+### automated by codemod (no action needed)
+
+- ✅ Import rewriting (`@nestjs/common` → `@konekti/core` / `@konekti/http`)
+- ✅ `@Injectable()` removal
+- ✅ Scope enum mapping (`Scope.REQUEST` → `@Scope('request')`)
+- ✅ Bootstrap rewrite for safe default forms (`NestFactory.create` → `KonektiFactory.create`)
+- ✅ Testing rewrite for safe metadata (`Test.createTestingModule` → `createTestingModule`)
+- ✅ `tsconfig.json` legacy flag removal (`experimentalDecorators`, `emitDecoratorMetadata`)
+
+### manual follow-up by warning category
+
+Each category below maps to a warning group in the `konekti migrate` output. Address them in order after the codemod completes.
+
+#### DI token migration (`@Inject`)
+
+- CLI warning category: **DI token migration (@Inject)**
+- Constructor `@Inject(TOKEN)` parameter decorators must be migrated to class-level `@Inject([TOKEN])`.
+- See [section 2: `@Inject(TOKEN)` → explicit token list](#injecttoken---explicit-token-list) for the before/after pattern.
+
+#### Request DTO migration (handler parameter decorators)
+
+- CLI warning category: **Request DTO migration (handler parameter decorators)**
+- Handler parameter decorators (`@Body()`, `@Param()`, `@Query()`) should be reviewed for `@RequestDto` + DTO field decorator migration.
+- See [section 4.5: request conversion instead of pipes](#45-request-conversion-instead-of-pipes) for the Konekti DTO binding pattern.
+
+#### Pipe/converter migration
+
+- CLI warning category: **Pipe/converter migration**
+- `@UsePipes()`, `ValidationPipe`, and `Parse*Pipe` usages need manual conversion to Konekti converters + `@RequestDto` validation.
+- Konekti keeps request conversion in the HTTP binding layer (`@Convert(...)`, global `converters` option) instead of a separate `@UsePipes()` decorator.
+
+#### Unsupported bootstrap variant
+
+- CLI warning category: **Unsupported bootstrap variant**
+- Bootstrap forms using type arguments (`NestFactory.create<NestExpressApplication>(...)`) or adapter-specific constructors are not auto-rewritten.
+- Use `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` as the explicit adapter path.
+- See [section 4: bootstrap path](#4-bootstrap-path) for all supported Konekti bootstrap forms.
+
+#### Unsupported testing pattern
+
+- CLI warning category: **Unsupported testing pattern**
+- Testing builder chains with methods beyond the supported set (e.g., `.useMocker()`) or non-standard metadata shapes are not auto-rewritten.
+- Rewrite these tests manually using `createTestingModule({ rootModule })` from `@konekti/testing`.
+- See [section 8: testing](#8-testing) for the Konekti testing pattern.
+
+#### Bootstrap port folding issue
+
+- CLI warning category: **Bootstrap port folding issue**
+- The codemod could not move the `listen(port)` argument into `KonektiFactory.create` options (e.g., because the options object already has a `port` property).
+- Review the bootstrap file manually and ensure port is passed in the `create()` options.
+
+#### Other warnings
+
+- **Unsupported import form**: a non-named `@nestjs/common` import that the codemod cannot rewrite. Rewrite it manually.
+- **@Injectable options removed**: `@Injectable()` options other than `scope` were dropped. Verify behavior manually.
+- **tsconfig parse failure**: the codemod could not parse `tsconfig.json`. Rewrite legacy flags manually.
 
 ## related docs
 
