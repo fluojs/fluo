@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 
 import type { GenerateOptions, GeneratorKind } from '../types.js';
-import type { ModuleArrayKey } from '../generators/manifest.js';
+import type { GeneratorManifestEntry, ModuleArrayKey } from '../generators/manifest.js';
 import { findGeneratorDefinition } from '../generators/manifest.js';
 
 import { ensureModuleImport, generateModuleFiles, registerInModule } from '../generators/module.js';
@@ -97,7 +97,15 @@ function prepareModuleUpdate(
   };
 }
 
-export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirectory: string, options: GenerateOptions = {}): string[] {
+export type GenerateResult = {
+  generatedFiles: string[];
+  moduleRegistered: boolean;
+  modulePath: string | undefined;
+  nextStepHint: string;
+  wiringBehavior: GeneratorManifestEntry['wiringBehavior'];
+};
+
+export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirectory: string, options: GenerateOptions = {}): GenerateResult {
   const normalizedName = name.trim();
   const kebab = assertValidResourceName(normalizedName);
   const generator = findGeneratorDefinition(kind);
@@ -124,12 +132,26 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
     return writeFileIfChanged(filePath, file.content) ? filePath : null;
   }).filter((filePath): filePath is string => filePath !== null);
 
+  let moduleRegistered = false;
+  let resolvedModulePath: string | undefined;
+
   if (moduleUpdate && writeFileIfChanged(moduleUpdate.modulePath, moduleUpdate.source)) {
+    moduleRegistered = true;
+    resolvedModulePath = moduleUpdate.modulePath;
 
     if (!writtenPaths.includes(moduleUpdate.modulePath)) {
       writtenPaths.push(moduleUpdate.modulePath);
     }
+  } else if (moduleUpdate) {
+    moduleRegistered = true;
+    resolvedModulePath = moduleUpdate.modulePath;
   }
 
-  return writtenPaths;
+  return {
+    generatedFiles: writtenPaths,
+    moduleRegistered: moduleRegistered,
+    modulePath: resolvedModulePath,
+    nextStepHint: generator.nextStepHint,
+    wiringBehavior: generator.wiringBehavior,
+  };
 }

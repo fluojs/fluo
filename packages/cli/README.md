@@ -77,6 +77,11 @@ Implemented generator kinds include `controller`, `guard`, `interceptor`, `middl
 
 Each generator produces one or more files with correctly kebab-cased names and PascalCase class names.
 
+After generation, the CLI output includes:
+- A `CREATE` line for each written file.
+- A **Wiring** status line: `auto-registered` (the class was added to the domain module) or `files only` (manual registration required).
+- A **Next steps** hint with the recommended follow-up action for that specific generator kind.
+
 ### Run NestJS migration codemods
 
 ```bash

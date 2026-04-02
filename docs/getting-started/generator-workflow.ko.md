@@ -13,24 +13,36 @@ konekti g <schematic> <name>
 
 ## 사용 가능한 스키매틱
 
-| 스키매틱 | 별칭 (Alias) |
-| --- | --- |
-| `controller` | `co` |
-| `guard` | `gu` |
-| `interceptor` | `in` |
-| `middleware` | `mi` |
-| `module` | `mo` |
-| `repository` | `repo` |
-| `request-dto` | `req` |
-| `response-dto` | `res` |
-| `service` | `s` |
+| 스키매틱 | 별칭 (Alias) | 와이어링 |
+| --- | --- | --- |
+| `controller` | `co` | auto |
+| `guard` | `gu` | auto |
+| `interceptor` | `in` | auto |
+| `middleware` | `mi` | auto |
+| `module` | `mo` | manual |
+| `repository` | `repo` | auto |
+| `request-dto` | `req` | manual |
+| `response-dto` | `res` | manual |
+| `service` | `s` | auto |
+
+### 와이어링 동작 (wiring behavior)
+
+생성기는 두 가지 와이어링 동작 중 하나를 따릅니다:
+
+- **auto** — 생성된 클래스가 도메인 모듈에 자동 등록됩니다. 모듈 파일이 아직 없으면 CLI가 새로 생성합니다. 모듈의 `controllers`, `providers`, 또는 `middleware` 배열이 자동으로 업데이트됩니다.
+- **manual** — 파일만 생성됩니다. 생성된 클래스는 어디에도 자동 등록되지 않습니다. 모듈이나 컨트롤러에 직접 연결해야 합니다. CLI는 생성 후 구체적인 다음 단계 힌트를 출력합니다.
+
+생성기를 실행하면 CLI 출력에 다음이 포함됩니다:
+1. 생성된 각 파일에 대한 `CREATE` 라인.
+2. 클래스가 자동 등록되었는지 수동 와이어링이 필요한지를 나타내는 **Wiring** 상태 라인.
+3. 권장 후속 작업(예: `pnpm typecheck` 실행, DTO import 등)이 포함된 **Next steps** 힌트.
 
 ## 생성 규칙
 
 - **언어**: 모든 파일은 TypeScript로 생성됩니다.
 - **명명**: 파일명은 kebab-case를, 클래스명은 PascalCase를 사용합니다.
 - **위치**: 스타터 애플리케이션에서 파일은 기본적으로 `src/` 디렉토리에 작성됩니다.
-- **모듈 업데이트**: 생성기는 새 컴포넌트를 적절한 모듈에 자동으로 등록합니다.
+- **모듈 업데이트**: `auto` 와이어링을 가진 생성기는 새 컴포넌트를 적절한 모듈에 자동 등록합니다. `manual` 와이어링을 가진 생성기는 파일만 생성하며, 직접 연결해야 합니다.
 
 ### 예시 출력
 

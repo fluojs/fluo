@@ -51,6 +51,7 @@ type GenerateKindHelpEntry = {
   description: string;
   kind: GeneratorKind;
   schematic: string;
+  wiring: string;
 };
 
 type GenerateOptionHelpEntry = {
@@ -71,6 +72,7 @@ const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
     description: entry.description,
     kind: entry.kind,
     schematic: entry.schematic,
+    wiring: entry.wiringBehavior === 'auto-registered' ? 'auto' : 'manual',
   })),
 ];
 
@@ -104,8 +106,12 @@ function generateUsage(): string {
     renderHelpTable(GENERATE_KIND_HELP, [
       { header: 'Schematic', render: (entry) => entry.schematic },
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
+      { header: 'Wiring', render: (entry) => entry.wiring },
       { header: 'Description', render: (entry) => entry.description },
     ]),
+    '',
+    '  auto   = class is auto-registered in the domain module (created if absent)',
+    '  manual = files only; you must wire the generated class into a module yourself',
     '',
     'Options',
     renderHelpTable(GENERATE_OPTION_HELP, [
@@ -116,6 +122,7 @@ function generateUsage(): string {
     '',
     'Next steps:',
     '  Run \'pnpm typecheck\' to verify the generated module wiring.',
+    '  Run \'pnpm test\' to execute the generated test templates.',
     '',
     'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/generator-workflow.md',
   ].join('\n');
@@ -330,12 +337,22 @@ export async function runCli(
 
     const targetDirectory = resolve(cwd, parsedCommand.parsed.targetDirectory ?? resolveDefaultTargetDirectory(cwd));
 
-    const files = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, parsedCommand.parsed.options);
+    const result = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, parsedCommand.parsed.options);
 
-    stdout.write(`Generated ${files.length} file(s):\n`);
-    for (const file of files) {
-      stdout.write(`- ${file}\n`);
+    stdout.write(`Generated ${result.generatedFiles.length} file(s):\n`);
+    for (const file of result.generatedFiles) {
+      stdout.write(`  CREATE ${file}\n`);
     }
+
+    stdout.write('\n');
+
+    if (result.wiringBehavior === 'auto-registered' && result.moduleRegistered) {
+      stdout.write(`Wiring: auto-registered in ${result.modulePath ?? 'module'}\n`);
+    } else if (result.wiringBehavior === 'files-only') {
+      stdout.write('Wiring: files only — manual registration required (see next steps)\n');
+    }
+
+    stdout.write(`\nNext steps:\n  ${result.nextStepHint}\n`);
 
     return 0;
   } catch (error: unknown) {

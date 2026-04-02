@@ -290,7 +290,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
-    expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Description\s+\|/);
+    expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Wiring\s+\| Description\s+\|/);
 
     for (const entry of generatorManifest) {
       expect(stdoutBuffer.join('')).toContain(entry.schematic);
@@ -1073,6 +1073,77 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(1);
     expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
+  });
+
+  it('generate output includes CREATE prefix, wiring status, and next-step hint for auto-registered kinds', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'service', 'Post'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('CREATE');
+    expect(output).toContain('Wiring: auto-registered in');
+    expect(output).toContain('Next steps:');
+    expect(output).toContain('pnpm typecheck');
+  });
+
+  it('generate output shows files-only wiring and manual hint for non-registered kinds', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'request-dto', 'CreateUser'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('CREATE');
+    expect(output).toContain('Wiring: files only');
+    expect(output).toContain('manual registration required');
+    expect(output).toContain('Next steps:');
+  });
+
+  it('generate help includes Wiring column with auto and manual labels', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['generate', '--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('| Wiring');
+    expect(output).toContain('auto');
+    expect(output).toContain('manual');
+    expect(output).toContain('auto   = class is auto-registered in the domain module');
+    expect(output).toContain('manual = files only');
   });
 
   it('prints migrate usage for `help migrate`', async () => {
