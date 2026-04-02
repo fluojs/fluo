@@ -118,6 +118,8 @@ class AppModule {}
 
 - `createCacheModule(options)` — registers cache providers (default `isGlobal: false`).
 - `createCacheProviders(options)` — returns providers for manual composition.
+- `createCacheManagerPlatformStatusSnapshot(input)` — maps cache store kind/ownership/readiness into shared platform snapshot shape.
+- `createCacheManagerPlatformDiagnosticIssues(input)` — emits shared `PlatformDiagnosticIssue` entries for cache store readiness failures.
 - `CACHE_MANAGER` — DI token for `CacheService`.
 - `CACHE_OPTIONS` — DI token for normalized module options.
 
@@ -254,6 +256,19 @@ When `principalScopeResolver` returns `undefined`, no `|principal:…` segment i
   - `options.redis.client` with a raw ioredis-style client.
 
 If Redis mode is selected and no client is available, bootstrap fails with an explicit error.
+
+## Platform status snapshot semantics
+
+Use `createCacheManagerPlatformStatusSnapshot(...)` to export cache ownership/readiness/health details aligned with the shared platform contract.
+
+- `storeKind` exposes `memory` / `redis` / `custom` operation.
+- `storeOwnershipMode` controls snapshot ownership mapping (`framework` vs `external`).
+- `cacheCriticalPath` controls readiness behavior when backing store is unavailable:
+  - `false` (default): readiness is `degraded` because request handling can continue with cache misses.
+  - `true`: readiness is `not-ready` because cache is declared part of the critical path.
+- `details.telemetry.labels` follows shared label keys (`component_id`, `component_kind`, `operation`, `result`).
+
+Use `createCacheManagerPlatformDiagnosticIssues(...)` to emit package-prefixed diagnostics (`CACHE_MANAGER_*`) with actionable `fixHint` text and dependency links.
 
 ## Cross-store consistency
 

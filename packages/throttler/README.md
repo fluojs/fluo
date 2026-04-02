@@ -73,6 +73,10 @@ import { THROTTLER_GUARD } from '@konekti/throttler';
 class ApiController {}
 ```
 
+### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
+
+Status adapters (`src/status.ts`) that map throttler store mode and backing-store readiness to shared platform snapshot/diagnostic shapes.
+
 ## Redis store
 
 ```typescript
@@ -104,6 +108,19 @@ class AppBootstrap {
 - `@Throttle()` options are copied when metadata is written/read, so mutating a shared options object later does not alter registered throttle policy.
 - The in-memory store sweeps expired keys whenever the earliest known reset time is reached, then updates the next sweep deadline from remaining active windows.
 - The in-memory store is per-`ThrottlerGuard` instance and is not shared across clustered workers. Use `RedisThrottlerStore` for cross-instance enforcement.
+
+## Platform status snapshot semantics
+
+Use `createThrottlerPlatformStatusSnapshot(...)` to emit ownership/readiness/health output aligned with the shared platform contract.
+
+- `storeKind` and `operationMode` distinguish local-only, distributed, and fallback operation.
+- `readinessCritical` controls readiness impact when the backing store is unavailable:
+  - `false` (default): readiness is `degraded` (request traffic can continue).
+  - `true`: readiness is `not-ready`.
+- `ownership` is derived from `storeOwnershipMode` (`framework` vs `external`).
+- `details.telemetry.labels` follows shared label keys (`component_id`, `component_kind`, `operation`, `result`).
+
+Use `createThrottlerPlatformDiagnosticIssues(...)` to emit stable diagnostic issues with package-prefixed code and actionable `fixHint` text.
 
 ## Related packages
 

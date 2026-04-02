@@ -4,5 +4,6 @@ export * from './memory-store.js';
 export * from './module.js';
 export * from './redis-store.js';
 export * from './service.js';
+export * from './status.js';
 export * from './tokens.js';
 export * from './types.js';
