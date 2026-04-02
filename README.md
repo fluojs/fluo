@@ -97,6 +97,8 @@ The generated `dev` script uses a watch-driven process restart path for source c
 
 - `docs/getting-started/quick-start.md` - the canonical install -> new -> dev path
 - `docs/README.md` - documentation map after your first run succeeds
+- `examples/minimal/` - smallest runnable Konekti app
+- `examples/realworld-api/` - multi-module app with validation and CRUD
 - `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
 - `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
 - `docs/reference/package-surface.md` - public package surface reference

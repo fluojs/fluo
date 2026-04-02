@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "noEmit": true,
+    "paths": {
+      "@konekti/*": ["packages/*/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

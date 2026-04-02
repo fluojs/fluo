@@ -61,6 +61,14 @@ export default defineConfig({
           include: ['apps/**/*.test.ts'],
         },
       },
+      {
+        extends: true,
+        test: {
+          name: 'examples',
+          exclude: configDefaults.exclude,
+          include: ['examples/**/*.test.ts'],
+        },
+      },
     ],
     environment: 'node',
   },

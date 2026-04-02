@@ -12,6 +12,13 @@ If you are new to Konekti, follow this path to get your first application runnin
 - `getting-started/bootstrap-paths.md` - Bootstrap reference and advanced startup paths.
 - `reference/glossary-and-mental-model.md` - Core vocabulary and mental model.
 
+## examples
+
+Working applications that demonstrate the canonical starter path and common patterns.
+
+- `../examples/minimal/` - Smallest runnable Konekti app, matching the `konekti new` output.
+- `../examples/realworld-api/` - Multi-module app with DTO validation, config loading, and CRUD.
+
 ## common tasks
 
 Practical guides for day-to-day development once your application is running.

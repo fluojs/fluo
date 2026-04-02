@@ -12,6 +12,13 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 - `getting-started/bootstrap-paths.ko.md` - 부트스트랩 규칙과 고급 실행 경로.
 - `reference/glossary-and-mental-model.ko.md` - 핵심 용어와 멘탈 모델.
 
+## 예제
+
+표준 시작 경로와 주요 패턴을 보여주는 실행 가능한 애플리케이션입니다.
+
+- `../examples/minimal/` - `konekti new` 출력과 동일한, 가장 작은 실행 가능 앱.
+- `../examples/realworld-api/` - DTO 검증, 설정 로딩, CRUD를 포함하는 다중 모듈 앱.
+
 ## 주요 작업
 
 애플리케이션 실행 후 일상적인 개발에 필요한 실무 가이드입니다.

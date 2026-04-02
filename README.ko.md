@@ -97,6 +97,8 @@ pnpm dev
 
 - `docs/getting-started/quick-start.ko.md` - install -> new -> dev 표준 경로
 - `docs/README.ko.md` - 첫 실행 후 이어서 읽는 문서 맵
+- `examples/minimal/` - 가장 작은 실행 가능 Konekti 앱
+- `examples/realworld-api/` - 검증과 CRUD를 포함하는 다중 모듈 앱
 - `docs/concepts/architecture-overview.ko.md` - 아키텍처/패키지 경계
 - `docs/concepts/dev-reload-architecture.ko.md` - 개발 중 재시작과 config reload 책임 경계
 - `docs/reference/package-surface.ko.md` - 현재 공개 패키지 표면
