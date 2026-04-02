@@ -2,56 +2,60 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Welcome to the Konekti cross-package documentation hub.
+Welcome to the Konekti cross-package documentation hub. This directory contains framework-level information that spans multiple packages. For package-specific APIs, refer to `../packages/*/README.md`.
 
-This directory contains framework-level information that spans multiple packages. For package-specific APIs and examples, refer to `../packages/*/README.md`.
+## start
 
-If you are starting for the first time, begin with `getting-started/quick-start.md`. That guide is the canonical install -> `konekti new` -> `cd` -> `pnpm dev` path.
+If you are new to Konekti, follow this path to get your first application running.
 
-## choose your path
+- `getting-started/quick-start.md` - **Canonical first run**: install -> `new` -> `dev`.
+- `getting-started/bootstrap-paths.md` - Bootstrap reference and advanced startup paths.
+- `reference/glossary-and-mental-model.md` - Core vocabulary and mental model.
 
-### quick start
+## common tasks
 
-- `getting-started/quick-start.md` - start here for the canonical first run
-- `getting-started/bootstrap-paths.md` - bootstrap reference and advanced/secondary paths
-- `getting-started/generator-workflow.md` - what to generate after the app is running
+Practical guides for day-to-day development once your application is running.
 
-### nestjs migration
+- `getting-started/generator-workflow.md` - Using the CLI to generate modules and providers.
+- `operations/testing-guide.md` - Unit and integration testing patterns.
+- `operations/deployment.md` - Moving from local development to production.
+- `concepts/auth-and-jwt.md` - Implementing authentication and session management.
+- `concepts/openapi.md` - Documenting and exposing your API surface.
 
-- `getting-started/migrate-from-nestjs.md`
-- `operations/nestjs-parity-gaps.md`
+## packages
 
-### architecture and runtime
+Konekti is highly composable. Use these links to discover and select the right tools for your task.
 
+- `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
+- `reference/package-surface.md` - Overview of the public API surface across the framework.
+- `reference/toolchain-contract-matrix.md` - Versioning and compatibility across the ecosystem.
+
+## migration
+
+Guidance for moving existing applications to the Konekti standard decorator model.
+
+- `getting-started/migrate-from-nestjs.md` - Step-by-step guide for NestJS developers.
+- `operations/nestjs-parity-gaps.md` - Known differences and how to bridge them.
+
+## reference
+
+Deep dives into the architecture, runtime behavior, and governing policies.
+
+### architecture & runtime
 - `concepts/architecture-overview.md`
 - `concepts/dev-reload-architecture.md`
+- `concepts/di-and-modules.md`
+- `concepts/http-runtime.md`
 - `concepts/cqrs.md`
 - `concepts/caching.md`
-- `concepts/http-runtime.md`
-- `concepts/di-and-modules.md`
 - `concepts/lifecycle-and-shutdown.md`
 
-### authentication and api behavior
-
-- `concepts/auth-and-jwt.md`
+### behavior & policy
 - `concepts/decorators-and-metadata.md`
 - `concepts/error-responses.md`
-- `concepts/openapi.md`
-
-### operations and releases
-
-- `operations/testing-guide.md`
-- `operations/deployment.md`
 - `operations/release-governance.md`
 - `operations/behavioral-contract-policy.md`
 - `operations/third-party-extension-contract.md`
-
-### contracts and conventions
-
-- `reference/package-chooser.md` - pick packages by task (start here if you know what you want to build)
-- `reference/package-surface.md`
-- `reference/toolchain-contract-matrix.md`
-- `reference/glossary-and-mental-model.md`
 
 ## authority rules
 
