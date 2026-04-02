@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { StatsFs } from 'node:fs';
 
-import { HealthCheckError } from '../errors.js';
+import type { HealthCheckError } from '../errors.js';
 
 const diskState = vi.hoisted(() => ({
   error: undefined as Error | undefined,

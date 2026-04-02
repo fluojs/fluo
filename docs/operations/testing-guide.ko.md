@@ -9,11 +9,17 @@
 저장소 루트에서 다음 명령을 사용합니다:
 
 ```sh
-pnpm test
-pnpm typecheck
 pnpm build
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm verify                  # build + typecheck + lint + test 순차 실행
 pnpm verify:release-readiness
 ```
+
+`pnpm verify`는 PR 생성 또는 업데이트 전에 실행하는 단일 사전 검증 명령입니다. CI와 동일한 검사를 로컬에서 재현합니다.
+
+`pnpm lint`는 [Biome](https://biomejs.dev/)를 사용하여 `packages/*/src/`와 `tooling/`을 검사합니다. 설정 파일은 저장소 루트의 `biome.json`입니다. 포매터는 의도적으로 비활성화되어 있으며, 현재 단계에서는 린트 전용으로 사용합니다.
 
 생성된 스타터 프로젝트도 선택한 패키지 매니저를 통해 동일한 명령을 제공합니다.
 

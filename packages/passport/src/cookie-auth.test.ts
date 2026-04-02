@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GuardContext, RequestContext } from '@konekti/http';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import type { DefaultJwtVerifier } from '@konekti/jwt';
 
 import { CookieAuthStrategy, normalizeCookieAuthOptions } from './cookie-auth.js';
 import { AuthenticationRequiredError } from './errors.js';

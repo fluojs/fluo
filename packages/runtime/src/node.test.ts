@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createNodeHttpAdapter, NodeHttpApplicationAdapter } from './node.js';
+import { createNodeHttpAdapter, type NodeHttpApplicationAdapter } from './node.js';
 
 describe('createNodeHttpAdapter', () => {
   it('uses the runtime default port instead of process.env.PORT', async () => {

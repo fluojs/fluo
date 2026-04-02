@@ -6,7 +6,7 @@ import { Counter, Registry } from 'prom-client';
 
 import { MetricsModule } from './metrics-module.js';
 import { METER_PROVIDER } from './meter-provider.js';
-import { METRICS_SERVICE, MetricsService } from './metrics-service.js';
+import { METRICS_SERVICE, type MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };

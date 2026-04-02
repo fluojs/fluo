@@ -1,4 +1,4 @@
-import { type AsyncModuleOptions } from '@konekti/core';
+import type { AsyncModuleOptions } from '@konekti/core';
 import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 

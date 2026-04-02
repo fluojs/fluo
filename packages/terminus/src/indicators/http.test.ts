@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { HealthCheckError } from '../errors.js';
+import type { HealthCheckError } from '../errors.js';
 import { createHttpHealthIndicator, HttpHealthIndicator } from './http.js';
 
 describe('HttpHealthIndicator', () => {

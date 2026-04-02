@@ -28,9 +28,7 @@ interface MockRedisConnection {
   status: string;
 }
 
-interface FailedListener {
-  (job: MockQueueJob | undefined, error: Error): void;
-}
+type FailedListener = (job: MockQueueJob | undefined, error: Error) => void
 
 const bullmqState = vi.hoisted(() => {
   const queues = new Map<string, { closeCalls: number; jobs: MockQueueJob[]; name: string }>();

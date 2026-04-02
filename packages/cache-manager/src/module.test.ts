@@ -9,7 +9,7 @@ import { CacheInterceptor } from './interceptor.js';
 import { CACHE_MANAGER } from './tokens.js';
 import { createCacheModule } from './module.js';
 import type { RedisCompatibleClient } from './types.js';
-import { CacheService } from './service.js';
+import type { CacheService } from './service.js';
 
 const REDIS_CLIENT_TOKEN = Symbol.for('konekti.redis.client');
 

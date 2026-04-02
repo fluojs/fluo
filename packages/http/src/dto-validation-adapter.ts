@@ -23,7 +23,7 @@ export class HttpDtoValidationAdapter implements Validator {
     const filtered: Record<PropertyKey, unknown> = Object.create(Object.getPrototypeOf(value));
 
     for (const binding of getDtoBindingSchema(target)) {
-      if (Object.prototype.hasOwnProperty.call(source, binding.propertyKey)) {
+      if (Object.hasOwn(source, binding.propertyKey)) {
         filtered[binding.propertyKey] = source[binding.propertyKey];
       }
     }

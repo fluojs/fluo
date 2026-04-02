@@ -13,7 +13,7 @@ function createStrategyRegistry(strategies: AuthStrategyRegistration[]): AuthStr
   const registry: Record<string, AuthStrategyRegistration['token']> = Object.create(null);
 
   for (const strategy of strategies) {
-    if (Object.prototype.hasOwnProperty.call(registry, strategy.name)) {
+    if (Object.hasOwn(registry, strategy.name)) {
       throw new AuthStrategyResolutionError(`Duplicate auth strategy registration for "${strategy.name}".`);
     }
 

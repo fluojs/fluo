@@ -288,11 +288,11 @@ export class CronLifecycleService
     const task = this.tasks.get(name);
 
     if (!task) {
-      throw new Error(`Scheduling task \"${name}\" does not exist.`);
+      throw new Error(`Scheduling task "${name}" does not exist.`);
     }
 
     if (task.descriptor.kind !== 'cron') {
-      throw new Error(`updateCronExpression() supports only cron tasks. Received ${task.descriptor.kind} task \"${name}\".`);
+      throw new Error(`updateCronExpression() supports only cron tasks. Received ${task.descriptor.kind} task "${name}".`);
     }
 
     task.descriptor.expression = expression;
@@ -435,7 +435,7 @@ export class CronLifecycleService
 
   private assertTaskNameAvailable(taskName: string): void {
     if (this.tasks.has(taskName)) {
-      throw new Error(`Duplicate scheduling task name detected: \"${taskName}\". Task names must be unique globally.`);
+      throw new Error(`Duplicate scheduling task name detected: "${taskName}". Task names must be unique globally.`);
     }
   }
 
@@ -456,7 +456,7 @@ export class CronLifecycleService
       const expression = task.descriptor.expression;
 
       if (!expression) {
-        throw new Error(`Cron task \"${task.descriptor.taskName}\" is missing a cron expression.`);
+        throw new Error(`Cron task "${task.descriptor.taskName}" is missing a cron expression.`);
       }
 
       const scheduled = this.options.scheduler(
@@ -478,7 +478,7 @@ export class CronLifecycleService
     const ms = task.descriptor.ms;
 
     if (!ms) {
-      throw new Error(`${task.descriptor.kind} task \"${task.descriptor.taskName}\" is missing interval duration.`);
+      throw new Error(`${task.descriptor.kind} task "${task.descriptor.taskName}" is missing interval duration.`);
     }
 
     if (task.descriptor.kind === 'interval') {

@@ -1,8 +1,8 @@
-import {
+import type {
   Registry,
-  type CounterConfiguration,
-  type GaugeConfiguration,
-  type HistogramConfiguration,
+  CounterConfiguration,
+  GaugeConfiguration,
+  HistogramConfiguration,
 } from 'prom-client';
 
 import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './prometheus-metrics-factory.js';

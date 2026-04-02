@@ -1,4 +1,4 @@
-import { type MetadataPropertyKey } from '@konekti/core';
+import type { MetadataPropertyKey } from '@konekti/core';
 
 import { type TransformFunction, updateFieldSerializationMetadata } from '../metadata.js';
 

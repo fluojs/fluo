@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
-import { DefaultJwtSigner } from './signer.js';
+import type { DefaultJwtSigner } from './signer.js';
 import type { JwtClaims } from './types.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import type { DefaultJwtVerifier } from './verifier.js';
 
 export interface RefreshTokenStore {
   save(token: RefreshTokenRecord): Promise<void>;

@@ -3,7 +3,7 @@ import { SseResponse, type CallHandler, type Interceptor, type InterceptorContex
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CACHE_MANAGER, CACHE_OPTIONS } from './tokens.js';
-import { CacheService } from './service.js';
+import type { CacheService } from './service.js';
 import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions, PrincipalScopeResolver } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;

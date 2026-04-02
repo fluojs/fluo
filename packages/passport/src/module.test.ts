@@ -51,7 +51,7 @@ describe('createPassportProviders', () => {
 
     const registry = strategyRegistryProvider.useValue as Record<string, unknown>;
 
-    expect(Object.prototype.hasOwnProperty.call(registry, 'toString')).toBe(true);
+    expect(Object.hasOwn(registry, 'toString')).toBe(true);
     expect(registry.toString).toBe(ToStringStrategy);
   });
 

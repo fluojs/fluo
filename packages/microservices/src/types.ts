@@ -27,9 +27,7 @@ export interface TransportPacket {
   requestId?: string;
 }
 
-export interface TransportHandler {
-  (packet: TransportPacket): Promise<unknown>;
-}
+export type TransportHandler = (packet: TransportPacket) => Promise<unknown>
 
 export interface MicroserviceTransport {
   close(): Promise<void>;

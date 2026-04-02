@@ -312,7 +312,7 @@ function pickFieldsByType(
       const outputRef = resolveOutputType(handler);
       const outputType = resolveRootOutputType(deps, outputTypeCache, markAllowedCrossRealmGraphqlObjects, outputRef);
 
-      if (Object.prototype.hasOwnProperty.call(fields, handler.fieldName)) {
+      if (Object.hasOwn(fields, handler.fieldName)) {
         throw new Error(
           `GraphQL schema conflict: field "${handler.fieldName}" on ${handlerType} type is registered more than once. ` +
             `Found duplicate in resolver "${descriptor.targetName}". Each field name must be unique across all resolvers.`,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { HealthCheckError } from '../errors.js';
+import type { HealthCheckError } from '../errors.js';
 import { createRedisHealthIndicator, RedisHealthIndicator } from './redis.js';
 
 describe('RedisHealthIndicator', () => {

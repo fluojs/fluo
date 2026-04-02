@@ -113,7 +113,7 @@ export async function createGraphqlInput(
     Object.assign(instance, args);
   } else {
     for (const descriptor of argFieldDescriptors) {
-      if (Object.prototype.hasOwnProperty.call(args, descriptor.argName)) {
+      if (Object.hasOwn(args, descriptor.argName)) {
         instance[descriptor.fieldName] = args[descriptor.argName];
       }
     }

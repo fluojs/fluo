@@ -20,6 +20,23 @@ Konekti uses a monorepo structure managed by `pnpm`.
    pnpm test
    ```
 
+## verifying before you push
+
+Run the single verify command before opening or updating a PR:
+
+```sh
+pnpm verify
+```
+
+This runs `build`, `typecheck`, `lint`, and `test` in sequence — the same checks CI performs. You can also run each step individually:
+
+```sh
+pnpm build
+pnpm typecheck
+pnpm lint          # Biome — see biome.json
+pnpm test
+```
+
 ## maintainer workflows
 
 ### CLI sandbox verification
@@ -71,4 +88,4 @@ Konekti maintains strict behavioral contracts. Before opening a PR, ensure you h
 
 - All PRs should target the `main` branch.
 - Follow the structure in `.github/PULL_REQUEST_TEMPLATE.md`.
-- Ensure all CI checks (lint, build, test) pass locally before pushing.
+- Ensure all CI checks pass locally before pushing — run `pnpm verify`.

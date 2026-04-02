@@ -10,11 +10,17 @@ This guide describes the current testing and verification baseline for Konekti.
 From the repository root:
 
 ```sh
-pnpm test
-pnpm typecheck
 pnpm build
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm verify                  # runs build + typecheck + lint + test in sequence
 pnpm verify:release-readiness
 ```
+
+`pnpm verify` is the single pre-push command. Run it before opening or updating a PR to reproduce the same checks CI will perform.
+
+`pnpm lint` runs [Biome](https://biomejs.dev/) against `packages/*/src/` and `tooling/`. The configuration lives in `biome.json` at the repository root. Formatter is intentionally disabled — Biome is used for linting only at this stage.
 
 Generated starter projects expose the same commands through the selected package manager.
 

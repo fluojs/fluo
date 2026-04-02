@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { HealthCheckError } from '../errors.js';
+import type { HealthCheckError } from '../errors.js';
 import { createPrismaHealthIndicator, PrismaHealthIndicator } from './prisma.js';
 
 describe('PrismaHealthIndicator', () => {

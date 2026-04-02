@@ -117,8 +117,6 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
             token: provider.provide,
           });
         }
-
-        continue;
       }
     }
 

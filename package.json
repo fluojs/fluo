@@ -10,6 +10,7 @@
     "@babel/core": "^7.26.10",
     "@babel/plugin-proposal-decorators": "^7.28.0",
     "@babel/preset-typescript": "^7.27.1",
+    "@biomejs/biome": "^2.4.10",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^22.13.10",
     "typescript": "^5.8.2",
@@ -21,7 +22,8 @@
     "typecheck": "tsc -p tsconfig.tools.json --noEmit && tsc -p examples/tsconfig.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "pnpm -r --if-present run lint",
+    "lint": "biome lint",
+    "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
     "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs"
   }
 }

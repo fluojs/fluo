@@ -46,7 +46,7 @@ function isAuthenticationFailure(error: unknown): boolean {
 }
 
 function hasRegisteredStrategy(registry: AuthStrategyRegistry, strategyName: string): boolean {
-  return Object.prototype.hasOwnProperty.call(registry, strategyName);
+  return  Object.hasOwn(registry, strategyName);
 }
 
 @Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])

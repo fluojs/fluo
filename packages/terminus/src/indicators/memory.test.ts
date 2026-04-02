@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { HealthCheckError } from '../errors.js';
+import type { HealthCheckError } from '../errors.js';
 import { createMemoryHealthIndicator, MemoryHealthIndicator } from './memory.js';
 
 function createMemoryUsage(overrides: Partial<NodeJS.MemoryUsage>): NodeJS.MemoryUsage {

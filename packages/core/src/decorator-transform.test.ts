@@ -12,7 +12,7 @@ Object.defineProperty(Symbol, 'metadata', {
 });
 
 function tagged(tag: string) {
-  return function <T>(value: T, context: ClassMethodDecoratorContext) {
+  return <T>(value: T, context: ClassMethodDecoratorContext) => {
     (context.metadata as Record<string, unknown>).tag = tag;
 
     return value;
