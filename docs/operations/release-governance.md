@@ -51,6 +51,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/mongoose`
 - `@konekti/terminus`
 - `@konekti/testing`
+- `@konekti/throttler`
 - `@konekti/cli`
 - `@konekti/studio`
 
