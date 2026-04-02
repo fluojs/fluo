@@ -29,8 +29,19 @@ type ServerStreamImplementation = (
   call: { metadata?: FakeGrpcMetadata; request: unknown; write(data: unknown): boolean; end(): void },
 ) => void;
 
+type ClientStreamImplementation = (
+  call: FakeReadableStream & { metadata?: FakeGrpcMetadata },
+  callback: (error: { code?: number; message?: string } | null, payload?: unknown) => void,
+) => void;
+
+type BidiStreamImplementation = (
+  call: FakeBidiHalf & { metadata?: FakeGrpcMetadata },
+) => void;
+
+type ServiceImplementation = UnaryImplementation | ServerStreamImplementation | ClientStreamImplementation | BidiStreamImplementation;
+
 class FakeGrpcServer {
-  readonly services = new Map<string, Record<string, UnaryImplementation | ServerStreamImplementation>>();
+  readonly services = new Map<string, Record<string, ServiceImplementation>>();
   bindError: Error | undefined;
   shutdownError: Error | undefined;
   shutdownCount = 0;
@@ -38,13 +49,13 @@ class FakeGrpcServer {
   constructor(private readonly runtime: FakeGrpcRuntime) {}
 
   addService(definition: Record<string, FakeGrpcMethodDefinition>, implementation: Record<string, unknown>): void {
-    const methods = new Map<string, UnaryImplementation | ServerStreamImplementation>();
+    const methods = new Map<string, ServiceImplementation>();
 
     for (const [methodName] of Object.entries(definition)) {
       const candidate = implementation[methodName];
 
       if (typeof candidate === 'function') {
-        methods.set(methodName, candidate as UnaryImplementation | ServerStreamImplementation);
+        methods.set(methodName, candidate as ServiceImplementation);
       }
     }
 
@@ -73,7 +84,7 @@ class FakeGrpcServer {
     callback(this.shutdownError);
   }
 
-  resolveImplementation(serviceDefinition: Record<string, FakeGrpcMethodDefinition>, methodName: string): UnaryImplementation | ServerStreamImplementation | undefined {
+  resolveImplementation(serviceDefinition: Record<string, FakeGrpcMethodDefinition>, methodName: string): ServiceImplementation | undefined {
     const key = Object.keys(serviceDefinition).sort().join(',');
     return this.services.get(key)?.[methodName];
   }
@@ -81,12 +92,28 @@ class FakeGrpcServer {
 
 class FakeReadableStream {
   private readonly listeners = new Map<string, ((...args: unknown[]) => void)[]>();
+  private readonly pendingEvents: Array<{ event: string; args: unknown[] }> = [];
   private cancelled = false;
 
   on(event: string, listener: (...args: unknown[]) => void): this {
     const list = this.listeners.get(event) ?? [];
     list.push(listener);
     this.listeners.set(event, list);
+
+    // Replay any buffered events for this event type
+    const remaining: Array<{ event: string; args: unknown[] }> = [];
+
+    for (const pending of this.pendingEvents) {
+      if (pending.event === event) {
+        listener(...pending.args);
+      } else {
+        remaining.push(pending);
+      }
+    }
+
+    this.pendingEvents.length = 0;
+    this.pendingEvents.push(...remaining);
+
     return this;
   }
 
@@ -95,7 +122,14 @@ class FakeReadableStream {
       return;
     }
 
-    for (const listener of this.listeners.get(event) ?? []) {
+    const eventListeners = this.listeners.get(event) ?? [];
+
+    if (eventListeners.length === 0) {
+      this.pendingEvents.push({ event, args });
+      return;
+    }
+
+    for (const listener of eventListeners) {
       listener(...args);
     }
   }
@@ -103,6 +137,59 @@ class FakeReadableStream {
   cancel(): void {
     this.cancelled = true;
     this.emit('error', new Error('cancelled'));
+  }
+}
+
+class FakeDuplexStream extends FakeReadableStream {
+  private ended = false;
+  readonly written: unknown[] = [];
+
+  write(data: unknown): boolean {
+    if (!this.ended) {
+      this.written.push(data);
+    }
+
+    return true;
+  }
+
+  end(): void {
+    if (!this.ended) {
+      this.ended = true;
+    }
+  }
+}
+
+function createBidiStreamPair(): { clientStream: FakeBidiHalf; serverStream: FakeBidiHalf } {
+  const clientStream = new FakeBidiHalf();
+  const serverStream = new FakeBidiHalf();
+  clientStream.setPeer(serverStream);
+  serverStream.setPeer(clientStream);
+  return { clientStream, serverStream };
+}
+
+class FakeBidiHalf extends FakeReadableStream {
+  private writeEnded = false;
+  readonly written: unknown[] = [];
+  private peer: FakeBidiHalf | undefined;
+
+  setPeer(peer: FakeBidiHalf): void {
+    this.peer = peer;
+  }
+
+  write(data: unknown): boolean {
+    if (!this.writeEnded) {
+      this.written.push(data);
+      this.peer?.emit('data', data);
+    }
+
+    return true;
+  }
+
+  end(): void {
+    if (!this.writeEnded) {
+      this.writeEnded = true;
+      this.peer?.emit('end');
+    }
   }
 }
 
@@ -149,7 +236,62 @@ class FakeGrpcRuntime {
 
       constructor(private readonly address: string) {
         for (const [methodName, methodDef] of Object.entries(serviceDefinition)) {
-          if (methodDef.responseStream && !methodDef.requestStream) {
+          if (methodDef.requestStream && methodDef.responseStream) {
+            this[methodName] = (
+              metadata: FakeGrpcMetadata,
+            ) => {
+              const { clientStream, serverStream } = createBidiStreamPair();
+
+              void runtime.dispatchBidiStream(
+                this.address,
+                serviceDefinition,
+                serviceName,
+                methodName,
+                metadata,
+                serverStream,
+              );
+
+              return clientStream;
+            };
+            continue;
+          }
+
+          if (methodDef.requestStream) {
+            this[methodName] = (
+              metadata: FakeGrpcMetadata,
+              callback: (error: { code?: number; message?: string } | null, response: unknown) => void,
+            ) => {
+              const inboundStream = new FakeReadableStream();
+              const writable = {
+                written: [] as unknown[],
+                ended: false,
+                write(data: unknown): boolean {
+                  this.written.push(data);
+                  inboundStream.emit('data', data);
+                  return true;
+                },
+                end(): void {
+                  this.ended = true;
+                  inboundStream.emit('end');
+                },
+              };
+
+              void runtime.dispatchClientStream(
+                this.address,
+                serviceDefinition,
+                serviceName,
+                methodName,
+                metadata,
+                inboundStream,
+                callback,
+              );
+
+              return writable;
+            };
+            continue;
+          }
+
+          if (methodDef.responseStream) {
             this[methodName] = (
               payload: unknown,
               metadata: FakeGrpcMetadata,
@@ -324,6 +466,69 @@ class FakeGrpcRuntime {
 
     (implementation as ServerStreamImplementation)(call);
   }
+
+  private async dispatchClientStream(
+    address: string,
+    serviceDefinition: Record<string, FakeGrpcMethodDefinition>,
+    serviceName: string,
+    methodName: string,
+    metadata: FakeGrpcMetadata,
+    inboundStream: FakeReadableStream,
+    callback: (error: { code?: number; message?: string } | null, response: unknown) => void,
+  ): Promise<void> {
+    void serviceName;
+
+    const server = this.boundServers.get(address);
+
+    if (!server) {
+      callback({ code: this.status.UNIMPLEMENTED, message: 'server not listening' }, undefined);
+      return;
+    }
+
+    const implementation = server.resolveImplementation(serviceDefinition, methodName);
+
+    if (!implementation) {
+      callback({ code: this.status.UNIMPLEMENTED, message: 'method not implemented' }, undefined);
+      return;
+    }
+
+    await Promise.resolve();
+
+    const call = Object.assign(inboundStream, { metadata }) as FakeReadableStream & { metadata?: FakeGrpcMetadata };
+
+    (implementation as ClientStreamImplementation)(call, callback);
+  }
+
+  private async dispatchBidiStream(
+    address: string,
+    serviceDefinition: Record<string, FakeGrpcMethodDefinition>,
+    serviceName: string,
+    methodName: string,
+    metadata: FakeGrpcMetadata,
+    serverStream: FakeBidiHalf,
+  ): Promise<void> {
+    void serviceName;
+
+    const server = this.boundServers.get(address);
+
+    if (!server) {
+      serverStream.emit('error', new Error('server not listening'));
+      return;
+    }
+
+    const implementation = server.resolveImplementation(serviceDefinition, methodName);
+
+    if (!implementation) {
+      serverStream.emit('error', new Error('method not implemented'));
+      return;
+    }
+
+    await Promise.resolve();
+
+    const call = Object.assign(serverStream, { metadata }) as FakeBidiHalf & { metadata?: FakeGrpcMetadata };
+
+    (implementation as BidiStreamImplementation)(call);
+  }
 }
 
 function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicroserviceTransport } {
@@ -331,6 +536,7 @@ function createGrpcTransport(): { runtime: FakeGrpcRuntime; transport: GrpcMicro
     static readonly service = {
       Notify: { requestStream: false, responseStream: false },
       StreamAll: { requestStream: true, responseStream: false },
+      StreamBidi: { requestStream: true, responseStream: true },
       StreamData: { requestStream: false, responseStream: true },
       Sum: { requestStream: false, responseStream: false },
     } satisfies Record<string, FakeGrpcMethodDefinition>;
@@ -689,6 +895,156 @@ describe('GrpcMicroserviceTransport', () => {
     expect(results).toEqual([{ value: 'first' }]);
 
     void writerRef;
+    await transport.close();
+  });
+
+  it('registers client-streaming handlers and collects multiple messages into a single response', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenClientStreaming(async (pattern, reader) => {
+      let sum = 0;
+
+      for await (const item of reader) {
+        sum += (item as { value: number }).value;
+      }
+
+      return { pattern, total: sum };
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { writer, result } = transport.clientStream('MathService.StreamAll');
+    writer.write({ value: 10 });
+    writer.write({ value: 20 });
+    writer.write({ value: 30 });
+    writer.end();
+
+    await expect(result).resolves.toEqual({ pattern: 'MathService.StreamAll', total: 60 });
+
+    await transport.close();
+  });
+
+  it('clientStream() throws when transport is not listening', () => {
+    const { transport } = createGrpcTransport();
+
+    expect(() => transport.clientStream('MathService.StreamAll')).toThrow(
+      'GrpcMicroserviceTransport is not listening. Call listen() before clientStream().',
+    );
+  });
+
+  it('clientStream() throws when transport is closing', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    const closePromise = transport.close();
+
+    expect(() => transport.clientStream('MathService.StreamAll')).toThrow(
+      'GrpcMicroserviceTransport is closing. Wait for close() to complete before clientStream().',
+    );
+
+    await closePromise;
+  });
+
+  it('clientStream() rejects invalid pattern format', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    expect(() => transport.clientStream('invalid-pattern')).toThrow(
+      'Invalid gRPC pattern "invalid-pattern". Expected "<Service>.<Method>"',
+    );
+
+    await transport.close();
+  });
+
+  it('clientStream() supports abort via AbortSignal', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenClientStreaming(async (_pattern, reader) => {
+      let sum = 0;
+
+      for await (const item of reader) {
+        sum += (item as { value: number }).value;
+      }
+
+      return { total: sum };
+    });
+
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const { result } = transport.clientStream('MathService.StreamAll', controller.signal);
+
+    await expect(result).rejects.toThrow('gRPC client stream aborted before dispatch.');
+
+    await transport.close();
+  });
+
+  it('registers bidi-streaming handlers and supports interleaved read/write', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async (pattern, reader, writer) => {
+      for await (const item of reader) {
+        const value = (item as { value: number }).value;
+        writer.write({ pattern, doubled: value * 2 });
+      }
+
+      writer.end();
+    });
+
+    await transport.listen(async () => undefined);
+
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi');
+    writer.write({ value: 1 });
+    writer.write({ value: 2 });
+    writer.write({ value: 3 });
+    writer.end();
+
+    const results: unknown[] = [];
+
+    for await (const item of reader) {
+      results.push(item);
+    }
+
+    expect(results).toEqual([
+      { pattern: 'MathService.StreamBidi', doubled: 2 },
+      { pattern: 'MathService.StreamBidi', doubled: 4 },
+      { pattern: 'MathService.StreamBidi', doubled: 6 },
+    ]);
+
+    await transport.close();
+  });
+
+  it('bidiStream() throws when transport is not listening', () => {
+    const { transport } = createGrpcTransport();
+
+    expect(() => transport.bidiStream('MathService.StreamBidi')).toThrow(
+      'GrpcMicroserviceTransport is not listening. Call listen() before bidiStream().',
+    );
+  });
+
+  it('bidiStream() throws when transport is closing', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    const closePromise = transport.close();
+
+    expect(() => transport.bidiStream('MathService.StreamBidi')).toThrow(
+      'GrpcMicroserviceTransport is closing. Wait for close() to complete before bidiStream().',
+    );
+
+    await closePromise;
+  });
+
+  it('bidiStream() rejects invalid pattern format', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => undefined);
+
+    expect(() => transport.bidiStream('invalid-pattern')).toThrow(
+      'Invalid gRPC pattern "invalid-pattern". Expected "<Service>.<Method>"',
+    );
+
     await transport.close();
   });
 });
