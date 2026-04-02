@@ -12,11 +12,53 @@ type ImportBinding = {
   local: string;
 };
 
+export const WARNING_CATEGORIES = [
+  'inject-token',
+  'request-dto',
+  'pipe-converter',
+  'bootstrap-unsupported',
+  'testing-unsupported',
+  'import-unsupported',
+  'injectable-options',
+  'tsconfig-parse',
+  'bootstrap-port',
+] as const;
+
+export type WarningCategory = typeof WARNING_CATEGORIES[number];
+
 export type MigrationWarning = {
+  category: WarningCategory;
   filePath: string;
   line: number;
   message: string;
 };
+
+const WARNING_CATEGORY_LABEL: Record<WarningCategory, string> = {
+  'inject-token': 'DI token migration (@Inject)',
+  'request-dto': 'Request DTO migration (handler parameter decorators)',
+  'pipe-converter': 'Pipe/converter migration',
+  'bootstrap-unsupported': 'Unsupported bootstrap variant',
+  'testing-unsupported': 'Unsupported testing pattern',
+  'import-unsupported': 'Unsupported import form',
+  'injectable-options': '@Injectable options removed',
+  'tsconfig-parse': 'tsconfig parse failure',
+  'bootstrap-port': 'Bootstrap port folding issue',
+};
+
+export function getWarningCategoryLabel(category: WarningCategory): string {
+  return WARNING_CATEGORY_LABEL[category];
+}
+
+export function groupWarningsByCategory(warnings: MigrationWarning[]): Map<WarningCategory, MigrationWarning[]> {
+  const groups = new Map<WarningCategory, MigrationWarning[]>();
+  for (const warning of warnings) {
+    const existing = groups.get(warning.category) ?? [];
+    existing.push(warning);
+    groups.set(warning.category, existing);
+  }
+
+  return groups;
+}
 
 export type FileMigrationResult = {
   appliedTransforms: MigrationTransformKind[];
@@ -83,9 +125,9 @@ function parseSource(source: string, filePath: string): ts.SourceFile {
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 }
 
-function buildWarning(filePath: string, sourceFile: ts.SourceFile, node: ts.Node, message: string): MigrationWarning {
+function buildWarning(filePath: string, sourceFile: ts.SourceFile, node: ts.Node, category: WarningCategory, message: string): MigrationWarning {
   const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-  return { filePath, line, message };
+  return { category, filePath, line, message };
 }
 
 function getImportBindings(importDeclaration: ts.ImportDeclaration): ImportBinding[] {
@@ -263,7 +305,7 @@ function rewriteImports(source: string, filePath: string): { changed: boolean; s
 
     const importClause = statement.importClause;
     if (!importClause || !importClause.namedBindings || !ts.isNamedImports(importClause.namedBindings)) {
-      warnings.push(buildWarning(filePath, sourceFile, statement, 'Unsupported Nest import form detected. Review this import manually.'));
+      warnings.push(buildWarning(filePath, sourceFile, statement, 'import-unsupported', 'Unsupported Nest import form detected. Review this import manually.'));
       statements.push(statement);
       continue;
     }
@@ -447,6 +489,7 @@ function rewriteInjectableAndScope(
                 filePath,
                 sourceFile,
                 modifier,
+                'injectable-options',
                 '@Injectable options other than scope were removed. Verify behavior manually.',
               ),
             );
@@ -537,7 +580,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
     }
 
     warnedCreateCallKeys.add(key);
-    warnings.push(buildWarning(filePath, sourceFile, callExpression, `${reason} Keep this Nest bootstrap path and migrate manually.`));
+    warnings.push(buildWarning(filePath, sourceFile, callExpression, 'bootstrap-unsupported', `${reason} Keep this Nest bootstrap path and migrate manually.`));
   }
 
   function isSupportedCreateCall(callExpression: ts.CallExpression): { supported: true } | { supported: false; reason: string } {
@@ -636,7 +679,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
               if (!portFoldedApps.has(appVariable)) {
                 warnings.push(
-                  buildWarning(filePath, sourceFile, node, 'Unable to move listen() port argument into KonektiFactory.create options. Review bootstrap manually.'),
+                  buildWarning(filePath, sourceFile, node, 'bootstrap-port', 'Unable to move listen() port argument into KonektiFactory.create options. Review bootstrap manually.'),
                 );
               }
             }
@@ -819,6 +862,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
                   filePath,
                   sourceFile,
                   cursor.parent,
+                  'testing-unsupported',
                   `Unsupported testing builder method "${methodName}" after Test.createTestingModule. Keep Nest testing chain and migrate manually.`,
                 ),
               );
@@ -834,7 +878,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
 
         const conversion = convertTestingMetadata(node);
         if ('warning' in conversion) {
-          warnings.push(buildWarning(filePath, sourceFile, node, `${conversion.warning} Keep Nest testing metadata and migrate this test manually.`));
+          warnings.push(buildWarning(filePath, sourceFile, node, 'testing-unsupported', `${conversion.warning} Keep Nest testing metadata and migrate this test manually.`));
           return node;
         }
 
@@ -911,7 +955,7 @@ function rewriteTsconfig(source: string, filePath: string): { changed: boolean; 
     return {
       changed: false,
       source,
-      warnings: [{ filePath, line: 1, message: 'Failed to parse tsconfig.json. Rewrite it manually.' }],
+      warnings: [{ category: 'tsconfig-parse' as const, filePath, line: 1, message: 'Failed to parse tsconfig.json. Rewrite it manually.' }],
     };
   }
 }
@@ -934,21 +978,21 @@ function detectManualFollowUps(source: string, filePath: string): MigrationWarni
         if (!hasInjectParameterWarning && decoratorName === 'Inject') {
           hasInjectParameterWarning = true;
           warnings.push(
-            buildWarning(filePath, sourceFile, modifier, 'Constructor @Inject(TOKEN) parameter decorators need manual migration to class-level @Inject([...]).'),
+            buildWarning(filePath, sourceFile, modifier, 'inject-token', 'Constructor @Inject(TOKEN) parameter decorators need manual migration to class-level @Inject([...]).'),
           );
         }
 
         if (!hasRequestDecoratorWarning && REQUEST_DTO_DECORATORS.has(decoratorName)) {
           hasRequestDecoratorWarning = true;
           warnings.push(
-            buildWarning(filePath, sourceFile, modifier, 'Handler parameter decorators should be reviewed for RequestDto + DTO field decorator migration.'),
+            buildWarning(filePath, sourceFile, modifier, 'request-dto', 'Handler parameter decorators should be reviewed for RequestDto + DTO field decorator migration.'),
           );
         }
 
         if (!hasPipesWarning && decoratorName === 'UsePipes') {
           hasPipesWarning = true;
           warnings.push(
-            buildWarning(filePath, sourceFile, modifier, 'Detected @UsePipes usage. Migrate transform/pipe logic to converters + RequestDto validation.'),
+            buildWarning(filePath, sourceFile, modifier, 'pipe-converter', 'Detected @UsePipes usage. Migrate transform/pipe logic to converters + RequestDto validation.'),
           );
         }
       }
@@ -957,7 +1001,7 @@ function detectManualFollowUps(source: string, filePath: string): MigrationWarni
     if (!hasPipesWarning && ts.isIdentifier(node) && /(?:ValidationPipe|Parse\w*Pipe)$/.test(node.text)) {
       hasPipesWarning = true;
       warnings.push(
-        buildWarning(filePath, sourceFile, node, 'Detected Nest pipe usage. Review converter migration manually.'),
+        buildWarning(filePath, sourceFile, node, 'pipe-converter', 'Detected Nest pipe usage. Review converter migration manually.'),
       );
     }
 

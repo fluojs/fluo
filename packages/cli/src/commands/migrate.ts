@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { renderAliasList, renderHelpTable } from '../help.js';
 import {
   MIGRATION_TRANSFORMS,
+  getWarningCategoryLabel,
+  groupWarningsByCategory,
   renderTransformList,
   runNestJsMigration,
   type MigrationTransformKind,
@@ -193,18 +195,31 @@ export async function runMigrateCommand(argv: string[], runtime: MigrateCommandR
       .map((fileResult) => fileResult.filePath);
 
     if (changedPaths.length > 0) {
-      stdout.write('Changed file(s):\n');
+      stdout.write('\nAutomated rewrites:\n');
       for (const filePath of changedPaths) {
-        stdout.write(`- ${filePath}\n`);
+        stdout.write(`  ${filePath}\n`);
       }
     }
 
-    const manualFollowUps = report.fileResults.flatMap((fileResult) => fileResult.warnings);
-    if (manualFollowUps.length > 0) {
-      stdout.write('Manual follow-up warnings:\n');
-      for (const warning of manualFollowUps) {
-        stdout.write(`- ${warning.filePath}:${warning.line} ${warning.message}\n`);
+    const allWarnings = report.fileResults.flatMap((fileResult) => fileResult.warnings);
+    if (allWarnings.length > 0) {
+      stdout.write('\nManual follow-up required:\n');
+      const grouped = groupWarningsByCategory(allWarnings);
+      for (const [category, warnings] of grouped) {
+        stdout.write(`\n  [${getWarningCategoryLabel(category)}]\n`);
+        for (const warning of warnings) {
+          stdout.write(`  - ${warning.filePath}:${warning.line} ${warning.message}\n`);
+        }
       }
+    }
+
+    if (report.warningCount === 0 && report.changedFiles > 0) {
+      stdout.write('\nAll transforms applied cleanly. No manual follow-ups detected.\n');
+    }
+
+    if (report.warningCount > 0) {
+      stdout.write('\nDocs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/migrate-from-nestjs.md\n');
+      stdout.write('Use the post-codemod checklist in the migration guide to address each warning category.\n');
     }
 
     return 0;
