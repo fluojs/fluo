@@ -40,6 +40,13 @@ export interface PlatformComponent {
   stop(): Promise<void>;
 }
 
+export interface PlatformComponentRegistration {
+  component: PlatformComponent;
+  dependencies?: readonly string[];
+}
+
+export type PlatformComponentInput = PlatformComponent | PlatformComponentRegistration;
+
 export interface PlatformCheckResult {
   name: string;
   status: 'pass' | 'fail' | 'degraded';
@@ -99,4 +106,20 @@ export interface PlatformSnapshot {
     externallyManaged: boolean;
   };
   details: Record<string, unknown>;
+}
+
+export interface PlatformShellSnapshot {
+  generatedAt: string;
+  readiness: PlatformReadinessReport;
+  health: PlatformHealthReport;
+  components: PlatformSnapshot[];
+  diagnostics: PlatformDiagnosticIssue[];
+}
+
+export interface PlatformShell {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  ready(): Promise<PlatformReadinessReport>;
+  health(): Promise<PlatformHealthReport>;
+  snapshot(): Promise<PlatformShellSnapshot>;
 }

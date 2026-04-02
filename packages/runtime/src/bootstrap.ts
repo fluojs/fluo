@@ -17,7 +17,8 @@ import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './diagnostics.js';
 import { createConsoleApplicationLogger } from './logger.js';
 import { compileModuleGraph, createRuntimeTokenSet, providerToken } from './module-graph.js';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from './tokens.js';
+import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CONTAINER } from './tokens.js';
 import type {
   ApplicationContext,
   Application,
@@ -403,6 +404,7 @@ class KonektiApplication implements Application {
     readonly dispatcher: Dispatcher,
     readonly bootstrapTiming: Application['bootstrapTiming'],
     private readonly adapter: HttpApplicationAdapter,
+    private readonly platformShell: RuntimePlatformShell,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
@@ -425,6 +427,8 @@ class KonektiApplication implements Application {
     if (this.applicationState === 'closed') {
       throw new InvariantError('Application cannot become ready after it has been closed.');
     }
+
+    await this.platformShell.assertCriticalReadiness();
   }
 
   async connectMicroservice(options: CreateMicroserviceOptions = {}): Promise<MicroserviceApplication> {
@@ -759,10 +763,17 @@ function createRuntimeProviders(
   ];
 }
 
-function registerRuntimeBootstrapTokens(bootstrapped: BootstrapResult, adapter: HttpApplicationAdapter): void {
+function registerRuntimeBootstrapTokens(
+  bootstrapped: BootstrapResult,
+  adapter: HttpApplicationAdapter,
+  platformShell: RuntimePlatformShell,
+): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: HTTP_APPLICATION_ADAPTER,
     useValue: adapter,
+  }, {
+    provide: PLATFORM_SHELL,
+    useValue: platformShell,
   });
 }
 
@@ -780,8 +791,11 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
   );
 }
 
-function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult): void {
-  registerRuntimeContextTokens(bootstrapped);
+function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult, platformShell: RuntimePlatformShell): void {
+  registerRuntimeContextTokens(bootstrapped, {
+    provide: PLATFORM_SHELL,
+    useValue: platformShell,
+  });
 }
 
 async function resolveBootstrapLifecycleInstances(
@@ -800,9 +814,11 @@ async function runBootstrapLifecycle(
   modules: CompiledModule[],
   lifecycleInstances: unknown[],
   logger: ApplicationLogger,
+  platformShell: RuntimePlatformShell,
 ): Promise<void> {
   resetReadinessState(modules);
   await runBootstrapHooks(lifecycleInstances);
+  await platformShell.start();
   markReadinessState(modules);
   logCompiledModules(logger, modules);
 }
@@ -883,6 +899,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   let bootstrappedContainer: Container | undefined;
   const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
   const runtimeCleanup: Array<() => void> = [];
+  const platformShell = createRuntimePlatformShell(options.platform?.components);
   const timingEnabled = options.diagnostics?.timing === true;
   const timingStart = timingEnabled ? performance.now() : 0;
   const timingPhases: BootstrapTimingPhase[] = [];
@@ -906,7 +923,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const registerTokensStart = timingEnabled ? performance.now() : 0;
-    registerRuntimeBootstrapTokens(bootstrapped, adapter);
+    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: performance.now() - registerTokensStart,
@@ -918,6 +935,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     const resolveLifecycleStart = timingEnabled ? performance.now() : 0;
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+    lifecycleInstances.push({
+      onModuleDestroy() {
+        return platformShell.stop();
+      },
+    });
     if (timingEnabled) {
       timingPhases.push({
         durationMs: performance.now() - resolveLifecycleStart,
@@ -926,7 +948,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const lifecycleStart = timingEnabled ? performance.now() : 0;
-    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
+    await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell);
     if (timingEnabled) {
       timingPhases.push({
         durationMs: performance.now() - lifecycleStart,
@@ -954,6 +976,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       dispatcher,
       bootstrapTiming,
       adapter,
+      platformShell,
       lifecycleInstances,
       logger,
       runtimeCleanup,
@@ -993,6 +1016,7 @@ export class KonektiFactory {
     let lifecycleInstances: unknown[] = [];
     let bootstrappedContainer: Container | undefined;
     const runtimeCleanup: Array<() => void> = [];
+    const platformShell = createRuntimePlatformShell(options.platform?.components);
     const timingEnabled = options.diagnostics?.timing === true;
     const timingStart = timingEnabled ? performance.now() : 0;
     const timingPhases: BootstrapTimingPhase[] = [];
@@ -1016,7 +1040,7 @@ export class KonektiFactory {
       }
 
       const registerTokensStart = timingEnabled ? performance.now() : 0;
-      registerRuntimeApplicationContextTokens(bootstrapped);
+      registerRuntimeApplicationContextTokens(bootstrapped, platformShell);
       if (timingEnabled) {
         timingPhases.push({
           durationMs: performance.now() - registerTokensStart,
@@ -1028,6 +1052,11 @@ export class KonektiFactory {
 
       const resolveLifecycleStart = timingEnabled ? performance.now() : 0;
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, runtimeProviders);
+      lifecycleInstances.push({
+        onModuleDestroy() {
+          return platformShell.stop();
+        },
+      });
       if (timingEnabled) {
         timingPhases.push({
           durationMs: performance.now() - resolveLifecycleStart,
@@ -1036,7 +1065,7 @@ export class KonektiFactory {
       }
 
       const lifecycleStart = timingEnabled ? performance.now() : 0;
-      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger);
+      await runBootstrapLifecycle(bootstrapped.modules, lifecycleInstances, logger, platformShell);
       if (timingEnabled) {
         timingPhases.push({
           durationMs: performance.now() - lifecycleStart,

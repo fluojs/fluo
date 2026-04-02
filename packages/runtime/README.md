@@ -341,6 +341,28 @@ export class UsersModule {}
 export class AppModule {}
 ```
 
+### Runtime-owned platform shell registration
+
+```typescript
+import type { PlatformComponent } from '@konekti/runtime';
+
+const redisComponent: PlatformComponent = createRedisPlatformComponent();
+const queueComponent: PlatformComponent = createQueuePlatformComponent();
+
+const app = await KonektiFactory.create(AppModule, {
+  platform: {
+    components: [
+      { component: redisComponent, dependencies: [] },
+      { component: queueComponent, dependencies: ['redis.default'] },
+    ],
+  },
+});
+
+await app.listen();
+```
+
+Runtime validates component identity/dependency edges, starts components in dependency order during bootstrap, and stops them in reverse order during shutdown. `listen()` now enforces critical platform readiness from this runtime-owned shell.
+
 ## Key API
 
 | Export | Location | Description |
@@ -349,7 +371,8 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
-| `PlatformOptionsBase`, `PlatformComponent`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
+| `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
+| `PLATFORM_SHELL` | `src/tokens.ts` | Runtime token exposing the current platform shell orchestrator and snapshot/report API. |
 | `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | Export versioned runtime diagnostics graph from compiled modules |
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | Emit module-level Mermaid graph text from diagnostics payload |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |

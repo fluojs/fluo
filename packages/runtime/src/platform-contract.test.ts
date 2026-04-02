@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PlatformDiagnosticIssue, PlatformSnapshot, PlatformValidationResult } from './platform-contract.js';
+import type {
+  PlatformDiagnosticIssue,
+  PlatformShellSnapshot,
+  PlatformSnapshot,
+  PlatformValidationResult,
+} from './platform-contract.js';
 
 describe('platform contract spine', () => {
   it('freezes the shared platform snapshot shape for tooling consumers', () => {
@@ -88,5 +93,51 @@ describe('platform contract spine', () => {
     ]);
     expect(Object.keys(validation).sort()).toEqual(['issues', 'ok', 'warnings']);
     expect(validation.issues[0]).toEqual(issue);
+  });
+
+  it('freezes the runtime-owned platform shell snapshot envelope', () => {
+    const shellSnapshot: PlatformShellSnapshot = {
+      components: [
+        {
+          dependencies: ['redis.default'],
+          details: {},
+          health: {
+            status: 'healthy',
+          },
+          id: 'queue.default',
+          kind: 'queue',
+          ownership: {
+            externallyManaged: false,
+            ownsResources: true,
+          },
+          readiness: {
+            critical: true,
+            status: 'ready',
+          },
+          state: 'ready',
+          telemetry: {
+            namespace: 'konekti.queue',
+            tags: {},
+          },
+        },
+      ],
+      diagnostics: [],
+      generatedAt: '2026-04-02T00:00:00.000Z',
+      health: {
+        status: 'healthy',
+      },
+      readiness: {
+        critical: true,
+        status: 'ready',
+      },
+    };
+
+    expect(Object.keys(shellSnapshot).sort()).toEqual([
+      'components',
+      'diagnostics',
+      'generatedAt',
+      'health',
+      'readiness',
+    ]);
   });
 });

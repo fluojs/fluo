@@ -13,6 +13,7 @@ import type {
 } from '@konekti/http';
 
 import type { BootstrapTimingDiagnostics } from './diagnostics.js';
+import type { PlatformComponentInput } from './platform-contract.js';
 
 export type ModuleType = Constructor & { definition?: ModuleDefinition };
 export type ControllerType = Constructor;
@@ -108,6 +109,9 @@ export interface BootstrapApplicationOptions {
   middleware?: MiddlewareLike[];
   observers?: RequestObserverLike[];
   providers?: Provider[];
+  platform?: {
+    components?: readonly PlatformComponentInput[];
+  };
   rootModule: ModuleType;
   diagnostics?: {
     timing?: boolean;

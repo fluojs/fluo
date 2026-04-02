@@ -4,7 +4,8 @@ import { Global, Inject, Module, defineModuleMetadata } from '@konekti/core';
 
 import { bootstrapModule, KonektiFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
-import { HTTP_APPLICATION_ADAPTER } from './tokens.js';
+import type { PlatformComponent, PlatformState } from './platform-contract.js';
+import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
 import type { MicroserviceRuntime } from './types.js';
 
 describe('bootstrapModule', () => {
@@ -517,6 +518,7 @@ describe('KonektiFactory.createApplicationContext', () => {
 
     await expect(context.get(AppService)).resolves.toBeInstanceOf(AppService);
     await expect(context.get(HTTP_APPLICATION_ADAPTER)).rejects.toThrow('No provider registered');
+    await expect(context.get(PLATFORM_SHELL)).resolves.toBeDefined();
 
     await context.close();
   });
@@ -606,6 +608,134 @@ describe('KonektiFactory.createApplicationContext', () => {
     });
 
     await expect(context.close('SIGTERM')).rejects.toThrow('context shutdown failed');
+  });
+});
+
+describe('runtime platform shell enforcement', () => {
+  function createComponent(
+    id: string,
+    events: string[],
+    readinessStatus: 'ready' | 'not-ready' | 'degraded' = 'ready',
+    critical = true,
+  ): PlatformComponent {
+    let currentState: PlatformState = 'created';
+
+    return {
+      async health() {
+        return { status: 'healthy' };
+      },
+      id,
+      kind: 'test',
+      async ready() {
+        return {
+          critical,
+          reason: readinessStatus === 'ready' ? undefined : `${id} not ready`,
+          status: readinessStatus,
+        };
+      },
+      snapshot() {
+        return {
+          dependencies: [],
+          details: {},
+          health: { status: 'healthy' },
+          id,
+          kind: 'test',
+          ownership: {
+            externallyManaged: false,
+            ownsResources: true,
+          },
+          readiness: {
+            critical,
+            status: readinessStatus,
+          },
+          state: currentState,
+          telemetry: {
+            namespace: 'konekti.test',
+            tags: {},
+          },
+        };
+      },
+      async start() {
+        currentState = 'ready';
+        events.push(`start:${id}`);
+      },
+      state() {
+        return currentState;
+      },
+      async stop() {
+        currentState = 'stopped';
+        events.push(`stop:${id}`);
+      },
+      async validate() {
+        events.push(`validate:${id}`);
+        return {
+          issues: [],
+          ok: true,
+        };
+      },
+    };
+  }
+
+  it('starts registered platform components during bootstrap and stops them on close', async () => {
+    const events: string[] = [];
+    const redis = createComponent('redis.default', events);
+    const queue = createComponent('queue.default', events);
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {});
+
+    const app = await KonektiFactory.create(AppModule, {
+      platform: {
+        components: [
+          { component: queue, dependencies: ['redis.default'] },
+          { component: redis, dependencies: [] },
+        ],
+      },
+    });
+
+    await app.close();
+
+    expect(events).toEqual([
+      'validate:queue.default',
+      'validate:redis.default',
+      'start:redis.default',
+      'start:queue.default',
+      'stop:queue.default',
+      'stop:redis.default',
+    ]);
+  });
+
+  it('fails bootstrap when a platform component registration contains unknown dependency ids', async () => {
+    const events: string[] = [];
+    const queue = createComponent('queue.default', events);
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {});
+
+    await expect(
+      KonektiFactory.create(AppModule, {
+        platform: {
+          components: [{ component: queue, dependencies: ['redis.default'] }],
+        },
+      }),
+    ).rejects.toThrow('depends on unknown component "redis.default"');
+  });
+
+  it('prevents listen() when critical platform readiness is not ready', async () => {
+    const events: string[] = [];
+    const unavailable = createComponent('redis.default', events, 'not-ready', true);
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {});
+
+    const app = await KonektiFactory.create(AppModule, {
+      platform: {
+        components: [{ component: unavailable, dependencies: [] }],
+      },
+    });
+
+    await expect(app.listen()).rejects.toThrow('Runtime platform shell is not ready');
+    await app.close();
   });
 });
 
