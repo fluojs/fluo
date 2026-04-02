@@ -116,10 +116,12 @@ class AppModule {}
 
 - `createCacheModule(options)` — 캐시 프로바이더를 등록합니다(기본값 `isGlobal: false`).
 - `createCacheProviders(options)` — 수동 조합용 프로바이더 목록을 반환합니다.
+- `createCacheManagerPlatformStatusSnapshot(input)` — 캐시 스토어 종류/소유권/준비 상태를 공유 platform snapshot 형식에 맞게 매핑합니다.
+- `createCacheManagerPlatformDiagnosticIssues(input)` — 캐시 스토어 준비 실패에 대한 공유 `PlatformDiagnosticIssue` 항목을 출력합니다.
 - `CACHE_MANAGER` — `CacheService` DI 토큰.
 - `CACHE_OPTIONS` — 정규화된 모듈 옵션 DI 토큰.
 
-`CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`입니다.
+`CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, `principalScopeResolver`입니다.
 
 ## 동작 규약
 
@@ -154,6 +156,19 @@ class AppModule {}
   - `options.redis.client`로 raw ioredis 스타일 클라이언트 전달
 
 Redis 모드에서 클라이언트를 찾지 못하면 부트스트랩 시 명확한 오류를 발생시킵니다.
+
+## 플랫폼 상태 스냅샷 의미
+
+`createCacheManagerPlatformStatusSnapshot(...)`를 사용하면 공유 platform contract에 맞는 캐시 소유권/준비 상태/health 세부 정보를 출력할 수 있습니다.
+
+- `storeKind`는 `memory` / `redis` / `custom` 동작을 드러냅니다.
+- `storeOwnershipMode`는 스냅샷 소유권 매핑 (`framework` vs `external`)을 제어합니다.
+- `cacheCriticalPath`는 백킹 스토어를 사용할 수 없을 때 readiness 동작을 제어합니다:
+  - `false` (기본값): 캐시 미스가 있어도 요청 처리가 계속 가능하므로 readiness는 `degraded`입니다.
+  - `true`: 캐시가 critical path로 선언되므로 readiness는 `not-ready`입니다.
+- `details.telemetry.labels`는 공유 라벨 키 (`component_id`, `component_kind`, `operation`, `result`)를 따릅니다.
+
+`createCacheManagerPlatformDiagnosticIssues(...)`를 사용하면 패키지 접두사가 붙은 진단 코드 (`CACHE_MANAGER_*`)와 실행 가능한 `fixHint` 텍스트, 의존성 링크를 가진 항목을 출력할 수 있습니다.
 
 ## 스토어 간 일관성
 
