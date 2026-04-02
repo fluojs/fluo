@@ -4,6 +4,8 @@
 
 이 페이지는 Konekti 에코시스템 내의 현재 공개 패키지 제품군에 대한 개요를 제공합니다.
 
+> **작업 기준으로 패키지를 찾으시나요?** [`package-chooser.ko.md`](./package-chooser.ko.md)에서 만들고 싶은 것에 맞는 패키지를 골라보세요.
+
 ## public package family
 
 - `@konekti/core`
