@@ -141,10 +141,53 @@ export { PostModule };
     utimesSync(modulePath, oldTimestamp, oldTimestamp);
     utimesSync(servicePath, oldTimestamp, oldTimestamp);
 
-    const writtenPaths = runGenerateCommand('service', 'Post', sourceDirectory, { force: true });
+    const result = runGenerateCommand('service', 'Post', sourceDirectory, { force: true });
 
-    expect(writtenPaths).toEqual([]);
+    expect(result.generatedFiles).toEqual([]);
+    expect(result.wiringBehavior).toBe('auto-registered');
+    expect(result.moduleRegistered).toBe(true);
     expect(statSync(modulePath).mtimeMs).toBe(oldTimestamp.getTime());
     expect(statSync(servicePath).mtimeMs).toBe(oldTimestamp.getTime());
+  });
+
+  it('returns GenerateResult with structured wiring metadata for auto-registered kinds', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('controller', 'Order', sourceDirectory);
+
+    expect(result.generatedFiles.length).toBeGreaterThan(0);
+    expect(result.wiringBehavior).toBe('auto-registered');
+    expect(result.moduleRegistered).toBe(true);
+    expect(result.modulePath).toContain('order.module.ts');
+    expect(result.nextStepHint).toContain('pnpm typecheck');
+  });
+
+  it('returns GenerateResult with files-only wiring metadata for non-registered kinds', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('request-dto', 'CreateUser', sourceDirectory);
+
+    expect(result.generatedFiles.length).toBeGreaterThan(0);
+    expect(result.wiringBehavior).toBe('files-only');
+    expect(result.moduleRegistered).toBe(false);
+    expect(result.modulePath).toBeUndefined();
+    expect(result.nextStepHint).toContain('@FromBody');
+  });
+
+  it('returns GenerateResult with module wiring hint for standalone module kind', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-generate-'));
+    tempDirectories.push(workspaceDirectory);
+
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const result = runGenerateCommand('module', 'Auth', sourceDirectory);
+
+    expect(result.generatedFiles.length).toBeGreaterThan(0);
+    expect(result.wiringBehavior).toBe('files-only');
+    expect(result.moduleRegistered).toBe(false);
+    expect(result.nextStepHint).toContain('parent module');
   });
 });

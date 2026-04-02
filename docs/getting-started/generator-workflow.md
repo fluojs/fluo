@@ -13,24 +13,36 @@ konekti g <schematic> <name>
 
 ## available schematics
 
-| Schematic | Alias |
-| --- | --- |
-| `controller` | `co` |
-| `guard` | `gu` |
-| `interceptor` | `in` |
-| `middleware` | `mi` |
-| `module` | `mo` |
-| `repository` | `repo` |
-| `request-dto` | `req` |
-| `response-dto` | `res` |
-| `service` | `s` |
+| Schematic | Alias | Wiring |
+| --- | --- | --- |
+| `controller` | `co` | auto |
+| `guard` | `gu` | auto |
+| `interceptor` | `in` | auto |
+| `middleware` | `mi` | auto |
+| `module` | `mo` | manual |
+| `repository` | `repo` | auto |
+| `request-dto` | `req` | manual |
+| `response-dto` | `res` | manual |
+| `service` | `s` | auto |
+
+### wiring behavior
+
+Generators have one of two wiring behaviors:
+
+- **auto** — the generated class is auto-registered in the domain module. If the module file does not exist yet, the CLI creates it. The module's `controllers`, `providers`, or `middleware` array is updated automatically.
+- **manual** — files only. The generated class is not registered anywhere automatically. You must wire it into a module or controller yourself. The CLI prints a next-step hint with specific instructions after generation.
+
+After running any generator, the CLI output shows:
+1. A `CREATE` line for each generated file.
+2. A **Wiring** status line indicating whether the class was auto-registered or requires manual wiring.
+3. A **Next steps** hint with the recommended follow-up action (e.g., run `pnpm typecheck`, import a DTO, etc.).
 
 ## generation conventions
 
 - **Language**: All files are generated in TypeScript.
 - **Naming**: Uses kebab-case for filenames and PascalCase for classes.
 - **Location**: Files are written to the `src/` directory by default in starter applications.
-- **Module Updates**: Generators automatically register new components in the appropriate module.
+- **Module Updates**: Generators with `auto` wiring automatically register new components in the appropriate module. Generators with `manual` wiring produce files only — you wire them yourself.
 
 ### example output
 

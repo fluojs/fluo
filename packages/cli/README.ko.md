@@ -77,6 +77,11 @@ konekti generate response-dto user-profile
 
 각 generator는 kebab-case 파일명과 PascalCase 클래스명을 가진 하나 이상의 파일을 생성합니다.
 
+생성 후 CLI 출력에는 다음이 포함됩니다:
+- 작성된 각 파일에 대한 `CREATE` 라인.
+- **Wiring** 상태 라인: `auto-registered`(클래스가 도메인 모듈에 추가됨) 또는 `files only`(수동 등록 필요).
+- 해당 generator 종류에 맞는 권장 후속 작업이 포함된 **Next steps** 힌트.
+
 ### NestJS 마이그레이션 codemod 실행
 
 ```bash
