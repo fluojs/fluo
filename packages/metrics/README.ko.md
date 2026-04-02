@@ -125,6 +125,16 @@ MetricsModule.forRoot({
 
 `unknownPathLabel`의 기본값은 `UNKNOWN`입니다. 커스텀 normalizer가 빈 문자열을 반환하면 `HttpMetricsMiddleware`는 이 라벨로 폴백합니다.
 
+### 런타임 플랫폼 텔레메트리 정렬
+
+`MetricsModule`은 스크레이프마다 `PLATFORM_SHELL`의 런타임 공유 readiness/health 시맨틱을 내보내므로, `/metrics`가 runtime inspect/snapshot 출력과 의미적으로 어긋나지 않습니다.
+
+- `konekti_component_ready{component_id,component_kind,operation="readiness",result,env,instance}`
+- `konekti_component_health{component_id,component_kind,operation="health",result,env,instance}`
+- `konekti_metrics_registry_mode{mode="isolated|shared"}`
+
+`runtime.shell`은 합산 셸 readiness/health를 컴포넌트 단위 시계열과 상관분석할 수 있도록 제공되는 합성 컴포넌트 식별자입니다.
+
 ### Provider 계약
 
 `MetricsModule`은 현재 Prometheus meter provider만 지원합니다. `prometheus`가 아닌 provider 값을 넘기면 런타임에서 예외를 던집니다.

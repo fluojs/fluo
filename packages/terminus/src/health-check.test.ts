@@ -36,6 +36,10 @@ describe('runHealthCheck', () => {
         status: 'up',
       },
     });
+    expect(report.contributors).toEqual({
+      down: ['cache'],
+      up: ['database'],
+    });
     expect(report.error).toEqual({
       cache: {
         message: 'timeout',
@@ -60,6 +64,10 @@ describe('runHealthCheck', () => {
     const report = await runHealthCheck(indicators);
 
     expect(report.status).toBe('error');
+    expect(report.contributors).toEqual({
+      down: ['redis'],
+      up: [],
+    });
     expect(report.error.redis).toEqual({
       message: 'redis unavailable',
       status: 'down',

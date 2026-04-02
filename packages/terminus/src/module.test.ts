@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 import { REDIS_CLIENT } from '@konekti/redis';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
 
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
@@ -68,6 +68,10 @@ describe('createTerminusModule', () => {
 
     expect(healthResponse.statusCode).toBe(200);
     expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+        up: ['database'],
+      },
       details: {
         database: {
           status: 'up',
@@ -76,6 +80,14 @@ describe('createTerminusModule', () => {
       info: {
         database: {
           status: 'up',
+        },
+      },
+      platform: {
+        health: {
+          status: 'healthy',
+        },
+        readiness: {
+          status: 'ready',
         },
       },
       status: 'ok',
@@ -114,6 +126,10 @@ describe('createTerminusModule', () => {
 
     expect(healthResponse.statusCode).toBe(503);
     expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: ['redis'],
+        up: [],
+      },
       error: {
         redis: {
           message: 'redis down',
@@ -163,6 +179,10 @@ describe('createTerminusModule', () => {
     await app.dispatch(createRequest('/health'), secondHealth);
     expect(secondHealth.statusCode).toBe(503);
     expect(secondHealth.body).toMatchObject({
+      contributors: {
+        down: ['custom'],
+        up: [],
+      },
       error: {
         custom: {
           message: 'dependency degraded',
@@ -247,6 +267,10 @@ describe('createTerminusModule', () => {
     await app.dispatch(createRequest('/health'), healthResponse);
     expect(healthResponse.statusCode).toBe(503);
     expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: ['redis'],
+        up: [],
+      },
       error: {
         redis: {
           message: 'redis down',
@@ -258,6 +282,88 @@ describe('createTerminusModule', () => {
 
     const readyResponse = createResponse();
     await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(503);
+    expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('aligns /health and /ready with runtime platform readiness semantics', async () => {
+    const component: PlatformComponent = {
+      async health() {
+        return { status: 'healthy' };
+      },
+      id: 'redis.default',
+      kind: 'redis',
+      async ready() {
+        return { critical: true, reason: 'redis not ready', status: 'not-ready' };
+      },
+      snapshot() {
+        return {
+          dependencies: [],
+          details: { mode: 'external' },
+          health: { status: 'healthy' },
+          id: 'redis.default',
+          kind: 'redis',
+          ownership: { externallyManaged: true, ownsResources: false },
+          readiness: { critical: true, reason: 'redis not ready', status: 'not-ready' },
+          state: 'starting',
+          telemetry: { namespace: 'redis', tags: {} },
+        };
+      },
+      async start() {},
+      state() {
+        return 'starting';
+      },
+      async stop() {},
+      async validate() {
+        return { issues: [], ok: true };
+      },
+    };
+
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async (key: string) => ({ [key]: { status: 'up' } }),
+      },
+    ];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createTerminusModule({ indicators })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: {
+        components: [component],
+      },
+      rootModule: AppModule,
+    });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+        up: ['database'],
+      },
+      platform: {
+        health: {
+          status: 'healthy',
+        },
+        readiness: {
+          reason: 'redis not ready',
+          status: 'not-ready',
+        },
+      },
+      status: 'error',
+    });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+
     expect(readyResponse.statusCode).toBe(503);
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
 

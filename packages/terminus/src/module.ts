@@ -1,6 +1,14 @@
 import type { Provider } from '@konekti/di';
 import type { RequestContext } from '@konekti/http';
-import { RUNTIME_CONTAINER, createHealthModule, defineModule, type ModuleType } from '@konekti/runtime';
+import {
+  PLATFORM_SHELL,
+  RUNTIME_CONTAINER,
+  createHealthModule,
+  defineModule,
+  type ModuleType,
+  type PlatformHealthReport,
+  type PlatformReadinessReport,
+} from '@konekti/runtime';
 
 import { TerminusHealthService } from './health-check.js';
 import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS, TERMINUS_OPTIONS } from './tokens.js';
@@ -88,11 +96,24 @@ export function createTerminusModule(options: TerminusModuleOptions = {}): Modul
   const healthModule = createHealthModule({
     healthCheck: async (ctx: RequestContext) => {
       const healthService = await ctx.container.resolve(TerminusHealthService);
-      const report = await healthService.check();
+      const platformShell = await ctx.container.resolve(PLATFORM_SHELL);
+      const [report, readiness, health] = await Promise.all([
+        healthService.check(),
+        platformShell.ready(),
+        platformShell.health(),
+      ]);
+      const status = report.status === 'ok' && health.status === 'healthy' && readiness.status === 'ready' ? 'ok' : 'error';
 
       return {
-        body: report,
-        statusCode: report.status === 'ok' ? 200 : 503,
+        body: {
+          ...report,
+          platform: {
+            health,
+            readiness,
+          },
+          status,
+        },
+        statusCode: status === 'ok' ? 200 : 503,
       };
     },
     path: options.path,
@@ -117,14 +138,29 @@ export function createTerminusModule(options: TerminusModuleOptions = {}): Modul
         readinessChecks,
       }),
       {
-        inject: [TerminusHealthService],
+        inject: [TerminusHealthService, RUNTIME_CONTAINER],
         provide: TERMINUS_READINESS_REGISTRAR,
         useFactory: (...deps: unknown[]) => {
-          const [healthService] = deps as [TerminusHealthService];
+          const [healthService, runtimeContainer] = deps as [{
+            isHealthy(): Promise<boolean>;
+          }, {
+            resolve(token: unknown): Promise<{
+              ready(): Promise<PlatformReadinessReport>;
+              health(): Promise<PlatformHealthReport>;
+            }>;
+          }];
 
           return {
-            onApplicationBootstrap() {
-              healthModule.addReadinessCheck(async () => healthService.isHealthy());
+            onApplicationBootstrap(): void {
+              healthModule.addReadinessCheck(async () => {
+                const platformShell = await runtimeContainer.resolve(PLATFORM_SHELL);
+                const [indicatorHealthy, readiness] = await Promise.all([
+                  healthService.isHealthy(),
+                  platformShell.ready(),
+                ]);
+
+                return indicatorHealthy && readiness.status === 'ready';
+              });
             },
           };
         },

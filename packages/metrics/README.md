@@ -127,6 +127,16 @@ Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality
 
 `unknownPathLabel` defaults to `UNKNOWN`. If a custom normalizer returns a blank string, `HttpMetricsMiddleware` falls back to that label.
 
+### Runtime platform telemetry alignment
+
+`MetricsModule` exports runtime-shared readiness/health semantics from `PLATFORM_SHELL` on every scrape so `/metrics` stays aligned with runtime inspect/snapshot output.
+
+- `konekti_component_ready{component_id,component_kind,operation="readiness",result,env,instance}`
+- `konekti_component_health{component_id,component_kind,operation="health",result,env,instance}`
+- `konekti_metrics_registry_mode{mode="isolated|shared"}`
+
+`runtime.shell` is exported as a synthetic component identity so aggregate shell readiness/health can be correlated with component-level series.
+
 ### Provider contract
 
 `MetricsModule` currently supports only the Prometheus meter provider. Passing any non-prometheus provider value throws at runtime.

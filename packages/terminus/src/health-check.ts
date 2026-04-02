@@ -100,6 +100,10 @@ export async function runHealthCheck(indicators: readonly HealthIndicator[]): Pr
 
   return {
     checkedAt: new Date().toISOString(),
+    contributors: {
+      down: errorEntries.map(([key]) => key),
+      up: infoEntries.map(([key]) => key),
+    },
     details,
     error: Object.fromEntries(errorEntries),
     info: Object.fromEntries(infoEntries),

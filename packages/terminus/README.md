@@ -11,6 +11,7 @@ Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on
 - aggregates indicator outcomes into a structured report (`status`, `info`, `error`, `details`)
 - sets `/health` to HTTP `503` when any indicator fails
 - registers indicator-backed readiness checks so `/ready` returns `503` on dependency failures
+- aligns `/health` and `/ready` with runtime-owned platform shell readiness/health semantics
 
 ## Installation
 
@@ -82,6 +83,8 @@ For Drizzle specifically, the default path uses an **execute-capable handle** (`
 - `indicator.check(key)` returns `{ [key]: { status: 'up', ...details } }` on success.
 - `indicator.check(key)` throws `HealthCheckError` on failure with `causes` shaped as `{ [key]: { status: 'down', ...details } }`.
 - `runHealthCheck(indicators)` catches those failures, preserves their structured causes, and aggregates them into the `/health` report.
+- `contributors` in the health report declares which indicator keys currently contribute `up` and `down` states.
+- `/health` includes `platform.readiness` and `platform.health` from the runtime `PLATFORM_SHELL` so the endpoint does not diverge from inspect/snapshot semantics.
 
 ## Health report shape
 
@@ -89,6 +92,10 @@ For Drizzle specifically, the default path uses an **execute-capable handle** (`
 {
   "status": "error",
   "checkedAt": "2026-03-24T00:00:00.000Z",
+  "contributors": {
+    "up": ["memory"],
+    "down": ["redis"]
+  },
   "info": {
     "memory": { "status": "up", "rss": 123456 }
   },
@@ -98,6 +105,10 @@ For Drizzle specifically, the default path uses an **execute-capable handle** (`
   "details": {
     "memory": { "status": "up", "rss": 123456 },
     "redis": { "status": "down", "message": "ECONNREFUSED" }
+  },
+  "platform": {
+    "readiness": { "status": "ready", "critical": false },
+    "health": { "status": "healthy" }
   }
 }
 ```

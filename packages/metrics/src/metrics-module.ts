@@ -1,7 +1,7 @@
 import { Controller, Get, type MiddlewareLike, type RequestContext } from '@konekti/http';
 import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
-import { type Registry, Registry as PrometheusRegistry, collectDefaultMetrics } from 'prom-client';
+import { PLATFORM_SHELL, defineModule, type ModuleType, type PlatformShellSnapshot } from '@konekti/runtime';
+import { Gauge, type Registry, Registry as PrometheusRegistry, collectDefaultMetrics } from 'prom-client';
 
 import {
   HttpMetricsMiddleware,
@@ -43,6 +43,7 @@ export class MetricsModule {
     const registry = options.registry ?? new PrometheusRegistry();
     const metricsService = new MetricsService(registry);
     const meterProvider = new PrometheusMeterProvider(registry);
+    const platformTelemetry = new RuntimePlatformTelemetry(registry, options.registry ? 'shared' : 'isolated');
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       MetricsModule.registeredRegistries.add(registry);
@@ -68,6 +69,7 @@ export class MetricsModule {
     class MetricsController {
       @Get(metricsPath)
       async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
+        await platformTelemetry.refresh(ctx);
         ctx.response.setHeader('content-type', registry.contentType);
         return registry.metrics();
       }
@@ -82,6 +84,110 @@ export class MetricsModule {
     });
 
     return MetricsRuntimeModule;
+  }
+}
+
+type RegistryMode = 'isolated' | 'shared';
+
+const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
+const REGISTRY_MODE_LABELS = ['mode'] as const;
+
+function toReadinessValue(status: PlatformShellSnapshot['readiness']['status']): number {
+  return status === 'ready' ? 1 : 0;
+}
+
+function toHealthValue(status: PlatformShellSnapshot['health']['status']): number {
+  return status === 'healthy' ? 1 : 0;
+}
+
+function getOrCreateGauge(
+  registry: Registry,
+  config: {
+    help: string;
+    labelNames: readonly string[];
+    name: string;
+  },
+): Gauge<string> {
+  const existing = registry.getSingleMetric(config.name);
+
+  if (existing instanceof Gauge) {
+    return existing;
+  }
+
+  return new Gauge({
+    help: config.help,
+    labelNames: [...config.labelNames],
+    name: config.name,
+    registers: [registry],
+  });
+}
+
+class RuntimePlatformTelemetry {
+  private readonly readinessGauge: Gauge<string>;
+  private readonly healthGauge: Gauge<string>;
+  private readonly registryModeGauge: Gauge<string>;
+
+  constructor(
+    registry: Registry,
+    private readonly registryMode: RegistryMode,
+  ) {
+    this.readinessGauge = getOrCreateGauge(registry, {
+      help: 'Runtime platform component readiness from shared platform snapshot semantics.',
+      labelNames: PLATFORM_COMPONENT_LABELS,
+      name: 'konekti_component_ready',
+    });
+    this.healthGauge = getOrCreateGauge(registry, {
+      help: 'Runtime platform component health from shared platform snapshot semantics.',
+      labelNames: PLATFORM_COMPONENT_LABELS,
+      name: 'konekti_component_health',
+    });
+    this.registryModeGauge = getOrCreateGauge(registry, {
+      help: 'Metrics module registry mode: isolated or shared.',
+      labelNames: REGISTRY_MODE_LABELS,
+      name: 'konekti_metrics_registry_mode',
+    });
+  }
+
+  async refresh(ctx: RequestContext): Promise<void> {
+    this.registryModeGauge.reset();
+    this.registryModeGauge.labels(this.registryMode).set(1);
+
+    const platformShell = await this.resolvePlatformShell(ctx);
+    if (!platformShell) {
+      return;
+    }
+
+    const snapshot = await platformShell.snapshot();
+    const env = process.env.NODE_ENV ?? 'unknown';
+    const instance = process.env.HOSTNAME ?? 'local';
+
+    this.readinessGauge.reset();
+    this.healthGauge.reset();
+
+    this.readinessGauge.labels('runtime.shell', 'runtime', 'readiness', snapshot.readiness.status, env, instance).set(
+      toReadinessValue(snapshot.readiness.status),
+    );
+    this.healthGauge.labels('runtime.shell', 'runtime', 'health', snapshot.health.status, env, instance).set(
+      toHealthValue(snapshot.health.status),
+    );
+
+    for (const component of snapshot.components) {
+      this.readinessGauge
+        .labels(component.id, component.kind, 'readiness', component.readiness.status, env, instance)
+        .set(toReadinessValue(component.readiness.status));
+
+      this.healthGauge
+        .labels(component.id, component.kind, 'health', component.health.status, env, instance)
+        .set(toHealthValue(component.health.status));
+    }
+  }
+
+  private async resolvePlatformShell(ctx: RequestContext): Promise<{ snapshot(): Promise<PlatformShellSnapshot> } | undefined> {
+    try {
+      return await ctx.container.resolve(PLATFORM_SHELL);
+    } catch {
+      return undefined;
+    }
   }
 }
 
