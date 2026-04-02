@@ -1,6 +1,14 @@
 {
   "name": "@konekti/throttler",
   "description": "Decorator-based rate limiting for Konekti applications with in-memory and Redis store adapters.",
+  "keywords": [
+    "konekti",
+    "throttler",
+    "rate-limit",
+    "rate-limiting",
+    "redis",
+    "decorator"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

@@ -33,6 +33,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/event-bus`
 - `@konekti/websocket`
 - `@konekti/queue`
+- `@konekti/throttler`
 - `@konekti/testing`
 - `@konekti/cli`
 - `@konekti/studio`
@@ -48,7 +49,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
-- **`@konekti/validation` package**: Validation decorators, mapped DTO helpers, and validation engine.
+- **`@konekti/validation`**: Validation decorators, mapped DTO helpers, and validation engine.
 - **`@konekti/jwt`**: Core JWT logic.
 - **`@konekti/passport`**: Authentication strategy registry and generic guard wiring.
 - **`@konekti/openapi`**: Document generation and OpenAPI decorators.
@@ -66,6 +67,7 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/drizzle`**: Drizzle handle integration with ALS transaction context, async module factory, strict/fallback transaction behavior, and optional `dispose` shutdown hook.
 - **`@konekti/mongoose`**: Mongoose integration package for runtime/DI wiring.
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
+- **`@konekti/throttler`**: Decorator-based rate limiting with in-memory and Redis store adapters.
 - **`@konekti/testing`**: Testing module and helper utilities.
 - **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
 - **`@konekti/studio`**: File-first diagnostics viewer for runtime graph/timing JSON exports.

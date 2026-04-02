@@ -1,5 +1,14 @@
 {
   "name": "@konekti/prisma",
+  "description": "Prisma lifecycle and ALS-backed transaction context for Konekti, with async module factory and strict transaction mode.",
+  "keywords": [
+    "konekti",
+    "prisma",
+    "orm",
+    "database",
+    "transaction",
+    "als"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

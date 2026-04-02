@@ -1,5 +1,13 @@
 {
   "name": "@konekti/platform-express",
+  "description": "Express-based HTTP adapter for the Konekti runtime.",
+  "keywords": [
+    "konekti",
+    "express",
+    "http-adapter",
+    "platform",
+    "server"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

@@ -1,6 +1,15 @@
 {
   "name": "@konekti/cache-manager",
-  "description": "HTTP response caching primitives for Konekti with memory and Redis stores.",
+  "description": "Decorator-driven HTTP response caching and standalone cache service for Konekti, with memory and Redis backends.",
+  "keywords": [
+    "konekti",
+    "cache",
+    "caching",
+    "http-cache",
+    "redis",
+    "memory-store",
+    "decorator"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",
