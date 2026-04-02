@@ -95,6 +95,22 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         );
       }
 
+      if (transport.listenClientStreaming) {
+        transport.listenClientStreaming(
+          async (pattern: string, reader: AsyncIterable<unknown>) => {
+            return await this.dispatchClientStream(pattern, reader);
+          },
+        );
+      }
+
+      if (transport.listenBidiStreaming) {
+        transport.listenBidiStreaming(
+          async (pattern: string, reader: AsyncIterable<unknown>, writer: ServerStreamWriter) => {
+            await this.dispatchBidiStream(pattern, reader, writer);
+          },
+        );
+      }
+
       await transport.listen(async (packet) => this.dispatchPacket(packet));
       this.listening = true;
     })();
@@ -135,6 +151,26 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
 
     return transport.serverStream(pattern, clonePayload(payload), signal);
+  }
+
+  clientStream(pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
+    const transport = this.moduleOptions.transport;
+
+    if (!transport.clientStream) {
+      throw new Error('The configured transport does not support client streaming. Use a transport that implements clientStream().');
+    }
+
+    return transport.clientStream(pattern, signal);
+  }
+
+  bidiStream(pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
+    const transport = this.moduleOptions.transport;
+
+    if (!transport.bidiStream) {
+      throw new Error('The configured transport does not support bidirectional streaming. Use a transport that implements bidiStream().');
+    }
+
+    return transport.bidiStream(pattern, signal);
   }
 
   private async dispatchPacket(packet: TransportPacket): Promise<unknown> {
@@ -247,6 +283,174 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
 
     await Promise.resolve((value as (input: unknown, w: ServerStreamWriter) => unknown).call(instance, payload, writer));
+  }
+
+  private async dispatchClientStream(pattern: string, reader: AsyncIterable<unknown>): Promise<unknown> {
+    const matches = this.descriptors.filter((descriptor) =>
+      descriptor.kind === 'client-stream' && this.matchesPattern(descriptor.pattern, pattern));
+
+    if (matches.length > 1) {
+      throw new Error(`Multiple client-stream handlers matched pattern "${pattern}": ${matches
+        .map((descriptor) => `${descriptor.targetName}.${descriptor.methodName}`)
+        .join(', ')}.`);
+    }
+
+    const first = matches[0];
+
+    if (!first) {
+      throw new Error(`No client-stream handler registered for pattern "${pattern}".`);
+    }
+
+    try {
+      return await this.invokeClientStreamHandler(first, reader);
+    } catch (error) {
+      this.logger.error(
+        `Client-stream handler ${first.targetName}.${first.methodName} failed.`,
+        error,
+        'MicroserviceLifecycleService',
+      );
+      throw error;
+    }
+  }
+
+  private async invokeClientStreamHandler(
+    descriptor: HandlerDescriptor,
+    reader: AsyncIterable<unknown>,
+  ): Promise<unknown> {
+    if (descriptor.scope === 'singleton') {
+      return await this.invokeResolvedClientStreamHandler(
+        await this.resolveSingletonHandlerInstance(descriptor),
+        descriptor,
+        reader,
+      );
+    }
+
+    const streamScope = this.runtimeContainer.createRequestScope();
+
+    try {
+      const instance = await streamScope.resolve(descriptor.token);
+
+      return await this.invokeResolvedClientStreamHandler(instance, descriptor, reader);
+    } finally {
+      try {
+        await streamScope.dispose();
+      } catch (error) {
+        this.logger.error(
+          `Failed to dispose microservice client-stream scope for ${descriptor.targetName}.${descriptor.methodName}.`,
+          error,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+  }
+
+  private async invokeResolvedClientStreamHandler(
+    instance: unknown | undefined,
+    descriptor: HandlerDescriptor,
+    reader: AsyncIterable<unknown>,
+  ): Promise<unknown> {
+    if (!instance) {
+      throw new Error(
+        `Failed to resolve microservice target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+      );
+    }
+
+    const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
+
+    if (typeof value !== 'function') {
+      throw new Error(
+        `Microservice handler ${descriptor.targetName}.${descriptor.methodName} must be a callable function.`,
+      );
+    }
+
+    return await Promise.resolve((value as (r: AsyncIterable<unknown>) => unknown).call(instance, reader));
+  }
+
+  private async dispatchBidiStream(pattern: string, reader: AsyncIterable<unknown>, writer: ServerStreamWriter): Promise<void> {
+    const matches = this.descriptors.filter((descriptor) =>
+      descriptor.kind === 'bidi-stream' && this.matchesPattern(descriptor.pattern, pattern));
+
+    if (matches.length > 1) {
+      const errorMsg = `Multiple bidi-stream handlers matched pattern "${pattern}": ${matches
+        .map((descriptor) => `${descriptor.targetName}.${descriptor.methodName}`)
+        .join(', ')}.`;
+      writer.error(new Error(errorMsg));
+      return;
+    }
+
+    const first = matches[0];
+
+    if (!first) {
+      writer.error(new Error(`No bidi-stream handler registered for pattern "${pattern}".`));
+      return;
+    }
+
+    try {
+      await this.invokeBidiStreamHandler(first, reader, writer);
+    } catch (error) {
+      this.logger.error(
+        `Bidi-stream handler ${first.targetName}.${first.methodName} failed.`,
+        error,
+        'MicroserviceLifecycleService',
+      );
+      writer.error(error instanceof Error ? error : new Error('Bidi-stream handler failed.'));
+    }
+  }
+
+  private async invokeBidiStreamHandler(
+    descriptor: HandlerDescriptor,
+    reader: AsyncIterable<unknown>,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    if (descriptor.scope === 'singleton') {
+      return await this.invokeResolvedBidiStreamHandler(
+        await this.resolveSingletonHandlerInstance(descriptor),
+        descriptor,
+        reader,
+        writer,
+      );
+    }
+
+    const streamScope = this.runtimeContainer.createRequestScope();
+
+    try {
+      const instance = await streamScope.resolve(descriptor.token);
+
+      await this.invokeResolvedBidiStreamHandler(instance, descriptor, reader, writer);
+    } finally {
+      try {
+        await streamScope.dispose();
+      } catch (error) {
+        this.logger.error(
+          `Failed to dispose microservice bidi-stream scope for ${descriptor.targetName}.${descriptor.methodName}.`,
+          error,
+          'MicroserviceLifecycleService',
+        );
+      }
+    }
+  }
+
+  private async invokeResolvedBidiStreamHandler(
+    instance: unknown | undefined,
+    descriptor: HandlerDescriptor,
+    reader: AsyncIterable<unknown>,
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    if (!instance) {
+      throw new Error(
+        `Failed to resolve microservice target ${descriptor.targetName} from module ${descriptor.moduleName}.`,
+      );
+    }
+
+    const value = (instance as Record<MetadataPropertyKey, unknown>)[descriptor.methodKey];
+
+    if (typeof value !== 'function') {
+      throw new Error(
+        `Microservice handler ${descriptor.targetName}.${descriptor.methodName} must be a callable function.`,
+      );
+    }
+
+    await Promise.resolve((value as (r: AsyncIterable<unknown>, w: ServerStreamWriter) => unknown).call(instance, reader, writer));
   }
 
   private async dispatchEventHandlers(descriptors: HandlerDescriptor[], payload: unknown): Promise<undefined> {

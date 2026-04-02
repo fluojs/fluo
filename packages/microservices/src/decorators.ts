@@ -34,6 +34,14 @@ function decoratorDisplayName(kind: HandlerKind): string {
     return 'ServerStreamPattern';
   }
 
+  if (kind === 'client-stream') {
+    return 'ClientStreamPattern';
+  }
+
+  if (kind === 'bidi-stream') {
+    return 'BidiStreamPattern';
+  }
+
   return 'EventPattern';
 }
 
@@ -64,4 +72,12 @@ export function EventPattern(pattern: Pattern): MethodDecoratorLike {
 
 export function ServerStreamPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('server-stream', pattern);
+}
+
+export function ClientStreamPattern(pattern: Pattern): MethodDecoratorLike {
+  return createPatternDecorator('client-stream', pattern);
+}
+
+export function BidiStreamPattern(pattern: Pattern): MethodDecoratorLike {
+  return createPatternDecorator('bidi-stream', pattern);
 }

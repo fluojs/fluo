@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, ServerStreamWriter, TransportHandler, TransportServerStreamHandler } from './types.js';
+import type { MicroserviceTransport, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from './types.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -36,6 +36,11 @@ interface GrpcReadableStreamLike {
   on(event: 'end', listener: () => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
   on(event: string, listener: (...args: unknown[]) => void): this;
+}
+
+interface GrpcDuplexStreamLike extends GrpcReadableStreamLike {
+  end(): void;
+  write(data: unknown): boolean;
 }
 
 interface GrpcMethodDefinitionLike {
@@ -116,6 +121,8 @@ export interface GrpcMicroserviceTransportOptions {
 }
 
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
+  private bidiStreamHandler: TransportBidiStreamHandler | undefined;
+  private clientStreamHandler: TransportClientStreamHandler | undefined;
   private closing = false;
   private readonly clients = new Map<string, ServiceRuntime>();
   private grpc: GrpcJsLike | undefined;
@@ -170,7 +177,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         }
 
         if (!hasRegisteredMethod) {
-          throw new Error('GrpcMicroserviceTransport could not register any RPC handlers. At least one unary or server-streaming method is required.');
+          throw new Error('GrpcMicroserviceTransport could not register any RPC handlers. At least one unary, server-streaming, client-streaming, or bidirectional-streaming method is required.');
         }
 
         await this.bindServer(server, grpc);
@@ -224,6 +231,14 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     this.serverStreamHandler = handler;
   }
 
+  listenClientStreaming(handler: TransportClientStreamHandler): void {
+    this.clientStreamHandler = handler;
+  }
+
+  listenBidiStreaming(handler: TransportBidiStreamHandler): void {
+    this.bidiStreamHandler = handler;
+  }
+
   serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before serverStream().');
@@ -236,6 +251,34 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     const parsed = parseGrpcPattern(pattern);
 
     return this.callServerStream(parsed, payload, signal);
+  }
+
+  clientStream(pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
+    if (this.closing) {
+      throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before clientStream().');
+    }
+
+    if (!this.listening) {
+      throw new Error('GrpcMicroserviceTransport is not listening. Call listen() before clientStream().');
+    }
+
+    const parsed = parseGrpcPattern(pattern);
+
+    return this.callClientStream(parsed, signal);
+  }
+
+  bidiStream(pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
+    if (this.closing) {
+      throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before bidiStream().');
+    }
+
+    if (!this.listening) {
+      throw new Error('GrpcMicroserviceTransport is not listening. Call listen() before bidiStream().');
+    }
+
+    const parsed = parseGrpcPattern(pattern);
+
+    return this.callBidiStream(parsed, signal);
   }
 
   async close(): Promise<void> {
@@ -263,6 +306,8 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     } finally {
       this.handler = undefined;
       this.serverStreamHandler = undefined;
+      this.clientStreamHandler = undefined;
+      this.bidiStreamHandler = undefined;
       this.listening = false;
       this.resolvedServer = undefined;
       this.clients.clear();
@@ -285,7 +330,39 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     const implementation: Record<string, unknown> = {};
 
     for (const [methodName, methodDefinition] of Object.entries(serviceConstructor.service)) {
+      if (methodDefinition.requestStream && methodDefinition.responseStream) {
+        implementation[methodName] = (
+          call: GrpcDuplexStreamLike & { metadata?: GrpcMetadataLike },
+        ) => {
+          void this.handleInboundBidiStream(serviceName, methodName, call).catch((error) => {
+            try {
+              const grpcError = this.mapGrpcHandlerError(error);
+              const mapped = Object.assign(new Error(grpcError.message), { code: grpcError.code });
+
+              if (call.destroy) {
+                call.destroy(mapped);
+              } else {
+                call.end();
+              }
+            } catch {
+              call.end();
+            }
+          });
+        };
+        continue;
+      }
+
       if (methodDefinition.requestStream) {
+        implementation[methodName] = (
+          call: GrpcReadableStreamLike & { metadata?: GrpcMetadataLike },
+          callback: (error: Error | null | { code?: number; message: string }, response?: unknown) => void,
+        ) => {
+          void this.handleInboundClientStream(serviceName, methodName, call).then((response) => {
+            callback(null, response);
+          }).catch((error) => {
+            callback(this.mapGrpcHandlerError(error));
+          });
+        };
         continue;
       }
 
@@ -388,6 +465,61 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     };
 
     await handler(pattern, call.request, writer);
+  }
+
+  private async handleInboundClientStream(
+    serviceName: string,
+    methodName: string,
+    call: GrpcReadableStreamLike & { metadata?: GrpcMetadataLike },
+  ): Promise<unknown> {
+    const handler = this.clientStreamHandler;
+
+    if (!handler) {
+      throw this.createGrpcError(
+        this.resolveGrpcStatusCode('UNIMPLEMENTED', 12),
+        'No client-stream handler registered for pattern.',
+      );
+    }
+
+    const pattern = `${serviceName}.${methodName}`;
+    const reader = grpcReadableToAsyncIterable(call);
+
+    return await handler(pattern, reader);
+  }
+
+  private async handleInboundBidiStream(
+    serviceName: string,
+    methodName: string,
+    call: GrpcDuplexStreamLike & { metadata?: GrpcMetadataLike },
+  ): Promise<void> {
+    const handler = this.bidiStreamHandler;
+
+    if (!handler) {
+      throw this.createGrpcError(
+        this.resolveGrpcStatusCode('UNIMPLEMENTED', 12),
+        'No bidi-stream handler registered for pattern.',
+      );
+    }
+
+    const pattern = `${serviceName}.${methodName}`;
+    const reader = grpcReadableToAsyncIterable(call);
+    const writer: ServerStreamWriter = {
+      write(data: unknown): void {
+        call.write(data);
+      },
+      end(): void {
+        call.end();
+      },
+      error(err: Error): void {
+        if (call.destroy) {
+          call.destroy(err);
+        } else {
+          call.end();
+        }
+      },
+    };
+
+    await handler(pattern, reader, writer);
   }
 
   private async callUnary(
@@ -640,6 +772,156 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         };
       },
     };
+  }
+
+  private callClientStream(
+    parsedPattern: ParsedGrpcPattern,
+    signal?: AbortSignal,
+  ): { writer: ServerStreamWriter; result: Promise<unknown> } {
+    const runtime = this.getServiceRuntime(parsedPattern.serviceName);
+    const method = runtime.client[parsedPattern.methodName];
+
+    if (typeof method !== 'function') {
+      throw new Error(`GrpcMicroserviceTransport could not resolve client-streaming method "${parsedPattern.serviceName}.${parsedPattern.methodName}".`);
+    }
+
+    const metadata = this.createMetadata(grpcKinds.message);
+    let callStream: GrpcWritableStreamLike | undefined;
+    let ended = false;
+
+    const result = new Promise<unknown>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('gRPC client stream aborted before dispatch.'));
+        return;
+      }
+
+      callStream = (method as (
+        metadata: GrpcMetadataLike,
+        callback: (error: { code?: number; message?: string } | null, response: unknown) => void,
+      ) => GrpcWritableStreamLike).call(
+        runtime.client,
+        metadata,
+        (error: { code?: number; message?: string } | null, response: unknown) => {
+          if (error) {
+            if (signal?.aborted) {
+              reject(new Error('gRPC client stream aborted.'));
+              return;
+            }
+
+            const message = typeof error.message === 'string' && error.message.length > 0
+              ? error.message
+              : 'Unhandled gRPC client stream error';
+            reject(new Error(message));
+            return;
+          }
+
+          resolve(response);
+        },
+      );
+
+      if (signal) {
+        const onAbort = () => {
+          if (!ended) {
+            ended = true;
+            callStream?.end();
+          }
+
+          reject(new Error('gRPC client stream aborted.'));
+        };
+
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
+
+    const writer: ServerStreamWriter = {
+      write(data: unknown): void {
+        if (!ended) {
+          callStream?.write(data);
+        }
+      },
+      end(): void {
+        if (!ended) {
+          ended = true;
+          callStream?.end();
+        }
+      },
+      error(err: Error): void {
+        void err;
+
+        if (!ended) {
+          ended = true;
+          callStream?.end();
+        }
+      },
+    };
+
+    return { writer, result };
+  }
+
+  private callBidiStream(
+    parsedPattern: ParsedGrpcPattern,
+    signal?: AbortSignal,
+  ): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
+    const runtime = this.getServiceRuntime(parsedPattern.serviceName);
+    const method = runtime.client[parsedPattern.methodName];
+
+    if (typeof method !== 'function') {
+      throw new Error(`GrpcMicroserviceTransport could not resolve bidirectional-streaming method "${parsedPattern.serviceName}.${parsedPattern.methodName}".`);
+    }
+
+    const metadata = this.createMetadata(grpcKinds.message);
+
+    const duplexStream = (method as (
+      metadata: GrpcMetadataLike,
+    ) => GrpcDuplexStreamLike).call(
+      runtime.client,
+      metadata,
+    );
+
+    let writerEnded = false;
+
+    if (signal) {
+      if (signal.aborted) {
+        duplexStream.cancel?.();
+      } else {
+        const onAbort = () => {
+          if (!writerEnded) {
+            writerEnded = true;
+            duplexStream.end();
+          }
+
+          duplexStream.cancel?.();
+        };
+
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
+    const reader = grpcReadableToAsyncIterable(duplexStream, signal);
+
+    const writer: ServerStreamWriter = {
+      write(data: unknown): void {
+        if (!writerEnded) {
+          duplexStream.write(data);
+        }
+      },
+      end(): void {
+        if (!writerEnded) {
+          writerEnded = true;
+          duplexStream.end();
+        }
+      },
+      error(err: Error): void {
+        void err;
+
+        if (!writerEnded) {
+          writerEnded = true;
+          duplexStream.end();
+        }
+      },
+    };
+
+    return { reader, writer };
   }
 
   private getServiceRuntime(serviceName: string): ServiceRuntime {
@@ -900,6 +1182,101 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private logEventHandlerFailure(error: unknown): void {
     console.error('[konekti][GrpcMicroserviceTransport] event handler failed:', error);
   }
+}
+
+function grpcReadableToAsyncIterable(stream: GrpcReadableStreamLike, signal?: AbortSignal): AsyncIterable<unknown> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<unknown> {
+      const buffer: unknown[] = [];
+      let done = false;
+      let error: Error | undefined;
+      let waiting: { resolve: (result: IteratorResult<unknown>) => void; reject: (err: Error) => void } | undefined;
+
+      stream.on('data', (data: unknown) => {
+        if (waiting) {
+          const w = waiting;
+          waiting = undefined;
+          w.resolve({ value: data, done: false });
+        } else {
+          buffer.push(data);
+        }
+      });
+
+      stream.on('end', () => {
+        done = true;
+
+        if (waiting) {
+          const w = waiting;
+          waiting = undefined;
+          w.resolve({ value: undefined, done: true });
+        }
+      });
+
+      stream.on('error', (err: Error) => {
+        done = true;
+
+        if (signal?.aborted) {
+          error = new Error('gRPC stream aborted.');
+        } else {
+          error = err instanceof Error ? err : new Error('gRPC stream error.');
+        }
+
+        if (waiting) {
+          const w = waiting;
+          waiting = undefined;
+          w.reject(error);
+        }
+      });
+
+      if (signal) {
+        if (signal.aborted) {
+          done = true;
+          error = new Error('gRPC stream aborted.');
+          stream.cancel?.();
+        } else {
+          const onAbort = () => {
+            done = true;
+            error = new Error('gRPC stream aborted.');
+            stream.cancel?.();
+
+            if (waiting) {
+              const w = waiting;
+              waiting = undefined;
+              w.reject(error!);
+            }
+          };
+
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+
+      return {
+        next(): Promise<IteratorResult<unknown>> {
+          if (buffer.length > 0) {
+            return Promise.resolve({ value: buffer.shift(), done: false });
+          }
+
+          if (error) {
+            return Promise.reject(error);
+          }
+
+          if (done) {
+            return Promise.resolve({ value: undefined, done: true });
+          }
+
+          return new Promise<IteratorResult<unknown>>((resolve, reject) => {
+            waiting = { resolve, reject };
+          });
+        },
+
+        return(): Promise<IteratorResult<unknown>> {
+          done = true;
+          stream.cancel?.();
+          return Promise.resolve({ value: undefined, done: true });
+        },
+      };
+    },
+  };
 }
 
 function parseGrpcPattern(pattern: string): ParsedGrpcPattern {

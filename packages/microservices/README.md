@@ -52,13 +52,15 @@ await microservice.listen();
 - `@MessagePattern(pattern)` - request/reply handler registration
 - `@EventPattern(pattern)` - event handler registration
 - `@ServerStreamPattern(pattern)` - gRPC server-streaming handler registration
+- `@ClientStreamPattern(pattern)` - gRPC client-streaming handler registration
+- `@BidiStreamPattern(pattern)` - gRPC bidirectional-streaming handler registration
 - `TcpMicroserviceTransport` - TCP transport adapter
 - `RedisPubSubMicroserviceTransport` - Redis pub/sub event transport adapter
 - `NatsMicroserviceTransport` - NATS transport adapter (request/reply + event)
 - `KafkaMicroserviceTransport` - Kafka transport adapter (request/reply + event)
 - `RabbitMqMicroserviceTransport` - RabbitMQ transport adapter (request/reply + event)
 - `RedisStreamsMicroserviceTransport` - Redis Streams transport adapter (request/reply + event)
-- `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention + server streaming)
+- `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention + server streaming + client streaming + bidirectional streaming)
 - `MqttMicroserviceTransport` - MQTT transport adapter (request/reply + event)
 
 ## Runtime behavior
@@ -151,7 +153,7 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 - `KafkaMicroserviceTransport` supports both `send()` (request/reply) and `emit()` (event) via dedicated message, response, and event topics with correlation-based reply routing.
 - `RabbitMqMicroserviceTransport` supports both `send()` and `emit()` using request/reply correlation with dedicated message and response queues.
 - `RedisStreamsMicroserviceTransport` supports both `send()` and `emit()` via Redis Streams with consumer groups for safe single-consumer request/reply and event fan-out.
-- `GrpcMicroserviceTransport` supports unary `send()`, unary `emit()`, and server-streaming `serverStream()` by using `<Service>.<Method>` routing with metadata kind (`x-konekti-kind`) to distinguish message/event packets.
+- `GrpcMicroserviceTransport` supports unary `send()`, unary `emit()`, server-streaming `serverStream()`, client-streaming `clientStream()`, and bidirectional-streaming `bidiStream()` by using `<Service>.<Method>` routing with metadata kind (`x-konekti-kind`) to distinguish message/event packets.
 - `MqttMicroserviceTransport` supports `send()` and `emit()` with JSON-envelope correlation (`requestId`, `replyTopic`) and a per-instance reply topic.
 
 ### Kafka
@@ -221,11 +223,13 @@ In this example, `AuditHandler` and `NotificationHandler` receive the same `Even
 
 - `GrpcMicroserviceTransport` lazily loads `@grpc/grpc-js` and `@grpc/proto-loader` at runtime. These are optional peers and are only required when you use this transport.
 - Pattern format is strictly `<Service>.<Method>` and must match proto service/method names under the configured `packageName`.
-- `listen()` loads the proto package and registers unary handlers and server-streaming handlers for discovered services. Client-streaming and bidirectional-streaming methods are not registered. If startup fails during bind, partial startup is rolled back via server shutdown.
+- `listen()` loads the proto package and registers unary, server-streaming, client-streaming, and bidirectional-streaming handlers for discovered services. If startup fails during bind, partial startup is rolled back via server shutdown.
 - Inbound packets use metadata key `x-konekti-kind` (`message` or `event`) to map into `TransportPacket.kind` without changing payload schemas.
 - `send()` uses unary RPC request/reply, applies timeout via deadline, supports abort via call cancellation, and rejects deterministically on close.
 - `emit()` is a Konekti convention implemented as best-effort unary call: response payload is discarded, transport-level call failures are still surfaced.
 - `serverStream()` returns an `AsyncIterable<unknown>` that yields each message from the server. Supports abort via `AbortSignal`. The iterator's `return()` cancels the underlying gRPC call.
+- `clientStream()` returns `{ writer, result }` where `writer` provides `write(data)`, `end()`, and `error(err)` methods. The caller writes messages via `writer` and awaits `result` for the final response. Supports abort via `AbortSignal`.
+- `bidiStream()` returns `{ reader, writer }` where `reader` is an `AsyncIterable<unknown>` and `writer` provides `write(data)`, `end()`, and `error(err)` methods. Supports abort via `AbortSignal`.
 
 #### Server streaming
 
@@ -286,7 +290,139 @@ for await (const message of transport.serverStream('Metrics.StreamCpuUsage', { i
 
 - The handler receives `(payload, writer)` where `writer` provides `write(data)`, `end()`, and `error(err)` methods.
 - `serverStream()` requires the transport to be listening. It rejects if the transport is closed or not yet started.
-- Client-streaming and bidirectional-streaming methods are deferred to a future release (see issue #620).
+
+#### Client streaming
+
+Client-streaming support allows the client to send a sequence of messages and receive a single response when the stream completes. Use `@ClientStreamPattern` to register a client-streaming handler and `clientStream()` to initiate the stream from the client side.
+
+**Server-side handler:**
+
+```typescript
+import { Module } from '@konekti/core';
+import { KonektiFactory } from '@konekti/runtime';
+import {
+  createMicroservicesModule,
+  ClientStreamPattern,
+  GrpcMicroserviceTransport,
+} from '@konekti/microservices';
+
+class MathHandler {
+  @ClientStreamPattern('Math.StreamAll')
+  async streamAll(reader: AsyncIterable<unknown>) {
+    let total = 0;
+    for await (const msg of reader) {
+      total += (msg as { value: number }).value;
+    }
+    return { total };
+  }
+}
+
+const transport = new GrpcMicroserviceTransport({
+  url: '0.0.0.0:50051',
+  packageName: 'math',
+  protoPath: './math.proto',
+});
+
+@Module({
+  imports: [createMicroservicesModule({ transport })],
+  providers: [MathHandler],
+})
+class ServerModule {}
+
+const microservice = await KonektiFactory.createMicroservice(ServerModule);
+await microservice.listen();
+```
+
+**Client-side usage:**
+
+```typescript
+const transport = new GrpcMicroserviceTransport({
+  url: 'localhost:50051',
+  packageName: 'math',
+  protoPath: './math.proto',
+});
+await transport.listen(async () => {});
+
+const { writer, result } = transport.clientStream('Math.StreamAll');
+writer.write({ value: 1 });
+writer.write({ value: 2 });
+writer.write({ value: 3 });
+writer.end();
+
+const response = await result;
+console.log('total:', response); // { total: 6 }
+```
+
+- The handler receives `(reader)` where `reader` is an `AsyncIterable<unknown>` that yields each message from the client.
+- `clientStream()` returns `{ writer, result }` where `writer` provides `write(data)`, `end()`, and `error(err)` methods, and `result` is a `Promise` that resolves with the handler's return value.
+- `clientStream()` requires the transport to be listening. It throws if the transport is closed or not yet started.
+
+#### Bidirectional streaming
+
+Bidirectional-streaming support allows the client and server to exchange messages concurrently over a single RPC call. Use `@BidiStreamPattern` to register a bidirectional-streaming handler and `bidiStream()` to initiate the stream from the client side.
+
+**Server-side handler:**
+
+```typescript
+import { Module } from '@konekti/core';
+import { KonektiFactory } from '@konekti/runtime';
+import {
+  createMicroservicesModule,
+  BidiStreamPattern,
+  GrpcMicroserviceTransport,
+} from '@konekti/microservices';
+import type { ServerStreamWriter } from '@konekti/microservices';
+
+class EchoHandler {
+  @BidiStreamPattern('Echo.StreamBidi')
+  async echo(reader: AsyncIterable<unknown>, writer: ServerStreamWriter) {
+    for await (const msg of reader) {
+      writer.write({ echoed: msg });
+    }
+    writer.end();
+  }
+}
+
+const transport = new GrpcMicroserviceTransport({
+  url: '0.0.0.0:50051',
+  packageName: 'echo',
+  protoPath: './echo.proto',
+});
+
+@Module({
+  imports: [createMicroservicesModule({ transport })],
+  providers: [EchoHandler],
+})
+class ServerModule {}
+
+const microservice = await KonektiFactory.createMicroservice(ServerModule);
+await microservice.listen();
+```
+
+**Client-side usage:**
+
+```typescript
+const transport = new GrpcMicroserviceTransport({
+  url: 'localhost:50051',
+  packageName: 'echo',
+  protoPath: './echo.proto',
+});
+await transport.listen(async () => {});
+
+const { reader, writer } = transport.bidiStream('Echo.StreamBidi');
+
+writer.write({ text: 'hello' });
+writer.write({ text: 'world' });
+writer.end();
+
+for await (const message of reader) {
+  console.log('echoed:', message);
+}
+```
+
+- The handler receives `(reader, writer)` where `reader` is an `AsyncIterable<unknown>` and `writer` provides `write(data)`, `end()`, and `error(err)` methods.
+- `bidiStream()` returns `{ reader, writer }` where `reader` is an `AsyncIterable<unknown>` that yields server messages and `writer` provides `write(data)`, `end()`, and `error(err)` methods.
+- `bidiStream()` requires the transport to be listening. It throws if the transport is closed or not yet started.
 
 ### MQTT
 
