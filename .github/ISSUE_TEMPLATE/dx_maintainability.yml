@@ -1,0 +1,37 @@
+name: DX/Maintainability Request
+description: Propose an improvement to developer experience or repo maintainability
+labels: ["type:maintainability", "priority:p2"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to suggest improvements to the developer experience, refactoring, or maintenance workflows.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is the current pain point or friction?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: How should we improve it?
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected Impact
+      description: How will this help maintainers or contributors?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - framework core
+        - cli
+        - documentation
+        - tooling/ci
+        - examples
