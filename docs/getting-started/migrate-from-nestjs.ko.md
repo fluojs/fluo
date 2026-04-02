@@ -591,7 +591,7 @@ const service = await moduleRef.resolve(UserService);
 
 - CLI 경고 카테고리: **Request DTO migration (handler parameter decorators)**
 - 핸들러 파라미터 데코레이터(`@Body()`, `@Param()`, `@Query()`)를 `@RequestDto` + DTO 필드 데코레이터 전환 관점에서 검토해야 합니다.
-- [섹션 4.5: pipe 대신 요청 변환](#45-pipe-대신-요청-변환)의 Konekti DTO 바인딩 패턴을 참고하세요.
+- [섹션 4.5: pipes 대신 요청 변환](#45-pipes-대신-요청-변환)의 Konekti DTO 바인딩 패턴을 참고하세요.
 
 #### Pipe/converter 마이그레이션
 
@@ -604,14 +604,14 @@ const service = await moduleRef.resolve(UserService);
 - CLI 경고 카테고리: **Unsupported bootstrap variant**
 - 타입 인자(`NestFactory.create<NestExpressApplication>(...)`)나 어댑터 전용 생성자를 사용하는 bootstrap 형태는 자동 재작성되지 않습니다.
 - `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })`를 명시적 어댑터 경로로 사용하세요.
-- [섹션 4: bootstrap 경로](#4-bootstrap-경로)에서 지원하는 모든 Konekti bootstrap 형태를 확인하세요.
+- [섹션 4: 부트스트랩 경로](#4-부트스트랩-경로)에서 지원하는 모든 Konekti bootstrap 형태를 확인하세요.
 
 #### 지원하지 않는 testing 패턴
 
 - CLI 경고 카테고리: **Unsupported testing pattern**
 - 지원 범위를 벗어나는 메서드(예: `.useMocker()`)나 비표준 metadata 형태를 사용하는 testing builder chain은 자동 재작성되지 않습니다.
 - `@konekti/testing`의 `createTestingModule({ rootModule })`를 사용하여 수동으로 재작성하세요.
-- [섹션 8: testing](#8-testing)의 Konekti 테스팅 패턴을 참고하세요.
+- [섹션 8: 테스트](#8-테스트)의 Konekti 테스팅 패턴을 참고하세요.
 
 #### Bootstrap 포트 접기 문제
 
