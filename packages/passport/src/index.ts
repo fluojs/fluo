@@ -10,4 +10,5 @@ export * from './metadata.js';
 export * from './module.js';
 export * from './passport-js.js';
 export * from './refresh-token.js';
+export * from './status.js';
 export * from './types.js';

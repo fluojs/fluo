@@ -470,6 +470,20 @@ export class AuthModule {}
 | `CookieAuthStrategy` | `src/cookie-auth.ts` | Auth strategy that extracts JWT from HttpOnly cookies |
 | `CookieManager` | `src/cookie-manager.ts` | Utilities for setting/clearing auth cookies |
 | `createCookieAuthPreset(config)` | `src/cookie-auth-module.ts` | Creates cookie auth providers and strategy registration |
+| `createPassportPlatformStatusSnapshot(input)` | `src/status.ts` | Maps strategy/preset/dependency readiness and policy boundary into shared platform snapshot shape |
+| `createPassportPlatformDiagnosticIssues(input)` | `src/status.ts` | Emits stable `AUTH_PASSPORT_*` diagnostics with fix hints and dependency edges |
+
+## Platform status snapshot semantics
+
+Use `createPassportPlatformStatusSnapshot(...)` to report auth package readiness in the shared platform model:
+
+- `details.strategyRegistry` shows registered strategy names and default-strategy alignment.
+- `details.presets.cookieAuth` exposes cookie preset enablement/readiness.
+- `details.presets.refreshToken.backingStore` exposes refresh-token dependency readiness and dependency ID.
+- `details.policyBoundary` separates framework-owned auth primitives from application-owned login/session policy.
+- `details.telemetry.labels` follows shared labels (`component_id`, `component_kind`, `operation`, `result`).
+
+Use `createPassportPlatformDiagnosticIssues(...)` to emit stable `AUTH_PASSPORT_*` diagnostics for registry/preset/dependency misconfiguration without implying the framework now owns application login/session policy.
 
 ## Architecture
 
@@ -527,6 +541,8 @@ The public package also exports auth error classes, bridge types, metadata helpe
 15. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
 16. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, revocation
 17. `src/cookie-auth.test.ts` — cookie auth strategy and cookie manager tests
+18. `src/status.ts` — platform snapshot/diagnostic adapter for strategy/preset/dependency readiness and policy boundary visibility
+19. `src/status.test.ts` — platform snapshot/diagnostic regression coverage
 
 ## Related packages
 
