@@ -45,3 +45,6 @@ jobs:
 
       - name: Verify release readiness
         run: pnpm verify:release-readiness
+
+      - name: Verify platform consistency governance
+        run: pnpm verify:platform-consistency-governance

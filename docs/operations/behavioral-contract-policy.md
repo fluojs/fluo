@@ -41,6 +41,16 @@ PRs affecting package behavior must verify:
 - [ ] Intentional limitations are explicitly stated rather than silently removed.
 - [ ] Runtime invariants are covered by regression tests.
 
+## CI enforcement
+
+Behavioral contract governance is enforced in CI via `pnpm verify:platform-consistency-governance`.
+
+The governance check fails pull requests when:
+
+- SSOT English/Korean mirror docs drift structurally.
+- Contract-governing docs change without companion updates to docs index, CI/tooling enforcement, and regression-test evidence.
+- Package README alignment/conformance claims are not backed by conformance harness tests (`createPlatformConformanceHarness(...)`).
+
 ## strong contract examples
 
 The following packages serve as models for strong behavioral contracts:
