@@ -32,12 +32,12 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 | DI | `@konekti/di` ★ | token-based dependency injection |
 | core | `@konekti/core` ★ | decorators, metadata, shared contracts |
 | http | `@konekti/http` ★ | routing, guards, interceptors, exception handling |
-| platform | `@konekti/platform-fastify` ★ | Fastify adapter (default) |
+| platform | `@konekti/platform-fastify` | Fastify adapter — optional, add when you need an HTTP listener |
 | config | `@konekti/config` ★ | typed configuration loading |
 | validation | `@konekti/validation` ★ | input DTO validation and materialization |
 | cli | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build scripts |
 
-**Why this combination:** These are the starter scaffold defaults. `runtime` wires the module graph, `http` provides the request chain, `platform-fastify` connects to the network, and `validation` + `config` handle input safety and environment binding.
+**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, and `validation` + `config` handle input safety and environment binding. The starter uses a runtime-owned Node startup path; to bind to a network port you add a transport adapter such as `platform-fastify` or `platform-express`.
 
 **When not to use:**
 - If you need Express middleware compatibility, swap `platform-fastify` for `@konekti/platform-express`.
