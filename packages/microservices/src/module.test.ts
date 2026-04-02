@@ -3,13 +3,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { Inject, Scope, defineControllerMetadata, defineModuleMetadata } from '@konekti/core';
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
-import { EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
+import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './kafka-transport.js';
 import { createMicroservicesModule } from './module.js';
 import { MICROSERVICE } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 import { TcpMicroserviceTransport } from './tcp-transport.js';
-import type { MicroserviceTransport, ServerStreamWriter, TransportHandler, TransportServerStreamHandler } from './types.js';
+import type {
+  MicroserviceTransport,
+  ServerStreamWriter,
+  TransportBidiStreamHandler,
+  TransportClientStreamHandler,
+  TransportHandler,
+  TransportServerStreamHandler,
+} from './types.js';
+
+async function* streamFrom(values: readonly unknown[]): AsyncIterable<unknown> {
+  for (const value of values) {
+    yield value;
+  }
+}
 
 class InMemoryPubSubRedisClient {
   private static subscriptions = new Map<string, Set<InMemoryPubSubRedisClient>>();
@@ -97,6 +110,8 @@ class InMemoryKafkaBus {
 }
 
 class InMemoryLoopbackTransport implements MicroserviceTransport {
+  private bidiStreamHandler: TransportBidiStreamHandler | undefined;
+  private clientStreamHandler: TransportClientStreamHandler | undefined;
   private handler: TransportHandler | undefined;
   private serverStreamHandler: TransportServerStreamHandler | undefined;
 
@@ -106,6 +121,14 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
 
   listenServerStreaming(handler: TransportServerStreamHandler): void {
     this.serverStreamHandler = handler;
+  }
+
+  listenClientStreaming(handler: TransportClientStreamHandler): void {
+    this.clientStreamHandler = handler;
+  }
+
+  listenBidiStreaming(handler: TransportBidiStreamHandler): void {
+    this.bidiStreamHandler = handler;
   }
 
   async send(pattern: string, payload: unknown): Promise<unknown> {
@@ -132,7 +155,29 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
     await this.serverStreamHandler(pattern, payload, writer);
   }
 
+  async dispatchClientStream(pattern: string, values: readonly unknown[]): Promise<unknown> {
+    if (!this.clientStreamHandler) {
+      throw new Error('Client stream handler is not listening.');
+    }
+
+    return await this.clientStreamHandler(pattern, streamFrom(values));
+  }
+
+  async dispatchBidiStream(
+    pattern: string,
+    values: readonly unknown[],
+    writer: ServerStreamWriter,
+  ): Promise<void> {
+    if (!this.bidiStreamHandler) {
+      throw new Error('Bidi stream handler is not listening.');
+    }
+
+    await this.bidiStreamHandler(pattern, streamFrom(values), writer);
+  }
+
   async close(): Promise<void> {
+    this.bidiStreamHandler = undefined;
+    this.clientStreamHandler = undefined;
     this.handler = undefined;
     this.serverStreamHandler = undefined;
   }
@@ -815,6 +860,7 @@ describe('@konekti/microservices', () => {
 
       @EventPattern('fail.event')
       onEvent() {
+        void this.ctx;
         throw new Error('handler failed');
       }
     }
@@ -1020,6 +1066,177 @@ describe('@konekti/microservices', () => {
     expect(firstWritten).toEqual([{ scopeId: 1 }]);
     expect(secondWritten).toEqual([{ scopeId: 2 }]);
     expect(created).toBe(2);
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after client-stream handler completes and on error', async () => {
+    const disposed: number[] = [];
+    const failedDisposed: number[] = [];
+
+    @Scope('request')
+    class ClientStreamContext {
+      static counter = 0;
+      readonly id = ++ClientStreamContext.counter;
+
+      onDestroy(): void {
+        disposed.push(this.id);
+      }
+    }
+
+    @Inject([ClientStreamContext])
+    @Scope('request')
+    class ClientStreamHandler {
+      constructor(private readonly ctx: ClientStreamContext) {}
+
+      @ClientStreamPattern('stream.client')
+      async handle(reader: AsyncIterable<unknown>) {
+        let total = 0;
+
+        for await (const item of reader) {
+          total += Number((item as { value: number }).value);
+        }
+
+        return { scopeId: this.ctx.id, total };
+      }
+    }
+
+    @Scope('request')
+    class FailingClientStreamContext {
+      onDestroy(): void {
+        failedDisposed.push(1);
+      }
+    }
+
+    @Inject([FailingClientStreamContext])
+    @Scope('request')
+    class FailingClientStreamHandler {
+      constructor(private readonly ctx: FailingClientStreamContext) {}
+
+      @ClientStreamPattern('stream.client.fail')
+      async handle(_reader: AsyncIterable<unknown>) {
+        void this.ctx;
+        throw new Error('client stream failed');
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [
+        ClientStreamContext,
+        ClientStreamHandler,
+        FailingClientStreamContext,
+        FailingClientStreamHandler,
+      ],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    await expect(transport.dispatchClientStream('stream.client', [{ value: 1 }, { value: 2 }]))
+      .resolves.toEqual({ scopeId: 1, total: 3 });
+    await expect(transport.dispatchClientStream('stream.client', [{ value: 3 }]))
+      .resolves.toEqual({ scopeId: 2, total: 3 });
+    await expect(transport.dispatchClientStream('stream.client.fail', [{ value: 99 }]))
+      .rejects.toThrow('client stream failed');
+
+    expect(disposed).toEqual([1, 2]);
+    expect(failedDisposed).toHaveLength(1);
+
+    await microservice.close();
+  });
+
+  it('disposes request-scoped providers after bidi-stream handler completes and on error', async () => {
+    const disposed: number[] = [];
+    const failedDisposed: number[] = [];
+
+    @Scope('request')
+    class BidiStreamContext {
+      static counter = 0;
+      readonly id = ++BidiStreamContext.counter;
+
+      onDestroy(): void {
+        disposed.push(this.id);
+      }
+    }
+
+    @Inject([BidiStreamContext])
+    @Scope('request')
+    class BidiHandler {
+      constructor(private readonly ctx: BidiStreamContext) {}
+
+      @BidiStreamPattern('stream.bidi')
+      async handle(reader: AsyncIterable<unknown>, writer: ServerStreamWriter) {
+        for await (const item of reader) {
+          writer.write({ scopeId: this.ctx.id, value: (item as { value: number }).value });
+        }
+
+        writer.end();
+      }
+    }
+
+    @Scope('request')
+    class FailingBidiContext {
+      onDestroy(): void {
+        failedDisposed.push(1);
+      }
+    }
+
+    @Inject([FailingBidiContext])
+    @Scope('request')
+    class FailingBidiHandler {
+      constructor(private readonly ctx: FailingBidiContext) {}
+
+      @BidiStreamPattern('stream.bidi.fail')
+      async handle(_reader: AsyncIterable<unknown>, _writer: ServerStreamWriter) {
+        void this.ctx;
+        throw new Error('bidi stream failed');
+      }
+    }
+
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [createMicroservicesModule({ transport })],
+      providers: [BidiStreamContext, BidiHandler, FailingBidiContext, FailingBidiHandler],
+    });
+
+    const microservice = await KonektiFactory.createMicroservice(AppModule);
+    await microservice.listen();
+
+    const firstWritten: unknown[] = [];
+    await transport.dispatchBidiStream('stream.bidi', [{ value: 10 }, { value: 20 }], {
+      write(data) { firstWritten.push(data); },
+      end() {},
+      error() {},
+    });
+
+    const secondWritten: unknown[] = [];
+    await transport.dispatchBidiStream('stream.bidi', [{ value: 30 }], {
+      write(data) { secondWritten.push(data); },
+      end() {},
+      error() {},
+    });
+
+    let bidiError: Error | undefined;
+    await transport.dispatchBidiStream('stream.bidi.fail', [{ value: 99 }], {
+      write() {},
+      end() {},
+      error(err) { bidiError = err; },
+    });
+
+    expect(firstWritten).toEqual([
+      { scopeId: 1, value: 10 },
+      { scopeId: 1, value: 20 },
+    ]);
+    expect(secondWritten).toEqual([{ scopeId: 2, value: 30 }]);
+    expect(disposed).toEqual([1, 2]);
+    expect(failedDisposed).toHaveLength(1);
+    expect(bidiError?.message).toBe('bidi stream failed');
 
     await microservice.close();
   });
