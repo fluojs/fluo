@@ -97,10 +97,11 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 ## release checklist
 
 1. `pnpm verify:release-readiness`
-2. confirm docs match the current package surface and bootstrap contract
-3. confirm any manifest decision note still matches benchmark evidence
-4. confirm release tag has a matching GitHub Release body derived from `CHANGELOG.md`
-5. attach `tooling/release/release-readiness-summary.md` to the GitHub Release
+2. `pnpm verify:platform-consistency-governance`
+3. confirm docs match the current package surface and bootstrap contract
+4. confirm any manifest decision note still matches benchmark evidence
+5. confirm release tag has a matching GitHub Release body derived from `CHANGELOG.md`
+6. attach `tooling/release/release-readiness-summary.md` to the GitHub Release
 
 ## release-readiness gate
 
@@ -116,7 +117,13 @@ The command also writes `tooling/release/release-readiness-summary.md`.
 
 ### PR CI automation
 
-`.github/workflows/ci.yml` runs the verification surface automatically on every pull request targeting `main` and on every push to `main`. The workflow executes `pnpm build`, `pnpm typecheck`, `pnpm test`, and `pnpm verify:release-readiness` in sequence, so regressions are caught before merge rather than at release time.
+`.github/workflows/ci.yml` runs the verification surface automatically on every pull request targeting `main` and on every push to `main`. The workflow executes `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:release-readiness`, and `pnpm verify:platform-consistency-governance` in sequence, so regressions are caught before merge rather than at release time.
+
+`pnpm verify:platform-consistency-governance` enforces the platform consistency governance guardrails:
+
+- SSOT mirror structure checks for `.md` / `.ko.md` document pairs.
+- Contract-governing doc changes must include companion updates (docs index, CI/tooling enforcement, regression-test evidence).
+- Package README alignment/conformance claims must be backed by harness tests (`createPlatformConformanceHarness(...)`).
 
 ## GitHub Releases
 

@@ -24,6 +24,7 @@
     "test:watch": "vitest",
     "lint": "biome lint",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
-    "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs"
+    "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs",
+    "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs"
   }
 }
