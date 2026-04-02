@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from './types.js';
+import type { MicroserviceTransport, ServerStreamWriter, TransportHandler, TransportServerStreamHandler } from './types.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -19,9 +19,23 @@ interface GrpcServerLike {
   tryShutdown?(callback: (error?: Error) => void): void;
 }
 
+interface GrpcWritableStreamLike {
+  end(): void;
+  write(data: unknown): boolean;
+}
+
 interface GrpcClientLike {
   close?(): void;
   [methodName: string]: unknown;
+}
+
+interface GrpcReadableStreamLike {
+  cancel?(): void;
+  destroy?(err?: Error): void;
+  on(event: 'data', listener: (data: unknown) => void): this;
+  on(event: 'end', listener: () => void): this;
+  on(event: 'error', listener: (err: Error) => void): this;
+  on(event: string, listener: (...args: unknown[]) => void): this;
 }
 
 interface GrpcMethodDefinitionLike {
@@ -113,6 +127,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private readonly requestTimeoutMs: number;
   private readonly server: GrpcServerLike | undefined;
   private resolvedServer: GrpcServerLike | undefined;
+  private serverStreamHandler: TransportServerStreamHandler | undefined;
 
   constructor(private readonly options: GrpcMicroserviceTransportOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
@@ -140,7 +155,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
       const packageRoot = this.resolvePackageRoot(loadedDefinition);
       const targetServices = this.resolveTargetServices(packageRoot);
       const server = this.server ?? new grpc.Server();
-      let hasUnaryMethod = false;
+      let hasRegisteredMethod = false;
 
       try {
         for (const [serviceName, serviceConstructor] of targetServices) {
@@ -150,12 +165,12 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
             continue;
           }
 
-          hasUnaryMethod = true;
+          hasRegisteredMethod = true;
           server.addService(serviceConstructor.service, implementation);
         }
 
-        if (!hasUnaryMethod) {
-          throw new Error('GrpcMicroserviceTransport could not register any unary RPC handlers. Unary methods are required in v1.');
+        if (!hasRegisteredMethod) {
+          throw new Error('GrpcMicroserviceTransport could not register any RPC handlers. At least one unary or server-streaming method is required.');
         }
 
         await this.bindServer(server, grpc);
@@ -205,6 +220,24 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     await this.callUnary(parsed, payload, grpcKinds.event, undefined);
   }
 
+  listenServerStreaming(handler: TransportServerStreamHandler): void {
+    this.serverStreamHandler = handler;
+  }
+
+  serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
+    if (this.closing) {
+      throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before serverStream().');
+    }
+
+    if (!this.listening) {
+      throw new Error('GrpcMicroserviceTransport is not listening. Call listen() before serverStream().');
+    }
+
+    const parsed = parseGrpcPattern(pattern);
+
+    return this.callServerStream(parsed, payload, signal);
+  }
+
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;
@@ -229,6 +262,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
       closeError ??= error;
     } finally {
       this.handler = undefined;
+      this.serverStreamHandler = undefined;
       this.listening = false;
       this.resolvedServer = undefined;
       this.clients.clear();
@@ -251,7 +285,24 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     const implementation: Record<string, unknown> = {};
 
     for (const [methodName, methodDefinition] of Object.entries(serviceConstructor.service)) {
-      if (methodDefinition.requestStream || methodDefinition.responseStream) {
+      if (methodDefinition.requestStream) {
+        continue;
+      }
+
+      if (methodDefinition.responseStream) {
+        implementation[methodName] = (
+          call: { metadata?: GrpcMetadataLike; request: unknown; write(data: unknown): boolean; end(): void },
+        ) => {
+          void this.handleInboundServerStream(serviceName, methodName, call).catch((error) => {
+            try {
+              const grpcError = this.mapGrpcHandlerError(error);
+              call.end();
+              void grpcError;
+            } catch {
+              call.end();
+            }
+          });
+        };
         continue;
       }
 
@@ -306,6 +357,37 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
       pattern,
       payload: call.request,
     });
+  }
+
+  private async handleInboundServerStream(
+    serviceName: string,
+    methodName: string,
+    call: { metadata?: GrpcMetadataLike; request: unknown; write(data: unknown): boolean; end(): void },
+  ): Promise<void> {
+    const handler = this.serverStreamHandler;
+
+    if (!handler) {
+      throw this.createGrpcError(
+        this.resolveGrpcStatusCode('UNIMPLEMENTED', 12),
+        'No server-stream handler registered for pattern.',
+      );
+    }
+
+    const pattern = `${serviceName}.${methodName}`;
+    const writer: ServerStreamWriter = {
+      write(data: unknown): void {
+        call.write(data);
+      },
+      end(): void {
+        call.end();
+      },
+      error(err: Error): void {
+        void err;
+        call.end();
+      },
+    };
+
+    await handler(pattern, call.request, writer);
   }
 
   private async callUnary(
@@ -428,6 +510,136 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         entry.reject(error instanceof Error ? error : new Error('Failed to send gRPC request.'));
       });
     });
+  }
+
+  private callServerStream(
+    parsedPattern: ParsedGrpcPattern,
+    payload: unknown,
+    signal?: AbortSignal,
+  ): AsyncIterable<unknown> {
+    const runtime = this.getServiceRuntime(parsedPattern.serviceName);
+    const method = runtime.client[parsedPattern.methodName];
+
+    if (typeof method !== 'function') {
+      throw new Error(`GrpcMicroserviceTransport could not resolve server-streaming method "${parsedPattern.serviceName}.${parsedPattern.methodName}".`);
+    }
+
+    const metadata = this.createMetadata(grpcKinds.message);
+    const transport = this;
+
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<unknown> {
+        const buffer: unknown[] = [];
+        let done = false;
+        let error: Error | undefined;
+        let waiting: { resolve: (result: IteratorResult<unknown>) => void; reject: (err: Error) => void } | undefined;
+        let stream: GrpcReadableStreamLike | undefined;
+
+        const startStream = () => {
+          if (stream) {
+            return;
+          }
+
+          stream = (method as (
+            request: unknown,
+            metadata: GrpcMetadataLike,
+          ) => GrpcReadableStreamLike).call(
+            runtime.client,
+            payload,
+            metadata,
+          );
+
+          stream.on('data', (data: unknown) => {
+            if (waiting) {
+              const w = waiting;
+              waiting = undefined;
+              w.resolve({ value: data, done: false });
+            } else {
+              buffer.push(data);
+            }
+          });
+
+          stream.on('end', () => {
+            done = true;
+
+            if (waiting) {
+              const w = waiting;
+              waiting = undefined;
+              w.resolve({ value: undefined, done: true });
+            }
+          });
+
+          stream.on('error', (err: Error) => {
+            done = true;
+
+            if (signal?.aborted) {
+              error = new Error('gRPC server stream aborted.');
+            } else {
+              error = err instanceof Error ? err : new Error('gRPC server stream error.');
+            }
+
+            if (waiting) {
+              const w = waiting;
+              waiting = undefined;
+              w.reject(error);
+            }
+          });
+
+          if (signal) {
+            if (signal.aborted) {
+              done = true;
+              error = new Error('gRPC server stream aborted.');
+              stream.cancel?.();
+              return;
+            }
+
+            const onAbort = () => {
+              done = true;
+              error = new Error('gRPC server stream aborted.');
+              stream?.cancel?.();
+
+              if (waiting) {
+                const w = waiting;
+                waiting = undefined;
+                w.reject(error);
+              }
+            };
+
+            signal.addEventListener('abort', onAbort, { once: true });
+          }
+        };
+
+        void transport;
+
+        return {
+          next(): Promise<IteratorResult<unknown>> {
+            startStream();
+
+            if (buffer.length > 0) {
+              return Promise.resolve({ value: buffer.shift(), done: false });
+            }
+
+            if (error) {
+              return Promise.reject(error);
+            }
+
+            if (done) {
+              return Promise.resolve({ value: undefined, done: true });
+            }
+
+            return new Promise<IteratorResult<unknown>>((resolve, reject) => {
+              waiting = { resolve, reject };
+            });
+          },
+
+          return(): Promise<IteratorResult<unknown>> {
+            done = true;
+            stream?.cancel?.();
+            return Promise.resolve({ value: undefined, done: true });
+          },
+        };
+      },
+    };
   }
 
   private getServiceRuntime(serviceName: string): ServiceRuntime {
@@ -663,7 +875,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
       ? error.message
       : 'Unhandled microservice error';
 
-    if (message.includes('No message handler registered for pattern')) {
+    if (message.includes('No message handler registered for pattern') || message.includes('No server-stream handler registered for pattern')) {
       return this.createGrpcError(this.resolveGrpcStatusCode('UNIMPLEMENTED', 12), message);
     }
 
@@ -695,7 +907,7 @@ function parseGrpcPattern(pattern: string): ParsedGrpcPattern {
 
   if (segments.length !== 2 || segments[0]?.length === 0 || segments[1]?.length === 0) {
     throw new Error(
-      `Invalid gRPC pattern "${pattern}". Expected "<Service>.<Method>" matching unary proto service and method names.`,
+      `Invalid gRPC pattern "${pattern}". Expected "<Service>.<Method>" matching proto service and method names.`,
     );
   }
 

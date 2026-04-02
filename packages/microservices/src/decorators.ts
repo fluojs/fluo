@@ -25,14 +25,26 @@ function defineStandardHandlerMetadata(
   bag[microserviceMetadataSymbol] = map;
 }
 
+function decoratorDisplayName(kind: HandlerKind): string {
+  if (kind === 'message') {
+    return 'MessagePattern';
+  }
+
+  if (kind === 'server-stream') {
+    return 'ServerStreamPattern';
+  }
+
+  return 'EventPattern';
+}
+
 function createPatternDecorator(kind: HandlerKind, pattern: Pattern): MethodDecoratorLike {
   return (_value: Function, context: ClassMethodDecoratorContext): void => {
     if (context.private) {
-      throw new Error(`@${kind === 'message' ? 'MessagePattern' : 'EventPattern'}() cannot be used on private methods.`);
+      throw new Error(`@${decoratorDisplayName(kind)}() cannot be used on private methods.`);
     }
 
     if (context.static) {
-      throw new Error(`@${kind === 'message' ? 'MessagePattern' : 'EventPattern'}() cannot be used on static methods.`);
+      throw new Error(`@${decoratorDisplayName(kind)}() cannot be used on static methods.`);
     }
 
     defineStandardHandlerMetadata(context.metadata, context.name, {
@@ -48,4 +60,8 @@ export function MessagePattern(pattern: Pattern): MethodDecoratorLike {
 
 export function EventPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('event', pattern);
+}
+
+export function ServerStreamPattern(pattern: Pattern): MethodDecoratorLike {
+  return createPatternDecorator('server-stream', pattern);
 }
