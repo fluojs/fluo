@@ -321,7 +321,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
   });
 
-  it('emits runtime diagnostics graph JSON for inspect by default', async () => {
+  it('emits platform snapshot JSON for inspect by default', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath], {
@@ -331,17 +331,27 @@ describe('CLI command runner', () => {
     });
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {
-      rootModule: string;
-      version: number;
+      components: unknown[];
+      diagnostics: unknown[];
+      generatedAt: string;
+      health: {
+        status: string;
+      };
+      readiness: {
+        status: string;
+      };
     };
 
     expect(exitCode).toBe(0);
     expect(stderrBuffer.join('')).toBe('');
-    expect(payload.version).toBe(1);
-    expect(payload.rootModule).toBe('AppModule');
+    expect(payload.generatedAt).toEqual(expect.any(String));
+    expect(payload.components).toEqual([]);
+    expect(payload.diagnostics).toEqual([]);
+    expect(payload.readiness.status).toBe('ready');
+    expect(payload.health.status).toBe('healthy');
   });
 
-  it('emits Mermaid graph output for inspect', async () => {
+  it('emits Mermaid dependency output for inspect', async () => {
     const stdoutBuffer: string[] = [];
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
       cwd: process.cwd(),
@@ -351,7 +361,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('graph TD');
-    expect(stdoutBuffer.join('')).toContain('AppModule');
+    expect(stdoutBuffer.join('')).toContain('No registered platform components');
   });
 
   it('emits bootstrap timing diagnostics for inspect --timing', async () => {
@@ -714,7 +724,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(output).toContain('Scaffold a new Konekti application');
     expect(output).toContain('Generate a schematic');
-    expect(output).toContain('Inspect the module graph');
+    expect(output).toContain('Inspect runtime platform snapshot/diagnostics');
     expect(output).toContain('dry-run by default');
     expect(output).toContain('Show top-level or command-specific help');
   });
@@ -738,7 +748,7 @@ describe('CLI command runner', () => {
     expect(flagBuffer.join('')).toBe(helpBuffer.join(''));
   });
 
-  it('inspect usage describes module graph and timing diagnostics consistently', async () => {
+  it('inspect usage describes platform snapshot and timing diagnostics consistently', async () => {
     const stdoutBuffer: string[] = [];
 
     const exitCode = await runCli(['inspect', '--help'], {
@@ -750,7 +760,7 @@ describe('CLI command runner', () => {
     const output = stdoutBuffer.join('');
 
     expect(exitCode).toBe(0);
-    expect(output).toContain('module graph');
+    expect(output).toContain('platform snapshot');
     expect(output).toContain('diagnostics');
     expect(output).toContain('timing');
   });

@@ -17,7 +17,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 - **`konekti new`** — scaffold a starter project with defaults → install dependencies
 - **`konekti generate <kind> <name>`** — create one or more files and update the module when the generator kind participates in module registration
-- **`konekti inspect <module-path>`** — emit runtime diagnostics from a module graph (JSON or Mermaid) or opt-in bootstrap timing
+- **`konekti inspect <module-path>`** — emit the shared runtime platform snapshot/diagnostic payload (JSON or Mermaid dependency graph) or opt-in bootstrap timing
 - **`konekti migrate <path>`** — run safe NestJS → Konekti codemods (dry-run by default)
 - **`konekti help [command]`** — show top-level or command-specific help output
 
@@ -106,7 +106,7 @@ Current safe first-phase transforms:
 
 The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
 
-### Inspect runtime module diagnostics
+### Inspect runtime platform snapshot + diagnostics
 
 ```bash
 konekti inspect ./src/app.module.mjs --json
@@ -114,7 +114,7 @@ konekti inspect ./src/app.module.mjs --mermaid
 konekti inspect ./src/app.module.mjs --timing
 ```
 
-`inspect` uses the same `@konekti/runtime` diagnostics surface (`createRuntimeDiagnosticsGraph`, `renderRuntimeDiagnosticsMermaid`) used by runtime consumers. `--json` and `--mermaid` inspect the compiled module graph, while `--timing` bootstraps an application context and emits the versioned timing payload. Pass `--export <symbol>` when the root module export is not `AppModule`.
+`inspect` loads the target module in an application context, resolves the runtime `PLATFORM_SHELL`, and exports the shared platform snapshot/diagnostic schema directly from `platformShell.snapshot()`. `--json` is the canonical serialized snapshot payload consumed by Studio, `--mermaid` renders component dependency chains from the same snapshot, and `--timing` remains a separate opt-in versioned timing payload. Pass `--export <symbol>` when the root module export is not `AppModule`.
 
 ## Official generated testing templates
 

@@ -1,49 +1,96 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyFilters, parseStudioPayload, renderMermaid, type RuntimeDiagnosticsGraph } from './contracts.js';
+import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
+import type { PlatformShellSnapshot } from '@konekti/runtime';
 
-const graphFixture: RuntimeDiagnosticsGraph = {
-  version: 1,
-  rootModule: 'AppModule',
-  modules: [
+const snapshotFixture: PlatformShellSnapshot = {
+  components: [
     {
-      name: 'AppModule',
-      global: false,
-      imports: ['SharedModule'],
-      controllers: ['UsersController'],
-      providers: [{ token: 'UserService', type: 'class', scope: 'singleton', multi: false }],
-      exports: [],
+      dependencies: [],
+      details: {
+        host: 'localhost',
+      },
+      health: {
+        status: 'healthy',
+      },
+      id: 'redis.default',
+      kind: 'redis',
+      ownership: {
+        externallyManaged: false,
+        ownsResources: true,
+      },
+      readiness: {
+        critical: true,
+        status: 'ready',
+      },
+      state: 'ready',
+      telemetry: {
+        namespace: 'konekti.redis',
+        tags: {
+          env: 'test',
+        },
+      },
     },
     {
-      name: 'SharedModule',
-      global: true,
-      imports: [],
-      controllers: [],
-      providers: [{ token: 'CacheFactory', type: 'factory', scope: 'request', multi: false }],
-      exports: ['CacheFactory'],
+      dependencies: ['redis.default'],
+      details: {
+        workers: 2,
+      },
+      health: {
+        reason: 'Redis reconnect backoff active',
+        status: 'degraded',
+      },
+      id: 'queue.default',
+      kind: 'queue',
+      ownership: {
+        externallyManaged: false,
+        ownsResources: true,
+      },
+      readiness: {
+        critical: false,
+        reason: 'Queue running in degraded mode',
+        status: 'degraded',
+      },
+      state: 'degraded',
+      telemetry: {
+        namespace: 'konekti.queue',
+        tags: {
+          env: 'test',
+        },
+      },
     },
   ],
-  relationships: {
-    moduleImports: [{ from: 'AppModule', to: 'SharedModule' }],
-    moduleExports: [{ module: 'SharedModule', token: 'CacheFactory' }],
-    moduleProviders: [
-      { module: 'AppModule', token: 'UserService', providerType: 'class', scope: 'singleton', multi: false },
-      { module: 'SharedModule', token: 'CacheFactory', providerType: 'factory', scope: 'request', multi: false },
-    ],
-    moduleControllers: [{ module: 'AppModule', controller: 'UsersController' }],
+  diagnostics: [
+    {
+      code: 'QUEUE_DEPENDENCY_NOT_READY',
+      componentId: 'queue.default',
+      dependsOn: ['redis.default'],
+      fixHint: 'Verify Redis connectivity and queue configuration.',
+      message: 'Queue startup requires a ready Redis component.',
+      severity: 'warning',
+    },
+  ],
+  generatedAt: '2026-04-02T00:00:00.000Z',
+  health: {
+    status: 'degraded',
+  },
+  readiness: {
+    critical: true,
+    status: 'degraded',
   },
 };
 
 describe('parseStudioPayload', () => {
-  it('parses diagnostics graph payload', () => {
-    const parsed = parseStudioPayload(JSON.stringify(graphFixture));
-    expect(parsed.payload.graph?.rootModule).toBe('AppModule');
+  it('parses platform snapshot payload', () => {
+    const parsed = parseStudioPayload(JSON.stringify(snapshotFixture));
+    expect(parsed.payload.snapshot?.components[0]?.id).toBe('redis.default');
+    expect(parsed.payload.snapshot?.diagnostics[0]?.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
   });
 
-  it('parses envelope with graph and timing', () => {
+  it('parses envelope with snapshot and timing', () => {
     const parsed = parseStudioPayload(
       JSON.stringify({
-        graph: graphFixture,
+        snapshot: snapshotFixture,
         timing: {
           phases: [{ durationMs: 1.23, name: 'bootstrap_module' }],
           totalMs: 1.23,
@@ -51,42 +98,30 @@ describe('parseStudioPayload', () => {
         },
       }),
     );
-    expect(parsed.payload.graph?.modules).toHaveLength(2);
+    expect(parsed.payload.snapshot?.components).toHaveLength(2);
     expect(parsed.payload.timing?.phases).toHaveLength(1);
-  });
-
-  it('rejects unsupported version with explicit message', () => {
-    expect(() =>
-      parseStudioPayload(
-        JSON.stringify({
-          ...graphFixture,
-          version: 2,
-        }),
-      ),
-    ).toThrow('Unsupported diagnostics graph version. Expected version: 1.');
   });
 });
 
 describe('applyFilters', () => {
-  it('filters by query/provider type/scope/global', () => {
-    const filtered = applyFilters(graphFixture, {
-      globalsOnly: true,
-      query: 'cache',
-      scopes: ['request'],
-      types: ['factory'],
+  it('filters by readiness and severity', () => {
+    const filtered = applyFilters(snapshotFixture, {
+      query: '',
+      readinessStatuses: ['degraded'],
+      severities: ['warning'],
     });
 
-    expect(filtered.modules.map((module) => module.name)).toEqual(['SharedModule']);
-    expect(filtered.relationships.moduleImports).toHaveLength(0);
+    expect(filtered.components.map((component: { id: string }) => component.id)).toEqual(['queue.default']);
+    expect(filtered.diagnostics.map((issue: { code: string }) => issue.code)).toEqual(['QUEUE_DEPENDENCY_NOT_READY']);
   });
 });
 
 describe('renderMermaid', () => {
-  it('renders module nodes and import edges', () => {
-    const output = renderMermaid(graphFixture);
+  it('renders component nodes and dependency edges', () => {
+    const output = renderMermaid(snapshotFixture);
     expect(output).toContain('graph TD');
-    expect(output).toContain('AppModule');
+    expect(output).toContain('queue.default');
     expect(output).toContain('-->');
-    expect(output).toContain('rootModule');
+    expect(output).toContain('degraded');
   });
 });
