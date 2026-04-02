@@ -1,5 +1,14 @@
 {
   "name": "@konekti/serialization",
+  "description": "Class-based response serialization and output shaping interceptors for Konekti.",
+  "keywords": [
+    "konekti",
+    "serialization",
+    "response",
+    "interceptor",
+    "output",
+    "transform"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

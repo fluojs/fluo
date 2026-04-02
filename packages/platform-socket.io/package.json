@@ -1,5 +1,14 @@
 {
   "name": "@konekti/platform-socket.io",
+  "description": "Socket.IO v4 gateway adapter for Konekti applications, built on the shared runtime and websocket decorators.",
+  "keywords": [
+    "konekti",
+    "socket.io",
+    "websocket",
+    "gateway",
+    "realtime",
+    "platform"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

@@ -1,6 +1,14 @@
 {
   "name": "@konekti/cqrs",
-  "description": "CQRS command/query buses and event bus delegation for Konekti.",
+  "description": "Command/query buses with bootstrap-time handler discovery, saga support, and event-bus delegation for Konekti.",
+  "keywords": [
+    "konekti",
+    "cqrs",
+    "command-bus",
+    "query-bus",
+    "saga",
+    "event-sourcing"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

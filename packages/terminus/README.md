@@ -1,6 +1,6 @@
 # @konekti/terminus
 
-<p><strong><kbd>English</kbd></strong></p>
+<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on top of runtime health/readiness endpoints and adds dependency-aware checks for `/health`.
 

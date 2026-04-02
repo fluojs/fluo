@@ -1,5 +1,14 @@
 {
   "name": "@konekti/drizzle",
+  "description": "Drizzle ORM integration for Konekti with ALS transaction context, async module factory, and optional dispose hook.",
+  "keywords": [
+    "konekti",
+    "drizzle",
+    "orm",
+    "database",
+    "transaction",
+    "als"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

@@ -1,5 +1,14 @@
 {
   "name": "@konekti/terminus",
+  "description": "Health indicator composition and enriched runtime health aggregation for Konekti applications.",
+  "keywords": [
+    "konekti",
+    "terminus",
+    "health",
+    "readiness",
+    "liveness",
+    "health-check"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

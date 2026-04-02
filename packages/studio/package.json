@@ -1,5 +1,14 @@
 {
   "name": "@konekti/studio",
+  "description": "File-first diagnostics viewer for Konekti runtime graph and timing JSON exports.",
+  "keywords": [
+    "konekti",
+    "studio",
+    "diagnostics",
+    "viewer",
+    "module-graph",
+    "devtools"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

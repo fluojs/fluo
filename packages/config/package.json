@@ -1,5 +1,13 @@
 {
   "name": "@konekti/config",
+  "description": "Configuration loading, merging, validation, and typed runtime access for Konekti applications.",
+  "keywords": [
+    "konekti",
+    "config",
+    "configuration",
+    "environment",
+    "typed-config"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

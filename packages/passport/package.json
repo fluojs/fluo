@@ -1,5 +1,14 @@
 {
   "name": "@konekti/passport",
+  "description": "Strategy-agnostic authentication guard wiring and strategy registry for Konekti.",
+  "keywords": [
+    "konekti",
+    "passport",
+    "authentication",
+    "auth",
+    "guard",
+    "strategy"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

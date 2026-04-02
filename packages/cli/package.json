@@ -1,5 +1,14 @@
 {
   "name": "@konekti/cli",
+  "description": "The Konekti CLI — bootstrap, generate, migrate, and inspect commands for application development.",
+  "keywords": [
+    "konekti",
+    "cli",
+    "scaffold",
+    "generator",
+    "migration",
+    "diagnostics"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

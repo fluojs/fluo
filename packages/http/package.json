@@ -1,5 +1,15 @@
 {
   "name": "@konekti/http",
+  "description": "HTTP execution layer — routing, guards, interceptors, DTO binding, and exception handling for Konekti.",
+  "keywords": [
+    "konekti",
+    "http",
+    "routing",
+    "guards",
+    "interceptors",
+    "controller",
+    "rest"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",

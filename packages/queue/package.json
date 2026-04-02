@@ -1,5 +1,15 @@
 {
   "name": "@konekti/queue",
+  "description": "Redis-backed background job processing with worker discovery and DLQ support for Konekti.",
+  "keywords": [
+    "konekti",
+    "queue",
+    "jobs",
+    "background",
+    "worker",
+    "redis",
+    "dlq"
+  ],
   "version": "0.0.0",
   "private": false,
   "license": "MIT",
