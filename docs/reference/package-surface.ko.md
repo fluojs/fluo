@@ -46,7 +46,7 @@
 - **`@konekti/config`**: 설정 로딩 및 타입 안전성이 보장된 설정 접근.
 - **`@konekti/di`**: 프로바이더 해결(resolution) 및 라이프사이클 스코프.
 - **`@konekti/http`**: HTTP 실행, 바인딩, 예외, 라우트 메타데이터.
-- **`@konekti/runtime`**: 애플리케이션 부트스트랩/런타임 오케스트레이션 + 버전 고정 모듈 진단 내보내기 + opt-in 부트스트랩 타이밍.
+- **`@konekti/runtime`**: 애플리케이션 부트스트랩/런타임 오케스트레이션 + 공유 플랫폼 계약 spine 타입(`PlatformOptionsBase`, `PlatformComponent`, 라이프사이클/준비상태/헬스/진단/스냅샷 계약) + 버전 고정 모듈 진단 내보내기 + opt-in 부트스트랩 타이밍.
 - **`@konekti/platform-fastify`**: Fastify 기반 HTTP 어댑터.
 - **`@konekti/platform-express`**: Express 기반 HTTP 어댑터.
 - **`@konekti/platform-socket.io`**: 공용 Konekti 런타임과 websocket 데코레이터 위에 구축된 Socket.IO v4 게이트웨이 어댑터.

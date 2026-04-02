@@ -349,6 +349,7 @@ export class AppModule {}
 | `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
 | `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
+| `PlatformOptionsBase`, `PlatformComponent`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
 | `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | Export versioned runtime diagnostics graph from compiled modules |
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | Emit module-level Mermaid graph text from diagnostics payload |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
