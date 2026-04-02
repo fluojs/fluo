@@ -15,7 +15,6 @@
 ## 비목표 (이 RFC 단계)
 
 - 런타임 실행 구현
-- 내장 DataLoader abstraction/decorator
 - 자동 batching/cache 정책 프레임워크
 - interface 레벨 polymorphic resolver 확장
 

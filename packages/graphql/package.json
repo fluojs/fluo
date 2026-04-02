@@ -46,9 +46,10 @@
   "dependencies": {
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
-    "@konekti/validation": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/runtime": "workspace:*",
+    "@konekti/validation": "workspace:*",
+    "dataloader": "^2.2.3",
     "graphql": "^16.13.1",
     "graphql-ws": "^5.16.2",
     "graphql-yoga": "^5.18.1",

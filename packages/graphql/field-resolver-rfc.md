@@ -15,7 +15,6 @@ No runtime implementation is included in this phase.
 ## Non-goals (this RFC phase)
 
 - Runtime execution implementation.
-- Built-in DataLoader abstraction/decorator.
 - Automatic batching/cache policy framework.
 - Interface-level polymorphic resolver expansion.
 

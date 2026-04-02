@@ -111,8 +111,11 @@ interface GraphQLContext {
 
 - `createGraphqlProviders(options)`
 - `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`
-- `getRequestScopedDataLoader(context, key, createLoader)`
-- `createRequestScopedDataLoaderFactory(key, createLoader)`
+- `createDataLoader(batchFn, options?)` — first-party request-scoped DataLoader factory
+- `createDataLoaderMap(definitions)` — named DataLoader set factory
+- `DataLoader` — re-exported from the `dataloader` package
+- `getRequestScopedDataLoader(context, key, createLoader)` — low-level cache helper
+- `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level factory helper
 
 ## Decorators
 
@@ -212,9 +215,81 @@ class RequestScopedResolver {
 
 When a resolver is declared with `@Scope('request')`, GraphQL resolves it from a per-operation child container. The DI container enforces the corresponding safety rule at bootstrap and throws `ScopeMismatchError` if a singleton provider depends on a request-scoped provider.
 
-## Request-scoped DataLoader pattern
+## DataLoader Integration
 
-Konekti does not provide a built-in DataLoader decorator/subsystem. Use request scope to build loaders per GraphQL operation:
+`@konekti/graphql` ships first-party DataLoader support built on the `dataloader` package. Every loader is automatically scoped to the current GraphQL operation, so concurrent requests never share batched results or caches.
+
+### `createDataLoader(batchFn, options?)`
+
+The recommended entry point. Returns an accessor function that, given a `GraphQLContext`, produces a request-scoped `DataLoader` instance.
+
+```typescript
+import { createDataLoader, type GraphQLContext } from '@konekti/graphql';
+import { Inject } from '@konekti/core';
+import { Query, Resolver } from '@konekti/graphql';
+
+const getUserById = createDataLoader<string, User | null>(async (ids) => {
+  const users = await userRepo.findManyByIds([...ids]);
+  const map = new Map(users.map((u) => [u.id, u]));
+  return ids.map((id) => map.get(id) ?? null);
+});
+
+@Inject([UserRepository])
+@Resolver('UserResolver')
+class UserResolver {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Query()
+  async userName(input: UserByIdInput, context: GraphQLContext): Promise<string> {
+    const user = await getUserById(context).load(input.id);
+    return user?.name ?? 'unknown';
+  }
+}
+```
+
+The accessor is safe to call from singleton resolvers — no `@Scope('request')` required. Each GraphQL operation gets its own `DataLoader` instance automatically.
+
+Options extend standard `DataLoader.Options` and accept an optional `key` for explicit cache-key control:
+
+```typescript
+const loader = createDataLoader<string, Item>(batchFn, {
+  cache: false,
+  key: Symbol('my-loader'),
+});
+```
+
+### `createDataLoaderMap(definitions)`
+
+When multiple loaders are needed together, define them as a map:
+
+```typescript
+import { createDataLoaderMap, type GraphQLContext } from '@konekti/graphql';
+
+const loaders = createDataLoaderMap({
+  userById: {
+    batch: async (ids) => {
+      const users = await userRepo.findManyByIds([...ids]);
+      const map = new Map(users.map((u) => [u.id, u]));
+      return ids.map((id) => map.get(id) ?? null);
+    },
+  },
+  postById: {
+    batch: async (ids) => {
+      const posts = await postRepo.findManyByIds([...ids]);
+      const map = new Map(posts.map((p) => [p.id, p]));
+      return ids.map((id) => map.get(id) ?? null);
+    },
+  },
+});
+
+// inside resolver:
+const { userById, postById } = loaders(context);
+const user = await userById.load('abc');
+```
+
+### DI-based DataLoader pattern (request scope)
+
+For teams that prefer dependency injection over module-level factories, use request-scoped providers:
 
 ```typescript
 import DataLoader from 'dataloader';
@@ -249,7 +324,7 @@ class UserResolver {
 
 Because both resolver and loader factory are request-scoped, each GraphQL operation gets isolated DataLoader caches.
 
-Optional lightweight helper (no decorator required):
+### Low-level helper (no decorator required)
 
 ```typescript
 import DataLoader from 'dataloader';
@@ -306,7 +381,6 @@ The GraphQL package does not add a Konekti-specific complexity API; plugin compo
 - Automatic GraphQL type-system rewrites remain out of scope; root-operation union outputs are supported only when union members and `resolveType` are explicitly defined.
 - `@FieldResolver`
 - Federation
-- Built-in DataLoader abstraction/decorator
 
 ## Design-only RFCs
 
@@ -417,6 +491,7 @@ If `schema` is omitted, the module builds schema from discovered decorators. If 
 
 | Package | Role |
 |---------|------|
+| `dataloader` | Request-scoped batch loading and caching |
 | `graphql` | GraphQL schema/types |
 | `graphql-ws` | websocket subscription protocol runtime |
 | `graphql-yoga` | HTTP transport/runtime |
