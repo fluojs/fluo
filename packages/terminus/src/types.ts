@@ -1,5 +1,5 @@
 import type { Provider } from '@konekti/di';
-import type { ReadinessCheck } from '@konekti/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@konekti/runtime';
 
 export type HealthIndicatorStatus = 'up' | 'down';
 
@@ -18,9 +18,17 @@ export interface HealthIndicator {
 
 export interface HealthCheckReport {
   checkedAt: string;
+  contributors: {
+    down: string[];
+    up: string[];
+  };
   details: Record<string, HealthIndicatorState>;
   error: Record<string, HealthIndicatorState>;
   info: Record<string, HealthIndicatorState>;
+  platform?: {
+    health: PlatformHealthReport;
+    readiness: PlatformReadinessReport;
+  };
   status: 'ok' | 'error';
 }
 

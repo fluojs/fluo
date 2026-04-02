@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
 import { Counter, Registry } from 'prom-client';
 
 import { MetricsModule } from './metrics-module.js';
@@ -68,6 +68,9 @@ describe('MetricsModule', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('text/plain');
+    expect(response.body).toEqual(expect.stringContaining('konekti_metrics_registry_mode{mode="isolated"} 1'));
+    expect(response.body).toEqual(expect.stringContaining('konekti_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready"'));
+    expect(response.body).toEqual(expect.stringContaining('konekti_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy"'));
     expect(response.body).toEqual(expect.stringContaining('process_cpu_seconds_total'));
     expect(response.body).toEqual(expect.stringContaining('nodejs_heap_size_total_bytes'));
 
@@ -263,6 +266,62 @@ describe('MetricsModule', () => {
 
     expect(response.statusCode).toBe(200);
     expect(String(response.body)).toContain('app_custom_requests_total{endpoint="/api"} 1');
+    expect(String(response.body)).toContain('konekti_metrics_registry_mode{mode="shared"} 1');
+
+    await app.close();
+  });
+
+  it('exports runtime component readiness and health metrics with shared labels', async () => {
+    const component: PlatformComponent = {
+      async health() {
+        return { status: 'degraded' };
+      },
+      id: 'cache.default',
+      kind: 'cache',
+      async ready() {
+        return { critical: false, status: 'degraded' };
+      },
+      snapshot() {
+        return {
+          dependencies: [],
+          details: { mode: 'memory' },
+          health: { status: 'degraded' },
+          id: 'cache.default',
+          kind: 'cache',
+          ownership: { externallyManaged: false, ownsResources: true },
+          readiness: { critical: false, status: 'degraded' },
+          state: 'ready',
+          telemetry: { namespace: 'cache', tags: {} },
+        };
+      },
+      async start() {},
+      state() {
+        return 'ready';
+      },
+      async stop() {},
+      async validate() {
+        return { issues: [], ok: true };
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    const metricsText = String(response.body);
+    expect(response.statusCode).toBe(200);
+    expect(metricsText).toContain('konekti_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded"');
+    expect(metricsText).toContain('konekti_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded"');
 
     await app.close();
   });
