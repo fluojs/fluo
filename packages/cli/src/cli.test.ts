@@ -242,6 +242,8 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('| Command  | Aliases | Description');
     expect(stdoutBuffer.join('')).toContain('| new      | create');
     expect(stdoutBuffer.join('')).toContain('| generate | g');
+    expect(stdoutBuffer.join('')).toContain("Run 'konekti help <command>'");
+    expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
   });
 
   it('prints `new` usage for `new --help`', async () => {
@@ -258,6 +260,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
     expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn>');
     expect(stdoutBuffer.join('')).not.toContain('Schematics');
+    expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
   });
 
   it('prints `new` usage for `create --help`', async () => {
@@ -294,6 +297,7 @@ describe('CLI command runner', () => {
 
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
     expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
+    expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/generator-workflow.md');
   });
 
   it('prints inspect usage for `help inspect`', async () => {
@@ -309,6 +313,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Usage: konekti inspect <module-path> [options]');
     expect(stdoutBuffer.join('')).toContain('--mermaid');
     expect(stdoutBuffer.join('')).toContain('--timing');
+    expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
   });
 
   it('emits runtime diagnostics graph JSON for inspect by default', async () => {
@@ -690,6 +695,78 @@ describe('CLI command runner', () => {
     expect(preservedResult.stdout).toContain(`Removed ${externalOverrideRoot}`);
   });
 
+  it('top-level help descriptions use canonical vocabulary', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Scaffold a new Konekti application');
+    expect(output).toContain('Generate a schematic');
+    expect(output).toContain('Inspect the module graph');
+    expect(output).toContain('dry-run by default');
+    expect(output).toContain('Show top-level or command-specific help');
+  });
+
+  it('top-level --help flag produces the same output as `help`', async () => {
+    const helpBuffer: string[] = [];
+    const flagBuffer: string[] = [];
+
+    await runCli(['help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => helpBuffer.push(message) },
+    });
+
+    await runCli(['--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => flagBuffer.push(message) },
+    });
+
+    expect(flagBuffer.join('')).toBe(helpBuffer.join(''));
+  });
+
+  it('inspect usage describes module graph and timing diagnostics consistently', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', '--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('module graph');
+    expect(output).toContain('diagnostics');
+    expect(output).toContain('timing');
+  });
+
+  it('generate schematics help uses canonical provider/module registration vocabulary', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['generate', '--help'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('provider in the module');
+    expect(output).toContain('persistence-agnostic');
+    expect(output).toContain('route-level data binding');
+  });
+
   it('returns a non-zero exit code for invalid commands', async () => {
     const stderrBuffer: string[] = [];
 
@@ -1004,6 +1081,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Usage: konekti migrate <path> [options]');
     expect(stdoutBuffer.join('')).toContain('--apply');
     expect(stdoutBuffer.join('')).toContain('--only <comma-list>');
+    expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/migrate-from-nestjs.md');
   });
 
   it('runs migrate in dry-run by default and only writes with --apply', async () => {

@@ -39,17 +39,17 @@ type InspectOptionHelpEntry = {
 const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
   {
     aliases: [],
-    description: 'Export graph diagnostics as JSON (default when no output mode is selected).',
+    description: 'Emit the module graph as a JSON diagnostics payload (default when no output mode is selected).',
     option: '--json',
   },
   {
     aliases: [],
-    description: 'Export graph diagnostics as Mermaid graph text.',
+    description: 'Emit the module graph as a Mermaid diagram.',
     option: '--mermaid',
   },
   {
     aliases: [],
-    description: 'Emit bootstrap timing diagnostics (versioned JSON payload).',
+    description: 'Bootstrap the application context and emit versioned timing diagnostics.',
     option: '--timing',
   },
   {
@@ -78,6 +78,8 @@ export function inspectUsage(): string {
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
     ]),
+    '',
+    'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
 }
 

@@ -151,6 +151,8 @@ export function migrateUsage(): string {
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
     ]),
+    '',
+    'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/migrate-from-nestjs.md',
   ].join('\n');
 }
 

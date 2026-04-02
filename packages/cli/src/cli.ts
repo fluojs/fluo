@@ -81,11 +81,11 @@ const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
 ];
 
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
-  { aliases: ['create'], command: 'new', description: 'Scaffold a new Konekti application.' },
-  { aliases: ['g'], command: 'generate', description: 'Generate files inside an existing Konekti application.' },
-  { aliases: [], command: 'inspect', description: 'Inspect a module graph and emit diagnostics.' },
-  { aliases: [], command: 'migrate', description: 'Run NestJS-to-Konekti codemods on existing files.' },
-  { aliases: [], command: 'help', description: 'Show command-specific help output.' },
+  { aliases: ['create'], command: 'new', description: 'Scaffold a new Konekti application and install dependencies.' },
+  { aliases: ['g'], command: 'generate', description: 'Generate a schematic inside an existing Konekti application.' },
+  { aliases: [], command: 'inspect', description: 'Inspect the module graph and emit diagnostics.' },
+  { aliases: [], command: 'migrate', description: 'Run NestJS-to-Konekti codemods (dry-run by default).' },
+  { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
 ];
 
 function normalizeGeneratorKind(value: string | undefined): GeneratorKind | undefined {
@@ -113,6 +113,8 @@ function generateUsage(): string {
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
     ]),
+    '',
+    'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/generator-workflow.md',
   ].join('\n');
 }
 
@@ -128,6 +130,7 @@ function usage(): string {
     ]),
     '',
     "Run 'konekti help <command>' for more information on a command.",
+    'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
 }
 

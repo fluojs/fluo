@@ -146,6 +146,8 @@ export function newUsage(): string {
         render: (entry) => entry.description,
       },
     ]),
+    '',
+    'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
 }
 

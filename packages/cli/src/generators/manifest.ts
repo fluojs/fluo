@@ -38,7 +38,7 @@ export const generatorManifest = [
   },
   {
     aliases: ['gu'],
-    description: 'Generate a guard and register it as a provider.',
+    description: 'Generate a guard and register it as a provider in the module.',
     factory: (name) => generateGuardFiles(name),
     kind: 'guard',
     moduleRegistration: { arrayKey: 'providers', classSuffix: 'Guard' },
@@ -46,7 +46,7 @@ export const generatorManifest = [
   },
   {
     aliases: ['in'],
-    description: 'Generate an interceptor and register it as a provider.',
+    description: 'Generate an interceptor and register it as a provider in the module.',
     factory: (name) => generateInterceptorFiles(name),
     kind: 'interceptor',
     moduleRegistration: { arrayKey: 'providers', classSuffix: 'Interceptor' },
@@ -69,7 +69,7 @@ export const generatorManifest = [
   },
   {
     aliases: ['repo'],
-    description: 'Generate a repository.',
+    description: 'Generate a persistence-agnostic repository and register it as a provider.',
     factory: (name, options) => generateRepoFiles(name, options),
     kind: 'repo',
     moduleRegistration: { arrayKey: 'providers', classSuffix: 'Repo' },
@@ -78,7 +78,7 @@ export const generatorManifest = [
   },
   {
     aliases: ['req'],
-    description: 'Generate a request DTO with body binding and validation.',
+    description: 'Generate a request DTO for route-level data binding and validation.',
     factory: (name) => generateRequestDtoFiles(name),
     kind: 'request-dto',
     schematic: 'request-dto',
@@ -92,7 +92,7 @@ export const generatorManifest = [
   },
   {
     aliases: ['s'],
-    description: 'Generate a service and register it as a provider.',
+    description: 'Generate a service and register it as a provider in the module.',
     factory: (name, options) => generateServiceFiles(name, options),
     kind: 'service',
     moduleRegistration: { arrayKey: 'providers', classSuffix: 'Service' },
