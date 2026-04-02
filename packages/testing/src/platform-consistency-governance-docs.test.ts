@@ -21,6 +21,31 @@ function headingLevels(relativePath: string): number[] {
     .map((line) => line.match(/^#+/)?.[0].length ?? 0);
 }
 
+function parsePackageListFromSection(markdown: string, sectionTitle: string): string[] {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+
+  if (start < 0) {
+    return [];
+  }
+
+  const packages: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+
+    if (line.startsWith('## ')) {
+      break;
+    }
+
+    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+    if (match?.[1]) {
+      packages.push(match[1]);
+    }
+  }
+
+  return packages.sort((left, right) => left.localeCompare(right));
+}
+
 describe('platform consistency governance docs', () => {
   it('keeps SSOT English/Korean heading structures synchronized', () => {
     for (const [englishPath, koreanPath] of ssotPairs) {
@@ -34,5 +59,17 @@ describe('platform consistency governance docs', () => {
 
     expect(docsReadme).toContain('operations/release-governance.md');
     expect(docsReadmeKo).toContain('operations/release-governance.ko.md');
+  });
+
+  it('keeps intended publish surface synchronized between English and Korean release-governance docs', () => {
+    const releaseGovernance = readFileSync(resolve(repoRoot, 'docs/operations/release-governance.md'), 'utf8');
+    const releaseGovernanceKo = readFileSync(resolve(repoRoot, 'docs/operations/release-governance.ko.md'), 'utf8');
+
+    const englishPublishSurface = parsePackageListFromSection(releaseGovernance, 'intended publish surface');
+    const koreanPublishSurface = parsePackageListFromSection(releaseGovernanceKo, 'intended publish surface');
+
+    expect(englishPublishSurface.length).toBeGreaterThan(0);
+    expect(koreanPublishSurface.length).toBeGreaterThan(0);
+    expect(koreanPublishSurface).toEqual(englishPublishSurface);
   });
 });
