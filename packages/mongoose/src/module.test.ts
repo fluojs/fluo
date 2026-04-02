@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { Global, Inject, Module } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
-import { createMongooseModule, createMongooseModuleAsync, MongooseConnection } from './index.js';
+import {
+  createMongooseModule,
+  createMongooseModuleAsync,
+  createMongoosePlatformStatusSnapshot,
+  MongooseConnection,
+} from './index.js';
 import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
 
 function createFakeSession(events: string[]): MongooseSessionLike {
@@ -432,6 +437,52 @@ describe('@konekti/mongoose', () => {
     })).resolves.toBe('ok');
 
     expect(events).toEqual(['tx:work']);
+  });
+
+  it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
+    const snapshot = createMongoosePlatformStatusSnapshot({
+      activeRequestTransactions: 1,
+      hasActiveSession: false,
+      lifecycleState: 'ready',
+      strictTransactions: false,
+      supportsStartSession: true,
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.details).toMatchObject({
+      activeRequestTransactions: 1,
+      sessionStrategy: 'explicit-session',
+      transactionContext: 'als',
+    });
+  });
+
+  it('marks strict transaction mismatch as not-ready', () => {
+    const snapshot = createMongoosePlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      hasActiveSession: false,
+      lifecycleState: 'ready',
+      strictTransactions: true,
+      supportsStartSession: false,
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.readiness.reason).toContain('strictTransactions');
+    expect(snapshot.health.status).toBe('healthy');
+  });
+
+  it('marks shutdown state as not-ready and degraded health', () => {
+    const snapshot = createMongoosePlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      hasActiveSession: false,
+      lifecycleState: 'shutting-down',
+      strictTransactions: false,
+      supportsStartSession: true,
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('degraded');
   });
 });
 

@@ -171,6 +171,10 @@ interface PrismaClientLike {
 }
 ```
 
+### `createPrismaPlatformStatusSnapshot(input)`
+
+상태 어댑터(`src/status.ts`)입니다. Prisma의 ownership, lifecycle readiness, health, transaction 진단 정보를 runtime/CLI/Studio에서 공통으로 사용하는 플랫폼 스냅샷 형태로 매핑합니다.
+
 ## 구조
 
 ```
@@ -195,6 +199,15 @@ Prisma Client
 **라이프사이클 훅:**
 - `OnModuleInit` → `$connect()` (구현된 경우)
 - `OnApplicationShutdown` → 진행 중 요청 트랜잭션 abort + settle 대기 후 `$disconnect()` 호출 (구현된 경우)
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createPrismaPlatformStatusSnapshot(...)` 또는 `prismaService.createPlatformStatusSnapshot()`으로 공통 플랫폼 계약에 맞춘 ownership/readiness/health 출력을 만들 수 있습니다.
+
+- `ownership`: Prisma client는 외부에서 공급되는 소유 모델입니다 (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: lifecycle readiness와 transaction readiness를 구분하며, strict 모드에서 `$transaction`이 없으면 명시적으로 `not-ready`입니다.
+- `health`: shutdown 드레인 상태는 `degraded`, 완전히 중지/연결 해제된 상태는 `unhealthy`로 구분합니다.
+- `details`: ALS transaction context 모드, strict/fallback transaction 모드 신호, 활성 요청 트랜잭션 수를 포함합니다.
 
 ## 파일 읽기 순서 (기여자용)
 

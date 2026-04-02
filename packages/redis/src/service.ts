@@ -2,6 +2,7 @@ import { Inject } from '@konekti/core';
 import type Redis from 'ioredis';
 import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
 
+import { createRedisPlatformStatusSnapshot } from './status.js';
 import { REDIS_CLIENT } from './tokens.js';
 
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
@@ -49,6 +50,12 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
     }
 
     await this.quitWithDisconnectFallback();
+  }
+
+  createPlatformStatusSnapshot() {
+    return createRedisPlatformStatusSnapshot({
+      status: this.client.status,
+    });
   }
 
   private shouldConnectOnInit(): boolean {

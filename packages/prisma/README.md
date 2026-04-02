@@ -171,6 +171,10 @@ interface PrismaClientLike {
 }
 ```
 
+### `createPrismaPlatformStatusSnapshot(input)`
+
+Status adapter (`src/status.ts`) that maps Prisma ownership, lifecycle readiness, health, and transaction diagnostics into the shared platform snapshot shape used by runtime/CLI/Studio surfaces.
+
 ## Architecture
 
 ```
@@ -195,6 +199,15 @@ Prisma Client
 **Lifecycle hooks:**
 - `OnModuleInit` → `$connect()` (if implemented)
 - `OnApplicationShutdown` → aborts in-flight request transactions, waits for settlement, then calls `$disconnect()` (if implemented)
+
+## Platform status snapshot semantics
+
+Use `createPrismaPlatformStatusSnapshot(...)` (or `prismaService.createPlatformStatusSnapshot()`) to produce ownership/readiness/health output aligned with the shared platform contract.
+
+- `ownership`: Prisma client ownership is externally supplied (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: distinguishes lifecycle readiness from transaction readiness; strict mode + missing `$transaction` is explicitly `not-ready`.
+- `health`: distinguishes shutdown drain (`degraded`) from fully stopped/disconnected (`unhealthy`).
+- `details`: includes ALS transaction context mode, strict/fallback transaction mode signals, and active request transaction count.
 
 ## File Reading Order (for contributors)
 

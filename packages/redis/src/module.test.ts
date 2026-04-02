@@ -77,7 +77,13 @@ vi.mock('ioredis', () => ({
   },
 }));
 
-import { createRedisModule, REDIS_CLIENT, REDIS_SERVICE, RedisService } from './index.js';
+import {
+  createRedisModule,
+  createRedisPlatformStatusSnapshot,
+  REDIS_CLIENT,
+  REDIS_SERVICE,
+  RedisService,
+} from './index.js';
 
 describe('@konekti/redis', () => {
   beforeEach(() => {
@@ -287,5 +293,37 @@ describe('@konekti/redis', () => {
     await expect(cacheFacade.redisService.get('malformed:key')).resolves.toBe('{"id": "u1"');
 
     await app.close();
+  });
+
+  it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
+    const snapshot = createRedisPlatformStatusSnapshot({
+      status: 'ready',
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
+    expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.details).toMatchObject({
+      connectionState: 'ready',
+      lazyConnect: true,
+    });
+  });
+
+  it('separates wait-state readiness from health', () => {
+    const snapshot = createRedisPlatformStatusSnapshot({
+      status: 'wait',
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('degraded');
+  });
+
+  it('marks closed redis client as unhealthy and not-ready', () => {
+    const snapshot = createRedisPlatformStatusSnapshot({
+      status: 'end',
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('unhealthy');
   });
 });

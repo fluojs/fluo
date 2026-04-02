@@ -10,6 +10,7 @@ import type { OnApplicationShutdown } from '@konekti/runtime';
 import { Inject } from '@konekti/core';
 
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
+import { createDrizzlePlatformStatusSnapshot } from './status.js';
 import type {
   DrizzleDatabaseLike,
   DrizzleHandleProvider,
@@ -40,6 +41,7 @@ export class DrizzleDatabase<
 {
   private readonly transactions = new AsyncLocalStorage<TTransactionDatabase>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
+  private lifecycleState: 'ready' | 'shutting-down' | 'stopped' = 'ready';
 
   constructor(
     private readonly database: TDatabase,
@@ -52,6 +54,8 @@ export class DrizzleDatabase<
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'shutting-down';
+
     for (const transaction of this.activeRequestTransactions) {
       transaction.abort(new Error('Application shutdown interrupted an open request transaction.'));
     }
@@ -61,6 +65,17 @@ export class DrizzleDatabase<
     if (this.dispose) {
       await this.dispose(this.database);
     }
+
+    this.lifecycleState = 'stopped';
+  }
+
+  createPlatformStatusSnapshot() {
+    return createDrizzlePlatformStatusSnapshot({
+      activeRequestTransactions: this.activeRequestTransactions.size,
+      lifecycleState: this.lifecycleState,
+      strictTransactions: this.databaseOptions.strictTransactions,
+      supportsTransaction: typeof this.database.transaction === 'function',
+    });
   }
 
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {

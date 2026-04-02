@@ -68,6 +68,7 @@ export class CacheService {
 | `REDIS_CLIENT` | `src/tokens.ts` | 공유 raw `ioredis` client용 DI 토큰 |
 | `REDIS_SERVICE` | `src/redis-service.ts` | Redis facade 서비스용 DI 토큰 |
 | `RedisService` | `src/redis-service.ts` | JSON codec 기반 `get`/`set`/`del` facade + `getRawClient()` escape hatch |
+| `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Redis 연결 상태를 공통 ownership/readiness/health/details 스냅샷 형태로 매핑 |
 | `RedisModuleOptions` | `src/types.ts` | `lazyConnect`를 제외한 `ioredis` 옵션 |
 
 ## RedisService codec 동작
@@ -84,6 +85,15 @@ export class CacheService {
 - `onModuleInit()`은 `wait` 상태에서만 `connect()`를 호출하므로, Redis가 필수인 경우 connect 실패를 bootstrap 단계에서 바로 드러냅니다.
 - `onApplicationShutdown()`은 이미 `end`면 종료 작업을 건너뛰고, `quit` 불가능 상태에서는 `disconnect()`를 직접 호출하며, 그 외에는 `quit()` 우선 + 실패 시 `disconnect()` 폴백을 사용합니다.
 - `quit()`가 실패했고 client가 여전히 닫히지 않았다면, 원래 `quit` 오류를 다시 던집니다.
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createRedisPlatformStatusSnapshot({ status })`를 사용하면, 런타임에서 안전하게 쓸 수 있는 ownership/readiness/health/details를 공통 플랫폼 계약 형태로 내보낼 수 있습니다.
+
+- `ownership`: Redis는 프레임워크 소유 리소스입니다 (`ownsResources: true`, `externallyManaged: false`).
+- `readiness`: client 상태가 `ready`일 때만 `ready`; `wait`는 `not-ready`; connect/reconnect 단계는 `degraded`로 보고합니다.
+- `health`: ready면 `healthy`, connecting/reconnecting/waiting 단계는 `degraded`, 닫힌 상태(`close`/`end`)는 `unhealthy`로 보고합니다.
+- `details`: 자격 증명 없이 안정적인 진단 필드(`connectionState`, `lazyConnect`)를 포함합니다.
 
 ## 구조
 

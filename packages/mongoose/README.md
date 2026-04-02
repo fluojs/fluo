@@ -126,6 +126,7 @@ class AppModule {}
 | `createMongooseModule(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
 | `createMongooseModuleAsync(options)` | `src/module.ts` | Resolves module options from injected dependencies or async factories |
 | `createMongooseProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
+| `createMongoosePlatformStatusSnapshot(input)` | `src/status.ts` | Maps ownership/readiness/health/details to the shared platform snapshot shape |
 | `MongooseTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
 | `MONGOOSE_CONNECTION` | `src/tokens.ts` | DI token for the raw Mongoose connection |
 | `MONGOOSE_DISPOSE` | `src/tokens.ts` | DI token for the optional cleanup hook |
@@ -175,6 +176,15 @@ Separating the cleanup hook from the connection value means:
 ### Nested transaction behavior
 
 When `transaction()` or `requestTransaction()` is called inside an existing transaction, the ambient session is reused rather than starting a new nested transaction. This matches Mongoose's actual nested transaction semantics.
+
+## Platform status snapshot semantics
+
+Use `createMongoosePlatformStatusSnapshot(...)` (or `mongooseConnection.createPlatformStatusSnapshot()`) to emit ownership/readiness/health diagnostics aligned with the shared platform contract.
+
+- `ownership`: Mongoose connection ownership is externally supplied (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: strict transaction mode with missing `startSession()` is explicitly `not-ready`.
+- `health`: shutdown drain is `degraded`; stopped/disposed state is `unhealthy`.
+- `details`: includes session strategy (`explicit-session`), ALS context state, and active request transaction count.
 
 ## File reading order for contributors
 

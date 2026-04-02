@@ -4,7 +4,14 @@ import { Inject } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 import { Global, Module } from '@konekti/core';
 
-import { PRISMA_CLIENT, PRISMA_OPTIONS, createPrismaModule, createPrismaModuleAsync, PrismaService } from './index.js';
+import {
+  createPrismaModule,
+  createPrismaModuleAsync,
+  createPrismaPlatformStatusSnapshot,
+  PRISMA_CLIENT,
+  PRISMA_OPTIONS,
+  PrismaService,
+} from './index.js';
 
 describe('@konekti/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
@@ -499,6 +506,58 @@ describe('@konekti/prisma', () => {
     );
 
     await app.close();
+  });
+
+  it('reports ownership/readiness/health semantics in platform snapshot shape', () => {
+    const snapshot = createPrismaPlatformStatusSnapshot({
+      activeRequestTransactions: 1,
+      lifecycleState: 'ready',
+      strictTransactions: false,
+      supportsConnect: true,
+      supportsDisconnect: true,
+      supportsTransaction: true,
+      transactionAbortSignalSupport: 'supported',
+    });
+
+    expect(snapshot.ownership).toEqual({ externallyManaged: true, ownsResources: false });
+    expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
+    expect(snapshot.health).toEqual({ status: 'healthy' });
+    expect(snapshot.details).toMatchObject({
+      activeRequestTransactions: 1,
+      strictTransactions: false,
+      transactionContext: 'als',
+    });
+  });
+
+  it('marks strict transaction mismatch as not-ready', () => {
+    const snapshot = createPrismaPlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'ready',
+      strictTransactions: true,
+      supportsConnect: true,
+      supportsDisconnect: true,
+      supportsTransaction: false,
+      transactionAbortSignalSupport: 'unknown',
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.readiness.reason).toContain('strictTransactions');
+    expect(snapshot.health.status).toBe('healthy');
+  });
+
+  it('marks shutdown state as not-ready and degraded health', () => {
+    const snapshot = createPrismaPlatformStatusSnapshot({
+      activeRequestTransactions: 0,
+      lifecycleState: 'shutting-down',
+      strictTransactions: false,
+      supportsConnect: true,
+      supportsDisconnect: true,
+      supportsTransaction: true,
+      transactionAbortSignalSupport: 'unknown',
+    });
+
+    expect(snapshot.readiness.status).toBe('not-ready');
+    expect(snapshot.health.status).toBe('degraded');
   });
 });
 

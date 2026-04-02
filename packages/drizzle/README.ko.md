@@ -125,6 +125,7 @@ class UsersController {}
 | `createDrizzleModule(options)` | `src/module.ts` | 모든 provider를 포함한 importable Konekti 모듈 생성 |
 | `createDrizzleModuleAsync(options)` | `src/module.ts` | async 옵션을 1회 해석해 동일한 provider surface를 등록하는 비동기 변형 |
 | `createDrizzleProviders(options)` | `src/module.ts` | 수동 등록을 위한 raw provider 배열 반환 |
+| `createDrizzlePlatformStatusSnapshot(input)` | `src/status.ts` | ownership/readiness/health/details를 공통 플랫폼 스냅샷 형태로 매핑 |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | 자동 per-request transaction을 위한 opt-in interceptor |
 | `DRIZZLE_DATABASE` | `src/tokens.ts` | raw Drizzle database handle을 위한 DI 토큰 |
 | `DRIZZLE_DISPOSE` | `src/tokens.ts` | optional cleanup hook을 위한 DI 토큰 |
@@ -176,6 +177,15 @@ cleanup hook을 database value에서 분리하면:
 - `true`: `transaction()`과 `requestTransaction()` 모두 `Transaction not supported...` 예외 발생
 
 이미 활성 transaction context 안에서는 중첩 transaction 옵션 오버라이드를 허용하지 않는다.
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createDrizzlePlatformStatusSnapshot(...)` 또는 `drizzleDatabase.createPlatformStatusSnapshot()`을 사용하면, 공통 플랫폼 계약 형태의 ownership/readiness/health를 출력할 수 있습니다.
+
+- `ownership`: Drizzle handle은 외부에서 공급되는 소유 모델입니다 (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: strict transaction 모드에서 `database.transaction`이 없으면 명시적으로 `not-ready`입니다.
+- `health`: shutdown 드레인 상태는 `degraded`, 중지/정리 완료 상태는 `unhealthy`로 보고합니다.
+- `details`: ALS transaction context 사용 여부, strict/fallback 모드 신호, 활성 요청 트랜잭션 수를 포함합니다.
 
 ## 파일 읽기 순서 (기여자용)
 

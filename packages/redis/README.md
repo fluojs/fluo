@@ -68,6 +68,7 @@ export class CacheService {
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
 | `REDIS_SERVICE` | `src/redis-service.ts` | DI token for the Redis facade service |
 | `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers + `getRawClient()` escape hatch |
+| `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Maps Redis connection state to shared ownership/readiness/health/details snapshot shape |
 | `RedisModuleOptions` | `src/types.ts` | `ioredis` options without `lazyConnect` |
 
 ## RedisService codec behavior
@@ -84,6 +85,15 @@ export class CacheService {
 - `onModuleInit()` calls `connect()` only in `wait` state, so bootstrap fails early if Redis is required and connect fails.
 - `onApplicationShutdown()` skips work when already `end`, disconnects directly for non-quittable states, and otherwise prefers `quit()` with `disconnect()` fallback.
 - If `quit()` fails and the client still does not close, the original quit error is rethrown.
+
+## Platform status snapshot semantics
+
+Use `createRedisPlatformStatusSnapshot({ status })` to emit runtime-safe ownership/readiness/health details in the shared platform contract shape.
+
+- `ownership`: Redis is framework-owned (`ownsResources: true`, `externallyManaged: false`).
+- `readiness`: `ready` only when client status is `ready`; `wait` is `not-ready`; connect/reconnect phases are `degraded`.
+- `health`: `healthy` when ready, `degraded` while connecting/reconnecting/waiting, `unhealthy` for closed states (`close`/`end`).
+- `details`: includes stable diagnostics (`connectionState`, `lazyConnect`) without credentials.
 
 ## Architecture
 

@@ -115,6 +115,7 @@ class AppModule {}
 | `createMongooseModule(options)` | `src/module.ts` | 모든 프로바이더가 포함된 import 가능한 Konekti 모듈 생성 |
 | `createMongooseModuleAsync(options)` | `src/module.ts` | 주입된 의존성이나 비동기 팩토리로부터 모듈 옵션을 해석 |
 | `createMongooseProviders(options)` | `src/module.ts` | 수동 등록을 위한 원시 프로바이더 배열 반환 |
+| `createMongoosePlatformStatusSnapshot(input)` | `src/status.ts` | ownership/readiness/health/details를 공통 플랫폼 스냅샷 형태로 매핑 |
 | `MongooseTransactionInterceptor` | `src/transaction.ts` | 자동 요청 범위 트랜잭션을 위한 선택적 인터셉터 |
 
 ## 트랜잭션 시맨틱스
@@ -122,6 +123,15 @@ class AppModule {}
 `MongooseConnection`는 활성 세션 컨텍스트를 추적하기 위해 `AsyncLocalStorage`를 사용합니다. 서비스와 저장소 코드는 `currentSession()`을 호출하여 세션을 얻은 후, 트랜잭션에 참여해야 하는 Mongoose 작업에 `{ session }`을 전달합니다.
 
 **중요**: Prisma와 달리 Mongoose 작업은 자동으로 앰비언트 세션을 사용하지 않습니다. 각 작업에 `{ session: mongooseConnection.currentSession() }`을 명시적으로 전달해야 합니다.
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createMongoosePlatformStatusSnapshot(...)` 또는 `mongooseConnection.createPlatformStatusSnapshot()`을 사용하면 공통 플랫폼 계약과 정렬된 ownership/readiness/health 진단을 출력할 수 있습니다.
+
+- `ownership`: Mongoose connection은 외부에서 공급되는 소유 모델입니다 (`ownsResources: false`, `externallyManaged: true`).
+- `readiness`: strict transaction 모드에서 `startSession()`이 없으면 명시적으로 `not-ready`입니다.
+- `health`: shutdown 드레인 상태는 `degraded`, 중지/정리 완료 상태는 `unhealthy`입니다.
+- `details`: session 전략(`explicit-session`), ALS 컨텍스트 상태, 활성 요청 트랜잭션 수를 포함합니다.
 
 ## 관련 패키지
 
