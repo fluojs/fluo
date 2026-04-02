@@ -95,10 +95,11 @@
 ## release checklist
 
 1. `pnpm verify:release-readiness` 실행
-2. 문서가 현재 패키지 표면 및 부트스트랩 계약과 일치하는지 확인
-3. 매니페스트 결정 노트가 여전히 벤치마크 증거와 일치하는지 확인
-4. 릴리스 태그에 대응하는 GitHub Release 본문이 `CHANGELOG.md`에서 파생되었는지 확인
-5. `tooling/release/release-readiness-summary.md`를 GitHub Release에 첨부
+2. `pnpm verify:platform-consistency-governance` 실행
+3. 문서가 현재 패키지 표면 및 부트스트랩 계약과 일치하는지 확인
+4. 매니페스트 결정 노트가 여전히 벤치마크 증거와 일치하는지 확인
+5. 릴리스 태그에 대응하는 GitHub Release 본문이 `CHANGELOG.md`에서 파생되었는지 확인
+6. `tooling/release/release-readiness-summary.md`를 GitHub Release에 첨부
 
 ## release-readiness gate
 
@@ -114,7 +115,13 @@
 
 ### PR CI 자동화
 
-`.github/workflows/ci.yml`은 `main` 브랜치를 대상으로 하는 모든 풀 리퀘스트와 `main`으로의 모든 푸시에서 검증 표면을 자동으로 실행합니다. 워크플로우는 `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:release-readiness`를 순차적으로 실행하여 릴리스 시점이 아닌 머지 전에 회귀를 잡아냅니다.
+`.github/workflows/ci.yml`은 `main` 브랜치를 대상으로 하는 모든 풀 리퀘스트와 `main`으로의 모든 푸시에서 검증 표면을 자동으로 실행합니다. 워크플로우는 `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:release-readiness`, `pnpm verify:platform-consistency-governance`를 순차적으로 실행하여 릴리스 시점이 아닌 머지 전에 회귀를 잡아냅니다.
+
+`pnpm verify:platform-consistency-governance`는 다음 거버넌스 가드레일을 강제합니다.
+
+- SSOT 문서 `.md` / `.ko.md` 쌍의 구조(헤더 레벨/개수) 동기화 검증
+- 계약 거버닝 문서 변경 시 companion 업데이트(문서 인덱스, CI/툴링 강제, 회귀 테스트 증거) 검증
+- package README의 alignment/conformance 주장 시 `createPlatformConformanceHarness(...)` 기반 테스트 존재 검증
 
 ## GitHub Releases
 

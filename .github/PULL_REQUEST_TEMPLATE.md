@@ -18,3 +18,11 @@ See [docs/operations/behavioral-contract-policy.md](docs/operations/behavioral-c
 - [ ] New behavioral contracts are documented in the affected package README.
 - [ ] Intentional limitations are explicitly stated (not silently removed).
 - [ ] Runtime invariants are covered by regression tests.
+
+## Platform consistency governance (SSOT)
+
+See [docs/concepts/platform-consistency-design.md](docs/concepts/platform-consistency-design.md) and [docs/operations/release-governance.md](docs/operations/release-governance.md).
+
+- [ ] SSOT English/Korean mirror structure remains synchronized for changed governance docs.
+- [ ] If platform contract docs changed, companion updates include discoverability/docs index, tooling or CI enforcement, and regression-test evidence.
+- [ ] Any package README alignment/conformance claims are backed by `createPlatformConformanceHarness(...)` tests.
