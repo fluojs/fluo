@@ -30,7 +30,8 @@
         "noAssignInExpressions": "off",
         "noShadowRestrictedNames": "off",
         "noConfusingVoidType": "off",
-        "noEmptyInterface": "off"
+        "noEmptyInterface": "off",
+        "noUselessEscapeInString": "off"
       },
       "correctness": {
         "noUnusedImports": "warn",
