@@ -55,6 +55,7 @@ export class AppModule {}
 - `QUEUE` - DI token for queue enqueueing
 - `Queue` - interface with `enqueue(job)`
 - `@QueueWorker(JobClass, options?)` - marks singleton worker classes for a job type
+- `createQueuePlatformStatusSnapshot(input)` - maps queue lifecycle/dependency/drain signals into shared platform snapshot fields
 
 ## Runtime behavior
 
@@ -72,3 +73,12 @@ export class AppModule {}
 - job payloads should stay DTO-like and JSON-serializable
 - queue workers are singleton-only and discovered during `onApplicationBootstrap()`
 - BullMQ is an internal implementation detail; the public API stays Konekti-native
+
+## Platform status snapshot semantics
+
+Use `createQueuePlatformStatusSnapshot(...)` (or `QueueLifecycleService#createPlatformStatusSnapshot()`) to expose queue lifecycle status in the shared platform snapshot shape.
+
+- `ownership`: queue resources are framework-owned (`ownsResources: true`, `externallyManaged: false`).
+- `readiness`: `ready` only when workers are started; startup is `degraded`; shutdown/idle/stopped are `not-ready`.
+- `health`: pending dead-letter drain during runtime/shutdown is represented as `degraded`; fully stopped is `unhealthy`.
+- `details`: includes explicit dependency edge (`redis.default`), worker discovery/ready counts, and pending dead-letter drain counts.

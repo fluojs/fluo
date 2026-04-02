@@ -21,6 +21,7 @@ import {
   withTimeout,
   type DiscoveryCandidate,
 } from './helpers.js';
+import { createQueuePlatformStatusSnapshot } from './status.js';
 import { QUEUE_OPTIONS } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
@@ -189,6 +190,16 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     });
 
     return queuedJob.id ?? '';
+  }
+
+  createPlatformStatusSnapshot() {
+    return createQueuePlatformStatusSnapshot({
+      lifecycleState: this.lifecycleState,
+      pendingDeadLetterWrites: this.pendingDeadLetterWrites.size,
+      queuesReady: this.queuesByJobName.size,
+      workersDiscovered: this.descriptorsByJobType.size,
+      workersReady: this.workersByJobName.size,
+    });
   }
 
   private async ensureStarted(): Promise<void> {

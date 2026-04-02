@@ -52,6 +52,7 @@ export class AppModule {}
 - `EventBus` - interface with `publish(event, options?)`
 - `EventBusTransport` - interface for external transport adapters
 - `@OnEvent(EventClass)` - marks provider/controller methods as event handlers
+- `createEventBusPlatformStatusSnapshot(input)` - maps local/transport lifecycle and degraded transport diagnostics to shared platform snapshot fields
 
 ### Module options
 
@@ -139,3 +140,12 @@ Two separate Redis clients are required because a client in subscribe mode canno
 - No queueing, replay, wildcards, or ordering guarantees.
 - No imperative `subscribe()` or `unsubscribe()` API.
 - No durability or persistence (events are lost on crash).
+
+## Platform status snapshot semantics
+
+Use `createEventBusPlatformStatusSnapshot(...)` (or `EventBusLifecycleService#createPlatformStatusSnapshot()`) to expose event-bus lifecycle state in the shared platform snapshot shape.
+
+- `operationMode`: distinguishes local-only mode from transport-backed mode.
+- `readiness`: transport subscribe failures are surfaced as `degraded` (not silent).
+- `health`: publish/subscribe/close transport failures are aggregated as degraded health signals.
+- `details`: includes discovered handler count, subscribed transport channels, default wait mode, and transport failure counters.

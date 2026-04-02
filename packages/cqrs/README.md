@@ -124,6 +124,7 @@ export class AppModule {}
 - `@QueryHandler(QueryClass)` - marks a class as a query handler.
 - `@EventHandler(EventClass)` - marks a class with CQRS event-handler metadata.
 - `@Saga(EventClass | EventClass[])` - marks a class-level saga/process-manager for one or more event types.
+- `createCqrsPlatformStatusSnapshot(input)` - maps CQRS event/saga lifecycle dependency and drain visibility into shared platform snapshot fields
 
 ### module option semantics
 
@@ -255,3 +256,12 @@ export class AppModule {}
 - Saga classes must be singleton-scoped.
 - Saga classes must implement `handle(...)`.
 - `@EventHandler()` class handlers can coexist with `@konekti/event-bus` method-level `@OnEvent()` handlers.
+
+## Platform status snapshot semantics
+
+Use `createCqrsPlatformStatusSnapshot(...)` (or `CqrsEventBusService#createPlatformStatusSnapshot()`) to expose CQRS event/saga lifecycle state in the shared platform snapshot shape.
+
+- `dependencies`: snapshots expose explicit `event-bus.default` dependency edges.
+- `readiness`: discovery/startup and shutdown drain states are surfaced explicitly.
+- `health`: unavailable event/saga pipeline states are reported as unhealthy rather than silent no-op behavior.
+- `details`: includes discovered CQRS event-handler/saga counts and in-flight saga execution count during drain windows.

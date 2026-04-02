@@ -14,6 +14,7 @@ import {
 } from '@konekti/runtime';
 
 import { getSchedulingTaskMetadataEntries } from './metadata.js';
+import { createCronPlatformStatusSnapshot } from './status.js';
 import { CRON_OPTIONS } from './tokens.js';
 import type {
   CronTaskDescriptor,
@@ -146,6 +147,9 @@ export class CronLifecycleService
   private readonly tasks = new Map<string, RuntimeTaskState>();
   private readonly activeTasks = new Set<Promise<void>>();
   private readonly ownedLockKeys = new Set<string>();
+  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lockOwnershipLosses = 0;
+  private lockRenewalFailures = 0;
   private started = false;
   private shutdownPromise: Promise<void> | undefined;
   private redisClient: RedisLockClient | undefined;
@@ -310,9 +314,13 @@ export class CronLifecycleService
       return;
     }
 
+    this.lifecycleState = 'starting';
+
     try {
       await this.startLifecycle();
+      this.lifecycleState = 'ready';
     } catch (error) {
+      this.lifecycleState = 'failed';
       this.handleStartupFailure();
       throw error;
     }
@@ -324,6 +332,34 @@ export class CronLifecycleService
 
   async onModuleDestroy(): Promise<void> {
     await this.shutdown();
+  }
+
+  createPlatformStatusSnapshot() {
+    let enabledTasks = 0;
+    let runningTasks = 0;
+
+    for (const task of this.tasks.values()) {
+      if (task.enabled) {
+        enabledTasks += 1;
+      }
+
+      if (task.running) {
+        runningTasks += 1;
+      }
+    }
+
+    return createCronPlatformStatusSnapshot({
+      activeTicks: this.activeTasks.size,
+      distributedEnabled: this.options.distributed.enabled,
+      enabledTasks,
+      lifecycleState: this.lifecycleState,
+      lockOwnershipLosses: this.lockOwnershipLosses,
+      lockRenewalFailures: this.lockRenewalFailures,
+      ownedLocks: this.ownedLockKeys.size,
+      redisDependencyResolved: this.redisClient !== undefined,
+      runningTasks,
+      totalTasks: this.tasks.size,
+    });
   }
 
   private toSchedulingTaskDescriptor(task: RuntimeTaskState): SchedulingTaskDescriptor {
@@ -379,10 +415,12 @@ export class CronLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    this.lifecycleState = 'stopping';
     this.started = false;
     this.stopAllScheduledTasks();
     await this.waitForActiveTasks();
     await this.releaseOwnedLocks();
+    this.lifecycleState = 'stopped';
   }
 
   private async resolveDistributedClient(): Promise<void> {
@@ -749,6 +787,14 @@ export class CronLifecycleService
     renewalState: LockRenewalState,
   ): Promise<void> {
     const outcome = await this.renewLock(descriptor);
+
+    if (outcome === 'ownership-lost') {
+      this.lockOwnershipLosses += 1;
+    }
+
+    if (outcome === 'renewal-failed') {
+      this.lockRenewalFailures += 1;
+    }
 
     if (renewalState.lockPostRunError) {
       return;

@@ -11,6 +11,7 @@ import {
 } from '@konekti/runtime';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
+import { createEventBusPlatformStatusSnapshot } from './status.js';
 import { EVENT_BUS_OPTIONS } from './tokens.js';
 import type {
   EventBus,
@@ -94,7 +95,12 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
+  private readonly subscribedChannels = new Set<string>();
+  private transportCloseFailures = 0;
+  private transportPublishFailures = 0;
+  private transportSubscribeFailures = 0;
   private readonly transport: EventBusTransport | undefined;
 
   constructor(
@@ -107,18 +113,47 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureDiscovered();
-    await this.subscribeTransportChannels();
+    this.lifecycleState = 'discovering';
+
+    try {
+      await this.ensureDiscovered();
+      await this.subscribeTransportChannels();
+      this.lifecycleState = 'ready';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      throw error;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'stopping';
+
     if (this.transport) {
       try {
         await this.transport.close();
       } catch (error) {
+        this.transportCloseFailures += 1;
+        this.lifecycleState = 'failed';
         this.logger.error('EventBusTransport failed to close.', error, 'EventBusLifecycleService');
       }
     }
+
+    if (this.lifecycleState !== 'failed') {
+      this.lifecycleState = 'stopped';
+    }
+  }
+
+  createPlatformStatusSnapshot() {
+    return createEventBusPlatformStatusSnapshot({
+      handlersDiscovered: this.descriptors.length,
+      lifecycleState: this.lifecycleState,
+      subscribedChannels: this.subscribedChannels.size,
+      transportCloseFailures: this.transportCloseFailures,
+      transportConfigured: this.transport !== undefined,
+      transportPublishFailures: this.transportPublishFailures,
+      transportSubscribeFailures: this.transportSubscribeFailures,
+      waitForHandlersDefault: this.moduleOptions.publish?.waitForHandlers ?? true,
+    });
   }
 
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
@@ -283,6 +318,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
       try {
         await this.transport!.publish(channel, payload);
       } catch (error) {
+        this.transportPublishFailures += 1;
         this.logger.error(
           `EventBusTransport failed to publish to channel "${channel}".`,
           error,
@@ -337,7 +373,9 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
         await Promise.allSettled(invocationTasks);
       });
+      this.subscribedChannels.add(channel);
     } catch (error) {
+      this.transportSubscribeFailures += 1;
       this.logger.error(
         `EventBusTransport failed to subscribe to channel "${channel}".`,
         error,

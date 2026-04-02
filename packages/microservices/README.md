@@ -62,6 +62,7 @@ await microservice.listen();
 - `RedisStreamsMicroserviceTransport` - Redis Streams transport adapter (request/reply + event)
 - `GrpcMicroserviceTransport` - gRPC transport adapter (unary request/reply + unary event convention + server streaming + client streaming + bidirectional streaming)
 - `MqttMicroserviceTransport` - MQTT transport adapter (request/reply + event)
+- `createMicroservicePlatformStatusSnapshot(input)` - maps transport lifecycle/capability/handler visibility into shared platform snapshot fields
 
 ## Runtime behavior
 
@@ -451,3 +452,12 @@ await Promise.all([app.listen(), microservice.listen()]);
 ```
 
 The app and microservice runtime resolve handlers from the same container in this composition, so singleton providers are shared across HTTP and microservice flows.
+
+## Platform status snapshot semantics
+
+Use `createMicroservicePlatformStatusSnapshot(...)` (or `MicroserviceLifecycleService#createPlatformStatusSnapshot()`) to expose transport lifecycle and capability state in the shared platform snapshot shape.
+
+- `readiness`: listener lifecycle (`created`/`starting`/`ready`/`stopping`/`stopped`/`failed`) is surfaced explicitly instead of inferred from construction.
+- `health`: startup/shutdown transitions report `degraded`; failed/stopped listener state reports `unhealthy`.
+- `details`: includes handler counts by kind and transport capability visibility (`send`/`emit`/streaming support).
+- `dependencies`: snapshots expose explicit external transport dependency edges for platform tooling.

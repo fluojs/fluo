@@ -9,6 +9,7 @@ export * from './redis-transport.js';
 export * from './redis-streams-transport.js';
 export * from './rabbitmq-transport.js';
 export * from './service.js';
+export * from './status.js';
 export * from './tcp-transport.js';
 export * from './tokens.js';
 export * from './types.js';

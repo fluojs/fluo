@@ -4,6 +4,7 @@ import {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
   RUNTIME_CONTAINER,
+  type OnApplicationShutdown,
   type OnApplicationBootstrap,
 } from '@konekti/runtime';
 
@@ -11,6 +12,7 @@ import { CqrsBusBase } from './discovery.js';
 import { createIsolatedEvent } from './event-clone.js';
 import { getEventHandlerMetadata } from './metadata.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
+import { createCqrsPlatformStatusSnapshot } from './status.js';
 import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from './types.js';
 
 function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
@@ -22,10 +24,11 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
 }
 
 @Inject([KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
-export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap {
+export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
+  private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
 
   constructor(
     private readonly eventBus: EventBus,
@@ -38,7 +41,32 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureDiscovered();
+    this.lifecycleState = 'discovering';
+
+    try {
+      await this.ensureDiscovered();
+      this.lifecycleState = 'ready';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      throw error;
+    }
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'stopping';
+    this.lifecycleState = 'stopped';
+  }
+
+  createPlatformStatusSnapshot() {
+    const sagaSnapshot = this.sagaService.getRuntimeSnapshot();
+
+    return createCqrsPlatformStatusSnapshot({
+      eventHandlersDiscovered: this.descriptors.length,
+      inFlightSagaExecutions: sagaSnapshot.inFlightSagaExecutions,
+      lifecycleState: this.lifecycleState,
+      sagaLifecycleState: sagaSnapshot.lifecycleState,
+      sagasDiscovered: sagaSnapshot.sagasDiscovered,
+    });
   }
 
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {

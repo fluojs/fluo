@@ -111,6 +111,7 @@ Timeout behavior: after a timeout task fires, its task definition remains in the
 - `createCronProviders(options?)` - returns raw providers for manual composition
 - `SCHEDULING_REGISTRY` - inject runtime scheduling registry
 - `SchedulingRegistry` - runtime API for dynamic task registration and control
+- `createCronPlatformStatusSnapshot(input)` - maps scheduler lifecycle/distributed-lock/drain visibility into shared platform snapshot fields
 
 ## non-goals and intentional limitations
 
@@ -118,3 +119,12 @@ Timeout behavior: after a timeout task fires, its task definition remains in the
 - No sub-second scheduling — cron expressions follow standard 5-field cron syntax via `croner`; minimum resolution is one second
 - No built-in job queue or persistence — `@Cron` is a fire-and-forget tick scheduler; for durable job processing with retries and persistence, use `@konekti/queue`
 - No private method scheduling decorators — `@Cron`, `@Interval`, and `@Timeout` reject private methods
+
+## Platform status snapshot semantics
+
+Use `createCronPlatformStatusSnapshot(...)` (or `CronLifecycleService#createPlatformStatusSnapshot()`) to expose scheduler lifecycle and distributed-lock behavior in the shared platform snapshot shape.
+
+- `dependencies`: when distributed mode is enabled, snapshots expose explicit `redis.default` dependency edges.
+- `readiness`: lifecycle transitions and distributed Redis dependency availability are surfaced explicitly.
+- `health`: lock ownership loss/renewal failures are represented as degraded health (not silent).
+- `details`: includes total/enabled/running task counts, active in-flight ticks, owned lock count, and lock-failure counters.

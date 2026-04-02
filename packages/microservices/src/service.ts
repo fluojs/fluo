@@ -11,6 +11,7 @@ import {
 } from '@konekti/runtime';
 
 import { getHandlerMetadataEntries } from './metadata.js';
+import { createMicroservicePlatformStatusSnapshot } from './status.js';
 import { MICROSERVICE_OPTIONS } from './tokens.js';
 import type {
   HandlerDescriptor,
@@ -61,6 +62,8 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
+  private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private lastListenError: string | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
 
@@ -82,6 +85,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
 
     this.listenPromise = (async () => {
+      this.lifecycleState = 'starting';
+      this.lastListenError = undefined;
       this.descriptors.length = 0;
       this.descriptors.push(...this.discoverHandlerDescriptors());
 
@@ -113,10 +118,15 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
 
       await transport.listen(async (packet) => this.dispatchPacket(packet));
       this.listening = true;
+      this.lifecycleState = 'ready';
     })();
 
     try {
       await this.listenPromise;
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      this.lastListenError = error instanceof Error ? error.message : String(error);
+      throw error;
     } finally {
       this.listenPromise = undefined;
     }
@@ -127,12 +137,42 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       await this.listenPromise;
     }
 
-    await this.moduleOptions.transport.close();
-    this.listening = false;
+    this.lifecycleState = 'stopping';
+
+    try {
+      await this.moduleOptions.transport.close();
+      this.listening = false;
+      this.lifecycleState = 'stopped';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      this.lastListenError = error instanceof Error ? error.message : String(error);
+      throw error;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
     await this.close();
+  }
+
+  createPlatformStatusSnapshot() {
+    return createMicroservicePlatformStatusSnapshot({
+      handlerCounts: {
+        'bidi-stream': this.descriptors.filter((descriptor) => descriptor.kind === 'bidi-stream').length,
+        'client-stream': this.descriptors.filter((descriptor) => descriptor.kind === 'client-stream').length,
+        event: this.descriptors.filter((descriptor) => descriptor.kind === 'event').length,
+        message: this.descriptors.filter((descriptor) => descriptor.kind === 'message').length,
+        'server-stream': this.descriptors.filter((descriptor) => descriptor.kind === 'server-stream').length,
+      },
+      lastListenError: this.lastListenError,
+      lifecycleState: this.lifecycleState,
+      transportCapabilities: {
+        bidiStream: typeof this.moduleOptions.transport.bidiStream === 'function',
+        clientStream: typeof this.moduleOptions.transport.clientStream === 'function',
+        emit: typeof this.moduleOptions.transport.emit === 'function',
+        send: typeof this.moduleOptions.transport.send === 'function',
+        serverStream: typeof this.moduleOptions.transport.serverStream === 'function',
+      },
+    });
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {

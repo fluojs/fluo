@@ -37,13 +37,29 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
   private readonly executionChains = new Map<Token, Promise<void>>();
+  private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private readonly pendingDispatches = new Set<Promise<void>>();
   private readonly dispatchContext = new AsyncLocalStorage<Set<Token>>();
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureDiscovered();
+    this.lifecycleState = 'discovering';
+
+    try {
+      await this.ensureDiscovered();
+      this.lifecycleState = 'ready';
+    } catch (error) {
+      this.lifecycleState = 'failed';
+      throw error;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.lifecycleState = 'stopping';
+
+    while (this.pendingDispatches.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingDispatches));
+    }
+
     await Promise.allSettled(this.executionChains.values());
 
     this.executionChains.clear();
@@ -51,6 +67,21 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     this.descriptorsByEvent.clear();
     this.discovered = false;
     this.discoveryPromise = undefined;
+    this.lifecycleState = 'stopped';
+  }
+
+  getRuntimeSnapshot(): {
+    discovered: boolean;
+    inFlightSagaExecutions: number;
+    lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
+    sagasDiscovered: number;
+  } {
+    return {
+      discovered: this.discovered,
+      inFlightSagaExecutions: this.pendingDispatches.size,
+      lifecycleState: this.lifecycleState,
+      sagasDiscovered: new Set(Array.from(this.descriptorsByEvent.values()).flatMap((descriptors) => descriptors.map((d) => d.token))).size,
+    };
   }
 
   async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
@@ -96,7 +127,13 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     });
 
     this.executionChains.set(descriptor.token, current.catch(() => undefined));
-    await current;
+    this.pendingDispatches.add(current);
+
+    try {
+      await current;
+    } finally {
+      this.pendingDispatches.delete(current);
+    }
   }
 
   private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent): Promise<void> {
