@@ -470,6 +470,20 @@ export class AuthModule {}
 | `CookieAuthStrategy` | `src/cookie-auth.ts` | HttpOnly 쿠키에서 JWT를 추출하는 auth strategy |
 | `CookieManager` | `src/cookie-manager.ts` | auth 쿠키 설정/삭제 유틸리티 |
 | `createCookieAuthPreset(config)` | `src/cookie-auth-module.ts` | cookie auth provider와 strategy 등록 생성 |
+| `createPassportPlatformStatusSnapshot(input)` | `src/status.ts` | strategy/preset/의존성 준비도와 정책 경계를 공유 플랫폼 스냅샷 형태로 매핑 |
+| `createPassportPlatformDiagnosticIssues(input)` | `src/status.ts` | `AUTH_PASSPORT_*` 진단 코드와 fix hint/의존성 경계를 생성 |
+
+## 플랫폼 상태 스냅샷 시맨틱
+
+`createPassportPlatformStatusSnapshot(...)`은 인증 패키지 준비도를 공유 플랫폼 모델로 보고할 때 사용합니다.
+
+- `details.strategyRegistry`로 등록된 strategy 목록과 default strategy 정합성을 노출합니다.
+- `details.presets.cookieAuth`로 cookie preset 활성화/준비도를 노출합니다.
+- `details.presets.refreshToken.backingStore`로 refresh-token 백킹 의존성 준비도와 dependency ID를 노출합니다.
+- `details.policyBoundary`로 프레임워크 소유 인증 기본 기능과 애플리케이션 소유 로그인/세션 정책을 분리합니다.
+- `details.telemetry.labels`는 공통 라벨(`component_id`, `component_kind`, `operation`, `result`)을 따릅니다.
+
+`createPassportPlatformDiagnosticIssues(...)`은 레지스트리/preset/의존성 오구성을 안정적인 `AUTH_PASSPORT_*` 코드로 보고하며, 프레임워크가 애플리케이션 로그인/세션 정책을 소유한다고 암시하지 않습니다.
 
 ## 구조
 
@@ -527,6 +541,8 @@ public package는 auth error 클래스, bridge 타입, metadata helper, `AUTH_ST
 15. `src/guard.test.ts` — non-JWT strategy 흐름, 401/403 매핑, principal 채우기, scope 강제, Passport.js bridge 경로
 16. `src/refresh-token.test.ts` — refresh token lifecycle, 로테이션, 재생 감지, 취소
 17. `src/cookie-auth.test.ts` — cookie auth strategy 및 cookie manager 테스트
+18. `src/status.ts` — strategy/preset/의존성 준비도와 정책 경계를 공유 플랫폼 상태/진단 형태로 매핑
+19. `src/status.test.ts` — 플랫폼 상태 스냅샷/진단 회귀 테스트
 
 ## 관련 패키지
 

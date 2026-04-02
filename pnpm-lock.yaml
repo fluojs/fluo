@@ -260,6 +260,9 @@ importers:
       '@konekti/di':
         specifier: workspace:*
         version: link:../di
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/metrics:
     dependencies:
@@ -351,6 +354,9 @@ importers:
       '@konekti/jwt':
         specifier: workspace:*
         version: link:../jwt
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/platform-express:
     dependencies:

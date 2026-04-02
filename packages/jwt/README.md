@@ -154,6 +154,19 @@ const verifier = new DefaultJwtVerifier({
 | `JwtSigner` | `src/types.ts` | Interface for custom signer implementations |
 | `RefreshTokenService` | `src/refresh-token.ts` | Service for refresh token lifecycle (issue, rotate, revoke) |
 | `RefreshTokenStore` | `src/refresh-token.ts` | Interface for refresh token persistence |
+| `createJwtPlatformStatusSnapshot(input)` | `src/status.ts` | Maps JWT ownership/readiness/health and policy boundary into shared platform snapshot shape |
+| `createJwtPlatformDiagnosticIssues(input)` | `src/status.ts` | Emits package-prefixed auth diagnostics for refresh-token backing dependency readiness |
+
+## Platform status snapshot semantics
+
+Use `createJwtPlatformStatusSnapshot(...)` to expose JWT platform alignment signals without changing token behavior:
+
+- `ownership` is explicit: JWT primitives are framework-provided while key/session policy remains externally managed.
+- `details.policyBoundary` separates framework-owned primitives from application-owned login/session policy.
+- `details.refreshToken.backingStore` can surface refresh-token dependency readiness when refresh mode is enabled.
+- `details.telemetry.labels` follows shared labels (`component_id`, `component_kind`, `operation`, `result`).
+
+Use `createJwtPlatformDiagnosticIssues(...)` to emit stable `AUTH_JWT_*` diagnostics with `fixHint` and optional dependency edges (`dependsOn`).
 
 ## Architecture
 
@@ -196,9 +209,11 @@ Refresh token verification is HMAC-only. If `refreshToken` is configured, the ve
 4. `src/signer.ts` — `DefaultJwtSigner`, defaults filling
 5. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStore`, rotation with replay detection
 6. `src/module.ts` — `createJwtCoreProviders`
-7. `src/verifier.test.ts` — happy path, expired token, invalid signature
-8. `src/signer.test.ts` — sign/verify roundtrip
-9. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, concurrent attempts
+7. `src/status.ts` — platform snapshot/diagnostics adapter for policy boundary and refresh-token backing readiness
+8. `src/verifier.test.ts` — happy path, expired token, invalid signature
+9. `src/signer.test.ts` — sign/verify roundtrip
+10. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, concurrent attempts
+11. `src/status.test.ts` — status snapshot and diagnostic issue coverage
 
 ## Refresh token integration
 

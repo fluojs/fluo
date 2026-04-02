@@ -4,5 +4,6 @@ export * from './module.js';
 export * from './refresh-token.js';
 export * from './service.js';
 export * from './signer.js';
+export * from './status.js';
 export * from './types.js';
 export * from './verifier.js';
