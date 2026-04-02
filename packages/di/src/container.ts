@@ -1,4 +1,4 @@
-import { InvariantError, getClassDiMetadata, type Token } from '@konekti/core';
+import { InvariantError, formatTokenName, getClassDiMetadata, type Token } from '@konekti/core';
 
 import {
   CircularDependencyError,
@@ -137,7 +137,10 @@ export class Container {
 
   register(...providers: Provider[]): this {
     if (this.disposed) {
-      throw new ContainerResolutionError('Container has been disposed and can no longer register providers.');
+      throw new ContainerResolutionError(
+        'Container has been disposed and can no longer register providers.',
+        { hint: 'Ensure providers are registered before calling container.dispose().' },
+      );
     }
 
     for (const provider of providers) {
@@ -145,8 +148,12 @@ export class Container {
 
       if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT && normalized.multi !== true) {
         throw new ScopeMismatchError(
-          `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container. ` +
-            'Register it on the root container or override it within the request scope instead.',
+          `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
+          {
+            token: normalized.provide,
+            scope: 'singleton',
+            hint: 'Register it on the root container before creating the request scope, or use container.override() within the request scope instead.',
+          },
         );
       }
 
@@ -180,7 +187,10 @@ export class Container {
    */
   override(...providers: Provider[]): this {
     if (this.disposed) {
-      throw new ContainerResolutionError('Container has been disposed and can no longer override providers.');
+      throw new ContainerResolutionError(
+        'Container has been disposed and can no longer override providers.',
+        { hint: 'Ensure overrides are applied before calling container.dispose().' },
+      );
     }
 
     for (const provider of providers) {
@@ -210,7 +220,10 @@ export class Container {
 
   createRequestScope(): Container {
     if (this.disposed) {
-      throw new ContainerResolutionError('Container has been disposed and can no longer create request scopes.');
+      throw new ContainerResolutionError(
+        'Container has been disposed and can no longer create request scopes.',
+        { hint: 'Create request scopes before calling container.dispose().' },
+      );
     }
 
     const child = new Container(this, true, this.root().singletonCache);
@@ -220,7 +233,10 @@ export class Container {
 
   async resolve<T>(token: Token<T>): Promise<T> {
     if (this.disposed) {
-      throw new ContainerResolutionError('Container has been disposed and can no longer resolve providers.');
+      throw new ContainerResolutionError(
+        'Container has been disposed and can no longer resolve providers.',
+        { token, hint: 'Ensure all resolves complete before calling container.dispose().' },
+      );
     }
 
     return this.resolveWithChain(token, [], new Set<Token>());
@@ -373,7 +389,13 @@ export class Container {
     const provider = this.lookupProvider(token);
 
     if (!provider) {
-      throw new ContainerResolutionError(`No provider registered for token ${String(token)}.`);
+      throw new ContainerResolutionError(
+        `No provider registered for token ${formatTokenName(token)}.`,
+        {
+          token,
+          hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
+        },
+      );
     }
 
     return provider;
@@ -536,7 +558,12 @@ export class Container {
 
     if (!this.requestScopeEnabled) {
       throw new RequestScopeResolutionError(
-        `Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`,
+        `Request-scoped provider ${formatTokenName(provider.provide)} cannot be resolved outside request scope.`,
+        {
+          token: provider.provide,
+          scope: 'request',
+          hint: 'Wrap the resolve call inside a request-scoped child container created via container.createRequestScope().',
+        },
       );
     }
 
@@ -556,7 +583,12 @@ export class Container {
 
     if (!this.requestScopeEnabled) {
       throw new RequestScopeResolutionError(
-        `Request-scoped provider ${String(provider.provide)} cannot be resolved outside request scope.`,
+        `Request-scoped provider ${formatTokenName(provider.provide)} cannot be resolved outside request scope.`,
+        {
+          token: provider.provide,
+          scope: 'request',
+          hint: 'Wrap the resolve call inside a request-scoped child container created via container.createRequestScope().',
+        },
       );
     }
 
@@ -727,8 +759,12 @@ export class Container {
 
       if (effectiveProvider?.scope === 'request') {
         throw new ScopeMismatchError(
-          `Singleton provider ${String(provider.provide)} depends on request-scoped provider ${String(depToken)}. ` +
-            'Singleton providers cannot depend on request-scoped providers.',
+          `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(depToken)}.`,
+          {
+            token: provider.provide,
+            scope: 'singleton',
+            hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(depToken)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
+          },
         );
       }
     }

@@ -389,6 +389,25 @@ KonektiFactory.create(options)  [or bootstrapApplication]
 
 If any of these fail, bootstrap throws before any provider is instantiated. This is a deliberate design choice — broken apps fail loudly at startup, not silently at the first request.
 
+### Recovery-oriented error output
+
+Every bootstrap and module-graph error includes structured context fields so that failures explain what went wrong, where it happened, and what to do next. The error message appends:
+
+- **Module** — the module where the failure was detected
+- **Token** — the token involved (if applicable)
+- **Phase** — the bootstrap phase (e.g. `module graph compilation`, `provider visibility validation`, `export validation`, `provider registration`)
+- **Hint** — a plain-language recovery action
+
+Errors also carry a machine-readable `meta` object with the same fields, suitable for structured logging or monitoring. Example:
+
+```text
+ModuleVisibilityError: Provider BillingService in module BillingModule cannot access token UserRepository...
+  Module: BillingModule
+  Token: UserRepository
+  Phase: provider visibility validation
+  Hint: Add UserRepository to the exports array of the module that owns it, then import that module into BillingModule. Alternatively, mark the owning module with @Global().
+```
+
 ### Lifecycle hook ordering
 
 ```text

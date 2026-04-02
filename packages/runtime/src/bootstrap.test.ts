@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Global, Inject, Module, defineModuleMetadata } from '@konekti/core';
 
 import { bootstrapModule, KonektiFactory } from './bootstrap.js';
-import { DuplicateProviderError, ModuleInjectionMetadataError } from './errors.js';
+import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import { HTTP_APPLICATION_ADAPTER } from './tokens.js';
 import type { MicroserviceRuntime } from './types.js';
 
@@ -719,5 +719,295 @@ describe('KonektiFactory.createMicroservice', () => {
     expect(events).toEqual(['micro:listen']);
 
     await app.close();
+  });
+});
+
+describe('Recovery-oriented error context (runtime)', () => {
+  describe('ModuleVisibilityError includes structured context', () => {
+    it('includes module name, token, and actionable hint for provider visibility failures', () => {
+      class InternalRepository {}
+
+      class DataModule {}
+      defineModuleMetadata(DataModule, {
+        providers: [InternalRepository],
+      });
+
+      @Inject([InternalRepository])
+      class BillingService {}
+
+      class BillingModule {}
+      defineModuleMetadata(BillingModule, {
+        imports: [DataModule],
+        providers: [BillingService],
+      });
+
+      try {
+        bootstrapModule(BillingModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleVisibilityError);
+        const message = (error as Error).message;
+        expect(message).toContain('Module: BillingModule');
+        expect(message).toContain('Token:');
+        expect(message).toContain('Phase: provider visibility validation');
+        expect(message).toContain('Hint:');
+        expect(message).toContain('exports');
+      }
+    });
+
+    it('includes module name, token, and hint for controller visibility failures', () => {
+      class InternalRepository {}
+
+      class DataModule {}
+      defineModuleMetadata(DataModule, {
+        providers: [InternalRepository],
+      });
+
+      @Inject([InternalRepository])
+      class BillingController {}
+
+      class BillingModule {}
+      defineModuleMetadata(BillingModule, {
+        imports: [DataModule],
+        controllers: [BillingController],
+      });
+
+      try {
+        bootstrapModule(BillingModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleVisibilityError);
+        const message = (error as Error).message;
+        expect(message).toContain('Module: BillingModule');
+        expect(message).toContain('Token:');
+        expect(message).toContain('Phase: controller visibility validation');
+        expect(message).toContain('Hint:');
+      }
+    });
+
+    it('provides machine-readable meta on ModuleVisibilityError', () => {
+      class InternalRepository {}
+
+      class DataModule {}
+      defineModuleMetadata(DataModule, {
+        providers: [InternalRepository],
+      });
+
+      @Inject([InternalRepository])
+      class BillingService {}
+
+      class BillingModule {}
+      defineModuleMetadata(BillingModule, {
+        imports: [DataModule],
+        providers: [BillingService],
+      });
+
+      try {
+        bootstrapModule(BillingModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        const meta = (error as ModuleVisibilityError & { meta?: Record<string, unknown> }).meta;
+        expect(meta).toBeDefined();
+        expect(meta!['module']).toBe('BillingModule');
+        expect(meta!['phase']).toBe('provider visibility validation');
+        expect(meta!['hint']).toBeDefined();
+        expect(meta!['token']).toBeDefined();
+      }
+    });
+  });
+
+  describe('ModuleGraphError includes structured context', () => {
+    it('includes module name and hint for circular module imports', () => {
+      class ModuleA {}
+      class ModuleB {}
+      defineModuleMetadata(ModuleA, {
+        imports: [ModuleB],
+      });
+      defineModuleMetadata(ModuleB, {
+        imports: [ModuleA],
+      });
+
+      try {
+        bootstrapModule(ModuleA);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleGraphError);
+        const message = (error as Error).message;
+        expect(message).toContain('Circular module import');
+        expect(message).toContain('Module:');
+        expect(message).toContain('Phase: module graph compilation');
+        expect(message).toContain('Hint:');
+        expect(message).toContain('extract');
+      }
+    });
+
+    it('provides machine-readable meta on ModuleGraphError', () => {
+      class ModuleA {}
+      class ModuleB {}
+      defineModuleMetadata(ModuleA, {
+        imports: [ModuleB],
+      });
+      defineModuleMetadata(ModuleB, {
+        imports: [ModuleA],
+      });
+
+      try {
+        bootstrapModule(ModuleA);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        const meta = (error as ModuleGraphError & { meta?: Record<string, unknown> }).meta;
+        expect(meta).toBeDefined();
+        expect(meta!['phase']).toBe('module graph compilation');
+        expect(meta!['hint']).toBeDefined();
+      }
+    });
+  });
+
+  describe('ModuleInjectionMetadataError includes structured context', () => {
+    it('includes module scope and hint about @Inject for missing injection metadata', () => {
+      class Logger {}
+
+      class BillingService {
+        constructor(readonly logger: Logger) {}
+      }
+
+      class BillingModule {}
+      defineModuleMetadata(BillingModule, {
+        providers: [Logger, BillingService],
+      });
+
+      try {
+        bootstrapModule(BillingModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleInjectionMetadataError);
+        const message = (error as Error).message;
+        expect(message).toContain('module BillingModule');
+        expect(message).toContain('Phase: injection metadata validation');
+        expect(message).toContain('Hint:');
+        expect(message).toContain('@Inject');
+      }
+    });
+
+    it('provides machine-readable meta on ModuleInjectionMetadataError', () => {
+      class Logger {}
+
+      class BillingService {
+        constructor(readonly logger: Logger) {}
+      }
+
+      class BillingModule {}
+      defineModuleMetadata(BillingModule, {
+        providers: [Logger, BillingService],
+      });
+
+      try {
+        bootstrapModule(BillingModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        const meta = (error as ModuleInjectionMetadataError & { meta?: Record<string, unknown> }).meta;
+        expect(meta).toBeDefined();
+        expect(meta!['module']).toContain('BillingModule');
+        expect(meta!['phase']).toBe('injection metadata validation');
+        expect(meta!['hint']).toBeDefined();
+      }
+    });
+  });
+
+  describe('DuplicateProviderError includes structured context', () => {
+    it('includes module, token, and hint when policy is "throw"', () => {
+      class SharedService {}
+
+      class ModuleA {}
+      defineModuleMetadata(ModuleA, {
+        providers: [SharedService],
+        exports: [SharedService],
+      });
+
+      class ModuleB {}
+      defineModuleMetadata(ModuleB, {
+        providers: [SharedService],
+        exports: [SharedService],
+      });
+
+      class RootModule {}
+      defineModuleMetadata(RootModule, {
+        imports: [ModuleA, ModuleB],
+      });
+
+      try {
+        bootstrapModule(RootModule, { duplicateProviderPolicy: 'throw' });
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(DuplicateProviderError);
+        const message = (error as Error).message;
+        expect(message).toContain('SharedService');
+        expect(message).toContain('Module:');
+        expect(message).toContain('Token:');
+        expect(message).toContain('Phase: provider registration');
+        expect(message).toContain('Hint:');
+      }
+    });
+
+    it('provides machine-readable meta on DuplicateProviderError', () => {
+      class SharedService {}
+
+      class ModuleA {}
+      defineModuleMetadata(ModuleA, {
+        providers: [SharedService],
+        exports: [SharedService],
+      });
+
+      class ModuleB {}
+      defineModuleMetadata(ModuleB, {
+        providers: [SharedService],
+        exports: [SharedService],
+      });
+
+      class RootModule {}
+      defineModuleMetadata(RootModule, {
+        imports: [ModuleA, ModuleB],
+      });
+
+      try {
+        bootstrapModule(RootModule, { duplicateProviderPolicy: 'throw' });
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        const meta = (error as DuplicateProviderError & { meta?: Record<string, unknown> }).meta;
+        expect(meta).toBeDefined();
+        expect(meta!['module']).toBeDefined();
+        expect(meta!['token']).toBeDefined();
+        expect(meta!['phase']).toBe('provider registration');
+        expect(meta!['hint']).toBeDefined();
+      }
+    });
+  });
+
+  describe('ModuleVisibilityError for export validation includes context', () => {
+    it('includes module name, token, and hint when exporting a non-local token', () => {
+      class NonExistentService {}
+
+      class BadModule {}
+      defineModuleMetadata(BadModule, {
+        exports: [NonExistentService],
+      });
+
+      class AppModule {}
+      defineModuleMetadata(AppModule, {
+        imports: [BadModule],
+      });
+
+      try {
+        bootstrapModule(AppModule);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleVisibilityError);
+        const message = (error as Error).message;
+        expect(message).toContain('BadModule');
+        expect(message).toContain('Phase: export validation');
+        expect(message).toContain('Hint:');
+        expect(message).toContain('providers');
+      }
+    });
   });
 });
