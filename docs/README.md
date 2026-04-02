@@ -50,6 +50,7 @@ Deep dives into the architecture, runtime behavior, and governing policies.
 
 ### architecture & runtime
 - `concepts/architecture-overview.md`
+- `concepts/platform-consistency-design.md`
 - `concepts/dev-reload-architecture.md`
 - `concepts/di-and-modules.md`
 - `concepts/http-runtime.md`

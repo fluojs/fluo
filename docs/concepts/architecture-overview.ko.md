@@ -7,6 +7,7 @@ Konekti는 공개되는 인터페이스를 좁게 유지하며, 대부분의 동
 ### 관련 문서
 
 - `./http-runtime.ko.md`
+- `./platform-consistency-design.ko.md`
 - `./dev-reload-architecture.ko.md`
 - `./auth-and-jwt.ko.md`
 - `../reference/package-surface.ko.md`
