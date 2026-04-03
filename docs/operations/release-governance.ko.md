@@ -116,7 +116,12 @@
 
 ### PR CI 자동화
 
-`.github/workflows/ci.yml`은 `main` 브랜치를 대상으로 하는 모든 풀 리퀘스트와 `main`으로의 모든 푸시에서 검증 표면을 자동으로 실행합니다. 워크플로우는 `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:release-readiness`, `pnpm verify:platform-consistency-governance`를 순차적으로 실행하여 릴리스 시점이 아닌 머지 전에 회귀를 잡아냅니다.
+`.github/workflows/ci.yml`은 `main` 대상 pull request와 `main` push에서 모두 동작하지만, 이벤트별 검증 범위를 분리합니다:
+
+- pull request에서는 `pnpm build` + `pnpm typecheck`를 하나의 잡에서 실행해 타입체크가 필요한 빌드 산출물을 보도록 하고, `pnpm lint`, `pnpm test`, `pnpm verify:platform-consistency-governance`는 해당 잡과 병렬로 실행한 뒤 단일 PR 게이트 잡으로 통합합니다.
+- `main` push에서는 동일한 PR 검증 구조에 더해 `pnpm verify:release-readiness`를 추가로 실행하고, 릴리스 등급 aggregate 게이트를 통과해야 합니다.
+
+이 구조는 PR 피드백 속도를 높이면서도 `main`의 릴리스 지향 플로우에서 release-readiness 보장을 유지합니다.
 
 `pnpm verify:platform-consistency-governance`는 다음 거버넌스 가드레일을 강제합니다.
 

@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Verify
+  build-and-typecheck:
+    name: Build and typecheck
     runs-on: ubuntu-latest
 
     steps:
@@ -37,14 +37,124 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Lint
         run: pnpm lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Test
         run: pnpm test
 
-      - name: Verify release readiness
-        run: pnpm verify:release-readiness
+  verify-platform-consistency-governance:
+    name: Verify platform consistency governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Verify platform consistency governance
         run: pnpm verify:platform-consistency-governance
+
+  verify-release-readiness:
+    name: Verify release readiness
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release readiness
+        run: pnpm verify:release-readiness
+
+  verify:
+    name: Verify
+    if: github.event_name == 'pull_request'
+    needs:
+      - build-and-typecheck
+      - lint
+      - test
+      - verify-platform-consistency-governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: PR verification gate passed
+        run: echo "PR verification jobs passed."
+
+  release-verify:
+    name: Release verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - build-and-typecheck
+      - lint
+      - test
+      - verify-platform-consistency-governance
+      - verify-release-readiness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Main branch release-grade gate passed
+        run: echo "Main branch release-grade verification jobs passed."
