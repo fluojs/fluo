@@ -116,7 +116,7 @@ interface GraphQLContext {
 - `getRequestScopedDataLoader(context, key, createLoader)` — low-level cache helper
 - `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level factory helper
 
-`GRAPHQL_MODULE_OPTIONS` and `GRAPHQL_LIFECYCLE_SERVICE` are internal lifecycle wiring tokens used by the package implementation and are not part of the public module/resolver API surface.
+`GRAPHQL_MODULE_OPTIONS` remains an internal lifecycle wiring token and is not part of the public module/resolver API surface. `GRAPHQL_LIFECYCLE_SERVICE` is also non-public and no longer used for internal class-alias wiring.
 
 #### 0.x migration note
 
