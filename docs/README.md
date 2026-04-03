@@ -9,6 +9,7 @@ Welcome to the Konekti cross-package documentation hub. This directory contains 
 If you are new to Konekti, follow this path to get your first application running.
 
 - `getting-started/quick-start.md` - **Canonical first run**: install -> `new` -> `dev`.
+- `getting-started/first-feature-path.md` - **Official next step**: from starter app to first real feature.
 - `getting-started/bootstrap-paths.md` - Bootstrap reference and advanced startup paths.
 - `reference/glossary-and-mental-model.md` - Core vocabulary and mental model.
 
@@ -18,6 +19,9 @@ Working applications that demonstrate the canonical starter path and common patt
 
 - `../examples/minimal/` - Smallest runnable Konekti app, matching the `konekti new` output.
 - `../examples/realworld-api/` - Multi-module app with DTO validation, config loading, and CRUD.
+- `../examples/auth-jwt-passport/` - Bearer-token auth example with JWT issuance and passport-style route protection.
+- `../examples/ops-metrics-terminus/` - Metrics + terminus example for `/metrics`, `/health`, and `/ready`.
+- `../examples/README.md` - Current official example index and reading order.
 
 ## common tasks
 
@@ -55,9 +59,13 @@ Deep dives into the architecture, runtime behavior, and governing policies.
 - `concepts/platform-consistency-design.md`
 - `concepts/dev-reload-architecture.md`
 - `concepts/di-and-modules.md`
+- `concepts/config-and-environments.md`
 - `concepts/http-runtime.md`
 - `concepts/cqrs.md`
 - `concepts/caching.md`
+- `concepts/transactions.md`
+- `concepts/observability.md`
+- `concepts/security-middleware.md`
 - `concepts/lifecycle-and-shutdown.md`
 
 ### behavior & policy

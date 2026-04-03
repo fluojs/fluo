@@ -96,9 +96,13 @@ pnpm dev
 ## 시작 경로
 
 - `docs/getting-started/quick-start.ko.md` - install -> new -> dev 표준 경로
+- `docs/getting-started/first-feature-path.ko.md` - 스타터 앱에서 첫 기능까지 가는 공식 다음 단계
 - `docs/README.ko.md` - 첫 실행 후 이어서 읽는 문서 맵
+- `examples/README.ko.md` - 공식 runnable example과 권장 읽기 순서
 - `examples/minimal/` - 가장 작은 실행 가능 Konekti 앱
 - `examples/realworld-api/` - 검증과 CRUD를 포함하는 다중 모듈 앱
+- `examples/auth-jwt-passport/` - JWT 발급과 passport 기반 보호 라우트 예제
+- `examples/ops-metrics-terminus/` - metrics, health, readiness 예제
 - `docs/concepts/architecture-overview.ko.md` - 아키텍처/패키지 경계
 - `docs/concepts/dev-reload-architecture.ko.md` - 개발 중 재시작과 config reload 책임 경계
 - `docs/reference/package-surface.ko.md` - 현재 공개 패키지 표면
