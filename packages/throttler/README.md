@@ -73,18 +73,15 @@ import { ThrottlerGuard } from '@konekti/throttler';
 class ApiController {}
 ```
 
-### `THROTTLER_GUARD`
+### `THROTTLER_OPTIONS`
 
-Compatibility DI token alias that resolves to `ThrottlerGuard`.
+Module-options DI token used by `ThrottlerGuard` construction and module wiring.
 
-```typescript
-import { UseGuards } from '@konekti/http';
-import { THROTTLER_GUARD } from '@konekti/throttler';
+## 0.x migration notes
 
-@UseGuards(THROTTLER_GUARD)
-@Controller('/api')
-class ApiController {}
-```
+- `THROTTLER_GUARD` compatibility alias was removed from the public API.
+- Use `ThrottlerGuard` directly in `@UseGuards(...)` and DI registrations.
+- Runtime throttling behavior and module options semantics are unchanged.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
 
