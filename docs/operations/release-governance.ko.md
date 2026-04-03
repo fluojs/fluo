@@ -118,8 +118,8 @@
 
 `.github/workflows/ci.yml`은 `main` 대상 pull request와 `main` push에서 모두 동작하지만, 이벤트별 검증 범위를 분리합니다:
 
-- pull request에서는 `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm verify:platform-consistency-governance`를 병렬 잡으로 실행하고 단일 PR 게이트 잡으로 통합합니다.
-- `main` push에서는 동일한 병렬 검증 잡에 더해 `pnpm verify:release-readiness`를 추가로 실행하고, 릴리스 등급 aggregate 게이트를 통과해야 합니다.
+- pull request에서는 `pnpm build` + `pnpm typecheck`를 하나의 잡에서 실행해 타입체크가 필요한 빌드 산출물을 보도록 하고, `pnpm lint`, `pnpm test`, `pnpm verify:platform-consistency-governance`는 해당 잡과 병렬로 실행한 뒤 단일 PR 게이트 잡으로 통합합니다.
+- `main` push에서는 동일한 PR 검증 구조에 더해 `pnpm verify:release-readiness`를 추가로 실행하고, 릴리스 등급 aggregate 게이트를 통과해야 합니다.
 
 이 구조는 PR 피드백 속도를 높이면서도 `main`의 릴리스 지향 플로우에서 release-readiness 보장을 유지합니다.
 

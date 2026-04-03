@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build
+  build-and-typecheck:
+    name: Build and typecheck
     runs-on: ubuntu-latest
 
     steps:
@@ -33,26 +33,6 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm typecheck
@@ -154,8 +134,7 @@ jobs:
     name: Verify
     if: github.event_name == 'pull_request'
     needs:
-      - build
-      - typecheck
+      - build-and-typecheck
       - lint
       - test
       - verify-platform-consistency-governance
@@ -169,8 +148,7 @@ jobs:
     name: Release verify
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
-      - build
-      - typecheck
+      - build-and-typecheck
       - lint
       - test
       - verify-platform-consistency-governance
