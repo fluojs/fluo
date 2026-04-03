@@ -42,6 +42,8 @@ This page provides an overview of the current public package family within the K
 
 ## package responsibilities
 
+Konekti packages follow a **class-first** public surface rule. Concrete services, guards, and interceptors use the class itself as the primary injection token, while symbols and constants are reserved for interfaces, configuration, and runtime handles.
+
 - **`@konekti/core`**: Shared contracts, decorators, and metadata helpers.
 - **`@konekti/config`**: Configuration loading and typed access.
 - **`@konekti/di`**: Provider resolution and lifecycle scopes.
@@ -73,6 +75,15 @@ This page provides an overview of the current public package family within the K
 - **`@konekti/testing`**: Testing module and helper utilities, including the shared platform conformance harness (`createPlatformConformanceHarness`) for lifecycle/diagnostics/snapshot contract checks.
 - **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
 - **`@konekti/studio`**: File-first diagnostics viewer for runtime graph/timing JSON exports.
+
+## public DI entry points
+
+When consuming these packages, favor injecting the concrete service/guard/interceptor class directly. Exported tokens are provided only when an explicit abstraction or runtime seam is required.
+
+- **Prefer class**: `UsersService`, `AuthGuard`, `RedisService`, `PrismaService`.
+- **Prefer token**: `CONFIG_OPTIONS`, `REDIS_CLIENT_HANDLE`, `EVENT_BUS`, `JWT_SIGN_OPTIONS`.
+
+Refer to `docs/concepts/di-and-modules.md` for the technical principles behind class-first DI.
 
 ## boundary and documentation rules
 
