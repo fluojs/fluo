@@ -14,7 +14,7 @@ import type { HttpApplicationAdapter } from '@konekti/http';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
-import { createWebSocketModule } from './module.js';
+import { createWebSocketModule, createWebSocketProviders } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 import type { WebSocketModuleOptions } from './types.js';
 
@@ -194,6 +194,20 @@ describe('@konekti/websocket', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_GATEWAY_SERVICE');
     expect(publicApi).not.toHaveProperty('WEBSOCKET_SERVICE');
     expect(publicApi).not.toHaveProperty('WEBSOCKET_OPTIONS');
+  });
+
+  it('wires lifecycle service with a direct class provider', () => {
+    const options: WebSocketModuleOptions = {
+      shutdown: { timeoutMs: 1234 },
+    };
+    const providers = createWebSocketProviders(options);
+    const optionsProvider = providers.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    );
+
+    expect(providers).toContain(WebSocketGatewayLifecycleService);
+    expect(optionsProvider).toBeDefined();
+    expect(optionsProvider).toHaveProperty('useValue', options);
   });
 
   it('writes gateway and handler metadata with standard decorators', () => {
