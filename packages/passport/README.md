@@ -522,6 +522,10 @@ This means adding a new auth strategy requires only implementing `AuthStrategy` 
 
 The public package exports auth error classes, bridge types, metadata helpers, and strategy/decorator contracts from `src/index.ts`. Registry and options tokens are internal wiring details used by `createPassportProviders` and `AuthGuard`.
 
+### 0.x migration note
+
+In `0.x`, `AUTH_STRATEGY_REGISTRY` and `PASSPORT_OPTIONS` were removed from the public `@konekti/passport` package surface and are now internal wiring details. If your application imported these tokens directly, migrate to `createPassportProviders(...)`, `UseAuth(...)`, `RequireScopes(...)`, and `AuthStrategy`-based registration as the supported public contract.
+
 ## File reading order for contributors
 
 1. `src/types.ts` — `AuthStrategy`, `AuthStrategyResult`, `AuthRequirement`, `GuardContext`
