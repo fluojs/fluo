@@ -5,6 +5,13 @@
 
 Decorator-based WebSocket gateway integration for Konekti applications using a shared Node HTTP/S server upgrade listener.
 
+## See also
+
+- `../runtime/README.md`
+- `../../docs/operations/third-party-extension-contract.md`
+- `../../docs/reference/package-chooser.md`
+- `../../docs/reference/package-surface.md`
+
 ## Installation
 
 ```bash

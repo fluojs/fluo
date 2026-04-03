@@ -5,6 +5,13 @@
 
 공유 Node HTTP/S 서버의 업그레이드 리스너를 사용하는 Konekti용 데코레이터 기반 WebSocket 게이트웨이 패키지입니다.
 
+## 관련 문서
+
+- `../runtime/README.ko.md`
+- `../../docs/operations/third-party-extension-contract.ko.md`
+- `../../docs/reference/package-chooser.ko.md`
+- `../../docs/reference/package-surface.ko.md`
+
 ## 설치
 
 ```bash

@@ -4,6 +4,15 @@
 
 Konekti 런타임 애플리케이션을 위한 Fastify 기반 HTTP 어댑터입니다.
 
+## 관련 문서
+
+- `../runtime/README.ko.md`
+- `../../docs/concepts/http-runtime.ko.md`
+- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
+- `../../docs/concepts/observability.ko.md`
+- `../../docs/reference/package-chooser.ko.md`
+- `../../docs/reference/package-surface.ko.md`
+
 ## 설치
 
 ```bash
