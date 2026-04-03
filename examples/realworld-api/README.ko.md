@@ -61,7 +61,9 @@ examples/realworld-api/
 
 ## 관련 문서
 
+- `../README.ko.md` — 공식 examples 인덱스
 - `../../docs/getting-started/quick-start.ko.md` — 표준 시작 가이드
+- `../../docs/getting-started/first-feature-path.ko.md` — 스타터 앱에서 첫 기능까지 가는 경로
 - `../../docs/reference/package-chooser.ko.md` — 작업별 패키지 선택
 - `../../docs/operations/testing-guide.ko.md` — 테스트 패턴 및 레시피
 - `../../docs/concepts/di-and-modules.ko.md` — DI 및 모듈 시스템
