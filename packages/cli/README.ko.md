@@ -154,7 +154,7 @@ pnpm --dir packages/cli run sandbox:verify
 pnpm --dir packages/cli run sandbox:clean
 ```
 
-패키지 전용 Vitest 스위트는 `pnpm --dir packages/cli run test`로 실행할 수 있습니다. 이 스위트는 일반 CI 시간 예산에 맞춰 스타터 스캐폴드 계약 검증과 로컬 설치 스모크 검증을 빠르게 유지합니다.
+패키지 전용 Vitest 스위트는 `pnpm --dir packages/cli run test`로 실행할 수 있습니다. 이 스위트는 일반 CI 시간 예산에 맞춰 스타터 스캐폴드 계약 검증을 인밴드로 유지하고, cold 로컬 build/pack/install 스모크는 `pnpm --dir packages/cli run sandbox:test` 경로로 분리합니다.
 
 ## 핵심 API
 

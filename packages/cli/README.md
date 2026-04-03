@@ -154,7 +154,7 @@ pnpm --dir packages/cli run sandbox:verify
 pnpm --dir packages/cli run sandbox:clean
 ```
 
-Use `pnpm --dir packages/cli run test` for the package-local Vitest suite. That suite keeps starter scaffold contract assertions and local-install smoke checks fast for regular CI budgets.
+Use `pnpm --dir packages/cli run test` for the package-local Vitest suite. That suite keeps starter scaffold contract assertions in-band for regular CI budgets, while cold local build/pack/install smoke belongs to `pnpm --dir packages/cli run sandbox:test`.
 
 ## Key API
 
