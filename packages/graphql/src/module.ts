@@ -2,7 +2,7 @@ import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { GraphqlEndpointController, GraphqlLifecycleService } from './service.js';
-import { GRAPHQL_LIFECYCLE_SERVICE, GRAPHQL_MODULE_OPTIONS } from './tokens.js';
+import { GRAPHQL_MODULE_OPTIONS } from './tokens.js';
 import type { GraphqlModuleOptions } from './types.js';
 
 export function createGraphqlProviders(options: GraphqlModuleOptions): Provider[] {
@@ -11,10 +11,7 @@ export function createGraphqlProviders(options: GraphqlModuleOptions): Provider[
       provide: GRAPHQL_MODULE_OPTIONS,
       useValue: options,
     },
-    {
-      provide: GRAPHQL_LIFECYCLE_SERVICE,
-      useClass: GraphqlLifecycleService,
-    },
+    GraphqlLifecycleService,
   ];
 }
 

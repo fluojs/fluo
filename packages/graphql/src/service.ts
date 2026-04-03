@@ -37,7 +37,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { createCodeFirstSchema, resolveSchema } from './schema.js';
-import { GRAPHQL_LIFECYCLE_SERVICE, GRAPHQL_MODULE_OPTIONS } from './tokens.js';
+import { GRAPHQL_MODULE_OPTIONS } from './tokens.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport.js';
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 import type {
@@ -411,7 +411,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
   private registerMiddleware(): void {
     for (const compiledModule of this.compiledModules) {
-      if (!compiledModule.providerTokens.has(GRAPHQL_LIFECYCLE_SERVICE)) {
+      if (!compiledModule.providerTokens.has(GraphqlLifecycleService)) {
         continue;
       }
 
@@ -428,7 +428,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
   private unregisterMiddleware(): void {
     for (const compiledModule of this.compiledModules) {
-      if (!compiledModule.providerTokens.has(GRAPHQL_LIFECYCLE_SERVICE)) {
+      if (!compiledModule.providerTokens.has(GraphqlLifecycleService)) {
         continue;
       }
 
