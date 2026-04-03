@@ -6,7 +6,7 @@ import { CommandBusLifecycleService } from './command-bus.js';
 import { CqrsEventBusService } from './event-bus.js';
 import { QueryBusLifecycleService } from './query-bus.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
-import { CQRS_EVENT_BUS, COMMAND_BUS, QUERY_BUS } from './tokens.js';
+import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type { CommandHandlerClass, EventHandlerClass, QueryHandlerClass, SagaClass } from './types.js';
 
 export interface CqrsModuleOptions {
@@ -51,7 +51,7 @@ export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[]
     },
     CqrsSagaLifecycleService,
     {
-      provide: CQRS_EVENT_BUS,
+      provide: EVENT_BUS,
       useClass: CqrsEventBusService,
     },
     ...collectOptionHandlerProviders(options),
@@ -62,7 +62,7 @@ export function createCqrsModule(options: CqrsModuleOptions = {}): ModuleType {
   class CqrsModule {}
 
   return defineModule(CqrsModule, {
-    exports: [COMMAND_BUS, QUERY_BUS, CQRS_EVENT_BUS],
+    exports: [COMMAND_BUS, QUERY_BUS, EVENT_BUS],
     global: true,
     imports: [createEventBusModule(options.eventBus)],
     providers: createCqrsProviders(options),
