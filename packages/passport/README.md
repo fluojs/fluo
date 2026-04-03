@@ -520,7 +520,11 @@ This means adding a new auth strategy requires only implementing `AuthStrategy` 
 
 `createPassportJsStrategyBridge()` adapts Passport.js's `success`/`fail`/`redirect`/`error` callback protocol to Konekti's `AuthStrategyResult`. The `mapPrincipal` argument normalizes the passport user object to a Konekti `Principal` shape. The bridge does not own account upsert or JWT issuance — those remain in app service code. For identity linking, use `AccountLinkPolicy` + `resolveAccountLinking` as the framework contract boundary.
 
-The public package also exports auth error classes, bridge types, metadata helpers, `AUTH_STRATEGY_REGISTRY`, and `PASSPORT_OPTIONS` from `src/index.ts`.
+The public package exports auth error classes, bridge types, metadata helpers, and strategy/decorator contracts from `src/index.ts`. Registry and options tokens are internal wiring details used by `createPassportProviders` and `AuthGuard`.
+
+### 0.x migration note
+
+In `0.x`, `AUTH_STRATEGY_REGISTRY` and `PASSPORT_OPTIONS` were removed from the public `@konekti/passport` package surface and are now internal wiring details. If your application imported these tokens directly, migrate to `createPassportProviders(...)`, `UseAuth(...)`, `RequireScopes(...)`, and `AuthStrategy`-based registration as the supported public contract.
 
 ## File reading order for contributors
 

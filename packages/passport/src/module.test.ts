@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { AuthStrategyResolutionError } from './errors.js';
+import { AUTH_STRATEGY_REGISTRY } from './internal-tokens.js';
 import { createPassportProviders } from './module.js';
-import { AUTH_STRATEGY_REGISTRY, type AuthStrategy } from './types.js';
+import type { AuthStrategy } from './types.js';
 
 describe('createPassportProviders', () => {
+  it('keeps registry and module options tokens internal to package wiring', async () => {
+    const passport = await import('./index.js');
+
+    expect(passport).not.toHaveProperty('AUTH_STRATEGY_REGISTRY');
+    expect(passport).not.toHaveProperty('PASSPORT_OPTIONS');
+  });
+
   it('throws when duplicate strategy names are registered', () => {
     class FirstStrategy implements AuthStrategy {
       async authenticate() {
