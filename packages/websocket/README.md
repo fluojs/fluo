@@ -55,6 +55,10 @@ export class AppModule {}
 - `@OnConnect()` - handles accepted socket connections
 - `@OnDisconnect()` - handles socket close events
 
+### Internal module wiring tokens
+
+`@konekti/websocket` does not expose lifecycle DI tokens as part of its public API. Gateway discovery/wiring tokens are internal implementation details, while gateway authoring remains decorator- and class-provider-driven.
+
 ### Module options
 
 `createWebSocketModule(options)` and `createWebSocketProviders(options)` accept:
