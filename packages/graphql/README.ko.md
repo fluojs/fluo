@@ -116,7 +116,7 @@ interface GraphQLContext {
 - `getRequestScopedDataLoader(context, key, createLoader)` — low-level 캐시 헬퍼
 - `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level 팩토리 헬퍼
 
-`GRAPHQL_MODULE_OPTIONS`와 `GRAPHQL_LIFECYCLE_SERVICE`는 패키지 내부 lifecycle wiring에 사용하는 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다.
+`GRAPHQL_MODULE_OPTIONS`는 계속 패키지 내부 lifecycle wiring 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다. `GRAPHQL_LIFECYCLE_SERVICE`도 비공개이며 내부 class-alias wiring 용도로는 더 이상 사용하지 않습니다.
 
 #### 0.x 마이그레이션 노트
 
