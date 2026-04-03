@@ -12,6 +12,7 @@ import { bootstrapApplication, bootstrapNodeApplication, defineModule, type Appl
 import type { HttpApplicationAdapter } from '@konekti/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
+import * as publicApi from './index.js';
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
 import { createWebSocketModule } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
@@ -189,6 +190,12 @@ function createMockSocket(): {
 }
 
 describe('@konekti/websocket', () => {
+  it('keeps lifecycle DI tokens internal to module wiring', () => {
+    expect(publicApi).not.toHaveProperty('WEBSOCKET_GATEWAY_SERVICE');
+    expect(publicApi).not.toHaveProperty('WEBSOCKET_SERVICE');
+    expect(publicApi).not.toHaveProperty('WEBSOCKET_OPTIONS');
+  });
+
   it('writes gateway and handler metadata with standard decorators', () => {
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {

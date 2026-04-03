@@ -55,6 +55,10 @@ export class AppModule {}
 - `@OnConnect()`
 - `@OnDisconnect()`
 
+### 내부 모듈 배선 토큰
+
+`@konekti/websocket`는 lifecycle DI 토큰을 공개 API로 노출하지 않습니다. 게이트웨이 탐색/배선 토큰은 내부 구현 세부사항이며, 게이트웨이 작성 계약은 데코레이터 + 클래스 프로바이더 중심으로 유지됩니다.
+
 ### 모듈 옵션
 
 `createWebSocketModule(options)`와 `createWebSocketProviders(options)`는 아래 옵션을 받습니다.
