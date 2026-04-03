@@ -11,8 +11,10 @@ import {
 } from '@konekti/runtime';
 
 import { TerminusHealthService } from './health-check.js';
-import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS, TERMINUS_OPTIONS } from './tokens.js';
+import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';
 import type { HealthIndicator, TerminusModuleOptions } from './types.js';
+
+const TERMINUS_OPTIONS = Symbol.for('konekti.terminus.options');
 
 type ReadinessManagedModule = ReturnType<typeof createHealthModule> & {
   addReadinessCheck(fn: () => boolean | Promise<boolean>): void;
@@ -128,7 +130,7 @@ export function createTerminusModule(options: TerminusModuleOptions = {}): Modul
   class TerminusModule {}
 
   return defineModule(TerminusModule, {
-    exports: [TERMINUS_OPTIONS, TERMINUS_HEALTH_INDICATORS, TerminusHealthService],
+    exports: [TERMINUS_HEALTH_INDICATORS, TerminusHealthService],
     imports: [healthModule],
     providers: [
       ...createTerminusProviders({

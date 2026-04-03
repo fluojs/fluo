@@ -69,6 +69,8 @@ createTerminusModule({
 
 Drizzle의 경우, 기본 경로는 `select 1`을 사용하는 **execute 가능한 handle**(`database.execute(...)`)을 사용합니다. Drizzle 설정이 범용 execute seam을 노출하지 않는 경우, 명시적 `ping` 콜백을 전달하세요.
 
+확장용 공개 DI seam은 `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`, `TerminusHealthService`입니다. 모듈 options 토큰 배선은 내부 구현이며 공개 계약에 포함되지 않습니다.
+
 ## 주요 API
 
 - `createTerminusModule(options)`
