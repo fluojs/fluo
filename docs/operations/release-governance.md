@@ -117,12 +117,15 @@ The command also writes `tooling/release/release-readiness-summary.md`.
 
 ### PR CI automation
 
-`.github/workflows/ci.yml` runs on every pull request targeting `main` and on every push to `main`, but the verification scope now differs by event:
+`.github/workflows/ci.yml` runs on every pull request targeting `main` and on every push to `main`, with event-specific verification scope and safety fallbacks:
 
-- Pull requests run `pnpm build` + `pnpm typecheck` in one job (so typecheck sees required build outputs), while `pnpm lint`, `pnpm test`, and `pnpm verify:platform-consistency-governance` run in parallel with that job under a single PR gate job.
-- Pushes to `main` keep the same PR verification shape and additionally run `pnpm verify:release-readiness`, then require a release-grade aggregate gate.
+- Pull requests first run `tooling/ci/detect-pr-verification-scope.mjs` to resolve scope.
+  - If the detector can prove a package-only change safely, PR `build` + `typecheck` run on changed packages plus reverse dependents, and PR `test` runs Vitest on the same affected workspace directories.
+  - If scope safety cannot be proven (for example docs/governance/public-surface changes, tooling/workflow changes, root config changes, merge-base/diff uncertainty), CI falls back to full-repo `build`, `typecheck`, and `test`.
+  - PRs can explicitly force full verification with the `ci:full-verify` label or `CI_FORCE_FULL_VERIFY=1`.
+- Pushes to `main` keep full-repo `build`, `typecheck`, `lint`, and `test`, and additionally run `pnpm verify:release-readiness`, then require a release-grade aggregate gate.
 
-This keeps PR feedback fast while preserving release-readiness guarantees on `main` release-oriented flows.
+This keeps narrow PR feedback fast while preserving governance safeguards and release-readiness guarantees on `main` release-oriented flows.
 
 `pnpm verify:platform-consistency-governance` enforces the platform consistency governance guardrails:
 
