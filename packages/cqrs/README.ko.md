@@ -116,8 +116,7 @@ export class AppModule {}
 - `createCqrsProviders()` - 수동 조합을 위한 raw provider 목록을 반환합니다.
 - `COMMAND_BUS` - `CommandBus`용 DI 토큰입니다.
 - `QUERY_BUS` - `QueryBus`용 DI 토큰입니다.
-- `EVENT_BUS` - 이슈 기대치에 맞춘 `CqrsEventBus`용 CQRS 이벤트 버스 토큰입니다.
-- `CQRS_EVENT_BUS` - 동일 토큰에 대한 호환 별칭입니다.
+- `EVENT_BUS` - `CqrsEventBus`용 정식 CQRS 이벤트 버스 토큰입니다.
 - `ICommand`, `IQuery<TResult>`, `IEvent` - CQRS 메시지 마커 인터페이스입니다.
 - `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - 핸들러 계약 인터페이스입니다.
 - `@CommandHandler(CommandClass)` - 클래스에 command handler 메타데이터를 기록합니다.
@@ -125,6 +124,11 @@ export class AppModule {}
 - `@EventHandler(EventClass)` - 클래스에 CQRS event handler 메타데이터를 기록합니다.
 - `@Saga(EventClass | EventClass[])` - 하나 이상의 이벤트 타입에 반응하는 클래스 기반 saga/process-manager 메타데이터를 기록합니다.
 - `createCqrsPlatformStatusSnapshot(input)` - CQRS event/saga lifecycle 의존성 및 drain 가시성을 공통 platform snapshot 필드로 매핑합니다.
+
+### 마이그레이션 노트 (0.x)
+
+- `CQRS_EVENT_BUS`는 공개 패키지 표면에서 제거되었습니다.
+- CQRS 이벤트 버스 DI 사용 코드는 `EVENT_BUS`로 마이그레이션하세요.
 
 ### 모듈 옵션 동작
 

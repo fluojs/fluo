@@ -116,8 +116,7 @@ export class AppModule {}
 - `createCqrsProviders()` - returns raw providers for manual composition.
 - `COMMAND_BUS` - DI token for `CommandBus`.
 - `QUERY_BUS` - DI token for `QueryBus`.
-- `EVENT_BUS` - issue-compatible CQRS event-bus token for `CqrsEventBus`.
-- `CQRS_EVENT_BUS` - compatibility alias to the same CQRS event-bus token.
+- `EVENT_BUS` - canonical CQRS event-bus token for `CqrsEventBus`.
 - `ICommand`, `IQuery<TResult>`, `IEvent` - marker interfaces for CQRS message types.
 - `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - handler contracts.
 - `@CommandHandler(CommandClass)` - marks a class as a command handler.
@@ -125,6 +124,11 @@ export class AppModule {}
 - `@EventHandler(EventClass)` - marks a class with CQRS event-handler metadata.
 - `@Saga(EventClass | EventClass[])` - marks a class-level saga/process-manager for one or more event types.
 - `createCqrsPlatformStatusSnapshot(input)` - maps CQRS event/saga lifecycle dependency and drain visibility into shared platform snapshot fields
+
+### migration notes (0.x)
+
+- `CQRS_EVENT_BUS` has been removed from the public package surface.
+- Migrate all CQRS event-bus DI usage to `EVENT_BUS`.
 
 ### module option semantics
 

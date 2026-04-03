@@ -14,7 +14,7 @@
 
 - command 실행용 `CommandBus` (`COMMAND_BUS`)
 - query 실행용 `QueryBus` (`QUERY_BUS`)
-- `@konekti/event-bus`를 통한 이벤트 발행용 `CqrsEventBus` (`EVENT_BUS`, 별칭: `CQRS_EVENT_BUS`)
+- `@konekti/event-bus`를 통한 이벤트 발행용 `CqrsEventBus` (`EVENT_BUS`)
 
 또한 이슈 기대치에 맞춘 기본 계약도 공개합니다.
 

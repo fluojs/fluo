@@ -17,7 +17,7 @@ import { CqrsEventBusService } from './event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { createCqrsModule } from './module.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
-import { CQRS_EVENT_BUS, COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
+import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,
   CqrsEventBus,
@@ -273,17 +273,16 @@ describe('@konekti/cqrs', () => {
     expect(publish).toHaveBeenNthCalledWith(3, events[1]);
   });
 
-  it('exposes EVENT_BUS as a CQRS-compatible alias token', async () => {
+  it('exposes EVENT_BUS as the canonical CQRS event-bus token', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [createCqrsModule()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const busByAlias = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const busByLegacy = await app.container.resolve<CqrsEventBus>(CQRS_EVENT_BUS);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
-    expect(busByAlias).toBe(busByLegacy);
+    expect(eventBus).toBeInstanceOf(CqrsEventBusService);
 
     await app.close();
   });
@@ -744,7 +743,7 @@ describe('@konekti/cqrs', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
     const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
-    const eventBus = await app.container.resolve<CqrsEventBus>(CQRS_EVENT_BUS);
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(Store);
 
     await commandBus.execute(new CreateUserCommand('alice'));

@@ -14,7 +14,7 @@ This guide describes the CQRS package model in Konekti.
 
 - `CommandBus` (`COMMAND_BUS`) for command execution
 - `QueryBus` (`QUERY_BUS`) for query execution
-- `CqrsEventBus` (`EVENT_BUS`, alias: `CQRS_EVENT_BUS`) for event publishing via `@konekti/event-bus`
+- `CqrsEventBus` (`EVENT_BUS`) for event publishing via `@konekti/event-bus`
 
 It also publishes issue-aligned base contracts:
 
