@@ -122,10 +122,20 @@ class AppModule {}
 - `createCacheManagerPlatformDiagnosticIssues(input)` — emits shared `PlatformDiagnosticIssue` entries for cache store readiness failures.
 - `CacheService` — primary DI class for application-level caching.
 - `CacheInterceptor` — primary DI class for HTTP read-through/eviction behavior.
-- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` — compatibility alias tokens for legacy token-first wiring.
 - `CACHE_OPTIONS` / `CACHE_STORE` — token-based module/store seams used for internal wiring and custom store composition.
 
 `CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, and `principalScopeResolver`.
+
+### 0.x Migration Note (Compatibility Alias Removal)
+
+As of the current `0.x` line, `CACHE_MANAGER` and `CACHE_INTERCEPTOR` are removed from the public package surface.
+
+- Migrate constructor injection to class-first DI:
+  - `CACHE_MANAGER` -> `CacheService`
+  - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
+- Internal token seams remain token-based and unchanged:
+  - `CACHE_OPTIONS`
+  - `CACHE_STORE`
 
 ## Behavior
 

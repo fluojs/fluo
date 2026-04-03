@@ -17,8 +17,18 @@
 - 캐시 퍼사드/인터셉터 사용을 위한 클래스 우선 DI 진입점(`CacheService`, `CacheInterceptor`)
 - 메모리/Redis 캐시 스토어
 - 라우트 데코레이터(`@CacheKey`, `@CacheTTL`, `@CacheEvict`)
-- 기존 token-first 연결을 위한 호환 별칭 토큰(`CACHE_MANAGER`, `CACHE_INTERCEPTOR`)
 - 모듈/스토어 연결 seam을 위한 토큰(`CACHE_OPTIONS`, `CACHE_STORE`)
+
+### 0.x 마이그레이션 노트
+
+현재 `0.x` 라인에서 호환 별칭 `CACHE_MANAGER`, `CACHE_INTERCEPTOR`는 공개 패키지 표면에서 제거되었습니다.
+
+- DI 주입은 클래스 우선 진입점으로 마이그레이션하세요.
+  - `CACHE_MANAGER` -> `CacheService`
+  - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
+- 내부 토큰 seam은 토큰 기반으로 그대로 유지됩니다.
+  - `CACHE_OPTIONS`
+  - `CACHE_STORE`
 
 ## 요청 동작 규약
 
