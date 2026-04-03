@@ -80,8 +80,8 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 
 When consuming these packages, favor injecting the concrete service/guard/interceptor class directly. Exported tokens are provided only when an explicit abstraction or runtime seam is required.
 
-- **Prefer class**: `UsersService`, `AuthGuard`, `RedisService`, `PrismaService`, `EventBus`.
-- **Prefer token**: `CONFIG_OPTIONS`, `REDIS_CLIENT_HANDLE`, `JWT_SIGN_OPTIONS`.
+- **Prefer class**: `UsersService`, `AuthGuard`, `RedisService`, `PrismaService`.
+- **Prefer token**: `CONFIG_OPTIONS`, `REDIS_CLIENT_HANDLE`, `EVENT_BUS`, `JWT_SIGN_OPTIONS`.
 
 Refer to `docs/concepts/di-and-modules.md` for the technical principles behind class-first DI.
 
