@@ -9,10 +9,9 @@ import {
   AuthenticationRequiredError,
   AuthStrategyResolutionError,
 } from './errors.js';
+import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
 import { getAuthRequirement } from './metadata.js';
 import {
-  AUTH_STRATEGY_REGISTRY,
-  PASSPORT_OPTIONS,
   type AuthGuardContract,
   type AuthHandledResult,
   type AuthStrategy,
