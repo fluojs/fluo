@@ -39,6 +39,31 @@ importers:
         specifier: ^3.0.8
         version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
+  examples/auth-jwt-passport:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@konekti/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
+      '@konekti/passport':
+        specifier: workspace:*
+        version: link:../../packages/passport
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@konekti/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
+    devDependencies:
+      '@konekti/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+
   examples/minimal:
     dependencies:
       '@konekti/core':
