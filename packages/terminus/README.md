@@ -69,6 +69,8 @@ createTerminusModule({
 
 For Drizzle specifically, the default path uses an **execute-capable handle** (`database.execute(...)`) with `select 1`. If your Drizzle setup does not expose a universal execute seam, pass an explicit `ping` callback.
 
+The public DI seams for extension are `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`, and `TerminusHealthService`. The module-options token wiring is internal and intentionally not part of the public contract.
+
 ## Key API
 
 - `createTerminusModule(options)`
