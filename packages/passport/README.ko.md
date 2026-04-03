@@ -520,7 +520,7 @@ export class AuthModule {}
 
 `createPassportJsStrategyBridge()`는 Passport.js의 `success`/`fail`/`redirect`/`error` callback 프로토콜을 Konekti의 `AuthStrategyResult`로 변환한다. `mapPrincipal` 인수는 passport user 객체를 Konekti `Principal` shape으로 정규화한다. bridge는 계정 upsert나 JWT 발급을 소유하지 않는다 — 그것들은 app service 코드의 책임이다. identity linking은 `AccountLinkPolicy` + `resolveAccountLinking` 계약 경계를 사용한다.
 
-public package는 auth error 클래스, bridge 타입, metadata helper, `AUTH_STRATEGY_REGISTRY`, `PASSPORT_OPTIONS`도 `src/index.ts`에서 함께 export한다.
+public package는 auth error 클래스, bridge 타입, metadata helper, strategy/decorator 계약을 `src/index.ts`에서 export한다. registry/options 토큰은 `createPassportProviders`와 `AuthGuard` 내부 wiring 상세로 유지된다.
 
 ## 파일 읽기 순서 (기여자용)
 

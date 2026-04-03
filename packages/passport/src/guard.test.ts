@@ -7,6 +7,7 @@ import { DefaultJwtVerifier } from '@konekti/jwt';
 
 import { RequireScopes, UseAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
+import { AuthGuard } from './guard.js';
 import { createPassportProviders } from './module.js';
 import { createPassportJsStrategyBridge } from './passport-js.js';
 import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
@@ -610,11 +611,7 @@ describe('AuthGuard', () => {
       },
     } as unknown as GuardContext;
 
-    const { AuthGuard } = await import('./guard.js');
-    const guard = new AuthGuard(
-      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
-      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
-    );
+    const guard = await root.resolve(AuthGuard);
 
     try {
       await guard.canActivate(guardContext);
@@ -662,11 +659,7 @@ describe('AuthGuard', () => {
       },
     } as unknown as GuardContext;
 
-    const { AuthGuard } = await import('./guard.js');
-    const guard = new AuthGuard(
-      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
-      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
-    );
+    const guard = await root.resolve(AuthGuard);
 
     await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
   });
@@ -724,11 +717,7 @@ describe('AuthGuard', () => {
       },
     } as unknown as GuardContext;
 
-    const { AuthGuard } = await import('./guard.js');
-    const guard = new AuthGuard(
-      await root.resolve((await import('./types.js')).AUTH_STRATEGY_REGISTRY),
-      await root.resolve((await import('./types.js')).PASSPORT_OPTIONS),
-    );
+    const guard = await root.resolve(AuthGuard);
 
     await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
   });

@@ -1,9 +1,6 @@
 import type { MaybePromise, Token } from '@konekti/core';
 import type { Guard, GuardContext, Principal } from '@konekti/http';
 
-export const AUTH_STRATEGY_REGISTRY = Symbol.for('konekti.passport.strategy-registry');
-export const PASSPORT_OPTIONS = Symbol.for('konekti.passport.options');
-
 export interface AuthRequirement {
   strategy?: string;
   scopes?: string[];
