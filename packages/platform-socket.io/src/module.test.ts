@@ -8,6 +8,7 @@ import { io as createClient, type Socket as ClientSocket } from 'socket.io-clien
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
 import { createSocketIoModule } from './module.js';
+import * as publicApi from './index.js';
 import { SocketIoLifecycleService } from './adapter.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
 import type { SocketIoRoomService } from './types.js';
@@ -80,11 +81,18 @@ function onceEvent<T>(socket: ClientSocket, event: string): Promise<T> {
 
 function onceDisconnected(socket: ClientSocket): Promise<string> {
   return new Promise((resolve) => {
-    socket.once('disconnect', (reason) => resolve(reason));
+    socket.once('disconnect', (reason: string) => resolve(reason));
   });
 }
 
 describe('@konekti/platform-socket.io', () => {
+  it('keeps lifecycle and options tokens out of the root public entrypoint', () => {
+    expect(publicApi.SOCKETIO_ROOM_SERVICE).toBeDefined();
+    expect(publicApi.SOCKETIO_SERVER).toBeDefined();
+    expect('SOCKETIO_LIFECYCLE_SERVICE' in publicApi).toBe(false);
+    expect('SOCKETIO_OPTIONS' in publicApi).toBe(false);
+  });
+
   it('injects the Socket.IO server token into singleton providers', async () => {
     @Inject([SOCKETIO_SERVER])
     class ServerProbe {

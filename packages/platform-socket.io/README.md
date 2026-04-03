@@ -54,6 +54,13 @@ export class AppModule {}
 - `SOCKETIO_SERVER` - inject the underlying Socket.IO `Server` instance
 - `SOCKETIO_ROOM_SERVICE` - inject room helpers built on native Socket.IO room APIs
 
+The root package entrypoint intentionally keeps the public token surface focused on `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE`.
+
+### Migration note (0.x)
+
+`SOCKETIO_LIFECYCLE_SERVICE` is no longer part of the root public entrypoint and `createSocketIoModule()` exports.
+Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_SERVER` for raw Socket.IO server access.
+
 ### Module options
 
 `createSocketIoModule(options)` and `createSocketIoProviders(options)` accept:
