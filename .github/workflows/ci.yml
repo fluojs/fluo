@@ -11,9 +11,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve-pr-verification-scope:
+    name: Resolve PR verification scope
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      reason: ${{ steps.resolve.outputs.reason }}
+      filter_args: ${{ steps.resolve.outputs.filter_args }}
+      package_names: ${{ steps.resolve.outputs.package_names }}
+      test_paths: ${{ steps.resolve.outputs.test_paths }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve PR verification scope
+        id: resolve
+        run: node tooling/ci/detect-pr-verification-scope.mjs
+
   build-and-typecheck:
     name: Build and typecheck
     runs-on: ubuntu-latest
+    needs:
+      - resolve-pr-verification-scope
 
     steps:
       - name: Checkout
@@ -31,10 +51,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build (scoped PR)
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'
+        run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.filter_args }} run build
+
+      - name: Build (full)
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm build
 
-      - name: Typecheck
+      - name: Typecheck (scoped PR)
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'
+        run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.filter_args }} run typecheck
+
+      - name: Typecheck (full)
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm typecheck
 
   lint:
@@ -63,6 +93,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs:
+      - resolve-pr-verification-scope
 
     steps:
       - name: Checkout
@@ -80,7 +112,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test
+      - name: Test (scoped PR)
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'
+        run: pnpm vitest run ${{ needs.resolve-pr-verification-scope.outputs.test_paths }}
+
+      - name: Test (full)
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm test
 
   verify-platform-consistency-governance:
@@ -138,11 +175,16 @@ jobs:
       - lint
       - test
       - verify-platform-consistency-governance
+      - resolve-pr-verification-scope
     runs-on: ubuntu-latest
 
     steps:
       - name: PR verification gate passed
-        run: echo "PR verification jobs passed."
+        run: |
+          echo "PR verification jobs passed."
+          echo "verification mode: ${{ needs.resolve-pr-verification-scope.outputs.mode }}"
+          echo "scope reason: ${{ needs.resolve-pr-verification-scope.outputs.reason }}"
+          echo "scoped packages: ${{ needs.resolve-pr-verification-scope.outputs.package_names }}"
 
   release-verify:
     name: Release verify

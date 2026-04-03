@@ -76,6 +76,13 @@ describe('platform consistency governance docs', () => {
   it('keeps PR CI governance-gated while reserving release-readiness for main pushes', () => {
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
 
+    expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
+    expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
+    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'");
+    expect(ciWorkflow).toContain(
+      'run: pnpm vitest run $' + '{{ needs.resolve-pr-verification-scope.outputs.test_paths }}',
+    );
+    expect(ciWorkflow).toContain("if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'");
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');

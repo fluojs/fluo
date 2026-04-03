@@ -30,7 +30,7 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 - `getting-started/generator-workflow.ko.md` - CLI를 사용한 모듈 및 프로바이더 생성.
 - `operations/testing-guide.ko.md` - 단위 및 통합 테스트 패턴.
 - `operations/platform-conformance-authoring-checklist.ko.md` - 플랫폼-지향 패키지 conformance harness 게이트와 authoring checklist.
-- `operations/release-governance.ko.md` - 릴리스 검증 절차, CI 거버넌스 게이트(PR build/typecheck+governance 게이트 vs `main` release-readiness 게이트), 플랫폼 일관성 강제 명령어.
+- `operations/release-governance.ko.md` - 릴리스 검증 절차, CI 거버넌스 게이트(PR 영향 범위(affected-scope) build/typecheck/test + 안전한 full fallback + governance 게이트 vs `main` full verification + release-readiness 게이트), 플랫폼 일관성 강제 명령어.
 - `operations/deployment.ko.md` - 로컬 개발에서 운영 환경으로의 배포.
 - `concepts/auth-and-jwt.ko.md` - 인증 및 세션 관리 구현.
 - `concepts/openapi.ko.md` - API 명세 작성 및 노출.
