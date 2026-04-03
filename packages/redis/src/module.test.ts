@@ -81,7 +81,6 @@ import {
   createRedisModule,
   createRedisPlatformStatusSnapshot,
   REDIS_CLIENT,
-  REDIS_SERVICE,
   RedisService,
 } from './index.js';
 
@@ -268,8 +267,8 @@ describe('@konekti/redis', () => {
     await app.close();
   });
 
-  it('keeps REDIS_SERVICE as an alias for RedisService', async () => {
-    @Inject([REDIS_SERVICE])
+  it('keeps RedisService as the facade injection identity', async () => {
+    @Inject([RedisService])
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }
@@ -286,8 +285,10 @@ describe('@konekti/redis', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const cacheFacade = await app.container.resolve(CacheFacade);
+    const resolvedByClass = await app.container.resolve(RedisService);
 
     expect(cacheFacade.redisService).toBeInstanceOf(RedisService);
+    expect(cacheFacade.redisService).toBe(resolvedByClass);
     const rawClient = cacheFacade.redisService.getRawClient();
 
     await rawClient.set('malformed:key', '{"id": "u1"');

@@ -118,7 +118,7 @@ await app.close();
 
 - Prisma: `PRISMA_CLIENT`
 - Drizzle: `DRIZZLE_DATABASE`(종료 경로 검증 시 `DRIZZLE_DISPOSE` 포함)
-- Redis: `REDIS_CLIENT` 또는 `RedisService` 오버라이드 (`REDIS_SERVICE`는 호환성 alias)
+- Redis: `REDIS_CLIENT` 또는 `RedisService` 오버라이드
 
 ### 6) OpenAPI 문서 검증
 
