@@ -5,7 +5,7 @@ import { CacheInterceptor } from './interceptor.js';
 import { MemoryStore } from './memory-store.js';
 import { RedisStore } from './redis-store.js';
 import { CacheService } from './service.js';
-import { CACHE_INTERCEPTOR, CACHE_MANAGER, CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
+import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions, RedisCompatibleClient } from './types.js';
 
 const REDIS_CLIENT_TOKEN = Symbol.for('konekti.redis.client');
@@ -115,16 +115,8 @@ export function createCacheProviders(options: CacheModuleOptions = {}): Provider
       useClass: CacheService,
     },
     {
-      provide: CACHE_MANAGER,
-      useExisting: CacheService,
-    },
-    {
       provide: CacheInterceptor,
       useClass: CacheInterceptor,
-    },
-    {
-      provide: CACHE_INTERCEPTOR,
-      useExisting: CacheInterceptor,
     },
   ];
 }
@@ -134,7 +126,7 @@ export function createCacheModule(options: CacheModuleOptions = {}): ModuleType 
   const normalized = normalizeCacheModuleOptions(options);
 
   return defineModule(CacheModule, {
-    exports: [CacheService, CacheInterceptor, CACHE_MANAGER, CACHE_INTERCEPTOR],
+    exports: [CacheService, CacheInterceptor],
     global: normalized.isGlobal,
     providers: createCacheProviders(options),
   });

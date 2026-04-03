@@ -7,7 +7,6 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
 import { CacheService } from './service.js';
-import { CACHE_INTERCEPTOR, CACHE_MANAGER } from './tokens.js';
 import { createCacheModule } from './module.js';
 import type { RedisCompatibleClient } from './types.js';
 
@@ -159,7 +158,7 @@ describe('createCacheModule', () => {
     await app.close();
   });
 
-  it('keeps CACHE_MANAGER as a compatibility alias for CacheService', async () => {
+  it('resolves CacheService via class-first public surface', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [createCacheModule({ store: 'memory' })],
@@ -167,14 +166,13 @@ describe('createCacheModule', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const byClass = await app.container.resolve(CacheService);
-    const byToken = await app.container.resolve<CacheService>(CACHE_MANAGER);
 
-    expect(byToken).toBe(byClass);
+    expect(byClass).toBeInstanceOf(CacheService);
 
     await app.close();
   });
 
-  it('keeps CACHE_INTERCEPTOR as a compatibility alias for CacheInterceptor', async () => {
+  it('resolves CacheInterceptor via class-first public surface', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [createCacheModule({ store: 'memory' })],
@@ -182,9 +180,8 @@ describe('createCacheModule', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const byClass = await app.container.resolve(CacheInterceptor);
-    const byToken = await app.container.resolve<CacheInterceptor>(CACHE_INTERCEPTOR);
 
-    expect(byToken).toBe(byClass);
+    expect(byClass).toBeInstanceOf(CacheInterceptor);
 
     await app.close();
   });

@@ -120,10 +120,20 @@ class AppModule {}
 - `createCacheManagerPlatformDiagnosticIssues(input)` — 캐시 스토어 준비 실패에 대한 공유 `PlatformDiagnosticIssue` 항목을 출력합니다.
 - `CacheService` — 애플리케이션 레벨 캐싱의 기본 DI 클래스입니다.
 - `CacheInterceptor` — HTTP read-through/eviction 동작의 기본 DI 클래스입니다.
-- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` — 기존 token-first 연결을 위한 호환 별칭 토큰입니다.
 - `CACHE_OPTIONS` / `CACHE_STORE` — 내부 연결 및 커스텀 스토어 조합에 사용하는 토큰 기반 module/store seam입니다.
 
 `CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, `principalScopeResolver`입니다.
+
+### 0.x 마이그레이션 노트 (호환 별칭 제거)
+
+현재 `0.x` 라인부터 `CACHE_MANAGER`, `CACHE_INTERCEPTOR`는 공개 패키지 표면에서 제거되었습니다.
+
+- 생성자 주입은 클래스 우선 DI로 마이그레이션하세요.
+  - `CACHE_MANAGER` -> `CacheService`
+  - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
+- 내부 토큰 seam은 토큰 기반으로 그대로 유지됩니다.
+  - `CACHE_OPTIONS`
+  - `CACHE_STORE`
 
 ## 동작 규약
 
