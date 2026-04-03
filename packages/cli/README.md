@@ -142,6 +142,8 @@ pnpm --dir packages/cli run sandbox:test
 
 That command rebuilds `@konekti/cli`, scaffolds `starter-app` directly at a standalone temp sandbox path, installs local tarballs from the workspace, verifies `typecheck`/`build`/`test`, runs `konekti g repo User`, and then re-runs `typecheck` + `test` with generated repo templates.
 
+Use this sandbox path for the heaviest end-to-end verification (cold local package build/pack/install plus generated-project command checks).
+
 `KONEKTI_CLI_SANDBOX_ROOT=/path` remains available as an advanced override, but it must point to a dedicated directory outside the monorepo workspace. If it points inside the repo, the harness prints a warning and falls back to the temp sandbox root so `pnpm install` cannot be captured by the workspace.
 
 For iterative work:
@@ -152,7 +154,7 @@ pnpm --dir packages/cli run sandbox:verify
 pnpm --dir packages/cli run sandbox:clean
 ```
 
-Use `pnpm --dir packages/cli run test` for the package-local Vitest suite.
+Use `pnpm --dir packages/cli run test` for the package-local Vitest suite. That suite keeps starter scaffold contract assertions and local-install smoke checks fast for regular CI budgets.
 
 ## Key API
 
