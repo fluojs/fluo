@@ -14,7 +14,7 @@ Shared Redis connection layer for Konekti. Register it once, inject either the r
 
 `@konekti/redis` owns the app-scoped Redis client lifecycle for Konekti. It creates a singleton `ioredis` client, exposes it through the `REDIS_CLIENT` DI token, connects it during module initialization, and closes it during application shutdown.
 
-The package also exposes `RedisService` via `REDIS_SERVICE` for JSON-friendly `get`/`set`/`del` usage while still allowing direct raw `ioredis` access.
+The package exposes `RedisService` as the primary facade injection identity for JSON-friendly `get`/`set`/`del` usage while still allowing direct raw `ioredis` access. `REDIS_SERVICE` remains available as a compatibility alias.
 
 ## Installation
 
@@ -66,7 +66,7 @@ export class CacheService {
 | `createRedisModule(options)` | `src/module.ts` | Registers a global singleton Redis client module |
 | `createRedisProviders(options)` | `src/module.ts` | Returns the raw provider list for manual composition |
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
-| `REDIS_SERVICE` | `src/redis-service.ts` | DI token for the Redis facade service |
+| `REDIS_SERVICE` | `src/redis-service.ts` | Compatibility DI token alias that resolves to `RedisService` |
 | `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers + `getRawClient()` escape hatch |
 | `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Maps Redis connection state to shared ownership/readiness/health/details snapshot shape |
 | `RedisModuleOptions` | `src/types.ts` | `ioredis` options without `lazyConnect` |
@@ -103,7 +103,8 @@ createRedisModule(options)
   -> registers lifecycle provider that manages connect/quit
 
 service/repository code
-  -> @Inject([REDIS_CLIENT]) or @Inject([REDIS_SERVICE])
+  -> @Inject([REDIS_CLIENT]) or @Inject([RedisService])
+  -> REDIS_SERVICE remains a compatibility alias for RedisService
   -> raw client or facade codec helpers
 
 app bootstrap

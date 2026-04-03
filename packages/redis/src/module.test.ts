@@ -209,8 +209,8 @@ describe('@konekti/redis', () => {
     expect(mockRedisState.events).toEqual(['connect']);
   });
 
-  it('provides a typed RedisService facade with get/set/del operations', async () => {
-    @Inject([REDIS_SERVICE])
+  it('provides a typed RedisService facade with class-first injection', async () => {
+    @Inject([RedisService])
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }
@@ -242,7 +242,7 @@ describe('@konekti/redis', () => {
   });
 
   it('returns raw string when stored value is not JSON', async () => {
-    @Inject([REDIS_SERVICE])
+    @Inject([RedisService])
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }
@@ -268,7 +268,7 @@ describe('@konekti/redis', () => {
     await app.close();
   });
 
-  it('returns malformed JSON payload as raw string', async () => {
+  it('keeps REDIS_SERVICE as an alias for RedisService', async () => {
     @Inject([REDIS_SERVICE])
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
@@ -286,6 +286,8 @@ describe('@konekti/redis', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const cacheFacade = await app.container.resolve(CacheFacade);
+
+    expect(cacheFacade.redisService).toBeInstanceOf(RedisService);
     const rawClient = cacheFacade.redisService.getRawClient();
 
     await rawClient.set('malformed:key', '{"id": "u1"');

@@ -121,7 +121,7 @@ For persistence/cache-backed tests, keep module wiring real and override only ex
 
 - Prisma: override `PRISMA_CLIENT`
 - Drizzle: override `DRIZZLE_DATABASE` (and `DRIZZLE_DISPOSE` when shutdown behavior matters)
-- Redis: override `REDIS_CLIENT` or `REDIS_SERVICE`
+- Redis: override `REDIS_CLIENT` or `RedisService` (`REDIS_SERVICE` remains a compatibility alias)
 
 This keeps transaction/lifecycle behavior in the graph while removing external network/database coupling.
 
