@@ -2,8 +2,8 @@ import { Inject, metadataSymbol } from '@konekti/core';
 import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@konekti/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
-import { CACHE_MANAGER, CACHE_OPTIONS } from './tokens.js';
-import type { CacheService } from './service.js';
+import { CacheService } from './service.js';
+import { CACHE_OPTIONS } from './tokens.js';
 import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions, PrincipalScopeResolver } from './types.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
@@ -178,7 +178,7 @@ function installDeferredEviction(
   return restore;
 }
 
-@Inject([CACHE_MANAGER, CACHE_OPTIONS])
+@Inject([CacheService, CACHE_OPTIONS])
 export class CacheInterceptor implements Interceptor {
   constructor(
     private readonly cache: CacheService,

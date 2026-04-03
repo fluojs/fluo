@@ -6,10 +6,10 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
-import { CACHE_MANAGER } from './tokens.js';
+import { CacheService } from './service.js';
+import { CACHE_INTERCEPTOR, CACHE_MANAGER } from './tokens.js';
 import { createCacheModule } from './module.js';
 import type { RedisCompatibleClient } from './types.js';
-import type { CacheService } from './service.js';
 
 const REDIS_CLIENT_TOKEN = Symbol.for('konekti.redis.client');
 
@@ -101,7 +101,7 @@ describe('createCacheModule', () => {
   });
 
   it('supports memory store without redis module/client installed', async () => {
-    @Inject([CACHE_MANAGER])
+    @Inject([CacheService])
     class Consumer {
       constructor(readonly cache: CacheService) {}
     }
@@ -134,7 +134,7 @@ describe('createCacheModule', () => {
   });
 
   it('supports redis store when a raw redis-style client is provided', async () => {
-    @Inject([CACHE_MANAGER])
+    @Inject([CacheService])
     class Consumer {
       constructor(readonly cache: CacheService) {}
     }
@@ -155,6 +155,36 @@ describe('createCacheModule', () => {
     await consumer.cache.set('/users', { count: 3 }, 30);
 
     await expect(consumer.cache.get('/users')).resolves.toEqual({ count: 3 });
+
+    await app.close();
+  });
+
+  it('keeps CACHE_MANAGER as a compatibility alias for CacheService', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCacheModule({ store: 'memory' })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const byClass = await app.container.resolve(CacheService);
+    const byToken = await app.container.resolve<CacheService>(CACHE_MANAGER);
+
+    expect(byToken).toBe(byClass);
+
+    await app.close();
+  });
+
+  it('keeps CACHE_INTERCEPTOR as a compatibility alias for CacheInterceptor', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [createCacheModule({ store: 'memory' })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const byClass = await app.container.resolve(CacheInterceptor);
+    const byToken = await app.container.resolve<CacheInterceptor>(CACHE_INTERCEPTOR);
+
+    expect(byToken).toBe(byClass);
 
     await app.close();
   });

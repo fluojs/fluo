@@ -54,7 +54,7 @@ class AppModule {}
 ```ts
 import { Inject } from '@konekti/core';
 import { Module } from '@konekti/runtime';
-import { CACHE_MANAGER, createCacheModule, type CacheService } from '@konekti/cache-manager';
+import { CacheService, createCacheModule } from '@konekti/cache-manager';
 
 interface UserProfile {
   id: string;
@@ -62,7 +62,7 @@ interface UserProfile {
   email: string;
 }
 
-@Inject([CACHE_MANAGER])
+@Inject([CacheService])
 class UserService {
   constructor(private readonly cache: CacheService) {}
 
@@ -118,8 +118,10 @@ class AppModule {}
 - `createCacheProviders(options)` — 수동 조합용 프로바이더 목록을 반환합니다.
 - `createCacheManagerPlatformStatusSnapshot(input)` — 캐시 스토어 종류/소유권/준비 상태를 공유 platform snapshot 형식에 맞게 매핑합니다.
 - `createCacheManagerPlatformDiagnosticIssues(input)` — 캐시 스토어 준비 실패에 대한 공유 `PlatformDiagnosticIssue` 항목을 출력합니다.
-- `CACHE_MANAGER` — `CacheService` DI 토큰.
-- `CACHE_OPTIONS` — 정규화된 모듈 옵션 DI 토큰.
+- `CacheService` — 애플리케이션 레벨 캐싱의 기본 DI 클래스입니다.
+- `CacheInterceptor` — HTTP read-through/eviction 동작의 기본 DI 클래스입니다.
+- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` — 기존 token-first 연결을 위한 호환 별칭 토큰입니다.
+- `CACHE_OPTIONS` / `CACHE_STORE` — 내부 연결 및 커스텀 스토어 조합에 사용하는 토큰 기반 module/store seam입니다.
 
 `CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, `principalScopeResolver`입니다.
 

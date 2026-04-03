@@ -54,7 +54,7 @@ Use `CacheService` directly for non-HTTP caching needs such as external API resp
 ```ts
 import { Inject } from '@konekti/core';
 import { Module } from '@konekti/runtime';
-import { CACHE_MANAGER, createCacheModule, type CacheService } from '@konekti/cache-manager';
+import { CacheService, createCacheModule } from '@konekti/cache-manager';
 
 const EXTERNAL_API = Symbol.for('EXTERNAL_API');
 
@@ -64,7 +64,7 @@ interface UserProfile {
   email: string;
 }
 
-@Inject([CACHE_MANAGER])
+@Inject([CacheService])
 class UserService {
   constructor(private readonly cache: CacheService) {}
 
@@ -120,8 +120,10 @@ class AppModule {}
 - `createCacheProviders(options)` — returns providers for manual composition.
 - `createCacheManagerPlatformStatusSnapshot(input)` — maps cache store kind/ownership/readiness into shared platform snapshot shape.
 - `createCacheManagerPlatformDiagnosticIssues(input)` — emits shared `PlatformDiagnosticIssue` entries for cache store readiness failures.
-- `CACHE_MANAGER` — DI token for `CacheService`.
-- `CACHE_OPTIONS` — DI token for normalized module options.
+- `CacheService` — primary DI class for application-level caching.
+- `CacheInterceptor` — primary DI class for HTTP read-through/eviction behavior.
+- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` — compatibility alias tokens for legacy token-first wiring.
+- `CACHE_OPTIONS` / `CACHE_STORE` — token-based module/store seams used for internal wiring and custom store composition.
 
 `CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, and `principalScopeResolver`.
 

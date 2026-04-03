@@ -14,10 +14,11 @@
 
 `@konekti/cache-manager`는 다음을 제공합니다.
 
-- 캐시 서비스(`CACHE_MANAGER`)와 모듈 옵션 토큰(`CACHE_OPTIONS`)
+- 캐시 퍼사드/인터셉터 사용을 위한 클래스 우선 DI 진입점(`CacheService`, `CacheInterceptor`)
 - 메모리/Redis 캐시 스토어
 - 라우트 데코레이터(`@CacheKey`, `@CacheTTL`, `@CacheEvict`)
-- read-through 및 eviction 동작을 수행하는 캐시 인터셉터(`CACHE_INTERCEPTOR`)
+- 기존 token-first 연결을 위한 호환 별칭 토큰(`CACHE_MANAGER`, `CACHE_INTERCEPTOR`)
+- 모듈/스토어 연결 seam을 위한 토큰(`CACHE_OPTIONS`, `CACHE_STORE`)
 
 ## 요청 동작 규약
 

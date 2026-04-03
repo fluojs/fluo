@@ -111,16 +111,20 @@ export function createCacheProviders(options: CacheModuleOptions = {}): Provider
       },
     },
     {
-      provide: CACHE_MANAGER,
+      provide: CacheService,
       useClass: CacheService,
     },
     {
-      provide: CACHE_INTERCEPTOR,
-      useClass: CacheInterceptor,
+      provide: CACHE_MANAGER,
+      useExisting: CacheService,
     },
     {
       provide: CacheInterceptor,
-      useExisting: CACHE_INTERCEPTOR,
+      useClass: CacheInterceptor,
+    },
+    {
+      provide: CACHE_INTERCEPTOR,
+      useExisting: CacheInterceptor,
     },
   ];
 }
@@ -130,7 +134,7 @@ export function createCacheModule(options: CacheModuleOptions = {}): ModuleType 
   const normalized = normalizeCacheModuleOptions(options);
 
   return defineModule(CacheModule, {
-    exports: [CACHE_MANAGER, CACHE_INTERCEPTOR],
+    exports: [CacheService, CacheInterceptor, CACHE_MANAGER, CACHE_INTERCEPTOR],
     global: normalized.isGlobal,
     providers: createCacheProviders(options),
   });

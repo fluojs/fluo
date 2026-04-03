@@ -14,10 +14,11 @@ This guide explains Konekti's HTTP response caching model powered by `@konekti/c
 
 `@konekti/cache-manager` provides:
 
-- a cache service (`CACHE_MANAGER`) and module options token (`CACHE_OPTIONS`)
+- class-first DI entry points (`CacheService`, `CacheInterceptor`) for cache facade/interceptor usage
 - memory and Redis cache stores
 - route decorators (`@CacheKey`, `@CacheTTL`, `@CacheEvict`)
-- a cache interceptor (`CACHE_INTERCEPTOR`) for read-through and eviction behavior
+- compatibility alias tokens (`CACHE_MANAGER`, `CACHE_INTERCEPTOR`) for legacy token-first wiring
+- token seams (`CACHE_OPTIONS`, `CACHE_STORE`) for module/store wiring
 
 ## request behavior
 
