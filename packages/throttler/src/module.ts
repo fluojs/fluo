@@ -15,8 +15,12 @@ export function createThrottlerProviders(options: ThrottlerModuleOptions): Provi
       useValue: validatedOptions,
     },
     {
-      provide: THROTTLER_GUARD,
+      provide: ThrottlerGuard,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: THROTTLER_GUARD,
+      useExisting: ThrottlerGuard,
     },
   ];
 }
@@ -25,7 +29,7 @@ export function createThrottlerModule(options: ThrottlerModuleOptions): ModuleTy
   class ThrottlerModule {}
 
   return defineModule(ThrottlerModule, {
-    exports: [THROTTLER_GUARD],
+    exports: [ThrottlerGuard, THROTTLER_GUARD],
     global: true,
     providers: createThrottlerProviders(options),
   });

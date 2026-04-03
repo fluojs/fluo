@@ -5,8 +5,9 @@ import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/h
 
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
-import { createThrottlerModule } from './module.js';
+import { createThrottlerModule, createThrottlerProviders } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
+import { THROTTLER_GUARD, THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 
 function createRequestContext(remoteAddress = '127.0.0.1'): RequestContext {
@@ -78,6 +79,51 @@ function createGuardContext(
     requestContext,
   };
 }
+
+type ObjectProvider = {
+  provide: unknown;
+  useClass?: unknown;
+  useExisting?: unknown;
+  useValue?: unknown;
+};
+
+function isObjectProvider(provider: unknown): provider is ObjectProvider {
+  return typeof provider === 'object' && provider !== null && 'provide' in provider;
+}
+
+describe('createThrottlerProviders', () => {
+  it('registers class-first ThrottlerGuard identity and keeps token alias compatibility', () => {
+    const providers = createThrottlerProviders({
+      limit: 10,
+      ttl: 60,
+    });
+    const optionsProvider = providers.find(
+      (provider) => isObjectProvider(provider) && provider.provide === THROTTLER_OPTIONS,
+    );
+    const classProvider = providers.find(
+      (provider) => isObjectProvider(provider) && provider.provide === ThrottlerGuard,
+    );
+    const aliasProvider = providers.find(
+      (provider) => isObjectProvider(provider) && provider.provide === THROTTLER_GUARD,
+    );
+
+    expect(optionsProvider).toMatchObject({
+      provide: THROTTLER_OPTIONS,
+      useValue: {
+        limit: 10,
+        ttl: 60,
+      },
+    });
+    expect(classProvider).toMatchObject({
+      provide: ThrottlerGuard,
+      useClass: ThrottlerGuard,
+    });
+    expect(aliasProvider).toMatchObject({
+      provide: THROTTLER_GUARD,
+      useExisting: ThrottlerGuard,
+    });
+  });
+});
 
 describe('@konekti/throttler decorators', () => {
   it('writes @Throttle method-level metadata into the route map', () => {

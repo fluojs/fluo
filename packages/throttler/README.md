@@ -60,9 +60,22 @@ Overrides module-level defaults for a specific controller class or handler metho
 
 Bypasses throttling entirely for a specific controller class or handler method.
 
+### `ThrottlerGuard`
+
+Primary class-first guard identity exported by `@konekti/throttler`.
+
+```typescript
+import { Controller, UseGuards } from '@konekti/http';
+import { ThrottlerGuard } from '@konekti/throttler';
+
+@UseGuards(ThrottlerGuard)
+@Controller('/api')
+class ApiController {}
+```
+
 ### `THROTTLER_GUARD`
 
-DI token for the registered `ThrottlerGuard`. Inject it to use it as an explicit guard:
+Compatibility DI token alias that resolves to `ThrottlerGuard`.
 
 ```typescript
 import { UseGuards } from '@konekti/http';

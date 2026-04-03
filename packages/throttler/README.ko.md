@@ -60,9 +60,22 @@ class AuthController {
 
 특정 컨트롤러 클래스나 핸들러 메서드에 대해 속도 제한을 완전히 무시합니다.
 
+### `ThrottlerGuard`
+
+`@konekti/throttler`가 내보내는 class-first 기본 가드 식별자입니다.
+
+```typescript
+import { Controller, UseGuards } from '@konekti/http';
+import { ThrottlerGuard } from '@konekti/throttler';
+
+@UseGuards(ThrottlerGuard)
+@Controller('/api')
+class ApiController {}
+```
+
 ### `THROTTLER_GUARD`
 
-등록된 `ThrottlerGuard`를 위한 DI 토큰입니다. 명시적인 가드로 사용하려면 이를 주입하세요.
+`ThrottlerGuard`를 가리키는 호환성 DI 토큰 별칭입니다.
 
 ```typescript
 import { UseGuards } from '@konekti/http';
