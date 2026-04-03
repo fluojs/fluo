@@ -17,9 +17,10 @@ export function createRedisProviders(options: RedisModuleOptions): Provider[] {
         lazyConnect: true,
       }),
     },
+    RedisService,
     {
       provide: REDIS_SERVICE,
-      useClass: RedisService,
+      useExisting: RedisService,
     },
     RedisLifecycleService,
   ];
@@ -30,7 +31,7 @@ export function createRedisModule(options: RedisModuleOptions): ModuleType {
 
   return defineModule(RedisModule, {
     global: true,
-    exports: [REDIS_CLIENT, REDIS_SERVICE],
+    exports: [REDIS_CLIENT, RedisService, REDIS_SERVICE],
     providers: createRedisProviders(options),
   });
 }

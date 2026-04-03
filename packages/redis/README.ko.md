@@ -14,7 +14,7 @@ Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, 
 
 `@konekti/redis`는 Konekti에서 앱 범위 Redis client lifecycle을 담당합니다. singleton `ioredis` client를 만들고, `REDIS_CLIENT` DI 토큰으로 노출하며, 모듈 초기화 시 연결하고, 애플리케이션 종료 시 정리합니다.
 
-또한 `REDIS_SERVICE`로 노출되는 `RedisService`를 제공해 JSON 친화적인 `get`/`set`/`del` 사용을 지원하면서, 필요하면 raw `ioredis` 접근도 그대로 유지합니다.
+또한 `RedisService`를 facade의 기본 주입 식별자로 제공해 JSON 친화적인 `get`/`set`/`del` 사용을 지원하면서, 필요하면 raw `ioredis` 접근도 그대로 유지합니다. `REDIS_SERVICE`는 호환성 alias로 계속 제공합니다.
 
 ## 설치
 
@@ -66,7 +66,7 @@ export class CacheService {
 | `createRedisModule(options)` | `src/module.ts` | global singleton Redis client 모듈 등록 |
 | `createRedisProviders(options)` | `src/module.ts` | 수동 조합을 위한 raw provider 목록 반환 |
 | `REDIS_CLIENT` | `src/tokens.ts` | 공유 raw `ioredis` client용 DI 토큰 |
-| `REDIS_SERVICE` | `src/redis-service.ts` | Redis facade 서비스용 DI 토큰 |
+| `REDIS_SERVICE` | `src/redis-service.ts` | `RedisService`로 resolve되는 호환성 DI 토큰 alias |
 | `RedisService` | `src/redis-service.ts` | JSON codec 기반 `get`/`set`/`del` facade + `getRawClient()` escape hatch |
 | `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Redis 연결 상태를 공통 ownership/readiness/health/details 스냅샷 형태로 매핑 |
 | `RedisModuleOptions` | `src/types.ts` | `lazyConnect`를 제외한 `ioredis` 옵션 |
@@ -103,7 +103,8 @@ createRedisModule(options)
   -> connect/quit를 관리하는 lifecycle provider 등록
 
 service/repository 코드
-  -> @Inject([REDIS_CLIENT]) 또는 @Inject([REDIS_SERVICE])
+  -> @Inject([REDIS_CLIENT]) 또는 @Inject([RedisService])
+  -> REDIS_SERVICE는 RedisService 호환성 alias로 유지
   -> raw client 또는 facade codec helper
 
 app bootstrap
