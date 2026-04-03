@@ -110,12 +110,13 @@ interface GraphQLContext {
 ### 기타 export
 
 - `createGraphqlProviders(options)`
-- `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`
 - `createDataLoader(batchFn, options?)` — 퍼스트 파티 request-scoped DataLoader 팩토리
 - `createDataLoaderMap(definitions)` — 이름이 지정된 DataLoader 세트 팩토리
 - `DataLoader` — `dataloader` 패키지에서 re-export
 - `getRequestScopedDataLoader(context, key, createLoader)` — low-level 캐시 헬퍼
 - `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level 팩토리 헬퍼
+
+`GRAPHQL_MODULE_OPTIONS`와 `GRAPHQL_LIFECYCLE_SERVICE`는 패키지 내부 lifecycle wiring에 사용하는 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다.
 
 ## 데코레이터
 
