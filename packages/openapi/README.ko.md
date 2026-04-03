@@ -3,7 +3,9 @@
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 
-Konekti 애플리케이션을 위한 데코레이터 기반 OpenAPI 3.1.0 문서 생성 패키지입니다. 컨트롤러와 핸들러에 어노테이션을 달고 `OpenApiModule`을 마운트하면 `/openapi.json`에서 스펙을 자동으로 제공하고, 선택적으로 `/docs`에서 Swagger UI를 제공합니다.
+Konekti 애플리케이션을 위한 데코레이터 기반 OpenAPI 3.1.0 문서 생성 패키지입니다. 컨트롤러와 핸들러에 어노테이션을 달고 `OpenApiModule`을 마운트하면 canonical 스펙을 `/openapi.json`에서 자동으로 제공하고, 선택적으로 `/docs`에서 Swagger UI 뷰어를 제공합니다.
+
+OpenAPI는 계약과 패키지 정체성이고, Swagger는 선택적인 interactive UI 레이어 및 검색/발견성 용어로만 사용합니다.
 
 ## 관련 문서
 

@@ -113,7 +113,7 @@
 
 | 패키지 | 역할 |
 |--------|------|
-| `@konekti/openapi` | 데코레이터 기반 문서 생성, `/openapi.json` 엔드포인트, `/docs`의 Swagger UI(선택) |
+| `@konekti/openapi` | 데코레이터 기반 OpenAPI 문서 생성, `/openapi.json` 엔드포인트, `/docs`의 Swagger UI 뷰어(선택) |
 
 **왜 이 패키지인가:** 컨트롤러와 핸들러에 OpenAPI 데코레이터를 붙이면 `OpenApiModule`이 스펙과 선택적 UI를 자동으로 서빙합니다.
 
