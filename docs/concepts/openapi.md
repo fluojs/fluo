@@ -19,6 +19,8 @@ Use `OpenApiModule.forRoot(...)` to enable OpenAPI support. By default, it provi
 
 The OpenAPI document is constructed during application startup from handler descriptors. `OpenApiModule.forRoot(...)` accepts prebuilt descriptors, the `HandlerSource[]` model used by `createHandlerMapping()`, or both together for composed input.
 
+In Konekti terminology, **OpenAPI** is the canonical contract artifact and package identity. **Swagger UI** is only the optional viewer mounted at `/docs`.
+
 ## documentation decorators
 
 Konekti provides several decorators specifically for OpenAPI metadata:

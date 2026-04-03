@@ -113,7 +113,7 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 
 | package | role |
 |---------|------|
-| `@konekti/openapi` | decorator-based document generation, `/openapi.json` endpoint, optional Swagger UI at `/docs` |
+| `@konekti/openapi` | decorator-based OpenAPI document generation, `/openapi.json` endpoint, optional Swagger UI viewer at `/docs` |
 
 **Why this package:** Annotate controllers and handlers with OpenAPI decorators; `OpenApiModule` serves the spec and optional UI automatically.
 

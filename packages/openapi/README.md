@@ -3,7 +3,9 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based OpenAPI 3.1.0 document generation for Konekti applications. Annotate controllers and handlers, then mount `OpenApiModule` to automatically serve a spec at `/openapi.json` and an optional Swagger UI at `/docs`.
+Decorator-based OpenAPI 3.1.0 document generation for Konekti applications. Annotate controllers and handlers, then mount `OpenApiModule` to automatically serve the canonical spec at `/openapi.json` and an optional Swagger UI viewer at `/docs`.
+
+OpenAPI is the contract and package identity. Swagger is used here only for the optional interactive UI layer and search/discoverability wording.
 
 ## See also
 
