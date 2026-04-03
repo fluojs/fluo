@@ -4,6 +4,15 @@
 
 Express-backed HTTP adapter for Konekti runtime applications.
 
+## See also
+
+- `../runtime/README.md`
+- `../../docs/concepts/http-runtime.md`
+- `../../docs/concepts/lifecycle-and-shutdown.md`
+- `../../docs/concepts/observability.md`
+- `../../docs/reference/package-chooser.md`
+- `../../docs/reference/package-surface.md`
+
 ## Installation
 
 ```bash
