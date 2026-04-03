@@ -110,12 +110,19 @@ interface GraphQLContext {
 ### 기타 export
 
 - `createGraphqlProviders(options)`
-- `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`
 - `createDataLoader(batchFn, options?)` — 퍼스트 파티 request-scoped DataLoader 팩토리
 - `createDataLoaderMap(definitions)` — 이름이 지정된 DataLoader 세트 팩토리
 - `DataLoader` — `dataloader` 패키지에서 re-export
 - `getRequestScopedDataLoader(context, key, createLoader)` — low-level 캐시 헬퍼
 - `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level 팩토리 헬퍼
+
+`GRAPHQL_MODULE_OPTIONS`와 `GRAPHQL_LIFECYCLE_SERVICE`는 패키지 내부 lifecycle wiring에 사용하는 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다.
+
+#### 0.x 마이그레이션 노트
+
+- `GRAPHQL_MODULE_OPTIONS`와 `GRAPHQL_LIFECYCLE_SERVICE`는 0.x에서 공개 `@konekti/graphql` 패키지 surface에서 제거되었습니다.
+- 소비자 코드는 `@konekti/graphql`에서 이 토큰들을 import하지 않도록 변경해야 합니다.
+- 지원되는 사용 방식은 `createGraphqlModule(...)`, resolver 데코레이터, README에 문서화된 helper API입니다.
 
 ## 데코레이터
 
