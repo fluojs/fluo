@@ -13,11 +13,22 @@ This guide explains the dependency injection (DI) and module system implemented 
 
 ## di principles
 
-- **Explicit token DI**: Dependencies are identified by explicit tokens rather than inferred types.
+- **Class-first public services**: Concrete classes (services, guards, interceptors) serve as their own injection tokens by default.
+- **Explicit token DI**: Dependencies are identified by explicit tokens (classes, symbols, or constants) rather than inferred types.
 - **No reflection-based autowiring**: Konekti does not rely on runtime type reflection for dependency resolution.
 - **Constructor-first injection**: Constructor injection is the default and recommended pattern.
 - **`@Inject([...])`**: Stores constructor dependency metadata.
 - **`@Scope(...)`**: Defines the lifecycle scope of a provider.
+
+## public service guidance
+
+Konekti follows a **class-first** rule for public package surfaces:
+
+1. **Concrete Services/Guards/Interceptors**: Use the class itself as the token. This removes the need for redundant exported `PROVIDER_TOKEN` constants for stable service implementations.
+2. **Abstract Interfaces/Handles**: Use explicit `Symbol` or `const` tokens when the implementation is intended to be swapped or when multiple implementations co-exist.
+3. **Options/Config/Runtime Seams**: Use explicit tokens for configuration objects or runtime-specific handles that do not have a natural class representation.
+
+This guidance aligns with the `behavioral-contract-policy.md` by ensuring that the public DI surface matches the documented runtime responsibilities.
 
 ## provider forms
 
@@ -56,18 +67,21 @@ class UserService {
 
 ## explicit tokens vs reflection
 
-Konekti resolves dependencies using explicit token metadata instead of runtime type reflection.
+Konekti resolves dependencies using explicit token metadata (classes, symbols, or constants) instead of runtime type reflection.
 
-- Injection tokens (`@Inject([...])`) serve as the source of truth.
-- `"emitDecoratorMetadata": true` is not required.
-- Reflection-based constructor autowiring is not supported.
+- **Injection tokens** (`@Inject([...])`) serve as the source of truth.
+- **Class-as-token**: Concrete classes (services, guards, interceptors) are treated as explicit tokens.
+- **`"emitDecoratorMetadata": true` is not required**.
+- **Reflection-based constructor autowiring is not supported**.
 
 This ensures that dependency resolution is predictable and based entirely on declared metadata.
 
 ## token ownership
 
+- **Class tokens** (services/guards/interceptors) are part of the public package contract.
+- **Explicit symbol/const tokens** are used for interfaces, handles, and configuration.
 - Tokens crossing module or package boundaries are part of the public contract.
-- Exported tokens should be defined as stable constants or symbols, not string literals.
+- Exported non-class tokens should be defined as stable constants or symbols, not string literals.
 - Token ownership belongs to the package that provides the underlying resource.
 - Generated code and examples follow the same token-authoring conventions as the framework.
 

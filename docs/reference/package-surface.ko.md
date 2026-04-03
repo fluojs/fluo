@@ -42,6 +42,8 @@
 
 ## package responsibilities
 
+Konekti 패키지는 **클래스 우선(class-first)** 공개 인터페이스 규칙을 따릅니다. 구체 서비스, 가드, 인터셉터는 클래스 자체를 주요 주입 토큰으로 사용하며, 심볼과 상수는 인터페이스, 설정 및 런타임 핸들을 위해 예약됩니다.
+
 - **`@konekti/core`**: 공유 계약, 데코레이터, 메타데이터 헬퍼.
 - **`@konekti/config`**: 설정 로딩 및 타입 안전성이 보장된 설정 접근.
 - **`@konekti/di`**: 프로바이더 해결(resolution) 및 라이프사이클 스코프.
@@ -73,6 +75,15 @@
 - **`@konekti/testing`**: 테스트 모듈 및 헬퍼 유틸리티, 그리고 라이프사이클/진단/스냅샷 계약 검증을 위한 공유 platform conformance harness(`createPlatformConformanceHarness`).
 - **`@konekti/cli`**: 애플리케이션 부트스트랩/생성/마이그레이션 + 런타임 진단 inspect 명령어.
 - **`@konekti/studio`**: 런타임 그래프/타이밍 JSON 내보내기를 파일 기반으로 확인하는 diagnostics viewer.
+
+## 공개 DI 엔트리포인트
+
+이 패키지들을 사용할 때는 구체 서비스/가드/인터셉터 클래스를 직접 주입하는 방식을 선호하세요. 내보내기 토큰은 명시적인 추상화나 런타임 경계가 필요한 경우에만 제공됩니다.
+
+- **클래스 선호**: `UsersService`, `AuthGuard`, `RedisService`, `PrismaService`.
+- **토큰 선호**: `CONFIG_OPTIONS`, `REDIS_CLIENT_HANDLE`, `EVENT_BUS`, `JWT_SIGN_OPTIONS`.
+
+클래스 우선 DI의 기술적 원칙에 대해서는 `docs/concepts/di-and-modules.ko.md`를 참조하세요.
 
 ## boundary and documentation rules
 

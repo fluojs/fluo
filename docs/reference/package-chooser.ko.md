@@ -29,7 +29,7 @@
 | 레이어 | 패키지 | 비고 |
 |--------|--------|------|
 | 부트스트랩 | `@konekti/runtime` ★ | 모듈을 조합하고 앱을 시작 |
-| DI | `@konekti/di` ★ | 토큰 기반 의존성 주입 |
+| DI | `@konekti/di` ★ | 클래스 우선 및 토큰 기반 의존성 주입 |
 | 코어 | `@konekti/core` ★ | 데코레이터, 메타데이터, 공유 계약 |
 | HTTP | `@konekti/http` ★ | 라우팅, 가드, 인터셉터, 예외 처리 |
 | 플랫폼 | `@konekti/platform-fastify` | Fastify 어댑터 — 선택 사항, HTTP 리스너가 필요할 때 추가 |

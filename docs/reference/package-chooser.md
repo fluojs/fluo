@@ -29,7 +29,7 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 | layer | package | notes |
 |-------|---------|-------|
 | bootstrap | `@konekti/runtime` ★ | assembles modules and starts the app |
-| DI | `@konekti/di` ★ | token-based dependency injection |
+| DI | `@konekti/di` ★ | class-first and token-based dependency injection |
 | core | `@konekti/core` ★ | decorators, metadata, shared contracts |
 | http | `@konekti/http` ★ | routing, guards, interceptors, exception handling |
 | platform | `@konekti/platform-fastify` | Fastify adapter — optional, add when you need an HTTP listener |
