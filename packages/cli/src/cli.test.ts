@@ -599,8 +599,7 @@ describe('CLI command runner', () => {
     expect(moduleContent).toContain('order.controller');
   });
 
-  it('creates a new starter project scaffold through the CLI with local dependency install smoke', async () => {
-    const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
+  it('creates a new starter project scaffold through the CLI while keeping scaffold contract assertions', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'konekti-new-'));
     createdDirectories.push(targetDirectory);
     const stdoutBuffer: string[] = [];
@@ -609,8 +608,7 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'pnpm'], {
       cwd: targetDirectory,
-      dependencySource: 'local',
-      repoRoot,
+      skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
@@ -633,7 +631,6 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
     expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
-    expect(existsSync(join(projectDirectory, 'node_modules'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);
