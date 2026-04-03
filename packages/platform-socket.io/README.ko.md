@@ -54,6 +54,13 @@ export class AppModule {}
 - `SOCKETIO_SERVER` - Socket.IO `Server` 인스턴스를 DI로 주입합니다
 - `SOCKETIO_ROOM_SERVICE` - Socket.IO 네이티브 room API 기반 헬퍼를 주입합니다
 
+루트 패키지 엔트리포인트의 공개 토큰 표면은 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`에 집중하도록 의도적으로 제한됩니다.
+
+### Migration note (0.x)
+
+`SOCKETIO_LIFECYCLE_SERVICE`는 더 이상 루트 공개 엔트리포인트와 `createSocketIoModule()`의 exports에 포함되지 않습니다.
+소비자는 room 헬퍼에는 `SOCKETIO_ROOM_SERVICE`를, raw Socket.IO 서버 접근에는 `SOCKETIO_SERVER`를 주입해야 합니다.
+
 ### Module options
 
 `createSocketIoModule(options)` 및 `createSocketIoProviders(options)`는 다음 옵션을 받습니다.

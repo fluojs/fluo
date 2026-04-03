@@ -36,7 +36,7 @@ export function createSocketIoModule(options: SocketIoModuleOptions = {}): Modul
   class SocketIoModule {}
 
   return defineModule(SocketIoModule, {
-    exports: [SOCKETIO_LIFECYCLE_SERVICE, SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
+    exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
     global: true,
     providers: createSocketIoProviders(options),
   });
