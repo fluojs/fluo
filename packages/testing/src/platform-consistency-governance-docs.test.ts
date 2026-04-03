@@ -72,4 +72,14 @@ describe('platform consistency governance docs', () => {
     expect(koreanPublishSurface.length).toBeGreaterThan(0);
     expect(koreanPublishSurface).toEqual(englishPublishSurface);
   });
+
+  it('keeps PR CI governance-gated while reserving release-readiness for main pushes', () => {
+    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+
+    expect(ciWorkflow).toContain('build-and-typecheck:');
+    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
+    expect(ciWorkflow).toContain('verify-platform-consistency-governance');
+    expect(ciWorkflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(ciWorkflow).toContain('run: pnpm verify:release-readiness');
+  });
 });

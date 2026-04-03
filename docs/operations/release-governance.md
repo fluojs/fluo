@@ -119,8 +119,8 @@ The command also writes `tooling/release/release-readiness-summary.md`.
 
 `.github/workflows/ci.yml` runs on every pull request targeting `main` and on every push to `main`, but the verification scope now differs by event:
 
-- Pull requests run `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm verify:platform-consistency-governance` as parallel jobs with a single PR gate job.
-- Pushes to `main` keep the same parallel verification jobs and additionally run `pnpm verify:release-readiness`, then require a release-grade aggregate gate.
+- Pull requests run `pnpm build` + `pnpm typecheck` in one job (so typecheck sees required build outputs), while `pnpm lint`, `pnpm test`, and `pnpm verify:platform-consistency-governance` run in parallel with that job under a single PR gate job.
+- Pushes to `main` keep the same PR verification shape and additionally run `pnpm verify:release-readiness`, then require a release-grade aggregate gate.
 
 This keeps PR feedback fast while preserving release-readiness guarantees on `main` release-oriented flows.
 
