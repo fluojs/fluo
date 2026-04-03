@@ -14,7 +14,7 @@ Shared Redis connection layer for Konekti. Register it once, inject either the r
 
 `@konekti/redis` owns the app-scoped Redis client lifecycle for Konekti. It creates a singleton `ioredis` client, exposes it through the `REDIS_CLIENT` DI token, connects it during module initialization, and closes it during application shutdown.
 
-The package exposes `RedisService` as the primary facade injection identity for JSON-friendly `get`/`set`/`del` usage while still allowing direct raw `ioredis` access. `REDIS_SERVICE` remains available as a compatibility alias.
+The package exposes `RedisService` as the primary facade injection identity for JSON-friendly `get`/`set`/`del` usage while still allowing direct raw `ioredis` access.
 
 ## Installation
 
@@ -66,7 +66,6 @@ export class CacheService {
 | `createRedisModule(options)` | `src/module.ts` | Registers a global singleton Redis client module |
 | `createRedisProviders(options)` | `src/module.ts` | Returns the raw provider list for manual composition |
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
-| `REDIS_SERVICE` | `src/redis-service.ts` | Compatibility DI token alias that resolves to `RedisService` |
 | `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers + `getRawClient()` escape hatch |
 | `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Maps Redis connection state to shared ownership/readiness/health/details snapshot shape |
 | `RedisModuleOptions` | `src/types.ts` | `ioredis` options without `lazyConnect` |
@@ -86,6 +85,12 @@ export class CacheService {
 - `onApplicationShutdown()` skips work when already `end`, disconnects directly for non-quittable states, and otherwise prefers `quit()` with `disconnect()` fallback.
 - If `quit()` fails and the client still does not close, the original quit error is rethrown.
 
+## 0.x migration note
+
+- `REDIS_SERVICE` compatibility alias was removed from `@konekti/redis` in the `0.x` line.
+- Migrate DI usage from `@Inject([REDIS_SERVICE])` to `@Inject([RedisService])`.
+- `REDIS_CLIENT` remains the supported raw-client DI token.
+
 ## Platform status snapshot semantics
 
 Use `createRedisPlatformStatusSnapshot({ status })` to emit runtime-safe ownership/readiness/health details in the shared platform contract shape.
@@ -104,7 +109,6 @@ createRedisModule(options)
 
 service/repository code
   -> @Inject([REDIS_CLIENT]) or @Inject([RedisService])
-  -> REDIS_SERVICE remains a compatibility alias for RedisService
   -> raw client or facade codec helpers
 
 app bootstrap
