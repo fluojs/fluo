@@ -10,7 +10,7 @@ import {
   type HttpMetricsPathLabelNormalizer,
 } from './http-metrics-middleware.js';
 import { METER_PROVIDER } from './meter-provider.js';
-import { METRICS_SERVICE, MetricsService } from './metrics-service.js';
+import { MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
 export interface MetricsHttpOptions {
@@ -56,7 +56,7 @@ export class MetricsModule {
 
     const providers: Provider[] = [
       {
-        provide: METRICS_SERVICE,
+        provide: MetricsService,
         useValue: metricsService,
       },
       {

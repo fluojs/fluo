@@ -6,7 +6,7 @@ import { Counter, Registry } from 'prom-client';
 
 import { MetricsModule } from './metrics-module.js';
 import { METER_PROVIDER } from './meter-provider.js';
-import { METRICS_SERVICE, type MetricsService } from './metrics-service.js';
+import { MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -214,7 +214,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const metricsService = await app.container.resolve(MetricsService);
     const meterProvider = await app.container.resolve(METER_PROVIDER) as PrometheusMeterProvider;
 
     metricsService.counter({
@@ -256,7 +256,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const metricsService = await app.container.resolve(MetricsService);
     const resolvedRegistry = metricsService.getRegistry();
 
     expect(resolvedRegistry).toBe(sharedRegistry);
@@ -377,7 +377,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const metricsService = await app.container.resolve(MetricsService);
 
     expect(() => {
       metricsService.counter({
@@ -400,7 +400,7 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = await app.container.resolve(METRICS_SERVICE) as MetricsService;
+    const metricsService = await app.container.resolve(MetricsService);
     const registry = metricsService.getRegistry();
 
     metricsService.counter({

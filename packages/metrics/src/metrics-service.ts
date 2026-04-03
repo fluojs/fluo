@@ -7,8 +7,6 @@ import type {
 
 import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './prometheus-metrics-factory.js';
 
-export const METRICS_SERVICE = Symbol.for('konekti.metrics.service');
-
 export class MetricsService {
   constructor(private readonly registry: Registry) {}
 

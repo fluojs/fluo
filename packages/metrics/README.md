@@ -187,9 +187,9 @@ class AppModule {}
 After providing a shared registry, `MetricsService` and `METER_PROVIDER` both use it:
 
 ```typescript
-import { METRICS_SERVICE, MetricsService } from '@konekti/metrics';
+import { MetricsService } from '@konekti/metrics';
 
-@Inject([METRICS_SERVICE])
+@Inject([MetricsService])
 class OrderService {
   constructor(private readonly metrics: MetricsService) {
     this.orderCounter = this.metrics.counter({
@@ -207,7 +207,7 @@ class OrderService {
 `MetricsService.getRegistry()` returns the underlying `prom-client` `Registry`:
 
 ```typescript
-const metricsService = await app.container.resolve(METRICS_SERVICE);
+const metricsService = await app.container.resolve(MetricsService);
 const registry = metricsService.getRegistry();
 // Use registry directly with prom-client APIs
 ```
@@ -243,7 +243,7 @@ const registry = new Registry();
 new Counter({ name: 'my_counter', help: 'help', registers: [registry] });
 
 // This throws: 'A metric with the name my_counter has already been registered.'
-MetricsModule.forRoot({ registry }).container.resolve(METRICS_SERVICE)
+MetricsModule.forRoot({ registry }).container.resolve(MetricsService)
   .counter({ name: 'my_counter', help: 'duplicate' });
 ```
 
