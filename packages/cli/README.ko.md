@@ -142,6 +142,8 @@ pnpm --dir packages/cli run sandbox:test
 
 이 명령은 `@konekti/cli`를 다시 빌드하고, standalone temp 샌드박스 경로 자체에 `starter-app`을 스캐폴드한 뒤, 워크스페이스 로컬 tarball을 설치합니다. 이후 `typecheck`/`build`/`test`를 검증하고 `konekti g repo User` 실행 후 생성된 repo 템플릿까지 포함해 `typecheck`와 `test`를 다시 검증합니다.
 
+가장 무거운 end-to-end 검증(로컬 패키지 cold build/pack/install + 생성 프로젝트 명령 검증)은 이 샌드박스 경로에서 수행하세요.
+
 `KONEKTI_CLI_SANDBOX_ROOT=/path`는 고급 override로 계속 사용할 수 있지만, 반드시 모노레포 워크스페이스 바깥의 전용 디렉터리를 가리켜야 합니다. repo 내부 경로를 지정하면 harness가 경고를 출력하고 temp 샌드박스 루트로 자동 fallback해서 `pnpm install`이 워크스페이스 install로 흡수되지 않게 합니다.
 
 반복 작업 시에는 아래 명령을 사용하면 됩니다.
@@ -152,7 +154,7 @@ pnpm --dir packages/cli run sandbox:verify
 pnpm --dir packages/cli run sandbox:clean
 ```
 
-패키지 전용 Vitest 스위트는 `pnpm --dir packages/cli run test`로 실행할 수 있습니다.
+패키지 전용 Vitest 스위트는 `pnpm --dir packages/cli run test`로 실행할 수 있습니다. 이 스위트는 일반 CI 시간 예산에 맞춰 스타터 스캐폴드 계약 검증과 로컬 설치 스모크 검증을 빠르게 유지합니다.
 
 ## 핵심 API
 
