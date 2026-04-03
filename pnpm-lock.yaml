@@ -80,6 +80,28 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
 
+  examples/ops-metrics-terminus:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@konekti/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@konekti/terminus':
+        specifier: workspace:*
+        version: link:../../packages/terminus
+    devDependencies:
+      '@konekti/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+
   examples/realworld-api:
     dependencies:
       '@konekti/config':
