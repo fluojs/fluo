@@ -73,18 +73,15 @@ import { ThrottlerGuard } from '@konekti/throttler';
 class ApiController {}
 ```
 
-### `THROTTLER_GUARD`
+### `THROTTLER_OPTIONS`
 
-`ThrottlerGuard`를 가리키는 호환성 DI 토큰 별칭입니다.
+`ThrottlerGuard` 생성 및 모듈 와이어링에서 사용하는 모듈 옵션 DI 토큰입니다.
 
-```typescript
-import { UseGuards } from '@konekti/http';
-import { THROTTLER_GUARD } from '@konekti/throttler';
+## 0.x 마이그레이션 노트
 
-@UseGuards(THROTTLER_GUARD)
-@Controller('/api')
-class ApiController {}
-```
+- `THROTTLER_GUARD` 호환성 별칭이 공개 API에서 제거되었습니다.
+- `@UseGuards(...)` 및 DI 등록에서는 `ThrottlerGuard`를 직접 사용하세요.
+- 런타임 throttling 동작과 모듈 옵션 의미는 변경되지 않았습니다.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
 

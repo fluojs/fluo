@@ -7,7 +7,7 @@ import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import { createThrottlerModule, createThrottlerProviders } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
-import { THROTTLER_GUARD, THROTTLER_OPTIONS } from './tokens.js';
+import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
 
 function createRequestContext(remoteAddress = '127.0.0.1'): RequestContext {
@@ -92,7 +92,7 @@ function isObjectProvider(provider: unknown): provider is ObjectProvider {
 }
 
 describe('createThrottlerProviders', () => {
-  it('registers class-first ThrottlerGuard identity and keeps token alias compatibility', () => {
+  it('registers class-first ThrottlerGuard identity and keeps THROTTLER_OPTIONS token-based', () => {
     const providers = createThrottlerProviders({
       limit: 10,
       ttl: 60,
@@ -102,9 +102,6 @@ describe('createThrottlerProviders', () => {
     );
     const classProvider = providers.find(
       (provider) => isObjectProvider(provider) && provider.provide === ThrottlerGuard,
-    );
-    const aliasProvider = providers.find(
-      (provider) => isObjectProvider(provider) && provider.provide === THROTTLER_GUARD,
     );
 
     expect(optionsProvider).toMatchObject({
@@ -118,10 +115,8 @@ describe('createThrottlerProviders', () => {
       provide: ThrottlerGuard,
       useClass: ThrottlerGuard,
     });
-    expect(aliasProvider).toMatchObject({
-      provide: THROTTLER_GUARD,
-      useExisting: ThrottlerGuard,
-    });
+
+    expect(providers).toHaveLength(2);
   });
 });
 
