@@ -2,7 +2,7 @@ import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { ThrottlerGuard } from './guard.js';
-import { THROTTLER_GUARD, THROTTLER_OPTIONS } from './tokens.js';
+import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions } from './types.js';
 import { validateThrottlerModuleOptions } from './validation.js';
 
@@ -18,10 +18,6 @@ export function createThrottlerProviders(options: ThrottlerModuleOptions): Provi
       provide: ThrottlerGuard,
       useClass: ThrottlerGuard,
     },
-    {
-      provide: THROTTLER_GUARD,
-      useExisting: ThrottlerGuard,
-    },
   ];
 }
 
@@ -29,7 +25,7 @@ export function createThrottlerModule(options: ThrottlerModuleOptions): ModuleTy
   class ThrottlerModule {}
 
   return defineModule(ThrottlerModule, {
-    exports: [ThrottlerGuard, THROTTLER_GUARD],
+    exports: [ThrottlerGuard],
     global: true,
     providers: createThrottlerProviders(options),
   });
