@@ -151,7 +151,7 @@ For persistence-backed modules, keep integration boundaries but replace external
 
 - Prisma: override `PRISMA_CLIENT` with a fake client.
 - Drizzle: override `DRIZZLE_DATABASE` (and optionally `DRIZZLE_DISPOSE`) with test doubles.
-- Redis: override `REDIS_CLIENT` or `RedisService` with in-memory doubles (`REDIS_SERVICE` remains a compatibility alias).
+- Redis: override `REDIS_CLIENT` or `RedisService` with in-memory doubles.
 
 The module graph remains real; only explicit external tokens are replaced.
 

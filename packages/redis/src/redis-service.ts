@@ -3,8 +3,6 @@ import type Redis from 'ioredis';
 
 import { REDIS_CLIENT } from './tokens.js';
 
-export const REDIS_SERVICE = Symbol.for('konekti.redis.service');
-
 function decodeRedisValue(raw: string): unknown {
   try {
     return JSON.parse(raw);
