@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +12,13 @@ const ssotPairs: Array<[englishPath: string, koreanPath: string]> = [
   ['docs/operations/release-governance.md', 'docs/operations/release-governance.ko.md'],
   ['docs/operations/platform-conformance-authoring-checklist.md', 'docs/operations/platform-conformance-authoring-checklist.ko.md'],
 ];
+
+const removedRuntimeModuleFactoryNames = [
+  'createMicroservicesModule',
+  'createCqrsModule',
+  'createEventBusModule',
+  'createRedisModule',
+] as const;
 
 function headingLevels(relativePath: string): number[] {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8')
@@ -44,6 +51,37 @@ function parsePackageListFromSection(markdown: string, sectionTitle: string): st
   }
 
   return packages.sort((left, right) => left.localeCompare(right));
+}
+
+function collectMarkdownFiles(relativeRoot: string): string[] {
+  const absoluteRoot = resolve(repoRoot, relativeRoot);
+  if (!existsSync(absoluteRoot)) {
+    return [];
+  }
+
+  const stack = [absoluteRoot];
+  const markdownFiles: string[] = [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const fullPath = resolve(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+
+      if (entry.name.endsWith('.md')) {
+        markdownFiles.push(fullPath);
+      }
+    }
+  }
+
+  return markdownFiles;
 }
 
 describe('platform consistency governance docs', () => {
@@ -88,5 +126,20 @@ describe('platform consistency governance docs', () => {
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
     expect(ciWorkflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(ciWorkflow).toContain('run: pnpm verify:release-readiness');
+  });
+
+  it('blocks removed runtime module factory names from docs/prose surfaces', () => {
+    const markdownFiles = [
+      ...collectMarkdownFiles('docs'),
+      ...collectMarkdownFiles('packages'),
+      ...collectMarkdownFiles('examples'),
+    ];
+
+    for (const markdownFile of markdownFiles) {
+      const content = readFileSync(markdownFile, 'utf8');
+      for (const removedName of removedRuntimeModuleFactoryNames) {
+        expect(content).not.toContain(removedName);
+      }
+    }
   });
 });

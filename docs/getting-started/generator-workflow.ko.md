@@ -59,6 +59,15 @@ konekti g <schematic> <name>
 - **단일 리소스 지양**: 단순함을 유지하기 위해 현재 CLI는 복잡한 "resource" 생성기(예: `g resource`)를 피하고 있습니다.
 - **중립성**: 스캐폴딩은 패키지 매니저 전용 락파일과 명령어를 제외하고는 패키지 매니저 중립적(neutral)으로 유지됩니다.
 
+## 모듈 엔트리포인트 네이밍 거버넌스
+
+생성된 스니펫과 마이그레이션 힌트는 저장소 전역 공개 모듈 문법 계약을 따릅니다.
+
+- 런타임 모듈 엔트리포인트: `forRoot(...)`, 필요 시 `forRootAsync(...)`, `register(...)`, `forFeature(...)`
+- helper/builder 전용: `create*`
+
+CLI 사용자 노출 네이밍 가이드를 추가/수정할 때는 `../reference/package-surface.ko.md`를 단일 기준(source-of-truth)으로 사용하세요.
+
 ## 추가 정보
 
 - `./quick-start.ko.md`

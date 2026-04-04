@@ -78,9 +78,11 @@ export const MY_CACHE_CLIENT = Symbol.for('MY_CACHE_CLIENT');
 
 ## Module Authoring Conventions
 
-런타임 모듈 엔트리포인트는 마이그레이션 가이드, 스캐폴드, 패키지 README가 일관되도록 Nest 스타일 canonical 이름(`<Name>Module.forRoot(...)`, 필요 시 `forRootAsync(...)`)을 사용해야 합니다.
+런타임 모듈 엔트리포인트는 마이그레이션 가이드, 스캐폴드, 패키지 README가 일관되도록 저장소 전역 canonical 문법(`forRoot(...)`, 필요 시 `forRootAsync(...)`, `register(...)`, `forFeature(...)`)을 사용해야 합니다.
 
 `create*` 네이밍은 **런타임 모듈 엔트리포인트가 아닌** helper/builder에 유지하세요(예: `createTestingModule(...)` 같은 테스트 빌더, `createHealthModule()` 같은 작은 런타임 헬퍼).
+
+이 네이밍 정책의 단일 기준(source-of-truth)은 `../reference/package-surface.ko.md`입니다.
 
 ### 런타임 모듈 엔트리포인트 패턴 (`forRoot`)
 

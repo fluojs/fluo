@@ -101,7 +101,6 @@ import { Inject } from '@konekti/core';
 import {
   CommandBus,
   COMMAND_BUS,
-  createCqrsModule,
   IEvent,
   ISaga,
   Saga,

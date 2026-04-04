@@ -78,9 +78,11 @@ Avoid using short or generic names like `CLIENT` or `CONFIG`.
 
 ## Module Authoring Conventions
 
-Runtime module entrypoints should follow Nest-style canonical names (`<Name>Module.forRoot(...)`, optional `forRootAsync(...)`) so migration guidance, scaffolding, and package READMEs stay aligned.
+Runtime module entrypoints should follow the repository-wide canonical syntax (`forRoot(...)`, optional `forRootAsync(...)`, `register(...)`, `forFeature(...)`) so migration guidance, scaffolding, and package READMEs stay aligned.
 
 Keep `create*` names for helper/builders that are **not** runtime module entrypoints (for example test builders such as `createTestingModule(...)`, or small runtime helpers such as `createHealthModule()`).
+
+Use `../reference/package-surface.md` as the source-of-truth for this naming policy.
 
 ### Runtime Module Entrypoint Pattern (`forRoot`)
 

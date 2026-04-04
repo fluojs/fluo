@@ -22,6 +22,13 @@ const contractGateTriggers = new Set([
   'docs/operations/platform-conformance-authoring-checklist.ko.md',
 ]);
 
+const removedRuntimeModuleFactoryNames = [
+  'createMicroservicesModule',
+  'createCqrsModule',
+  'createEventBusModule',
+  'createRedisModule',
+];
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -136,6 +143,40 @@ function collectPackageDirs() {
   return readdirSync(packagesRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
+}
+
+function collectMarkdownFiles(relativeRoot) {
+  const absoluteRoot = join(repoRoot, relativeRoot);
+  if (!existsSync(absoluteRoot)) {
+    return [];
+  }
+
+  const stack = [absoluteRoot];
+  const markdownPaths = [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const absoluteEntry = join(current, entry.name);
+
+      if (entry.isDirectory()) {
+        stack.push(absoluteEntry);
+        continue;
+      }
+
+      if (extname(entry.name) !== '.md') {
+        continue;
+      }
+
+      markdownPaths.push(absoluteEntry);
+    }
+  }
+
+  return markdownPaths;
 }
 
 function packageHasConformanceHarness(packageName) {
@@ -267,10 +308,35 @@ function enforceReleaseGovernancePublishSurfaceSync() {
   );
 }
 
+function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
+  const markdownFiles = [
+    ...collectMarkdownFiles('docs'),
+    ...collectMarkdownFiles('packages'),
+    ...collectMarkdownFiles('examples'),
+  ];
+
+  const violations = [];
+
+  for (const markdownPath of markdownFiles) {
+    const source = readFileSync(markdownPath, 'utf8');
+    for (const removedName of removedRuntimeModuleFactoryNames) {
+      if (source.includes(removedName)) {
+        violations.push(`${markdownPath.replace(`${repoRoot}/`, '')}: ${removedName}`);
+      }
+    }
+  }
+
+  assert(
+    violations.length === 0,
+    `removed runtime module factory names must not appear in docs/prose:\n${violations.join('\n')}`,
+  );
+}
+
 const changedFiles = changedFilesFromGit();
 
 enforceSsotMirrorStructure();
 enforceReleaseGovernancePublishSurfaceSync();
+enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
 enforceContractCompanionUpdates(changedFiles);
 enforceAlignmentClaimsBackedByHarness(changedFiles);
 

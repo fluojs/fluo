@@ -86,6 +86,21 @@ When consuming these packages, favor injecting the concrete service/guard/interc
 
 Refer to `docs/concepts/di-and-modules.md` for the technical principles behind class-first DI.
 
+## public module syntax semantics
+
+Public runtime module entrypoints follow one repository-wide syntax contract:
+
+- **`forRoot(...)`**: canonical entrypoint for runtime module initialization.
+- **`forRootAsync(...)`**: async configuration variant of `forRoot(...)` when option materialization must await runtime inputs.
+- **`register(...)`**: scoped or repeatable registration shape for feature instances that should not claim global root ownership.
+- **`forFeature(...)`**: feature-slice registration shape used to append package-local capabilities under an already-initialized root module.
+- **`create*` helper exception**: keep `create*` names only for non-runtime-module helpers/builders (for example `createTestingModule(...)`, `createHealthModule()`, `createPlatformConformanceHarness(...)`, `create*Providers(...)`).
+
+Governance intent:
+
+- Runtime module entrypoint naming remains stable across package READMEs, CLI output, generator examples, and migration guidance.
+- New package/module docs should treat this section as the source-of-truth for public module entrypoint naming.
+
 ## boundary and documentation rules
 
 - This list includes only public packages.

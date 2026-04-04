@@ -641,7 +641,7 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
     expect(readmeContent).toContain('KonektiFactory.create(..., { cors })');
-    expect(readmeContent).toContain('runtime module entrypoints use `*.forRoot(...)`');
+    expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(readmeContent).not.toContain('runNodeApplication');
     expect(mainContent).toContain('const app = await KonektiFactory.create(AppModule, {});');
     expect(mainContent).toContain('await app.listen();');

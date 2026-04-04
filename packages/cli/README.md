@@ -27,7 +27,7 @@ That stable starter shape includes `src/main.ts` using `const app = await Konekt
 
 Naming policy in generated/migration guidance:
 
-- Runtime module entrypoints use Nest-style canonical names (`SomeModule.forRoot(...)`, optional `forRootAsync(...)`).
+- Runtime module entrypoints use governed canonical names (`forRoot(...)`, optional `forRootAsync(...)`, `register(...)`, `forFeature(...)`) according to `docs/reference/package-surface.md`.
 - Helper/builders that are not runtime module entrypoints keep `create*` names (`createTestingModule(...)`, `createHealthModule()`).
 
 ## Installation

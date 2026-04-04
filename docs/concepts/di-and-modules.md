@@ -94,6 +94,16 @@ Modules serve several critical functions:
 - **Bootstrap ordering**: Ensuring deterministic application startup.
 - **Encapsulation**: Providing explicit import/export points.
 
+## module entrypoint naming semantics
+
+When documenting or authoring public runtime module APIs, use the repository-wide syntax contract in `docs/reference/package-surface.md`:
+
+- `forRoot(...)`: canonical runtime module initialization.
+- `forRootAsync(...)`: async variant for deferred configuration materialization.
+- `register(...)`: scoped/repeatable registration where root ownership is not implied.
+- `forFeature(...)`: feature-slice registration layered under an existing root.
+- `create*`: reserved for non-runtime-module helpers/builders only.
+
 ## visibility rules
 
 - Providers are private to their defining module by default.

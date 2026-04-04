@@ -59,6 +59,15 @@ After running any generator, the CLI output shows:
 - **No Monolithic Resources**: The CLI currently avoids complex "resource" generators (e.g., `g resource`) to maintain simplicity.
 - **Neutrality**: Scaffolding remains package-manager-neutral, except for manager-specific lockfiles and commands.
 
+## module entrypoint naming governance
+
+Generated snippets and migration hints follow the repository-wide public module syntax contract:
+
+- Runtime module entrypoints: `forRoot(...)`, optional `forRootAsync(...)`, `register(...)`, `forFeature(...)`
+- Helper/builders only: `create*`
+
+Treat `../reference/package-surface.md` as the source-of-truth when adding or updating CLI-facing module naming guidance.
+
 ## further reading
 
 - `./quick-start.md`
