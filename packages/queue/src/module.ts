@@ -2,8 +2,9 @@ import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
+import { QUEUE_OPTIONS } from './internal-tokens.js';
 import { QueueLifecycleService } from './service.js';
-import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
+import { QUEUE } from './tokens.js';
 import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
 
 function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): NormalizedQueueModuleOptions {

@@ -12,6 +12,7 @@ describe('@konekti/cron root barrel public surface', () => {
     expect(cron).not.toHaveProperty('createCronModule');
     expect(cron).toHaveProperty('createCronProviders');
     expect(cron).toHaveProperty('SCHEDULING_REGISTRY');
+    expect(cron).not.toHaveProperty('CRON_OPTIONS');
     expect(cron).toHaveProperty('createCronPlatformStatusSnapshot');
     expect(cron).toHaveProperty('normalizeCronModuleOptions');
     expect(Object.keys(cron).sort()).toMatchSnapshot();
