@@ -59,8 +59,8 @@ export class AppModule {}
 런타임 루트 배럴 거버넌스 테스트는 런타임 export를 기준으로 동작합니다. 아래에 문서화된 공개 TypeScript 전용 계약은 계속 패키지 API의 일부이지만, `Object.keys(...)` snapshot assertion에는 나타나지 않습니다.
 
 - **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
-- **compatibility-only**: `EVENT_BUS_OPTIONS`는 내부 호환성 토큰으로 유지되며(루트 export에서는 제외됨), metadata helper export(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 export를 유지하지만, 신규 앱 레벨 import로는 권장하지 않습니다.
-- **internal**: 문서화되지 않은 lifecycle/runtime wiring 세부사항은 루트 배럴이 현재 관련 symbol을 재노출하더라도 비계약 내부 동작입니다.
+- **compatibility-only**: metadata helper export(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 export를 유지하지만, 신규 앱 레벨 import로는 권장하지 않습니다.
+- **internal**: `EVENT_BUS_OPTIONS` 및 문서화되지 않은 lifecycle/runtime wiring 세부사항은 루트 배럴이 현재 관련 symbol을 재노출하더라도 비계약 내부 동작입니다.
 
 ### 모듈 옵션
 

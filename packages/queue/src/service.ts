@@ -19,8 +19,8 @@ import {
   withTimeout,
   type DiscoveryCandidate,
 } from './helpers.js';
-import { QUEUE_OPTIONS } from './internal-tokens.js';
 import { createQueuePlatformStatusSnapshot } from './status.js';
+import { QUEUE_OPTIONS } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
   Queue,

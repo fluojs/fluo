@@ -67,8 +67,8 @@ await microservice.listen();
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
 - **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
-- **compatibility-only**: `MICROSERVICE_OPTIONS`는 내부 호환성 토큰으로 유지되며(루트 export에서는 제외됨), metadata helper export(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`)와 `MicroserviceLifecycleService` 같은 저수준 lifecycle service 직접 import는 0.x 호환성을 위해 export를 유지하지만, 애플리케이션의 기본 seam으로는 권장하지 않습니다.
-- **internal**: 루트 배럴 거버넌스 기준에서 문서화되지 않은 트랜스포트 런타임 내부 동작은 광범위한 배럴 re-export로 접근 가능하더라도 비계약(non-contract) 동작입니다.
+- **compatibility-only**: metadata helper export(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`)와 `MicroserviceLifecycleService` 같은 저수준 lifecycle service 직접 import는 0.x 호환성을 위해 export를 유지하지만, 애플리케이션의 기본 seam으로는 권장하지 않습니다.
+- **internal**: `MICROSERVICE_OPTIONS`와 문서화되지 않은 트랜스포트 런타임 내부 동작은 광범위한 배럴 re-export로 접근 가능하더라도 비계약(non-contract) 동작입니다.
 
 ## 런타임 동작
 
