@@ -8,8 +8,13 @@ describe('@konekti/cache-manager public API surface', () => {
     expect(cacheManagerPublicApi).toHaveProperty('createCacheProviders');
     expect(cacheManagerPublicApi).toHaveProperty('CacheService');
     expect(cacheManagerPublicApi).toHaveProperty('CacheInterceptor');
+    expect(cacheManagerPublicApi).toHaveProperty('CacheKey');
+    expect(cacheManagerPublicApi).toHaveProperty('CacheTTL');
+    expect(cacheManagerPublicApi).toHaveProperty('CacheEvict');
     expect(cacheManagerPublicApi).toHaveProperty('MemoryStore');
     expect(cacheManagerPublicApi).toHaveProperty('RedisStore');
+    expect(cacheManagerPublicApi).toHaveProperty('createCacheManagerPlatformStatusSnapshot');
+    expect(cacheManagerPublicApi).toHaveProperty('createCacheManagerPlatformDiagnosticIssues');
     expect(cacheManagerPublicApi).toHaveProperty('CACHE_OPTIONS');
     expect(cacheManagerPublicApi).toHaveProperty('CACHE_STORE');
   });
