@@ -5,7 +5,7 @@ import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/h
 
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
-import { createThrottlerModule, createThrottlerProviders } from './module.js';
+import { ThrottlerModule, createThrottlerProviders } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
@@ -242,9 +242,9 @@ describe('ThrottlerGuard — in-memory store', () => {
   });
 
   it('rejects invalid module-level ttl and limit before request handling starts', () => {
-    expect(() => createThrottlerModule({ limit: 0, ttl: 60 })).toThrow(/limit/i);
-    expect(() => createThrottlerModule({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
-    expect(() => createThrottlerModule({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
+    expect(() => ThrottlerModule.forRoot({ limit: 0, ttl: 60 })).toThrow(/limit/i);
+    expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
+    expect(() => ThrottlerModule.forRoot({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
   });
 
   it('allows requests up to the limit', async () => {

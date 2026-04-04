@@ -9,7 +9,7 @@ import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
-import { createGraphqlModule } from './module.js';
+import { GraphqlModule } from './module.js';
 import { GRAPHQL_OPERATION_CONTAINER, listOf } from './types.js';
 
 async function findAvailablePort(): Promise<number> {
@@ -368,7 +368,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           plugins: [
             {
               onParse() {
@@ -405,7 +405,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [GraphqlResolver],
         }),
       ],
@@ -470,7 +470,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [ObjectOutputResolver],
           subscriptions: {
             websocket: {
@@ -545,7 +545,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [ListOutputResolver],
           subscriptions: {
             websocket: {
@@ -617,7 +617,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [UnionOutputResolver],
           subscriptions: {
             websocket: {
@@ -713,7 +713,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [GraphqlResolver],
         }),
       ],
@@ -762,7 +762,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [GraphqlResolver],
           subscriptions: {
             websocket: {
@@ -828,7 +828,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           schema,
         }),
       ],
@@ -855,7 +855,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [GraphqlResolver],
         }),
       ],
@@ -911,7 +911,7 @@ describe('@konekti/graphql', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           context: () => ({
             [GRAPHQL_OPERATION_CONTAINER]: poisonedOperationContainer,
           }),
@@ -964,7 +964,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule({ resolvers: [ConcurrentRequestResolver] })],
+      imports: [GraphqlModule.forRoot({ resolvers: [ConcurrentRequestResolver] })],
       providers: [RequestIdentity, ConcurrentRequestResolver],
     });
 
@@ -1009,7 +1009,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule({ resolvers: [RequestScopedResolver] })],
+      imports: [GraphqlModule.forRoot({ resolvers: [RequestScopedResolver] })],
       providers: [RequestCounter, RequestScopedResolver],
     });
 
@@ -1054,7 +1054,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule({ resolvers: [OperationScopedResolver] })],
+      imports: [GraphqlModule.forRoot({ resolvers: [OperationScopedResolver] })],
       providers: [OperationCounter, OperationScopedResolver],
     });
 
@@ -1096,7 +1096,7 @@ describe('@konekti/graphql — provider scopes', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createGraphqlModule({
+        GraphqlModule.forRoot({
           resolvers: [ScopedSubscriptionResolver],
           subscriptions: {
             websocket: {
@@ -1169,7 +1169,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule({ resolvers: [TransientScopedResolver] })],
+      imports: [GraphqlModule.forRoot({ resolvers: [TransientScopedResolver] })],
       providers: [TransientCounter, TransientScopedResolver],
     });
 
@@ -1206,7 +1206,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule({ resolvers: [SingletonScopedResolver] })],
+      imports: [GraphqlModule.forRoot({ resolvers: [SingletonScopedResolver] })],
       providers: [SingletonCounter, SingletonScopedResolver],
     });
 
@@ -1238,7 +1238,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule()],
+      imports: [GraphqlModule.forRoot()],
       providers: [{ provide: UseValueResolver, useValue: resolverInstance }],
     });
 
@@ -1266,7 +1266,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule()],
+      imports: [GraphqlModule.forRoot()],
       providers: [
         {
           provide: UseFactoryResolver,
@@ -1309,7 +1309,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule()],
+      imports: [GraphqlModule.forRoot()],
       providers: [
         FactoryRequestCounter,
         {
@@ -1371,7 +1371,7 @@ describe('@konekti/graphql — provider scopes', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createGraphqlModule()],
+      imports: [GraphqlModule.forRoot()],
       providers: [
         ClassResolver,
         { provide: ValueResolver, useValue: valueInstance },

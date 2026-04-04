@@ -15,12 +15,14 @@ export function createGraphqlProviders(options: GraphqlModuleOptions): Provider[
   ];
 }
 
-export function createGraphqlModule(options: GraphqlModuleOptions = {}): ModuleType {
-  class GraphqlModule {}
+export class GraphqlModule {
+  static forRoot(options: GraphqlModuleOptions = {}): ModuleType {
+    class GraphqlRootModule extends GraphqlModule {}
 
-  return defineModule(GraphqlModule, {
-    controllers: [GraphqlEndpointController],
-    middleware: [],
-    providers: createGraphqlProviders(options),
-  });
+    return defineModule(GraphqlRootModule, {
+      controllers: [GraphqlEndpointController],
+      middleware: [],
+      providers: createGraphqlProviders(options),
+    });
+  }
 }

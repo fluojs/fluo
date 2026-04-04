@@ -121,13 +121,15 @@ export function createCacheProviders(options: CacheModuleOptions = {}): Provider
   ];
 }
 
-export function createCacheModule(options: CacheModuleOptions = {}): ModuleType {
-  class CacheModule {}
-  const normalized = normalizeCacheModuleOptions(options);
+export class CacheModule {
+  static forRoot(options: CacheModuleOptions = {}): ModuleType {
+    const normalized = normalizeCacheModuleOptions(options);
+    class CacheRootModule extends CacheModule {}
 
-  return defineModule(CacheModule, {
-    exports: [CacheService, CacheInterceptor],
-    global: normalized.isGlobal,
-    providers: createCacheProviders(options),
-  });
+    return defineModule(CacheRootModule, {
+      exports: [CacheService, CacheInterceptor],
+      global: normalized.isGlobal,
+      providers: createCacheProviders(options),
+    });
+  }
 }

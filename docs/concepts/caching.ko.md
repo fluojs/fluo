@@ -63,12 +63,12 @@
 ### 글로벌 인터셉터 등록
 
 ```ts
-import { CacheInterceptor, createCacheModule } from '@konekti/cache-manager';
+import { CacheInterceptor, CacheModule } from '@konekti/cache-manager';
 import { Module } from '@konekti/core';
 import { bootstrapApplication } from '@konekti/runtime';
 
 @Module({
-  imports: [createCacheModule({ store: 'memory' })],
+  imports: [CacheModule.forRoot({ store: 'memory' })],
 })
 class AppModule {}
 
@@ -83,9 +83,9 @@ await bootstrapApplication({
 ### 메모리 전용 구성
 
 ```ts
-import { createCacheModule } from '@konekti/cache-manager';
+import { CacheModule } from '@konekti/cache-manager';
 
-createCacheModule({ store: 'memory' });
+CacheModule.forRoot({ store: 'memory' });
 ```
 
 이 모드는 `@konekti/redis`나 `ioredis`를 요구하지 않습니다.
@@ -94,10 +94,10 @@ createCacheModule({ store: 'memory' });
 
 ```ts
 import { createRedisModule } from '@konekti/redis';
-import { createCacheModule } from '@konekti/cache-manager';
+import { CacheModule } from '@konekti/cache-manager';
 
 createRedisModule({ host: '127.0.0.1', port: 6379 });
-createCacheModule({ store: 'redis' });
+CacheModule.forRoot({ store: 'redis' });
 ```
 
 Redis 모드를 선택했는데 Redis 클라이언트를 찾지 못하면, 부트스트랩 초기에 명확한 설정 오류로 실패합니다.

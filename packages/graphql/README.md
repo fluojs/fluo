@@ -17,7 +17,7 @@ pnpm add @konekti/graphql
 import { Module } from '@konekti/core';
 import { MinLength } from '@konekti/validation';
 import { bootstrapNodeApplication } from '@konekti/runtime';
-import { Arg, createGraphqlModule, Mutation, Query, Resolver } from '@konekti/graphql';
+import { Arg, GraphqlModule, Mutation, Query, Resolver } from '@konekti/graphql';
 
 class EchoInput {
   @Arg('value')
@@ -43,7 +43,7 @@ class AppResolver {
 
 @Module({
   imports: [
-    createGraphqlModule({
+    GraphqlModule.forRoot({
       resolvers: [AppResolver],
     }),
   ],
@@ -62,7 +62,7 @@ await app.listen();
 
 ## Core API
 
-### `createGraphqlModule(options?)`
+### `GraphqlModule.forRoot(options?)`
 
 Registers GraphQL lifecycle wiring and endpoint controller.
 
@@ -118,7 +118,7 @@ interface GraphQLContext {
 
 #### Root barrel public-surface categories
 
-- **supported (`src/index.ts`)**: resolver decorators (`Resolver`, `Query`, `Mutation`, `Subscription`, `Arg`), module creators (`createGraphqlModule`, `createGraphqlProviders`), DataLoader helpers (`createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`), and documented metadata/type helpers.
+- **supported (`src/index.ts`)**: resolver decorators (`Resolver`, `Query`, `Mutation`, `Subscription`, `Arg`), module APIs (`GraphqlModule`, `createGraphqlProviders`), DataLoader helpers (`createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`), and documented metadata/type helpers.
 - **compatibility-only**: none.
 - **internal (non-public)**: `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`.
 
@@ -126,9 +126,9 @@ interface GraphQLContext {
 
 #### 0.x migration note
 
-- `GRAPHQL_MODULE_OPTIONS` and `GRAPHQL_LIFECYCLE_SERVICE` were removed from the public `@konekti/graphql` package surface in 0.x.
+- `createGraphqlModule`, `GRAPHQL_MODULE_OPTIONS`, and `GRAPHQL_LIFECYCLE_SERVICE` were removed from the public `@konekti/graphql` package surface in 0.x.
 - Consumers should stop importing these tokens from `@konekti/graphql`.
-- Supported usage remains `createGraphqlModule(...)`, resolver decorators, and documented helper APIs.
+- Supported usage remains `GraphqlModule.forRoot(...)`, resolver decorators, and documented helper APIs.
 
 ## Decorators
 
@@ -185,7 +185,7 @@ Maps DTO fields to GraphQL argument names for input binding.
 Use `plugins` to attach Yoga/Envelop plugins directly:
 
 ```typescript
-createGraphqlModule({
+GraphqlModule.forRoot({
   resolvers: [AppResolver],
   plugins: [
     {
@@ -379,7 +379,7 @@ Complexity and depth limiting are supported through Yoga/Envelop plugins passed 
 ```typescript
 import { useDepthLimit } from '@graphile/depth-limit';
 
-createGraphqlModule({
+GraphqlModule.forRoot({
   resolvers: [AppResolver],
   plugins: [
     useDepthLimit({ maxDepth: 8 }),
@@ -409,7 +409,7 @@ In addition to plain class providers and `useClass` registrations, GraphQL resol
 
 ```typescript
 import { Module } from '@konekti/core';
-import { Resolver, Query, createGraphqlModule } from '@konekti/graphql';
+import { GraphqlModule, Query, Resolver } from '@konekti/graphql';
 
 @Resolver('ConfiguredResolver')
 class ConfiguredResolver {
@@ -425,7 +425,7 @@ const configuredResolver = new ConfiguredResolver('Hello from useValue!');
 
 @Module({
   imports: [
-    createGraphqlModule(),
+    GraphqlModule.forRoot(),
   ],
   providers: [
     { provide: ConfiguredResolver, useValue: configuredResolver },
@@ -442,7 +442,7 @@ When `provider.scope` is omitted, GraphQL discovery and runtime scope handling f
 
 ```typescript
 import { Module } from '@konekti/core';
-import { Resolver, Query, createGraphqlModule } from '@konekti/graphql';
+import { GraphqlModule, Query, Resolver } from '@konekti/graphql';
 
 @Resolver('DynamicResolver')
 class DynamicResolver {
@@ -456,7 +456,7 @@ class DynamicResolver {
 
 @Module({
   imports: [
-    createGraphqlModule(),
+    GraphqlModule.forRoot(),
   ],
   providers: [
     {
@@ -480,7 +480,7 @@ class AppModule {}
 ## Subscriptions
 
 - Subscriptions are supported through GraphQL Yoga (SSE by default).
-- Set `createGraphqlModule({ subscriptions: { websocket: { enabled: true } } })` to enable the `graphql-ws` protocol on the shared Node HTTP adapter.
+- Set `GraphqlModule.forRoot({ subscriptions: { websocket: { enabled: true } } })` to enable the `graphql-ws` protocol on the shared Node HTTP adapter.
 - Websocket subscription context is still per GraphQL operation, so request-scoped resolvers and dependencies stay isolated across concurrent subscriptions.
 - `@Subscription()` resolvers must return an `AsyncIterable`; otherwise an error is thrown.
 
@@ -489,7 +489,7 @@ class AppModule {}
 ### Schema-first
 
 ```typescript
-createGraphqlModule({
+GraphqlModule.forRoot({
   schema: `type Query { hello: String! }`,
 });
 ```

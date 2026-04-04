@@ -14,12 +14,12 @@ npm install @konekti/throttler
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
+import { ThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
 import { Controller, Get, Post } from '@konekti/http';
 
 @Module({
   imports: [
-    createThrottlerModule({
+    ThrottlerModule.forRoot({
       ttl: 60,
       limit: 100,
     }),
@@ -41,7 +41,7 @@ class AuthController {
 
 ## API
 
-### `createThrottlerModule(options)`
+### `ThrottlerModule.forRoot(options)`
 
 글로벌 쓰로틀러 가드를 등록합니다. 옵션:
 
@@ -81,6 +81,7 @@ class ApiController {}
 
 - `THROTTLER_GUARD` 호환성 별칭이 공개 API에서 제거되었습니다.
 - `@UseGuards(...)` 및 DI 등록에서는 `ThrottlerGuard`를 직접 사용하세요.
+- 모듈 설정은 `createThrottlerModule(options)`에서 `ThrottlerModule.forRoot(options)`로 마이그레이션하세요.
 - 런타임 throttling 동작과 모듈 옵션 의미는 변경되지 않았습니다.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
@@ -90,7 +91,7 @@ class ApiController {}
 ## Redis 저장소
 
 ```typescript
-import { createThrottlerModule, RedisThrottlerStore } from '@konekti/throttler';
+import { RedisThrottlerStore, ThrottlerModule } from '@konekti/throttler';
 import { REDIS_CLIENT } from '@konekti/redis';
 import type Redis from 'ioredis';
 
@@ -99,7 +100,7 @@ class AppBootstrap {
   constructor(private readonly redis: Redis) {}
 
   buildModule() {
-    return createThrottlerModule({
+    return ThrottlerModule.forRoot({
       ttl: 60,
       limit: 100,
       store: new RedisThrottlerStore(this.redis),

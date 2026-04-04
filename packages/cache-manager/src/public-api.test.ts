@@ -4,7 +4,7 @@ import * as cacheManagerPublicApi from './index.js';
 
 describe('@konekti/cache-manager public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
-    expect(cacheManagerPublicApi).toHaveProperty('createCacheModule');
+    expect(cacheManagerPublicApi).toHaveProperty('CacheModule');
     expect(cacheManagerPublicApi).toHaveProperty('createCacheProviders');
     expect(cacheManagerPublicApi).toHaveProperty('CacheService');
     expect(cacheManagerPublicApi).toHaveProperty('CacheInterceptor');
@@ -20,6 +20,7 @@ describe('@konekti/cache-manager public API surface', () => {
   });
 
   it('does not expose removed compatibility aliases', () => {
+    expect(cacheManagerPublicApi).not.toHaveProperty('createCacheModule');
     expect(cacheManagerPublicApi).not.toHaveProperty('CACHE_MANAGER');
     expect(cacheManagerPublicApi).not.toHaveProperty('CACHE_INTERCEPTOR');
   });
