@@ -135,6 +135,12 @@ class AppModule {}
   - `CACHE_OPTIONS`
   - `CACHE_STORE`
 
+### 루트 배럴 공개 표면 분류
+
+- **지원됨 (`src/index.ts`)**: `createCacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, 데코레이터 (`CacheKey`, `CacheTTL`, `CacheEvict`), 상태 어댑터, 모듈/스토어 토큰 seam (`CACHE_OPTIONS`, `CACHE_STORE`).
+- **호환 전용 (0.x에서 제거된 별칭)**: `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **내부 (비공개)**: 구현 내부 모듈 wiring 외에는 없음.
+
 ## 동작 규약
 
 ### HTTP 인터셉터 동작 (CacheInterceptor)
