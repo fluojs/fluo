@@ -6,7 +6,7 @@ import { bootstrapApplication, defineModule, type PlatformComponent } from '@kon
 
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
-import { createTerminusModule } from './module.js';
+import { TerminusModule } from './module.js';
 import type { HealthIndicator } from './types.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -50,15 +50,15 @@ function createResponse(): TestResponse {
   };
 }
 
-describe('createTerminusModule', () => {
+describe('TerminusModule.forRoot', () => {
   it('returns 200 health details and ready status when all indicators are healthy', async () => {
     const indicators: HealthIndicator[] = [new MemoryHealthIndicator({ key: 'database' })];
-    const TerminusModule = createTerminusModule({ indicators });
+    const terminusModule = TerminusModule.forRoot({ indicators });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [TerminusModule],
+      imports: [terminusModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -111,12 +111,12 @@ describe('createTerminusModule', () => {
         },
       }),
     ];
-    const TerminusModule = createTerminusModule({ indicators });
+    const terminusModule = TerminusModule.forRoot({ indicators });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [TerminusModule],
+      imports: [terminusModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -159,12 +159,12 @@ describe('createTerminusModule', () => {
       },
     ];
 
-    const TerminusModule = createTerminusModule({ indicators });
+    const terminusModule = TerminusModule.forRoot({ indicators });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [TerminusModule],
+      imports: [terminusModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -208,7 +208,7 @@ describe('createTerminusModule', () => {
       },
     ];
 
-    const TerminusModule = createTerminusModule({
+    const terminusModule = TerminusModule.forRoot({
       indicators,
       readinessChecks: [() => false],
     });
@@ -216,7 +216,7 @@ describe('createTerminusModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [TerminusModule],
+      imports: [terminusModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -255,7 +255,7 @@ describe('createTerminusModule', () => {
     defineModule(AppModule, {
       imports: [
         RedisIndicatorModule,
-        createTerminusModule({
+        TerminusModule.forRoot({
           indicatorProviders: [createRedisHealthIndicatorProvider({ key: 'redis' })],
         }),
       ],
@@ -330,7 +330,7 @@ describe('createTerminusModule', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createTerminusModule({ indicators })],
+      imports: [TerminusModule.forRoot({ indicators })],
     });
 
     const app = await bootstrapApplication({

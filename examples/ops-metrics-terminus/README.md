@@ -7,7 +7,7 @@ Runnable Konekti operations example focused on `@konekti/metrics` and `@konekti/
 ## what this example demonstrates
 
 - `/metrics` via `MetricsModule.forRoot()`
-- `/health` and `/ready` via `createTerminusModule(...)`
+- `/health` and `/ready` via `TerminusModule.forRoot(...)`
 - one custom Prometheus counter registered on a shared Registry that is scraped through `MetricsModule`
 - runtime-aligned health/readiness semantics exposed through terminus and metrics
 - unit, integration, and e2e-style verification with `@konekti/testing`

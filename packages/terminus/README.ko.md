@@ -28,15 +28,15 @@ import { Module } from '@konekti/core';
 import {
   HttpHealthIndicator,
   MemoryHealthIndicator,
-  createTerminusModule,
+  TerminusModule,
 } from '@konekti/terminus';
 
 @Module({
   imports: [
-     createTerminusModule({
+     TerminusModule.forRoot({
        indicators: [
-         new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-         new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+          new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+          new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -60,9 +60,9 @@ DI 기반 인디케이터를 `/health`와 `/ready`에 참여시키려면 `indica
 
 ```typescript
 import { REDIS_CLIENT } from '@konekti/redis';
-import { createRedisHealthIndicatorProvider, createTerminusModule } from '@konekti/terminus';
+import { createRedisHealthIndicatorProvider, TerminusModule } from '@konekti/terminus';
 
-createTerminusModule({
+TerminusModule.forRoot({
   indicatorProviders: [createRedisHealthIndicatorProvider({ key: 'redis' })],
 });
 ```
@@ -78,7 +78,7 @@ Drizzle의 경우, 기본 경로는 `select 1`을 사용하는 **execute 가능�
 
 ## 주요 API
 
-- `createTerminusModule(options)`
+- `TerminusModule.forRoot(options)`
 - `createTerminusProviders(options)`
 - `runHealthCheck(indicators)`
 - `assertHealthCheck(report)`

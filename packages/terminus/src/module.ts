@@ -93,7 +93,7 @@ export function createTerminusProviders(options: TerminusModuleOptions = {}): Pr
   ];
 }
 
-export function createTerminusModule(options: TerminusModuleOptions = {}): ModuleType {
+function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): ModuleType {
   const readinessChecks = [...(options.readinessChecks ?? [])];
   const healthModule = createHealthModule({
     healthCheck: async (ctx: RequestContext) => {
@@ -127,9 +127,9 @@ export function createTerminusModule(options: TerminusModuleOptions = {}): Modul
 
   const TERMINUS_READINESS_REGISTRAR = Symbol('konekti.terminus.readiness-registrar');
 
-  class TerminusModule {}
+  class TerminusRuntimeModule {}
 
-  return defineModule(TerminusModule, {
+  return defineModule(TerminusRuntimeModule, {
     exports: [TERMINUS_HEALTH_INDICATORS, TerminusHealthService],
     imports: [healthModule],
     providers: [
@@ -169,4 +169,10 @@ export function createTerminusModule(options: TerminusModuleOptions = {}): Modul
       },
     ],
   });
+}
+
+export class TerminusModule {
+  static forRoot(options: TerminusModuleOptions = {}): ModuleType {
+    return createTerminusRuntimeModule(options);
+  }
 }
