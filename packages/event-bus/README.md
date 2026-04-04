@@ -15,7 +15,7 @@ npm install @konekti/event-bus
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createEventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
+import { EventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
 
 class UserRegisteredEvent {
   constructor(public readonly userId: string) {}
@@ -38,7 +38,7 @@ class UserService {
 }
 
 @Module({
-  imports: [createEventBusModule()],
+  imports: [EventBusModule.forRoot()],
   providers: [WelcomeEmailService, UserService],
 })
 export class AppModule {}
@@ -46,7 +46,7 @@ export class AppModule {}
 
 ## API
 
-- `createEventBusModule()` - registers global `EVENT_BUS` and lifecycle discovery service
+- `EventBusModule.forRoot()` - registers global `EVENT_BUS` and lifecycle discovery service
 - `createEventBusProviders()` - returns raw providers for manual composition
 - `EVENT_BUS` - DI token for the application event bus instance
 - `EventBus` - interface with `publish(event, options?)`
@@ -58,13 +58,13 @@ export class AppModule {}
 
 Runtime root-barrel governance tests cover runtime exports. Public TypeScript-only contracts documented below remain part of the package API, but they are not represented in `Object.keys(...)` snapshot assertions.
 
-- **supported**: `createEventBusModule`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
+- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
 - **compatibility-only**: `EVENT_BUS_OPTIONS` and metadata helper exports (`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`) remain exported for 0.x compatibility and framework/tooling integration, but are not recommended for new app-level imports.
 - **internal**: undocumented lifecycle/runtime wiring details are non-contract internals even when the broad root barrel currently re-exports related symbols.
 
 ### Module options
 
-`createEventBusModule(options)` and `createEventBusProviders(options)` accept:
+`EventBusModule.forRoot(options)` and `createEventBusProviders(options)` accept:
 
 - `publish.timeoutMs` - per-handler wait bound used when `publish()` waits for handlers (`waitForHandlers: true`)
 - `publish.waitForHandlers` - default waiting mode (`true` waits and applies timeout bounds, `false` dispatches fire-and-forget)
@@ -109,7 +109,7 @@ npm install ioredis
 
 ```typescript
 import Redis from 'ioredis';
-import { createEventBusModule } from '@konekti/event-bus';
+import { EventBusModule } from '@konekti/event-bus';
 import { RedisEventBusTransport } from '@konekti/event-bus/redis';
 
 const publishClient = new Redis();
@@ -117,7 +117,7 @@ const subscribeClient = new Redis();
 
 @Module({
   imports: [
-    createEventBusModule({
+    EventBusModule.forRoot({
       transport: new RedisEventBusTransport({ publishClient, subscribeClient }),
     }),
   ],

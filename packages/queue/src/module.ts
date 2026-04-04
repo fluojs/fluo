@@ -35,12 +35,14 @@ export function createQueueProviders(options: QueueModuleOptions = {}): Provider
   ];
 }
 
-export function createQueueModule(options: QueueModuleOptions = {}): ModuleType {
-  class QueueModule {}
+export class QueueModule {
+  static forRoot(options: QueueModuleOptions = {}): ModuleType {
+    class QueueModuleDefinition {}
 
-  return defineModule(QueueModule, {
-    exports: [QUEUE],
-    global: true,
-    providers: createQueueProviders(options),
-  });
+    return defineModule(QueueModuleDefinition, {
+      exports: [QUEUE],
+      global: true,
+      providers: createQueueProviders(options),
+    });
+  }
 }

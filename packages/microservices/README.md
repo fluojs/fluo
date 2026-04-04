@@ -25,7 +25,7 @@ npm install @konekti/microservices mqtt
 ```typescript
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
-import { createMicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
+import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -35,7 +35,7 @@ class MathHandler {
 }
 
 @Module({
-  imports: [createMicroservicesModule({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
+  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
   providers: [MathHandler],
 })
 class AppModule {}
@@ -46,7 +46,7 @@ await microservice.listen();
 
 ## API
 
-- `createMicroservicesModule(options)` - registers global `MICROSERVICE` lifecycle service
+- `MicroservicesModule.forRoot(options)` - registers global `MICROSERVICE` lifecycle service
 - `createMicroservicesProviders(options)` - returns raw providers for manual composition
 - `MICROSERVICE` - DI token for the runtime microservice service
 - `@MessagePattern(pattern)` - request/reply handler registration
@@ -66,7 +66,7 @@ await microservice.listen();
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `createMicroservicesModule`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
+- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
 - **compatibility-only**: `MICROSERVICE_OPTIONS`, metadata helper exports (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), and direct low-level lifecycle service imports such as `MicroserviceLifecycleService` remain exported for 0.x compatibility but are not recommended as primary application seams.
 - **internal**: root-barrel governance treats undocumented transport runtime internals as non-contract behavior even when reachable through broad barrel re-exports.
 
@@ -248,7 +248,7 @@ Server-streaming support allows a gRPC method to send a sequence of response mes
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   ServerStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -271,7 +271,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [MetricsHandler],
 })
 class ServerModule {}
@@ -308,7 +308,7 @@ Client-streaming support allows the client to send a sequence of messages and re
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   ClientStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -331,7 +331,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [MathHandler],
 })
 class ServerModule {}
@@ -374,7 +374,7 @@ Bidirectional-streaming support allows the client and server to exchange message
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   BidiStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -397,7 +397,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [EchoHandler],
 })
 class ServerModule {}

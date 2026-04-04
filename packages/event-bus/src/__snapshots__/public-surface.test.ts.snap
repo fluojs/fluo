@@ -4,8 +4,8 @@ exports[`@konekti/event-bus root barrel public surface > keeps the documented ro
 [
   "EVENT_BUS",
   "EVENT_BUS_OPTIONS",
+  "EventBusModule",
   "OnEvent",
-  "createEventBusModule",
   "createEventBusPlatformStatusSnapshot",
   "createEventBusProviders",
   "defineEventHandlerMetadata",

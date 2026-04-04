@@ -5,7 +5,7 @@ import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './kafka-transport.js';
-import { createMicroservicesModule } from './module.js';
+import { MicroservicesModule } from './module.js';
 import { MICROSERVICE } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 import { TcpMicroserviceTransport } from './tcp-transport.js';
@@ -208,7 +208,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Store, UserHandlers],
     });
 
@@ -239,7 +239,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Handler],
     });
 
@@ -293,7 +293,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Store, Handler],
     });
 
@@ -334,7 +334,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Store, Handler],
     });
 
@@ -376,7 +376,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       controllers: [ControllerLikeHandler],
       providers: [Store],
     });
@@ -426,7 +426,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Store, FirstHandler, SecondHandler],
     });
 
@@ -464,7 +464,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [SharedState, HybridHandlers],
     });
 
@@ -506,7 +506,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [Handler],
     });
 
@@ -538,7 +538,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [ExactHandler, RegexHandler],
     });
 
@@ -573,7 +573,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [RequestState, RequestScopedHandler],
     });
 
@@ -619,7 +619,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [RequestState, RequestScopedHandler],
     });
 
@@ -659,7 +659,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [RequestState, RequestScopedHandler],
     });
 
@@ -690,7 +690,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [BrokenHandler],
     });
 
@@ -730,7 +730,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [EventContext, RequestScopedEventHandler],
     });
 
@@ -781,7 +781,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [SharedScope, FirstEventHandler, SecondEventHandler],
     });
 
@@ -824,7 +824,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [DisposableContext, DisposableHandler],
     });
 
@@ -869,7 +869,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [DisposableContext, FailingHandler],
     });
 
@@ -901,7 +901,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [TransientHandler],
     });
 
@@ -946,7 +946,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [StreamContext, StreamHandler],
     });
 
@@ -995,7 +995,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [StreamContext, FailingStreamHandler],
     });
 
@@ -1041,7 +1041,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [StreamState, ScopedStreamHandler],
     });
 
@@ -1124,7 +1124,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [
         ClientStreamContext,
         ClientStreamHandler,
@@ -1201,7 +1201,7 @@ describe('@konekti/microservices', () => {
 
     class AppModule {}
     defineModuleMetadata(AppModule, {
-      imports: [createMicroservicesModule({ transport })],
+      imports: [MicroservicesModule.forRoot({ transport })],
       providers: [BidiStreamContext, BidiHandler, FailingBidiContext, FailingBidiHandler],
     });
 

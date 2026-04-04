@@ -15,7 +15,7 @@ npm install @konekti/cron croner
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createCronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
+import { CronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
 
 class BillingService {
   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
@@ -35,7 +35,7 @@ class BillingService {
 }
 
 @Module({
-  imports: [createCronModule()],
+  imports: [CronModule.forRoot()],
   providers: [BillingService],
 })
 export class AppModule {}
@@ -45,13 +45,13 @@ export class AppModule {}
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createCronModule } from '@konekti/cron';
-import { createRedisModule } from '@konekti/redis';
+import { CronModule } from '@konekti/cron';
+import { RedisModule } from '@konekti/redis';
 
 @Module({
   imports: [
-    createRedisModule({ host: '127.0.0.1', port: 6379 }),
-    createCronModule({
+    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    CronModule.forRoot({
       distributed: {
         enabled: true,
         keyPrefix: 'konekti:cron:lock',
@@ -63,11 +63,11 @@ import { createRedisModule } from '@konekti/redis';
 export class AppModule {}
 ```
 
-To run in distributed mode, register `REDIS_CLIENT` (for example via `createRedisModule(...)`) alongside `createCronModule(...)`. In distributed mode each tick acquires a Redis lock before running and attempts lock renewal while work is in progress; if lock ownership is lost or renewal fails before completion, the tick is treated as failed. If `REDIS_CLIENT` is missing or does not implement the required `set`/`eval` lock operations, application bootstrap fails instead of silently falling back to in-process scheduling.
+To run in distributed mode, register `REDIS_CLIENT` (for example via `RedisModule.forRoot(...)`) alongside `CronModule.forRoot(...)`. In distributed mode each tick acquires a Redis lock before running and attempts lock renewal while work is in progress; if lock ownership is lost or renewal fails before completion, the tick is treated as failed. If `REDIS_CLIENT` is missing or does not implement the required `set`/`eval` lock operations, application bootstrap fails instead of silently falling back to in-process scheduling.
 
 ## Runtime registry (dynamic scheduling)
 
-`createCronModule()` registers an injectable runtime registry token backed by the lifecycle service:
+`CronModule.forRoot()` registers an injectable runtime registry token backed by the lifecycle service:
 
 ```typescript
 import { Inject } from '@konekti/core';
@@ -107,7 +107,7 @@ Timeout behavior: after a timeout task fires, its task definition remains in the
 - `@Interval(ms, options?)` - marks a provider/controller method as an interval task
 - `@Timeout(ms, options?)` - marks a provider/controller method as a timeout task
 - `CronExpression` - common cron expression constants
-- `createCronModule(options?)` - registers cron lifecycle service and scheduler wiring
+- `CronModule.forRoot(options?)` - registers cron lifecycle service and scheduler wiring
 - `createCronProviders(options?)` - returns raw providers for manual composition
 - `SCHEDULING_REGISTRY` - inject runtime scheduling registry
 - `SchedulingRegistry` - runtime API for dynamic task registration and control
@@ -115,7 +115,7 @@ Timeout behavior: after a timeout task fires, its task definition remains in the
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: scheduling decorators (`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `createCronModule`, `createCronProviders`, `SCHEDULING_REGISTRY`, and status snapshot helpers.
+- **supported**: scheduling decorators (`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `CronModule.forRoot`, `createCronProviders`, `SCHEDULING_REGISTRY`, and status snapshot helpers.
 - **compatibility-only**: `CRON_OPTIONS`, `normalizeCronModuleOptions`, and metadata helper exports (`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`) remain exported for 0.x compatibility and framework/tooling integration, but are not recommended for new app-level imports.
 - **internal**: scheduler lifecycle internals beyond documented APIs are not part of the root-barrel contract.
 

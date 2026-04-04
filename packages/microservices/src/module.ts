@@ -18,12 +18,14 @@ export function createMicroservicesProviders(options: MicroserviceModuleOptions)
   ];
 }
 
-export function createMicroservicesModule(options: MicroserviceModuleOptions): ModuleType {
-  class MicroservicesModule {}
+export class MicroservicesModule {
+  static forRoot(options: MicroserviceModuleOptions): ModuleType {
+    class MicroservicesModuleDefinition {}
 
-  return defineModule(MicroservicesModule, {
-    exports: [MICROSERVICE],
-    global: true,
-    providers: createMicroservicesProviders(options),
-  });
+    return defineModule(MicroservicesModuleDefinition, {
+      exports: [MICROSERVICE],
+      global: true,
+      providers: createMicroservicesProviders(options),
+    });
+  }
 }

@@ -4,7 +4,8 @@ import * as cqrs from './index.js';
 
 describe('@konekti/cqrs root barrel public surface', () => {
   it('keeps the documented root exports stable for 0.x governance', () => {
-    expect(cqrs).toHaveProperty('createCqrsModule');
+    expect(cqrs).toHaveProperty('CqrsModule');
+    expect(cqrs).not.toHaveProperty('createCqrsModule');
     expect(cqrs).toHaveProperty('createCqrsProviders');
     expect(cqrs).toHaveProperty('COMMAND_BUS');
     expect(cqrs).toHaveProperty('QUERY_BUS');

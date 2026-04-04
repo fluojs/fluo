@@ -4,7 +4,8 @@ import * as microservices from './index.js';
 
 describe('@konekti/microservices root barrel public surface', () => {
   it('keeps the documented root exports stable for 0.x governance', () => {
-    expect(microservices).toHaveProperty('createMicroservicesModule');
+    expect(microservices).toHaveProperty('MicroservicesModule');
+    expect(microservices).not.toHaveProperty('createMicroservicesModule');
     expect(microservices).toHaveProperty('createMicroservicesProviders');
     expect(microservices).toHaveProperty('MessagePattern');
     expect(microservices).toHaveProperty('EventPattern');

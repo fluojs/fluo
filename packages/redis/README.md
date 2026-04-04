@@ -28,11 +28,11 @@ npm install @konekti/redis ioredis
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createRedisModule } from '@konekti/redis';
+import { RedisModule } from '@konekti/redis';
 
 @Module({
   imports: [
-    createRedisModule({
+    RedisModule.forRoot({
       host: process.env.REDIS_HOST,
       port: Number(process.env.REDIS_PORT ?? 6379),
       password: process.env.REDIS_PASSWORD,
@@ -63,7 +63,7 @@ export class CacheService {
 
 | Export | Location | Description |
 |---|---|---|
-| `createRedisModule(options)` | `src/module.ts` | Registers a global singleton Redis client module |
+| `RedisModule.forRoot(options)` | `src/module.ts` | Registers a global singleton Redis client module |
 | `createRedisProviders(options)` | `src/module.ts` | Returns the raw provider list for manual composition |
 | `REDIS_CLIENT` | `src/tokens.ts` | DI token for the shared raw `ioredis` client |
 | `RedisService` | `src/redis-service.ts` | Facade with JSON codec `get`/`set`/`del` helpers + `getRawClient()` escape hatch |
@@ -80,7 +80,7 @@ export class CacheService {
 
 ## Lifecycle behavior
 
-- `createRedisModule()` always creates the client with `lazyConnect: true`.
+- `RedisModule.forRoot()` always creates the client with `lazyConnect: true`.
 - `onModuleInit()` calls `connect()` only in `wait` state, so bootstrap fails early if Redis is required and connect fails.
 - `onApplicationShutdown()` skips work when already `end`, disconnects directly for non-quittable states, and otherwise prefers `quit()` with `disconnect()` fallback.
 - If `quit()` fails and the client still does not close, the original quit error is rethrown.
@@ -103,7 +103,7 @@ Use `createRedisPlatformStatusSnapshot({ status })` to emit runtime-safe ownersh
 ## Architecture
 
 ```text
-createRedisModule(options)
+RedisModule.forRoot(options)
   -> registers REDIS_CLIENT as a global singleton token
   -> registers lifecycle provider that manages connect/quit
 

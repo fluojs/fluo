@@ -15,7 +15,7 @@ import {
 } from './errors.js';
 import { CqrsEventBusService } from './event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
-import { createCqrsModule } from './module.js';
+import { CqrsModule } from './module.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
@@ -157,7 +157,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [Store, CreateUserHandler, GetUserHandler],
     });
 
@@ -187,7 +187,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -217,7 +217,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [FirstCreateUserHandler, SecondCreateUserHandler],
     });
 
@@ -241,7 +241,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [FirstGetUserHandler, SecondGetUserHandler],
     });
 
@@ -276,7 +276,7 @@ describe('@konekti/cqrs', () => {
   it('exposes EVENT_BUS as the canonical CQRS event-bus token', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -287,7 +287,7 @@ describe('@konekti/cqrs', () => {
     await app.close();
   });
 
-  it('accepts createCqrsModule handler option arrays and registers those classes', async () => {
+  it('accepts CqrsModule.forRoot handler option arrays and registers those classes', async () => {
     @CommandHandler(CreateUserCommand)
     class OptionCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
       execute(command: CreateUserCommand): string {
@@ -314,7 +314,7 @@ describe('@konekti/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCqrsModule({
+        CqrsModule.forRoot({
           commandHandlers: [OptionCreateUserHandler],
           eventBus: { publish: { waitForHandlers: true } },
           eventHandlers: [OptionEventRecorder],
@@ -437,7 +437,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [
         ProcessStore,
         StartPaymentHandler,
@@ -484,7 +484,7 @@ describe('@konekti/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCqrsModule({
+        CqrsModule.forRoot({
           sagas: [AccountActivationSaga],
         }),
       ],
@@ -515,7 +515,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [FailingSaga],
     });
 
@@ -549,7 +549,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule({ eventBus: { transport } })],
+      imports: [CqrsModule.forRoot({ eventBus: { transport } })],
       providers: [FailingEventHandler],
     });
 
@@ -581,7 +581,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [FirstEventHandler, SecondEventHandler],
     });
 
@@ -620,7 +620,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [SequenceStore, SequencingSaga],
     });
 
@@ -663,7 +663,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [ShutdownStore, ShutdownSaga],
     });
 
@@ -687,7 +687,7 @@ describe('@konekti/cqrs', () => {
     expect(store.completed).toBe(true);
   });
 
-  it('wires command/query/event buses through createCqrsModule with bootstrapApplication', async () => {
+  it('wires command/query/event buses through CqrsModule.forRoot with bootstrapApplication', async () => {
     class Store {
       commandCount = 0;
       eventNames: string[] = [];
@@ -736,7 +736,7 @@ describe('@konekti/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCqrsModule()],
+      imports: [CqrsModule.forRoot()],
       providers: [Store, CreateUserHandler, GetUserHandler, UserCreatedEventRecorder, UserCreatedOnEventProjection],
     });
 

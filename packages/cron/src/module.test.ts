@@ -7,7 +7,7 @@ import { bootstrapApplication, defineModule, type ApplicationLogger } from '@kon
 import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
 import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
-import { createCronModule } from './module.js';
+import { CronModule } from './module.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronScheduleOptions, CronScheduledJob, CronScheduler, SchedulingRegistry } from './types.js';
 
@@ -349,7 +349,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [FeatureModule, createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [FeatureModule, CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -392,7 +392,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [TickStore, SuccessTask, FailingTask],
     });
 
@@ -427,7 +427,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [TaskService],
     });
 
@@ -465,7 +465,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler })],
+      imports: [CronModule.forRoot({ scheduler })],
       providers: [PartialScheduleTaskService],
     });
 
@@ -489,7 +489,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [
         {
           provide: ReportService,
@@ -538,7 +538,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [RequestScopedReportController, TransientExportController],
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
     const app = await bootstrapApplication({
@@ -591,7 +591,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-test',
@@ -606,7 +606,7 @@ describe('@konekti/cron', () => {
     class SecondAppModule {}
     defineModule(SecondAppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-test',
@@ -654,7 +654,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-missing-redis',
@@ -683,7 +683,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-invalid-redis',
@@ -730,7 +730,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-shutdown-release',
@@ -745,7 +745,7 @@ describe('@konekti/cron', () => {
     class SecondAppModule {}
     defineModule(SecondAppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-shutdown-release',
@@ -809,7 +809,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
       providers: [TickStore, DefaultSchedulerTaskService],
     });
 
@@ -852,7 +852,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-invalid-ttl',
@@ -897,7 +897,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [HookedTaskService],
     });
 
@@ -935,7 +935,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [HookedFailingTaskService],
     });
 
@@ -976,7 +976,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [BeforeRunFailingTaskService],
     });
 
@@ -1014,7 +1014,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [OnErrorThrowingTaskService],
     });
 
@@ -1066,7 +1066,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-lock-loss',
@@ -1133,7 +1133,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-lock-renew-error',
@@ -1190,7 +1190,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-lock-trace',
@@ -1256,7 +1256,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-lock-overlap',
@@ -1325,7 +1325,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'cron-lock-due-renewal',
@@ -1382,7 +1382,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
       providers: [TickStore, TaskService],
     });
 
@@ -1414,7 +1414,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
       providers: [DuplicateTaskService],
     });
 
@@ -1427,7 +1427,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -1477,7 +1477,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -1531,7 +1531,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule({ scheduler: scheduled.scheduler })],
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
       providers: [TickStore, TaskService],
     });
 
@@ -1563,7 +1563,7 @@ describe('@konekti/cron', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'dynamic-distributed-interval',
@@ -1577,7 +1577,7 @@ describe('@konekti/cron', () => {
     class SecondAppModule {}
     defineModule(SecondAppModule, {
       imports: [
-        createCronModule({
+        CronModule.forRoot({
           distributed: {
             enabled: true,
             keyPrefix: 'dynamic-distributed-interval',
@@ -1638,7 +1638,7 @@ describe('@konekti/cron', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
       providers: [
         {
           provide: NonSingletonTaskService,
@@ -1670,7 +1670,7 @@ describe('@konekti/cron', () => {
   it('enforces global duplicate names for dynamic runtime registrations', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCronModule()],
+      imports: [CronModule.forRoot()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });

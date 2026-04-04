@@ -28,11 +28,11 @@ npm install @konekti/redis ioredis
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createRedisModule } from '@konekti/redis';
+import { RedisModule } from '@konekti/redis';
 
 @Module({
   imports: [
-    createRedisModule({
+    RedisModule.forRoot({
       host: process.env.REDIS_HOST,
       port: Number(process.env.REDIS_PORT ?? 6379),
       password: process.env.REDIS_PASSWORD,
@@ -63,7 +63,7 @@ export class CacheService {
 
 | Export | 위치 | 설명 |
 |---|---|---|
-| `createRedisModule(options)` | `src/module.ts` | global singleton Redis client 모듈 등록 |
+| `RedisModule.forRoot(options)` | `src/module.ts` | global singleton Redis client 모듈 등록 |
 | `createRedisProviders(options)` | `src/module.ts` | 수동 조합을 위한 raw provider 목록 반환 |
 | `REDIS_CLIENT` | `src/tokens.ts` | 공유 raw `ioredis` client용 DI 토큰 |
 | `RedisService` | `src/redis-service.ts` | JSON codec 기반 `get`/`set`/`del` facade + `getRawClient()` escape hatch |
@@ -80,7 +80,7 @@ export class CacheService {
 
 ## 라이프사이클 동작
 
-- `createRedisModule()`은 항상 `lazyConnect: true`로 client를 생성합니다.
+- `RedisModule.forRoot()`는 항상 `lazyConnect: true`로 client를 생성합니다.
 - `onModuleInit()`은 `wait` 상태에서만 `connect()`를 호출하므로, Redis가 필수인 경우 connect 실패를 bootstrap 단계에서 바로 드러냅니다.
 - `onApplicationShutdown()`은 이미 `end`면 종료 작업을 건너뛰고, `quit` 불가능 상태에서는 `disconnect()`를 직접 호출하며, 그 외에는 `quit()` 우선 + 실패 시 `disconnect()` 폴백을 사용합니다.
 - `quit()`가 실패했고 client가 여전히 닫히지 않았다면, 원래 `quit` 오류를 다시 던집니다.
@@ -103,7 +103,7 @@ export class CacheService {
 ## 구조
 
 ```text
-createRedisModule(options)
+RedisModule.forRoot(options)
   -> REDIS_CLIENT를 global singleton 토큰으로 등록
   -> connect/quit를 관리하는 lifecycle provider 등록
 

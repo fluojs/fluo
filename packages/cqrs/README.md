@@ -19,7 +19,7 @@ import {
   CommandHandler,
   COMMAND_BUS,
   CqrsEventBus,
-  createCqrsModule,
+  CqrsModule,
   EVENT_BUS,
   EventHandler,
   ICommand,
@@ -99,7 +99,7 @@ class UserService {
 
 @Module({
   imports: [
-    createCqrsModule({
+    CqrsModule.forRoot({
       commandHandlers: [CreateUserHandler],
       eventHandlers: [AuditLogProjection],
       queryHandlers: [GetUserCountHandler],
@@ -112,7 +112,7 @@ export class AppModule {}
 
 ## API
 
-- `createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - registers global `COMMAND_BUS`, `QUERY_BUS`, and CQRS `EVENT_BUS`, and imports `createEventBusModule()`.
+- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - registers global `COMMAND_BUS`, `QUERY_BUS`, and CQRS `EVENT_BUS`, and imports `EventBusModule.forRoot()`.
 - `createCqrsProviders()` - returns raw providers for manual composition.
 - `COMMAND_BUS` - DI token for `CommandBus`.
 - `QUERY_BUS` - DI token for `QueryBus`.
@@ -127,7 +127,7 @@ export class AppModule {}
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `createCqrsModule`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
+- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
 - **compatibility-only**: low-level metadata helpers/symbols (`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) and legacy not-found error alias exports remain available for 0.x compatibility but are not recommended for new application code.
 - **internal**: `CQRS_EVENT_BUS` is not part of the public root barrel contract.
 
@@ -141,7 +141,7 @@ export class AppModule {}
 - `commandHandlers`, `queryHandlers`, `eventHandlers`, and `sagas` are optional convenience arrays.
 - Each array item is added as a provider in the generated CQRS module.
 - Discovery still relies on decorators/compiled modules at bootstrap, so these arrays are an explicit registration path rather than a replacement for decorator metadata.
-- `eventBus` is passed through to `createEventBusModule(eventBus)`.
+- `eventBus` is passed through to `EventBusModule.forRoot(eventBus)`.
 
 ## Saga process-manager example
 
@@ -152,7 +152,7 @@ import {
   CommandHandler,
   COMMAND_BUS,
   CqrsEventBus,
-  createCqrsModule,
+  CqrsModule,
   EVENT_BUS,
   ICommand,
   ICommandHandler,
@@ -235,7 +235,7 @@ class OrderFulfillmentSaga implements ISaga<IEvent> {
 }
 
 @Module({
-  imports: [createCqrsModule()],
+  imports: [CqrsModule.forRoot()],
   providers: [StartPaymentHandler, ReserveInventoryHandler, CompleteOrderHandler, OrderFulfillmentSaga],
 })
 export class AppModule {}

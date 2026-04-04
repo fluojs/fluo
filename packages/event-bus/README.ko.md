@@ -15,7 +15,7 @@ npm install @konekti/event-bus
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createEventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
+import { EventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
 
 class UserRegisteredEvent {
   constructor(public readonly userId: string) {}
@@ -38,7 +38,7 @@ class UserService {
 }
 
 @Module({
-  imports: [createEventBusModule()],
+  imports: [EventBusModule.forRoot()],
   providers: [WelcomeEmailService, UserService],
 })
 export class AppModule {}
@@ -46,7 +46,7 @@ export class AppModule {}
 
 ## API
 
-- `createEventBusModule()` - 글로벌 `EVENT_BUS` 및 생명주기 검색 서비스를 등록합니다.
+- `EventBusModule.forRoot()` - 글로벌 `EVENT_BUS` 및 생명주기 검색 서비스를 등록합니다.
 - `createEventBusProviders()` - 수동 구성을 위한 로우(raw) 프로바이더를 반환합니다.
 - `EVENT_BUS` - 애플리케이션 이벤트 버스 인스턴스를 위한 DI 토큰입니다.
 - `EventBus` - `publish(event, options?)` 메서드를 포함하는 인터페이스입니다.
@@ -58,13 +58,13 @@ export class AppModule {}
 
 런타임 루트 배럴 거버넌스 테스트는 런타임 export를 기준으로 동작합니다. 아래에 문서화된 공개 TypeScript 전용 계약은 계속 패키지 API의 일부이지만, `Object.keys(...)` snapshot assertion에는 나타나지 않습니다.
 
-- **supported**: `createEventBusModule`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
+- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
 - **compatibility-only**: `EVENT_BUS_OPTIONS` 및 metadata helper export(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 export를 유지하지만, 신규 앱 레벨 import로는 권장하지 않습니다.
 - **internal**: 문서화되지 않은 lifecycle/runtime wiring 세부사항은 루트 배럴이 현재 관련 symbol을 재노출하더라도 비계약 내부 동작입니다.
 
 ### 모듈 옵션
 
-`createEventBusModule(options)`와 `createEventBusProviders(options)`는 다음 옵션을 허용합니다.
+`EventBusModule.forRoot(options)`와 `createEventBusProviders(options)`는 다음 옵션을 허용합니다.
 
 - `publish.timeoutMs` - `publish()`가 핸들러를 기다릴 때(`waitForHandlers: true`) 사용하는 핸들러별 대기 시간 제한입니다.
 - `publish.waitForHandlers` - 기본 대기 모드입니다 (`true`는 대기하며 타임아웃 제한을 적용하고, `false`는 fire-and-forget 방식으로 디스패치합니다).
@@ -109,7 +109,7 @@ npm install ioredis
 
 ```typescript
 import Redis from 'ioredis';
-import { createEventBusModule } from '@konekti/event-bus';
+import { EventBusModule } from '@konekti/event-bus';
 import { RedisEventBusTransport } from '@konekti/event-bus/redis';
 
 const publishClient = new Redis();
@@ -117,7 +117,7 @@ const subscribeClient = new Redis();
 
 @Module({
   imports: [
-    createEventBusModule({
+    EventBusModule.forRoot({
       transport: new RedisEventBusTransport({ publishClient, subscribeClient }),
     }),
   ],

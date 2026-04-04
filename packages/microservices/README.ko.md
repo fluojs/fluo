@@ -25,7 +25,7 @@ npm install @konekti/microservices mqtt
 ```typescript
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
-import { createMicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
+import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -35,7 +35,7 @@ class MathHandler {
 }
 
 @Module({
-  imports: [createMicroservicesModule({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
+  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
   providers: [MathHandler],
 })
 class AppModule {}
@@ -46,7 +46,7 @@ await microservice.listen();
 
 ## API
 
-- `createMicroservicesModule(options)` - 글로벌 `MICROSERVICE` 생명주기 서비스를 등록합니다.
+- `MicroservicesModule.forRoot(options)` - 글로벌 `MICROSERVICE` 생명주기 서비스를 등록합니다.
 - `createMicroservicesProviders(options)` - 수동 구성을 위한 로우(raw) 프로바이더를 반환합니다.
 - `MICROSERVICE` - 런타임 마이크로서비스 서비스를 위한 DI 토큰입니다.
 - `@MessagePattern(pattern)` - 요청/응답 핸들러를 등록합니다.
@@ -66,7 +66,7 @@ await microservice.listen();
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `createMicroservicesModule`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
+- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
 - **compatibility-only**: `MICROSERVICE_OPTIONS`, metadata helper export(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), `MicroserviceLifecycleService` 같은 저수준 lifecycle service 직접 import는 0.x 호환성을 위해 export를 유지하지만, 애플리케이션의 기본 seam으로는 권장하지 않습니다.
 - **internal**: 루트 배럴 거버넌스 기준에서 문서화되지 않은 트랜스포트 런타임 내부 동작은 광범위한 배럴 re-export로 접근 가능하더라도 비계약(non-contract) 동작입니다.
 
@@ -205,7 +205,7 @@ class PaymentsHandler {
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   ServerStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -228,7 +228,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [MetricsHandler],
 })
 class ServerModule {}
@@ -265,7 +265,7 @@ for await (const message of transport.serverStream('Metrics.StreamCpuUsage', { i
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   ClientStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -288,7 +288,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [MathHandler],
 })
 class ServerModule {}
@@ -331,7 +331,7 @@ console.log('total:', response); // { total: 6 }
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
 import {
-  createMicroservicesModule,
+  MicroservicesModule,
   BidiStreamPattern,
   GrpcMicroserviceTransport,
 } from '@konekti/microservices';
@@ -354,7 +354,7 @@ const transport = new GrpcMicroserviceTransport({
 });
 
 @Module({
-  imports: [createMicroservicesModule({ transport })],
+  imports: [MicroservicesModule.forRoot({ transport })],
   providers: [EchoHandler],
 })
 class ServerModule {}

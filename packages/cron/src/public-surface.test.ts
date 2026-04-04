@@ -8,7 +8,8 @@ describe('@konekti/cron root barrel public surface', () => {
     expect(cron).toHaveProperty('Interval');
     expect(cron).toHaveProperty('Timeout');
     expect(cron).toHaveProperty('CronExpression');
-    expect(cron).toHaveProperty('createCronModule');
+    expect(cron).toHaveProperty('CronModule');
+    expect(cron).not.toHaveProperty('createCronModule');
     expect(cron).toHaveProperty('createCronProviders');
     expect(cron).toHaveProperty('SCHEDULING_REGISTRY');
     expect(cron).toHaveProperty('createCronPlatformStatusSnapshot');

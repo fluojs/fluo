@@ -78,7 +78,7 @@ vi.mock('ioredis', () => ({
 }));
 
 import {
-  createRedisModule,
+  RedisModule,
   createRedisPlatformStatusSnapshot,
   REDIS_CLIENT,
   RedisService,
@@ -98,7 +98,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('connect failed');
@@ -119,7 +119,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -144,7 +144,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -159,7 +159,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -171,7 +171,7 @@ describe('@konekti/redis', () => {
   it('disconnects directly on shutdown when client is still waiting', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -191,7 +191,7 @@ describe('@konekti/redis', () => {
   it('skips shutdown work when client is already closed', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 })],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -221,7 +221,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -253,7 +253,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -280,7 +280,7 @@ describe('@konekti/redis', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createRedisModule({ host: '127.0.0.1', port: 6379 }), FeatureModule],
+      imports: [RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }), FeatureModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });

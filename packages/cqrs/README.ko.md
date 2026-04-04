@@ -19,7 +19,7 @@ import {
   CommandHandler,
   COMMAND_BUS,
   CqrsEventBus,
-  createCqrsModule,
+  CqrsModule,
   EVENT_BUS,
   EventHandler,
   ICommand,
@@ -99,7 +99,7 @@ class UserService {
 
 @Module({
   imports: [
-    createCqrsModule({
+    CqrsModule.forRoot({
       commandHandlers: [CreateUserHandler],
       eventHandlers: [AuditLogProjection],
       queryHandlers: [GetUserCountHandler],
@@ -112,7 +112,7 @@ export class AppModule {}
 
 ## API
 
-- `createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - 글로벌 `COMMAND_BUS`, `QUERY_BUS`, CQRS `EVENT_BUS`를 등록하고 내부적으로 `createEventBusModule()`을 import합니다.
+- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - 글로벌 `COMMAND_BUS`, `QUERY_BUS`, CQRS `EVENT_BUS`를 등록하고 내부적으로 `EventBusModule.forRoot()`를 import합니다.
 - `createCqrsProviders()` - 수동 조합을 위한 raw provider 목록을 반환합니다.
 - `COMMAND_BUS` - `CommandBus`용 DI 토큰입니다.
 - `QUERY_BUS` - `QueryBus`용 DI 토큰입니다.
@@ -127,7 +127,7 @@ export class AppModule {}
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `createCqrsModule`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
+- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
 - **compatibility-only**: 저수준 metadata helper/symbol(`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) 및 legacy not-found error alias export는 0.x 호환성을 위해 유지되지만, 신규 애플리케이션 코드의 기본 import 경로로는 권장하지 않습니다.
 - **internal**: `CQRS_EVENT_BUS`는 공개 루트 배럴 계약에 포함되지 않습니다.
 
@@ -141,7 +141,7 @@ export class AppModule {}
 - `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`는 선택적 편의 등록 배열입니다.
 - 배열 항목은 생성되는 CQRS 모듈의 provider로 추가됩니다.
 - 실제 핸들러 탐색은 부트스트랩 시점 decorator/compiled module 스캔을 계속 사용하므로, 이 배열은 데코레이터를 대체하는 방식이 아니라 명시적 등록 경로입니다.
-- `eventBus`는 `createEventBusModule(eventBus)`로 그대로 전달됩니다.
+- `eventBus`는 `EventBusModule.forRoot(eventBus)`로 그대로 전달됩니다.
 
 ## Saga process-manager 예시
 
@@ -152,7 +152,7 @@ import {
   CommandHandler,
   COMMAND_BUS,
   CqrsEventBus,
-  createCqrsModule,
+  CqrsModule,
   EVENT_BUS,
   ICommand,
   ICommandHandler,
@@ -235,7 +235,7 @@ class OrderFulfillmentSaga implements ISaga<IEvent> {
 }
 
 @Module({
-  imports: [createCqrsModule()],
+  imports: [CqrsModule.forRoot()],
   providers: [StartPaymentHandler, ReserveInventoryHandler, CompleteOrderHandler, OrderFulfillmentSaga],
 })
 export class AppModule {}

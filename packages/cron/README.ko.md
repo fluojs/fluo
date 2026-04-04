@@ -15,7 +15,7 @@ npm install @konekti/cron croner
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createCronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
+import { CronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
 
 class BillingService {
   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
@@ -35,7 +35,7 @@ class BillingService {
 }
 
 @Module({
-  imports: [createCronModule()],
+  imports: [CronModule.forRoot()],
   providers: [BillingService],
 })
 export class AppModule {}
@@ -45,13 +45,13 @@ export class AppModule {}
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createRedisModule } from '@konekti/redis';
-import { createCronModule } from '@konekti/cron';
+import { RedisModule } from '@konekti/redis';
+import { CronModule } from '@konekti/cron';
 
 @Module({
   imports: [
-    createRedisModule({ host: '127.0.0.1', port: 6379 }),
-    createCronModule({
+    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    CronModule.forRoot({
       distributed: {
         enabled: true,
         keyPrefix: 'konekti:cron:lock',
@@ -63,7 +63,7 @@ import { createCronModule } from '@konekti/cron';
 export class AppModule {}
 ```
 
-분산 모드를 실제로 사용하려면 `createRedisModule(...)`로 `REDIS_CLIENT`를 함께 등록해야 합니다. 이때만 락을 획득한 인스턴스가 tick 작업을 실행하며, 실행 중에는 락 갱신을 시도합니다. `REDIS_CLIENT`가 없거나 필요한 `set`/`eval` 락 연산을 구현하지 않으면, 런타임은 인프로세스 스케줄링으로 조용히 fallback하지 않고 애플리케이션 부트스트랩을 실패시킵니다.
+분산 모드를 실제로 사용하려면 `RedisModule.forRoot(...)`로 `REDIS_CLIENT`를 함께 등록해야 합니다. 이때만 락을 획득한 인스턴스가 tick 작업을 실행하며, 실행 중에는 락 갱신을 시도합니다. `REDIS_CLIENT`가 없거나 필요한 `set`/`eval` 락 연산을 구현하지 않으면, 런타임은 인프로세스 스케줄링으로 조용히 fallback하지 않고 애플리케이션 부트스트랩을 실패시킵니다.
 
 ## API
 
@@ -71,7 +71,7 @@ export class AppModule {}
 - `@Interval(ms, options?)`
 - `@Timeout(ms, options?)`
 - `CronExpression`
-- `createCronModule(options?)`
+- `CronModule.forRoot(options?)`
 - `createCronProviders(options?)`
 - `SCHEDULING_REGISTRY`
 - `SchedulingRegistry`
@@ -79,13 +79,13 @@ export class AppModule {}
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: 스케줄링 데코레이터(`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `createCronModule`, `createCronProviders`, `SCHEDULING_REGISTRY`, status snapshot helper를 지원합니다.
+- **supported**: 스케줄링 데코레이터(`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `CronModule.forRoot`, `createCronProviders`, `SCHEDULING_REGISTRY`, status snapshot helper를 지원합니다.
 - **compatibility-only**: `CRON_OPTIONS`, `normalizeCronModuleOptions` 및 metadata helper export(`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 유지되지만, 신규 앱 레벨 import로는 권장하지 않습니다.
 - **internal**: 문서화된 API를 넘어서는 scheduler lifecycle 내부 동작은 루트 배럴 계약에 포함되지 않습니다.
 
 ## 런타임 레지스트리(동적 스케줄링)
 
-`createCronModule()`은 라이프사이클 서비스 기반의 주입 가능한 런타임 레지스트리 토큰을 제공합니다.
+`CronModule.forRoot()`는 라이프사이클 서비스 기반의 주입 가능한 런타임 레지스트리 토큰을 제공합니다.
 
 ```typescript
 import { Inject } from '@konekti/core';

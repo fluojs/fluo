@@ -22,12 +22,14 @@ export function createRedisProviders(options: RedisModuleOptions): Provider[] {
   ];
 }
 
-export function createRedisModule(options: RedisModuleOptions): ModuleType {
-  class RedisModule {}
+export class RedisModule {
+  static forRoot(options: RedisModuleOptions): ModuleType {
+    class RedisModuleDefinition {}
 
-  return defineModule(RedisModule, {
-    global: true,
-    exports: [REDIS_CLIENT, RedisService],
-    providers: createRedisProviders(options),
-  });
+    return defineModule(RedisModuleDefinition, {
+      global: true,
+      exports: [REDIS_CLIENT, RedisService],
+      providers: createRedisProviders(options),
+    });
+  }
 }

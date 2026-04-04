@@ -15,8 +15,8 @@ npm install @konekti/queue @konekti/redis
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createQueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
-import { createRedisModule } from '@konekti/redis';
+import { QueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
+import { RedisModule } from '@konekti/redis';
 
 class SendWelcomeEmailJob {
   constructor(public readonly userId: string) {}
@@ -40,8 +40,8 @@ class UserService {
 
 @Module({
   imports: [
-    createRedisModule({ host: '127.0.0.1', port: 6379 }),
-    createQueueModule(),
+    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    QueueModule.forRoot(),
   ],
   providers: [SendWelcomeEmailWorker, UserService],
 })
@@ -50,7 +50,7 @@ export class AppModule {}
 
 ## API
 
-- `createQueueModule(options?)` - registers global `QUEUE` and lifecycle worker processing
+- `QueueModule.forRoot(options?)` - registers global `QUEUE` and lifecycle worker processing
 - `createQueueProviders(options?)` - returns raw providers for manual composition
 - `QUEUE` - DI token for queue enqueueing
 - `Queue` - interface with `enqueue(job)`
@@ -59,7 +59,7 @@ export class AppModule {}
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `createQueueModule`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker public types, and status snapshot helpers.
+- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker public types, and status snapshot helpers.
 - **compatibility-only**: none at the root barrel today; new compatibility shims (if any) must be explicitly documented here before release.
 - **internal**: `QUEUE_OPTIONS` remains internal and is intentionally excluded from the root barrel contract.
 
@@ -75,7 +75,7 @@ export class AppModule {}
 
 ## Requirements and boundaries
 
-- `@konekti/queue` requires `@konekti/redis`; import `createRedisModule(...)` alongside `createQueueModule(...)`
+- `@konekti/queue` requires `@konekti/redis`; import `RedisModule.forRoot(...)` alongside `QueueModule.forRoot(...)`
 - job payloads should stay DTO-like and JSON-serializable
 - queue workers are singleton-only and discovered during `onApplicationBootstrap()`
 - BullMQ is an internal implementation detail; the public API stays Konekti-native

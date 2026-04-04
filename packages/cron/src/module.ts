@@ -57,11 +57,13 @@ export function createCronProviders(options: CronModuleOptions = {}): Provider[]
   ];
 }
 
-export function createCronModule(options: CronModuleOptions = {}): ModuleType {
-  class CronModule {}
+export class CronModule {
+  static forRoot(options: CronModuleOptions = {}): ModuleType {
+    class CronModuleDefinition {}
 
-  return defineModule(CronModule, {
-    exports: [SCHEDULING_REGISTRY],
-    providers: createCronProviders(options),
-  });
+    return defineModule(CronModuleDefinition, {
+      exports: [SCHEDULING_REGISTRY],
+      providers: createCronProviders(options),
+    });
+  }
 }

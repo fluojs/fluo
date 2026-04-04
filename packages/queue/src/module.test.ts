@@ -222,7 +222,7 @@ vi.mock('bullmq', () => ({
 
 import { QueueWorker } from './decorators.js';
 import { getQueueWorkerMetadata } from './metadata.js';
-import { createQueueModule } from './module.js';
+import { QueueModule } from './module.js';
 import { QUEUE } from './tokens.js';
 import type { Queue } from './types.js';
 
@@ -367,7 +367,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [FeatureModule, createQueueModule()],
+      imports: [FeatureModule, QueueModule.forRoot()],
       providers: [UserService],
     });
 
@@ -412,7 +412,7 @@ describe('@konekti/queue', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [RequestControllerWorker],
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [TransientWorker],
     });
 
@@ -463,7 +463,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule({ defaultAttempts: 5, defaultConcurrency: 4 })],
+      imports: [QueueModule.forRoot({ defaultAttempts: 5, defaultConcurrency: 4 })],
       providers: [FailingWorker],
     });
 
@@ -521,7 +521,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [MutableFailingWorker],
     });
 
@@ -577,7 +577,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [WorkerStore, BootstrapWorker, BootstrapPublisher],
     });
 
@@ -609,7 +609,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [ShutdownFailingWorker],
     });
 
@@ -667,7 +667,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [StartupFirstWorker, StartupSecondWorker],
     });
 
@@ -700,7 +700,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [ShutdownStateWorker],
     });
 
@@ -734,7 +734,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [TimeoutFailingWorker],
     });
 
@@ -773,7 +773,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [RateLimitedWorker],
     });
 
@@ -806,7 +806,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule()],
+      imports: [QueueModule.forRoot()],
       providers: [InvalidRateLimitedWorker],
     });
 
@@ -839,7 +839,7 @@ describe('@konekti/queue', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createQueueModule({ defaultRateLimiter: { duration: Number.NaN, max: -3 } })],
+      imports: [QueueModule.forRoot({ defaultRateLimiter: { duration: Number.NaN, max: -3 } })],
       providers: [DefaultRateLimitedWorker],
     });
 
@@ -873,7 +873,7 @@ describe('@konekti/queue', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createQueueModule({
+        QueueModule.forRoot({
           defaultAttempts: 4,
           defaultBackoff: { delayMs: 600, type: 'fixed' },
           defaultConcurrency: 3,

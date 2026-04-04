@@ -18,12 +18,14 @@ export function createEventBusProviders(options: EventBusModuleOptions = {}): Pr
   ];
 }
 
-export function createEventBusModule(options: EventBusModuleOptions = {}): ModuleType {
-  class EventBusModule {}
+export class EventBusModule {
+  static forRoot(options: EventBusModuleOptions = {}): ModuleType {
+    class EventBusModuleDefinition {}
 
-  return defineModule(EventBusModule, {
-    exports: [EVENT_BUS],
-    global: true,
-    providers: createEventBusProviders(options),
-  });
+    return defineModule(EventBusModuleDefinition, {
+      exports: [EVENT_BUS],
+      global: true,
+      providers: createEventBusProviders(options),
+    });
+  }
 }

@@ -1,5 +1,5 @@
 import type { Provider } from '@konekti/di';
-import { createEventBusModule, type EventBusModuleOptions } from '@konekti/event-bus';
+import { EventBusModule, type EventBusModuleOptions } from '@konekti/event-bus';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
 import { CommandBusLifecycleService } from './command-bus.js';
@@ -58,13 +58,15 @@ export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[]
   ];
 }
 
-export function createCqrsModule(options: CqrsModuleOptions = {}): ModuleType {
-  class CqrsModule {}
+export class CqrsModule {
+  static forRoot(options: CqrsModuleOptions = {}): ModuleType {
+    class CqrsModuleDefinition {}
 
-  return defineModule(CqrsModule, {
-    exports: [COMMAND_BUS, QUERY_BUS, EVENT_BUS],
-    global: true,
-    imports: [createEventBusModule(options.eventBus)],
-    providers: createCqrsProviders(options),
-  });
+    return defineModule(CqrsModuleDefinition, {
+      exports: [COMMAND_BUS, QUERY_BUS, EVENT_BUS],
+      global: true,
+      imports: [EventBusModule.forRoot(options.eventBus)],
+      providers: createCqrsProviders(options),
+    });
+  }
 }

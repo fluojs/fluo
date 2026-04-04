@@ -15,8 +15,8 @@ npm install @konekti/queue @konekti/redis
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createQueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
-import { createRedisModule } from '@konekti/redis';
+import { QueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
+import { RedisModule } from '@konekti/redis';
 
 class SendWelcomeEmailJob {
   constructor(public readonly userId: string) {}
@@ -40,8 +40,8 @@ class UserService {
 
 @Module({
   imports: [
-    createRedisModule({ host: '127.0.0.1', port: 6379 }),
-    createQueueModule(),
+    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    QueueModule.forRoot(),
   ],
   providers: [SendWelcomeEmailWorker, UserService],
 })
@@ -50,7 +50,7 @@ export class AppModule {}
 
 ## API
 
-- `createQueueModule(options?)` - 글로벌 `QUEUE`와 lifecycle 기반 worker 처리를 등록합니다
+- `QueueModule.forRoot(options?)` - 글로벌 `QUEUE`와 lifecycle 기반 worker 처리를 등록합니다
 - `createQueueProviders(options?)` - 수동 조합을 위한 raw provider 목록을 반환합니다
 - `QUEUE` - queue enqueue를 위한 DI 토큰입니다
 - `Queue` - `enqueue(job)`를 제공하는 인터페이스입니다
@@ -59,7 +59,7 @@ export class AppModule {}
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `createQueueModule`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
+- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
 - **compatibility-only**: 현재 루트 배럴에는 별도 항목이 없습니다. 향후 호환성 shim이 추가되면 릴리스 전에 이 섹션에 명시적으로 문서화되어야 합니다.
 - **internal**: `QUEUE_OPTIONS`는 내부 항목으로 유지되며 루트 배럴 공개 계약에서 의도적으로 제외됩니다.
 
@@ -75,7 +75,7 @@ export class AppModule {}
 
 ## 요구 사항 및 경계
 
-- `@konekti/queue`는 `@konekti/redis`가 필요하므로 `createQueueModule(...)`과 함께 `createRedisModule(...)`을 등록해야 합니다
+- `@konekti/queue`는 `@konekti/redis`가 필요하므로 `QueueModule.forRoot(...)`과 함께 `RedisModule.forRoot(...)`를 등록해야 합니다
 - job payload는 DTO처럼 JSON 직렬화 가능한 형태여야 합니다
 - queue worker는 singleton만 지원하며 `onApplicationBootstrap()` 단계에서 탐색됩니다
 - BullMQ는 내부 구현 세부사항이며, 공개 API는 Konekti 표면만 노출합니다

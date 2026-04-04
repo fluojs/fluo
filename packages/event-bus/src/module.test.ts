@@ -6,7 +6,7 @@ import { bootstrapApplication, defineModule, type ApplicationLogger } from '@kon
 
 import { OnEvent } from './decorators.js';
 import { getEventHandlerMetadataEntries } from './metadata.js';
-import { createEventBusModule } from './module.js';
+import { EventBusModule } from './module.js';
 import { EventBusLifecycleService } from './service.js';
 import { EVENT_BUS } from './tokens.js';
 import type { EventBus, EventBusTransport } from './types.js';
@@ -114,7 +114,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, UserCreatedHandler],
     });
 
@@ -158,7 +158,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, SuccessfulHandler, FailingHandler],
     });
 
@@ -219,7 +219,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule({ transport })],
+      imports: [EventBusModule.forRoot({ transport })],
       providers: [EventStore, FirstHandler, SecondHandler],
     });
 
@@ -271,7 +271,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule({ publish: { timeoutMs: 20 } })],
+      imports: [EventBusModule.forRoot({ publish: { timeoutMs: 20 } })],
       providers: [EventStore, SuccessHandler, FailingHandler, HangingHandler],
     });
 
@@ -314,7 +314,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, SlowHandler],
     });
 
@@ -360,7 +360,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule({ publish: { timeoutMs: 10, waitForHandlers: false } })],
+      imports: [EventBusModule.forRoot({ publish: { timeoutMs: 10, waitForHandlers: false } })],
       providers: [EventStore, SlowHandler],
     });
 
@@ -400,7 +400,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, Handler],
     });
 
@@ -464,7 +464,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [FeatureModule, createEventBusModule()],
+      imports: [FeatureModule, EventBusModule.forRoot()],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -496,7 +496,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, BaseEventHandler],
     });
 
@@ -516,7 +516,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
     });
 
     const app = await bootstrapApplication({
@@ -557,7 +557,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, UserCreatedHandler, UserPublisher],
     });
 
@@ -591,7 +591,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [FeatureModule, createEventBusModule()],
+      imports: [FeatureModule, EventBusModule.forRoot()],
       providers: [SharedHandler],
     });
 
@@ -625,7 +625,7 @@ describe('@konekti/event-bus', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [TransientController],
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [RequestScopedProvider],
     });
 
@@ -689,7 +689,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [
         EventStore,
         MultiTokenHandler,
@@ -744,7 +744,7 @@ describe('@konekti/event-bus', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createEventBusModule()],
+      imports: [EventBusModule.forRoot()],
       providers: [EventStore, FirstCollidingHandler, SecondCollidingHandler],
     });
 
@@ -793,7 +793,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
       });
 
       const app = await bootstrapApplication({ rootModule: AppModule });
@@ -827,7 +827,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
       });
 
       const app = await bootstrapApplication({ rootModule: AppModule });
@@ -868,7 +868,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [HandlerA, HandlerB, HandlerC],
       });
 
@@ -895,7 +895,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [Handler],
       });
 
@@ -927,7 +927,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, TransportHandler],
       });
 
@@ -973,7 +973,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, SuccessfulTransportHandler, FailingTransportHandler],
       });
 
@@ -1024,7 +1024,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, BaseHandler, DerivedHandler],
       });
 
@@ -1077,7 +1077,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, InventoryHandler],
       });
 
@@ -1144,7 +1144,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, BaseHandler, DetailedHandler],
       });
 
@@ -1198,7 +1198,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
         providers: [EventStore, FirstHandler, SecondHandler],
       });
 
@@ -1220,7 +1220,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule({ transport })],
+        imports: [EventBusModule.forRoot({ transport })],
       });
 
       const app = await bootstrapApplication({ rootModule: AppModule });
@@ -1247,7 +1247,7 @@ describe('@konekti/event-bus', () => {
 
       class AppModule {}
       defineModule(AppModule, {
-        imports: [createEventBusModule()],
+        imports: [EventBusModule.forRoot()],
         providers: [EventStore, LocalHandler],
       });
 
