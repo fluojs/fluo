@@ -52,9 +52,7 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
   }
 
   /**
-   * Replaces the internal snapshot used by this service.
-   *
-   * @internal Runtime-owned reload path.
+   * Replaces the internal snapshot used by this service (runtime reload flow).
    */
   _replaceSnapshot(values: T): void {
     this.values = cloneConfigDictionary(values);

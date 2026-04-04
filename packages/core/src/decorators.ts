@@ -28,12 +28,12 @@ export function Global(): StandardClassDecoratorFn {
   };
 }
 
-export function Inject<const TTokens extends readonly Token[]>(
-  tokens: TupleOnly<TTokens>,
-): StandardClassDecoratorFn;
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  */
+export function Inject<const TTokens extends readonly Token[]>(
+  tokens: TupleOnly<TTokens>,
+): StandardClassDecoratorFn;
 export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn {
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
