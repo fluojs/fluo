@@ -256,6 +256,12 @@ getInternalHealth() { ... }
 
 추가적인 공개 익스포트에는 `OpenApiHandlerRegistry`, `OpenApiModuleOptions`, 그리고 `src/index.ts`에서 다시 익스포트되는 스키마/타입 인터페이스가 포함됩니다.
 
+### 루트 배럴 공개 표면 분류
+
+- **지원됨 (`src/index.ts`)**: 문서화된 모든 데코레이터, `OpenApiModule`, `OpenApiHandlerRegistry`, `buildOpenApiDocument(...)`, 메타데이터 리더, `schema-builder.ts`에서 다시 익스포트되는 스키마/타입 인터페이스.
+- **호환 전용**: 없음.
+- **내부 (비공개)**: 루트 배럴에서 익스포트되는 항목 없음.
+
 ### `buildOpenApiDocument(options)`
 
 서버를 구동하지 않고 핸들러 디스크립터로부터 직접 OpenAPI 문서를 빌드합니다.

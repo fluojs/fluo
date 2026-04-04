@@ -256,6 +256,12 @@ These are exported for advanced use cases (e.g. custom document generation pipel
 
 Additional public exports also include `OpenApiHandlerRegistry`, `OpenApiModuleOptions`, and the schema/type interfaces re-exported from `src/index.ts`.
 
+### Root barrel public-surface categories
+
+- **supported (`src/index.ts`)**: all documented decorators, `OpenApiModule`, `OpenApiHandlerRegistry`, `buildOpenApiDocument(...)`, metadata readers, and schema/type interfaces re-exported from `schema-builder.ts`.
+- **compatibility-only**: none.
+- **internal (non-public)**: none exported from the root barrel.
+
 ### `buildOpenApiDocument(options)`
 
 Builds the OpenAPI document directly from handler descriptors without mounting a server.
