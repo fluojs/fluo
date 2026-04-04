@@ -7,7 +7,7 @@
 ## 이 예제가 보여주는 것
 
 - `MetricsModule.forRoot()`를 통한 `/metrics`
-- `createTerminusModule(...)`을 통한 `/health`, `/ready`
+- `TerminusModule.forRoot(...)`를 통한 `/health`, `/ready`
 - `MetricsModule`이 scrape하는 shared Registry에 등록한 custom Prometheus counter 하나
 - terminus와 metrics에 함께 노출되는 runtime-aligned health/readiness semantics
 - `@konekti/testing`을 사용한 unit / integration / e2e 스타일 검증

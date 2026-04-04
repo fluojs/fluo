@@ -176,7 +176,3 @@ export class TerminusModule {
     return createTerminusRuntimeModule(options);
   }
 }
-
-export function createTerminusModule(options: TerminusModuleOptions = {}): ModuleType {
-  return TerminusModule.forRoot(options);
-}
