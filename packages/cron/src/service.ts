@@ -3,15 +3,13 @@ import type { Container, Provider } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import { Cron as CronValidator } from 'croner';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { createCronPlatformStatusSnapshot } from './status.js';

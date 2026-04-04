@@ -383,6 +383,8 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
 | `@Global()` | `@konekti/core` | Marks a module as globally visible |
 
+`@konekti/runtime` root barrel intentionally keeps only public runtime tokens (`APPLICATION_LOGGER`, `PLATFORM_SHELL`). Internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`) are available for framework-internal package composition via `@konekti/runtime/internal`.
+
 ## Architecture
 
 ### Bootstrap flow
@@ -445,7 +447,7 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 `KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
 
-Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createNodeHttpAdapter`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `raceWithAbort`, and `createAbortError`.
+Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createNodeHttpAdapter`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`.
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 

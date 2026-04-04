@@ -1,5 +1,6 @@
 import type { Provider, Container } from '@konekti/di';
-import { RUNTIME_CONTAINER, defineModule, type ModuleType } from '@konekti/runtime';
+import { defineModule, type ModuleType } from '@konekti/runtime';
+import { RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { CacheInterceptor } from './interceptor.js';
 import { MemoryStore } from './memory-store.js';

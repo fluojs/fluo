@@ -2,15 +2,13 @@ import { Inject, fallbackClone } from '@konekti/core';
 import type { Container } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { getQueueWorkerMetadata } from './metadata.js';

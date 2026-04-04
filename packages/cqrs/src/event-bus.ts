@@ -1,12 +1,7 @@
 import { Inject, InvariantError } from '@konekti/core';
 import { EVENT_BUS as KONEKTI_EVENT_BUS, type EventBus } from '@konekti/event-bus';
-import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
-  type OnApplicationShutdown,
-  type OnApplicationBootstrap,
-} from '@konekti/runtime';
+import type { OnApplicationShutdown, OnApplicationBootstrap } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { CqrsBusBase } from './discovery.js';
 import { createIsolatedEvent } from './event-clone.js';

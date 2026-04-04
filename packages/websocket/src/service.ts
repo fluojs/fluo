@@ -4,17 +4,8 @@ import type { Duplex } from 'node:stream';
 
 import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
 import type { Provider, Container } from '@konekti/di';
-import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  HTTP_APPLICATION_ADAPTER,
-  RUNTIME_CONTAINER,
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-  type OnModuleDestroy,
-} from '@konekti/runtime';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 import type { HttpApplicationAdapter } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 

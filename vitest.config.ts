@@ -16,11 +16,6 @@ function collectWorkspaceAliases(): Record<string, string> {
     const sourceRoot = join(packageRoot, 'src');
     const scopeName = `@konekti/${packageName}`;
 
-    const indexPath = join(sourceRoot, 'index.ts');
-    if (existsSync(indexPath)) {
-      aliases[scopeName] = indexPath;
-    }
-
     if (!existsSync(sourceRoot)) {
       continue;
     }
@@ -32,6 +27,14 @@ function collectWorkspaceAliases(): Record<string, string> {
 
       const subpath = sourceEntry.slice(0, -3);
       aliases[`${scopeName}/${subpath}`] = join(sourceRoot, sourceEntry);
+    }
+
+    // Register subpath aliases before the package root alias.
+    // Vite/Rollup alias resolution is first-prefix-match, so this keeps
+    // '@konekti/<pkg>/<subpath>' from being shadowed by '@konekti/<pkg>'.
+    const indexPath = join(sourceRoot, 'index.ts');
+    if (existsSync(indexPath)) {
+      aliases[scopeName] = indexPath;
     }
   }
 
