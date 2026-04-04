@@ -123,28 +123,46 @@ export function createDrizzleProviders<
   });
 }
 
-export function createDrizzleModule<
+function buildDrizzleModule<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
   TTransactionOptions = unknown,
 >(options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>): ModuleType {
-  class DrizzleModule {}
+  class DrizzleRootModuleDefinition {}
 
-  return defineModule(DrizzleModule, {
+  return defineModule(DrizzleRootModuleDefinition, {
     exports: DRIZZLE_MODULE_EXPORTS,
     providers: createDrizzleProviders(options),
   });
 }
 
-export function createDrizzleModuleAsync<
+function buildDrizzleModuleAsync<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
   TTransactionOptions = unknown,
 >(options: AsyncModuleOptions<DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>>): ModuleType {
-  class DrizzleAsyncModule {}
+  class DrizzleAsyncModuleDefinition {}
 
-  return defineModule(DrizzleAsyncModule, {
+  return defineModule(DrizzleAsyncModuleDefinition, {
     exports: DRIZZLE_MODULE_EXPORTS,
     providers: createDrizzleProvidersAsync(options),
   });
+}
+
+export class DrizzleModule {
+  static forRoot<
+    TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+    TTransactionDatabase = TDatabase,
+    TTransactionOptions = unknown,
+  >(options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>): ModuleType {
+    return buildDrizzleModule<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
+  }
+
+  static forRootAsync<
+    TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
+    TTransactionDatabase = TDatabase,
+    TTransactionOptions = unknown,
+  >(options: AsyncModuleOptions<DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>>): ModuleType {
+    return buildDrizzleModuleAsync<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
+  }
 }

@@ -17,7 +17,7 @@ import {
 } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/validation';
 
-import { createPrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
+import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -226,13 +226,13 @@ describe('@konekti/prisma vertical slice', () => {
       }
     }
 
-    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
 
     class AppModule {}
 
     defineModule(AppModule, {
       controllers: [UsersController],
-      imports: [PrismaModule],
+      imports: [prismaModule],
       providers: [UserRepository, UserService],
     });
 

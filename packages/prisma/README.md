@@ -29,21 +29,21 @@ npm install @prisma/client
 ### 1. Register the module
 
 ```typescript
-import { createPrismaModule } from '@konekti/prisma';
+import { PrismaModule } from '@konekti/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 // In your root module definition:
-const AppModule = createPrismaModule({ client: prisma });
+const AppModule = PrismaModule.forRoot({ client: prisma });
 ```
 
 ### 1-a. Register asynchronously when dependencies are needed
 
 ```typescript
-import { createPrismaModuleAsync } from '@konekti/prisma';
+import { PrismaModule } from '@konekti/prisma';
 
-const AppModule = createPrismaModuleAsync({
+const AppModule = PrismaModule.forRootAsync({
   inject: [ConfigService],
   useFactory: async (config: ConfigService) => ({
     client: new PrismaClient({
@@ -132,7 +132,7 @@ class RawClientConsumer {
 
 ### `createPrismaProviders(options)`
 
-Returns DI provider array. Use this when composing providers manually instead of using `createPrismaModule`.
+Returns DI provider array. Use this when composing providers manually instead of using `PrismaModule.forRoot(...)`.
 
 ```typescript
 import { createPrismaProviders } from '@konekti/prisma';
@@ -140,11 +140,11 @@ import { createPrismaProviders } from '@konekti/prisma';
 const providers = createPrismaProviders({ client: prisma });
 ```
 
-### `createPrismaModule(options)` / `createPrismaModuleAsync(options)`
+### `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 
 Convenience wrappers that call `createPrismaProviders` (sync) or resolve the same options through an async factory (async) and wrap the result in a Konekti module definition.
 
-`createPrismaModuleAsync(...)` memoizes the async factory result once per module instance.
+`PrismaModule.forRootAsync(...)` memoizes the async factory result once per module instance.
 
 `PrismaModuleOptions` supports `strictTransactions?: boolean`:
 
@@ -217,7 +217,7 @@ Start here to understand the full package in ~15 minutes:
 2. `src/types.ts` — `PrismaClientLike` seam; shows the minimum contract required
 3. `src/service.ts` — `PrismaService`: `current()`, `transaction()`, `requestTransaction()`, ALS usage
 4. `src/transaction.ts` — `PrismaTransactionInterceptor`: the request boundary that opens transactions
-5. `src/module.ts` — `createPrismaProviders()` and `createPrismaModule()`: how everything wires together
+5. `src/module.ts` — `createPrismaProviders()`, `PrismaModule.forRoot()`, and `PrismaModule.forRootAsync()`: how everything wires together
 6. `src/vertical-slice.test.ts` — integration test: DTO → validation → service → repository → Prisma path; the canonical 201 / 400 / 404 contract
 
 ## Related packages

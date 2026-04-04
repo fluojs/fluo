@@ -16,7 +16,7 @@ import {
   type FrameworkResponse,
 } from '@konekti/http';
 
-import { createMongooseModule, MongooseConnection, MongooseTransactionInterceptor } from './index.js';
+import { MongooseModule, MongooseConnection, MongooseTransactionInterceptor } from './index.js';
 import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
@@ -192,7 +192,7 @@ describe('@konekti/mongoose vertical slice', () => {
       }
     }
 
-    const MongooseModule = createMongooseModule<typeof connection>({
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
       connection,
       dispose() {
         events.push('dispose');
@@ -203,7 +203,7 @@ describe('@konekti/mongoose vertical slice', () => {
 
     defineModule(AppModule, {
       controllers: [UsersController],
-      imports: [MongooseModule],
+      imports: [mongooseModule],
       providers: [UserRepository, UserService],
     });
 

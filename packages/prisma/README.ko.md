@@ -29,21 +29,21 @@ npm install @prisma/client
 ### 1. 모듈 등록
 
 ```typescript
-import { createPrismaModule } from '@konekti/prisma';
+import { PrismaModule } from '@konekti/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 // 루트 모듈 정의에서:
-const AppModule = createPrismaModule({ client: prisma });
+const AppModule = PrismaModule.forRoot({ client: prisma });
 ```
 
 ### 1-a. 의존성이 필요하면 비동기 모듈 등록 사용
 
 ```typescript
-import { createPrismaModuleAsync } from '@konekti/prisma';
+import { PrismaModule } from '@konekti/prisma';
 
-const AppModule = createPrismaModuleAsync({
+const AppModule = PrismaModule.forRootAsync({
   inject: [ConfigService],
   useFactory: async (config: ConfigService) => ({
     client: new PrismaClient({
@@ -132,7 +132,7 @@ class RawClientConsumer {
 
 ### `createPrismaProviders(options)`
 
-DI 프로바이더 배열을 반환합니다. `createPrismaModule` 대신 프로바이더를 수동으로 구성할 때 사용합니다.
+DI 프로바이더 배열을 반환합니다. `PrismaModule.forRoot(...)` 대신 프로바이더를 수동으로 구성할 때 사용합니다.
 
 ```typescript
 import { createPrismaProviders } from '@konekti/prisma';
@@ -140,11 +140,11 @@ import { createPrismaProviders } from '@konekti/prisma';
 const providers = createPrismaProviders({ client: prisma });
 ```
 
-### `createPrismaModule(options)` / `createPrismaModuleAsync(options)`
+### `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 
 sync는 `createPrismaProviders`를 직접 감싸고, async는 비동기 factory로 같은 옵션을 해석한 뒤 Konekti 모듈 정의로 감싸는 편의 함수입니다.
 
-`createPrismaModuleAsync(...)`는 모듈 인스턴스 기준으로 async factory 결과를 1회 memoize합니다.
+`PrismaModule.forRootAsync(...)`는 모듈 인스턴스 기준으로 async factory 결과를 1회 memoize합니다.
 
 `PrismaModuleOptions`는 `strictTransactions?: boolean`을 지원합니다.
 
@@ -217,7 +217,7 @@ Prisma Client
 2. `src/types.ts` — `PrismaClientLike` seam; 최소 계약(contract) 확인
 3. `src/service.ts` — `PrismaService`: `current()`, `transaction()`, `requestTransaction()`, ALS 사용 방식
 4. `src/transaction.ts` — `PrismaTransactionInterceptor`: 트랜잭션을 여는 요청 경계
-5. `src/module.ts` — `createPrismaProviders()`와 `createPrismaModule()`: 모든 것이 어떻게 연결되는지
+5. `src/module.ts` — `createPrismaProviders()`, `PrismaModule.forRoot()`, `PrismaModule.forRootAsync()`: 모든 것이 어떻게 연결되는지
 6. `src/vertical-slice.test.ts` — 통합 테스트: DTO → 검증 → 서비스 → 리포지토리 → Prisma 경로; 표준 201 / 400 / 404 계약
 
 ## 관련 패키지

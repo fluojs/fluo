@@ -104,24 +104,36 @@ export function createMongooseProviders<TConnection extends MongooseConnectionLi
   });
 }
 
-export function createMongooseModule<TConnection extends MongooseConnectionLike>(
+function buildMongooseModule<TConnection extends MongooseConnectionLike>(
   options: MongooseModuleOptions<TConnection>,
 ): ModuleType {
-  class MongooseModule {}
+  class MongooseRootModuleDefinition {}
 
-  return defineModule(MongooseModule, {
+  return defineModule(MongooseRootModuleDefinition, {
     exports: MONGOOSE_MODULE_EXPORTS,
     providers: createMongooseProviders(options),
   });
 }
 
-export function createMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
+function buildMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
   options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
 ): ModuleType {
-  class MongooseAsyncModule {}
+  class MongooseAsyncModuleDefinition {}
 
-  return defineModule(MongooseAsyncModule, {
+  return defineModule(MongooseAsyncModuleDefinition, {
     exports: MONGOOSE_MODULE_EXPORTS,
     providers: createMongooseProvidersAsync(options),
   });
+}
+
+export class MongooseModule {
+  static forRoot<TConnection extends MongooseConnectionLike>(options: MongooseModuleOptions<TConnection>): ModuleType {
+    return buildMongooseModule<TConnection>(options);
+  }
+
+  static forRootAsync<TConnection extends MongooseConnectionLike>(
+    options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
+  ): ModuleType {
+    return buildMongooseModuleAsync<TConnection>(options);
+  }
 }

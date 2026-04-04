@@ -4,8 +4,7 @@ import { Global, Inject, Module } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import {
-  createDrizzleModule,
-  createDrizzleModuleAsync,
+  DrizzleModule,
   createDrizzlePlatformStatusSnapshot,
   DrizzleDatabase,
 } from './index.js';
@@ -63,7 +62,7 @@ describe('@konekti/drizzle', () => {
       }
     }
 
-    const DrizzleModule = createDrizzleModule<typeof database, typeof transactionDatabase>({
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
       database,
       dispose(current) {
         events.push(`dispose:${current === database}`);
@@ -73,7 +72,7 @@ describe('@konekti/drizzle', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [DrizzleModule],
+      imports: [drizzleModule],
       providers: [UserService],
     });
 
@@ -121,7 +120,7 @@ describe('@konekti/drizzle', () => {
       },
     };
 
-    const DrizzleModule = createDrizzleModule<typeof database, typeof transactionDatabase>({
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
       database,
       dispose() {
         events.push('dispose');
@@ -131,7 +130,7 @@ describe('@konekti/drizzle', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [DrizzleModule],
+      imports: [drizzleModule],
     });
 
     const app = await bootstrapApplication({
@@ -157,7 +156,7 @@ describe('@konekti/drizzle', () => {
   it('enforces strictTransactions for sync and async module builders', async () => {
     const database = {};
 
-    const StrictSyncModule = createDrizzleModule({
+    const StrictSyncModule = DrizzleModule.forRoot({
       database,
       strictTransactions: true,
     });
@@ -179,7 +178,7 @@ describe('@konekti/drizzle', () => {
 
     await syncApp.close();
 
-    const StrictAsyncModule = createDrizzleModuleAsync({
+    const StrictAsyncModule = DrizzleModule.forRootAsync({
       useFactory: () => ({
         database,
         strictTransactions: true,
@@ -237,7 +236,7 @@ describe('@konekti/drizzle', () => {
     const database = {};
     let requestRejected = false;
 
-    const DrizzleModule = createDrizzleModule<typeof database>({
+    const drizzleModule = DrizzleModule.forRoot<typeof database>({
       database,
       dispose() {
         events.push('dispose');
@@ -247,7 +246,7 @@ describe('@konekti/drizzle', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [DrizzleModule],
+      imports: [drizzleModule],
     });
 
     const app = await bootstrapApplication({
@@ -397,7 +396,7 @@ describe('@konekti/drizzle', () => {
   });
 });
 
-describe('createDrizzleModuleAsync', () => {
+describe('DrizzleModule.forRootAsync', () => {
   function makeFakeDatabase() {
     const events: string[] = [];
     const transactionDatabase = {};
@@ -425,7 +424,7 @@ describe('createDrizzleModuleAsync', () => {
 
     const factory = vi.fn().mockResolvedValue({ database });
 
-    const DrizzleModule = createDrizzleModuleAsync<typeof database, typeof transactionDatabase>({
+    const drizzleModule = DrizzleModule.forRootAsync<typeof database, typeof transactionDatabase>({
       inject: [ConfigService],
       useFactory: factory,
     });
@@ -433,7 +432,7 @@ describe('createDrizzleModuleAsync', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [ConfigModule, DrizzleModule],
+      imports: [ConfigModule, drizzleModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -451,13 +450,13 @@ describe('createDrizzleModuleAsync', () => {
   it('factory returning a promise resolves the database correctly', async () => {
     const { database, transactionDatabase } = makeFakeDatabase();
 
-    const DrizzleModule = createDrizzleModuleAsync<typeof database, typeof transactionDatabase>({
+    const drizzleModule = DrizzleModule.forRootAsync<typeof database, typeof transactionDatabase>({
       useFactory: () => Promise.resolve({ database }),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [DrizzleModule] });
+    defineModule(AppModule, { imports: [drizzleModule] });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const db = await app.container.resolve(DrizzleDatabase);
@@ -468,13 +467,13 @@ describe('createDrizzleModuleAsync', () => {
   });
 
   it('propagates factory errors during module initialization', async () => {
-    const DrizzleModule = createDrizzleModuleAsync({
+    const drizzleModule = DrizzleModule.forRootAsync({
       useFactory: () => Promise.reject(new Error('db config fetch failed')),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [DrizzleModule] });
+    defineModule(AppModule, { imports: [drizzleModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('db config fetch failed');
   });

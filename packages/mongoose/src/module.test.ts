@@ -4,8 +4,7 @@ import { Global, Inject, Module } from '@konekti/core';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 
 import {
-  createMongooseModule,
-  createMongooseModuleAsync,
+  MongooseModule,
   createMongoosePlatformStatusSnapshot,
   MongooseConnection,
 } from './index.js';
@@ -62,7 +61,7 @@ describe('@konekti/mongoose', () => {
       }
     }
 
-    const MongooseModule = createMongooseModule<typeof connection>({
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
       connection,
       dispose(current) {
         events.push(`dispose:${current === connection}`);
@@ -72,7 +71,7 @@ describe('@konekti/mongoose', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MongooseModule],
+      imports: [mongooseModule],
       providers: [UserService],
     });
 
@@ -119,7 +118,7 @@ describe('@konekti/mongoose', () => {
       },
     };
 
-    const MongooseModule = createMongooseModule<typeof connection>({
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
       connection,
       dispose() {
         events.push('dispose');
@@ -129,7 +128,7 @@ describe('@konekti/mongoose', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MongooseModule],
+      imports: [mongooseModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -187,7 +186,7 @@ describe('@konekti/mongoose', () => {
       },
     };
 
-    const MongooseModule = createMongooseModule<typeof connection>({
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
       connection,
       dispose() {
         events.push('dispose');
@@ -197,7 +196,7 @@ describe('@konekti/mongoose', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MongooseModule],
+      imports: [mongooseModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -233,7 +232,7 @@ describe('@konekti/mongoose', () => {
   it('enforces strictTransactions for sync and async module builders', async () => {
     const connection = {};
 
-    const StrictSyncModule = createMongooseModule({
+    const StrictSyncModule = MongooseModule.forRoot({
       connection,
       strictTransactions: true,
     });
@@ -255,7 +254,7 @@ describe('@konekti/mongoose', () => {
 
     await syncApp.close();
 
-    const StrictAsyncModule = createMongooseModuleAsync({
+    const StrictAsyncModule = MongooseModule.forRootAsync({
       useFactory: () => ({
         connection,
         strictTransactions: true,
@@ -486,7 +485,7 @@ describe('@konekti/mongoose', () => {
   });
 });
 
-describe('createMongooseModuleAsync', () => {
+describe('MongooseModule.forRootAsync', () => {
   function makeFakeConnection() {
     const events: string[] = [];
     const session = createFakeSession(events);
@@ -514,7 +513,7 @@ describe('createMongooseModuleAsync', () => {
 
     const factory = vi.fn().mockResolvedValue({ connection });
 
-    const MongooseModule = createMongooseModuleAsync<typeof connection>({
+    const mongooseModule = MongooseModule.forRootAsync<typeof connection>({
       inject: [ConfigService],
       useFactory: factory,
     });
@@ -522,7 +521,7 @@ describe('createMongooseModuleAsync', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [ConfigModule, MongooseModule],
+      imports: [ConfigModule, mongooseModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -540,13 +539,13 @@ describe('createMongooseModuleAsync', () => {
   it('factory returning a promise resolves the connection correctly', async () => {
     const { connection } = makeFakeConnection();
 
-    const MongooseModule = createMongooseModuleAsync<typeof connection>({
+    const mongooseModule = MongooseModule.forRootAsync<typeof connection>({
       useFactory: () => Promise.resolve({ connection }),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [MongooseModule] });
+    defineModule(AppModule, { imports: [mongooseModule] });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const conn = await app.container.resolve(MongooseConnection);
@@ -557,13 +556,13 @@ describe('createMongooseModuleAsync', () => {
   });
 
   it('propagates factory errors during module initialization', async () => {
-    const MongooseModule = createMongooseModuleAsync({
+    const mongooseModule = MongooseModule.forRootAsync({
       useFactory: () => Promise.reject(new Error('mongo config fetch failed')),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [MongooseModule] });
+    defineModule(AppModule, { imports: [mongooseModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('mongo config fetch failed');
   });

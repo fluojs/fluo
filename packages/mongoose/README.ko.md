@@ -29,14 +29,14 @@ npm install @konekti/mongoose
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createMongooseModule } from '@konekti/mongoose';
+import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
 const connection = mongoose.createConnection(process.env.MONGODB_URI);
 
 @Module({
   imports: [
-    createMongooseModule({
+    MongooseModule.forRoot({
       connection,
       dispose: async (conn) => {
         await conn.close();
@@ -83,7 +83,7 @@ await this.conn.transaction(async () => {
 ```typescript
 import { Global, Module } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
-import { createMongooseModuleAsync } from '@konekti/mongoose';
+import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
 @Global()
@@ -96,7 +96,7 @@ class ConfigModule {}
 @Module({
   imports: [
     ConfigModule,
-    createMongooseModuleAsync({
+    MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => ({
         connection: mongoose.createConnection(config.get('MONGODB_URI')),
@@ -112,8 +112,8 @@ class AppModule {}
 | Export | 위치 | 설명 |
 |---|---|---|
 | `MongooseConnection` | `src/connection.ts` | `current()`, `currentSession()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()` 포함 래퍼 |
-| `createMongooseModule(options)` | `src/module.ts` | 모든 프로바이더가 포함된 import 가능한 Konekti 모듈 생성 |
-| `createMongooseModuleAsync(options)` | `src/module.ts` | 주입된 의존성이나 비동기 팩토리로부터 모듈 옵션을 해석 |
+| `MongooseModule.forRoot(options)` | `src/module.ts` | 모든 프로바이더가 포함된 import 가능한 Konekti 모듈 생성 |
+| `MongooseModule.forRootAsync(options)` | `src/module.ts` | 주입된 의존성이나 비동기 팩토리로부터 모듈 옵션을 해석 |
 | `createMongooseProviders(options)` | `src/module.ts` | 수동 등록을 위한 원시 프로바이더 배열 반환 |
 | `createMongoosePlatformStatusSnapshot(input)` | `src/status.ts` | ownership/readiness/health/details를 공통 플랫폼 스냅샷 형태로 매핑 |
 | `MongooseTransactionInterceptor` | `src/transaction.ts` | 자동 요청 범위 트랜잭션을 위한 선택적 인터셉터 |

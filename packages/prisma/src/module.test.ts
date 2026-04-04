@@ -5,8 +5,7 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 import { Global, Module } from '@konekti/core';
 
 import {
-  createPrismaModule,
-  createPrismaModuleAsync,
+  PrismaModule,
   createPrismaPlatformStatusSnapshot,
   PRISMA_CLIENT,
   PRISMA_OPTIONS,
@@ -73,12 +72,12 @@ describe('@konekti/prisma', () => {
       }
     }
 
-    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
       providers: [UserService],
     });
 
@@ -138,12 +137,12 @@ describe('@konekti/prisma', () => {
       },
     };
 
-    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
     });
 
     const app = await bootstrapApplication({
@@ -203,14 +202,14 @@ describe('@konekti/prisma', () => {
       },
     };
 
-    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient, { signal?: AbortSignal }>({
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient, { signal?: AbortSignal }>({
       client,
     });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
     });
 
     const app = await bootstrapApplication({
@@ -265,12 +264,12 @@ describe('@konekti/prisma', () => {
       },
     };
 
-    const PrismaModule = createPrismaModule<typeof client, typeof transactionClient>({ client });
+    const prismaModule = PrismaModule.forRoot<typeof client, typeof transactionClient>({ client });
 
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
     });
 
     const app = await bootstrapApplication({
@@ -454,7 +453,7 @@ describe('@konekti/prisma', () => {
       async $disconnect() {},
     };
 
-    const PrismaModule = createPrismaModule<typeof client>({
+    const prismaModule = PrismaModule.forRoot<typeof client>({
       client,
       strictTransactions: false,
     });
@@ -462,7 +461,7 @@ describe('@konekti/prisma', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
     });
 
     const app = await bootstrapApplication({
@@ -482,7 +481,7 @@ describe('@konekti/prisma', () => {
       async $disconnect() {},
     };
 
-    const PrismaModule = createPrismaModule<typeof client>({
+    const prismaModule = PrismaModule.forRoot<typeof client>({
       client,
       strictTransactions: true,
     });
@@ -490,7 +489,7 @@ describe('@konekti/prisma', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [PrismaModule],
+      imports: [prismaModule],
     });
 
     const app = await bootstrapApplication({
@@ -561,7 +560,7 @@ describe('@konekti/prisma', () => {
   });
 });
 
-describe('createPrismaModuleAsync', () => {
+describe('PrismaModule.forRootAsync', () => {
   function makeFakeClient() {
     const events: string[] = [];
     const transactionClient = {
@@ -598,7 +597,7 @@ describe('createPrismaModuleAsync', () => {
 
     const factory = vi.fn().mockResolvedValue({ client });
 
-    const PrismaModule = createPrismaModuleAsync<typeof client, typeof transactionClient>({
+    const prismaModule = PrismaModule.forRootAsync<typeof client, typeof transactionClient>({
       inject: [ConfigService],
       useFactory: factory,
     });
@@ -606,7 +605,7 @@ describe('createPrismaModuleAsync', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [ConfigModule, PrismaModule],
+      imports: [ConfigModule, prismaModule],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -629,13 +628,13 @@ describe('createPrismaModuleAsync', () => {
   it('factory returning a promise resolves the client correctly', async () => {
     const { client, transactionClient } = makeFakeClient();
 
-    const PrismaModule = createPrismaModuleAsync<typeof client, typeof transactionClient>({
+    const prismaModule = PrismaModule.forRootAsync<typeof client, typeof transactionClient>({
       useFactory: () => Promise.resolve({ client }),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [PrismaModule] });
+    defineModule(AppModule, { imports: [prismaModule] });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService);
@@ -651,13 +650,13 @@ describe('createPrismaModuleAsync', () => {
       async $disconnect() {},
     };
 
-    const PrismaModule = createPrismaModuleAsync({
+    const prismaModule = PrismaModule.forRootAsync({
       useFactory: () => Promise.resolve({ client, strictTransactions: true }),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [PrismaModule] });
+    defineModule(AppModule, { imports: [prismaModule] });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const prisma = await app.container.resolve(PrismaService<typeof client>);
@@ -670,13 +669,13 @@ describe('createPrismaModuleAsync', () => {
   });
 
   it('propagates factory errors during module initialization', async () => {
-    const PrismaModule = createPrismaModuleAsync({
+    const prismaModule = PrismaModule.forRootAsync({
       useFactory: () => Promise.reject(new Error('secret fetch failed')),
     });
 
     class AppModule {}
 
-    defineModule(AppModule, { imports: [PrismaModule] });
+    defineModule(AppModule, { imports: [prismaModule] });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow('secret fetch failed');
   });

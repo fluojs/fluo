@@ -30,7 +30,7 @@ npm install @konekti/drizzle
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createDrizzleModule } from '@konekti/drizzle';
+import { DrizzleModule } from '@konekti/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
@@ -39,7 +39,7 @@ const db = drizzle(pool);
 
 @Module({
   imports: [
-    createDrizzleModule({
+    DrizzleModule.forRoot({
       database: db,
       dispose: async (database) => {
         await pool.end();
@@ -53,9 +53,9 @@ export class AppModule {}
 ### 비동기 모듈 등록
 
 ```typescript
-import { createDrizzleModuleAsync } from '@konekti/drizzle';
+import { DrizzleModule } from '@konekti/drizzle';
 
-const DrizzleModule = createDrizzleModuleAsync({
+const databaseModule = DrizzleModule.forRootAsync({
   inject: [ConfigService],
   useFactory: async (config: ConfigService) => ({
     database: createDrizzleHandle(config.get('DATABASE_URL')),
@@ -122,8 +122,8 @@ class UsersController {}
 | Export | 위치 | 설명 |
 |---|---|---|
 | `DrizzleDatabase` | `src/database.ts` | `current()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()`을 가진 wrapper |
-| `createDrizzleModule(options)` | `src/module.ts` | 모든 provider를 포함한 importable Konekti 모듈 생성 |
-| `createDrizzleModuleAsync(options)` | `src/module.ts` | async 옵션을 1회 해석해 동일한 provider surface를 등록하는 비동기 변형 |
+| `DrizzleModule.forRoot(options)` | `src/module.ts` | 모든 provider를 포함한 importable Konekti 모듈 생성 |
+| `DrizzleModule.forRootAsync(options)` | `src/module.ts` | async 옵션을 1회 해석해 동일한 provider surface를 등록하는 비동기 변형 |
 | `createDrizzleProviders(options)` | `src/module.ts` | 수동 등록을 위한 raw provider 배열 반환 |
 | `createDrizzlePlatformStatusSnapshot(input)` | `src/status.ts` | ownership/readiness/health/details를 공통 플랫폼 스냅샷 형태로 매핑 |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | 자동 per-request transaction을 위한 opt-in interceptor |
@@ -137,7 +137,7 @@ class UsersController {}
 ## 구조
 
 ```
-createDrizzleModule({ database, dispose?, strictTransactions? })
+DrizzleModule.forRoot({ database, dispose?, strictTransactions? })
   → DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS 토큰 등록
   → DrizzleDatabase와 DrizzleTransactionInterceptor를 export provider로 등록
 
@@ -192,7 +192,7 @@ cleanup hook을 database value에서 분리하면:
 1. `src/types.ts` — `DrizzleDatabaseLike`, `DrizzleModuleOptions`, `DrizzleHandleProvider`
 2. `src/tokens.ts` — `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`
 3. `src/database.ts` — `DrizzleDatabase` wrapper, ALS 기반 tx context
-4. `src/module.ts` — `createDrizzleProviders`, `createDrizzleModule`
+4. `src/module.ts` — `createDrizzleProviders`, `DrizzleModule.forRoot`, `DrizzleModule.forRootAsync`
 5. `src/transaction.ts` — `DrizzleTransactionInterceptor`
 6. `src/module.test.ts` — root handle 사용, callback 안의 tx handle, dispose hook
 

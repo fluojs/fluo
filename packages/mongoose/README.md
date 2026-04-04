@@ -29,14 +29,14 @@ npm install @konekti/mongoose
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createMongooseModule } from '@konekti/mongoose';
+import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
 const connection = mongoose.createConnection(process.env.MONGODB_URI);
 
 @Module({
   imports: [
-    createMongooseModule({
+    MongooseModule.forRoot({
       connection,
       dispose: async (conn) => {
         await conn.close();
@@ -94,7 +94,7 @@ class UsersController {}
 ```typescript
 import { Global, Module } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
-import { createMongooseModuleAsync } from '@konekti/mongoose';
+import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
 @Global()
@@ -107,7 +107,7 @@ class ConfigModule {}
 @Module({
   imports: [
     ConfigModule,
-    createMongooseModuleAsync({
+    MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => ({
         connection: mongoose.createConnection(config.get('MONGODB_URI')),
@@ -123,8 +123,8 @@ class AppModule {}
 | Export | Location | Description |
 |---|---|---|
 | `MongooseConnection` | `src/connection.ts` | Wrapper with `current()`, `currentSession()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()` |
-| `createMongooseModule(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
-| `createMongooseModuleAsync(options)` | `src/module.ts` | Resolves module options from injected dependencies or async factories |
+| `MongooseModule.forRoot(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
+| `MongooseModule.forRootAsync(options)` | `src/module.ts` | Resolves module options from injected dependencies or async factories |
 | `createMongooseProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
 | `createMongoosePlatformStatusSnapshot(input)` | `src/status.ts` | Maps ownership/readiness/health/details to the shared platform snapshot shape |
 | `MongooseTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
@@ -139,7 +139,7 @@ class AppModule {}
 ## Architecture
 
 ```
-createMongooseModule({ connection, dispose?, strictTransactions? })
+MongooseModule.forRoot({ connection, dispose?, strictTransactions? })
   → registers MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, and MONGOOSE_OPTIONS tokens
   → registers MongooseConnection and MongooseTransactionInterceptor as exported providers
 
@@ -191,7 +191,7 @@ Use `createMongoosePlatformStatusSnapshot(...)` (or `mongooseConnection.createPl
 1. `src/types.ts` — `MongooseConnectionLike`, `MongooseSessionLike`, `MongooseModuleOptions`, `MongooseHandleProvider`
 2. `src/tokens.ts` — `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 3. `src/connection.ts` — `MongooseConnection` wrapper, ALS-based session context
-4. `src/module.ts` — `createMongooseProviders`, `createMongooseModule`
+4. `src/module.ts` — `createMongooseProviders`, `MongooseModule.forRoot`, `MongooseModule.forRootAsync`
 5. `src/transaction.ts` — `MongooseTransactionInterceptor`
 6. `src/module.test.ts` — connection usage, session transactions, dispose hook
 

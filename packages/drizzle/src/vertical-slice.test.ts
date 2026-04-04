@@ -16,7 +16,7 @@ import {
   type FrameworkResponse,
 } from '@konekti/http';
 
-import { createDrizzleModule, DrizzleDatabase, DrizzleTransactionInterceptor } from './index.js';
+import { DrizzleModule, DrizzleDatabase, DrizzleTransactionInterceptor } from './index.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -206,7 +206,7 @@ describe('@konekti/drizzle vertical slice', () => {
       }
     }
 
-    const DrizzleModule = createDrizzleModule<typeof database, typeof transactionDatabase>({
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
       database,
       dispose() {
         events.push('dispose');
@@ -217,7 +217,7 @@ describe('@konekti/drizzle vertical slice', () => {
 
     defineModule(AppModule, {
       controllers: [UsersController],
-      imports: [DrizzleModule],
+      imports: [drizzleModule],
       providers: [UserRepository, UserService],
     });
 

@@ -30,7 +30,7 @@ npm install @konekti/drizzle
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createDrizzleModule } from '@konekti/drizzle';
+import { DrizzleModule } from '@konekti/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
@@ -39,7 +39,7 @@ const db = drizzle(pool);
 
 @Module({
   imports: [
-    createDrizzleModule({
+    DrizzleModule.forRoot({
       database: db,
       dispose: async (database) => {
         await pool.end();
@@ -53,9 +53,9 @@ export class AppModule {}
 ### Async module registration
 
 ```typescript
-import { createDrizzleModuleAsync } from '@konekti/drizzle';
+import { DrizzleModule } from '@konekti/drizzle';
 
-const DrizzleModule = createDrizzleModuleAsync({
+const databaseModule = DrizzleModule.forRootAsync({
   inject: [ConfigService],
   useFactory: async (config: ConfigService) => ({
     database: createDrizzleHandle(config.get('DATABASE_URL')),
@@ -122,8 +122,8 @@ class UsersController {}
 | Export | Location | Description |
 |---|---|---|
 | `DrizzleDatabase` | `src/database.ts` | Wrapper with `current()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()` |
-| `createDrizzleModule(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
-| `createDrizzleModuleAsync(options)` | `src/module.ts` | Async variant that resolves module options once and registers the same provider surface |
+| `DrizzleModule.forRoot(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
+| `DrizzleModule.forRootAsync(options)` | `src/module.ts` | Async variant that resolves module options once and registers the same provider surface |
 | `createDrizzleProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
 | `createDrizzlePlatformStatusSnapshot(input)` | `src/status.ts` | Maps ownership/readiness/health/details to the shared platform snapshot shape |
 | `DrizzleTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
@@ -137,7 +137,7 @@ class UsersController {}
 ## Architecture
 
 ```
-createDrizzleModule({ database, dispose?, strictTransactions? })
+DrizzleModule.forRoot({ database, dispose?, strictTransactions? })
   → registers DRIZZLE_DATABASE, DRIZZLE_DISPOSE, and DRIZZLE_OPTIONS tokens
   → registers DrizzleDatabase and DrizzleTransactionInterceptor as exported providers
 
@@ -192,7 +192,7 @@ Use `createDrizzlePlatformStatusSnapshot(...)` (or `drizzleDatabase.createPlatfo
 1. `src/types.ts` — `DrizzleDatabaseLike`, `DrizzleModuleOptions`, `DrizzleHandleProvider`
 2. `src/tokens.ts` — `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`
 3. `src/database.ts` — `DrizzleDatabase` wrapper, ALS-based tx context
-4. `src/module.ts` — `createDrizzleProviders`, `createDrizzleModule`
+4. `src/module.ts` — `createDrizzleProviders`, `DrizzleModule.forRoot`, `DrizzleModule.forRootAsync`
 5. `src/transaction.ts` — `DrizzleTransactionInterceptor`
 6. `src/module.test.ts` — root handle usage, tx handle inside callback, dispose hook
 
