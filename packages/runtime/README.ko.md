@@ -155,7 +155,7 @@ await context.close();
 ```typescript
 import { Module } from '@konekti/core';
 import { KonektiFactory } from '@konekti/runtime';
-import { createMicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
+import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@konekti/microservices';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -165,7 +165,7 @@ class MathHandler {
 }
 
 @Module({
-  imports: [createMicroservicesModule({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
+  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
   providers: [MathHandler],
 })
 class AppModule {}

@@ -93,10 +93,10 @@ This mode does not require `@konekti/redis` or `ioredis`.
 ### redis-backed setup
 
 ```ts
-import { createRedisModule } from '@konekti/redis';
+import { RedisModule } from '@konekti/redis';
 import { CacheModule } from '@konekti/cache-manager';
 
-createRedisModule({ host: '127.0.0.1', port: 6379 });
+RedisModule.forRoot({ host: '127.0.0.1', port: 6379 });
 CacheModule.forRoot({ store: 'redis' });
 ```
 

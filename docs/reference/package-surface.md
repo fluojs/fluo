@@ -82,6 +82,7 @@ When consuming these packages, favor injecting the concrete service/guard/interc
 
 - **Prefer class**: `UsersService`, `AuthGuard`, `RedisService`, `PrismaService`.
 - **Prefer token**: `CONFIG_OPTIONS`, `REDIS_CLIENT`, `EVENT_BUS`, `JWT_SIGN_OPTIONS`.
+- **Keep helper factories explicit**: class-first module naming does not rename helper builders such as `createTestingModule(...)`, `createHealthModule()`, and related testing/runtime helpers.
 
 Refer to `docs/concepts/di-and-modules.md` for the technical principles behind class-first DI.
 

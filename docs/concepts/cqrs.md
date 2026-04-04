@@ -26,10 +26,10 @@ It also publishes issue-aligned base contracts:
 - `IEventHandler<TEvent extends IEvent>`
 - `ISaga<TEvent extends IEvent>` — saga/process-manager contract for event-driven orchestration
 
-`createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` registers those global tokens and imports `createEventBusModule()` automatically, so CQRS event publishing works without extra module wiring.
+`CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` registers those global tokens and imports `EventBusModule.forRoot()` automatically, so CQRS event publishing works without extra module wiring.
 
 - `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`: optional convenience arrays that are added as providers in the generated CQRS module.
-- `eventBus`: forwarded to `createEventBusModule(eventBus)`.
+- `eventBus`: forwarded to `EventBusModule.forRoot(eventBus)`.
 
 ## handler registration model
 
@@ -132,7 +132,7 @@ class OrderSaga implements ISaga<OrderSubmittedEvent> {
 - Saga dispatches run through per-saga execution chains, so concurrent `publish()` calls are applied in deterministic order for each saga instance.
 - Unexpected saga failures throw `SagaExecutionError` from `publish()`.
 - In-flight saga executions are drained during application shutdown.
-- Register sagas via the `sagas` option in `createCqrsModule({ sagas: [...] })` or rely on decorator discovery at bootstrap.
+- Register sagas via the `sagas` option in `CqrsModule.forRoot({ sagas: [...] })` or rely on decorator discovery at bootstrap.
 
 ## mental model
 
