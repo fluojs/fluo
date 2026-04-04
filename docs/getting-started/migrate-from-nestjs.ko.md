@@ -531,6 +531,12 @@ export class AppModule {}
 
 `ConfigModule.forRoot()`는 env 파일을 로드하고 기본적으로 `ConfigService`를 글로벌 provider로 등록합니다(`isGlobal: true`). 모듈 스코프로 제한하려면 `isGlobal: false`를 사용하고, 특정 env 파일은 `envFile` 또는 `envFilePath`로 지정할 수 있습니다.
 
+### 마이그레이션 시 런타임 모듈 네이밍 규칙
+
+애플리케이션 모듈 import에 참여하는 런타임 모듈은 Nest 스타일 canonical 엔트리포인트(`SomeModule.forRoot(...)`)를 사용하세요.
+
+런타임 모듈 엔트리포인트가 아닌 helper/builder는 `create*` 네이밍을 유지하세요(예: `createTestingModule(...)`, `createHealthModule()`).
+
 ## 8) 테스트
 
 Nest는 `@nestjs/testing`의 `Test.createTestingModule`을 사용합니다.
