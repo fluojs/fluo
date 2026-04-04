@@ -137,6 +137,12 @@ As of the current `0.x` line, `CACHE_MANAGER` and `CACHE_INTERCEPTOR` are remove
   - `CACHE_OPTIONS`
   - `CACHE_STORE`
 
+### Root barrel public-surface categories
+
+- **supported (`src/index.ts`)**: `createCacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, decorators (`CacheKey`, `CacheTTL`, `CacheEvict`), status adapters, and module/store token seams (`CACHE_OPTIONS`, `CACHE_STORE`).
+- **compatibility-only (0.x removed aliases)**: `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **internal (non-public)**: none beyond implementation-private module wiring.
+
 ## Behavior
 
 ### HTTP Interceptor Behavior (CacheInterceptor)
