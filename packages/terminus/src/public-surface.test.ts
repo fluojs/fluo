@@ -9,4 +9,9 @@ describe('terminus public surface', () => {
     expect(terminus).toHaveProperty('TerminusHealthService');
     expect(terminus).not.toHaveProperty('TERMINUS_OPTIONS');
   });
+
+  it('exposes Nest-style canonical module entrypoint', () => {
+    expect(terminus).toHaveProperty('TerminusModule');
+    expect((terminus as { TerminusModule: { forRoot: unknown } }).TerminusModule).toHaveProperty('forRoot');
+  });
 });

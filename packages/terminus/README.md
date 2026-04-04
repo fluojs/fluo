@@ -28,12 +28,12 @@ import { Module } from '@konekti/core';
 import {
   HttpHealthIndicator,
   MemoryHealthIndicator,
-  createTerminusModule,
+  TerminusModule,
 } from '@konekti/terminus';
 
 @Module({
   imports: [
-     createTerminusModule({
+     TerminusModule.forRoot({
        indicators: [
          new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
          new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
@@ -60,9 +60,9 @@ When you want DI-backed indicators to participate in `/health` and `/ready`, pas
 
 ```typescript
 import { REDIS_CLIENT } from '@konekti/redis';
-import { createRedisHealthIndicatorProvider, createTerminusModule } from '@konekti/terminus';
+import { createRedisHealthIndicatorProvider, TerminusModule } from '@konekti/terminus';
 
-createTerminusModule({
+TerminusModule.forRoot({
   indicatorProviders: [createRedisHealthIndicatorProvider({ key: 'redis' })],
 });
 ```
@@ -78,7 +78,7 @@ The public DI seams for extension are `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_IN
 
 ## Key API
 
-- `createTerminusModule(options)`
+- `TerminusModule.forRoot(options)`
 - `createTerminusProviders(options)`
 - `runHealthCheck(indicators)`
 - `assertHealthCheck(report)`
