@@ -126,23 +126,17 @@ class AppModule {}
 
 `CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, and `principalScopeResolver`.
 
-### 0.x Migration Note (Compatibility Alias Removal)
+### 0.x Compatibility Notes
 
-As of the current `0.x` line, `createCacheModule`, `CACHE_MANAGER`, and `CACHE_INTERCEPTOR` are removed from the public package surface.
-
-- Migrate constructor injection to class-first DI:
-  - `CACHE_MANAGER` -> `CacheService`
-  - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
-- Migrate module setup to canonical Nest-style module entrypoint:
-  - `createCacheModule(options)` -> `CacheModule.forRoot(options)`
-- Internal token seams remain token-based and unchanged:
-  - `CACHE_OPTIONS`
-  - `CACHE_STORE`
+- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` compatibility aliases are removed from the public package surface.
+- Use class-first DI: `CacheService` and `CacheInterceptor`.
+- Canonical module setup is `CacheModule.forRoot(options)`.
+- Internal token seams remain token-based and unchanged: `CACHE_OPTIONS`, `CACHE_STORE`.
 
 ### Root barrel public-surface categories
 
 - **supported (`src/index.ts`)**: `CacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, decorators (`CacheKey`, `CacheTTL`, `CacheEvict`), status adapters, and module/store token seams (`CACHE_OPTIONS`, `CACHE_STORE`).
-- **compatibility-only (0.x removed aliases)**: `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **compatibility-only**: none.
 - **internal (non-public)**: none beyond implementation-private module wiring.
 
 ## Behavior
@@ -272,7 +266,7 @@ When `principalScopeResolver` returns `undefined`, no `|principal:…` segment i
 
 - `CacheModule.forRoot({ store: 'memory' })` works without `@konekti/redis`/`ioredis` installed.
 - `CacheModule.forRoot({ store: 'redis' })` requires either:
-  - `createRedisModule(...)` imported in the app (providing `REDIS_CLIENT`), or
+  - `RedisModule.forRoot(...)` imported in the app (providing `REDIS_CLIENT`), or
   - `options.redis.client` with a raw ioredis-style client.
 
 If Redis mode is selected and no client is available, bootstrap fails with an explicit error.

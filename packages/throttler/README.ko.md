@@ -81,7 +81,6 @@ class ApiController {}
 
 - `THROTTLER_GUARD` 호환성 별칭이 공개 API에서 제거되었습니다.
 - `@UseGuards(...)` 및 DI 등록에서는 `ThrottlerGuard`를 직접 사용하세요.
-- 모듈 설정은 `createThrottlerModule(options)`에서 `ThrottlerModule.forRoot(options)`로 마이그레이션하세요.
 - 런타임 throttling 동작과 모듈 옵션 의미는 변경되지 않았습니다.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
