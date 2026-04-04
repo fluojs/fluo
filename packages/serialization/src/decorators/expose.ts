@@ -9,9 +9,18 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
 type ClassOrFieldDecoratorLike = StandardClassDecoratorFn & StandardFieldDecoratorFn;
 
 export interface ExposeClassOptions {
+  /**
+   * When enabled on a class, only fields marked with `@Expose()` are emitted.
+   */
   excludeExtraneous?: boolean;
 }
 
+/**
+ * Marks a class or field as serializable output.
+ *
+ * - On classes, configures class-level serialization behavior.
+ * - On fields, marks the field as explicitly exposed.
+ */
 export function Expose(options?: ExposeClassOptions): ClassOrFieldDecoratorLike {
   const decorator = (
     _value: Function | undefined,

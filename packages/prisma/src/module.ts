@@ -60,6 +60,9 @@ function createPrismaRuntimeProviders<
   ];
 }
 
+/**
+ * Creates Prisma runtime providers for manual module composition.
+ */
 export function createPrismaProviders<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
@@ -124,7 +127,11 @@ function buildPrismaModuleAsync<
   });
 }
 
+/**
+ * Runtime module entrypoint for Prisma lifecycle and transaction wiring.
+ */
 export class PrismaModule {
+  /** Registers Prisma providers from static options. */
   static forRoot<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
     TTransactionClient = TClient,
@@ -135,6 +142,7 @@ export class PrismaModule {
     return buildPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 
+  /** Registers Prisma providers from an async DI factory. */
   static forRootAsync<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
     TTransactionClient = TClient,

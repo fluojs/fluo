@@ -210,6 +210,11 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
   return value;
 }
 
+/**
+ * Serializes class instances and object graphs into JSON-safe plain values.
+ *
+ * Serialization honors `@Expose()`, `@Exclude()`, and `@Transform()` metadata.
+ */
 export function serialize<T = unknown>(value: T): unknown {
   const context: SerializationContext = {
     metadataCache: new WeakMap(),

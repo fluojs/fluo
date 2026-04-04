@@ -21,6 +21,7 @@ import {
 const SWAGGER_UI_CSS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css';
 const SWAGGER_UI_BUNDLE_JS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js';
 
+/** Public options for `OpenApiModule.forRoot(...)` and `forRootAsync(...)`. */
 export interface OpenApiModuleOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   title: string;
@@ -101,7 +102,11 @@ function resolveOpenApiDescriptors(options: OpenApiModuleOptions): readonly Hand
   return [...sourceDescriptors, ...explicitDescriptors];
 }
 
+/**
+ * Runtime module entrypoint for serving OpenAPI JSON and optional Swagger UI.
+ */
 export class OpenApiModule {
+  /** Registers OpenAPI providers using static options. */
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     return this.createModule({
       scope: 'singleton',
@@ -109,6 +114,7 @@ export class OpenApiModule {
     });
   }
 
+  /** Registers OpenAPI providers using an async DI factory. */
   static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType {
     return this.createModule({
       inject: options.inject,

@@ -5,6 +5,9 @@ import { type TransformFunction, updateFieldSerializationMetadata } from '../met
 type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 
+/**
+ * Applies a synchronous transformation to the decorated field during serialization.
+ */
 export function Transform(transform: TransformFunction): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
     updateFieldSerializationMetadata(context.metadata, context.name as MetadataPropertyKey, (current) => ({

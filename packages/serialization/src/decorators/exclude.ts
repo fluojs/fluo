@@ -5,6 +5,9 @@ import { updateFieldSerializationMetadata } from '../metadata.js';
 type StandardFieldDecoratorFn = <This, Value>(value: undefined, context: ClassFieldDecoratorContext<This, Value>) => void;
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 
+/**
+ * Excludes the decorated field from serialized output.
+ */
 export function Exclude(): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
     updateFieldSerializationMetadata(context.metadata, context.name as MetadataPropertyKey, (current) => ({

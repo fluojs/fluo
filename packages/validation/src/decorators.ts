@@ -120,18 +120,24 @@ function createValidatorJsDecorator(validator: ValidatorJsRuleName) {
   };
 }
 
+/** Validates that the decorated field is a string value. */
 export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'string', ...options }));
 }
 
+/** Validates that the decorated field is a number value. */
 export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'number', ...options }));
 }
 
+/** Validates that the decorated field is a boolean value. */
 export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'boolean', ...options }));
 }
 
+/**
+ * Applies subsequent validators only when the condition returns `true`.
+ */
 export const ValidateIf = (
   validateIf: (dto: unknown, value: unknown) => boolean | Promise<boolean>,
   options?: ValidationDecoratorOptions,
@@ -152,6 +158,7 @@ export const IsInt = createFlagValidationDecorator((options) => ({ kind: 'int', 
 export const IsPositive = createFlagValidationDecorator((options) => ({ kind: 'positive', ...options }));
 export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'negative', ...options }));
 
+/** Validates that the field value is included in the given enum-like set. */
 export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
   const normalized = Array.isArray(values) ? values : Object.values(values);
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
@@ -165,10 +172,12 @@ export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, 
 export const Contains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'contains', value, ...options }));
 export const NotContains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'notContains', value, ...options }));
 
+/** Validates string length using optional min/max boundaries. */
 export function Length(min: number, max?: number, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'length', max, min, ...options }));
 }
 
+/** Validates a nested DTO instance using the provided constructor. */
 export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     dto,
@@ -180,6 +189,7 @@ export function ValidateNested(dto: Constructor | (() => Constructor), options?:
 export const MinLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'minLength', value, ...options }));
 export const MaxLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'maxLength', value, ...options }));
 
+/** Validates the field using a regular expression pattern. */
 export function Matches(
   pattern: RegExp | string,
   modifiersOrOptions?: string | ValidationDecoratorOptions,
@@ -233,10 +243,12 @@ export const IsLatitude = (options?: ValidationDecoratorOptions) => createValida
 export const IsLongitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('longitude')(undefined, options);
 export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latLong')(undefined, options);
 
+/** Validates that a value is an IPv4/IPv6 address. */
 export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('ip')(version ? [version] : undefined, options);
 }
 
+/** Validates that a value is an ISBN string. */
 export function IsISBN(version?: 10 | 13, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidatorJsDecorator('isbn')(version ? [String(version)] : undefined, options);
 }
@@ -275,6 +287,7 @@ export const ArrayNotEmpty = createFlagValidationDecorator((options) => ({ kind:
 export const ArrayMinSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMinSize', value, ...options }));
 export const ArrayMaxSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMaxSize', value, ...options }));
 
+/** Ensures all values in the array are unique, optionally by selector. */
 export function ArrayUnique(
   selectorOrOptions?: ((value: unknown) => unknown) | ValidationDecoratorOptions,
   options?: ValidationDecoratorOptions,
@@ -285,6 +298,7 @@ export function ArrayUnique(
   return createValidationDecorator(() => ({ kind: 'arrayUnique', selector, ...resolvedOptions }));
 }
 
+/** Registers a custom field-level validation function. */
 export function Validate(validate: CustomFieldValidator, options?: CustomValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     code: options?.code,
@@ -296,6 +310,10 @@ export function Validate(validate: CustomFieldValidator, options?: CustomValidat
   }));
 }
 
+/**
+ * Registers class-level validation logic.
+ * Supports either a custom validator callback or a Standard Schema object.
+ */
 export function ValidateClass(validate: ValidateClassInput, options?: ValidationDecoratorOptions): ClassDecoratorFn {
   const decorator = (_target: Function, context: ClassDecoratorContext) => {
     appendStandardClassValidationRule(context.metadata, {

@@ -13,6 +13,7 @@ function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
 }
 
+/** Runtime dependency overrides for the `konekti new` command. */
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -127,6 +128,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
   return parsed;
 }
 
+/** Renders CLI help text for `konekti new`. */
 export function newUsage(): string {
   return [
     'Usage: konekti new|create [project-name] [options]',
@@ -155,6 +157,9 @@ export function newUsage(): string {
   ].join('\n');
 }
 
+/**
+ * Executes `konekti new` with parsed arguments and scaffold options.
+ */
 export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOptions = {}): Promise<number> {
   const stdout = runtime.stdout ?? process.stdout;
   const stderr = runtime.stderr ?? process.stderr;

@@ -33,6 +33,9 @@ type ActiveRequestTransactionHandle = {
 type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
+/**
+ * Prisma runtime facade that owns lifecycle hooks and transaction context access.
+ */
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
@@ -50,6 +53,7 @@ export class PrismaService<
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {}
 
+  /** Returns the active transaction client, or the root Prisma client outside a transaction. */
   current(): TClient | TTransactionClient {
     return this.transactions.getStore() ?? this.client;
   }
@@ -117,6 +121,7 @@ export class PrismaService<
     });
   }
 
+  /** Opens a transaction boundary and executes the callback within that context. */
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
     return this.runWithTransactionClient(
       fn,
@@ -125,6 +130,9 @@ export class PrismaService<
     );
   }
 
+  /**
+   * Opens an abort-aware request transaction boundary.
+   */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);

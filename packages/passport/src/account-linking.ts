@@ -1,7 +1,9 @@
 import { KonektiError, type MaybePromise } from '@konekti/core';
 
+/** DI token for registering an account-linking policy implementation. */
 export const ACCOUNT_LINKING_POLICY = Symbol.for('konekti.passport.account-linking-policy');
 
+/** Identity payload from an external authentication provider. */
 export interface AccountIdentity {
   provider: string;
   providerSubject: string;
@@ -10,22 +12,26 @@ export interface AccountIdentity {
   claims?: Record<string, unknown>;
 }
 
+/** Candidate account that may be linked to an external identity. */
 export interface AccountLinkCandidate {
   accountId: string;
   reason: 'existing-link' | 'email-match' | 'username-match' | string;
 }
 
+/** Explicit user confirmation payload for a requested linking target. */
 export interface AccountLinkAttempt {
   targetAccountId: string;
   confirmedByUser: boolean;
 }
 
+/** Input passed to account-link policy evaluation. */
 export interface AccountLinkContext {
   identity: AccountIdentity;
   candidates: AccountLinkCandidate[];
   linkAttempt?: AccountLinkAttempt;
 }
 
+/** Normalized decision contract returned by an `AccountLinkPolicy`. */
 export type AccountLinkPolicyDecision =
   | {
       action: 'link';
@@ -47,14 +53,17 @@ export type AccountLinkPolicyDecision =
       candidateAccountIds: string[];
     };
 
+/** Policy contract for account-linking decisions. */
 export interface AccountLinkPolicy {
   evaluate(context: AccountLinkContext): MaybePromise<AccountLinkPolicyDecision>;
 }
 
+/** Optional runtime behavior when no policy is configured. */
 export interface AccountLinkingOptions {
   fallback?: 'create-account' | 'skip';
 }
 
+/** Final framework-level resolution for account-linking flow. */
 export type AccountLinkingResolution =
   | {
       status: 'linked';
@@ -70,6 +79,7 @@ export type AccountLinkingResolution =
       reason: string;
     };
 
+/** Error raised when linking requires user confirmation among candidates. */
 export class AccountLinkConflictError extends KonektiError {
   readonly candidateAccountIds: string[];
 
@@ -88,12 +98,16 @@ export class AccountLinkConflictError extends KonektiError {
   }
 }
 
+/** Error raised when an account-linking attempt is rejected by policy. */
 export class AccountLinkRejectedError extends KonektiError {
   constructor(message = 'Account-linking attempt was rejected.', code = 'ACCOUNT_LINK_REJECTED') {
     super(message, { code });
   }
 }
 
+/**
+ * Conservative baseline policy that never auto-links ambiguous candidates.
+ */
 export function createConservativeAccountLinkPolicy(): AccountLinkPolicy {
   return {
     evaluate(context) {
@@ -153,6 +167,9 @@ export function createConservativeAccountLinkPolicy(): AccountLinkPolicy {
 const DEFAULT_SKIP_REASON =
   'No account-linking policy was configured. The framework leaves identity linking to the application.';
 
+/**
+ * Resolves account-linking flow using the provided policy and fallback rules.
+ */
 export async function resolveAccountLinking(
   context: AccountLinkContext,
   policy?: AccountLinkPolicy,

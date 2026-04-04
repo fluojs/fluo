@@ -22,6 +22,9 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
   };
 }
 
+/**
+ * Creates queue lifecycle providers and normalized queue options.
+ */
 export function createQueueProviders(options: QueueModuleOptions = {}): Provider[] {
   return [
     {
@@ -35,7 +38,11 @@ export function createQueueProviders(options: QueueModuleOptions = {}): Provider
   ];
 }
 
+/**
+ * Runtime module entrypoint for queue lifecycle wiring.
+ */
 export class QueueModule {
+  /** Registers queue providers globally using canonical `forRoot(...)` semantics. */
   static forRoot(options: QueueModuleOptions = {}): ModuleType {
     class QueueModuleDefinition {}
 

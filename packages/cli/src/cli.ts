@@ -14,6 +14,7 @@ type CliStream = {
   write(message: string): unknown;
 };
 
+/** Runtime dependency overrides for embedding the CLI in tests/tools. */
 export interface CliRuntimeOptions {
   cwd?: string;
   stderr?: CliStream;
@@ -261,6 +262,9 @@ function parseCommand(argv: string[]): ParsedCommand {
   };
 }
 
+/**
+ * Runs the CLI command dispatcher.
+ */
 export async function runCli(
   argv = process.argv.slice(2),
   runtime: CliRuntimeOptions & NewCommandRuntimeOptions = {},
