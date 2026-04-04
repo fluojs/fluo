@@ -7,7 +7,7 @@
 주요 권한 문서:
 
 - `../concepts/platform-consistency-design.ko.md`
-- `./behavioral-contract-policy.md` (English)
+- `./behavioral-contract-policy.ko.md`
 
 ## 언제 이 체크리스트를 사용하나요?
 

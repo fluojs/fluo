@@ -7,8 +7,8 @@ Konekti 애플리케이션을 위한 Prometheus 메트릭 엔드포인트. `Metr
 
 ## 관련 문서
 
-- `../../docs/concepts/observability.md`
-- `../../docs/concepts/http-runtime.md`
+- `../../docs/concepts/observability.ko.md`
+- `../../docs/concepts/http-runtime.ko.md`
 
 ## 설치
 

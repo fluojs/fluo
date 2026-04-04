@@ -7,8 +7,8 @@
 
 ## 관련 문서
 
-- `../../docs/concepts/config-and-environments.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
+- `../../docs/concepts/config-and-environments.ko.md`
+- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
 
 ## 이 패키지가 하는 일
 

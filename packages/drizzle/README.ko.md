@@ -7,8 +7,8 @@ Konekti 공식 Drizzle integration baseline — Drizzle database handle을 trans
 
 ## 관련 문서
 
-- `../../docs/concepts/transactions.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
+- `../../docs/concepts/transactions.ko.md`
+- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
 
 ## 이 패키지가 하는 일
 

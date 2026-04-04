@@ -7,9 +7,9 @@
 
 ## 관련 문서
 
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/error-responses.md`
-- `../../docs/concepts/security-middleware.md`
+- `../../docs/concepts/http-runtime.ko.md`
+- `../../docs/concepts/error-responses.ko.md`
+- `../../docs/concepts/security-middleware.ko.md`
 
 ## 이 패키지가 하는 일
 

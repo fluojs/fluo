@@ -7,8 +7,8 @@
 
 ## 관련 문서
 
-- `../../docs/concepts/di-and-modules.md`
-- `../../docs/concepts/architecture-overview.md`
+- `../../docs/concepts/di-and-modules.ko.md`
+- `../../docs/concepts/architecture-overview.ko.md`
 
 ## 이 패키지가 하는 일
 

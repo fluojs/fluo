@@ -7,8 +7,8 @@ Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, 
 
 ## 관련 문서
 
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/reference/package-surface.md`
+- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
+- `../../docs/reference/package-surface.ko.md`
 
 ## 이 패키지가 하는 일
 

@@ -9,6 +9,7 @@ const repoRoot = resolve(packageDirectory, '..', '..', '..');
 
 const ssotPairs: Array<[englishPath: string, koreanPath: string]> = [
   ['docs/concepts/platform-consistency-design.md', 'docs/concepts/platform-consistency-design.ko.md'],
+  ['docs/operations/behavioral-contract-policy.md', 'docs/operations/behavioral-contract-policy.ko.md'],
   ['docs/operations/release-governance.md', 'docs/operations/release-governance.ko.md'],
   ['docs/operations/platform-conformance-authoring-checklist.md', 'docs/operations/platform-conformance-authoring-checklist.ko.md'],
 ];
@@ -91,10 +92,12 @@ describe('platform consistency governance docs', () => {
     }
   });
 
-  it('keeps release governance discoverable from docs index in both languages', () => {
+  it('keeps contract-governing docs discoverable from docs index in both languages', () => {
     const docsReadme = readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf8');
     const docsReadmeKo = readFileSync(resolve(repoRoot, 'docs/README.ko.md'), 'utf8');
 
+    expect(docsReadme).toContain('operations/behavioral-contract-policy.md');
+    expect(docsReadmeKo).toContain('operations/behavioral-contract-policy.ko.md');
     expect(docsReadme).toContain('operations/release-governance.md');
     expect(docsReadmeKo).toContain('operations/release-governance.ko.md');
   });

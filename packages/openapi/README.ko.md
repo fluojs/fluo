@@ -9,8 +9,8 @@ OpenAPI는 계약과 패키지 정체성이고, Swagger는 선택적인 interact
 
 ## 관련 문서
 
-- `../../docs/concepts/openapi.md`
-- `../../docs/concepts/http-runtime.md`
+- `../../docs/concepts/openapi.ko.md`
+- `../../docs/concepts/http-runtime.ko.md`
 
 ## 설치
 

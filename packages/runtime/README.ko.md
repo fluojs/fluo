@@ -7,9 +7,9 @@
 
 ## 관련 문서
 
-- `../../docs/concepts/architecture-overview.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/concepts/observability.md`
+- `../../docs/concepts/architecture-overview.ko.md`
+- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
+- `../../docs/concepts/observability.ko.md`
 
 ## 이 패키지가 하는 일
 
@@ -414,6 +414,17 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 - 순환 `imports` 체인이 존재하지 않는지
 
 이 중 하나라도 실패하면 프로바이더가 인스턴스화되기 전에 부트스트랩이 예외를 발생시킵니다. 이는 의도적인 설계 선택입니다. 깨진 앱은 첫 번째 요청에서 조용히 실패하는 것이 아니라 시작 시 명확하게 실패하게 됩니다.
+
+### 복구 지향 오류 출력
+
+모든 부트스트랩/모듈 그래프 오류는 어떤 문제가 어디서 왜 발생했고, 어떻게 복구해야 하는지 설명하는 구조화된 컨텍스트 필드를 포함합니다. 오류 메시지에는 다음이 덧붙습니다.
+
+- **Module** — 오류가 감지된 모듈
+- **Token** — 관련된 토큰(해당 시)
+- **Phase** — 부트스트랩 단계 (예: `module graph compilation`, `provider visibility validation`, `export validation`, `provider registration`)
+- **Hint** — 권장 복구 방법
+
+오류는 동일한 필드를 가진 기계 판독 가능한 `meta` 객체도 포함하므로 구조화 로깅/모니터링에도 활용할 수 있습니다.
 
 ### 생명주기 훅 순서
 

@@ -8,6 +8,7 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 
 const ssotPairs = [
   ['docs/concepts/platform-consistency-design.md', 'docs/concepts/platform-consistency-design.ko.md'],
+  ['docs/operations/behavioral-contract-policy.md', 'docs/operations/behavioral-contract-policy.ko.md'],
   ['docs/operations/release-governance.md', 'docs/operations/release-governance.ko.md'],
   ['docs/operations/platform-conformance-authoring-checklist.md', 'docs/operations/platform-conformance-authoring-checklist.ko.md'],
 ];
@@ -16,6 +17,7 @@ const contractGateTriggers = new Set([
   'docs/concepts/platform-consistency-design.md',
   'docs/concepts/platform-consistency-design.ko.md',
   'docs/operations/behavioral-contract-policy.md',
+  'docs/operations/behavioral-contract-policy.ko.md',
   'docs/operations/release-governance.md',
   'docs/operations/release-governance.ko.md',
   'docs/operations/platform-conformance-authoring-checklist.md',

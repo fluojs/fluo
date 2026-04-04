@@ -13,8 +13,8 @@ Konekti의 strategy-agnostic auth 실행 레이어 — 어떤 `AuthStrategy`든 
 
 ## 관련 문서
 
-- `../../docs/concepts/auth-and-jwt.md`
-- `../../docs/concepts/http-runtime.md`
+- `../../docs/concepts/auth-and-jwt.ko.md`
+- `../../docs/concepts/http-runtime.ko.md`
 
 ## 이 패키지가 하는 일
 

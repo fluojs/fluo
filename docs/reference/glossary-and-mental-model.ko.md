@@ -30,6 +30,6 @@
 
 ## further reading
 
-- `../concepts/http-runtime.md`
-- `../concepts/decorators-and-metadata.md`
+- `../concepts/http-runtime.ko.md`
+- `../concepts/decorators-and-metadata.ko.md`
 - `../operations/release-governance.ko.md`
