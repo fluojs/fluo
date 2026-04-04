@@ -15,10 +15,10 @@ export function createWebSocketProviders(options: WebSocketModuleOptions = {}): 
   ];
 }
 
-export function createWebSocketModule(options: WebSocketModuleOptions = {}): ModuleType {
-  class WebSocketModule {}
-
-  return defineModule(WebSocketModule, {
-    providers: createWebSocketProviders(options),
-  });
+export class WebSocketModule {
+  static forRoot(options: WebSocketModuleOptions = {}): ModuleType {
+    return defineModule(WebSocketModule, {
+      providers: createWebSocketProviders(options),
+    });
+  }
 }

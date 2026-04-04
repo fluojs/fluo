@@ -22,7 +22,7 @@ npm install @konekti/websocket ws
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createWebSocketModule, OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway, WebSocketModule } from '@konekti/websocket';
 import type { WebSocket } from 'ws';
 
 @WebSocketGateway({ path: '/chat' })
@@ -40,7 +40,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [createWebSocketModule()],
+  imports: [WebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -48,7 +48,7 @@ export class AppModule {}
 
 ## API
 
-- `createWebSocketModule()` - registers lifecycle discovery and gateway wiring
+- `WebSocketModule.forRoot()` - registers lifecycle discovery and gateway wiring
 - `createWebSocketProviders()` - returns raw providers for custom module composition
 - `@WebSocketGateway({ path? })` - marks a singleton provider/controller class as a WebSocket gateway
 - `@OnMessage(event?)` - handles inbound messages, optionally filtered by event name
@@ -61,7 +61,7 @@ export class AppModule {}
 
 ### Module options
 
-`createWebSocketModule(options)` and `createWebSocketProviders(options)` accept:
+`WebSocketModule.forRoot(options)` and `createWebSocketProviders(options)` accept:
 
 - `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
 - `shutdown.timeoutMs` (default: `5000`)

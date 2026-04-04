@@ -22,7 +22,7 @@ npm install @konekti/websocket ws
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createWebSocketModule, OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway, WebSocketModule } from '@konekti/websocket';
 import type { WebSocket } from 'ws';
 
 @WebSocketGateway({ path: '/chat' })
@@ -40,7 +40,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [createWebSocketModule()],
+  imports: [WebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -48,7 +48,7 @@ export class AppModule {}
 
 ## API
 
-- `createWebSocketModule()`
+- `WebSocketModule.forRoot()`
 - `createWebSocketProviders()`
 - `@WebSocketGateway({ path? })`
 - `@OnMessage(event?)`
@@ -61,7 +61,7 @@ export class AppModule {}
 
 ### 모듈 옵션
 
-`createWebSocketModule(options)`와 `createWebSocketProviders(options)`는 아래 옵션을 받습니다.
+`WebSocketModule.forRoot(options)`와 `createWebSocketProviders(options)`는 아래 옵션을 받습니다.
 
 - `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
 - `shutdown.timeoutMs` (기본값: `5000`)

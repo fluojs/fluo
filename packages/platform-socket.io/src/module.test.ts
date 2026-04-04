@@ -7,7 +7,7 @@ import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/w
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
-import { createSocketIoModule, createSocketIoProviders } from './module.js';
+import { SocketIoModule, createSocketIoProviders } from './module.js';
 import * as publicApi from './index.js';
 import { SocketIoLifecycleService } from './adapter.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
@@ -119,7 +119,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [ServerProbe],
     });
 
@@ -173,7 +173,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, ChatGateway],
     });
 
@@ -227,7 +227,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [RequestGateway],
     });
 
@@ -279,7 +279,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, AsyncGateway],
     });
 
@@ -517,7 +517,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, ChatGateway, AdminGateway],
     });
 
@@ -574,7 +574,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [DefaultGateway],
     });
 
@@ -603,7 +603,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [ShutdownGateway],
     });
 

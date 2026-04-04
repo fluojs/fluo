@@ -14,7 +14,7 @@ npm install @konekti/platform-socket.io @konekti/websocket socket.io
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createSocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/platform-socket.io';
+import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/platform-socket.io';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import type { Socket } from 'socket.io';
 
@@ -41,7 +41,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [createSocketIoModule({ transports: ['websocket'] })],
+  imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -49,7 +49,7 @@ export class AppModule {}
 
 ## API
 
-- `createSocketIoModule()` - registers lifecycle discovery and Socket.IO namespace wiring
+- `SocketIoModule.forRoot()` - registers lifecycle discovery and Socket.IO namespace wiring
 - `createSocketIoProviders()` - returns raw providers for custom module composition
 - `SOCKETIO_SERVER` - inject the underlying Socket.IO `Server` instance
 - `SOCKETIO_ROOM_SERVICE` - inject room helpers built on native Socket.IO room APIs
@@ -58,12 +58,12 @@ The root package entrypoint intentionally keeps the public token surface focused
 
 ### Migration note (0.x)
 
-`SOCKETIO_LIFECYCLE_SERVICE` is no longer part of the root public entrypoint and `createSocketIoModule()` exports.
+`SOCKETIO_LIFECYCLE_SERVICE` is no longer part of the root public entrypoint and `SocketIoModule.forRoot()` exports.
 Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_SERVER` for raw Socket.IO server access.
 
 ### Module options
 
-`createSocketIoModule(options)` and `createSocketIoProviders(options)` accept:
+`SocketIoModule.forRoot(options)` and `createSocketIoProviders(options)` accept:
 
 - `cors`
 - `transports`

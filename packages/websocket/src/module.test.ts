@@ -14,7 +14,7 @@ import type { HttpApplicationAdapter } from '@konekti/http';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
-import { createWebSocketModule, createWebSocketProviders } from './module.js';
+import { WebSocketModule, createWebSocketProviders } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 import type { WebSocketModuleOptions } from './types.js';
 
@@ -264,7 +264,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [RequestGateway],
     });
 
@@ -304,7 +304,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [GatewayState, DedupeGateway, { provide: ALIAS_TOKEN, useClass: DedupeGateway }],
     });
 
@@ -336,7 +336,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [ChatGateway],
     });
 
@@ -354,7 +354,7 @@ describe('@konekti/websocket', () => {
   it('exposes a Node server through the runtime adapter token', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
     });
 
     const app = await bootstrapNodeApplication(AppModule, {
@@ -400,7 +400,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [GatewayState, ChatGateway],
     });
 
@@ -463,7 +463,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [GatewayState, ChatGateway],
     });
 
@@ -526,7 +526,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [GatewayState, AsyncGateway],
     });
 
@@ -581,7 +581,7 @@ describe('@konekti/websocket', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [
-        createWebSocketModule({
+        WebSocketModule.forRoot({
           buffer: {
             maxPendingMessagesPerSocket: 2,
             overflowPolicy: 'drop-oldest',
@@ -647,7 +647,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [GatewayState, AsyncGateway2],
     });
 
@@ -709,7 +709,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [SharedState, FirstGateway, SecondGateway],
     });
 
@@ -1002,7 +1002,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [ChatGateway],
     });
 
@@ -1066,7 +1066,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [ChatGateway],
     });
 
@@ -1116,7 +1116,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [ChatGateway],
     });
 
@@ -1173,7 +1173,7 @@ describe('@konekti/websocket', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createWebSocketModule()],
+      imports: [WebSocketModule.forRoot()],
       providers: [ShutdownGateway],
     });
 
