@@ -3,7 +3,7 @@ import type { MaybePromise } from '@konekti/core';
 import type { Dispatcher } from './types.js';
 
 /**
- * 애플리케이션 라이프사이클과 실제 전송 계층을 연결하는 최소 HTTP 어댑터 계약이다.
+ * Minimal HTTP adapter contract that binds the application lifecycle to a transport implementation.
  */
 export interface HttpApplicationAdapter {
   getServer?(): unknown;
@@ -12,7 +12,7 @@ export interface HttpApplicationAdapter {
 }
 
 /**
- * 아직 실제 HTTP 바인딩이 없을 때도 라이프사이클 계약을 유지할 수 있게 하는 기본 어댑터다.
+ * Creates a no-op adapter that preserves lifecycle behavior without binding a real HTTP server.
  */
 export function createNoopHttpApplicationAdapter(): HttpApplicationAdapter {
   return {

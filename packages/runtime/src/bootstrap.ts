@@ -357,7 +357,7 @@ export function defineModule<T extends ModuleType>(moduleType: T, definition: Mo
 }
 
 /**
- * 최소 모듈 그래프를 부트스트랩하고 루트 컨테이너 베이스라인을 반환한다.
+ * Bootstraps the module graph and returns the root container baseline.
  */
 export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
   const modules = compileModuleGraph(rootModule, options);
@@ -1000,7 +1000,13 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   }
 }
 
+/**
+ * Canonical runtime bootstrap facade for HTTP, context-only, and microservice startup.
+ */
 export class KonektiFactory {
+  /**
+   * Creates a full HTTP-capable application from the root module.
+   */
   static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
     return bootstrapApplication({
       ...options,
@@ -1008,6 +1014,9 @@ export class KonektiFactory {
     });
   }
 
+  /**
+   * Creates an application context without attaching an HTTP runtime.
+   */
   static async createApplicationContext(
     rootModule: ModuleType,
     options: CreateApplicationContextOptions = {},
@@ -1104,6 +1113,9 @@ export class KonektiFactory {
     }
   }
 
+  /**
+   * Creates a microservice application from the configured runtime token.
+   */
   static async createMicroservice(
     rootModule: ModuleType,
     options: CreateMicroserviceOptions = {},

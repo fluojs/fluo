@@ -1,5 +1,8 @@
 import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpMethod, Middleware, Principal } from '@konekti/http';
 
+/**
+ * Principal payload used by testing request helpers.
+ */
 export interface TestPrincipal {
   subject?: string;
   issuer?: string;
@@ -10,6 +13,9 @@ export interface TestPrincipal {
   [key: string]: unknown;
 }
 
+/**
+ * Minimal request input shape accepted by testing request helpers.
+ */
 export interface TestRequest {
   method?: string;
   path: string;
@@ -19,16 +25,25 @@ export interface TestRequest {
   principal?: TestPrincipal;
 }
 
+/**
+ * Normalized test request shape used internally by dispatch helpers.
+ */
 export interface TestRequestWithOptions extends TestRequest {
   principal?: TestPrincipal;
 }
 
+/**
+ * Serialized test response returned by helper dispatch calls.
+ */
 export interface TestResponse {
   status: number;
   body: unknown;
   headers: Record<string, string | string[]>;
 }
 
+/**
+ * Fluent builder for constructing and dispatching test requests.
+ */
 export interface RequestBuilder {
   method(value: string): RequestBuilder;
   path(value: string): RequestBuilder;
@@ -112,6 +127,9 @@ function normalizePrincipal(principal?: TestPrincipal): Principal | undefined {
   return normalizedClaims;
 }
 
+/**
+ * Creates a fluent request builder around a dispatcher.
+ */
 export function createRequestBuilder(dispatcher: Dispatcher, request: TestRequestWithOptions): RequestBuilder {
   let current: TestRequestWithOptions = {
     method: request.method,
@@ -167,6 +185,9 @@ export function createRequestBuilder(dispatcher: Dispatcher, request: TestReques
   };
 }
 
+/**
+ * Middleware that maps test-request principal data into `RequestContext.principal`.
+ */
 export function createTestRequestContextMiddleware(): Middleware {
   return {
     async handle(context, next) {
