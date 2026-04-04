@@ -33,7 +33,9 @@ export function createSocketIoProviders(options: SocketIoModuleOptions = {}): Pr
 
 export class SocketIoModule {
   static forRoot(options: SocketIoModuleOptions = {}): ModuleType {
-    return defineModule(SocketIoModule, {
+    class SocketIoRuntimeModule extends SocketIoModule {}
+
+    return defineModule(SocketIoRuntimeModule, {
       exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
       global: true,
       providers: createSocketIoProviders(options),

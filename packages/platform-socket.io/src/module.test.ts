@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
-import { Inject, Scope } from '@konekti/core';
+import { Inject, Scope, getModuleMetadata } from '@konekti/core';
 import { bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
@@ -109,6 +109,23 @@ describe('@konekti/platform-socket.io', () => {
 
     expect(serverProvider?.inject).toEqual([SocketIoLifecycleService]);
     expect(roomProvider?.useExisting).toBe(SocketIoLifecycleService);
+  });
+
+  it('creates isolated module metadata for separate forRoot invocations', () => {
+    const firstModule = SocketIoModule.forRoot({ shutdown: { timeoutMs: 1111 } });
+    const secondModule = SocketIoModule.forRoot({ shutdown: { timeoutMs: 2222 } });
+    const firstProviders = getModuleMetadata(firstModule)?.providers;
+    const secondProviders = getModuleMetadata(secondModule)?.providers;
+    const firstOptionsProvider = firstProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
+    const secondOptionsProvider = secondProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
+
+    expect(firstModule).not.toBe(secondModule);
+    expect(firstOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 1111 } });
+    expect(secondOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 2222 } });
   });
 
   it('injects the Socket.IO server token into singleton providers', async () => {

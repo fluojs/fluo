@@ -17,7 +17,9 @@ export function createWebSocketProviders(options: WebSocketModuleOptions = {}): 
 
 export class WebSocketModule {
   static forRoot(options: WebSocketModuleOptions = {}): ModuleType {
-    return defineModule(WebSocketModule, {
+    class WebSocketRuntimeModule extends WebSocketModule {}
+
+    return defineModule(WebSocketRuntimeModule, {
       providers: createWebSocketProviders(options),
     });
   }

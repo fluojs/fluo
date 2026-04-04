@@ -5,7 +5,7 @@ import type { Duplex } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
-import { Inject, Scope } from '@konekti/core';
+import { Inject, Scope, getModuleMetadata } from '@konekti/core';
 import { Container } from '@konekti/di';
 import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger, HTTP_APPLICATION_ADAPTER } from '@konekti/runtime';
@@ -208,6 +208,23 @@ describe('@konekti/websocket', () => {
     expect(providers).toContain(WebSocketGatewayLifecycleService);
     expect(optionsProvider).toBeDefined();
     expect(optionsProvider).toHaveProperty('useValue', options);
+  });
+
+  it('creates isolated module metadata for separate forRoot invocations', () => {
+    const firstModule = WebSocketModule.forRoot({ shutdown: { timeoutMs: 1111 } });
+    const secondModule = WebSocketModule.forRoot({ shutdown: { timeoutMs: 2222 } });
+    const firstProviders = getModuleMetadata(firstModule)?.providers;
+    const secondProviders = getModuleMetadata(secondModule)?.providers;
+    const firstOptionsProvider = firstProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: WebSocketModuleOptions } | undefined;
+    const secondOptionsProvider = secondProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: WebSocketModuleOptions } | undefined;
+
+    expect(firstModule).not.toBe(secondModule);
+    expect(firstOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 1111 } });
+    expect(secondOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 2222 } });
   });
 
   it('writes gateway and handler metadata with standard decorators', () => {
