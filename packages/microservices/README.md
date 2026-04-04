@@ -67,8 +67,8 @@ await microservice.listen();
 ### Root barrel public surface governance (0.x)
 
 - **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
-- **compatibility-only**: `MICROSERVICE_OPTIONS`, metadata helper exports (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), and direct low-level lifecycle service imports such as `MicroserviceLifecycleService` remain exported for 0.x compatibility but are not recommended as primary application seams.
-- **internal**: root-barrel governance treats undocumented transport runtime internals as non-contract behavior even when reachable through broad barrel re-exports.
+- **compatibility-only**: Metadata helper exports (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`) and direct low-level lifecycle service imports such as `MicroserviceLifecycleService` remain exported for 0.x compatibility but are not recommended as primary application seams.
+- **internal**: `MICROSERVICE_OPTIONS` and undocumented transport runtime internals are non-contract behavior even when reachable through broad barrel re-exports.
 
 ## Runtime behavior
 
