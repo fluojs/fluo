@@ -78,27 +78,32 @@ export const MY_CACHE_CLIENT = Symbol.for('MY_CACHE_CLIENT');
 
 ## Module Authoring Conventions
 
-Konekti 통합 패키지는 모듈 생성을 위해 팩토리 패턴을 따라야 합니다. 이를 통해 사용자가 옵션을 전달하면서도 표준 `@Module()` 구조를 유지할 수 있습니다.
+런타임 모듈 엔트리포인트는 마이그레이션 가이드, 스캐폴드, 패키지 README가 일관되도록 Nest 스타일 canonical 이름(`<Name>Module.forRoot(...)`, 필요 시 `forRootAsync(...)`)을 사용해야 합니다.
 
-### Factory Pattern
+`create*` 네이밍은 **런타임 모듈 엔트리포인트가 아닌** helper/builder에 유지하세요(예: `createTestingModule(...)` 같은 테스트 빌더, `createHealthModule()` 같은 작은 런타임 헬퍼).
 
-데코레이터가 적용된 클래스를 반환하는 함수를 작성하세요. `@konekti/redis`나 `@konekti/prisma`의 패턴을 기본 모델로 삼으세요.
+### 런타임 모듈 엔트리포인트 패턴 (`forRoot`)
+
+정적 `forRoot(...)` 엔트리포인트를 가진 모듈 클래스를 노출하고, 해당 메서드가 구성된 런타임 모듈 타입을 반환하도록 작성하세요.
 
 ```typescript
-import { Module, Global } from '@konekti/core';
+import { defineModuleMetadata } from '@konekti/core';
 
-export function createMyExtensionModule(options: MyExtensionOptions) {
-  @Global()
-  @Module({
-    providers: [
-      { provide: MY_EXTENSION_OPTIONS, useValue: options },
-      MyExtensionService
-    ],
-    exports: [MyExtensionService]
-  })
-  class MyExtensionModule {}
+export class MyExtensionModule {
+  static forRoot(options: MyExtensionOptions): new () => MyExtensionModule {
+    class MyExtensionRuntimeModule extends MyExtensionModule {}
 
-  return MyExtensionModule;
+    defineModuleMetadata(MyExtensionRuntimeModule, {
+      global: true,
+      exports: [MyExtensionService],
+      providers: [
+        { provide: MY_EXTENSION_OPTIONS, useValue: options },
+        MyExtensionService,
+      ],
+    });
+
+    return MyExtensionRuntimeModule;
+  }
 }
 ```
 

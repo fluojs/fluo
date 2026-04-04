@@ -531,6 +531,12 @@ export class AppModule {}
 
 `ConfigModule.forRoot()` loads the env file and registers `ConfigService` as a global provider by default (`isGlobal: true`). Pass `isGlobal: false` for module-only scope, and use either `envFile` or `envFilePath` to set a specific env file.
 
+### runtime module naming rule during migration
+
+Use Nest-style canonical entrypoints (`SomeModule.forRoot(...)`) for runtime modules that participate in application module imports.
+
+Keep `create*` names for helpers/builders that are not runtime module entrypoints (for example `createTestingModule(...)`, `createHealthModule()`).
+
 ## 8) testing
 
 Nest uses `@nestjs/testing` and a `TestingModule` builder.
