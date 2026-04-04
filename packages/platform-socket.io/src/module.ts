@@ -1,9 +1,9 @@
 import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
+import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import { SocketIoLifecycleService } from './adapter.js';
 import {
-  SOCKETIO_OPTIONS,
   SOCKETIO_ROOM_SERVICE,
   SOCKETIO_SERVER,
 } from './tokens.js';
@@ -12,7 +12,7 @@ import type { SocketIoModuleOptions } from './types.js';
 export function createSocketIoProviders(options: SocketIoModuleOptions = {}): Provider[] {
   return [
     {
-      provide: SOCKETIO_OPTIONS,
+      provide: SOCKETIO_OPTIONS_INTERNAL,
       useValue: options,
     },
     {

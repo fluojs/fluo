@@ -55,6 +55,8 @@ export class AppModule {}
 - `SOCKETIO_ROOM_SERVICE` - inject room helpers built on native Socket.IO room APIs
 
 The root package entrypoint intentionally keeps the public token surface focused on `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE`.
+`SOCKETIO_OPTIONS` remains an internal module-wiring token and is intentionally localized outside the root public token seam.
+It still uses a stable `Symbol.for(...)` key so package-internal DI identity remains consistent across module boundaries, while staying outside the public contract.
 
 ### Migration note (0.x)
 

@@ -10,7 +10,7 @@ import type { HttpApplicationAdapter } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
-import { WEBSOCKET_OPTIONS } from './tokens.js';
+import { WEBSOCKET_OPTIONS_INTERNAL } from './options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
   WebSocketGatewayHandlerDescriptor,
@@ -171,7 +171,7 @@ function rejectBadUpgradeRequest(socket: Duplex): void {
   socket.destroy();
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS])
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL])
 export class WebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {
