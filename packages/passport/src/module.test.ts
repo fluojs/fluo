@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { AuthStrategyResolutionError } from './errors.js';
-import { AUTH_STRATEGY_REGISTRY } from './internal-tokens.js';
 import { createPassportProviders } from './module.js';
 import type { AuthStrategy } from './types.js';
+
+const AUTH_STRATEGY_REGISTRY_KEY = 'konekti.passport.strategy-registry';
 
 describe('createPassportProviders', () => {
   it('keeps registry and module options tokens internal to package wiring', async () => {
@@ -50,7 +51,12 @@ describe('createPassportProviders', () => {
     );
 
     const strategyRegistryProvider = providers.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'provide' in provider && provider.provide === AUTH_STRATEGY_REGISTRY,
+      (provider) =>
+        typeof provider === 'object'
+        && provider !== null
+        && 'provide' in provider
+        && typeof provider.provide === 'symbol'
+        && Symbol.keyFor(provider.provide) === AUTH_STRATEGY_REGISTRY_KEY,
     );
 
     if (!strategyRegistryProvider || !('useValue' in strategyRegistryProvider)) {

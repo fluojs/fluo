@@ -1,12 +1,14 @@
 import type { Provider } from '@konekti/di';
 import { AuthStrategyResolutionError } from './errors.js';
 import { AuthGuard } from './guard.js';
-import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
 import {
   type AuthStrategyRegistration,
   type AuthStrategyRegistry,
   type PassportModuleOptions,
 } from './types.js';
+
+const PASSPORT_OPTIONS = Symbol.for('konekti.passport.options');
+const AUTH_STRATEGY_REGISTRY = Symbol.for('konekti.passport.strategy-registry');
 
 function createStrategyRegistry(strategies: AuthStrategyRegistration[]): AuthStrategyRegistry {
   const registry: Record<string, AuthStrategyRegistration['token']> = Object.create(null);

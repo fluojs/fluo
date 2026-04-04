@@ -55,6 +55,15 @@ import { createJwtCoreProviders, DefaultJwtSigner, DefaultJwtVerifier } from '@k
 export class JwtModule {}
 ```
 
+### Runtime module entrypoints
+
+`JwtModule` exposes canonical runtime module entrypoints:
+
+- `JwtModule.forRoot(options)`
+- `JwtModule.forRootAsync({ inject?, useFactory })`
+
+`JwtModule.register(...)` is intentionally not part of the supported runtime entrypoint contract.
+
 ### Sign a token
 
 ```typescript

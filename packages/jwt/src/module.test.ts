@@ -103,21 +103,21 @@ describe('JwtModule', () => {
     await expect(service.signAndVerify('sync-user')).resolves.toBe('sync-user');
   });
 
-  it('supports NestJS-style register alias and resolves JwtService', async () => {
+  it('resolves JwtService from forRoot registration', async () => {
     const container = new Container();
-    const moduleType = JwtModule.register({
+    const moduleType = JwtModule.forRoot({
       algorithms: ['HS256'],
       issuer: 'jwt-module-tests',
-      secret: 'register-secret',
+      secret: 'for-root-secret',
     });
 
     container.register(...moduleProviders(moduleType));
 
     const jwtService = await container.resolve(JwtService);
-    const token = await jwtService.sign({ sub: 'register-user' });
+    const token = await jwtService.sign({ sub: 'for-root-user' });
 
     await expect(jwtService.verify<{ sub?: string }>(token)).resolves.toMatchObject({
-      sub: 'register-user',
+      sub: 'for-root-user',
     });
   });
 

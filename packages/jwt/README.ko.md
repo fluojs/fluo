@@ -55,6 +55,15 @@ import { createJwtCoreProviders, DefaultJwtSigner, DefaultJwtVerifier } from '@k
 export class JwtModule {}
 ```
 
+### 런타임 모듈 엔트리포인트
+
+`JwtModule`의 공식 런타임 모듈 엔트리포인트는 다음 두 가지입니다.
+
+- `JwtModule.forRoot(options)`
+- `JwtModule.forRootAsync({ inject?, useFactory })`
+
+`JwtModule.register(...)`는 지원되는 런타임 엔트리포인트 계약에 포함되지 않습니다.
+
 ### 토큰 서명
 
 ```typescript

@@ -68,10 +68,6 @@ export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] 
 }
 
 export class JwtModule {
-  static register(options: JwtVerifierOptions): ModuleType {
-    return this.forRoot(options);
-  }
-
   static forRoot(options: JwtVerifierOptions): ModuleType {
     return this.createModule({
       provide: JWT_OPTIONS,
