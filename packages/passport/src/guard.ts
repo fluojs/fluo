@@ -9,6 +9,7 @@ import {
   AuthenticationRequiredError,
   AuthStrategyResolutionError,
 } from './errors.js';
+import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
 import { getAuthRequirement } from './metadata.js';
 import {
   type AuthGuardContract,
@@ -18,9 +19,6 @@ import {
   type AuthStrategyRegistry,
   type PassportModuleOptions,
 } from './types.js';
-
-const PASSPORT_OPTIONS = Symbol.for('konekti.passport.options');
-const AUTH_STRATEGY_REGISTRY = Symbol.for('konekti.passport.strategy-registry');
 
 function isAuthHandledResult(result: AuthStrategyResult): result is AuthHandledResult {
   return typeof result === 'object' && result !== null && 'handled' in result && result.handled === true;
