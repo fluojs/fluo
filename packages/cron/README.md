@@ -113,6 +113,12 @@ Timeout behavior: after a timeout task fires, its task definition remains in the
 - `SchedulingRegistry` - runtime API for dynamic task registration and control
 - `createCronPlatformStatusSnapshot(input)` - maps scheduler lifecycle/distributed-lock/drain visibility into shared platform snapshot fields
 
+### Root barrel public surface governance (0.x)
+
+- **supported**: scheduling decorators (`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `createCronModule`, `createCronProviders`, `SCHEDULING_REGISTRY`, and status snapshot helpers.
+- **compatibility-only**: `CRON_OPTIONS`, `normalizeCronModuleOptions`, and metadata helper exports (`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`) remain exported for 0.x compatibility and framework/tooling integration, but are not recommended for new app-level imports.
+- **internal**: scheduler lifecycle internals beyond documented APIs are not part of the root-barrel contract.
+
 ## non-goals and intentional limitations
 
 - No silent fallback to in-process scheduling — if distributed mode is enabled and `REDIS_CLIENT` is missing or incompatible, bootstrap fails explicitly rather than silently degrading

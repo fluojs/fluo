@@ -64,6 +64,12 @@ await microservice.listen();
 - `MqttMicroserviceTransport` - MQTT transport adapter (request/reply + event)
 - `createMicroservicePlatformStatusSnapshot(input)` - maps transport lifecycle/capability/handler visibility into shared platform snapshot fields
 
+### Root barrel public surface governance (0.x)
+
+- **supported**: `createMicroservicesModule`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
+- **compatibility-only**: `MICROSERVICE_OPTIONS`, metadata helper exports (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), and direct low-level lifecycle service imports such as `MicroserviceLifecycleService` remain exported for 0.x compatibility but are not recommended as primary application seams.
+- **internal**: root-barrel governance treats undocumented transport runtime internals as non-contract behavior even when reachable through broad barrel re-exports.
+
 ## Runtime behavior
 
 - Handlers are discovered from providers and controllers in compiled modules.

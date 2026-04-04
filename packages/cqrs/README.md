@@ -125,6 +125,12 @@ export class AppModule {}
 - `@Saga(EventClass | EventClass[])` - marks a class-level saga/process-manager for one or more event types.
 - `createCqrsPlatformStatusSnapshot(input)` - maps CQRS event/saga lifecycle dependency and drain visibility into shared platform snapshot fields
 
+### Root barrel public surface governance (0.x)
+
+- **supported**: `createCqrsModule`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
+- **compatibility-only**: low-level metadata helpers/symbols (`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) and legacy not-found error alias exports remain available for 0.x compatibility but are not recommended for new application code.
+- **internal**: `CQRS_EVENT_BUS` is not part of the public root barrel contract.
+
 ### migration notes (0.x)
 
 - `CQRS_EVENT_BUS` has been removed from the public package surface.
