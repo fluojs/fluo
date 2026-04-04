@@ -41,6 +41,9 @@ function normalizeRequestInput(
   return methodOrRequest;
 }
 
+/**
+ * Boots a lightweight test app with the real dispatcher and a fluent request client.
+ */
 export async function createTestApp(options: TestingModuleOptions): Promise<TestApp> {
   const app = await bootstrapApplication({
     ...options,
