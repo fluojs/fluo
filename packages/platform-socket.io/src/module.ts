@@ -31,12 +31,14 @@ export function createSocketIoProviders(options: SocketIoModuleOptions = {}): Pr
   ];
 }
 
-export function createSocketIoModule(options: SocketIoModuleOptions = {}): ModuleType {
-  class SocketIoModule {}
+export class SocketIoModule {
+  static forRoot(options: SocketIoModuleOptions = {}): ModuleType {
+    class SocketIoRuntimeModule extends SocketIoModule {}
 
-  return defineModule(SocketIoModule, {
-    exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
-    global: true,
-    providers: createSocketIoProviders(options),
-  });
+    return defineModule(SocketIoRuntimeModule, {
+      exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
+      global: true,
+      providers: createSocketIoProviders(options),
+    });
+  }
 }

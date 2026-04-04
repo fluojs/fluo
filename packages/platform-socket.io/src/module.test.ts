@@ -1,13 +1,13 @@
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
-import { Inject, Scope } from '@konekti/core';
+import { Inject, Scope, getModuleMetadata } from '@konekti/core';
 import { bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
-import { createSocketIoModule, createSocketIoProviders } from './module.js';
+import { SocketIoModule, createSocketIoProviders } from './module.js';
 import * as publicApi from './index.js';
 import { SocketIoLifecycleService } from './adapter.js';
 import { SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER } from './tokens.js';
@@ -111,6 +111,23 @@ describe('@konekti/platform-socket.io', () => {
     expect(roomProvider?.useExisting).toBe(SocketIoLifecycleService);
   });
 
+  it('creates isolated module metadata for separate forRoot invocations', () => {
+    const firstModule = SocketIoModule.forRoot({ shutdown: { timeoutMs: 1111 } });
+    const secondModule = SocketIoModule.forRoot({ shutdown: { timeoutMs: 2222 } });
+    const firstProviders = getModuleMetadata(firstModule)?.providers;
+    const secondProviders = getModuleMetadata(secondModule)?.providers;
+    const firstOptionsProvider = firstProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
+    const secondOptionsProvider = secondProviders?.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+    ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
+
+    expect(firstModule).not.toBe(secondModule);
+    expect(firstOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 1111 } });
+    expect(secondOptionsProvider?.useValue).toEqual({ shutdown: { timeoutMs: 2222 } });
+  });
+
   it('injects the Socket.IO server token into singleton providers', async () => {
     @Inject([SOCKETIO_SERVER])
     class ServerProbe {
@@ -119,7 +136,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [ServerProbe],
     });
 
@@ -173,7 +190,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, ChatGateway],
     });
 
@@ -227,7 +244,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [RequestGateway],
     });
 
@@ -279,7 +296,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, AsyncGateway],
     });
 
@@ -517,7 +534,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [GatewayState, ChatGateway, AdminGateway],
     });
 
@@ -574,7 +591,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule({ transports: ['websocket'] })],
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
       providers: [DefaultGateway],
     });
 
@@ -603,7 +620,7 @@ describe('@konekti/platform-socket.io', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createSocketIoModule()],
+      imports: [SocketIoModule.forRoot()],
       providers: [ShutdownGateway],
     });
 

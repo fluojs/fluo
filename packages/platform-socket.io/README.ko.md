@@ -14,7 +14,7 @@ npm install @konekti/platform-socket.io @konekti/websocket socket.io
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { createSocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/platform-socket.io';
+import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/platform-socket.io';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import type { Socket } from 'socket.io';
 
@@ -41,7 +41,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [createSocketIoModule({ transports: ['websocket'] })],
+  imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -49,7 +49,7 @@ export class AppModule {}
 
 ## API
 
-- `createSocketIoModule()` - 라이프사이클 디스커버리와 Socket.IO 네임스페이스 바인딩을 등록합니다
+- `SocketIoModule.forRoot()` - 라이프사이클 디스커버리와 Socket.IO 네임스페이스 바인딩을 등록합니다
 - `createSocketIoProviders()` - 커스텀 모듈 조합용 raw provider 배열을 반환합니다
 - `SOCKETIO_SERVER` - Socket.IO `Server` 인스턴스를 DI로 주입합니다
 - `SOCKETIO_ROOM_SERVICE` - Socket.IO 네이티브 room API 기반 헬퍼를 주입합니다
@@ -58,12 +58,12 @@ export class AppModule {}
 
 ### Migration note (0.x)
 
-`SOCKETIO_LIFECYCLE_SERVICE`는 더 이상 루트 공개 엔트리포인트와 `createSocketIoModule()`의 exports에 포함되지 않습니다.
+`SOCKETIO_LIFECYCLE_SERVICE`는 더 이상 루트 공개 엔트리포인트와 `SocketIoModule.forRoot()`의 exports에 포함되지 않습니다.
 소비자는 room 헬퍼에는 `SOCKETIO_ROOM_SERVICE`를, raw Socket.IO 서버 접근에는 `SOCKETIO_SERVER`를 주입해야 합니다.
 
 ### Module options
 
-`createSocketIoModule(options)` 및 `createSocketIoProviders(options)`는 다음 옵션을 받습니다.
+`SocketIoModule.forRoot(options)` 및 `createSocketIoProviders(options)`는 다음 옵션을 받습니다.
 
 - `cors`
 - `transports`
