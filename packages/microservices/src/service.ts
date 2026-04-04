@@ -1,14 +1,12 @@
 import { Inject, fallbackClone, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type MicroserviceRuntime,
   type OnApplicationShutdown,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { getHandlerMetadataEntries } from './metadata.js';
 import { createMicroservicePlatformStatusSnapshot } from './status.js';

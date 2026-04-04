@@ -7,15 +7,12 @@ import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapt
 import { Inject } from '@konekti/core';
 import type { Container } from '@konekti/di';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  HTTP_APPLICATION_ADAPTER,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 import type {
   GraphQLError as GraphQLErrorType,
   GraphQLBoolean as GraphQLBooleanType,

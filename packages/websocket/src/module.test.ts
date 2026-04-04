@@ -8,7 +8,8 @@ import { WebSocket } from 'ws';
 import { Inject, Scope, getModuleMetadata } from '@konekti/core';
 import { Container } from '@konekti/di';
 import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
-import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger, HTTP_APPLICATION_ADAPTER } from '@konekti/runtime';
+import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { HTTP_APPLICATION_ADAPTER } from '@konekti/runtime/internal';
 import type { HttpApplicationAdapter } from '@konekti/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';

@@ -10,5 +10,5 @@ export * from './multipart.js';
 export * from './node.js';
 export * from './platform-contract.js';
 export * from './request-transaction.js';
-export * from './tokens.js';
+export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';

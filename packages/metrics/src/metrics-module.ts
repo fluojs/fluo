@@ -1,6 +1,7 @@
 import { Controller, Get, type MiddlewareLike, type RequestContext } from '@konekti/http';
 import type { Provider } from '@konekti/di';
-import { PLATFORM_SHELL, defineModule, type ModuleType, type PlatformShellSnapshot } from '@konekti/runtime';
+import { defineModule, type ModuleType, type PlatformShellSnapshot } from '@konekti/runtime';
+import { PLATFORM_SHELL } from '@konekti/runtime/internal';
 import { Gauge, type Registry, Registry as PrometheusRegistry, collectDefaultMetrics } from 'prom-client';
 
 import {

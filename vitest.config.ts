@@ -16,11 +16,6 @@ function collectWorkspaceAliases(): Record<string, string> {
     const sourceRoot = join(packageRoot, 'src');
     const scopeName = `@konekti/${packageName}`;
 
-    const indexPath = join(sourceRoot, 'index.ts');
-    if (existsSync(indexPath)) {
-      aliases[scopeName] = indexPath;
-    }
-
     if (!existsSync(sourceRoot)) {
       continue;
     }
@@ -32,6 +27,11 @@ function collectWorkspaceAliases(): Record<string, string> {
 
       const subpath = sourceEntry.slice(0, -3);
       aliases[`${scopeName}/${subpath}`] = join(sourceRoot, sourceEntry);
+    }
+
+    const indexPath = join(sourceRoot, 'index.ts');
+    if (existsSync(indexPath)) {
+      aliases[scopeName] = indexPath;
     }
   }
 

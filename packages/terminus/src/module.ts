@@ -1,14 +1,13 @@
 import type { Provider } from '@konekti/di';
 import type { RequestContext } from '@konekti/http';
 import {
-  PLATFORM_SHELL,
-  RUNTIME_CONTAINER,
   createHealthModule,
   defineModule,
   type ModuleType,
   type PlatformHealthReport,
   type PlatformReadinessReport,
 } from '@konekti/runtime';
+import { PLATFORM_SHELL, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { TerminusHealthService } from './health-check.js';
 import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';

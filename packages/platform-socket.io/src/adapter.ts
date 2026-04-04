@@ -5,16 +5,13 @@ import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from
 import type { Container, Provider } from '@konekti/di';
 import type { HttpApplicationAdapter } from '@konekti/http';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  HTTP_APPLICATION_ADAPTER,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 import {
   getWebSocketGatewayMetadata,
   getWebSocketHandlerMetadataEntries,

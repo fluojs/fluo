@@ -1,10 +1,8 @@
 import { Inject, InvariantError } from '@konekti/core';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
   type OnApplicationBootstrap,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from './errors.js';
 import { getQueryHandlerMetadata } from './metadata.js';

@@ -1,13 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { Inject, InvariantError, KonektiError, type Token } from '@konekti/core';
-import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-} from '@konekti/runtime';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { CqrsBusBase } from './discovery.js';
 import { SagaExecutionError } from './errors.js';

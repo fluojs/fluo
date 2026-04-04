@@ -1,14 +1,12 @@
 import { Inject, fallbackClone, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
 import type { Container, Provider } from '@konekti/di';
 import {
-  APPLICATION_LOGGER,
-  COMPILED_MODULES,
-  RUNTIME_CONTAINER,
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@konekti/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
 import { createEventBusPlatformStatusSnapshot } from './status.js';
