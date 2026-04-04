@@ -116,6 +116,12 @@ interface GraphQLContext {
 - `getRequestScopedDataLoader(context, key, createLoader)` — low-level 캐시 헬퍼
 - `createRequestScopedDataLoaderFactory(key, createLoader)` — low-level 팩토리 헬퍼
 
+#### 루트 배럴 공개 표면 분류
+
+- **지원됨 (`src/index.ts`)**: resolver 데코레이터 (`Resolver`, `Query`, `Mutation`, `Subscription`, `Arg`), 모듈 생성기 (`createGraphqlModule`, `createGraphqlProviders`), DataLoader 헬퍼 (`createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`), 그리고 문서화된 메타데이터/타입 헬퍼.
+- **호환 전용**: 없음.
+- **내부 (비공개)**: `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`.
+
 `GRAPHQL_MODULE_OPTIONS`는 계속 패키지 내부 lifecycle wiring 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다. `GRAPHQL_LIFECYCLE_SERVICE`도 비공개이며 내부 class-alias wiring 용도로는 더 이상 사용하지 않습니다.
 
 #### 0.x 마이그레이션 노트
