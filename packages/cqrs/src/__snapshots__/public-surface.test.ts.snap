@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`@konekti/cqrs root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+[
+  "COMMAND_BUS",
+  "CommandHandler",
+  "CommandHandlerNotFoundError",
+  "CommandHandlerNotFoundException",
+  "DuplicateCommandHandlerError",
+  "DuplicateEventHandlerError",
+  "DuplicateQueryHandlerError",
+  "EVENT_BUS",
+  "EventHandler",
+  "QUERY_BUS",
+  "QueryHandler",
+  "QueryHandlerNotFoundError",
+  "QueryHandlerNotFoundException",
+  "Saga",
+  "SagaExecutionError",
+  "commandHandlerMetadataSymbol",
+  "createCqrsModule",
+  "createCqrsPlatformStatusSnapshot",
+  "createCqrsProviders",
+  "defineCommandHandlerMetadata",
+  "defineEventHandlerMetadata",
+  "defineQueryHandlerMetadata",
+  "defineSagaMetadata",
+  "eventHandlerMetadataSymbol",
+  "getCommandHandlerMetadata",
+  "getCommandHandlerMetadataEntry",
+  "getEventHandlerMetadata",
+  "getQueryHandlerMetadata",
+  "getQueryHandlerMetadataEntry",
+  "getSagaMetadata",
+  "queryHandlerMetadataSymbol",
+  "sagaMetadataSymbol",
+]
+`;

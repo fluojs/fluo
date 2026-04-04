@@ -54,6 +54,12 @@ export class AppModule {}
 - `@OnEvent(EventClass)` - marks provider/controller methods as event handlers
 - `createEventBusPlatformStatusSnapshot(input)` - maps local/transport lifecycle and degraded transport diagnostics to shared platform snapshot fields
 
+### Root barrel public surface governance (0.x)
+
+- **supported**: `createEventBusModule`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
+- **compatibility-only**: `EVENT_BUS_OPTIONS` and metadata helper exports (`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`) remain exported for 0.x compatibility and framework/tooling integration, but are not recommended for new app-level imports.
+- **internal**: undocumented lifecycle/runtime wiring details are non-contract internals even when the broad root barrel currently re-exports related symbols.
+
 ### Module options
 
 `createEventBusModule(options)` and `createEventBusProviders(options)` accept:

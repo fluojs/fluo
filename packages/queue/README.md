@@ -57,6 +57,12 @@ export class AppModule {}
 - `@QueueWorker(JobClass, options?)` - marks singleton worker classes for a job type
 - `createQueuePlatformStatusSnapshot(input)` - maps queue lifecycle/dependency/drain signals into shared platform snapshot fields
 
+### Root barrel public surface governance (0.x)
+
+- **supported**: `createQueueModule`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker public types, and status snapshot helpers.
+- **compatibility-only**: none at the root barrel today; new compatibility shims (if any) must be explicitly documented here before release.
+- **internal**: `QUEUE_OPTIONS` remains internal and is intentionally excluded from the root barrel contract.
+
 ## Runtime behavior
 
 - worker discovery runs in `onApplicationBootstrap()` across providers/controllers in compiled modules

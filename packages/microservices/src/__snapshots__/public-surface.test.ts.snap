@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`@konekti/microservices root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+[
+  "BidiStreamPattern",
+  "ClientStreamPattern",
+  "EventPattern",
+  "GrpcMicroserviceTransport",
+  "KafkaMicroserviceTransport",
+  "MICROSERVICE",
+  "MICROSERVICE_OPTIONS",
+  "MessagePattern",
+  "MicroserviceLifecycleService",
+  "MqttMicroserviceTransport",
+  "NatsMicroserviceTransport",
+  "RabbitMqMicroserviceTransport",
+  "RedisPubSubMicroserviceTransport",
+  "RedisStreamsMicroserviceTransport",
+  "ServerStreamPattern",
+  "TcpMicroserviceTransport",
+  "createMicroservicePlatformStatusSnapshot",
+  "createMicroservicesModule",
+  "createMicroservicesProviders",
+  "defineHandlerMetadata",
+  "getHandlerMetadataEntries",
+  "microserviceMetadataSymbol",
+]
+`;

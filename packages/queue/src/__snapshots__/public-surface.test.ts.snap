@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`@konekti/queue root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+[
+  "QUEUE",
+  "QueueWorker",
+  "createQueueModule",
+  "createQueuePlatformStatusSnapshot",
+  "createQueueProviders",
+]
+`;
