@@ -56,6 +56,7 @@ export class AppModule {}
 
 루트 패키지 엔트리포인트의 공개 토큰 표면은 `SOCKETIO_SERVER`와 `SOCKETIO_ROOM_SERVICE`에 집중하도록 의도적으로 제한됩니다.
 `SOCKETIO_OPTIONS`는 내부 모듈 배선 토큰으로 유지되며 루트 공개 토큰 seam 바깥으로 의도적으로 국소화되어 있습니다.
+이 토큰은 패키지 내부 DI 식별성을 모듈 경계에서 일관되게 유지하기 위해 여전히 `Symbol.for(...)` 안정 키를 사용하지만, 공개 계약에는 포함되지 않습니다.
 
 ### Migration note (0.x)
 
