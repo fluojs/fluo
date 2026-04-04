@@ -78,27 +78,32 @@ Avoid using short or generic names like `CLIENT` or `CONFIG`.
 
 ## Module Authoring Conventions
 
-Konekti integrations should follow the factory pattern for module creation. This allows users to pass options while maintaining the standard `@Module()` structure.
+Runtime module entrypoints should follow Nest-style canonical names (`<Name>Module.forRoot(...)`, optional `forRootAsync(...)`) so migration guidance, scaffolding, and package READMEs stay aligned.
 
-### Factory Pattern
+Keep `create*` names for helper/builders that are **not** runtime module entrypoints (for example test builders such as `createTestingModule(...)`, or small runtime helpers such as `createHealthModule()`).
 
-Create a function that returns a decorated class. Use the `@konekti/redis` or `@konekti/prisma` patterns as a baseline.
+### Runtime Module Entrypoint Pattern (`forRoot`)
+
+Expose a module class with a static `forRoot(...)` entrypoint that returns the configured runtime module type.
 
 ```typescript
-import { Module, Global } from '@konekti/core';
+import { defineModuleMetadata } from '@konekti/core';
 
-export function createMyExtensionModule(options: MyExtensionOptions) {
-  @Global()
-  @Module({
-    providers: [
-      { provide: MY_EXTENSION_OPTIONS, useValue: options },
-      MyExtensionService
-    ],
-    exports: [MyExtensionService]
-  })
-  class MyExtensionModule {}
+export class MyExtensionModule {
+  static forRoot(options: MyExtensionOptions): new () => MyExtensionModule {
+    class MyExtensionRuntimeModule extends MyExtensionModule {}
 
-  return MyExtensionModule;
+    defineModuleMetadata(MyExtensionRuntimeModule, {
+      global: true,
+      exports: [MyExtensionService],
+      providers: [
+        { provide: MY_EXTENSION_OPTIONS, useValue: options },
+        MyExtensionService,
+      ],
+    });
+
+    return MyExtensionRuntimeModule;
+  }
 }
 ```
 

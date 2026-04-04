@@ -23,7 +23,12 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
 
-That stable starter shape includes `src/main.ts` using `const app = await KonektiFactory.create(AppModule, {}); await app.listen();`, runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`).
+That stable starter shape includes `src/main.ts` using `const app = await KonektiFactory.create(AppModule, {}); await app.listen();`, `AppModule` imports that keep runtime-module entrypoints on canonical `*.forRoot(...)` names (for example `ConfigModule.forRoot(...)`), runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`).
+
+Naming policy in generated/migration guidance:
+
+- Runtime module entrypoints use Nest-style canonical names (`SomeModule.forRoot(...)`, optional `forRootAsync(...)`).
+- Helper/builders that are not runtime module entrypoints keep `create*` names (`createTestingModule(...)`, `createHealthModule()`).
 
 ## Installation
 
@@ -103,6 +108,8 @@ Current safe first-phase transforms:
 - bootstrap rewrite for safe default startup forms (`NestFactory.create(AppModule[, options])` + `app.listen(port)` → `KonektiFactory.create(..., { port })` + `await app.listen()`)
 - testing rewrite for safe metadata/chains (`Test.createTestingModule({ imports: [RootModule] })` or `{ rootModule: RootModule }` → `createTestingModule({ rootModule: RootModule })`)
 - `tsconfig.json` rewrite (remove `experimentalDecorators`, `emitDecoratorMetadata`)
+
+The migration codemod intentionally preserves helper-style `create*` APIs (for example `createTestingModule(...)`) because they are builders, not runtime module entrypoints.
 
 The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
 
