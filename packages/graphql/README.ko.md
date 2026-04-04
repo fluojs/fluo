@@ -120,14 +120,14 @@ interface GraphQLContext {
 
 - **지원됨 (`src/index.ts`)**: resolver 데코레이터 (`Resolver`, `Query`, `Mutation`, `Subscription`, `Arg`), 모듈 API (`GraphqlModule`, `createGraphqlProviders`), DataLoader 헬퍼 (`createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`), 그리고 문서화된 메타데이터/타입 헬퍼.
 - **호환 전용**: 없음.
-- **내부 (비공개)**: `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`.
+- **내부 (비공개)**: GraphQL module-options lifecycle 토큰 wiring과 `GraphqlLifecycleService` 내부 구현.
 
-`GRAPHQL_MODULE_OPTIONS`는 계속 패키지 내부 lifecycle wiring 토큰이며, 공개 module/resolver API surface에 포함되지 않습니다. `GRAPHQL_LIFECYCLE_SERVICE`도 비공개이며 내부 class-alias wiring 용도로는 더 이상 사용하지 않습니다.
+GraphQL module-options lifecycle 토큰 wiring은 계속 내부 구현이며 공개 module/resolver API surface에 포함되지 않습니다. `GraphqlLifecycleService` 내부 구현도 지원되는 루트 배럴 계약에 포함되지 않습니다.
 
 #### 0.x 마이그레이션 노트
 
-- `createGraphqlModule`, `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`는 0.x에서 공개 `@konekti/graphql` 패키지 surface에서 제거되었습니다.
-- 소비자 코드는 `@konekti/graphql`에서 이 토큰들을 import하지 않도록 변경해야 합니다.
+- legacy `createGraphqlModule` 및 legacy module/lifecycle 토큰 export는 0.x에서 공개 `@konekti/graphql` 패키지 surface에서 제거되었습니다.
+- 소비자 코드는 `@konekti/graphql`에서 내부 lifecycle 토큰을 import하지 않아야 합니다.
 - 지원되는 사용 방식은 `GraphqlModule.forRoot(...)`, resolver 데코레이터, README에 문서화된 helper API입니다.
 
 ## 데코레이터

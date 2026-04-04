@@ -120,14 +120,14 @@ interface GraphQLContext {
 
 - **supported (`src/index.ts`)**: resolver decorators (`Resolver`, `Query`, `Mutation`, `Subscription`, `Arg`), module APIs (`GraphqlModule`, `createGraphqlProviders`), DataLoader helpers (`createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`), and documented metadata/type helpers.
 - **compatibility-only**: none.
-- **internal (non-public)**: `GRAPHQL_MODULE_OPTIONS`, `GRAPHQL_LIFECYCLE_SERVICE`.
+- **internal (non-public)**: GraphQL module-option lifecycle token wiring and `GraphqlLifecycleService` internals.
 
-`GRAPHQL_MODULE_OPTIONS` remains an internal lifecycle wiring token and is not part of the public module/resolver API surface. `GRAPHQL_LIFECYCLE_SERVICE` is also non-public and no longer used for internal class-alias wiring.
+GraphQL module-option lifecycle token wiring remains internal and is not part of the public module/resolver API surface. `GraphqlLifecycleService` internals are also non-public and are not part of the supported root-barrel contract.
 
 #### 0.x migration note
 
-- `createGraphqlModule`, `GRAPHQL_MODULE_OPTIONS`, and `GRAPHQL_LIFECYCLE_SERVICE` were removed from the public `@konekti/graphql` package surface in 0.x.
-- Consumers should stop importing these tokens from `@konekti/graphql`.
+- Legacy `createGraphqlModule` and legacy module/lifecycle token exports were removed from the public `@konekti/graphql` package surface in 0.x.
+- Consumers should not import internal lifecycle tokens from `@konekti/graphql`.
 - Supported usage remains `GraphqlModule.forRoot(...)`, resolver decorators, and documented helper APIs.
 
 ## Decorators
