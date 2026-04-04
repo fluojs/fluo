@@ -26,10 +26,10 @@
 - `IEventHandler<TEvent extends IEvent>`
 - `ISaga<TEvent extends IEvent>` — 이벤트 기반 오케스트레이션을 위한 saga/process-manager 계약
 
-`createCqrsModule({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })`는 위 토큰들을 글로벌로 등록하고 `createEventBusModule()`을 자동으로 import하므로, CQRS 이벤트 발행에 추가 모듈 연결이 필요하지 않습니다.
+`CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })`는 위 토큰들을 글로벌로 등록하고 `EventBusModule.forRoot()`를 자동으로 import하므로, CQRS 이벤트 발행에 추가 모듈 연결이 필요하지 않습니다.
 
 - `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`: 생성되는 CQRS 모듈에 provider로 추가되는 선택적 편의 배열
-- `eventBus`: `createEventBusModule(eventBus)`로 그대로 전달되는 옵션
+- `eventBus`: `EventBusModule.forRoot(eventBus)`로 그대로 전달되는 옵션
 
 ## 핸들러 등록 모델
 
@@ -132,7 +132,7 @@ class OrderSaga implements ISaga<OrderSubmittedEvent> {
 - saga 디스패치는 saga 인스턴스 단위 실행 체인으로 처리되어, 동시 `publish()` 상황에서도 saga별 처리 순서가 결정적으로 유지됩니다.
 - saga 내부에서 예상치 못한 예외가 발생하면 `publish()`는 `SagaExecutionError`를 throw합니다.
 - 애플리케이션 종료 시 진행 중인 saga 실행은 drain됩니다.
-- saga는 `createCqrsModule({ sagas: [...] })`의 `sagas` 옵션으로 등록하거나, 부트스트랩 시점 데코레이터 탐색에 맡길 수 있습니다.
+- saga는 `CqrsModule.forRoot({ sagas: [...] })`의 `sagas` 옵션으로 등록하거나, 부트스트랩 시점 데코레이터 탐색에 맡길 수 있습니다.
 
 ## 한 줄 모델
 
