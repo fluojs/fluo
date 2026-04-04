@@ -34,7 +34,6 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { createCodeFirstSchema, resolveSchema } from './schema.js';
-import { GRAPHQL_MODULE_OPTIONS } from './tokens.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport.js';
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 import type {
@@ -45,6 +44,7 @@ import type {
 } from './types.js';
 
 const GRAPHQL_CONTEXT_OVERRIDE = Symbol('konekti.graphql.context.override');
+const GRAPHQL_MODULE_OPTIONS_TOKEN = Symbol.for('konekti.graphql.module-options');
 
 type YogaLike = {
   fetch(request: Request): Promise<Response>;
@@ -287,7 +287,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
   };
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_MODULE_OPTIONS])
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_MODULE_OPTIONS_TOKEN])
 export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private middlewareRegistered = false;
   private readonly operationContainers = new WeakMap<Request, Container>();

@@ -81,7 +81,6 @@ Module-options DI token used by `ThrottlerGuard` construction and module wiring.
 
 - `THROTTLER_GUARD` compatibility alias was removed from the public API.
 - Use `ThrottlerGuard` directly in `@UseGuards(...)` and DI registrations.
-- Migrate module setup from `createThrottlerModule(options)` to `ThrottlerModule.forRoot(options)`.
 - Runtime throttling behavior and module options semantics are unchanged.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`

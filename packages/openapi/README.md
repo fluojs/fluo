@@ -91,10 +91,29 @@ interface OpenApiModuleOptions {
 
 class OpenApiModule {
   static forRoot(options: OpenApiModuleOptions): ModuleType;
+  static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType;
 }
 ```
 
 When both `sources` and `descriptors` are provided, OpenAPI generation composes both sets into a single document.
+
+### `OpenApiModule.forRootAsync(options)`
+
+Resolves `OpenApiModuleOptions` from a DI-aware async factory and mounts the same `/openapi.json` + optional `/docs` endpoints.
+
+```typescript
+import { OpenApiModule } from '@konekti/openapi';
+
+OpenApiModule.forRootAsync({
+  inject: [CONFIG_TOKEN],
+  useFactory: async (config: ConfigService) => ({
+    title: config.get('OPENAPI_TITLE') ?? 'My API',
+    version: config.get('OPENAPI_VERSION') ?? '1.0.0',
+    sources: [{ controllerToken: UsersController }],
+    ui: config.get('NODE_ENV') !== 'production',
+  }),
+});
+```
 
 **Endpoints:**
 

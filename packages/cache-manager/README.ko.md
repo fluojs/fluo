@@ -124,23 +124,17 @@ class AppModule {}
 
 `CacheModuleOptions`의 주요 필드는 `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, `principalScopeResolver`입니다.
 
-### 0.x 마이그레이션 노트 (호환 별칭 제거)
+### 0.x 호환성 노트
 
-현재 `0.x` 라인부터 `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`는 공개 패키지 표면에서 제거되었습니다.
-
-- 생성자 주입은 클래스 우선 DI로 마이그레이션하세요.
-  - `CACHE_MANAGER` -> `CacheService`
-  - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
-- 모듈 설정은 canonical Nest-style 엔트리포인트로 마이그레이션하세요.
-  - `createCacheModule(options)` -> `CacheModule.forRoot(options)`
-- 내부 토큰 seam은 토큰 기반으로 그대로 유지됩니다.
-  - `CACHE_OPTIONS`
-  - `CACHE_STORE`
+- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` 호환 별칭은 공개 패키지 표면에서 제거되었습니다.
+- 클래스 우선 DI인 `CacheService`, `CacheInterceptor`를 사용하세요.
+- canonical 모듈 엔트리포인트는 `CacheModule.forRoot(options)`입니다.
+- 내부 토큰 seam은 토큰 기반으로 그대로 유지됩니다: `CACHE_OPTIONS`, `CACHE_STORE`.
 
 ### 루트 배럴 공개 표면 분류
 
 - **지원됨 (`src/index.ts`)**: `CacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, 데코레이터 (`CacheKey`, `CacheTTL`, `CacheEvict`), 상태 어댑터, 모듈/스토어 토큰 seam (`CACHE_OPTIONS`, `CACHE_STORE`).
-- **호환 전용 (0.x에서 제거된 별칭)**: `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **호환 전용**: 없음.
 - **내부 (비공개)**: 구현 내부 모듈 wiring 외에는 없음.
 
 ## 동작 규약
@@ -172,7 +166,7 @@ class AppModule {}
 
 - `CacheModule.forRoot({ store: 'memory' })`는 `@konekti/redis`/`ioredis` 없이 동작합니다.
 - `CacheModule.forRoot({ store: 'redis' })`는 다음 중 하나가 필요합니다.
-  - 앱에서 `createRedisModule(...)`를 import하여 `REDIS_CLIENT` 제공
+  - 앱에서 `RedisModule.forRoot(...)`를 import하여 `REDIS_CLIENT` 제공
   - `options.redis.client`로 raw ioredis 스타일 클라이언트 전달
 
 Redis 모드에서 클라이언트를 찾지 못하면 부트스트랩 시 명확한 오류를 발생시킵니다.
