@@ -58,6 +58,7 @@ export class AppModule {}
 ### Internal module wiring tokens
 
 `@konekti/websocket` does not expose lifecycle DI tokens as part of its public API. Gateway discovery/wiring tokens are internal implementation details, while gateway authoring remains decorator- and class-provider-driven.
+`WEBSOCKET_OPTIONS` is localized to internal module wiring and is intentionally not part of the root entrypoint token surface.
 
 ### Module options
 

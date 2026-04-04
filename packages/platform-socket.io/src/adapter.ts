@@ -20,7 +20,7 @@ import {
 } from '@konekti/websocket';
 import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
 
-import { SOCKETIO_OPTIONS } from './tokens.js';
+import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import type { SocketIoModuleOptions, SocketIoRoomService } from './types.js';
 
 interface DiscoveryCandidate {
@@ -117,7 +117,7 @@ function extractPayload(args: unknown[]): unknown {
   return effectiveArgs.length === 1 ? effectiveArgs[0] : effectiveArgs;
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS])
+@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS_INTERNAL])
 export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
 {
