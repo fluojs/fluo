@@ -57,6 +57,12 @@ export class AppModule {}
 - `@QueueWorker(JobClass, options?)` - 특정 job type을 처리할 singleton worker 클래스를 표시합니다
 - `createQueuePlatformStatusSnapshot(input)` - queue lifecycle/dependency/drain 신호를 공통 platform snapshot 필드로 매핑합니다
 
+### 루트 배럴 공개 표면 거버넌스 (0.x)
+
+- **supported**: `createQueueModule`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
+- **compatibility-only**: 현재 루트 배럴에는 별도 항목이 없습니다. 향후 호환성 shim이 추가되면 릴리스 전에 이 섹션에 명시적으로 문서화되어야 합니다.
+- **internal**: `QUEUE_OPTIONS`는 내부 항목으로 유지되며 루트 배럴 공개 계약에서 의도적으로 제외됩니다.
+
 ## 런타임 동작
 
 - worker 탐색은 `onApplicationBootstrap()`에서 compiled module 전체를 대상으로 실행됩니다

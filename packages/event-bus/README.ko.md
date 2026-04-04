@@ -54,6 +54,12 @@ export class AppModule {}
 - `@OnEvent(EventClass)` - 프로바이더/컨트롤러 메서드를 이벤트 핸들러로 표시합니다.
 - `createEventBusPlatformStatusSnapshot(input)` - 로컬/트랜스포트 lifecycle 및 degraded transport 진단을 공통 platform snapshot 필드로 매핑합니다.
 
+### 루트 배럴 공개 표면 거버넌스 (0.x)
+
+- **supported**: `createEventBusModule`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
+- **compatibility-only**: `EVENT_BUS_OPTIONS` 및 metadata helper export(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 export를 유지하지만, 신규 앱 레벨 import로는 권장하지 않습니다.
+- **internal**: 문서화되지 않은 lifecycle/runtime wiring 세부사항은 루트 배럴이 현재 관련 symbol을 재노출하더라도 비계약 내부 동작입니다.
+
 ### 모듈 옵션
 
 `createEventBusModule(options)`와 `createEventBusProviders(options)`는 다음 옵션을 허용합니다.

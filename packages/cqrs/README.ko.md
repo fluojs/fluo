@@ -125,6 +125,12 @@ export class AppModule {}
 - `@Saga(EventClass | EventClass[])` - 하나 이상의 이벤트 타입에 반응하는 클래스 기반 saga/process-manager 메타데이터를 기록합니다.
 - `createCqrsPlatformStatusSnapshot(input)` - CQRS event/saga lifecycle 의존성 및 drain 가시성을 공통 platform snapshot 필드로 매핑합니다.
 
+### 루트 배럴 공개 표면 거버넌스 (0.x)
+
+- **supported**: `createCqrsModule`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
+- **compatibility-only**: 저수준 metadata helper/symbol(`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) 및 legacy not-found error alias export는 0.x 호환성을 위해 유지되지만, 신규 애플리케이션 코드의 기본 import 경로로는 권장하지 않습니다.
+- **internal**: `CQRS_EVENT_BUS`는 공개 루트 배럴 계약에 포함되지 않습니다.
+
 ### 마이그레이션 노트 (0.x)
 
 - `CQRS_EVENT_BUS`는 공개 패키지 표면에서 제거되었습니다.

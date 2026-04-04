@@ -64,6 +64,12 @@ await microservice.listen();
 - `MqttMicroserviceTransport` - MQTT 트랜스포트 어댑터입니다 (요청/응답 + 이벤트).
 - `createMicroservicePlatformStatusSnapshot(input)` - transport lifecycle/capability/handler 가시성을 공통 platform snapshot 필드로 매핑합니다.
 
+### 루트 배럴 공개 표면 거버넌스 (0.x)
+
+- **supported**: `createMicroservicesModule`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
+- **compatibility-only**: `MICROSERVICE_OPTIONS`, metadata helper export(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), 저수준 lifecycle service 직접 import는 0.x 호환성을 위해 export를 유지하지만, 애플리케이션의 기본 seam으로는 권장하지 않습니다.
+- **internal**: 루트 배럴 거버넌스 기준에서 문서화되지 않은 트랜스포트 런타임 내부 동작은 광범위한 배럴 re-export로 접근 가능하더라도 비계약(non-contract) 동작입니다.
+
 ## 런타임 동작
 
 - 컴파일된 모듈의 프로바이더와 컨트롤러에서 핸들러를 검색합니다.
