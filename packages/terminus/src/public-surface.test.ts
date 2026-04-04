@@ -13,5 +13,6 @@ describe('terminus public surface', () => {
   it('exposes Nest-style canonical module entrypoint', () => {
     expect(terminus).toHaveProperty('TerminusModule');
     expect((terminus as { TerminusModule: { forRoot: unknown } }).TerminusModule).toHaveProperty('forRoot');
+    expect(terminus).not.toHaveProperty('createTerminusModule');
   });
 });
