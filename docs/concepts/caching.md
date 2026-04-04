@@ -63,12 +63,12 @@ In the current `0.x` line, compatibility aliases `CACHE_MANAGER` and `CACHE_INTE
 ### global interceptor registration
 
 ```ts
-import { CacheInterceptor, createCacheModule } from '@konekti/cache-manager';
+import { CacheInterceptor, CacheModule } from '@konekti/cache-manager';
 import { Module } from '@konekti/core';
 import { bootstrapApplication } from '@konekti/runtime';
 
 @Module({
-  imports: [createCacheModule({ store: 'memory' })],
+  imports: [CacheModule.forRoot({ store: 'memory' })],
 })
 class AppModule {}
 
@@ -83,9 +83,9 @@ When you register `CacheInterceptor` globally, only GET handlers are read-throug
 ### memory-only setup
 
 ```ts
-import { createCacheModule } from '@konekti/cache-manager';
+import { CacheModule } from '@konekti/cache-manager';
 
-createCacheModule({ store: 'memory' });
+CacheModule.forRoot({ store: 'memory' });
 ```
 
 This mode does not require `@konekti/redis` or `ioredis`.
@@ -94,10 +94,10 @@ This mode does not require `@konekti/redis` or `ioredis`.
 
 ```ts
 import { createRedisModule } from '@konekti/redis';
-import { createCacheModule } from '@konekti/cache-manager';
+import { CacheModule } from '@konekti/cache-manager';
 
 createRedisModule({ host: '127.0.0.1', port: 6379 });
-createCacheModule({ store: 'redis' });
+CacheModule.forRoot({ store: 'redis' });
 ```
 
 When Redis mode is selected without a resolvable Redis client, bootstrap fails early with an explicit configuration error.

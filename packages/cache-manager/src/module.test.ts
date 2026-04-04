@@ -7,7 +7,7 @@ import { bootstrapApplication, defineModule } from '@konekti/runtime';
 import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
 import { CacheService } from './service.js';
-import { createCacheModule } from './module.js';
+import { CacheModule } from './module.js';
 import type { RedisCompatibleClient } from './types.js';
 
 const REDIS_CLIENT_TOKEN = Symbol.for('konekti.redis.client');
@@ -90,10 +90,10 @@ function createRequest(path: string, method = 'GET', url = path): FrameworkReque
   };
 }
 
-describe('createCacheModule', () => {
+describe('CacheModule.forRoot', () => {
   it('defaults to non-global module registration unless isGlobal is set', () => {
-    const localModule = createCacheModule({ store: 'memory' });
-    const globalModule = createCacheModule({ isGlobal: true, store: 'memory' });
+    const localModule = CacheModule.forRoot({ store: 'memory' });
+    const globalModule = CacheModule.forRoot({ isGlobal: true, store: 'memory' });
 
     expect(getModuleMetadata(localModule)?.global).toBe(false);
     expect(getModuleMetadata(globalModule)?.global).toBe(true);
@@ -107,7 +107,7 @@ describe('createCacheModule', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCacheModule({ store: 'memory' })],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
       providers: [Consumer],
     });
 
@@ -124,7 +124,7 @@ describe('createCacheModule', () => {
   it('fails fast at bootstrap when redis store is selected but redis client is unavailable', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCacheModule({ store: 'redis' })],
+      imports: [CacheModule.forRoot({ store: 'redis' })],
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
@@ -140,7 +140,7 @@ describe('createCacheModule', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCacheModule({ store: 'redis' })],
+      imports: [CacheModule.forRoot({ store: 'redis' })],
       providers: [Consumer],
     });
 
@@ -161,7 +161,7 @@ describe('createCacheModule', () => {
   it('resolves CacheService via class-first public surface', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCacheModule({ store: 'memory' })],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -175,7 +175,7 @@ describe('createCacheModule', () => {
   it('resolves CacheInterceptor via class-first public surface', async () => {
     class AppModule {}
     defineModule(AppModule, {
-      imports: [createCacheModule({ store: 'memory' })],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
@@ -208,7 +208,7 @@ describe('createCacheModule', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [ProductController],
-      imports: [createCacheModule({ store: 'memory' })],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });

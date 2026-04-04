@@ -14,12 +14,12 @@ npm install @konekti/throttler
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
+import { ThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
 import { Controller, Get, Post } from '@konekti/http';
 
 @Module({
   imports: [
-    createThrottlerModule({
+    ThrottlerModule.forRoot({
       ttl: 60,
       limit: 100,
     }),
@@ -41,7 +41,7 @@ class AuthController {
 
 ## API
 
-### `createThrottlerModule(options)`
+### `ThrottlerModule.forRoot(options)`
 
 Registers a global throttler guard. Options:
 
@@ -81,6 +81,7 @@ Module-options DI token used by `ThrottlerGuard` construction and module wiring.
 
 - `THROTTLER_GUARD` compatibility alias was removed from the public API.
 - Use `ThrottlerGuard` directly in `@UseGuards(...)` and DI registrations.
+- Migrate module setup from `createThrottlerModule(options)` to `ThrottlerModule.forRoot(options)`.
 - Runtime throttling behavior and module options semantics are unchanged.
 
 ### `createThrottlerPlatformStatusSnapshot(input)` / `createThrottlerPlatformDiagnosticIssues(input)`
@@ -90,7 +91,7 @@ Status adapters (`src/status.ts`) that map throttler store mode and backing-stor
 ## Redis store
 
 ```typescript
-import { createThrottlerModule, RedisThrottlerStore } from '@konekti/throttler';
+import { RedisThrottlerStore, ThrottlerModule } from '@konekti/throttler';
 import { REDIS_CLIENT } from '@konekti/redis';
 import type Redis from 'ioredis';
 
@@ -99,7 +100,7 @@ class AppBootstrap {
   constructor(private readonly redis: Redis) {}
 
   buildModule() {
-    return createThrottlerModule({
+    return ThrottlerModule.forRoot({
       ttl: 60,
       limit: 100,
       store: new RedisThrottlerStore(this.redis),

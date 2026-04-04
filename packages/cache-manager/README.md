@@ -21,7 +21,7 @@ npm install @konekti/cache-manager @konekti/redis ioredis
 ```ts
 import { Module } from '@konekti/core';
 import { Controller, Get, Post, UseInterceptors } from '@konekti/http';
-import { CacheEvict, CacheInterceptor, CacheTTL, createCacheModule } from '@konekti/cache-manager';
+import { CacheEvict, CacheInterceptor, CacheModule, CacheTTL } from '@konekti/cache-manager';
 
 @Controller('/products')
 class ProductController {
@@ -41,7 +41,7 @@ class ProductController {
 }
 
 @Module({
-  imports: [createCacheModule({ store: 'memory' })],
+  imports: [CacheModule.forRoot({ store: 'memory' })],
   controllers: [ProductController],
 })
 class AppModule {}
@@ -54,7 +54,7 @@ Use `CacheService` directly for non-HTTP caching needs such as external API resp
 ```ts
 import { Inject } from '@konekti/core';
 import { Module } from '@konekti/runtime';
-import { CacheService, createCacheModule } from '@konekti/cache-manager';
+import { CacheModule, CacheService } from '@konekti/cache-manager';
 
 const EXTERNAL_API = Symbol.for('EXTERNAL_API');
 
@@ -87,7 +87,7 @@ class UserService {
 }
 
 @Module({
-  imports: [createCacheModule({ store: 'memory', ttl: 60 })],
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
   providers: [UserService],
 })
 class AppModule {}
@@ -116,7 +116,7 @@ class AppModule {}
 
 ### Module Setup
 
-- `createCacheModule(options)` — registers cache providers (default `isGlobal: false`).
+- `CacheModule.forRoot(options)` — registers cache providers (default `isGlobal: false`).
 - `createCacheProviders(options)` — returns providers for manual composition.
 - `createCacheManagerPlatformStatusSnapshot(input)` — maps cache store kind/ownership/readiness into shared platform snapshot shape.
 - `createCacheManagerPlatformDiagnosticIssues(input)` — emits shared `PlatformDiagnosticIssue` entries for cache store readiness failures.
@@ -128,19 +128,21 @@ class AppModule {}
 
 ### 0.x Migration Note (Compatibility Alias Removal)
 
-As of the current `0.x` line, `CACHE_MANAGER` and `CACHE_INTERCEPTOR` are removed from the public package surface.
+As of the current `0.x` line, `createCacheModule`, `CACHE_MANAGER`, and `CACHE_INTERCEPTOR` are removed from the public package surface.
 
 - Migrate constructor injection to class-first DI:
   - `CACHE_MANAGER` -> `CacheService`
   - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
+- Migrate module setup to canonical Nest-style module entrypoint:
+  - `createCacheModule(options)` -> `CacheModule.forRoot(options)`
 - Internal token seams remain token-based and unchanged:
   - `CACHE_OPTIONS`
   - `CACHE_STORE`
 
 ### Root barrel public-surface categories
 
-- **supported (`src/index.ts`)**: `createCacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, decorators (`CacheKey`, `CacheTTL`, `CacheEvict`), status adapters, and module/store token seams (`CACHE_OPTIONS`, `CACHE_STORE`).
-- **compatibility-only (0.x removed aliases)**: `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **supported (`src/index.ts`)**: `CacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, decorators (`CacheKey`, `CacheTTL`, `CacheEvict`), status adapters, and module/store token seams (`CACHE_OPTIONS`, `CACHE_STORE`).
+- **compatibility-only (0.x removed aliases)**: `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
 - **internal (non-public)**: none beyond implementation-private module wiring.
 
 ## Behavior
@@ -166,7 +168,7 @@ For endpoints where query parameters change the response, use `httpKeyStrategy: 
 ```ts
 @Module({
   imports: [
-    createCacheModule({
+    CacheModule.forRoot({
       store: 'memory',
       ttl: 30,
       httpKeyStrategy: 'route+query', // cache key includes sorted query params
@@ -201,7 +203,7 @@ The default `httpKeyStrategy` is `'route'`. This means:
 To opt in to query-aware caching globally:
 
 ```ts
-createCacheModule({
+CacheModule.forRoot({
   store: 'memory',
   httpKeyStrategy: 'route+query',
 })
@@ -228,7 +230,7 @@ When responses differ by tenant ID, subscription plan, or any other dimension be
 Scope responses by tenant only (ignores individual user):
 
 ```ts
-createCacheModule({
+CacheModule.forRoot({
   store: 'redis',
   ttl: 60,
   principalScopeResolver: (context) => {
@@ -242,7 +244,7 @@ createCacheModule({
 Scope responses by subscription plan:
 
 ```ts
-createCacheModule({
+CacheModule.forRoot({
   store: 'memory',
   ttl: 120,
   principalScopeResolver: (context) => {
@@ -268,8 +270,8 @@ When `principalScopeResolver` returns `undefined`, no `|principal:…` segment i
 
 ## Redis bootstrap behavior
 
-- `createCacheModule({ store: 'memory' })` works without `@konekti/redis`/`ioredis` installed.
-- `createCacheModule({ store: 'redis' })` requires either:
+- `CacheModule.forRoot({ store: 'memory' })` works without `@konekti/redis`/`ioredis` installed.
+- `CacheModule.forRoot({ store: 'redis' })` requires either:
   - `createRedisModule(...)` imported in the app (providing `REDIS_CLIENT`), or
   - `options.redis.client` with a raw ioredis-style client.
 

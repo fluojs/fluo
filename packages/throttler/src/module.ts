@@ -21,12 +21,14 @@ export function createThrottlerProviders(options: ThrottlerModuleOptions): Provi
   ];
 }
 
-export function createThrottlerModule(options: ThrottlerModuleOptions): ModuleType {
-  class ThrottlerModule {}
+export class ThrottlerModule {
+  static forRoot(options: ThrottlerModuleOptions): ModuleType {
+    class ThrottlerRootModule extends ThrottlerModule {}
 
-  return defineModule(ThrottlerModule, {
-    exports: [ThrottlerGuard],
-    global: true,
-    providers: createThrottlerProviders(options),
-  });
+    return defineModule(ThrottlerRootModule, {
+      exports: [ThrottlerGuard],
+      global: true,
+      providers: createThrottlerProviders(options),
+    });
+  }
 }
