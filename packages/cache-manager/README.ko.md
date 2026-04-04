@@ -21,7 +21,7 @@ npm install @konekti/cache-manager @konekti/redis ioredis
 ```ts
 import { Module } from '@konekti/core';
 import { Controller, Get, Post, UseInterceptors } from '@konekti/http';
-import { CacheEvict, CacheInterceptor, CacheTTL, createCacheModule } from '@konekti/cache-manager';
+import { CacheEvict, CacheInterceptor, CacheModule, CacheTTL } from '@konekti/cache-manager';
 
 @Controller('/products')
 class ProductController {
@@ -41,7 +41,7 @@ class ProductController {
 }
 
 @Module({
-  imports: [createCacheModule({ store: 'memory' })],
+  imports: [CacheModule.forRoot({ store: 'memory' })],
   controllers: [ProductController],
 })
 class AppModule {}
@@ -54,7 +54,7 @@ class AppModule {}
 ```ts
 import { Inject } from '@konekti/core';
 import { Module } from '@konekti/runtime';
-import { CacheService, createCacheModule } from '@konekti/cache-manager';
+import { CacheModule, CacheService } from '@konekti/cache-manager';
 
 interface UserProfile {
   id: string;
@@ -85,7 +85,7 @@ class UserService {
 }
 
 @Module({
-  imports: [createCacheModule({ store: 'memory', ttl: 60 })],
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
   providers: [UserService],
 })
 class AppModule {}
@@ -114,7 +114,7 @@ class AppModule {}
 
 ### 모듈 설정
 
-- `createCacheModule(options)` — 캐시 프로바이더를 등록합니다(기본값 `isGlobal: false`).
+- `CacheModule.forRoot(options)` — 캐시 프로바이더를 등록합니다(기본값 `isGlobal: false`).
 - `createCacheProviders(options)` — 수동 조합용 프로바이더 목록을 반환합니다.
 - `createCacheManagerPlatformStatusSnapshot(input)` — 캐시 스토어 종류/소유권/준비 상태를 공유 platform snapshot 형식에 맞게 매핑합니다.
 - `createCacheManagerPlatformDiagnosticIssues(input)` — 캐시 스토어 준비 실패에 대한 공유 `PlatformDiagnosticIssue` 항목을 출력합니다.
@@ -126,19 +126,21 @@ class AppModule {}
 
 ### 0.x 마이그레이션 노트 (호환 별칭 제거)
 
-현재 `0.x` 라인부터 `CACHE_MANAGER`, `CACHE_INTERCEPTOR`는 공개 패키지 표면에서 제거되었습니다.
+현재 `0.x` 라인부터 `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`는 공개 패키지 표면에서 제거되었습니다.
 
 - 생성자 주입은 클래스 우선 DI로 마이그레이션하세요.
   - `CACHE_MANAGER` -> `CacheService`
   - `CACHE_INTERCEPTOR` -> `CacheInterceptor`
+- 모듈 설정은 canonical Nest-style 엔트리포인트로 마이그레이션하세요.
+  - `createCacheModule(options)` -> `CacheModule.forRoot(options)`
 - 내부 토큰 seam은 토큰 기반으로 그대로 유지됩니다.
   - `CACHE_OPTIONS`
   - `CACHE_STORE`
 
 ### 루트 배럴 공개 표면 분류
 
-- **지원됨 (`src/index.ts`)**: `createCacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, 데코레이터 (`CacheKey`, `CacheTTL`, `CacheEvict`), 상태 어댑터, 모듈/스토어 토큰 seam (`CACHE_OPTIONS`, `CACHE_STORE`).
-- **호환 전용 (0.x에서 제거된 별칭)**: `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
+- **지원됨 (`src/index.ts`)**: `CacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, 데코레이터 (`CacheKey`, `CacheTTL`, `CacheEvict`), 상태 어댑터, 모듈/스토어 토큰 seam (`CACHE_OPTIONS`, `CACHE_STORE`).
+- **호환 전용 (0.x에서 제거된 별칭)**: `createCacheModule`, `CACHE_MANAGER`, `CACHE_INTERCEPTOR`.
 - **내부 (비공개)**: 구현 내부 모듈 wiring 외에는 없음.
 
 ## 동작 규약
@@ -168,8 +170,8 @@ class AppModule {}
 
 ## Redis 부트스트랩 규약
 
-- `createCacheModule({ store: 'memory' })`는 `@konekti/redis`/`ioredis` 없이 동작합니다.
-- `createCacheModule({ store: 'redis' })`는 다음 중 하나가 필요합니다.
+- `CacheModule.forRoot({ store: 'memory' })`는 `@konekti/redis`/`ioredis` 없이 동작합니다.
+- `CacheModule.forRoot({ store: 'redis' })`는 다음 중 하나가 필요합니다.
   - 앱에서 `createRedisModule(...)`를 import하여 `REDIS_CLIENT` 제공
   - `options.redis.client`로 raw ioredis 스타일 클라이언트 전달
 

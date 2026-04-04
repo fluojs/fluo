@@ -9,7 +9,7 @@ describe('@konekti/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('Mutation');
     expect(graphqlPublicApi).toHaveProperty('Subscription');
     expect(graphqlPublicApi).toHaveProperty('Resolver');
-    expect(graphqlPublicApi).toHaveProperty('createGraphqlModule');
+    expect(graphqlPublicApi).toHaveProperty('GraphqlModule');
     expect(graphqlPublicApi).toHaveProperty('createGraphqlProviders');
     expect(graphqlPublicApi).toHaveProperty('createDataLoader');
     expect(graphqlPublicApi).toHaveProperty('createDataLoaderMap');
@@ -19,6 +19,7 @@ describe('@konekti/graphql public API surface', () => {
   });
 
   it('does not expose internal lifecycle/module-option tokens', () => {
+    expect(graphqlPublicApi).not.toHaveProperty('createGraphqlModule');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_MODULE_OPTIONS');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_LIFECYCLE_SERVICE');
   });
