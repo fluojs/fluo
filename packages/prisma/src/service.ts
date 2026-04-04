@@ -32,10 +32,10 @@ type ActiveRequestTransactionHandle = {
 
 type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
-@Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 /**
  * Prisma runtime facade that owns lifecycle hooks and transaction context access.
  */
+@Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
