@@ -324,10 +324,10 @@ await runNodeApplication(AppModule, {
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createPrismaModule } from '@konekti/prisma';
+import { PrismaModule } from '@konekti/prisma';
 
 @Module({
-  imports: [createPrismaModule({ client: prismaClient })],
+  imports: [PrismaModule.forRoot({ client: prismaClient })],
   providers: [UserService, UserRepository],
   controllers: [UserController],
   exports: [UserService],

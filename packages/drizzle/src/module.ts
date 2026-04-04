@@ -123,7 +123,7 @@ export function createDrizzleProviders<
   });
 }
 
-export function createDrizzleModule<
+function buildDrizzleModule<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
   TTransactionOptions = unknown,
@@ -136,7 +136,7 @@ export function createDrizzleModule<
   });
 }
 
-export function createDrizzleModuleAsync<
+function buildDrizzleModuleAsync<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
   TTransactionOptions = unknown,
@@ -155,7 +155,7 @@ export class DrizzleModule {
     TTransactionDatabase = TDatabase,
     TTransactionOptions = unknown,
   >(options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>): ModuleType {
-    return createDrizzleModule<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
+    return buildDrizzleModule<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
   }
 
   static forRootAsync<
@@ -163,6 +163,6 @@ export class DrizzleModule {
     TTransactionDatabase = TDatabase,
     TTransactionOptions = unknown,
   >(options: AsyncModuleOptions<DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>>): ModuleType {
-    return createDrizzleModuleAsync<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
+    return buildDrizzleModuleAsync<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
   }
 }

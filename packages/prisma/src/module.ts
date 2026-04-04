@@ -73,7 +73,7 @@ export function createPrismaProviders<
   });
 }
 
-export function createPrismaModule<
+function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
   TTransactionOptions = unknown,
@@ -88,7 +88,7 @@ export function createPrismaModule<
   });
 }
 
-export function createPrismaModuleAsync<
+function buildPrismaModuleAsync<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = TClient,
   TTransactionOptions = unknown,
@@ -132,7 +132,7 @@ export class PrismaModule {
   >(
     options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
   ): ModuleType {
-    return createPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
+    return buildPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 
   static forRootAsync<
@@ -142,6 +142,6 @@ export class PrismaModule {
   >(
     options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>,
   ): ModuleType {
-    return createPrismaModuleAsync<TClient, TTransactionClient, TTransactionOptions>(options);
+    return buildPrismaModuleAsync<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 }
