@@ -80,7 +80,7 @@ export class AppModule {}
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
 - **supported**: 스케줄링 데코레이터(`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `createCronModule`, `createCronProviders`, `SCHEDULING_REGISTRY`, status snapshot helper를 지원합니다.
-- **compatibility-only**: `CRON_OPTIONS` 및 metadata helper export(`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 유지되지만, 신규 앱 레벨 import로는 권장하지 않습니다.
+- **compatibility-only**: `CRON_OPTIONS`, `normalizeCronModuleOptions` 및 metadata helper export(`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`)는 0.x 호환성과 프레임워크/툴링 통합을 위해 유지되지만, 신규 앱 레벨 import로는 권장하지 않습니다.
 - **internal**: 문서화된 API를 넘어서는 scheduler lifecycle 내부 동작은 루트 배럴 계약에 포함되지 않습니다.
 
 ## 런타임 레지스트리(동적 스케줄링)
