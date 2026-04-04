@@ -7,21 +7,21 @@ import type { ContextKey, RequestContext } from './types.js';
 const requestContextStore = new AsyncLocalStorage<RequestContext>();
 
 /**
- * 콜백을 요청 스코프 ALS 컨텍스트 안에서 실행한다.
+ * Runs a callback inside the request-scoped AsyncLocalStorage context.
  */
 export function runWithRequestContext<T>(context: RequestContext, callback: () => T): T {
   return requestContextStore.run(context, callback);
 }
 
 /**
- * 현재 비동기 스코프에 활성화된 요청 컨텍스트가 있으면 반환한다.
+ * Returns the request context active in the current async scope, if available.
  */
 export function getCurrentRequestContext(): RequestContext | undefined {
   return requestContextStore.getStore();
 }
 
 /**
- * 현재 요청 컨텍스트를 반환하고, 활성 스코프가 없으면 예외를 던진다.
+ * Returns the current request context or throws when no request scope is active.
  */
 export function assertRequestContext(): RequestContext {
   const context = getCurrentRequestContext();
@@ -36,7 +36,7 @@ export function assertRequestContext(): RequestContext {
 }
 
 /**
- * ALS 저장에 안전하도록 요청 컨텍스트를 방어적으로 복사해 만든다.
+ * Creates a defensive clone of a request context for AsyncLocalStorage storage.
  */
 export function createRequestContext(context: RequestContext): RequestContext {
   return {
@@ -45,6 +45,9 @@ export function createRequestContext(context: RequestContext): RequestContext {
   };
 }
 
+/**
+ * Creates a typed key for `RequestContext.metadata`.
+ */
 export function createContextKey<T>(description: string): ContextKey<T> {
   return {
     description,
@@ -52,10 +55,16 @@ export function createContextKey<T>(description: string): ContextKey<T> {
   };
 }
 
+/**
+ * Reads a typed value from request-context metadata.
+ */
 export function getContextValue<T>(context: RequestContext, key: ContextKey<T>): T | undefined {
   return context.metadata[key.id] as T | undefined;
 }
 
+/**
+ * Writes a typed value into request-context metadata.
+ */
 export function setContextValue<T>(context: RequestContext, key: ContextKey<T>, value: T): void {
   context.metadata[key.id] = value;
 }

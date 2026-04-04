@@ -113,6 +113,9 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
   throw new InvalidProviderError('Unsupported provider type.');
 }
 
+/**
+ * Scope-aware dependency injection container for Konekti providers.
+ */
 export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
@@ -135,6 +138,9 @@ export class Container {
     this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
   }
 
+  /**
+   * Registers providers in the current container scope.
+   */
   register(...providers: Provider[]): this {
     if (this.disposed) {
       throw new ContainerResolutionError(
@@ -214,10 +220,16 @@ export class Container {
     return this;
   }
 
+  /**
+   * Returns whether a token is registered in this scope chain.
+   */
   has(token: Token): boolean {
     return this.lookupProvider(token) !== undefined || this.hasMulti(token);
   }
 
+  /**
+   * Creates a child request-scope container that shares root singleton cache.
+   */
   createRequestScope(): Container {
     if (this.disposed) {
       throw new ContainerResolutionError(
@@ -231,6 +243,9 @@ export class Container {
     return child;
   }
 
+  /**
+   * Resolves a token to an instance using scope-aware caching rules.
+   */
   async resolve<T>(token: Token<T>): Promise<T> {
     if (this.disposed) {
       throw new ContainerResolutionError(
@@ -242,6 +257,9 @@ export class Container {
     return this.resolveWithChain(token, [], new Set<Token>());
   }
 
+  /**
+   * Disposes cached instances and nested request scopes.
+   */
   async dispose(): Promise<void> {
     if (this.disposePromise) {
       await this.disposePromise;

@@ -10,6 +10,9 @@ export type MockedMethods<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K];
 };
 
+/**
+ * Creates a proxy mock object with optional strict missing-property checks.
+ */
 export function createMock<T extends object>(
   partial: Partial<MockedMethods<T>> = {},
   options: { strict?: boolean } = {},
@@ -37,10 +40,16 @@ export function createMock<T extends object>(
   });
 }
 
+/**
+ * Casts a function to a strongly typed Vitest mock.
+ */
 export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> {
   return vi.mocked(fn);
 }
 
+/**
+ * Creates a deep mock by replacing prototype methods with `vi.fn()` spies.
+ */
 export function createDeepMock<T extends object>(type: new (...args: unknown[]) => T): DeepMocked<T> {
   const spies: Record<string | symbol, unknown> = {};
 
@@ -61,6 +70,9 @@ export function createDeepMock<T extends object>(type: new (...args: unknown[]) 
   return spies as DeepMocked<T>;
 }
 
+/**
+ * Creates a `useValue` provider for overriding a token in tests.
+ */
 export function mockToken<T>(token: Token<T>, partial: Partial<T> = {}): ValueProvider<T> {
   return { provide: token, useValue: partial as T };
 }

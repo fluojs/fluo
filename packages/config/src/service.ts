@@ -7,6 +7,9 @@ function hasOwn(value: unknown, key: string): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && Object.hasOwn(value, key);
 }
 
+/**
+ * Typed read-only facade over the normalized runtime configuration dictionary.
+ */
 export class ConfigService<T extends Record<string, unknown> = ConfigDictionary> {
   private values: T;
 
@@ -14,10 +17,16 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
     this.values = cloneConfigDictionary(values);
   }
 
+  /**
+   * Returns a config value by key (including dot-path keys) or `undefined` when missing.
+   */
   get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
     return this._resolve(key as string) as DotValue<T, K & string> | undefined;
   }
 
+  /**
+   * Returns a config value by key and throws when the key is missing.
+   */
   getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {
     const value = this._resolve(key as string);
 
@@ -35,10 +44,16 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
     return this._resolve(key as string) as DotValue<T, K & string> | undefined;
   }
 
+  /**
+   * Returns a deep-cloned snapshot of the current normalized config dictionary.
+   */
   snapshot(): ConfigDictionary {
     return cloneConfigDictionary(this.values);
   }
 
+  /**
+   * Replaces the internal snapshot used by this service (runtime reload flow).
+   */
   _replaceSnapshot(values: T): void {
     this.values = cloneConfigDictionary(values);
   }

@@ -17,6 +17,9 @@ import type { Guard, HandlerSource, Interceptor } from '@konekti/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { OverrideProviderBuilder, TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
 
+/**
+ * Returns providers declared on a module metadata definition.
+ */
 export function extractModuleProviders(moduleType: ModuleType): Provider[] {
   const metadata = getModuleMetadata(moduleType);
 
@@ -27,6 +30,9 @@ export function extractModuleProviders(moduleType: ModuleType): Provider[] {
   return metadata.providers as Provider[];
 }
 
+/**
+ * Returns controllers declared on a module metadata definition.
+ */
 export function extractModuleControllers(moduleType: ModuleType): ClassType[] {
   const metadata = getModuleMetadata(moduleType);
 
@@ -37,6 +43,9 @@ export function extractModuleControllers(moduleType: ModuleType): ClassType[] {
   return metadata.controllers as ClassType[];
 }
 
+/**
+ * Returns imported modules declared on a module metadata definition.
+ */
 export function extractModuleImports(moduleType: ModuleType): ModuleType[] {
   const metadata = getModuleMetadata(moduleType);
 
@@ -462,10 +471,16 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 }
 
+/**
+ * Creates a fluent testing-module builder for overriding providers and compiling a test graph.
+ */
 export function createTestingModule(options: TestingModuleOptions): TestingModuleBuilder {
   return new DefaultTestingModuleBuilder(options);
 }
 
+/**
+ * Namespace-style access point for `createTestingModule(...)`.
+ */
 export const Test = {
   createTestingModule,
 };
