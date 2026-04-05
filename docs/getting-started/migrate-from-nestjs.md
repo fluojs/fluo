@@ -282,7 +282,7 @@ NestJS commonly uses pipes such as `ParseIntPipe` or `ValidationPipe({ transform
 
 Konekti keeps that responsibility in the HTTP binding layer:
 
-- **global conversion** via `KonektiFactory.create(..., { converters })` or `runNodeApplication(..., { converters })`
+- **global conversion** via `KonektiFactory.create(..., { converters })` or `@konekti/runtime/node`'s `runNodeApplication(..., { converters })`
 - **field conversion** via `@Convert(...)` on a DTO field
 - **validation** still runs afterward through `@konekti/validation`
 
@@ -309,6 +309,8 @@ await runNodeApplication(AppModule, {
   port: 3000,
 });
 ```
+
+Import `runNodeApplication()` from `@konekti/runtime/node` when you need the Node compatibility helper.
 
 ## 5) HTTP exceptions
 

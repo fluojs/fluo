@@ -42,7 +42,7 @@ await app.listen();
 
 `createExpressAdapter()`, `runExpressApplication()`, and `bootstrapExpressApplication()` all remain supported. New application startup examples should prefer `KonektiFactory.create(..., { adapter: createExpressAdapter(...) })` so the public startup story stays centered on the runtime facade.
 
-`runExpressApplication()` and `bootstrapExpressApplication()` support the same runtime option shapes as `runNodeApplication()` for:
+`runExpressApplication()` and `bootstrapExpressApplication()` support the same runtime option shapes as `@konekti/runtime/node`'s `runNodeApplication()` for:
 
 - `rawBody`
 - `multipart`
@@ -85,3 +85,7 @@ await app.listen();
 - No Express plugin/middleware passthrough layer is provided; middleware/guards/interceptors run through Konekti dispatcher contracts.
 - No standalone Express mode; this adapter is designed for runtime-managed startup.
 - No WebSocket upgrade handling in this package.
+
+#### 0.x migration note
+
+- Imports of Node compatibility helpers should use `@konekti/runtime/node` instead of the `@konekti/runtime` root barrel.

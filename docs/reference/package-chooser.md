@@ -37,7 +37,7 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 | validation | `@konekti/validation` ★ | input DTO validation and materialization |
 | cli | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build scripts |
 
-**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, and `validation` + `config` handle input safety and environment binding. The starter uses a runtime-owned Node startup path; to bind to a network port you add a transport adapter such as `platform-fastify` or `platform-express`.
+**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, and `validation` + `config` handle input safety and environment binding. The starter stays on `KonektiFactory.create(...); await app.listen();`, while Node-specific compatibility helpers now live under `@konekti/runtime/node`. To bind to a network port explicitly, add a transport adapter such as `platform-fastify` or `platform-express`.
 
 **When not to use:**
 - If you need Express middleware compatibility, swap `platform-fastify` for `@konekti/platform-express`.

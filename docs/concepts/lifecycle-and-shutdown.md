@@ -61,7 +61,7 @@ Konekti follows a structured shutdown process:
 - Forced termination occurs if requests do not drain within the timeout window.
 - Request-scoped cleanup must be handled safely within a `finally` block.
 
-The default drain window in the Node adapter is 10 seconds. You can customize this using the `shutdownTimeoutMs` option in `bootstrapNodeApplication()` or `runNodeApplication()`.
+The default drain window in the Node adapter is 10 seconds. You can customize this using the `shutdownTimeoutMs` option in `@konekti/runtime/node`'s `bootstrapNodeApplication()` or `runNodeApplication()`.
 
 ## integration notes
 

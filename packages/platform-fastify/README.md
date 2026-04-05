@@ -42,7 +42,7 @@ await app.listen();
 
 `createFastifyAdapter()`, `runFastifyApplication()`, and `bootstrapFastifyApplication()` all remain supported. New application startup examples should prefer `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })` so the public startup story stays centered on the runtime facade.
 
-`runFastifyApplication()` and `bootstrapFastifyApplication()` support the same runtime option shapes as `runNodeApplication()` for:
+`runFastifyApplication()` and `bootstrapFastifyApplication()` support the same runtime option shapes as `@konekti/runtime/node`'s `runNodeApplication()` for:
 
 - `rawBody`
 - `multipart`
@@ -62,7 +62,7 @@ await app.listen();
 - Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
 - The adapter exposes `FrameworkResponse.stream` so SSE and other streamed responses do not depend on raw Node response duck-typing.
 - Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
-- Signal-driven shutdown follows the same runtime-owned graceful-close path as `runNodeApplication()`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
+- Signal-driven shutdown follows the same Node compatibility shutdown path documented at `@konekti/runtime/node`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
 - If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
 
 ## Benchmark
@@ -91,4 +91,5 @@ Treat these numbers as directional; validate in your deployment topology and pay
 
 #### 0.x migration note
 
+- Imports of Node compatibility helpers should use `@konekti/runtime/node` instead of the `@konekti/runtime` root barrel.
 - Custom Fastify-adjacent extensions that previously reached through `FrameworkResponse.raw` for SSE should move to `FrameworkResponse.stream`.

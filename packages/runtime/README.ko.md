@@ -31,6 +31,10 @@
 npm install @konekti/runtime
 ```
 
+### 0.x 마이그레이션 노트
+
+- Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
+
 ## 빠른 시작
 
 ### 최소 Node.js 앱
@@ -295,6 +299,7 @@ await bootstrapApplication({
 
 ```typescript
 import { Controller, Get, Version, VersioningType } from '@konekti/http';
+import { runNodeApplication } from '@konekti/runtime/node';
 
 @Version('1')
 @Controller('/users')
@@ -370,8 +375,8 @@ await app.listen();
 | 익스포트(Export) | 위치 | 설명 |
 |---|---|---|
 | `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | canonical HTTP 애플리케이션 진입점 — `Application` 반환 |
-| `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
-| `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
+| `@konekti/runtime/node` → `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
+| `@konekti/runtime/node` → `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
 | `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | 런타임, CLI, Studio 정렬 툴링에서 공유하는 플랫폼 계약 spine 타입. |
 | `PLATFORM_SHELL` | `src/tokens.ts` | 현재 플랫폼 셸 오케스트레이터와 snapshot/report API를 노출하는 런타임 토큰. |
@@ -385,7 +390,7 @@ await app.listen();
 | `@Module(metadata)` | `@konekti/core` | 모듈 프로바이더, 컨트롤러, 임포트, 익스포트 선언 |
 | `@Global()` | `@konekti/core` | 모듈을 전역적으로 가시성 있게 표시 |
 
-`@konekti/runtime` 루트 배럴은 공개 런타임 토큰(`APPLICATION_LOGGER`, `PLATFORM_SHELL`)만 유지합니다. 내부 wiring 토큰(`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`)은 프레임워크 내부 패키지 조합용 경로인 `@konekti/runtime/internal`에서 제공합니다.
+`@konekti/runtime` 루트 배럴은 transport-agnostic 경계를 유지하기 위해 Node 라이프사이클 헬퍼를 제외합니다. Node 부트스트랩 헬퍼는 `@konekti/runtime/node`에서 import 하세요. 내부 wiring 토큰(`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`)은 프레임워크 내부 패키지 조합용 경로인 `@konekti/runtime/internal`에서 제공합니다.
 
 ## 아키텍처
 
@@ -441,13 +446,13 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 `KonektiApplication`은 런타임의 어떤 부분도 재구현하지 않습니다. 조립된 설정, 컨테이너, 디스패처에 대한 참조를 유지하며 상태 전이를 관리합니다: `부트스트랩됨` → `준비됨` → `닫힘`.
 
-추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `createNodeHttpAdapter`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다.
+추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
 
 `createHealthModule()`은 런타임 소유의 활성/준비 상태 쌍을 노출합니다. `/health`는 `200 { status: 'ok' }`를 반환하는 활성(liveness) 엔드포인트이며, `/ready`는 시작 상태와 등록된 준비 상태 확인(readiness checks) 결과를 `starting`, `ready`, `unavailable` 상태로 반영합니다.
 
-### 런타임이 소유하는 Node 시작 관심사
+### `@konekti/runtime/node`로 격리된 Node 시작 관심사
 
-`KonektiFactory.create(...); await app.listen();` 경로는 여전히 런타임이 소유하는 Node 전용 시작 세부사항 위에서 동작합니다. `runNodeApplication()`은 같은 동작을 묶은 호환 래퍼로 유지됩니다.
+`@konekti/runtime/node` 서브패스는 transport-agnostic 런타임 루트 밖에서 Node 전용 시작 세부사항을 묶습니다.
 - HTTP 어댑터 생성 및 바인딩
 - 기본 CORS 미들웨어
 - 런타임 옵션(`port`, 기본 `3000`)으로 포트 결정
@@ -455,7 +460,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 - `SIGTERM`/`SIGINT` → `app.close()` 연결
 - 요청 중단 시그널 → `FrameworkRequest.signal` 브리지
 
-Node 어댑터는 종료 시 새로운 연결 수락을 중단하고, 시작된 요청들을 정해진 시간 동안 드레인(drain)하며, 유휴 상태의 keep-alive 연결을 닫고, 종료 타임아웃이 만료되면 남은 연결들을 강제로 종료합니다. 기본 10초 드레인 윈도우를 변경하려면 Node 부트스트랩 옵션에서 `shutdownTimeoutMs`를 사용하세요.
+Node 어댑터는 종료 시 새로운 연결 수락을 중단하고, 시작된 요청들을 정해진 시간 동안 드레인(drain)하며, 유휴 상태의 keep-alive 연결을 닫고, 종료 타임아웃이 만료되면 남은 연결들을 강제로 종료합니다. 기본 10초 드레인 윈도우를 변경하려면 `@konekti/runtime/node` 부트스트랩 옵션의 `shutdownTimeoutMs`를 사용하세요.
 
 ## 기여자를 위한 파일 읽기 순서
 

@@ -5,7 +5,8 @@ import { WebSocket } from 'ws';
 
 import { Inject, Scope } from '@konekti/core';
 import { IsInt, MinLength } from '@konekti/validation';
-import { bootstrapNodeApplication, defineModule } from '@konekti/runtime';
+import { defineModule } from '@konekti/runtime';
+import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';

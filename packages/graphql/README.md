@@ -16,7 +16,7 @@ pnpm add @konekti/graphql
 ```typescript
 import { Module } from '@konekti/core';
 import { MinLength } from '@konekti/validation';
-import { bootstrapNodeApplication } from '@konekti/runtime';
+import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { Arg, GraphqlModule, Mutation, Query, Resolver } from '@konekti/graphql';
 
 class EchoInput {
@@ -483,6 +483,7 @@ class AppModule {}
 - Subscriptions are supported through GraphQL Yoga (SSE by default).
 - Set `GraphqlModule.forRoot({ subscriptions: { websocket: { enabled: true } } })` to enable the `graphql-ws` protocol on the shared Node HTTP adapter.
 - Custom adapters must expose `FrameworkResponse.stream` to preserve streamed GraphQL/SSE parity.
+- Node-specific bootstrap helpers such as `bootstrapNodeApplication()` now live under `@konekti/runtime/node` rather than the `@konekti/runtime` root barrel.
 - Websocket subscription context is still per GraphQL operation, so request-scoped resolvers and dependencies stay isolated across concurrent subscriptions.
 - `@Subscription()` resolvers must return an `AsyncIterable`; otherwise an error is thrown.
 

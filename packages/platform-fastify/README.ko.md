@@ -42,7 +42,7 @@ await app.listen();
 
 새 애플리케이션 시작 예시는 `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`를 우선 사용해야 합니다. `runFastifyApplication()` 및 `bootstrapFastifyApplication()`은 호환 또는 고급 경로로 유지됩니다.
 
-`runFastifyApplication()` 및 `bootstrapFastifyApplication()`은 `runNodeApplication()`과 동일한 형태의 런타임 옵션을 지원합니다.
+`runFastifyApplication()` 및 `bootstrapFastifyApplication()`은 `@konekti/runtime/node`의 `runNodeApplication()`과 동일한 형태의 런타임 옵션을 지원합니다.
 
 - `rawBody`
 - `multipart`
@@ -62,7 +62,7 @@ await app.listen();
 - 멀티파트 요청은 `request.body` 필드와 `request.files` (`UploadedFile[]`)를 노출합니다.
 - 이제 어댑터가 `FrameworkResponse.stream`을 노출하므로 SSE 및 기타 스트리밍 응답은 raw Node response 덕타이핑에 의존하지 않습니다.
 - 시작 로그는 런타임 컨벤션을 따르며 와일드카드 호스트에 대한 바인딩 대상 상세 정보를 포함합니다.
-- 시그널 기반 종료는 `runNodeApplication()`과 같은 런타임 소유 graceful-close 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
+- 시그널 기반 종료는 `@konekti/runtime/node`에 문서화된 Node 호환 종료 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
 - `forceExitTimeoutMs`가 `shutdownTimeoutMs`보다 짧으면 전체 drain window가 끝나기 전에 watchdog이 의도적으로 프로세스를 종료할 수 있습니다.
 
 ## 벤치마크
@@ -91,4 +91,5 @@ wrk -t16 -c128 -d30s http://127.0.0.1:3000/health
 
 #### 0.x 마이그레이션 노트
 
+- Node 호환 헬퍼 import는 `@konekti/runtime` 루트 배럴 대신 `@konekti/runtime/node`를 사용해야 합니다.
 - 이전에 SSE를 위해 `FrameworkResponse.raw`까지 직접 내려가던 Fastify 연동 확장은 이제 `FrameworkResponse.stream`으로 이동해야 합니다.

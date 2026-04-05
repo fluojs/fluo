@@ -58,7 +58,7 @@ Konekti는 구조화된 종료 프로세스를 따릅니다:
 - 타임아웃 창 내에 요청이 드레인되지 않으면 강제 종료가 발생합니다.
 - 요청 범위의 정리 작업은 `finally` 블록 내에서 안전하게 처리되어야 합니다.
 
-Node 어댑터의 기본 드레인 창은 10초입니다. `bootstrapNodeApplication()` 또는 `runNodeApplication()`의 `shutdownTimeoutMs` 옵션을 사용하여 이를 커스터마이징할 수 있습니다.
+Node 어댑터의 기본 드레인 창은 10초입니다. `@konekti/runtime/node`의 `bootstrapNodeApplication()` 또는 `runNodeApplication()`의 `shutdownTimeoutMs` 옵션을 사용하여 이를 커스터마이징할 수 있습니다.
 
 ## 통합 참고 사항
 

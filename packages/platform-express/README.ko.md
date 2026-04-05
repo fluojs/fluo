@@ -42,7 +42,7 @@ await app.listen();
 
 새 애플리케이션 시작 예시는 `KonektiFactory.create(..., { adapter: createExpressAdapter(...) })`를 우선 사용해야 합니다. `runExpressApplication()` 및 `bootstrapExpressApplication()`은 호환 또는 고급 경로로 유지됩니다.
 
-`runExpressApplication()` 및 `bootstrapExpressApplication()`은 `runNodeApplication()`과 동일한 형태의 런타임 옵션을 지원합니다.
+`runExpressApplication()` 및 `bootstrapExpressApplication()`은 `@konekti/runtime/node`의 `runNodeApplication()`과 동일한 형태의 런타임 옵션을 지원합니다.
 
 - `rawBody`
 - `multipart`
@@ -85,3 +85,7 @@ await app.listen();
 - Express plugin/middleware passthrough 계층은 제공하지 않으며, 미들웨어/가드/인터셉터는 Konekti 디스패처 계약을 통해 동작합니다.
 - standalone Express 모드는 제공하지 않습니다. 이 어댑터는 런타임 소유 시작 경로를 전제로 합니다.
 - 이 패키지에는 WebSocket upgrade 처리가 포함되지 않습니다.
+
+#### 0.x 마이그레이션 노트
+
+- Node 호환 헬퍼 import는 `@konekti/runtime` 루트 배럴 대신 `@konekti/runtime/node`를 사용해야 합니다.
