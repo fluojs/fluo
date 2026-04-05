@@ -95,7 +95,7 @@ Use these when signalling framework-level contract violations — not business e
 
 ### Metadata Helpers (`src/metadata.ts`)
 
-These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/runtime`, and other packages. You typically don't call them directly from application code.
+These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/runtime`, and other packages. Application code should continue using `@Module()`, `@Inject()`, `@Scope()`, and related decorators from `@konekti/core`.
 
 | Helper pair | Purpose |
 |---|---|
@@ -111,9 +111,14 @@ All metadata is stored in a WeakMap keyed by class/prototype, so it's scoped to 
 
 For DI metadata, `getOwnClassDiMetadata()` returns only metadata written on the current class, while `getInheritedClassDiMetadata()` and `getClassDiMetadata()` return the effective inherited view used by runtime and DI normalization.
 
-`@konekti/core` also re-exports additional metadata helpers and types from `src/metadata.ts`; treat this table as the most important helpers, not the full public surface.
+Metadata helper functions and metadata-only helper types now live behind the explicit `@konekti/core/internal` subpath for sibling-package composition. The root `@konekti/core` barrel keeps the application-facing decorator/error/type surface.
 
 `ensureMetadataSymbol()` is an idempotent compatibility guard for standard-decorator metadata. `@konekti/core` invokes it automatically on import, so explicit bootstrap calls are usually unnecessary, but calling it manually is harmless when you want an explicit compatibility check in custom tooling or isolated tests.
+
+## 0.x migration note
+
+- Internal metadata helpers such as `defineModuleMetadata()`, `getModuleMetadata()`, `getClassDiMetadata()`, `metadataSymbol`, and related metadata-only types moved from `@konekti/core` to `@konekti/core/internal`.
+- Application code should keep importing decorators, errors, and shared primitive types from `@konekti/core`.
 
 ## Architecture
 
