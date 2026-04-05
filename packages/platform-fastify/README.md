@@ -60,6 +60,7 @@ await app.listen();
 
 - `rawBody` is opt-in and only populated for non-multipart requests.
 - Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
+- The adapter exposes `FrameworkResponse.stream` so SSE and other streamed responses do not depend on raw Node response duck-typing.
 - Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
 - Signal-driven shutdown follows the same runtime-owned graceful-close path as `runNodeApplication()`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
 - If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
@@ -87,3 +88,7 @@ Treat these numbers as directional; validate in your deployment topology and pay
 - No Fastify plugin passthrough — framework middleware and guards run through the Konekti dispatcher, not Fastify's hook system; native Fastify plugins are not automatically bridged
 - rawBody is opt-in and excluded for multipart requests — this matches the Node adapter behavior
 - No standalone Fastify mode — the adapter requires the Konekti runtime bootstrap path; it cannot be used as a standalone Fastify server
+
+#### 0.x migration note
+
+- Custom Fastify-adjacent extensions that previously reached through `FrameworkResponse.raw` for SSE should move to `FrameworkResponse.stream`.
