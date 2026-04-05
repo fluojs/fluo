@@ -28,7 +28,3 @@ export interface NewCommandOptions {
   repoRoot?: string;
   skipInstall?: boolean;
 }
-
-export type CreateKonektiOptions = BootstrapOptions;
-export type CreatePrompt = BootstrapPrompt;
-export type CreateKonektiAnswers = BootstrapAnswers;

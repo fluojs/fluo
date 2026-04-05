@@ -1,4 +1,4 @@
-import type { GeneratorFactory, GeneratorRegistration } from './types.js';
+import type { GeneratorFactory, GeneratorRegistration } from './generator-types.js';
 
 import { generatorManifest } from './generators/manifest.js';
 
