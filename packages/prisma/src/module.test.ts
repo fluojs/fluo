@@ -9,8 +9,45 @@ import {
   createPrismaPlatformStatusSnapshot,
   PRISMA_CLIENT,
   PRISMA_OPTIONS,
+  PrismaTransactionClient,
   PrismaService,
 } from './index.js';
+
+type Assert<T extends true> = T;
+type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+type GeneratedTransactionClient = {
+  user: {
+    findUnique(args: { where: { id: string } }): Promise<{ id: string } | null>;
+  };
+};
+
+type GeneratedPrismaClient = {
+  $connect(): Promise<void>;
+  $disconnect(): Promise<void>;
+  $transaction<T>(
+    callback: (transactionClient: GeneratedTransactionClient) => Promise<T>,
+    options?: { isolationLevel?: 'Serializable' },
+  ): Promise<T>;
+  user: {
+    findUnique(args: { where: { id: string } }): Promise<{ id: string } | null>;
+  };
+};
+
+type InferredPrismaService = PrismaService<GeneratedPrismaClient>;
+type InferredCurrentHandle = ReturnType<InferredPrismaService['current']>;
+type InferredTransactionHandle = PrismaTransactionClient<GeneratedPrismaClient>;
+
+type _PrismaServiceCurrentInference = Assert<
+  IsEqual<InferredCurrentHandle, GeneratedPrismaClient | GeneratedTransactionClient>
+>;
+type _PrismaTransactionClientInference = Assert<IsEqual<InferredTransactionHandle, GeneratedTransactionClient>>;
+
+const prismaServiceCurrentInferenceChecked: _PrismaServiceCurrentInference = true;
+const prismaTransactionClientInferenceChecked: _PrismaTransactionClientInference = true;
+
+void prismaServiceCurrentInferenceChecked;
+void prismaTransactionClientInferenceChecked;
 
 describe('@konekti/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
