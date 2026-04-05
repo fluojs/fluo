@@ -59,6 +59,7 @@ await app.listen();
 ## supported operations
 
 - Bridges Express requests and responses into `FrameworkRequest` / `FrameworkResponse`.
+- Exposes `FrameworkResponse.stream` for SSE and other adapter-owned response streaming paths.
 - Dispatches every incoming request through the Konekti HTTP dispatcher.
 - Supports `rawBody` opt-in for non-multipart requests.
 - Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
@@ -68,6 +69,7 @@ await app.listen();
 
 - `rawBody` is never populated for multipart requests.
 - If the dispatcher does not commit a response, the adapter sends an empty payload to finalize the response.
+- SSE and other streamed responses no longer rely on `FrameworkResponse.raw`; the adapter owns the concrete writable semantics behind `FrameworkResponse.stream`.
 - Startup logs follow runtime conventions (`Listening on ...`) and include bind-target detail for wildcard hosts.
 - Response serialization behavior mirrors runtime/fastify adapter expectations for string, JSON, and binary payloads.
 
