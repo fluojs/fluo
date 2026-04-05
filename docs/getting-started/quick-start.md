@@ -24,6 +24,8 @@ pnpm dev
 
 This is the canonical public bootstrap flow and the primary public onboarding path. Use the commands above for the first run unless you specifically want a one-off no-install bootstrap.
 
+The generated scaffold is intentionally the default Node.js + Fastify path. Official runtime support now also includes Bun, Deno, and Cloudflare Workers through the published `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` packages.
+
 For a one-time execution without a global installation, `dlx` remains supported as a secondary path:
 
 ```sh
@@ -60,9 +62,9 @@ pnpm build      # Build for production
 pnpm test       # Run tests
 ```
 
-The scaffold generates a consistent layout compatible with `pnpm`, `npm`, and `yarn`.
+The scaffold generates a consistent layout compatible with `pnpm`, `npm`, `yarn`, and `bun`.
 
-The generated starter uses `@konekti/platform-fastify` by default. Reach for `@konekti/runtime/node` only when you intentionally want the Node compatibility helper layer.
+The generated starter uses `@konekti/platform-fastify` by default on Node.js. Reach for `@konekti/runtime/node` only when you intentionally want the Node compatibility helper layer, and use the Bun/Deno/Cloudflare adapter package READMEs when you are targeting those official runtimes instead of the starter default.
 
 ## development mode behavior
 

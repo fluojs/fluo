@@ -67,7 +67,7 @@
 - 전체 테스트 커버리지 및 CI 검증
 - 전용 트러블슈팅 가이드 제공
 
-추가 런타임이나 통합은 package README나 거버넌스 문서에 명시적으로 문서화되지 않는 한 공개 보장이 아닙니다. 현재 공식 런타임 지원에는 Node.js, Bun, Deno, Cloudflare Workers가 포함됩니다. 기타 fetch 스타일 어댑터는 명시적 package/docs/test 커버리지와 출판된 어댑터 계약이 갖춰질 때까지 **preview** 상태로 유지됩니다.
+추가 런타임이나 통합은 package README나 거버넌스 문서에 명시적으로 문서화되지 않는 한 공개 보장이 아닙니다. 현재 공식 런타임 지원에는 Node.js, Bun, Deno, Cloudflare Workers가 포함됩니다. 기본 스타터/예제는 계속 Node.js + Fastify 경로를 사용할 수 있지만, release-facing docs, package chooser, docs hub, CLI 스캐폴드 가이드는 전체 공식 런타임 매트릭스를 일관되게 설명해야 합니다. 기타 fetch 스타일 어댑터는 명시적 package/docs/test 커버리지와 출판된 어댑터 계약이 갖춰질 때까지 **preview** 상태로 유지됩니다.
 
 공개 부트스트랩 계약은 package-first를 유지합니다. `pnpm add -g @konekti/cli` 이후 `konekti new`를 사용하며, 릴리스 표면은 출판된 `@konekti/*` 패키지 제품군으로 한정됩니다.
 
@@ -111,7 +111,7 @@
 
 - 모노레포 루트에서 패키지 타입 체크 및 빌드 성공
 - 패키징된 CLI 엔트리포인트를 통해 스캐폴딩된 스타터 프로젝트 검증 및 `pnpm verify:release-readiness`에서 실행되는 CLI 테스트 스위트를 통한 스타터 스캐폴딩 확인
-- `pnpm` 스타터 프로젝트 경로가 `typecheck`, `build`, `test`, `konekti g repo ...`를 통과하며, CLI 테스트가 패키지 매니저 선택 동작을 별도로 커버함
+- `pnpm` 스타터 프로젝트 경로가 `typecheck`, `build`, `test`, `konekti g repo ...`를 통과하며, CLI 테스트가 `bun`을 포함한 패키지 매니저 선택 동작을 별도로 커버함
 - 생성된 스타터 프로젝트가 런타임 소유의 `/health` + `/ready`와 스타터 소유의 `/health-info/` 라우트를 노출함
 - CLI 바이너리와 패키징된 아티팩트가 `src` 직접 실행이 아닌 `dist` 출력물에서 작동함
 

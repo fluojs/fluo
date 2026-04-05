@@ -15,7 +15,7 @@ If you are new to Konekti, follow this path to get your first application runnin
 
 ## examples
 
-Working applications that demonstrate the canonical starter path and common patterns.
+Working applications that demonstrate the canonical starter path and common patterns. The examples in this directory stay on the default Node.js + Fastify starter path, while the package docs cover the other official runtimes.
 
 - `../examples/minimal/` - Smallest runnable Konekti app, matching the `konekti new` output.
 - `../examples/realworld-api/` - Multi-module app with DTO validation, config loading, and CRUD.
@@ -40,14 +40,15 @@ Practical guides for day-to-day development once your application is running.
 
 Konekti is highly composable. Use these links to discover and select the right tools for your task.
 
-Official transport packages now include `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`; use each package README for runtime-specific startup and hosting details.
+Official runtime guidance now spans Node.js, Bun, Deno, and Cloudflare Workers. The default starter/examples stay on `@konekti/platform-fastify`, `@konekti/platform-express` remains the official Node.js alternative when Express middleware compatibility matters, and runtime-specific startup/hosting details live in the published adapter READMEs for `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
 
 - `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
 - `reference/package-surface.md` - Overview of the public API surface across the framework.
 - `reference/toolchain-contract-matrix.md` - Versioning and compatibility across the ecosystem.
-- `../packages/platform-bun/README.md` - Official Bun adapter package contract and startup path.
-- `../packages/platform-deno/README.md` - Official Deno adapter package contract and startup path.
-- `../packages/platform-cloudflare-workers/README.md` - Official Cloudflare Workers adapter package contract and startup path.
+- `../packages/platform-express/README.md` - `@konekti/platform-express` contract for Node.js compatibility-focused apps.
+- `../packages/platform-bun/README.md` - `@konekti/platform-bun` contract and startup path.
+- `../packages/platform-deno/README.md` - `@konekti/platform-deno` contract and startup path.
+- `../packages/platform-cloudflare-workers/README.md` - `@konekti/platform-cloudflare-workers` contract and startup path.
 
 ## migration
 

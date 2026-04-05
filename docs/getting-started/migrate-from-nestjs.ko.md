@@ -43,7 +43,7 @@ konekti migrate ./src --skip testing
 | `@Controller()`, `@Get()`, `@Post()` | `@konekti/http`의 동일 데코레이터 | 라우트 데코레이터 사용감은 거의 동일합니다. |
 | `@Inject(TOKEN)` | `@konekti/core`의 `@Inject([TOKEN])` | 생성자 의존성 토큰 목록을 명시적으로 선언합니다. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | 기본값은 singleton입니다. |
-| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | 스타터와 정렬된 권장 HTTP 시작 경로입니다. 런타임 facade를 유지하면서 명시적인 트랜스포트 어댑터를 선택합니다. |
+| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | Node.js 기준 스타터와 정렬된 권장 HTTP 시작 경로입니다. 런타임 facade를 유지하면서 명시적인 트랜스포트 어댑터를 선택합니다. |
 | `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | 런타임 facade 기반 시작 경로를 유지하면서 Express 트랜스포트 어댑터를 명시적으로 선택합니다. |
 | `app.listen(3000)` | `await app.listen()` | 애플리케이션 생성 이후 실행은 명시적으로 유지됩니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
@@ -217,6 +217,8 @@ export class RequestAuditService {}
 ## 4) 부트스트랩 경로
 
 새 앱에서 canonical HTTP startup path는 명시적 어댑터를 넘기는 `KonektiFactory.create()`입니다.
+
+스타터는 생성 예제로 Fastify + Node.js 경로를 유지하지만, 공식 런타임 매트릭스는 전용 어댑터 패키지를 통해 Bun, Deno, Cloudflare Workers까지 포함합니다.
 
 `bootstrapApplication()`은 low-level bootstrap primitive를 직접 써야 할 때만 사용하세요.
 

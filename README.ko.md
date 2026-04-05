@@ -84,6 +84,8 @@ pnpm dev
 - 스타터 예제 라우트 (`/health-info/`)
 - 즉시 실행 가능한 `dev`, `build`, `typecheck`, `test` 스크립트
 
+이 스타터 경로는 기본 Node.js + Fastify 온보딩 경로이며, 런타임 전체 이야기를 대표하지는 않습니다. 이제 공식 런타임 지원은 출판된 `@konekti/platform-*` 어댑터 패키지와 각 README를 통해 Node.js, Bun, Deno, Cloudflare Workers까지 확장됩니다.
+
 생성된 `dev` 스크립트는 코드 변경에 대해 watch 기반 프로세스 재시작을 사용합니다. Konekti의 제한된 in-process reload 경로는 일반 코드 HMR이 아니라, 검증된 config snapshot에만 적용됩니다.
 
 ## Konekti가 다른 이유
@@ -106,6 +108,9 @@ pnpm dev
 - `docs/concepts/architecture-overview.ko.md` - 아키텍처/패키지 경계
 - `docs/concepts/dev-reload-architecture.ko.md` - 개발 중 재시작과 config reload 책임 경계
 - `docs/reference/package-surface.ko.md` - 현재 공개 패키지 표면
+- `packages/platform-bun/README.ko.md` - 공식 Bun 런타임 시작 경로
+- `packages/platform-deno/README.ko.md` - 공식 Deno 런타임 시작 경로
+- `packages/platform-cloudflare-workers/README.ko.md` - 공식 Cloudflare Workers 런타임 시작 경로
 
 패키지별 API 상세는 `packages/*/README.ko.md`를 각 패키지의 단일 출처로 참고하세요.
 

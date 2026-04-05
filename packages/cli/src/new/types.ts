@@ -1,4 +1,4 @@
-export type PackageManager = 'npm' | 'pnpm' | 'yarn';
+export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
 export type DependencySource = 'local' | 'published';
 
 export interface BootstrapOptions {

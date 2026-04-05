@@ -68,7 +68,7 @@ Promoting a runtime, adapter, or integration to a stronger support tier requires
 - full test coverage and CI validation
 - dedicated troubleshooting guidance
 
-Additional runtimes or integrations are not public guarantees unless they are explicitly documented in package READMEs or governance docs. Current official runtime support includes Node.js, Bun, Deno, and Cloudflare Workers. Other fetch-style adapters remain in **preview** until they ship with explicit package/docs/test coverage and a published adapter contract.
+Additional runtimes or integrations are not public guarantees unless they are explicitly documented in package READMEs or governance docs. Current official runtime support includes Node.js, Bun, Deno, and Cloudflare Workers. Default starter/examples may continue to use the Node.js + Fastify path, but release-facing docs, package choosers, docs hubs, and CLI scaffold guidance must describe the full official runtime matrix consistently. Other fetch-style adapters remain in **preview** until they ship with explicit package/docs/test coverage and a published adapter contract.
 
 The public bootstrap contract remains package-first: `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
 
@@ -112,7 +112,7 @@ Toolchain workspaces under `tooling/` remain internal support artifacts unless a
 
 - package typecheck + build succeed from the monorepo root
 - scaffolded starter projects are verified through the packed CLI entrypoint and starter scaffolding exercised by the CLI test suite that runs inside `pnpm verify:release-readiness`
-- the `pnpm` starter project path passes `typecheck`, `build`, `test`, and `konekti g repo ...`, while CLI tests separately cover package-manager selection behavior
+- the `pnpm` starter project path passes `typecheck`, `build`, `test`, and `konekti g repo ...`, while CLI tests separately cover package-manager selection behavior including `bun`
 - generated starter projects expose runtime-owned `/health` + `/ready` and the starter-owned `/health-info/` route
 - CLI bins and packed package artifacts work from `dist` output rather than `src`-only execution
 

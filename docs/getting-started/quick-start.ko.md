@@ -24,6 +24,8 @@ pnpm dev
 
 위 명령은 canonical public bootstrap flow이자 공개 온보딩의 기본 경로입니다. 특별히 전역 설치 없이 한 번만 실행하려는 경우에만 아래 보조 경로를 사용하세요.
 
+생성되는 스캐폴드는 의도적으로 기본 Node.js + Fastify 경로를 사용합니다. 이제 공식 런타임 지원은 출판된 `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` 패키지를 통해 Bun, Deno, Cloudflare Workers까지 확장됩니다.
+
 전역 설치 없이 `dlx`를 사용한 일회성 실행도 계속 지원됩니다:
 
 ```sh
@@ -60,9 +62,9 @@ pnpm build      # 프로덕션 빌드
 pnpm test       # 테스트 실행
 ```
 
-스캐폴드는 `pnpm`, `npm`, `yarn`과 호환되는 일관된 레이아웃을 생성합니다.
+스캐폴드는 `pnpm`, `npm`, `yarn`, `bun`과 호환되는 일관된 레이아웃을 생성합니다.
 
-생성된 스타터는 기본적으로 `@konekti/platform-fastify`를 사용합니다. 의도적으로 Node 호환 헬퍼 계층이 필요할 때만 `@konekti/runtime/node`를 선택하세요.
+생성된 스타터는 Node.js 기준 기본값으로 `@konekti/platform-fastify`를 사용합니다. 의도적으로 Node 호환 헬퍼 계층이 필요할 때만 `@konekti/runtime/node`를 선택하고, Bun/Deno/Cloudflare 대상이라면 스타터 기본값 대신 해당 공식 어댑터 패키지 README를 참고하세요.
 
 ## 개발 모드 동작
 

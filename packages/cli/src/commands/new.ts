@@ -36,7 +36,7 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   {
     aliases: [],
     description: 'Choose which package manager installs the starter dependencies.',
-    option: '--package-manager <pnpm|npm|yarn>',
+    option: '--package-manager <pnpm|npm|yarn|bun>',
   },
   {
     aliases: [],
@@ -55,7 +55,7 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
 ];
 
-const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['npm', 'pnpm', 'yarn']);
+const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['bun', 'npm', 'pnpm', 'yarn']);
 
 function readOptionValue(argv: string[], index: number, option: '--name' | '--package-manager' | '--target-directory'): string {
   const value = argv[index + 1];
@@ -91,7 +91,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
         parsed.packageManager = readOptionValue(argv, index, '--package-manager') as BootstrapAnswers['packageManager'];
         if (!SUPPORTED_PACKAGE_MANAGERS.has(parsed.packageManager)) {
           throw new Error(
-            `Invalid --package-manager value "${parsed.packageManager}". Use one of: pnpm, npm, yarn.`,
+            `Invalid --package-manager value "${parsed.packageManager}". Use one of: pnpm, npm, yarn, bun.`,
           );
         }
         index += 1;
@@ -151,7 +151,7 @@ export function newUsage(): string {
     '',
     'Next steps:',
     '  cd <app-name>',
-    '  pnpm dev',
+    '  pnpm dev  # or npm run dev / yarn dev / bun run dev',
     '',
     'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
@@ -192,7 +192,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
 
     stdout.write('Done.\n');
     stdout.write(
-      `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : `${answers.packageManager} dev`}\n`,
+      `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : answers.packageManager === 'bun' ? 'bun run dev' : `${answers.packageManager} dev`}\n`,
     );
     return 0;
   } catch (error: unknown) {

@@ -15,7 +15,7 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 ## 예제
 
-표준 시작 경로와 주요 패턴을 보여주는 실행 가능한 애플리케이션입니다.
+표준 시작 경로와 주요 패턴을 보여주는 실행 가능한 애플리케이션입니다. 이 디렉토리의 예제는 기본 Node.js + Fastify 스타터 경로를 유지하고, 나머지 공식 런타임은 각 패키지 문서에서 다룹니다.
 
 - `../examples/minimal/` - `konekti new` 출력과 동일한, 가장 작은 실행 가능 앱.
 - `../examples/realworld-api/` - DTO 검증, 설정 로딩, CRUD를 포함하는 다중 모듈 앱.
@@ -40,14 +40,15 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
-이제 official transport package에는 `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers`가 포함되며, 런타임별 시작/호스팅 세부사항은 각 package README를 참고하세요.
+이제 공식 런타임 가이드는 Node.js, Bun, Deno, Cloudflare Workers까지 확장됩니다. 기본 스타터/예제는 `@konekti/platform-fastify` 경로를 유지하고, Express 미들웨어 호환성이 중요할 때는 `@konekti/platform-express`가 공식 Node.js 대안이며, 런타임별 시작/호스팅 세부사항은 `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` README에서 다룹니다.
 
 - `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
 - `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.
 - `reference/toolchain-contract-matrix.ko.md` - 에코시스템 버전 관리 및 호환성 매트릭스.
-- `../packages/platform-bun/README.ko.md` - 공식 Bun 어댑터 패키지 계약과 시작 경로.
-- `../packages/platform-deno/README.ko.md` - 공식 Deno 어댑터 패키지 계약과 시작 경로.
-- `../packages/platform-cloudflare-workers/README.ko.md` - 공식 Cloudflare Workers 어댑터 패키지 계약과 시작 경로.
+- `../packages/platform-express/README.ko.md` - Node.js 호환성 중심 앱을 위한 `@konekti/platform-express` 계약.
+- `../packages/platform-bun/README.ko.md` - `@konekti/platform-bun` 계약과 시작 경로.
+- `../packages/platform-deno/README.ko.md` - `@konekti/platform-deno` 계약과 시작 경로.
+- `../packages/platform-cloudflare-workers/README.ko.md` - `@konekti/platform-cloudflare-workers` 계약과 시작 경로.
 
 ## 마이그레이션
 

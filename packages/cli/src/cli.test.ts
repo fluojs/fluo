@@ -246,7 +246,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: konekti new|create [project-name] [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
-    expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn>');
+    expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn|bun>');
     expect(stdoutBuffer.join('')).not.toContain('Schematics');
     expect(stdoutBuffer.join('')).toContain('Next steps:');
     expect(stdoutBuffer.join('')).toContain('cd <app-name>');
@@ -820,15 +820,31 @@ describe('CLI command runner', () => {
     createdDirectories.push(workspaceDirectory);
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'bun'], {
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'berry'], {
       cwd: workspaceDirectory,
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Invalid --package-manager value "bun". Use one of: pnpm, npm, yarn.');
+    expect(stderrBuffer.join('')).toContain('Invalid --package-manager value "berry". Use one of: pnpm, npm, yarn, bun.');
     expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('accepts bun as a supported package manager for `new`', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'bun'], {
+      cwd: workspaceDirectory,
+      env: {},
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(join(workspaceDirectory, 'starter-app', 'package.json'), 'utf8')).toContain('"packageManager": "bun@1.2.5"');
   });
 
   it('rejects traversal-style project names for `new` before scaffolding side effects', async () => {
