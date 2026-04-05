@@ -1,23 +1,20 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type {
+  PersistencePlatformStatusSnapshot,
+  PlatformHealthReport,
+  PlatformReadinessReport,
+} from '@konekti/runtime';
 
-export interface PersistencePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+type MongoosePlatformLifecycleState = 'ready' | 'shutting-down' | 'stopped';
 
-export type MongooseLifecycleState = 'ready' | 'shutting-down' | 'stopped';
-
-export interface MongooseStatusAdapterInput {
+type MongoosePlatformStatusSnapshotInput = {
   activeRequestTransactions: number;
   hasActiveSession: boolean;
-  lifecycleState: MongooseLifecycleState;
+  lifecycleState: MongoosePlatformLifecycleState;
   strictTransactions: boolean;
   supportsStartSession: boolean;
-}
+};
 
-function createReadiness(input: MongooseStatusAdapterInput): PlatformReadinessReport {
+function createReadiness(input: MongoosePlatformStatusSnapshotInput): PlatformReadinessReport {
   if (input.lifecycleState === 'shutting-down') {
     return {
       critical: true,
@@ -48,7 +45,7 @@ function createReadiness(input: MongooseStatusAdapterInput): PlatformReadinessRe
   };
 }
 
-function createHealth(input: MongooseStatusAdapterInput): PlatformHealthReport {
+function createHealth(input: MongoosePlatformStatusSnapshotInput): PlatformHealthReport {
   if (input.lifecycleState === 'stopped') {
     return {
       reason: 'Mongoose integration has been disposed.',
@@ -68,7 +65,15 @@ function createHealth(input: MongooseStatusAdapterInput): PlatformHealthReport {
   };
 }
 
-export function createMongoosePlatformStatusSnapshot(input: MongooseStatusAdapterInput): PersistencePlatformStatusSnapshot {
+/**
+ * Maps Mongoose lifecycle and session capability diagnostics into the shared persistence snapshot shape.
+ *
+ * @param input Current Mongoose ownership, readiness, and health inputs.
+ * @returns Platform-facing persistence status data for diagnostics surfaces.
+ */
+export function createMongoosePlatformStatusSnapshot(
+  input: MongoosePlatformStatusSnapshotInput,
+): PersistencePlatformStatusSnapshot {
   return {
     details: {
       activeRequestTransactions: input.activeRequestTransactions,

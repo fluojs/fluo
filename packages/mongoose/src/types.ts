@@ -1,9 +1,15 @@
 import type { MaybePromise } from '@konekti/core';
 
+/**
+ * Minimal Mongoose connection seam that optionally supports session creation.
+ */
 export interface MongooseConnectionLike {
   startSession?(): Promise<MongooseSessionLike>;
 }
 
+/**
+ * Session contract used by the Mongoose transaction wrapper.
+ */
 export interface MongooseSessionLike {
   startTransaction(): MaybePromise<void>;
   commitTransaction(): MaybePromise<void>;
@@ -11,16 +17,18 @@ export interface MongooseSessionLike {
   endSession(): MaybePromise<void>;
 }
 
-export interface MongooseRuntimeOptions {
-  strictTransactions: boolean;
-}
-
+/**
+ * Module options for registering a Mongoose connection and optional shutdown disposal hook.
+ */
 export interface MongooseModuleOptions<TConnection extends MongooseConnectionLike = MongooseConnectionLike> {
   connection: TConnection;
   dispose?: (connection: TConnection) => MaybePromise<void>;
   strictTransactions?: boolean;
 }
 
+/**
+ * Public Mongoose wrapper contract exposed through dependency injection.
+ */
 export interface MongooseHandleProvider<TConnection extends MongooseConnectionLike = MongooseConnectionLike> {
   current(): TConnection;
   currentSession(): MongooseSessionLike | undefined;

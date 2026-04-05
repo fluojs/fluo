@@ -1,6 +1,6 @@
 import type { MaybePromise } from '@konekti/core';
 
-export type PrismaTransactionCallback<TTransactionClient, TResult> = (client: TTransactionClient) => Promise<TResult>;
+type PrismaTransactionCallback<TTransactionClient, TResult> = (client: TTransactionClient) => Promise<TResult>;
 
 export type InferPrismaTransactionClient<TClient> = TClient extends {
   $transaction?: <T>(

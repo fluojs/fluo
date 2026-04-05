@@ -9,6 +9,7 @@ export * from './logger.js';
 export * from './multipart.js';
 export * from './node.js';
 export type {
+  PersistencePlatformStatusSnapshot,
   PlatformCheckResult,
   PlatformComponent,
   PlatformComponentInput,

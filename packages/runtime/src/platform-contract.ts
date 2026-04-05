@@ -66,6 +66,13 @@ export interface PlatformHealthReport {
   checks?: PlatformCheckResult[];
 }
 
+export interface PersistencePlatformStatusSnapshot {
+  readiness: PlatformReadinessReport;
+  health: PlatformHealthReport;
+  ownership: PlatformSnapshot['ownership'];
+  details: Record<string, unknown>;
+}
+
 export interface PlatformDiagnosticIssue {
   code: string;
   severity: 'error' | 'warning' | 'info';

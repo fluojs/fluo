@@ -5,7 +5,11 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 import { MongooseConnection } from './connection.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import { MongooseTransactionInterceptor } from './transaction.js';
-import type { MongooseConnectionLike, MongooseModuleOptions, MongooseRuntimeOptions } from './types.js';
+import type { MongooseConnectionLike, MongooseModuleOptions } from './types.js';
+
+type MongooseRuntimeOptions = {
+  strictTransactions: boolean;
+};
 
 type ResolvedMongooseModuleOptions<TConnection extends MongooseConnectionLike> = Omit<
   MongooseModuleOptions<TConnection>,
@@ -93,6 +97,12 @@ function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike
   return createMongooseRuntimeProviders<TConnection>(normalizedOptionsProvider);
 }
 
+/**
+ * Creates Mongoose providers for manual module composition.
+ *
+ * @param options Mongoose module options with a connection handle, optional dispose hook, and strict transaction policy.
+ * @returns Provider definitions equivalent to `MongooseModule.forRoot(...)`.
+ */
 export function createMongooseProviders<TConnection extends MongooseConnectionLike>(
   options: MongooseModuleOptions<TConnection>,
 ): Provider[] {
@@ -126,11 +136,16 @@ function buildMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
   });
 }
 
+/**
+ * Module entrypoint for wiring a Mongoose connection into the Konekti runtime lifecycle.
+ */
 export class MongooseModule {
+  /** Creates a module definition from static Mongoose options. */
   static forRoot<TConnection extends MongooseConnectionLike>(options: MongooseModuleOptions<TConnection>): ModuleType {
     return buildMongooseModule<TConnection>(options);
   }
 
+  /** Creates a module definition from DI-aware async Mongoose options. */
   static forRootAsync<TConnection extends MongooseConnectionLike>(
     options: AsyncModuleOptions<MongooseModuleOptions<TConnection>>,
   ): ModuleType {

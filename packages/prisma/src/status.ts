@@ -1,25 +1,22 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type {
+  PersistencePlatformStatusSnapshot,
+  PlatformHealthReport,
+  PlatformReadinessReport,
+} from '@konekti/runtime';
 
-export interface PersistencePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 
-export type PrismaLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
-
-export interface PrismaStatusAdapterInput {
+type PrismaPlatformStatusSnapshotInput = {
   activeRequestTransactions: number;
-  lifecycleState: PrismaLifecycleState;
+  lifecycleState: PrismaPlatformLifecycleState;
   strictTransactions: boolean;
   supportsConnect: boolean;
   supportsDisconnect: boolean;
   supportsTransaction: boolean;
   transactionAbortSignalSupport: 'unknown' | 'supported' | 'unsupported';
-}
+};
 
-function createReadiness(input: PrismaStatusAdapterInput): PlatformReadinessReport {
+function createReadiness(input: PrismaPlatformStatusSnapshotInput): PlatformReadinessReport {
   if (input.lifecycleState === 'shutting-down') {
     return {
       critical: true,
@@ -50,7 +47,7 @@ function createReadiness(input: PrismaStatusAdapterInput): PlatformReadinessRepo
   };
 }
 
-function createHealth(input: PrismaStatusAdapterInput): PlatformHealthReport {
+function createHealth(input: PrismaPlatformStatusSnapshotInput): PlatformHealthReport {
   if (input.lifecycleState === 'stopped') {
     return {
       reason: 'Prisma integration has been disconnected.',
@@ -70,7 +67,9 @@ function createHealth(input: PrismaStatusAdapterInput): PlatformHealthReport {
   };
 }
 
-export function createPrismaPlatformStatusSnapshot(input: PrismaStatusAdapterInput): PersistencePlatformStatusSnapshot {
+export function createPrismaPlatformStatusSnapshot(
+  input: PrismaPlatformStatusSnapshotInput,
+): PersistencePlatformStatusSnapshot {
   return {
     details: {
       activeRequestTransactions: input.activeRequestTransactions,

@@ -1,22 +1,19 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type {
+  PersistencePlatformStatusSnapshot,
+  PlatformHealthReport,
+  PlatformReadinessReport,
+} from '@konekti/runtime';
 
-export interface PersistencePlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
-}
+type DrizzlePlatformLifecycleState = 'ready' | 'shutting-down' | 'stopped';
 
-export type DrizzleLifecycleState = 'ready' | 'shutting-down' | 'stopped';
-
-export interface DrizzleStatusAdapterInput {
+type DrizzlePlatformStatusSnapshotInput = {
   activeRequestTransactions: number;
-  lifecycleState: DrizzleLifecycleState;
+  lifecycleState: DrizzlePlatformLifecycleState;
   strictTransactions: boolean;
   supportsTransaction: boolean;
-}
+};
 
-function createReadiness(input: DrizzleStatusAdapterInput): PlatformReadinessReport {
+function createReadiness(input: DrizzlePlatformStatusSnapshotInput): PlatformReadinessReport {
   if (input.lifecycleState === 'shutting-down') {
     return {
       critical: true,
@@ -47,7 +44,7 @@ function createReadiness(input: DrizzleStatusAdapterInput): PlatformReadinessRep
   };
 }
 
-function createHealth(input: DrizzleStatusAdapterInput): PlatformHealthReport {
+function createHealth(input: DrizzlePlatformStatusSnapshotInput): PlatformHealthReport {
   if (input.lifecycleState === 'stopped') {
     return {
       reason: 'Drizzle integration has been disposed.',
@@ -67,7 +64,15 @@ function createHealth(input: DrizzleStatusAdapterInput): PlatformHealthReport {
   };
 }
 
-export function createDrizzlePlatformStatusSnapshot(input: DrizzleStatusAdapterInput): PersistencePlatformStatusSnapshot {
+/**
+ * Maps Drizzle lifecycle and transaction capability diagnostics into the shared persistence snapshot shape.
+ *
+ * @param input Current Drizzle ownership, readiness, and health inputs.
+ * @returns Platform-facing persistence status data for diagnostics surfaces.
+ */
+export function createDrizzlePlatformStatusSnapshot(
+  input: DrizzlePlatformStatusSnapshotInput,
+): PersistencePlatformStatusSnapshot {
   return {
     details: {
       activeRequestTransactions: input.activeRequestTransactions,
