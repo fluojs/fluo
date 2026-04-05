@@ -4,6 +4,8 @@
 
 This directory contains the official runnable example applications for Konekti. Each example has its own README and is meant to be read alongside the docs hub rather than in isolation.
 
+These examples intentionally stay on the default Node.js + Fastify starter path so the generated scaffold and the runnable examples keep matching. Official Bun, Deno, and Cloudflare Workers runtime guidance lives in the corresponding `@konekti/platform-*` package READMEs.
+
 ## current official examples
 
 - `./minimal/` — the smallest runnable Konekti app, matching the canonical starter path
@@ -24,7 +26,7 @@ If you are new to the repo, follow this order:
 
 ## how these examples fit the docs
 
-- `minimal` proves the canonical starter shape from `konekti new`
+- `minimal` proves the canonical starter shape from `konekti new` on the default Node.js + Fastify path
 - `realworld-api` proves the first practical module/DTO/test path beyond the starter
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path
