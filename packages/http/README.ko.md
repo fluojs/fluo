@@ -93,7 +93,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | 익스포트(Export) | 위치 | 설명 |
 |---|---|---|
 | `FrameworkRequest` | `src/types.ts` | 어댑터에 독립적인 요청 형태 |
-| `FrameworkResponse` | `src/types.ts` | SSE 및 기타 스트리밍 응답용 optional `stream` capability를 포함하는 어댑터에 독립적인 응답 형태 |
+| `FrameworkResponse` | `src/types.ts` | SSE 및 기타 스트리밍/압축 응답을 위한 optional `stream`, 어댑터 소유 `compression` capability를 포함하는 어댑터에 독립적인 응답 형태 |
 | `RequestContext` | `src/request-context.ts` | 런타임 컨텍스트: 요청, 응답, 주체(principal), requestId, 컨테이너 |
 
 ### 라우트 데코레이터
@@ -262,6 +262,7 @@ class EventsController {
 - `close()`는 멱등(idempotent)하며 `ctx.request.signal`이 중단될 때도 실행됩니다.
 - `encodeSseMessage()`와 `encodeSseComment()`는 테스트 및 커스텀 프레이밍 요구사항을 위해 익스포트됩니다.
 - 이제 SSE는 `FrameworkResponse.raw`를 Node writable response처럼 덕타이핑하지 않고, 명시적인 어댑터 계약인 `FrameworkResponse.stream`에 의존합니다.
+- 응답 압축도 이제 optional `FrameworkResponse.compression`을 통한 동일한 어댑터 계약을 따르므로, 런타임은 raw Node response 객체를 가정하지 않고 직접 압축하거나 플랫폼에 위임하거나 opt-out 할 수 있습니다.
 - 내장 Node, Express, Fastify 어댑터는 SSE 및 기타 응답 스트리밍 통합을 위해 `response.stream`을 제공합니다.
 - 요청 옵저버는 핸들러가 반환될 때 완료됩니다. SSE 소켓의 전체 수명 동안 열려 있지 않습니다.
 

@@ -35,6 +35,7 @@ npm install @konekti/runtime
 
 - Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
+- Node-only response compression no longer exports from the `@konekti/runtime` root barrel. Transport-owned response writers should use the adapter-facing `FrameworkResponse.compression` seam, and Node runtimes that still need explicit zlib compression can import `createNodeResponseCompression` / `compressNodeResponse` from `@konekti/runtime/node`.
 
 ## Quick Start
 
@@ -455,7 +456,7 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 `KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
 
-Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Node-specific helpers live under `@konekti/runtime/node`.
+Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Node-specific helpers live under `@konekti/runtime/node`.
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 
@@ -463,6 +464,7 @@ Additional public exports also include helpers such as `KonektiFactory`, `create
 
 The `@konekti/runtime/node` subpath consolidates Node-specific startup details that should not live in the transport-agnostic runtime root:
 - HTTP adapter creation and binding
+- Optional Node-owned response compression helpers (`createNodeResponseCompression`, `compressNodeResponse`)
 - Default CORS middleware
 - Port resolution from runtime options (`port`, default `3000`)
 - Startup log

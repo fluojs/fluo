@@ -35,6 +35,7 @@ npm install @konekti/runtime
 
 - Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
+- Node 전용 응답 압축은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. transport 소유 응답 작성기는 어댑터 지향 `FrameworkResponse.compression` seam을 사용해야 하며, 명시적인 zlib 압축이 계속 필요한 Node 런타임은 `@konekti/runtime/node`에서 `createNodeResponseCompression` / `compressNodeResponse`를 import 하세요.
 
 ## 빠른 시작
 
@@ -447,7 +448,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 `KonektiApplication`은 런타임의 어떤 부분도 재구현하지 않습니다. 조립된 설정, 컨테이너, 디스패처에 대한 참조를 유지하며 상태 전이를 관리합니다: `부트스트랩됨` → `준비됨` → `닫힘`.
 
-추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
+추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
 
 `createHealthModule()`은 런타임 소유의 활성/준비 상태 쌍을 노출합니다. `/health`는 `200 { status: 'ok' }`를 반환하는 활성(liveness) 엔드포인트이며, `/ready`는 시작 상태와 등록된 준비 상태 확인(readiness checks) 결과를 `starting`, `ready`, `unavailable` 상태로 반영합니다.
 
@@ -455,6 +456,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 `@konekti/runtime/node` 서브패스는 transport-agnostic 런타임 루트 밖에서 Node 전용 시작 세부사항을 묶습니다.
 - HTTP 어댑터 생성 및 바인딩
+- 선택적인 Node 소유 응답 압축 헬퍼 (`createNodeResponseCompression`, `compressNodeResponse`)
 - 기본 CORS 미들웨어
 - 런타임 옵션(`port`, 기본 `3000`)으로 포트 결정
 - 시작 로그

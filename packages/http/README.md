@@ -93,7 +93,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | Export | Location | Description |
 |---|---|---|
 | `FrameworkRequest` | `src/types.ts` | Adapter-agnostic request shape |
-| `FrameworkResponse` | `src/types.ts` | Adapter-agnostic response shape, including optional `stream` capability for SSE and other streamed responses |
+| `FrameworkResponse` | `src/types.ts` | Adapter-agnostic response shape, including optional `stream` and adapter-owned `compression` capabilities for streamed or compressed responses |
 | `RequestContext` | `src/request-context.ts` | Runtime context: request, response, principal, requestId, container |
 
 ### Route decorators
@@ -262,6 +262,7 @@ class EventsController {
 - `close()` is idempotent and also runs when `ctx.request.signal` aborts.
 - `encodeSseMessage()` and `encodeSseComment()` are exported for tests and custom framing needs.
 - SSE now depends on the explicit adapter-facing `FrameworkResponse.stream` contract instead of duck-typing `FrameworkResponse.raw` as a Node writable response.
+- Response compression now follows the same adapter-facing model via optional `FrameworkResponse.compression`, so runtimes can compress, delegate to the platform, or opt out without assuming raw Node response objects.
 - Built-in Node, Express, and Fastify adapters expose `response.stream` for SSE and other response-streaming integrations.
 - Request observers still complete when the handler returns. They do not stay open for the full lifetime of the SSE socket.
 
