@@ -122,7 +122,7 @@
 `.github/workflows/ci.yml`은 `main` 대상 pull request와 `main` push에서 모두 동작하며, 이벤트별 검증 범위와 안전한 fallback 경로를 분리합니다.
 
 - pull request는 먼저 `tooling/ci/detect-pr-verification-scope.mjs`로 검증 범위를 계산합니다.
-  - 판별기가 패키지 단위 변경을 안전하게 증명할 수 있으면, PR `build` + `typecheck`는 변경 패키지와 reverse dependents에 대해 실행하고, PR `test`는 동일한 영향 워크스페이스 디렉터리로 Vitest를 실행합니다.
+  - 판별기가 패키지 단위 변경을 안전하게 증명할 수 있으면, PR `build` + `typecheck`는 변경 패키지와 reverse dependents에 대해 실행하고, PR `test`는 영향 패키지에 로컬 `test` 스크립트가 있으면 `pnpm --filter <pkg> run test`를 우선 사용하며, 아직 로컬 엔트리포인트가 없는 패키지는 루트 Vitest path 실행으로 안전하게 fallback합니다.
   - 범위 안전성을 증명할 수 없으면(예: docs/governance/public-surface 변경, tooling/workflow 변경, 루트 설정 변경, merge-base/diff 불확실성) CI는 full-repo `build`, `typecheck`, `test`로 자동 fallback합니다.
   - PR에 `ci:full-verify` 라벨을 붙이거나 `CI_FORCE_FULL_VERIFY=1`을 설정하면 명시적으로 full verification을 강제할 수 있습니다.
 - `main` push에서는 full-repo `build`, `typecheck`, `lint`, `test`를 유지하고, 추가로 `pnpm verify:release-readiness`를 실행한 뒤 릴리스 등급 aggregate 게이트를 통과해야 합니다.
