@@ -418,6 +418,7 @@ importers:
         version: link:../runtime
 
   packages/platform-bun:
+  packages/platform-deno:
     dependencies:
       '@konekti/http':
         specifier: workspace:*
