@@ -159,14 +159,25 @@ function cloneApiBodyMetadata(requestBody: ApiBodyMetadata): ApiBodyMetadata {
   };
 }
 
-/** Read tags registered via `@ApiTag` on a controller class. */
+/**
+ * Read tags registered via `@ApiTag` on a controller class.
+ *
+ * @param target Controller class token.
+ * @returns A defensive copy of registered tags, or `undefined` when no tags are present.
+ */
 export function getControllerTags(target: Function): string[] | undefined {
   const bag = getMetadataBag(target);
   const tags = bag?.[openApiControllerTagsKey] as string[] | undefined;
   return tags ? [...tags] : undefined;
 }
 
-/** Read combined operation, response, and security metadata for a controller method. */
+/**
+ * Read OpenAPI metadata registered for a controller method.
+ *
+ * @param target Controller class token.
+ * @param propertyKey Controller method key to inspect.
+ * @returns A defensive metadata snapshot, or `undefined` when the method has no OpenAPI metadata.
+ */
 export function getMethodApiMetadata(target: Function, propertyKey: MetadataPropertyKey): MethodApiMetadata | undefined {
   const bag = getMetadataBag(target);
 
@@ -206,7 +217,14 @@ export function getMethodApiMetadata(target: Function, propertyKey: MetadataProp
 type ClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type MethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 
-/** Attach one or more OpenAPI tags to a controller class. */
+/**
+ * Attach an OpenAPI tag to a controller class.
+ *
+ * Multiple tags can be declared by stacking `@ApiTag(...)` decorators.
+ *
+ * @param tag Tag label appended to the controller-level tag list.
+ * @returns A class decorator that stores controller tag metadata.
+ */
 export function ApiTag(tag: string): ClassDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
@@ -215,7 +233,12 @@ export function ApiTag(tag: string): ClassDecoratorFn {
   };
 }
 
-/** Describe a controller method's OpenAPI operation (summary / description). */
+/**
+ * Describe a controller method's OpenAPI operation metadata.
+ *
+ * @param options Operation metadata such as summary, description, and deprecation flag.
+ * @returns A method decorator that stores operation metadata.
+ */
 export function ApiOperation(options: ApiOperationOptions): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
@@ -234,6 +257,11 @@ export function ApiOperation(options: ApiOperationOptions): MethodDecoratorFn {
   };
 }
 
+/**
+ * Exclude a controller method from generated OpenAPI `paths`.
+ *
+ * @returns A method decorator that marks the endpoint as excluded.
+ */
 export function ApiExcludeEndpoint(): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
@@ -248,6 +276,13 @@ export function ApiExcludeEndpoint(): MethodDecoratorFn {
   };
 }
 
+/**
+ * Add a security requirement to a controller method in the generated OpenAPI document.
+ *
+ * @param name Security scheme name (for example `bearerAuth`, `oauth2`, `apiKey`).
+ * @param scopes Optional OAuth scopes associated with this security requirement.
+ * @returns A method decorator that appends security metadata.
+ */
 export function ApiSecurity(name: string, scopes: string[] = []): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
@@ -295,6 +330,13 @@ function registerMethodParameter(parameter: ApiParameterMetadata): MethodDecorat
   };
 }
 
+/**
+ * Declare a path parameter for a controller method.
+ *
+ * @param name Parameter name.
+ * @param options Optional parameter metadata such as description, required, and schema.
+ * @returns A method decorator that appends path-parameter metadata.
+ */
 export function ApiParam(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
   return registerMethodParameter({
     description: options.description,
@@ -305,6 +347,13 @@ export function ApiParam(name: string, options: ApiParameterOptions = {}): Metho
   });
 }
 
+/**
+ * Declare a query parameter for a controller method.
+ *
+ * @param name Parameter name.
+ * @param options Optional parameter metadata such as description, required, and schema.
+ * @returns A method decorator that appends query-parameter metadata.
+ */
 export function ApiQuery(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
   return registerMethodParameter({
     description: options.description,
@@ -315,6 +364,13 @@ export function ApiQuery(name: string, options: ApiParameterOptions = {}): Metho
   });
 }
 
+/**
+ * Declare a header parameter for a controller method.
+ *
+ * @param name Parameter name.
+ * @param options Optional parameter metadata such as description, required, and schema.
+ * @returns A method decorator that appends header-parameter metadata.
+ */
 export function ApiHeader(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
   return registerMethodParameter({
     description: options.description,
@@ -325,6 +381,13 @@ export function ApiHeader(name: string, options: ApiParameterOptions = {}): Meth
   });
 }
 
+/**
+ * Declare a cookie parameter for a controller method.
+ *
+ * @param name Parameter name.
+ * @param options Optional parameter metadata such as description, required, and schema.
+ * @returns A method decorator that appends cookie-parameter metadata.
+ */
 export function ApiCookie(name: string, options: ApiParameterOptions = {}): MethodDecoratorFn {
   return registerMethodParameter({
     description: options.description,
@@ -335,6 +398,12 @@ export function ApiCookie(name: string, options: ApiParameterOptions = {}): Meth
   });
 }
 
+/**
+ * Declare an explicit request body for a controller method.
+ *
+ * @param options Request-body metadata and schema/content declarations.
+ * @returns A method decorator that stores request-body metadata.
+ */
 export function ApiBody(options: ApiBodyOptions): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
@@ -367,7 +436,13 @@ function normalizeApiResponseOptions(
 export function ApiResponse(status: number, options?: Omit<ApiResponseOptions, 'status'>): MethodDecoratorFn;
 /** Declare an expected HTTP response for a controller method. */
 export function ApiResponse(options: ApiResponseOptions): MethodDecoratorFn;
-/** Declare an expected HTTP response for a controller method. */
+/**
+ * Declare an expected HTTP response for a controller method.
+ *
+ * @param statusOrOptions Either a numeric status code or full response-options object.
+ * @param options Optional response metadata when the first argument is numeric status.
+ * @returns A method decorator that appends response metadata for the method.
+ */
 export function ApiResponse(
   statusOrOptions: number | ApiResponseOptions,
   options?: Omit<ApiResponseOptions, 'status'>,
@@ -397,7 +472,11 @@ export function ApiResponse(
   };
 }
 
-/** Mark a controller method as requiring Bearer token authentication in the OpenAPI spec. */
+/**
+ * Mark a controller method as requiring Bearer token authentication in the OpenAPI spec.
+ *
+ * @returns A method decorator equivalent to `ApiSecurity('bearerAuth')`.
+ */
 export function ApiBearerAuth(): MethodDecoratorFn {
   return ApiSecurity('bearerAuth');
 }

@@ -106,7 +106,12 @@ function resolveOpenApiDescriptors(options: OpenApiModuleOptions): readonly Hand
  * Runtime module entrypoint for serving OpenAPI JSON and optional Swagger UI.
  */
 export class OpenApiModule {
-  /** Registers OpenAPI providers using static options. */
+  /**
+   * Registers OpenAPI providers using static options.
+   *
+   * @param options Static module options used to build and serve the OpenAPI document.
+   * @returns A runtime module type that can be imported in `@Module({ imports: [...] })`.
+   */
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     return this.createModule({
       scope: 'singleton',
@@ -114,7 +119,12 @@ export class OpenApiModule {
     });
   }
 
-  /** Registers OpenAPI providers using an async DI factory. */
+  /**
+   * Registers OpenAPI providers using an async DI factory.
+   *
+   * @param options Async options factory plus optional DI `inject` token list.
+   * @returns A runtime module type that resolves options at bootstrap time.
+   */
   static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType {
     return this.createModule({
       inject: options.inject,
