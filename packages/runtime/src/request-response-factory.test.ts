@@ -54,7 +54,7 @@ describe('dispatchWithRequestResponseFactory', () => {
       },
     };
 
-    await dispatchWithRequestResponseFactory({
+    const frameworkResponse = await dispatchWithRequestResponseFactory({
       dispatcher: {
         async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
           events.push(`dispatch:${String(request.raw === (request.raw as { id: string }))}`);
@@ -66,6 +66,8 @@ describe('dispatchWithRequestResponseFactory', () => {
       rawRequest: { id: 'req-1' },
       rawResponse: { id: 'res-1' },
     });
+
+    expect(frameworkResponse).toBe(response);
 
     expect(events).toEqual([
       'response:res-1',
@@ -114,7 +116,7 @@ describe('dispatchWithRequestResponseFactory', () => {
     };
     const error = new Error('boom');
 
-    await dispatchWithRequestResponseFactory({
+    const frameworkResponse = await dispatchWithRequestResponseFactory({
       dispatcher: {
         async dispatch() {
           throw error;
@@ -126,6 +128,7 @@ describe('dispatchWithRequestResponseFactory', () => {
       rawResponse: undefined,
     });
 
+    expect(frameworkResponse).toMatchObject({ committed: false });
     expect(writeErrorResponse).toHaveBeenCalledOnce();
     expect(writeErrorResponse).toHaveBeenCalledWith(error, expect.objectContaining({ committed: false }), 'req-2');
   });
