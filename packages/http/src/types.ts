@@ -31,10 +31,20 @@ export interface FrameworkResponse {
   headers: Record<string, string | string[]>;
   committed: boolean;
   raw?: unknown;
+  stream?: FrameworkResponseStream;
   setStatus(code: number): void;
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
   send(body: unknown): MaybePromise<void>;
+}
+
+export interface FrameworkResponseStream {
+  readonly closed: boolean;
+  close(): void;
+  flush?(): void;
+  onClose?(listener: () => void): (() => void) | void;
+  waitForDrain?(): Promise<void>;
+  write(chunk: string | Uint8Array): boolean;
 }
 
 export interface ResponseFormatter {
