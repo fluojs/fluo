@@ -199,6 +199,11 @@ const officialFetchAdapterDocs = [
     path: 'packages/platform-deno/README.md',
     runtimeToken: 'Deno.serve',
   },
+  {
+    label: 'Cloudflare Workers adapter contract docs',
+    path: 'packages/platform-cloudflare-workers/README.md',
+    runtimeToken: 'Cloudflare Workers',
+  },
 ].flatMap((entry) => {
   if (!existsSync(join(repoRoot, entry.path))) {
     return [];
