@@ -43,7 +43,7 @@ The command also emits warning/report items for manual migration areas (`@Inject
 | `@Controller()`, `@Get()`, `@Post()` | `@Controller()`, `@Get()`, `@Post()` from `@konekti/http` | Route decorator shape is intentionally familiar. |
 | `@Inject(TOKEN)` | `@Inject([TOKEN])` from `@konekti/core` | Konekti takes an explicit token list for constructor dependencies. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | Default remains singleton. |
-| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | Preferred starter-aligned HTTP startup: keep the runtime facade and select an explicit transport adapter. |
+| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | Preferred starter-aligned HTTP startup on Node.js: keep the runtime facade and select an explicit transport adapter. |
 | `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | Keep startup on the runtime facade while selecting an Express transport adapter explicitly. |
 | `app.listen(3000)` | `await app.listen()` | Startup remains explicit after application creation. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
@@ -217,6 +217,8 @@ export class RequestAuditService {}
 ## 4) bootstrap path
 
 Use `KonektiFactory.create()` with an explicit adapter as the canonical HTTP startup path for new apps.
+
+The starter keeps Fastify on Node.js as the default generated example, but the official runtime matrix also includes Bun, Deno, and Cloudflare Workers through their dedicated adapter packages.
 
 Use `bootstrapApplication()` only when you explicitly want the lower-level bootstrap primitive.
 

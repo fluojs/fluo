@@ -23,7 +23,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
 
-That stable starter shape includes `src/main.ts` using adapter-first Fastify startup on the runtime facade (`createFastifyAdapter({ port })` + `await app.listen()`), `AppModule` imports that keep runtime-module entrypoints on canonical `*.forRoot(...)` names (for example `ConfigModule.forRoot(...)`), runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`).
+That stable starter shape includes `src/main.ts` using adapter-first Fastify startup on the runtime facade (`createFastifyAdapter({ port })` + `await app.listen()`), `AppModule` imports that keep runtime-module entrypoints on canonical `*.forRoot(...)` names (for example `ConfigModule.forRoot(...)`), runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`). The scaffold remains the default Node.js + Fastify path, while the official runtime matrix for public docs now spans Node.js, Bun, Deno, and Cloudflare Workers via the published `@konekti/platform-*` packages.
 
 Naming policy in generated/migration guidance:
 
@@ -42,6 +42,8 @@ The canonical first-run path is: install the CLI -> `konekti new my-app` -> `cd 
 
 Generated starters depend on `@konekti/platform-fastify` for the default adapter-first HTTP listener. Keep `@konekti/runtime/node` for Node compatibility helpers such as `runNodeApplication()` when you explicitly want the helper-wrapper path.
 
+Package-manager selection is broader than the runtime matrix: `pnpm`, `npm`, `yarn`, and `bun` can all install/run the same scaffold, but runtime choice remains explicit in `src/main.ts` and the adapter package you import.
+
 ## Quick Start
 
 ### Bootstrap a new project
@@ -57,7 +59,7 @@ For the first run, use the flow above. Optional overrides are available when you
 ```bash
 konekti new my-app
 # optional overrides:
-#   --package-manager <pnpm|npm|yarn>
+#   --package-manager <pnpm|npm|yarn|bun>
 #   --target-directory <path>
 ```
 
@@ -66,6 +68,8 @@ konekti new my-app
 The generated `dev` script is a runner-level restart path based on Node watch mode and `tsx`. That starter workflow restarts the process for source edits; it is not a promise of in-process HMR.
 
 For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported as a secondary path.
+
+If you want runtime-specific startup guidance after scaffolding, jump to the official package READMEs for `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
 
 For the broader onboarding flow, start with `../../docs/getting-started/quick-start.md`.
 
@@ -113,7 +117,7 @@ Current safe first-phase transforms:
 
 The migration codemod intentionally preserves helper-style `create*` APIs (for example `createTestingModule(...)`) because they are builders, not runtime module entrypoints.
 
-After the safe rewrite lands, release-facing docs/examples should be aligned to the portability redesign: prefer adapter-first startup (`createFastifyAdapter(...)`, `createExpressAdapter(...)`) for new HTTP apps, and point Node-only compatibility flows to `@konekti/runtime/node`.
+After the safe rewrite lands, release-facing docs/examples should be aligned to the portability redesign: prefer explicit adapter-first startup for the runtime you are targeting (`createFastifyAdapter(...)`, `createExpressAdapter(...)`, `createBunAdapter(...)`, `createDenoAdapter(...)`, or the Cloudflare Workers entrypoint), and point Node-only compatibility flows to `@konekti/runtime/node`.
 
 The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
 

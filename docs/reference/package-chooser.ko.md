@@ -32,15 +32,21 @@
 | DI | `@konekti/di` ★ | 클래스 우선 및 토큰 기반 의존성 주입 |
 | 코어 | `@konekti/core` ★ | 데코레이터, 메타데이터, 공유 계약 |
 | HTTP | `@konekti/http` ★ | 라우팅, 가드, 인터셉터, 예외 처리 |
-| 플랫폼 | `@konekti/platform-fastify` ★ | Fastify 어댑터 — 스타터의 기본 HTTP 리스너 |
+| 플랫폼 | `@konekti/platform-fastify` ★ | Fastify 어댑터 — Node.js에서 동작하는 스타터 기본 HTTP 리스너 |
 | 설정 | `@konekti/config` ★ | 타입 안전 설정 로딩 |
 | 유효성 검사 | `@konekti/validation` ★ | 입력 DTO 검증 및 구체화 |
 | CLI | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build 스크립트 |
 
-**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`를 우선 사용하고, `runNodeApplication()` 같은 Node 전용 호환 헬퍼는 이제 `@konekti/runtime/node`에 위치합니다.
+**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하고, `runNodeApplication()` 같은 Node 전용 호환 헬퍼는 이제 `@konekti/runtime/node`에 위치합니다.
+
+**공식 런타임 매트릭스:**
+- **Node.js:** `@konekti/platform-fastify`(스타터 기본) 또는 Express 미들웨어 호환이 필요할 때 `@konekti/platform-express`
+- **Bun:** Bun 네이티브 fetch 스타일 시작 경로용 `@konekti/platform-bun`
+- **Deno:** `Deno.serve(...)` 시작 경로용 `@konekti/platform-deno`
+- **Cloudflare Workers:** Worker `fetch` 엔트리포인트와 stateless isolate 라이프사이클용 `@konekti/platform-cloudflare-workers`
 
 **사용하지 않는 경우:**
-- Express 미들웨어 호환이 필요하면 `platform-fastify` 대신 `@konekti/platform-express`로 교체하세요.
+- Node.js에서 Express 미들웨어 호환이 필요하면 `platform-fastify` 대신 `@konekti/platform-express`로 교체하세요.
 - 비-HTTP 서비스(순수 메시지 소비자 등)를 만든다면 `http`와 `platform-*`을 건너뛰세요 — [마이크로서비스 소비자 실행](#마이크로서비스-소비자-실행)을 참고하세요.
 
 **다음 단계:** [`getting-started/quick-start.ko.md`](../getting-started/quick-start.ko.md) · [`concepts/architecture-overview.ko.md`](../concepts/architecture-overview.ko.md)
