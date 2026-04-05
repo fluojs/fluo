@@ -54,7 +54,7 @@ export interface HttpApplicationAdapter {
 - **`listen(dispatcher)`**: Starts the server and begins passing incoming requests to the `Dispatcher`. The adapter is responsible for wrapping the native request/response into `FrameworkRequest` and `FrameworkResponse` shapes.
 - **`close(signal)`**: Gracefully shuts down the server.
 
-When a transport package composes the shared runtime adapter bootstrap path (`runHttpAdapterApplication(...)` via `@konekti/runtime/internal`), shutdown-signal registration is a separate runtime-owned concern. The shared helper no longer reaches into Node globals on behalf of every adapter. Runtime packages that want managed signal wiring must provide an explicit shutdown-registration strategy, while transports that do not own process signals can omit it.
+When a transport package composes the shared runtime adapter bootstrap path (`runHttpAdapterApplication(...)` via `@konekti/runtime/internal/http-adapter`), shutdown-signal registration is a separate runtime-owned concern. The shared helper no longer reaches into Node globals on behalf of every adapter. Runtime packages that want managed signal wiring must provide an explicit shutdown-registration strategy, while transports that do not own process signals can omit it.
 
 #### 0.x migration note
 

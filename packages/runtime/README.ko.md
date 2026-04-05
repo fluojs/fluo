@@ -34,7 +34,9 @@ npm install @konekti/runtime
 ### 0.x 마이그레이션 노트
 
 - Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
+- transport 지향 multipart 파싱은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. 공유 Web/fetch-style 파싱 헬퍼는 이제 `@konekti/runtime/web` 아래에 있습니다.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
+- `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰으로 범위를 줄였습니다. 공유 어댑터 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`, 요청/응답 팩토리 헬퍼는 `@konekti/runtime/internal/request-response-factory`로 이동했습니다.
 - Node 전용 응답 압축은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. transport 소유 응답 작성기는 어댑터 지향 `FrameworkResponse.compression` seam을 사용해야 하며, 명시적인 zlib 압축이 계속 필요한 Node 런타임은 `@konekti/runtime/node`에서 `createNodeResponseCompression` / `compressNodeResponse`를 import 하세요.
 - 이제 fetch 스타일 런타임은 `@konekti/runtime/web`에서 `createWebRequestResponseFactory`, `createWebFrameworkRequest`, `dispatchWebRequest`를 import 하여 Bun, Deno, Cloudflare Workers 어댑터 전반에 걸쳐 native Web `Request` / `Response` 브리징을 공유할 수 있습니다.
 
@@ -395,7 +397,7 @@ await app.listen();
 | `@Module(metadata)` | `@konekti/core` | 모듈 프로바이더, 컨트롤러, 임포트, 익스포트 선언 |
 | `@Global()` | `@konekti/core` | 모듈을 전역적으로 가시성 있게 표시 |
 
-`@konekti/runtime` 루트 배럴은 transport-agnostic 경계를 유지하기 위해 Node 라이프사이클 헬퍼를 제외합니다. Node 부트스트랩 헬퍼는 `@konekti/runtime/node`에서 import 하세요. 내부 wiring 토큰(`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`)은 프레임워크 내부 패키지 조합용 경로인 `@konekti/runtime/internal`에서 제공합니다.
+`@konekti/runtime` 루트 배럴은 의도적으로 transport-neutral 경계를 유지합니다. Node 부트스트랩/종료 헬퍼는 `@konekti/runtime/node`, `dispatchWebRequest()` / `parseMultipart()` 같은 공유 fetch-style 요청/응답 헬퍼는 `@konekti/runtime/web`에서 import 하세요. `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰(`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`) 전용이며, transport 헬퍼 seam은 명시적인 internal 서브패스로 분리되었습니다.
 
 ## 아키텍처
 
@@ -451,7 +453,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 `KonektiApplication`은 런타임의 어떤 부분도 재구현하지 않습니다. 조립된 설정, 컨테이너, 디스패처에 대한 참조를 유지하며 상태 전이를 관리합니다: `부트스트랩됨` → `준비됨` → `닫힘`.
 
-추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
+추가적인 루트 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. 공유 multipart 및 fetch-style 요청/응답 헬퍼는 `@konekti/runtime/web`, Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
 
 `@konekti/runtime/web` 서브패스는 fetch 스타일 어댑터 작업을 transport-neutral하게 유지합니다. native Web `Request`를 `FrameworkRequest`로 변환하고, 기존 raw-body/multipart/error-envelope 계약을 유지하며, `FrameworkResponse.stream`을 Web Stream 기반 capability로 노출하고, 프레임워크 응답 쓰기를 다시 native Web `Response`로 마무리합니다.
 

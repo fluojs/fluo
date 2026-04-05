@@ -34,7 +34,9 @@ npm install @konekti/runtime
 ### 0.x migration note
 
 - Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
+- Transport-facing multipart parsing no longer exports from the `@konekti/runtime` root barrel. Shared Web/fetch-style parsing helpers now live under `@konekti/runtime/web`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
+- `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
 - Node-only response compression no longer exports from the `@konekti/runtime` root barrel. Transport-owned response writers should use the adapter-facing `FrameworkResponse.compression` seam, and Node runtimes that still need explicit zlib compression can import `createNodeResponseCompression` / `compressNodeResponse` from `@konekti/runtime/node`.
 - Fetch-style runtimes can now import `createWebRequestResponseFactory`, `createWebFrameworkRequest`, and `dispatchWebRequest` from `@konekti/runtime/web` to share native Web `Request` / `Response` bridging across Bun, Deno, and Cloudflare Worker adapters.
 
@@ -395,7 +397,7 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
 | `@Global()` | `@konekti/core` | Marks a module as globally visible |
 
-`@konekti/runtime` root barrel intentionally excludes Node lifecycle helpers so the transport-agnostic package boundary stays focused on orchestration. Import Node bootstrap helpers from `@konekti/runtime/node`. Internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`) remain available for framework-internal package composition via `@konekti/runtime/internal`.
+`@konekti/runtime` root barrel intentionally stays transport-neutral. Import Node bootstrap and shutdown helpers from `@konekti/runtime/node`, and shared fetch-style request/response helpers such as `dispatchWebRequest()` / `parseMultipart()` from `@konekti/runtime/web`. `@konekti/runtime/internal` is now reserved for framework-internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`), while transport helper seams live on explicit internal subpaths.
 
 ## Architecture
 
@@ -459,7 +461,7 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 `KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
 
-Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Node-specific helpers live under `@konekti/runtime/node`.
+Additional public root exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Shared multipart and fetch-style request/response helpers live under `@konekti/runtime/web`, while Node-specific helpers live under `@konekti/runtime/node`.
 
 The `@konekti/runtime/web` subpath keeps fetch-style adapter work transport-neutral: it translates native Web `Request` objects into `FrameworkRequest`, preserves the existing raw-body/multipart/error-envelope contracts, exposes `FrameworkResponse.stream` as a Web-stream-backed capability, and finalizes framework writes back into a native Web `Response`.
 
