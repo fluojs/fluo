@@ -67,8 +67,12 @@ await microservice.listen();
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
 - **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
-- **compatibility-only**: metadata helper export(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`)와 `MicroserviceLifecycleService` 같은 저수준 lifecycle service 직접 import는 0.x 호환성을 위해 export를 유지하지만, 애플리케이션의 기본 seam으로는 권장하지 않습니다.
-- **internal**: `MICROSERVICE_OPTIONS`와 문서화되지 않은 트랜스포트 런타임 내부 동작은 광범위한 배럴 re-export로 접근 가능하더라도 비계약(non-contract) 동작입니다.
+- **internal**: metadata helper(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), 저수준 lifecycle wiring(`MicroserviceLifecycleService`, `MICROSERVICE_OPTIONS`), transport 내부 wire/descriptor 타입은 비계약 내부 동작이며 루트 배럴 공개 계약에 포함되지 않습니다.
+
+### 마이그레이션 노트 (0.x)
+
+- 루트 배럴은 이제 문서화된 microservice 모듈 API, 데코레이터, transport 클래스, status helper, 공개 TypeScript transport 계약/옵션만 export합니다.
+- metadata helper, lifecycle service, transport wire message 타입을 루트 배럴에서 import하고 있었다면, 프레임워크 내부 구현에 의도적으로 의존하는 경우에만 내부 파일 경로로 옮기세요.
 
 ## 런타임 동작
 

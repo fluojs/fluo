@@ -9,7 +9,6 @@ exports[`@konekti/microservices root barrel public surface > keeps the documente
   "KafkaMicroserviceTransport",
   "MICROSERVICE",
   "MessagePattern",
-  "MicroserviceLifecycleService",
   "MicroservicesModule",
   "MqttMicroserviceTransport",
   "NatsMicroserviceTransport",
@@ -20,8 +19,5 @@ exports[`@konekti/microservices root barrel public surface > keeps the documente
   "TcpMicroserviceTransport",
   "createMicroservicePlatformStatusSnapshot",
   "createMicroservicesProviders",
-  "defineHandlerMetadata",
-  "getHandlerMetadataEntries",
-  "microserviceMetadataSymbol",
 ]
 `;

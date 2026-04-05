@@ -1,15 +1,29 @@
-export * from './decorators.js';
-export * from './grpc-transport.js';
-export * from './kafka-transport.js';
-export * from './metadata.js';
-export * from './module.js';
-export * from './mqtt-transport.js';
-export * from './nats-transport.js';
-export * from './redis-transport.js';
-export * from './redis-streams-transport.js';
-export * from './rabbitmq-transport.js';
-export * from './service.js';
+export {
+  BidiStreamPattern,
+  ClientStreamPattern,
+  EventPattern,
+  MessagePattern,
+  ServerStreamPattern,
+} from './decorators.js';
+export { GrpcMicroserviceTransport, type GrpcMicroserviceTransportOptions } from './grpc-transport.js';
+export { KafkaMicroserviceTransport, type KafkaMicroserviceTransportOptions } from './kafka-transport.js';
+export { MicroservicesModule, createMicroservicesProviders } from './module.js';
+export { MqttMicroserviceTransport, type MqttMicroserviceTransportOptions } from './mqtt-transport.js';
+export { NatsMicroserviceTransport, type NatsMicroserviceTransportOptions } from './nats-transport.js';
+export {
+  RedisPubSubMicroserviceTransport,
+  type RedisPubSubMicroserviceTransportOptions,
+} from './redis-transport.js';
+export {
+  RedisStreamsMicroserviceTransport,
+  type RedisStreamClientLike,
+  type RedisStreamsMicroserviceTransportOptions,
+} from './redis-streams-transport.js';
+export {
+  RabbitMqMicroserviceTransport,
+  type RabbitMqMicroserviceTransportOptions,
+} from './rabbitmq-transport.js';
 export * from './status.js';
-export * from './tcp-transport.js';
+export { TcpMicroserviceTransport } from './tcp-transport.js';
 export { MICROSERVICE } from './tokens.js';
-export * from './types.js';
+export type { Microservice, MicroserviceModuleOptions, MicroserviceTransport, Pattern, ServerStreamWriter } from './types.js';

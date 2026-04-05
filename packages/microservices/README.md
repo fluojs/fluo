@@ -67,8 +67,12 @@ await microservice.listen();
 ### Root barrel public surface governance (0.x)
 
 - **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
-- **compatibility-only**: Metadata helper exports (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`) and direct low-level lifecycle service imports such as `MicroserviceLifecycleService` remain exported for 0.x compatibility but are not recommended as primary application seams.
-- **internal**: `MICROSERVICE_OPTIONS` and undocumented transport runtime internals are non-contract behavior even when reachable through broad barrel re-exports.
+- **internal**: metadata helpers (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), low-level lifecycle wiring (`MicroserviceLifecycleService`, `MICROSERVICE_OPTIONS`), and transport-internal wire/descriptor types are non-contract internals and are not part of the root barrel public contract.
+
+### migration notes (0.x)
+
+- The root barrel now exports only the documented microservice module API, decorators, transport classes, status helpers, and public TypeScript transport contracts/options.
+- Move any root-barrel imports of metadata helpers, lifecycle services, or transport wire message types to internal package files if you intentionally depend on framework internals.
 
 ## Runtime behavior
 
