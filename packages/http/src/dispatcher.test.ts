@@ -490,15 +490,22 @@ describe('dispatcher runtime', () => {
       rootContainer: root,
     });
 
-    const response: FrameworkResponse & { body?: unknown; raw: { writableEnded: boolean; write(chunk: string): boolean; end(): void } } = {
+    const streamState = { closed: false };
+    const response: FrameworkResponse & { body?: unknown } = {
       committed: false,
       headers: {},
-      raw: {
-        end() {
-          this.writableEnded = true;
+      stream: {
+        close() {
+          streamState.closed = true;
         },
-        writableEnded: false,
+        get closed() {
+          return streamState.closed;
+        },
         write(chunk) {
+          if (typeof chunk !== 'string') {
+            throw new TypeError('Expected dispatcher SSE test to write string chunks.');
+          }
+
           writes.push(chunk);
           return true;
         },

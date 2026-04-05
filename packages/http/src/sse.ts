@@ -1,18 +1,9 @@
-import type { FrameworkResponse, RequestContext } from './types.js';
+import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from './types.js';
 
 export interface SseSendOptions {
   event?: string;
   id?: string | number;
   retry?: number;
-}
-
-interface WritableSseStream {
-  flushHeaders?: () => void;
-  on?: (event: 'close', listener: () => void) => void;
-  removeListener?: (event: 'close', listener: () => void) => void;
-  writableEnded: boolean;
-  write(chunk: string): boolean;
-  end(): void;
 }
 
 function sanitizeSseField(value: string): string {
@@ -41,32 +32,12 @@ function toSseDataString(data: unknown): string {
   return serialized;
 }
 
-function isWritableSseStream(value: unknown): value is WritableSseStream {
-  if (typeof value !== 'object' || value === null) {
-    return false;
+function resolveSseStream(response: FrameworkResponse): FrameworkResponseStream {
+  if (!response.stream) {
+    throw new Error('SseResponse requires adapter-provided response.stream support.');
   }
 
-  const candidate = value as {
-    end?: unknown;
-    flushHeaders?: unknown;
-    writableEnded?: unknown;
-    write?: unknown;
-  };
-
-  return typeof candidate.writableEnded === 'boolean'
-    && typeof candidate.write === 'function'
-    && typeof candidate.end === 'function'
-    && (candidate.flushHeaders === undefined || typeof candidate.flushHeaders === 'function');
-}
-
-function resolveSseStream(response: FrameworkResponse): WritableSseStream {
-  const rawResponse = response.raw;
-
-  if (!isWritableSseStream(rawResponse)) {
-    throw new Error('SseResponse requires a writable adapter response stream.');
-  }
-
-  return rawResponse;
+  return response.stream;
 }
 
 export function encodeSseComment(comment: string): string {
@@ -100,7 +71,8 @@ export function encodeSseMessage(data: unknown, options: SseSendOptions = {}): s
 
 export class SseResponse {
   private closed = false;
-  private readonly stream: WritableSseStream;
+  private readonly stream: FrameworkResponseStream;
+  private removeCloseListener?: () => void;
 
   private readonly onAbort = (): void => {
     this.close();
@@ -118,7 +90,7 @@ export class SseResponse {
     context.response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     context.response.setHeader('X-Accel-Buffering', 'no');
     context.response.committed = true;
-    this.stream.flushHeaders?.();
+    this.stream.flush?.();
 
     if (context.request.signal?.aborted) {
       this.close();
@@ -128,7 +100,7 @@ export class SseResponse {
     context.request.signal?.addEventListener('abort', this.onAbort, { once: true });
 
     if (context.request.signal === undefined) {
-      this.stream.on?.('close', this.onAbort);
+      this.removeCloseListener = this.stream.onClose?.(this.onAbort) ?? undefined;
     }
   }
 
@@ -147,10 +119,11 @@ export class SseResponse {
 
     this.closed = true;
     this.context.request.signal?.removeEventListener('abort', this.onAbort);
-    this.stream.removeListener?.('close', this.onAbort);
+    this.removeCloseListener?.();
+    this.removeCloseListener = undefined;
 
-    if (!this.stream.writableEnded) {
-      this.stream.end();
+    if (!this.stream.closed) {
+      this.stream.close();
     }
 
     this.context.response.committed = true;
@@ -161,7 +134,7 @@ export class SseResponse {
       return false;
     }
 
-    if (this.stream.writableEnded) {
+    if (this.stream.closed) {
       this.close();
       return false;
     }
