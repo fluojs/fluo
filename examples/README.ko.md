@@ -4,6 +4,8 @@
 
 이 디렉토리는 Konekti의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, docs hub와 함께 읽는 것을 전제로 합니다.
 
+이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 기본 Node.js + Fastify 경로를 유지합니다. 공식 Bun, Deno, Cloudflare Workers 런타임 가이드는 대응하는 `@konekti/platform-*` 패키지 README에서 다룹니다.
+
 ## 현재 공식 예제
 
 - `./minimal/` — canonical starter path와 같은 가장 작은 실행 가능 앱
@@ -24,7 +26,7 @@
 
 ## 예제가 문서에서 맡는 역할
 
-- `minimal`은 `konekti new`가 만드는 canonical starter shape를 증명합니다
+- `minimal`은 기본 Node.js + Fastify 경로에서 `konekti new`가 만드는 canonical starter shape를 증명합니다
 - `realworld-api`는 스타터 이후 첫 실전 module/DTO/test 경로를 보여줍니다
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다
