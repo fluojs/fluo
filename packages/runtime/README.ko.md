@@ -36,6 +36,7 @@ npm install @konekti/runtime
 - Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 - Node 전용 응답 압축은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. transport 소유 응답 작성기는 어댑터 지향 `FrameworkResponse.compression` seam을 사용해야 하며, 명시적인 zlib 압축이 계속 필요한 Node 런타임은 `@konekti/runtime/node`에서 `createNodeResponseCompression` / `compressNodeResponse`를 import 하세요.
+- 이제 fetch 스타일 런타임은 `@konekti/runtime/web`에서 `createWebRequestResponseFactory`, `createWebFrameworkRequest`, `dispatchWebRequest`를 import 하여 Bun, Deno, Cloudflare Workers 어댑터 전반에 걸쳐 native Web `Request` / `Response` 브리징을 공유할 수 있습니다.
 
 ## 빠른 시작
 
@@ -379,6 +380,8 @@ await app.listen();
 | `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | canonical HTTP 애플리케이션 진입점 — `Application` 반환 |
 | `@konekti/runtime/node` → `runNodeApplication(rootModule, options)` | `src/node.ts` | Node 부트스트랩 + listen + 종료 wiring을 위한 호환 래퍼 |
 | `@konekti/runtime/node` → `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Node 기본값으로 부트스트랩만 수행 (수신 없음) |
+| `@konekti/runtime/web` → `dispatchWebRequest({ request, dispatcher, ... })` | `src/web.ts` | native Web `Request`를 프레임워크 계약으로 변환하고 native Web `Response`를 반환하는 공유 fetch-style 어댑터 진입점 |
+| `@konekti/runtime/web` → `createWebRequestResponseFactory(options)` | `src/web.ts` | Bun, Deno, Cloudflare Worker 스타일 어댑터를 위한 공유 request/response factory seam |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | 일반적인 부트스트랩 — `Application` 반환 |
 | `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | 런타임, CLI, Studio 정렬 툴링에서 공유하는 플랫폼 계약 spine 타입. |
 | `PLATFORM_SHELL` | `src/tokens.ts` | 현재 플랫폼 셸 오케스트레이터와 snapshot/report API를 노출하는 런타임 토큰. |
@@ -449,6 +452,8 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 `KonektiApplication`은 런타임의 어떤 부분도 재구현하지 않습니다. 조립된 설정, 컨테이너, 디스패처에 대한 참조를 유지하며 상태 전이를 관리합니다: `부트스트랩됨` → `준비됨` → `닫힘`.
 
 추가적인 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
+
+`@konekti/runtime/web` 서브패스는 fetch 스타일 어댑터 작업을 transport-neutral하게 유지합니다. native Web `Request`를 `FrameworkRequest`로 변환하고, 기존 raw-body/multipart/error-envelope 계약을 유지하며, `FrameworkResponse.stream`을 Web Stream 기반 capability로 노출하고, 프레임워크 응답 쓰기를 다시 native Web `Response`로 마무리합니다.
 
 `createHealthModule()`은 런타임 소유의 활성/준비 상태 쌍을 노출합니다. `/health`는 `200 { status: 'ok' }`를 반환하는 활성(liveness) 엔드포인트이며, `/ready`는 시작 상태와 등록된 준비 상태 확인(readiness checks) 결과를 `starting`, `ready`, `unavailable` 상태로 반영합니다.
 

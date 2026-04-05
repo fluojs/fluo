@@ -33,6 +33,10 @@
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
     },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "import": "./dist/web.js"
+    },
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
