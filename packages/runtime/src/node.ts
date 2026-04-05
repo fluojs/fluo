@@ -268,6 +268,12 @@ export {
   createNodeResponseCompression,
 } from './node-compression.js';
 
+export {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+  registerShutdownSignals,
+} from './node-shutdown.js';
+
 function createNodeServer(
   httpsOptions: HttpsServerOptions | undefined,
   handler: NodeRequestListener,
