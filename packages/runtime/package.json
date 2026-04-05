@@ -40,6 +40,14 @@
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
+    },
+    "./internal/http-adapter": {
+      "types": "./dist/internal-http-adapter.d.ts",
+      "import": "./dist/internal-http-adapter.js"
+    },
+    "./internal/request-response-factory": {
+      "types": "./dist/internal-request-response-factory.d.ts",
+      "import": "./dist/internal-request-response-factory.js"
     }
   },
   "main": "./dist/index.js",
