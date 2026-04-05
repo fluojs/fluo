@@ -244,7 +244,7 @@ await harness.assertAll();
 
 ### HTTP 어댑터 portability harness
 
-HTTP 어댑터가 내장 Node 런타임 어댑터와의 parity를 증명해야 할 때는 `createHttpAdapterPortabilityHarness(...)`를 사용하세요. 이 하니스는 요청 정규화, raw-body 처리, SSE 스트리밍, 시작 로그, HTTPS 시작, 종료 시그널 정리 동작을 함께 검증합니다.
+Node 스타일 HTTP 어댑터가 내장 Node 런타임 어댑터와의 parity를 증명해야 할 때는 `createHttpAdapterPortabilityHarness(...)`를 사용하세요. 이 하니스는 요청 정규화, raw-body 처리, SSE 스트리밍, 시작 로그, HTTPS 시작, 종료 시그널 정리 동작을 함께 검증합니다.
 
 ```ts
 import { createHttpAdapterPortabilityHarness } from '@konekti/testing';
@@ -269,6 +269,39 @@ await harness.assertSupportsSseStreaming();
 - 시작 로그가 명시적 host/HTTPS listen 대상을 반영해야 함
 - 시그널 기반 시작 헬퍼가 close 시 등록한 종료 리스너를 제거해야 함
 
+### Web-runtime HTTP 어댑터 portability harness
+
+fetch 스타일 런타임 어댑터가 Node 전용 socket/HTTPS 헬퍼를 가져오지 않고도 공유 Web request/response 계약 parity를 증명해야 할 때는 `createWebRuntimeHttpAdapterPortabilityHarness(...)`를 사용하세요.
+
+```ts
+import { createWebRuntimeHttpAdapterPortabilityHarness } from '@konekti/testing';
+import { bootstrapCloudflareWorkerApplication } from '@konekti/platform-cloudflare-workers';
+
+const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+  async bootstrap(rootModule, options) {
+    const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+
+    return {
+      close: () => worker.close(),
+      dispatch: (request) => worker.fetch(request, {}, { waitUntil() {} }),
+    };
+  },
+  name: 'cloudflare-workers',
+});
+
+await harness.assertPreservesMalformedCookieValues();
+await harness.assertPreservesRawBodyForJsonAndText();
+await harness.assertExcludesRawBodyForMultipart();
+await harness.assertSupportsSseStreaming();
+```
+
+Web-runtime portability harness는 다음 parity 기대값을 검증합니다.
+
+- 잘못된 쿠키 값이 요청 경로를 중단시키지 않고 그대로 관측 가능해야 함
+- `rawBody`는 JSON/text 요청에서만 opt-in으로 유지되고 multipart 파싱에서는 설정되지 않아야 함
+- SSE 응답이 `text/event-stream` 프레이밍을 유지해야 함
+- 어댑터가 Node listener ownership을 가정하지 않고도 직접 `Request` / `Response` dispatch로 검증 가능해야 함
+
 ## 핵심 API
 
 ### `createTestingModule(options)`
@@ -292,6 +325,10 @@ createTestingModule(options: TestingModuleOptions): TestingModuleBuilder
 ### `createHttpAdapterPortabilityHarness(options)`
 
 내장/외부 전송 어댑터를 위한 공유 HTTP adapter portability 하니스입니다.
+
+### `createWebRuntimeHttpAdapterPortabilityHarness(options)`
+
+공식 Web 런타임 어댑터를 위한 공유 fetch-style portability 하니스입니다.
 
 ### `TestingModuleBuilder`
 

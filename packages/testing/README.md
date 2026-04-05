@@ -230,7 +230,7 @@ The kit enforces these invariants:
 
 ### HTTP adapter portability harness
 
-Use `createHttpAdapterPortabilityHarness(...)` when an HTTP adapter must prove parity with the built-in Node runtime adapter for request normalization, raw-body handling, SSE streaming, startup logging, HTTPS startup, and shutdown signal cleanup.
+Use `createHttpAdapterPortabilityHarness(...)` when a Node-style HTTP adapter must prove parity with the built-in Node runtime adapter for request normalization, raw-body handling, SSE streaming, startup logging, HTTPS startup, and shutdown signal cleanup.
 
 ```ts
 import { createHttpAdapterPortabilityHarness } from '@konekti/testing';
@@ -254,6 +254,39 @@ The adapter portability harness covers these parity expectations:
 - SSE responses keep `text/event-stream` framing.
 - startup logs reflect explicit host and HTTPS listen targets.
 - signal-driven startup helpers remove registered shutdown listeners on close.
+
+### Web-runtime HTTP adapter portability harness
+
+Use `createWebRuntimeHttpAdapterPortabilityHarness(...)` when a fetch-style runtime adapter must prove parity for the shared Web request/response contract without importing Node-only socket or HTTPS helpers.
+
+```ts
+import { createWebRuntimeHttpAdapterPortabilityHarness } from '@konekti/testing';
+import { bootstrapCloudflareWorkerApplication } from '@konekti/platform-cloudflare-workers';
+
+const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+  async bootstrap(rootModule, options) {
+    const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+
+    return {
+      close: () => worker.close(),
+      dispatch: (request) => worker.fetch(request, {}, { waitUntil() {} }),
+    };
+  },
+  name: 'cloudflare-workers',
+});
+
+await harness.assertPreservesMalformedCookieValues();
+await harness.assertPreservesRawBodyForJsonAndText();
+await harness.assertExcludesRawBodyForMultipart();
+await harness.assertSupportsSseStreaming();
+```
+
+The Web-runtime portability harness covers these parity expectations:
+
+- malformed cookie values remain observable instead of aborting the request path.
+- `rawBody` stays opt-in for JSON/text requests and remains unset for multipart parsing.
+- SSE responses keep `text/event-stream` framing.
+- adapters stay verifiable through direct `Request` / `Response` dispatch without assuming Node listener ownership.
 
 ### Resolving tokens directly
 
@@ -308,6 +341,10 @@ Shared platform conformance test harness for official platform-facing packages.
 ### `createHttpAdapterPortabilityHarness(options)`
 
 Shared HTTP adapter portability harness for built-in and external transport adapters.
+
+### `createWebRuntimeHttpAdapterPortabilityHarness(options)`
+
+Shared fetch-style runtime adapter portability harness for official Web runtime adapters.
 
 ### `TestingModuleBuilder`
 
