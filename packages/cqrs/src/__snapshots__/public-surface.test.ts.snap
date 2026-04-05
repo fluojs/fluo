@@ -4,7 +4,6 @@ exports[`@konekti/cqrs root barrel public surface > keeps the documented root ex
 [
   "COMMAND_BUS",
   "CommandHandler",
-  "CommandHandlerNotFoundError",
   "CommandHandlerNotFoundException",
   "CqrsModule",
   "DuplicateCommandHandlerError",
@@ -14,7 +13,6 @@ exports[`@konekti/cqrs root barrel public surface > keeps the documented root ex
   "EventHandler",
   "QUERY_BUS",
   "QueryHandler",
-  "QueryHandlerNotFoundError",
   "QueryHandlerNotFoundException",
   "Saga",
   "SagaExecutionError",

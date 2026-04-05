@@ -35,6 +35,3 @@ export class SagaExecutionError extends KonektiError {
     super(message, { code: 'CQRS_SAGA_EXECUTION_FAILED' });
   }
 }
-
-export const CommandHandlerNotFoundError = CommandHandlerNotFoundException;
-export const QueryHandlerNotFoundError = QueryHandlerNotFoundException;

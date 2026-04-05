@@ -15,6 +15,8 @@ describe('@konekti/cqrs root barrel public surface', () => {
     expect(cqrs).toHaveProperty('EventHandler');
     expect(cqrs).toHaveProperty('Saga');
     expect(cqrs).toHaveProperty('createCqrsPlatformStatusSnapshot');
+    expect(cqrs).not.toHaveProperty('CommandHandlerNotFoundError');
+    expect(cqrs).not.toHaveProperty('QueryHandlerNotFoundError');
     expect(Object.keys(cqrs).sort()).toMatchSnapshot();
     expect(cqrs).not.toHaveProperty('CQRS_EVENT_BUS');
   });

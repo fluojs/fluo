@@ -128,13 +128,15 @@ export class AppModule {}
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
 - **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
-- **compatibility-only**: 저수준 metadata helper/symbol(`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) 및 legacy not-found error alias export는 0.x 호환성을 위해 유지되지만, 신규 애플리케이션 코드의 기본 import 경로로는 권장하지 않습니다.
+- **compatibility-only**: 저수준 metadata helper/symbol(`define*Metadata`, `get*Metadata`, `*MetadataSymbol`)은 0.x 호환성을 위해 유지되지만, 신규 애플리케이션 코드의 기본 import 경로로는 권장하지 않습니다.
 - **internal**: `CQRS_EVENT_BUS`는 공개 루트 배럴 계약에 포함되지 않습니다.
 
 ### 마이그레이션 노트 (0.x)
 
 - `CQRS_EVENT_BUS`는 공개 패키지 표면에서 제거되었습니다.
 - CQRS 이벤트 버스 DI 사용 코드는 `EVENT_BUS`로 마이그레이션하세요.
+- `CommandHandlerNotFoundError`는 루트 배럴에서 제거되었습니다. 대신 `CommandHandlerNotFoundException`을 사용하세요.
+- `QueryHandlerNotFoundError`는 루트 배럴에서 제거되었습니다. 대신 `QueryHandlerNotFoundException`을 사용하세요.
 
 ### 모듈 옵션 동작
 
