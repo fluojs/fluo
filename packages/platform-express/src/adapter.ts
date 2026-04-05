@@ -43,8 +43,10 @@ import {
 } from '@konekti/runtime';
 import {
   bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
   dispatchWithRequestResponseFactory,
+  runHttpAdapterApplication,
   type RequestResponseFactory,
 } from '@konekti/runtime/internal';
 
@@ -286,7 +288,12 @@ export async function runExpressApplication(
   options: RunExpressApplicationOptions,
 ): Promise<Application> {
   const adapter = createExpressAdapter(options, options.multipart) as ExpressHttpApplicationAdapter;
-  return runHttpAdapterApplication(rootModule, options, adapter);
+  return runHttpAdapterApplication(rootModule, {
+    ...options,
+    shutdownRegistration: createNodeShutdownSignalRegistration(
+      options.shutdownSignals ?? defaultNodeShutdownSignals(),
+    ),
+  }, adapter);
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {

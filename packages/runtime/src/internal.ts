@@ -1,15 +1,20 @@
 export {
   bootstrapHttpAdapterApplication,
   createHttpAdapterMiddleware,
-  defaultNodeCompatibleShutdownSignals,
   formatHttpAdapterListenMessage,
   runHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
   type HttpAdapterCorsInput,
   type HttpAdapterListenTarget,
   type HttpAdapterMiddlewareOptions,
+  type HttpAdapterShutdownRegistration,
   type RunHttpAdapterApplicationOptions,
 } from './http-adapter-shared.js';
+export {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+  registerShutdownSignals,
+} from './node-shutdown.js';
 export {
   APPLICATION_LOGGER,
   COMPILED_MODULES,

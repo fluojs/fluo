@@ -12,9 +12,12 @@ import {
 
 import {
   bootstrapHttpAdapterApplication,
-  defaultNodeCompatibleShutdownSignals,
   runHttpAdapterApplication,
 } from './http-adapter-shared.js';
+import {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+} from './node-shutdown.js';
 import {
   createFrameworkRequest,
   createRequestSignal,
@@ -251,7 +254,9 @@ export async function runNodeApplication(
   const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
   return runHttpAdapterApplication(rootModule, {
     ...options,
-    shutdownSignals: options.shutdownSignals ?? defaultNodeCompatibleShutdownSignals(),
+    shutdownRegistration: createNodeShutdownSignalRegistration(
+      options.shutdownSignals ?? defaultNodeShutdownSignals(),
+    ),
   }, adapter);
 }
 

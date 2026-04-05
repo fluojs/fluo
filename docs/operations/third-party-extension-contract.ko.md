@@ -54,6 +54,12 @@ export interface HttpApplicationAdapter {
 - **`listen(dispatcher)`**: 서버를 시작하고 들어오는 요청을 `Dispatcher`에 전달하기 시작합니다. 어댑터는 네이티브 요청/응답 객체를 `FrameworkRequest`와 `FrameworkResponse` 형태로 변환할 책임이 있습니다.
 - **`close(signal)`**: 서버를 정상적으로 종료합니다.
 
+트랜스포트 패키지가 `@konekti/runtime/internal`의 공유 런타임 어댑터 부트스트랩 경로(`runHttpAdapterApplication(...)`)를 조합할 때, shutdown signal 등록은 별도의 런타임 소유 concern입니다. 공유 헬퍼는 더 이상 모든 어댑터를 대신해 Node 전역에 접근하지 않습니다. 관리형 signal 연결이 필요한 런타임 패키지는 명시적인 shutdown-registration 전략을 제공해야 하며, 프로세스 signal을 소유하지 않는 트랜스포트는 이를 생략할 수 있습니다.
+
+#### 0.x 마이그레이션 노트
+
+- 이전에 공유 헬퍼의 암묵적 Node signal 등록에 의존하던 런타임/어댑터 패키지는 이제 자신이 소유한 런타임 패키지에서 shutdown signal을 명시적으로 등록해야 합니다.
+
 ### Request/Response Bridging
 
 어댑터는 네이티브 객체를 다음 계약에 맞게 매핑해야 합니다:

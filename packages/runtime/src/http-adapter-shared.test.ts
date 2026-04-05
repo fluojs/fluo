@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { Middleware } from '@konekti/http';
 
-import { createHttpAdapterMiddleware } from './http-adapter-shared.js';
+import { defineModule } from './bootstrap.js';
+import { createHttpAdapterMiddleware, runHttpAdapterApplication } from './http-adapter-shared.js';
+import type { ApplicationLogger } from './types.js';
 
 type TestContext = {
   request: {
@@ -148,5 +150,59 @@ describe('createHttpAdapterMiddleware', () => {
         status: 404,
       },
     });
+  });
+});
+
+describe('runHttpAdapterApplication', () => {
+  it('uses explicit shutdown registration supplied by the owning runtime', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const events: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log() {},
+      warn() {},
+    };
+    const adapter = {
+      close: async () => {
+        events.push('adapter:close');
+      },
+      getListenTarget() {
+        return {
+          bindTarget: 'runtime://test',
+          url: 'runtime://test',
+        };
+      },
+      async listen() {
+        events.push('adapter:listen');
+      },
+    };
+
+    const app = await runHttpAdapterApplication(AppModule, {
+      forceExitTimeoutMs: 123,
+      logger,
+      shutdownRegistration(application, _logger, forceExitTimeoutMs) {
+        events.push(`register:${application.state}:${String(forceExitTimeoutMs)}`);
+        return () => {
+          events.push('unregister');
+        };
+      },
+    }, adapter);
+
+    expect(events).toEqual([
+      'adapter:listen',
+      'register:ready:123',
+    ]);
+
+    await app.close('SIGTERM');
+
+    expect(events).toEqual([
+      'adapter:listen',
+      'register:ready:123',
+      'unregister',
+      'adapter:close',
+    ]);
   });
 });

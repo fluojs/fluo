@@ -34,6 +34,7 @@ npm install @konekti/runtime
 ### 0.x migration note
 
 - Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
+- Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 
 ## Quick Start
 
@@ -465,7 +466,7 @@ The `@konekti/runtime/node` subpath consolidates Node-specific startup details t
 - Default CORS middleware
 - Port resolution from runtime options (`port`, default `3000`)
 - Startup log
-- `SIGTERM`/`SIGINT` → `app.close()` wiring
+- Explicit `SIGTERM`/`SIGINT` → `app.close()` registration for Node-owned startup paths
 - Request abort signal → `FrameworkRequest.signal` bridge
 
 The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in `@konekti/runtime/node` bootstrap options to override the default 10-second drain window.

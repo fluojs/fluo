@@ -1,8 +1,24 @@
 import type { Application, ApplicationLogger } from './types.js';
+import type { HttpAdapterShutdownRegistration } from './http-adapter-shared.js';
 
 type NodeShutdownSignal = 'SIGINT' | 'SIGTERM';
 
 const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
+
+export function defaultNodeShutdownSignals(): readonly NodeShutdownSignal[] {
+  return ['SIGINT', 'SIGTERM'];
+}
+
+export function createNodeShutdownSignalRegistration(
+  signals: false | readonly NodeShutdownSignal[] = defaultNodeShutdownSignals(),
+): HttpAdapterShutdownRegistration {
+  return (app, logger, forceExitTimeoutMs) => registerShutdownSignals(
+    app,
+    logger,
+    signals,
+    forceExitTimeoutMs,
+  );
+}
 
 export function registerShutdownSignals(
   app: Application,

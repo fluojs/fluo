@@ -16,10 +16,7 @@ import {
 
 import { bootstrapApplication } from './bootstrap.js';
 import { createConsoleApplicationLogger } from './logger.js';
-import { registerShutdownSignals } from './node-shutdown.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
-
-type NodeCompatibleShutdownSignal = 'SIGINT' | 'SIGTERM';
 
 export type HttpAdapterCorsInput = false | string | string[] | CorsOptions;
 
@@ -44,8 +41,14 @@ export interface BootstrapHttpAdapterApplicationOptions
 
 export interface RunHttpAdapterApplicationOptions extends BootstrapHttpAdapterApplicationOptions {
   forceExitTimeoutMs?: number;
-  shutdownSignals?: false | readonly NodeCompatibleShutdownSignal[];
+  shutdownRegistration?: HttpAdapterShutdownRegistration;
 }
+
+export type HttpAdapterShutdownRegistration = (
+  app: Application,
+  logger: ApplicationLogger,
+  forceExitTimeoutMs?: number,
+) => void | (() => void);
 
 type ManagedHttpApplicationAdapter = HttpApplicationAdapter & {
   getListenTarget(): HttpAdapterListenTarget;
@@ -85,10 +88,6 @@ export function createHttpAdapterMiddleware(options: HttpAdapterMiddlewareOption
   return middleware;
 }
 
-export function defaultNodeCompatibleShutdownSignals(): readonly NodeCompatibleShutdownSignal[] {
-  return ['SIGINT', 'SIGTERM'];
-}
-
 export function formatHttpAdapterListenMessage(target: HttpAdapterListenTarget): string {
   return target.url.endsWith(target.bindTarget)
     ? `Listening on ${target.url}`
@@ -126,12 +125,11 @@ export async function runHttpAdapterApplication(
     throw error;
   }
 
-  const unregisterShutdownSignals = registerShutdownSignals(
+  const unregisterShutdownSignals = options.shutdownRegistration?.(
     app,
     logger,
-    options.shutdownSignals ?? defaultNodeCompatibleShutdownSignals(),
     options.forceExitTimeoutMs,
-  );
+  ) ?? (() => {});
   const close = app.close.bind(app);
   let shutdownSignalsUnregistered = false;
 
