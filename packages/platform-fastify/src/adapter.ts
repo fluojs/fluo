@@ -20,6 +20,7 @@ import {
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  type FrameworkResponseStream,
   type HttpApplicationAdapter,
   type MiddlewareLike,
   type MiddlewareContext,
@@ -338,6 +339,7 @@ function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse 
     committed: reply.sent,
     headers: {},
     raw: reply,
+    stream: createFrameworkResponseStream(reply),
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);
@@ -380,6 +382,63 @@ function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse 
     },
     statusCode: undefined,
     statusSet: false,
+  };
+}
+
+function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseStream {
+  let hijacked = false;
+
+  const ensureHijacked = (): void => {
+    if (!hijacked && !reply.sent) {
+      reply.raw.statusCode = reply.statusCode;
+
+      for (const [name, value] of Object.entries(reply.getHeaders())) {
+        if (value !== undefined) {
+          reply.raw.setHeader(name, value);
+        }
+      }
+
+      reply.hijack();
+      hijacked = true;
+    }
+  };
+
+  return {
+    close() {
+      ensureHijacked();
+
+      if (!reply.raw.writableEnded) {
+        reply.raw.end();
+      }
+    },
+    get closed() {
+      return reply.raw.writableEnded;
+    },
+    flush() {
+      ensureHijacked();
+      reply.raw.flushHeaders?.();
+    },
+    onClose(listener: () => void) {
+      reply.raw.on('close', listener);
+      return () => {
+        reply.raw.removeListener('close', listener);
+      };
+    },
+    waitForDrain() {
+      ensureHijacked();
+
+      if (reply.raw.writableEnded) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        reply.raw.once('drain', () => resolve());
+      });
+    },
+    write(chunk: string | Uint8Array) {
+      ensureHijacked();
+      return reply.raw.write(chunk);
+    },
   };
 }
 
