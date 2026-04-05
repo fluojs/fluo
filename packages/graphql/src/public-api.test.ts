@@ -16,11 +16,30 @@ describe('@konekti/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('DataLoader');
     expect(graphqlPublicApi).toHaveProperty('getRequestScopedDataLoader');
     expect(graphqlPublicApi).toHaveProperty('createRequestScopedDataLoaderFactory');
+    expect(graphqlPublicApi).toHaveProperty('listOf');
+    expect(graphqlPublicApi).toHaveProperty('isGraphqlListTypeRef');
   });
 
-  it('does not expose internal lifecycle/module-option tokens', () => {
+  it('does not expose internal metadata, lifecycle, or descriptor internals', () => {
     expect(graphqlPublicApi).not.toHaveProperty('createGraphqlModule');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_MODULE_OPTIONS');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_LIFECYCLE_SERVICE');
+    expect(graphqlPublicApi).not.toHaveProperty('defineResolverMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('getResolverMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('defineResolverHandlerMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('getResolverHandlerMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('getResolverHandlerMetadataEntries');
+    expect(graphqlPublicApi).not.toHaveProperty('defineArgFieldMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('getArgFieldMetadata');
+    expect(graphqlPublicApi).not.toHaveProperty('getArgFieldMetadataEntries');
+    expect(graphqlPublicApi).not.toHaveProperty('resolverMetadataSymbol');
+    expect(graphqlPublicApi).not.toHaveProperty('handlerMetadataSymbol');
+    expect(graphqlPublicApi).not.toHaveProperty('argMetadataSymbol');
+    expect(graphqlPublicApi).not.toHaveProperty('GraphqlEndpointController');
+    expect(graphqlPublicApi).not.toHaveProperty('GraphqlLifecycleService');
+    expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_OPERATION_CONTAINER');
+    expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_REQUEST_SCOPED_LOADER_CACHE');
+    expect(graphqlPublicApi).not.toHaveProperty('ResolverDescriptor');
+    expect(graphqlPublicApi).not.toHaveProperty('ResolverHandlerDescriptor');
   });
 });
