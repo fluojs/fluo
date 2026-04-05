@@ -417,6 +417,15 @@ importers:
         specifier: workspace:*
         version: link:../runtime
 
+  packages/platform-bun:
+    dependencies:
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/platform-express:
     dependencies:
       '@konekti/http':
