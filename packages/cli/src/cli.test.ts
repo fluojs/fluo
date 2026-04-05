@@ -623,6 +623,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/runtime');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/platform-fastify');
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/prisma');
     expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/drizzle');
     expect(packageJson.scripts?.typecheck).toBeDefined();
@@ -640,10 +641,11 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('KonektiFactory.create(..., { cors })');
+    expect(readmeContent).toContain('@konekti/runtime/node');
+    expect(readmeContent).toContain('createFastifyAdapter');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
-    expect(readmeContent).not.toContain('runNodeApplication');
-    expect(mainContent).toContain('const app = await KonektiFactory.create(AppModule, {});');
+    expect(mainContent).toContain("from '@konekti/platform-fastify'");
+    expect(mainContent).toContain('adapter: createFastifyAdapter({ port })');
     expect(mainContent).toContain('await app.listen();');
     expect(appTestContent).toContain("createRequest('/health')");
     expect(appTestContent).toContain("createRequest('/ready')");
