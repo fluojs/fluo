@@ -6,7 +6,8 @@ import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } f
 import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
 import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
-import { bootstrapApplication, bootstrapNodeApplication, defineModule } from '@konekti/runtime';
+import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { bootstrapNodeApplication } from '@konekti/runtime/node';
 
 import {
   ApiBearerAuth,
