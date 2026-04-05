@@ -30,8 +30,10 @@ import {
 } from '@konekti/runtime';
 import {
   bootstrapHttpAdapterApplication,
-  runHttpAdapterApplication,
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
   dispatchWithRequestResponseFactory,
+  runHttpAdapterApplication,
   type RequestResponseFactory,
 } from '@konekti/runtime/internal';
 
@@ -276,7 +278,12 @@ export async function runFastifyApplication(
   options: RunFastifyApplicationOptions,
 ): Promise<Application> {
   const adapter = createFastifyAdapter(options, options.multipart) as FastifyHttpApplicationAdapter;
-  return runHttpAdapterApplication(rootModule, options, adapter);
+  return runHttpAdapterApplication(rootModule, {
+    ...options,
+    shutdownRegistration: createNodeShutdownSignalRegistration(
+      options.shutdownSignals ?? defaultNodeShutdownSignals(),
+    ),
+  }, adapter);
 }
 
 function createFrameworkResponse(reply: FastifyReply): FastifyFrameworkResponse {
