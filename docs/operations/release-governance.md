@@ -32,6 +32,7 @@ These packages are the current intended public release surface for the 0.x line:
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
 - `@konekti/platform-bun`
+- `@konekti/platform-deno`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
@@ -66,7 +67,7 @@ Promoting a runtime, adapter, or integration to a stronger support tier requires
 - full test coverage and CI validation
 - dedicated troubleshooting guidance
 
-Additional runtimes or integrations are not public guarantees unless they are explicitly documented in package READMEs or governance docs. Current official runtime support is limited to Node.js and Bun. Other fetch-style adapters remain in **preview** until their package docs and tests are promoted alongside a published adapter contract.
+Additional runtimes or integrations are not public guarantees unless they are explicitly documented in package READMEs or governance docs. Current official runtime support includes Node.js, Bun, and Deno. Cloudflare Workers and other fetch-style adapters remain in **preview** until their package docs and tests are promoted alongside a published adapter contract.
 
 The public bootstrap contract remains package-first: `pnpm add -g @konekti/cli` followed by `konekti new`, and the release surface is the published `@konekti/*` package family only.
 
