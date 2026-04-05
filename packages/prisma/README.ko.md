@@ -113,8 +113,8 @@ class UserController {}
 | 메서드 | 시그니처 | 설명 |
 |---|---|---|
 | `current()` | `() => TClient \| TTransactionClient` | 활성 트랜잭션 클라이언트(ALS에서)를 반환하거나, 트랜잭션이 없으면 루트 클라이언트를 반환 |
-| `transaction()` | `(fn: () => Promise<T>) => Promise<T>` | Prisma 인터랙티브 트랜잭션 안에서 `fn`을 실행하고, tx 클라이언트를 ALS에 저장 |
-| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | 요청 경계용 `transaction()`. abort-aware 실행을 사용하고, Prisma 드라이버가 signal 옵션을 거부하면 `signal` 없이 1회 재시도 |
+| `transaction()` | `(fn: () => Promise<T>, options?: TTransactionOptions) => Promise<T>` | Prisma 인터랙티브 트랜잭션 안에서 `fn`을 실행합니다(상황에 따라 활성 컨텍스트 재사용/직접 실행 폴백 포함). tx 클라이언트를 ALS에 저장하며, 이미 활성 트랜잭션 컨텍스트에서는 중첩 옵션 오버라이드를 거부합니다 |
+| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions) => Promise<T>` | 요청 경계용 `transaction()` 변형입니다. abort-aware 실행을 사용하고, Prisma 드라이버가 abort-signal 트랜잭션 옵션을 거부하면 `signal` 없이 1회 재시도합니다 |
 
 ### `PRISMA_CLIENT`
 

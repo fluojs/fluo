@@ -109,7 +109,7 @@ interface GraphQLContext {
 
 ### 기타 export
 
-- `createGraphqlProviders(options)`
+- `createGraphqlProviders(options)` — GraphQL 모듈 옵션 + lifecycle provider만 등록하며, `GraphqlEndpointController`를 등록하거나 단독으로 `/graphql` 엔드포인트를 노출하지는 않습니다
 - `createDataLoader(batchFn, options?)` — 퍼스트 파티 request-scoped DataLoader 팩토리
 - `createDataLoaderMap(definitions)` — 이름이 지정된 DataLoader 세트 팩토리
 - `DataLoader` — `dataloader` 패키지에서 re-export
