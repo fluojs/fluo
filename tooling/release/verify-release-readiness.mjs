@@ -182,6 +182,7 @@ const releaseGovernance = read('docs/operations/release-governance.md');
 const packageSurface = read('docs/reference/package-surface.md');
 const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
 const cliReadme = read('packages/cli/README.md');
+const denoReadme = read('packages/platform-deno/README.md');
 const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
 const cliPackage = JSON.parse(read('packages/cli/package.json'));
 const changelog = read('CHANGELOG.md');
@@ -239,6 +240,16 @@ assertCheck(
   'Manifest benchmark evidence',
   releaseGovernance.includes('manifest decision note') && existsSync(join(repoRoot, 'tooling/benchmarks/manifest-decision.latest.json')),
   'Release docs still point at the benchmark-backed manifest decision snapshot.',
+);
+assertCheck(
+  checks,
+  'Deno adapter contract docs',
+  denoReadme.includes('Deno.serve') &&
+    denoReadme.includes('## supported operations') &&
+    denoReadme.includes('## runtime invariants') &&
+    denoReadme.includes('## lifecycle guarantees') &&
+    denoReadme.includes('## intentional limitations'),
+  'The official Deno adapter README documents its serve path and behavioral contract sections.',
 );
 assertCheck(
   checks,
