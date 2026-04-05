@@ -23,7 +23,7 @@ The canonical CLI for Konekti — bootstrap a new app and generate individual fi
 
 The current public scaffold contract is one stable generated project shape. Package-manager differences are limited to install/run commands and lockfile output; there is no separate current-directory-init mode or package-manager-specific scaffold template family today.
 
-That stable starter shape includes `src/main.ts` using adapter-first Fastify startup on the runtime facade (`createFastifyAdapter({ port })` + `await app.listen()`), `AppModule` imports that keep runtime-module entrypoints on canonical `*.forRoot(...)` names (for example `ConfigModule.forRoot(...)`), runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`). The scaffold remains the default Node.js + Fastify path, while the official runtime matrix for public docs now spans Node.js, Bun, Deno, and Cloudflare Workers via the published `@konekti/platform-*` packages.
+That stable starter shape includes `src/main.ts` using adapter-first Fastify startup on the runtime facade (`createFastifyAdapter({ port })` + `await app.listen()`), `AppModule` imports that keep runtime-module entrypoints on canonical `*.forRoot(...)` names (for example `ConfigModule.forRoot(...)`), runtime-owned `/health` + `/ready`, starter-owned `/health-info/`, and the official starter test templates (`src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts`). The scaffold remains the default Node.js + Fastify path; the canonical public runtime/package matrix now lives in `../../docs/reference/package-surface.md`, and runtime-specific startup details stay in the published adapter READMEs.
 
 Naming policy in generated/migration guidance:
 
@@ -69,7 +69,7 @@ The generated `dev` script is a runner-level restart path based on Node watch mo
 
 For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported as a secondary path.
 
-If you want runtime-specific startup guidance after scaffolding, jump to the official package READMEs for `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
+If you want runtime-specific startup guidance after scaffolding, check `../../docs/reference/package-surface.md` first and then jump to the official package READMEs for `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
 
 For the broader onboarding flow, start with `../../docs/getting-started/quick-start.md`.
 
