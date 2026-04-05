@@ -95,7 +95,7 @@ class InvariantError extends KonektiError {}
 
 ### 메타데이터 헬퍼 (`src/metadata.ts`)
 
-이 헬퍼들은 `@konekti/di`, `@konekti/http`, `@konekti/runtime` 등에서 내부적으로 사용됩니다. 애플리케이션 코드에서 직접 호출하는 경우는 일반적으로 없습니다.
+이 헬퍼들은 `@konekti/di`, `@konekti/http`, `@konekti/runtime` 등에서 내부적으로 사용됩니다. 애플리케이션 코드는 계속 `@konekti/core`의 `@Module()`, `@Inject()`, `@Scope()` 같은 데코레이터를 사용해야 합니다.
 
 | 헬퍼 쌍 | 목적 |
 |---|---|
@@ -111,9 +111,14 @@ class InvariantError extends KonektiError {}
 
 DI 메타데이터에서는 `getOwnClassDiMetadata()`가 현재 클래스에 직접 기록된 값만 반환하고, `getInheritedClassDiMetadata()`와 `getClassDiMetadata()`는 runtime/DI 정규화에서 사용하는 상속 포함 최종 뷰를 반환합니다.
 
-`@konekti/core`는 `src/metadata.ts`의 추가 메타데이터 헬퍼와 타입도 함께 re-export합니다. 위 표는 가장 중요한 헬퍼 요약이지 전체 public surface 목록은 아닙니다.
+메타데이터 헬퍼 함수와 메타데이터 전용 헬퍼 타입은 이제 sibling package 조합을 위한 명시적 subpath인 `@konekti/core/internal` 아래에 위치합니다. 루트 `@konekti/core` 배럴은 애플리케이션용 데코레이터/에러/공유 타입 surface만 유지합니다.
 
 `ensureMetadataSymbol()`은 표준 데코레이터 메타데이터를 위한 idempotent 호환성 가드입니다. `@konekti/core`가 import될 때 자동으로 실행되므로 일반적인 앱 부트스트랩에서 직접 호출할 필요는 없지만, 커스텀 툴링이나 격리된 테스트에서 명시적으로 확인하고 싶다면 수동 호출도 무해합니다.
+
+## 0.x 마이그레이션 노트
+
+- `defineModuleMetadata()`, `getModuleMetadata()`, `getClassDiMetadata()`, `metadataSymbol` 같은 내부 메타데이터 헬퍼와 관련 메타데이터 전용 타입은 `@konekti/core`에서 `@konekti/core/internal`로 이동했습니다.
+- 애플리케이션 코드는 계속 데코레이터, 에러, 공유 프리미티브 타입을 `@konekti/core`에서 import하면 됩니다.
 
 ## 구조
 
