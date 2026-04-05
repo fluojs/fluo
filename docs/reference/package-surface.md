@@ -48,7 +48,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/config`**: Configuration loading and typed access.
 - **`@konekti/di`**: Provider resolution and lifecycle scopes.
 - **`@konekti/http`**: HTTP execution, binding, exceptions, and route metadata.
-- **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing.
+- **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing. Node lifecycle helpers are isolated to the `@konekti/runtime/node` subpath instead of the root barrel.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.

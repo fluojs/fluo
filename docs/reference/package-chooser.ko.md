@@ -37,7 +37,7 @@
 | 유효성 검사 | `@konekti/validation` ★ | 입력 DTO 검증 및 구체화 |
 | CLI | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build 스크립트 |
 
-**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 스타터는 런타임이 소유하는 Node 시작 경로를 사용하며, 네트워크 포트에 바인딩하려면 `platform-fastify` 또는 `platform-express` 같은 트랜스포트 어댑터를 추가합니다.
+**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 스타터는 계속 `KonektiFactory.create(...); await app.listen();` 경로를 사용하고, Node 전용 호환 헬퍼는 이제 `@konekti/runtime/node`에 위치합니다. 네트워크 포트에 명시적으로 바인딩하려면 `platform-fastify` 또는 `platform-express` 같은 트랜스포트 어댑터를 추가합니다.
 
 **사용하지 않는 경우:**
 - Express 미들웨어 호환이 필요하면 `platform-fastify` 대신 `@konekti/platform-express`로 교체하세요.

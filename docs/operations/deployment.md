@@ -93,7 +93,7 @@ spec:
 
 ## Graceful shutdown
 
-`runNodeApplication()` automatically wires `SIGTERM` and `SIGINT` signals to the application shutdown sequence.
+`runNodeApplication()` from `@konekti/runtime/node` automatically wires `SIGTERM` and `SIGINT` signals to the application shutdown sequence.
 
 When a shutdown signal is received:
 1. The HTTP adapter stops accepting new connections.
@@ -107,7 +107,7 @@ When a shutdown signal is received:
 You can override the default 10-second drain window using `shutdownTimeoutMs`. Ensure your Kubernetes `terminationGracePeriodSeconds` is aligned with this value (it should be slightly higher than `shutdownTimeoutMs`).
 
 ```typescript
-import { runNodeApplication } from '@konekti/runtime';
+import { runNodeApplication } from '@konekti/runtime/node';
 import { AppModule } from './app.module';
 
 await runNodeApplication(AppModule, {
@@ -123,6 +123,10 @@ Konekti uses `@konekti/config` for application-level configuration. The runtime 
 - `PORT`: The port the HTTP adapter binds to. Defaults to `3000` if not specified in config or bootstrap options.
 
 App-level secrets and configuration should be passed as environment variables and mapped via the `config` object in `runNodeApplication()`.
+
+### 0.x migration note
+
+- If you previously imported `runNodeApplication()` from `@konekti/runtime`, switch to `@konekti/runtime/node`.
 
 ## Docker Compose for local development
 
