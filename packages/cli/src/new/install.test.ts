@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { resolveInstallCommand } from './install.js';
 
 describe('resolveInstallCommand', () => {
-  it('uses direct install commands for pnpm and npm', () => {
+  it('uses direct install commands for bun, pnpm, and npm', () => {
+    expect(resolveInstallCommand('bun')).toEqual({
+      args: ['install'],
+      command: 'bun',
+    });
     expect(resolveInstallCommand('pnpm')).toEqual({
       args: ['install'],
       command: 'pnpm',
