@@ -5,3 +5,8 @@ export {
   PLATFORM_SHELL,
   RUNTIME_CONTAINER,
 } from './tokens.js';
+export {
+  dispatchWithRequestResponseFactory,
+  type DispatchWithRequestResponseFactoryOptions,
+  type RequestResponseFactory,
+} from './request-response-factory.js';
