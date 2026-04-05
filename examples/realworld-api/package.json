@@ -14,6 +14,7 @@
     "@konekti/config": "workspace:*",
     "@konekti/core": "workspace:*",
     "@konekti/http": "workspace:*",
+    "@konekti/platform-fastify": "workspace:*",
     "@konekti/runtime": "workspace:*",
     "@konekti/validation": "workspace:*"
   },

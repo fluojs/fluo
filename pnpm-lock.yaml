@@ -53,6 +53,9 @@ importers:
       '@konekti/passport':
         specifier: workspace:*
         version: link:../../packages/passport
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -72,6 +75,9 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -91,6 +97,9 @@ importers:
       '@konekti/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -113,6 +122,9 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

@@ -79,7 +79,7 @@ pnpm dev
 
 The generated application includes:
 
-- runtime-owned bootstrap in `src/main.ts`
+- adapter-first Fastify bootstrap in `src/main.ts`
 - built-in `/health` and `/ready` endpoints
 - sample `health/` module at `/health-info/`
 - pre-configured `dev`, `build`, `typecheck`, and `test` scripts

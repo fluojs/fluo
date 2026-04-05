@@ -33,7 +33,7 @@
 
 이 예제는 다음을 보여줍니다.
 
-- runtime-owned bootstrap
+- 런타임 facade 위의 adapter-first bootstrap
 - 표준 데코레이터 사용
 - 단일 controller/service 요청 경로
 - 기본 `/health`, `/ready`

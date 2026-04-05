@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-A more realistic Konekti application demonstrating the standard app path beyond the minimal starter. This example builds on the same canonical bootstrap while adding module composition, DTO validation, config loading, and a domain CRUD slice.
+A more realistic Konekti application demonstrating the standard app path beyond the minimal starter. This example builds on the same starter-aligned adapter-first bootstrap while adding module composition, DTO validation, config loading, and a domain CRUD slice.
 
 ## what this example demonstrates
 
@@ -33,7 +33,7 @@ pnpm vitest run examples/realworld-api
 examples/realworld-api/
 ├── src/
 │   ├── app.ts                     # AppModule — root module with config and domain imports
-│   ├── main.ts                    # Entry point: KonektiFactory.create → listen
+│   ├── main.ts                    # Entry point: adapter-first Fastify startup
 │   ├── users/
 │   │   ├── users.module.ts        # UsersModule — domain module
 │   │   ├── users.controller.ts    # GET/POST /users
@@ -47,7 +47,7 @@ examples/realworld-api/
 
 ## relationship to the starter scaffold
 
-This example extends the `konekti new` pattern by adding a real domain module. It uses the same packages the starter includes (core, runtime, http, config, validation, testing) plus standard module composition patterns. No extra packages beyond the starter scaffold are required.
+This example extends the `konekti new` pattern by adding a real domain module. It uses the same packages the starter includes (core, runtime, http, config, validation, testing, platform-fastify) plus standard module composition patterns. No extra packages beyond the starter scaffold are required.
 
 ## recommended reading order
 

@@ -32,12 +32,12 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 | DI | `@konekti/di` ★ | class-first and token-based dependency injection |
 | core | `@konekti/core` ★ | decorators, metadata, shared contracts |
 | http | `@konekti/http` ★ | routing, guards, interceptors, exception handling |
-| platform | `@konekti/platform-fastify` | Fastify adapter — optional, add when you need an HTTP listener |
+| platform | `@konekti/platform-fastify` ★ | Fastify adapter — the starter's default HTTP listener |
 | config | `@konekti/config` ★ | typed configuration loading |
 | validation | `@konekti/validation` ★ | input DTO validation and materialization |
 | cli | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build scripts |
 
-**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, and `validation` + `config` handle input safety and environment binding. The starter stays on `KonektiFactory.create(...); await app.listen();`, while Node-specific compatibility helpers now live under `@konekti/runtime/node`. To bind to a network port explicitly, add a transport adapter such as `platform-fastify` or `platform-express`.
+**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, `platform-fastify` gives the starter its default adapter-first HTTP listener, and `validation` + `config` handle input safety and environment binding. New HTTP apps should prefer `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`, while Node-only compatibility helpers such as `runNodeApplication()` now live under `@konekti/runtime/node`.
 
 **When not to use:**
 - If you need Express middleware compatibility, swap `platform-fastify` for `@konekti/platform-express`.

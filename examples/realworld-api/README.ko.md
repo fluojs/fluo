@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-최소 스타터를 넘어 표준 앱 경로를 보여주는 보다 현실적인 Konekti 애플리케이션입니다. 동일한 canonical 부트스트랩 위에 모듈 조합, DTO 검증, config 로딩, 도메인 CRUD 슬라이스를 추가합니다.
+최소 스타터를 넘어 표준 앱 경로를 보여주는 보다 현실적인 Konekti 애플리케이션입니다. 동일한 스타터 정렬 adapter-first 부트스트랩 위에 모듈 조합, DTO 검증, config 로딩, 도메인 CRUD 슬라이스를 추가합니다.
 
 ## 이 예제가 보여주는 것
 
@@ -33,7 +33,7 @@ pnpm vitest run examples/realworld-api
 examples/realworld-api/
 ├── src/
 │   ├── app.ts                     # AppModule — config와 도메인 import를 포함하는 루트 모듈
-│   ├── main.ts                    # 진입점: KonektiFactory.create → listen
+│   ├── main.ts                    # 진입점: adapter-first Fastify startup
 │   ├── users/
 │   │   ├── users.module.ts        # UsersModule — 도메인 모듈
 │   │   ├── users.controller.ts    # GET/POST /users
@@ -47,7 +47,7 @@ examples/realworld-api/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 `konekti new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
+이 예제는 `konekti new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing, platform-fastify)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
 
 ## 권장 읽기 순서
 

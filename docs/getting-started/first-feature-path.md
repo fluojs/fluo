@@ -33,7 +33,7 @@ Read `../../examples/minimal/README.md` first.
 
 That example shows:
 
-- runtime-owned bootstrap,
+- adapter-first bootstrap on the runtime facade,
 - standard decorator usage,
 - a single controller/service path,
 - built-in `/health` and `/ready`,

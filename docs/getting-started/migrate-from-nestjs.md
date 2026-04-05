@@ -43,7 +43,7 @@ The command also emits warning/report items for manual migration areas (`@Inject
 | `@Controller()`, `@Get()`, `@Post()` | `@Controller()`, `@Get()`, `@Post()` from `@konekti/http` | Route decorator shape is intentionally familiar. |
 | `@Inject(TOKEN)` | `@Inject([TOKEN])` from `@konekti/core` | Konekti takes an explicit token list for constructor dependencies. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | Default remains singleton. |
-| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, options)` | Returns the Konekti `Application` shell without implicitly calling `listen()`. |
+| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | Preferred starter-aligned HTTP startup: keep the runtime facade and select an explicit transport adapter. |
 | `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | Keep startup on the runtime facade while selecting an Express transport adapter explicitly. |
 | `app.listen(3000)` | `await app.listen()` | Startup remains explicit after application creation. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `NotFoundException`, `BadRequestException`, and peers from `@konekti/http` | Same mental model: throw typed HTTP exceptions in handlers/guards. |
@@ -216,7 +216,7 @@ export class RequestAuditService {}
 
 ## 4) bootstrap path
 
-Use `KonektiFactory.create()` as the canonical HTTP startup path.
+Use `KonektiFactory.create()` with an explicit adapter as the canonical HTTP startup path for new apps.
 
 Use `bootstrapApplication()` only when you explicitly want the lower-level bootstrap primitive.
 
@@ -234,14 +234,15 @@ async function bootstrap() {
 void bootstrap();
 ```
 
-### Konekti (`KonektiFactory.create`)
+### Konekti (`KonektiFactory.create` + starter-aligned Fastify adapter)
 
 ```typescript
+import { createFastifyAdapter } from '@konekti/platform-fastify';
 import { KonektiFactory } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
-  port: 3000,
+  adapter: createFastifyAdapter({ port: 3000 }),
 });
 
 await app.listen();
@@ -273,6 +274,19 @@ const app = await bootstrapApplication({
 
 await app.listen();
 ```
+
+### Konekti (`runNodeApplication` compatibility helper)
+
+```typescript
+import { runNodeApplication } from '@konekti/runtime/node';
+import { AppModule } from './app.module';
+
+await runNodeApplication(AppModule, {
+  port: 3000,
+});
+```
+
+Use `@konekti/runtime/node` when you intentionally want the Node compatibility wrapper (startup logging, signal wiring, and Node-default adapter behavior) rather than the starter-aligned adapter-first transport surface.
 
 ## 5) HTTP exceptions
 
@@ -625,7 +639,7 @@ Each category below maps to a warning group in the `konekti migrate` output. Add
 
 - CLI warning category: **Bootstrap port folding issue**
 - The codemod could not move the `listen(port)` argument into `KonektiFactory.create` options (e.g., because the options object already has a `port` property).
-- Review the bootstrap file manually and ensure port is passed in the `create()` options.
+- Review the bootstrap file manually and ensure the final startup path matches the portability guidance: explicit adapter-first startup for new HTTP apps, or `@konekti/runtime/node` when you intentionally keep the Node compatibility helper.
 
 #### Other warnings
 

@@ -6,7 +6,7 @@ The smallest runnable Konekti application. This example follows the exact same s
 
 ## what this example demonstrates
 
-- Runtime-owned bootstrap via `KonektiFactory.create`
+- Adapter-first Fastify bootstrap via `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `createHealthModule()`
 - A single starter controller at `/hello`
@@ -32,7 +32,7 @@ pnpm vitest run examples/minimal
 examples/minimal/
 ├── src/
 │   ├── app.ts              # AppModule — root module
-│   ├── main.ts             # Entry point: KonektiFactory.create → listen
+│   ├── main.ts             # Entry point: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # Business logic
 │   └── app.test.ts         # Runtime dispatch + e2e-style tests

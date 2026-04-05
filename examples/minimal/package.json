@@ -13,6 +13,7 @@
   "dependencies": {
     "@konekti/core": "workspace:*",
     "@konekti/http": "workspace:*",
+    "@konekti/platform-fastify": "workspace:*",
     "@konekti/runtime": "workspace:*"
   },
   "devDependencies": {

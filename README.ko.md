@@ -79,7 +79,7 @@ pnpm dev
 
 생성 직후 바로 얻는 것:
 
-- 런타임 소유 부트스트랩 (`src/main.ts`)
+- adapter-first Fastify 부트스트랩 (`src/main.ts`)
 - 기본 상태 확인 엔드포인트 (`/health`, `/ready`)
 - 스타터 예제 라우트 (`/health-info/`)
 - 즉시 실행 가능한 `dev`, `build`, `typecheck`, `test` 스크립트

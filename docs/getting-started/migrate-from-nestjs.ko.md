@@ -43,7 +43,7 @@ konekti migrate ./src --skip testing
 | `@Controller()`, `@Get()`, `@Post()` | `@konekti/http`의 동일 데코레이터 | 라우트 데코레이터 사용감은 거의 동일합니다. |
 | `@Inject(TOKEN)` | `@konekti/core`의 `@Inject([TOKEN])` | 생성자 의존성 토큰 목록을 명시적으로 선언합니다. |
 | `Scope.DEFAULT`, `Scope.REQUEST`, `Scope.TRANSIENT` | `@Scope('singleton' \| 'request' \| 'transient')` | 기본값은 singleton입니다. |
-| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, options)` | `listen()`을 암시적으로 호출하지 않고 `Application` 셸을 반환합니다. |
+| `NestFactory.create(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createFastifyAdapter({ port: 3000 }) })` | 스타터와 정렬된 권장 HTTP 시작 경로입니다. 런타임 facade를 유지하면서 명시적인 트랜스포트 어댑터를 선택합니다. |
 | `NestFactory.create<NestExpressApplication>(AppModule)` | `KonektiFactory.create(AppModule, { adapter: createExpressAdapter(...) })` | 런타임 facade 기반 시작 경로를 유지하면서 Express 트랜스포트 어댑터를 명시적으로 선택합니다. |
 | `app.listen(3000)` | `await app.listen()` | 애플리케이션 생성 이후 실행은 명시적으로 유지됩니다. |
 | `HttpException`, `NotFoundException`, `BadRequestException` | `@konekti/http`의 예외 클래스들 | 핸들러/가드에서 typed HTTP 예외를 던지는 모델은 동일합니다. |
@@ -216,7 +216,7 @@ export class RequestAuditService {}
 
 ## 4) 부트스트랩 경로
 
-HTTP 앱의 canonical startup path는 `KonektiFactory.create()`입니다.
+새 앱에서 canonical HTTP startup path는 명시적 어댑터를 넘기는 `KonektiFactory.create()`입니다.
 
 `bootstrapApplication()`은 low-level bootstrap primitive를 직접 써야 할 때만 사용하세요.
 
@@ -234,14 +234,15 @@ async function bootstrap() {
 void bootstrap();
 ```
 
-### Konekti (`KonektiFactory.create`)
+### Konekti (`KonektiFactory.create` + 스타터 정렬 Fastify 어댑터)
 
 ```typescript
+import { createFastifyAdapter } from '@konekti/platform-fastify';
 import { KonektiFactory } from '@konekti/runtime';
 import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
-  port: 3000,
+  adapter: createFastifyAdapter({ port: 3000 }),
 });
 
 await app.listen();
@@ -273,6 +274,19 @@ const app = await bootstrapApplication({
 
 await app.listen();
 ```
+
+### Konekti (`runNodeApplication` 호환 헬퍼)
+
+```typescript
+import { runNodeApplication } from '@konekti/runtime/node';
+import { AppModule } from './app.module';
+
+await runNodeApplication(AppModule, {
+  port: 3000,
+});
+```
+
+스타터와 정렬된 adapter-first 트랜스포트 surface 대신 Node 호환 wrapper(시작 로그, 시그널 wiring, Node 기본 어댑터 동작)가 의도적으로 필요할 때만 `@konekti/runtime/node`를 사용하세요.
 
 ## 4.5) pipes 대신 요청 변환
 
@@ -625,7 +639,7 @@ const service = await moduleRef.resolve(UserService);
 
 - CLI 경고 카테고리: **Bootstrap port folding issue**
 - 코드모드가 `listen(port)` 인자를 `KonektiFactory.create` 옵션으로 옮기지 못했습니다(예: 옵션 객체에 이미 `port` 속성이 있는 경우).
-- bootstrap 파일을 수동으로 확인하고 `create()` 옵션에 port가 전달되도록 하세요.
+- bootstrap 파일을 수동으로 검토하고, 최종 startup path가 portability 가이드와 맞는지 확인하세요. 새 HTTP 앱은 explicit adapter-first startup을, Node 호환 헬퍼를 유지하려는 경우에는 `@konekti/runtime/node`를 사용해야 합니다.
 
 #### 기타 경고
 

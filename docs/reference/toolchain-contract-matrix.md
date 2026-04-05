@@ -13,7 +13,7 @@ This matrix locks the public toolchain contract for generated apps and release-r
 | `vitest.config.ts` in generated apps | `generated (stable)` | Node test environment, `src/**/*.test.ts`, uses the Konekti decorators plugin |
 | Generated dev dependencies | `public contract` | `@babel/cli ^7.26.4`, `@babel/core ^7.26.10`, `@babel/plugin-proposal-decorators ^7.28.0`, `@babel/preset-typescript ^7.27.1`, `@types/babel__core ^7.20.5`, `@types/node ^22.13.10`, `tsx ^4.20.4`, `typescript ^5.8.2`, `vite ^6.2.1`, `vitest ^3.0.8` |
 | Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` keep the current single-app command shape |
-| Generated starter bootstrap entry (`src/main.ts`) | `public contract` | `const app = await KonektiFactory.create(AppModule, {}); await app.listen();` |
+| Generated starter bootstrap entry (`src/main.ts`) | `public contract` | Adapter-first Fastify runtime-facade startup (`createFastifyAdapter({ port })` + `await app.listen()`) |
 | Generated starter route ownership | `public contract` | Runtime-owned `/health` + `/ready` and starter-owned `/health-info/` |
 | Generated starter testing templates | `public contract` | `src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts` |
 | `@konekti/cli` prompt flow | `public contract` | Canonical path is `pnpm add -g @konekti/cli` then `konekti new` |

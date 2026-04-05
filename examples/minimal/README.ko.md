@@ -6,7 +6,7 @@
 
 ## 이 예제가 보여주는 것
 
-- `KonektiFactory.create`를 통한 런타임 소유 부트스트랩
+- `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 adapter-first Fastify 부트스트랩
 - `@Module`, `@Inject`, `@Controller`, `@Get`을 사용한 표준 데코레이터 DI
 - `createHealthModule()`의 내장 `/health` 및 `/ready` 엔드포인트
 - `/hello` 경로의 단일 스타터 컨트롤러
@@ -32,7 +32,7 @@ pnpm vitest run examples/minimal
 examples/minimal/
 ├── src/
 │   ├── app.ts              # AppModule — 루트 모듈
-│   ├── main.ts             # 진입점: KonektiFactory.create → listen
+│   ├── main.ts             # 진입점: adapter-first Fastify startup
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # 비즈니스 로직
 │   └── app.test.ts         # 런타임 디스패치 + e2e 스타일 테스트

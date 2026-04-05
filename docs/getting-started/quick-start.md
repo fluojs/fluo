@@ -41,7 +41,7 @@ pnpm dlx @konekti/cli new starter-app
 
 A newly generated application includes:
 
-- `src/main.ts`: Application entry point with Node bootstrap.
+- `src/main.ts`: Application entry point with adapter-first Fastify bootstrap on the runtime facade.
 - `src/app.ts`: Main module configuration.
 - Built-in `/health` and `/ready` endpoints.
 - A sample `health/` module at `/health-info/`.
@@ -61,6 +61,8 @@ pnpm test       # Run tests
 ```
 
 The scaffold generates a consistent layout compatible with `pnpm`, `npm`, and `yarn`.
+
+The generated starter uses `@konekti/platform-fastify` by default. Reach for `@konekti/runtime/node` only when you intentionally want the Node compatibility helper layer.
 
 ## development mode behavior
 

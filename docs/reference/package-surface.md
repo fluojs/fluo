@@ -73,7 +73,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/terminus`**: Health indicator composition and enriched runtime health aggregation.
 - **`@konekti/throttler`**: Decorator-based rate limiting with in-memory and Redis store adapters.
 - **`@konekti/testing`**: Testing module and helper utilities, including the shared platform conformance harness (`createPlatformConformanceHarness`) for lifecycle/diagnostics/snapshot contract checks.
-- **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands.
+- **`@konekti/cli`**: Application bootstrap, generation, migration, and runtime diagnostics inspection commands, including starter/migration guidance that points new HTTP apps toward adapter-first transport selection.
 - **`@konekti/studio`**: File-first diagnostics viewer for runtime graph/timing JSON exports.
 
 ## public DI entry points

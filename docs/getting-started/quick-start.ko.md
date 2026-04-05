@@ -41,7 +41,7 @@ pnpm dlx @konekti/cli new starter-app
 
 새로 생성된 애플리케이션에는 다음이 포함됩니다:
 
-- `src/main.ts`: Node 부트스트랩을 포함한 애플리케이션 엔트리 포인트.
+- `src/main.ts`: 런타임 facade 위의 adapter-first Fastify 부트스트랩을 포함한 애플리케이션 엔트리 포인트.
 - `src/app.ts`: 메인 모듈 설정.
 - 기본 제공되는 `/health` 및 `/ready` 엔드포인트.
 - `/health-info/`에 위치한 예제 `health/` 모듈.
@@ -61,6 +61,8 @@ pnpm test       # 테스트 실행
 ```
 
 스캐폴드는 `pnpm`, `npm`, `yarn`과 호환되는 일관된 레이아웃을 생성합니다.
+
+생성된 스타터는 기본적으로 `@konekti/platform-fastify`를 사용합니다. 의도적으로 Node 호환 헬퍼 계층이 필요할 때만 `@konekti/runtime/node`를 선택하세요.
 
 ## 개발 모드 동작
 
