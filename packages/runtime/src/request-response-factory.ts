@@ -34,7 +34,7 @@ export async function dispatchWithRequestResponseFactory<
   factory,
   rawRequest,
   rawResponse,
-}: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): Promise<void> {
+}: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): Promise<Response> {
   const frameworkResponse = factory.createResponse(rawResponse, rawRequest);
   const signal = factory.createRequestSignal(rawResponse);
 
@@ -50,11 +50,14 @@ export async function dispatchWithRequestResponseFactory<
     if (!frameworkResponse.committed) {
       await frameworkResponse.send(undefined);
     }
+
+    return frameworkResponse;
   } catch (error: unknown) {
     if (signal.aborted || frameworkResponse.committed) {
-      return;
+      return frameworkResponse;
     }
 
     await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(rawRequest));
+    return frameworkResponse;
   }
 }
