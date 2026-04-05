@@ -38,7 +38,21 @@ function collectWorkspaceAliases(): Record<string, string> {
     }
   }
 
-  return aliases;
+  return {
+    '@konekti/runtime/internal/http-adapter': join(
+      PACKAGES_ROOT,
+      'runtime',
+      'src',
+      'internal-http-adapter.ts',
+    ),
+    '@konekti/runtime/internal/request-response-factory': join(
+      PACKAGES_ROOT,
+      'runtime',
+      'src',
+      'internal-request-response-factory.ts',
+    ),
+    ...aliases,
+  };
 }
 
 export default defineConfig({

@@ -33,23 +33,27 @@ import {
   type MiddlewareLike,
   type SecurityHeadersOptions,
 } from '@konekti/http';
-import {
-  parseMultipart,
-  type Application,
-  type ApplicationLogger,
-  type CreateApplicationOptions,
-  type ModuleType,
-  type MultipartOptions,
-  type UploadedFile,
+import type {
+  Application,
+  ApplicationLogger,
+  CreateApplicationOptions,
+  ModuleType,
+  MultipartOptions,
+  UploadedFile,
 } from '@konekti/runtime';
 import {
-  bootstrapHttpAdapterApplication,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-  dispatchWithRequestResponseFactory,
+} from '@konekti/runtime/node';
+import { parseMultipart } from '@konekti/runtime/web';
+import {
+  bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
+} from '@konekti/runtime/internal/http-adapter';
+import {
+  dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
-} from '@konekti/runtime/internal';
+} from '@konekti/runtime/internal/request-response-factory';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {

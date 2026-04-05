@@ -29,13 +29,17 @@ import {
   type UploadedFile,
 } from '@konekti/runtime';
 import {
-  bootstrapHttpAdapterApplication,
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-  dispatchWithRequestResponseFactory,
+} from '@konekti/runtime/node';
+import {
+  bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
+} from '@konekti/runtime/internal/http-adapter';
+import {
+  dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
-} from '@konekti/runtime/internal';
+} from '@konekti/runtime/internal/request-response-factory';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {
