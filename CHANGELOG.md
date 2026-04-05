@@ -14,6 +14,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `@konekti/cli`, `examples/*`, `docs/*`: public onboarding/governance guidance now treats Node.js, Bun, Deno, and Cloudflare Workers as the official runtime matrix. Migration note: keep the default Fastify starter path for Node.js, but point runtime-specific startup choices to the corresponding published `@konekti/platform-*` package README and adapter entrypoint.
 - `@konekti/passport`: `RefreshTokenJwtOptions.secret` is now required. Previously the field was optional and the adapter would fall back to reading `REFRESH_TOKEN_SECRET` from `process.env` directly; that fallback has been removed. Pass `secret` explicitly via DI-configured options (`REFRESH_TOKEN_MODULE_OPTIONS`).
 - `@konekti/http`, `@konekti/runtime`, `@konekti/platform-express`, `@konekti/platform-fastify`, `@konekti/graphql`: SSE/streaming integrations now depend on explicit `FrameworkResponse.stream` support instead of reaching through Node-shaped `FrameworkResponse.raw` writable methods. Migration note: update custom adapters/tests to provide `response.stream` when they support SSE or streamed HTTP responses.
+- `@konekti/testing`: the root barrel now stays focused on module/app testing helpers. Migration note: import mocks from `@konekti/testing/mock`, request helpers from `@konekti/testing/http`, platform harnesses from `@konekti/testing/platform-conformance`, `@konekti/testing/http-adapter-portability`, or `@konekti/testing/web-runtime-adapter-portability`.
 
 ### Added
 

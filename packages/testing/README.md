@@ -16,12 +16,26 @@ The public contract stays intentionally focused. Official CLI-generated template
 
 `@konekti/testing` provides a minimal, focused API for building isolated test environments within the Konekti module graph. You hand it a root module, override whichever providers you want to replace with fakes or spies, compile the graph, and then resolve tokens to get the instances you want to assert against.
 
-It does **not** participate in the production runtime — the testing module exists only in test environments. It is intentionally a baseline: a stable foundation to build on, not a complete fixture library. It already includes helper exports such as `makeRequest`, `createMock`, `createDeepMock`, `mockToken`, and `asMock`, but it does not try to be a full fixture framework.
+It does **not** participate in the production runtime — the testing module exists only in test environments. It is intentionally a baseline: a stable foundation to build on, not a complete fixture library. The root barrel stays focused on module/app testing, while mocks, request helpers, portability harnesses, and conformance harnesses now live on explicit responsibility-based subpaths.
+
+## Public entrypoints by responsibility
+
+- Root `@konekti/testing`: `createTestingModule(...)`, `createTestApp(...)`, `Test`, module introspection helpers, and shared testing types.
+- `@konekti/testing/mock`: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`.
+- `@konekti/testing/http`: `makeRequest(...)`, request-builder types, and request-context middleware helpers.
+- `@konekti/testing/platform-conformance`: `createPlatformConformanceHarness(...)`.
+- `@konekti/testing/http-adapter-portability`: `createHttpAdapterPortabilityHarness(...)`.
+- `@konekti/testing/web-runtime-adapter-portability`: `createWebRuntimeHttpAdapterPortabilityHarness(...)`.
+- `@konekti/testing/vitest`: `konektiBabelDecoratorsPlugin()`.
+
+## Migration note
+
+If you previously imported mocks, request helpers, or portability/conformance harnesses from `@konekti/testing`, switch those imports to the responsibility-specific subpaths above.
 
 ### Mock helper quick examples
 
 ```typescript
-import { asMock, createDeepMock, createMock, mockToken } from '@konekti/testing';
+import { asMock, createDeepMock, createMock, mockToken } from '@konekti/testing/mock';
 import { vi } from 'vitest';
 
 const repo = createMock<UserRepository>({ findById: vi.fn() });
@@ -190,7 +204,7 @@ export default defineConfig({
 Use `createPlatformConformanceHarness(...)` when authoring official platform-facing packages to lock the shared lifecycle/diagnostics/snapshot contract.
 
 ```ts
-import { createPlatformConformanceHarness } from '@konekti/testing';
+import { createPlatformConformanceHarness } from '@konekti/testing/platform-conformance';
 
 const harness = createPlatformConformanceHarness({
   createComponent: () => createQueuePlatformComponent(),
@@ -233,7 +247,7 @@ The kit enforces these invariants:
 Use `createHttpAdapterPortabilityHarness(...)` when a Node-style HTTP adapter must prove parity with the built-in Node runtime adapter for request normalization, raw-body handling, SSE streaming, startup logging, HTTPS startup, and shutdown signal cleanup.
 
 ```ts
-import { createHttpAdapterPortabilityHarness } from '@konekti/testing';
+import { createHttpAdapterPortabilityHarness } from '@konekti/testing/http-adapter-portability';
 import { bootstrapExpressApplication, runExpressApplication } from '@konekti/platform-express';
 
 const harness = createHttpAdapterPortabilityHarness({
@@ -260,7 +274,7 @@ The adapter portability harness covers these parity expectations:
 Use `createWebRuntimeHttpAdapterPortabilityHarness(...)` when a fetch-style runtime adapter must prove parity for the shared Web request/response contract without importing Node-only socket or HTTPS helpers.
 
 ```ts
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@konekti/testing';
+import { createWebRuntimeHttpAdapterPortabilityHarness } from '@konekti/testing/web-runtime-adapter-portability';
 import { bootstrapCloudflareWorkerApplication } from '@konekti/platform-cloudflare-workers';
 
 const harness = createWebRuntimeHttpAdapterPortabilityHarness({

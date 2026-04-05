@@ -25,7 +25,7 @@ pnpm verify:release-readiness
 
 ## official testing API
 
-`@konekti/testing`은 현재 다음과 같은 최소하지만 실용적인 공개 테스트 인터페이스를 제공합니다:
+`@konekti/testing`은 루트 배럴을 좁히고 책임별 subpath를 추가한 최소하지만 실용적인 공개 테스트 인터페이스를 제공합니다:
 
 - `createTestingModule(...)`
 - 프로바이더 오버라이드(단건/배치)
@@ -33,11 +33,11 @@ pnpm verify:release-readiness
 - `TestingModuleRef.dispatch(...)`
 - 엔드투엔드 스타일 요청 실행을 위한 `createTestApp(...)`
 - 빌더 없이 직접 요청을 실행하는 `TestApp.dispatch(...)`
-- 공유 플랫폼 계약 conformance 단언을 위한 `createPlatformConformanceHarness(...)`
-- 요청 principal 주입을 포함한 플루언트 request 빌더
+- `@konekti/testing/platform-conformance`의 `createPlatformConformanceHarness(...)`
+- `@konekti/testing/http`의 요청 principal 주입 포함 플루언트 request 빌더/헬퍼
 - `createTestApp().close()`를 통한 예측 가능한 정리(cleanup)
 - 모듈 메타데이터 유틸리티: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
-- 목 유틸리티: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
+- 목 유틸리티(`@konekti/testing/mock`): `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
 
 ## 레시피 카탈로그
 
@@ -150,7 +150,8 @@ expect(response.body).toEqual(
 현재 public boundary:
 
 - `@konekti/testing`은 최소 public testing baseline으로 유지합니다.
-- 공개 표면은 모듈 컴파일, dispatch, 경량 request 헬퍼에 집중합니다.
+- 루트 배럴은 모듈 컴파일, 테스트 앱 부트스트랩, provider/module introspection에 집중합니다.
+- 목, HTTP request 헬퍼, portability/conformance harness는 전용 subpath에서 가져옵니다.
 - 모듈 메타데이터 추출 유틸리티는 내부 헬퍼가 아니라 안정적인 공개 API입니다.
 - 현재 공식 generated 템플릿은 다음을 포함합니다:
   - 스타터 unit 템플릿: `src/health/*.test.ts`

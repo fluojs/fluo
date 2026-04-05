@@ -26,7 +26,7 @@ Generated starter projects expose the same commands through the selected package
 
 ## official testing API
 
-`@konekti/testing` provides a stable public testing surface:
+`@konekti/testing` provides a stable public testing surface with a narrowed root barrel plus responsibility-specific subpaths:
 
 - `createTestingModule(...)`
 - Provider override support (single and batch)
@@ -34,11 +34,11 @@ Generated starter projects expose the same commands through the selected package
 - `TestingModuleRef.dispatch(...)`
 - `createTestApp(...)` for end-to-end style request dispatch
 - `TestApp.dispatch(...)` for direct request execution without fluent builder
-- `createPlatformConformanceHarness(...)` for shared platform contract conformance assertions
-- Fluent request building with request principal injection
+- `@konekti/testing/platform-conformance` for `createPlatformConformanceHarness(...)`
+- `@konekti/testing/http` for fluent request building and request principal injection helpers
 - Predictable cleanup through `createTestApp`'s `close()` lifecycle path
 - Module introspection utilities: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
-- Mock utilities: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
+- Mock utilities via `@konekti/testing/mock`: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
 
 ## recipe catalog
 
@@ -157,7 +157,8 @@ Use these generated files as the baseline story when documenting new test recipe
 Current public boundary:
 
 - keep `@konekti/testing` as the public testing baseline
-- surface covers module compilation, dispatch, request helpers, and provider/module introspection
+- keep the root barrel focused on module compilation, app bootstrap testing, and provider/module introspection
+- import mocks, HTTP request helpers, and portability/conformance harnesses from their dedicated subpaths
 - module introspection utilities are explicitly stable public API, not internal helpers
 - official generated templates now include:
   - starter unit templates: `src/health/*.test.ts`
