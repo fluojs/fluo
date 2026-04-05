@@ -3,7 +3,7 @@ import { request as httpsRequest } from 'node:https';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { Controller, Get, Post, type FrameworkRequest, type RequestContext } from '@konekti/http';
+import { Controller, Get, Post, SseResponse, type FrameworkRequest, type RequestContext } from '@konekti/http';
 import { createHealthModule, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import {
@@ -218,6 +218,49 @@ describe('@konekti/platform-fastify', () => {
       parsed: 'ping=1',
       raw: 'ping=1',
     });
+
+    await app.close();
+  });
+
+  it('supports SSE streaming', async () => {
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      stream(_input: undefined, context: RequestContext) {
+        const stream = new SseResponse(context);
+
+        stream.comment('connected');
+        stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+        setTimeout(() => {
+          stream.close();
+        }, 10);
+
+        return stream;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [EventsController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+      headers: { accept: 'text/event-stream' },
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    expect(body).toContain('event: ready');
+    expect(body).toContain('data: {"ready":true}');
 
     await app.close();
   });
