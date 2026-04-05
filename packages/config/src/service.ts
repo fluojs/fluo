@@ -19,6 +19,9 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   /**
    * Returns a config value by key (including dot-path keys) or `undefined` when missing.
+   *
+   * @param key Configuration key or dot-path key to resolve from the current snapshot.
+   * @returns The resolved value clone for object-like entries, or `undefined` when the key does not exist.
    */
   get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
     return this._resolve(key as string) as DotValue<T, K & string> | undefined;
@@ -26,6 +29,10 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   /**
    * Returns a config value by key and throws when the key is missing.
+   *
+   * @param key Configuration key or dot-path key that must exist in the current snapshot.
+   * @returns The resolved value clone for object-like entries.
+   * @throws {KonektiError} When the key is absent (`code: 'CONFIG_KEY_MISSING'`).
    */
   getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {
     const value = this._resolve(key as string);
@@ -39,6 +46,9 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   /**
    * @deprecated Use `get()` instead. `get()` now returns `T | undefined` matching NestJS semantics.
+   *
+   * @param key Configuration key or dot-path key to resolve from the current snapshot.
+   * @returns The resolved value clone for object-like entries, or `undefined` when the key does not exist.
    */
   getOptional<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
     return this._resolve(key as string) as DotValue<T, K & string> | undefined;
@@ -46,6 +56,8 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   /**
    * Returns a deep-cloned snapshot of the current normalized config dictionary.
+   *
+   * @returns A detached deep clone of the current configuration snapshot.
    */
   snapshot(): ConfigDictionary {
     return cloneConfigDictionary(this.values);
@@ -53,6 +65,9 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
   /**
    * Replaces the internal snapshot used by this service (runtime reload flow).
+   *
+   * @param values Next validated configuration dictionary to store as the internal snapshot.
+   * @returns `void`.
    */
   _replaceSnapshot(values: T): void {
     this.values = cloneConfigDictionary(values);

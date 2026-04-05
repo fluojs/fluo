@@ -140,6 +140,13 @@ export class Container {
 
   /**
    * Registers providers in the current container scope.
+   *
+   * @param providers Provider definitions to register in this container.
+   * @returns The same container instance for fluent registration chains.
+   * @throws {ContainerResolutionError} When called after the container was disposed.
+   * @throws {ScopeMismatchError} When registering singleton providers directly on a request scope.
+   * @throws {DuplicateProviderError} When registration conflicts with existing single/multi mappings.
+   * @throws {InvalidProviderError} When a provider definition is structurally invalid.
    */
   register(...providers: Provider[]): this {
     if (this.disposed) {
@@ -190,6 +197,11 @@ export class Container {
    * is added. There is intentionally no way to replace a single entry within a multi-provider
    * set — the whole set is replaced. If you need to preserve other entries, re-register them
    * together with the replacement in one `override()` call.
+   *
+   * @param providers Provider definitions that should replace existing registrations for each token.
+   * @returns The same container instance for fluent override chains.
+   * @throws {ContainerResolutionError} When called after the container was disposed.
+   * @throws {InvalidProviderError} When a provider definition is structurally invalid.
    */
   override(...providers: Provider[]): this {
     if (this.disposed) {
@@ -222,6 +234,9 @@ export class Container {
 
   /**
    * Returns whether a token is registered in this scope chain.
+   *
+   * @param token Token to check across this container and its ancestors.
+   * @returns `true` when a single or multi provider exists for the token.
    */
   has(token: Token): boolean {
     return this.lookupProvider(token) !== undefined || this.hasMulti(token);
@@ -229,6 +244,9 @@ export class Container {
 
   /**
    * Creates a child request-scope container that shares root singleton cache.
+   *
+   * @returns A request-scope child container bound to this container hierarchy.
+   * @throws {ContainerResolutionError} When called after the container was disposed.
    */
   createRequestScope(): Container {
     if (this.disposed) {
@@ -245,6 +263,13 @@ export class Container {
 
   /**
    * Resolves a token to an instance using scope-aware caching rules.
+   *
+   * @param token Token to resolve.
+   * @returns A promise that resolves to the token instance (or multi-provider instance array).
+   * @throws {ContainerResolutionError} When called after disposal or when no provider is registered.
+   * @throws {RequestScopeResolutionError} When request-scoped providers are resolved from root scope.
+   * @throws {ScopeMismatchError} When singleton providers depend on request-scoped providers.
+   * @throws {CircularDependencyError} When provider dependency resolution detects a cycle.
    */
   async resolve<T>(token: Token<T>): Promise<T> {
     if (this.disposed) {
@@ -259,6 +284,9 @@ export class Container {
 
   /**
    * Disposes cached instances and nested request scopes.
+   *
+   * @returns A promise that settles after all cached disposable instances are torn down.
+   * @throws {Error} Propagates one or more disposal errors (`AggregateError` when multiple failures occur).
    */
   async dispose(): Promise<void> {
     if (this.disposePromise) {

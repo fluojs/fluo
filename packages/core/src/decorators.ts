@@ -12,6 +12,9 @@ type TupleOnly<T extends readonly unknown[]> = number extends T['length'] ? neve
 
 /**
  * Declares module-level metadata (`imports`, `providers`, `controllers`, `exports`, `global`) on a class.
+ *
+ * @param definition Module composition metadata consumed by the runtime module-graph compiler.
+ * @returns A standard class decorator that records the module contract on the target class.
  */
 export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
   return (target) => {
@@ -21,6 +24,8 @@ export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
 
 /**
  * Marks the decorated module as global so its exported providers are visible without explicit imports.
+ *
+ * @returns A standard class decorator that marks the target module as globally visible.
  */
 export function Global(): StandardClassDecoratorFn {
   return (target) => {
@@ -30,6 +35,9 @@ export function Global(): StandardClassDecoratorFn {
 
 /**
  * Defines explicit constructor injection tokens for the decorated class.
+ *
+ * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject<const TTokens extends readonly Token[]>(
   tokens: TupleOnly<TTokens>,
@@ -42,6 +50,9 @@ export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn {
 
 /**
  * Sets the provider lifecycle scope used by the DI container.
+ *
+ * @param scope Provider lifetime strategy (`singleton`, `request`, or `transient`).
+ * @returns A standard class decorator that stores scope metadata on the target class.
  */
 export function Scope(scope: NonNullable<ClassDiMetadata['scope']>): StandardClassDecoratorFn {
   return (target) => {

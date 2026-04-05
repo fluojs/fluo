@@ -120,23 +120,42 @@ function createValidatorJsDecorator(validator: ValidatorJsRuleName) {
   };
 }
 
-/** Validates that the decorated field is a string value. */
+/**
+ * Validates that the decorated field is a string value.
+ *
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers a string validation rule.
+ */
 export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'string', ...options }));
 }
 
-/** Validates that the decorated field is a number value. */
+/**
+ * Validates that the decorated field is a number value.
+ *
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers a number validation rule.
+ */
 export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'number', ...options }));
 }
 
-/** Validates that the decorated field is a boolean value. */
+/**
+ * Validates that the decorated field is a boolean value.
+ *
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers a boolean validation rule.
+ */
 export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'boolean', ...options }));
 }
 
 /**
  * Applies subsequent validators only when the condition returns `true`.
+ *
+ * @param validateIf Predicate that decides whether subsequent validators should run.
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that adds conditional validation execution.
  */
 export const ValidateIf = (
   validateIf: (dto: unknown, value: unknown) => boolean | Promise<boolean>,
@@ -158,7 +177,13 @@ export const IsInt = createFlagValidationDecorator((options) => ({ kind: 'int', 
 export const IsPositive = createFlagValidationDecorator((options) => ({ kind: 'positive', ...options }));
 export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'negative', ...options }));
 
-/** Validates that the field value is included in the given enum-like set. */
+/**
+ * Validates that the field value is included in the given enum-like set.
+ *
+ * @param values Enum object or literal value list that defines the accepted set.
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers an enum-membership rule.
+ */
 export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
   const normalized = Array.isArray(values) ? values : Object.values(values);
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
@@ -172,12 +197,25 @@ export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, 
 export const Contains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'contains', value, ...options }));
 export const NotContains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'notContains', value, ...options }));
 
-/** Validates string length using optional min/max boundaries. */
+/**
+ * Validates string length using optional min/max boundaries.
+ *
+ * @param min Minimum inclusive length.
+ * @param max Optional maximum inclusive length.
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers a bounded-length rule.
+ */
 export function Length(min: number, max?: number, options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({ kind: 'length', max, min, ...options }));
 }
 
-/** Validates a nested DTO instance using the provided constructor. */
+/**
+ * Validates a nested DTO instance using the provided constructor.
+ *
+ * @param dto DTO constructor (or lazy constructor factory) used for nested validation/materialization.
+ * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @returns A field decorator that registers recursive nested DTO validation.
+ */
 export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     dto,
@@ -189,7 +227,14 @@ export function ValidateNested(dto: Constructor | (() => Constructor), options?:
 export const MinLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'minLength', value, ...options }));
 export const MaxLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'maxLength', value, ...options }));
 
-/** Validates the field using a regular expression pattern. */
+/**
+ * Validates the field using a regular expression pattern.
+ *
+ * @param pattern Pattern source (`RegExp` or string) passed to validator.js `matches`.
+ * @param modifiersOrOptions Regex modifiers string (for string patterns) or validation options.
+ * @param options Validation options used when modifiers are provided separately.
+ * @returns A field decorator that registers a regex-matching rule.
+ */
 export function Matches(
   pattern: RegExp | string,
   modifiersOrOptions?: string | ValidationDecoratorOptions,
@@ -287,7 +332,13 @@ export const ArrayNotEmpty = createFlagValidationDecorator((options) => ({ kind:
 export const ArrayMinSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMinSize', value, ...options }));
 export const ArrayMaxSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMaxSize', value, ...options }));
 
-/** Ensures all values in the array are unique, optionally by selector. */
+/**
+ * Ensures all values in the array are unique, optionally by selector.
+ *
+ * @param selectorOrOptions Optional selector callback used to compute uniqueness keys, or validation options.
+ * @param options Validation options used when a selector callback is provided.
+ * @returns A field decorator that registers an array-uniqueness rule.
+ */
 export function ArrayUnique(
   selectorOrOptions?: ((value: unknown) => unknown) | ValidationDecoratorOptions,
   options?: ValidationDecoratorOptions,
@@ -298,7 +349,13 @@ export function ArrayUnique(
   return createValidationDecorator(() => ({ kind: 'arrayUnique', selector, ...resolvedOptions }));
 }
 
-/** Registers a custom field-level validation function. */
+/**
+ * Registers a custom field-level validation function.
+ *
+ * @param validate Custom validator callback invoked with `(dto, value)`.
+ * @param options Optional custom-validator metadata (`message`, `code`, `source`, `each`).
+ * @returns A field decorator that registers a custom validation rule.
+ */
 export function Validate(validate: CustomFieldValidator, options?: CustomValidationDecoratorOptions): FieldDecoratorFn {
   return createValidationDecorator(() => ({
     code: options?.code,
@@ -313,6 +370,10 @@ export function Validate(validate: CustomFieldValidator, options?: CustomValidat
 /**
  * Registers class-level validation logic.
  * Supports either a custom validator callback or a Standard Schema object.
+ *
+ * @param validate Class-level validator callback or a Standard Schema-compatible validator definition.
+ * @param options Optional validation behavior (`message`, `code`).
+ * @returns A class decorator that appends class-level validation rules.
  */
 export function ValidateClass(validate: ValidateClassInput, options?: ValidationDecoratorOptions): ClassDecoratorFn {
   const decorator = (_target: Function, context: ClassDecoratorContext) => {

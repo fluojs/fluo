@@ -349,6 +349,10 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
 
 /**
  * Associates module metadata with a module type.
+ *
+ * @param moduleType Module class that should receive runtime module metadata.
+ * @param definition Module definition contract (`imports`, `providers`, `controllers`, `exports`, etc.).
+ * @returns The same `moduleType` reference for fluent helper composition.
  */
 export function defineModule<T extends ModuleType>(moduleType: T, definition: ModuleDefinition): T {
   defineModuleMetadata(moduleType, definition);
@@ -358,6 +362,12 @@ export function defineModule<T extends ModuleType>(moduleType: T, definition: Mo
 
 /**
  * Bootstraps the module graph and returns the root container baseline.
+ *
+ * @param rootModule Root module type used as the module-graph entrypoint.
+ * @param options Bootstrap-module options such as runtime providers and duplicate-provider policy.
+ * @returns The compiled module graph and initialized DI container baseline.
+ * @throws {DuplicateProviderError} When duplicate module provider tokens are detected and policy is `throw`.
+ * @throws {Error} When module-graph compilation or provider registration fails.
  */
 export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
   const modules = compileModuleGraph(rootModule, options);
@@ -890,8 +900,12 @@ function createRuntimeDispatcher(
 }
 
 /**
- * bootstrap-level provider 등록, 모듈 부트스트랩, lifecycle hook 실행까지를 묶어
- * 런타임 애플리케이션 셸을 만든다.
+ * Creates the runtime application shell by composing bootstrap-level providers,
+ * module bootstrap, and lifecycle hook execution.
+ *
+ * @param options Runtime bootstrap contract including root module, adapter, and global runtime hooks.
+ * @returns A fully bootstrapped `Application` shell ready for `ready()`/`listen()`.
+ * @throws {Error} Propagates module-graph, lifecycle, or runtime initialization failures.
  */
 export async function bootstrapApplication(options: BootstrapApplicationOptions): Promise<Application> {
   const logger = options.logger ?? createConsoleApplicationLogger();
@@ -1006,6 +1020,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 export class KonektiFactory {
   /**
    * Creates a full HTTP-capable application from the root module.
+   *
+   * @param rootModule Root module type used as the application composition entrypoint.
+   * @param options Optional HTTP-runtime bootstrap options.
+   * @returns A bootstrapped HTTP-capable `Application`.
+   * @throws {Error} Propagates bootstrap failures from `bootstrapApplication(...)`.
    */
   static async create(rootModule: ModuleType, options: CreateApplicationOptions = {}): Promise<Application> {
     return bootstrapApplication({
@@ -1016,6 +1035,11 @@ export class KonektiFactory {
 
   /**
    * Creates an application context without attaching an HTTP runtime.
+   *
+   * @param rootModule Root module type used as the context composition entrypoint.
+   * @param options Optional context bootstrap options.
+   * @returns A bootstrapped `ApplicationContext` that exposes DI and lifecycle control.
+   * @throws {Error} Propagates module-graph, lifecycle, and context bootstrap failures.
    */
   static async createApplicationContext(
     rootModule: ModuleType,
@@ -1115,6 +1139,12 @@ export class KonektiFactory {
 
   /**
    * Creates a microservice application from the configured runtime token.
+   *
+   * @param rootModule Root module type used as the microservice composition entrypoint.
+   * @param options Optional microservice bootstrap options, including `microserviceToken` overrides.
+   * @returns A bootstrapped `MicroserviceApplication` wrapper around the resolved runtime transport.
+   * @throws {InvariantError} When the resolved runtime token does not implement `listen()`.
+   * @throws {Error} Propagates application-context bootstrap or runtime-resolution failures.
    */
   static async createMicroservice(
     rootModule: ModuleType,
