@@ -2,6 +2,14 @@ import DataLoader from 'dataloader';
 
 import { GRAPHQL_REQUEST_SCOPED_LOADER_CACHE, type GraphQLContext } from './types.js';
 
+/**
+ * Returns a request-scoped loader instance from GraphQL context cache.
+ *
+ * @param context GraphQL operation context that holds the request-scoped loader cache.
+ * @param key Stable cache key for this loader instance within a single operation.
+ * @param createLoader Factory used when no loader is cached yet for `key`.
+ * @returns The cached or newly created loader instance for the current operation.
+ */
 export function getRequestScopedDataLoader<TLoader>(
   context: GraphQLContext,
   key: string | symbol,
@@ -21,6 +29,13 @@ export function getRequestScopedDataLoader<TLoader>(
   return created;
 }
 
+/**
+ * Creates an accessor that resolves one request-scoped loader from context.
+ *
+ * @param key Stable cache key for this loader instance within a single operation.
+ * @param createLoader Factory used when no loader is cached yet for `key`.
+ * @returns A context accessor that always resolves the per-operation cached loader.
+ */
 export function createRequestScopedDataLoaderFactory<TLoader>(
   key: string | symbol,
   createLoader: () => TLoader,
@@ -76,6 +91,10 @@ export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) =>
  * // inside a resolver method:
  * const user = await getUserById(context).load(userId);
  * ```
+ *
+ * @param batchFn DataLoader batch function that maps requested keys to ordered values.
+ * @param options Optional DataLoader options plus an optional stable Konekti cache key.
+ * @returns A request-scoped accessor that resolves a `DataLoader` for the current operation.
  */
 export function createDataLoader<K, V, C = K>(
   batchFn: DataLoader.BatchLoadFn<K, V>,
@@ -144,6 +163,9 @@ export type ResolvedDataLoaders<TMap extends DataLoaderMap> = {
  * const { userById } = loaders(context);
  * const user = await userById.load('abc');
  * ```
+ *
+ * @param definitions Loader definitions keyed by loader name.
+ * @returns A context accessor that resolves all named loaders for one GraphQL operation.
  */
 export function createDataLoaderMap<TMap extends DataLoaderMap>(
   definitions: TMap,

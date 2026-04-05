@@ -7,6 +7,9 @@ import type { EventBusModuleOptions } from './types.js';
 
 /**
  * Creates event-bus lifecycle providers and module options wiring.
+ *
+ * @param options Event bus configuration used for publish defaults and optional transport integration.
+ * @returns Provider definitions that register `EVENT_BUS_OPTIONS` and the runtime `EVENT_BUS` service.
  */
 export function createEventBusProviders(options: EventBusModuleOptions = {}): Provider[] {
   return [
@@ -25,7 +28,12 @@ export function createEventBusProviders(options: EventBusModuleOptions = {}): Pr
  * Runtime module entrypoint for the in-process event bus.
  */
 export class EventBusModule {
-  /** Registers a global `EVENT_BUS` provider using canonical `forRoot(...)` semantics. */
+  /**
+   * Registers the event-bus providers as a global module.
+   *
+   * @param options Event bus module options forwarded to {@link createEventBusProviders}.
+   * @returns A module definition that exports the global `EVENT_BUS` token.
+   */
   static forRoot(options: EventBusModuleOptions = {}): ModuleType {
     class EventBusModuleDefinition {}
 

@@ -62,6 +62,9 @@ function createPrismaRuntimeProviders<
 
 /**
  * Creates Prisma runtime providers for manual module composition.
+ *
+ * @param options Prisma module options with client handle and strict transaction mode.
+ * @returns Provider definitions equivalent to `PrismaModule.forRoot(...)` wiring.
  */
 export function createPrismaProviders<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -131,7 +134,12 @@ function buildPrismaModuleAsync<
  * Runtime module entrypoint for Prisma lifecycle and transaction wiring.
  */
 export class PrismaModule {
-  /** Registers Prisma providers from static options. */
+  /**
+   * Registers Prisma providers from static options.
+   *
+   * @param options Prisma module options with client handle and strict transaction mode.
+   * @returns A module definition that exports `PrismaService` and `PrismaTransactionInterceptor`.
+   */
   static forRoot<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
     TTransactionClient = TClient,
@@ -142,7 +150,12 @@ export class PrismaModule {
     return buildPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
   }
 
-  /** Registers Prisma providers from an async DI factory. */
+  /**
+   * Registers Prisma providers from an async DI factory.
+   *
+   * @param options Async module options that resolve Prisma client/module configuration.
+   * @returns A module definition that memoizes async options resolution per module instance.
+   */
   static forRootAsync<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
     TTransactionClient = TClient,
