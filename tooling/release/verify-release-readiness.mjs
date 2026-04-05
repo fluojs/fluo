@@ -188,6 +188,27 @@ const changelog = read('CHANGELOG.md');
 const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
 const packageSurfaceList = sorted(parsePackageListFromSection(packageSurface, 'public package family'));
 const workspacePackages = workspacePackageNames();
+const officialFetchAdapterDocs = [
+  {
+    label: 'Bun adapter contract docs',
+    path: 'packages/platform-bun/README.md',
+    runtimeToken: 'Bun.serve',
+  },
+  {
+    label: 'Deno adapter contract docs',
+    path: 'packages/platform-deno/README.md',
+    runtimeToken: 'Deno.serve',
+  },
+].flatMap((entry) => {
+  if (!existsSync(join(repoRoot, entry.path))) {
+    return [];
+  }
+
+  return [{
+    ...entry,
+    readme: read(entry.path),
+  }];
+});
 
 assertCheck(
   checks,
@@ -240,6 +261,18 @@ assertCheck(
   releaseGovernance.includes('manifest decision note') && existsSync(join(repoRoot, 'tooling/benchmarks/manifest-decision.latest.json')),
   'Release docs still point at the benchmark-backed manifest decision snapshot.',
 );
+for (const adapterDoc of officialFetchAdapterDocs) {
+  assertCheck(
+    checks,
+    adapterDoc.label,
+    adapterDoc.readme.includes(adapterDoc.runtimeToken) &&
+      adapterDoc.readme.includes('## supported operations') &&
+      adapterDoc.readme.includes('## runtime invariants') &&
+      adapterDoc.readme.includes('## lifecycle guarantees') &&
+      adapterDoc.readme.includes('## intentional limitations'),
+    `The official adapter README at ${adapterDoc.path} documents its runtime path and behavioral contract sections.`,
+  );
+}
 assertCheck(
   checks,
   'Dist-based package entrypoints',
