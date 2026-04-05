@@ -1,8 +1,9 @@
-import { Inject, defineModuleMetadata } from '@konekti/core';
+import { Inject } from '@konekti/core';
+import { defineModuleMetadata } from '@konekti/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
 import { createConfigReloader } from './load.js';
-import { ConfigService } from './service.js';
+import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
@@ -27,7 +28,7 @@ function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubs
 }
 
 @Inject([ConfigService, CONFIG_RELOAD_OPTIONS])
-class ConfigReloadManager implements ConfigReloader {
+export class ConfigReloadManager implements ConfigReloader {
   private reloader: ConfigReloader | undefined;
   private reloadForwarder: ConfigReloadSubscription | undefined;
   private errorForwarder: ConfigReloadSubscription | undefined;
@@ -93,13 +94,13 @@ class ConfigReloadManager implements ConfigReloader {
       const previousConfig = this.config.snapshot();
 
       try {
-        this.config._replaceSnapshot(nextConfig);
+        replaceConfigServiceSnapshot(this.config, nextConfig);
 
         for (const listener of this.reloadListeners) {
           listener(cloneConfigDictionary(nextConfig), reason);
         }
       } catch (error: unknown) {
-        this.config._replaceSnapshot(previousConfig);
+        replaceConfigServiceSnapshot(this.config, previousConfig);
         throw error;
       }
     });

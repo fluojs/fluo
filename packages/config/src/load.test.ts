@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
-import { getModuleMetadata } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
-import { ConfigService } from './service.js';
+import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const startedAt = Date.now();
@@ -494,17 +494,16 @@ describe('ConfigService', () => {
     expect(service.getOrThrow('PORT')).toBe('3000');
   });
 
-  it('returns undefined for missing optional nested key', () => {
+  it('returns undefined for missing nested key with get', () => {
     const service = new ConfigService({ db: { host: 'localhost' } });
 
-    expect(service.getOptional('db.missing' as never)).toBeUndefined();
+    expect(service.get('db.missing' as never)).toBeUndefined();
   });
 
   it('does not resolve inherited top-level keys', () => {
     const values = Object.create({ PORT: '3000' }) as Record<string, unknown>;
     const service = new ConfigService(values);
 
-    expect(service.getOptional('PORT' as never)).toBeUndefined();
     expect(service.get('PORT' as never)).toBeUndefined();
     expect(() => service.getOrThrow('PORT' as never)).toThrow('Missing config key');
   });
@@ -513,17 +512,16 @@ describe('ConfigService', () => {
     const db = Object.create({ host: 'localhost' }) as Record<string, unknown>;
     const service = new ConfigService({ db });
 
-    expect(service.getOptional('db.host' as never)).toBeUndefined();
     expect(service.get('db.host' as never)).toBeUndefined();
     expect(() => service.getOrThrow('db.host' as never)).toThrow('Missing config key');
   });
 
-  it('provides typed get/getOptional for generic ConfigService', () => {
+  it('provides typed get for generic ConfigService', () => {
     type AppConfig = { PORT: string; DB_URL: string };
     const service = new ConfigService<AppConfig>({ PORT: '3000', DB_URL: 'postgres://localhost' });
 
     const port = service.get('PORT');
-    const dbUrl = service.getOptional('DB_URL');
+    const dbUrl = service.get('DB_URL');
 
     expect(port).toBe('3000');
     expect(dbUrl).toBe('postgres://localhost');
@@ -566,7 +564,7 @@ describe('ConfigService', () => {
   it('replaces the active snapshot without changing service identity', () => {
     const service = new ConfigService({ PORT: '3000', nested: { host: 'localhost' } });
 
-    service._replaceSnapshot({ PORT: '3100', nested: { host: 'remote' } });
+    replaceConfigServiceSnapshot(service, { PORT: '3100', nested: { host: 'remote' } });
 
     expect(service.get('PORT')).toBe('3100');
     expect(service.get('nested.host')).toBe('remote');

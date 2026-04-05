@@ -45,32 +45,12 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
   }
 
   /**
-   * @deprecated Use `get()` instead. `get()` now returns `T | undefined` matching NestJS semantics.
-   *
-   * @param key Configuration key or dot-path key to resolve from the current snapshot.
-   * @returns The resolved value clone for object-like entries, or `undefined` when the key does not exist.
-   */
-  getOptional<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {
-    return this._resolve(key as string) as DotValue<T, K & string> | undefined;
-  }
-
-  /**
    * Returns a deep-cloned snapshot of the current normalized config dictionary.
    *
    * @returns A detached deep clone of the current configuration snapshot.
    */
   snapshot(): ConfigDictionary {
     return cloneConfigDictionary(this.values);
-  }
-
-  /**
-   * Replaces the internal snapshot used by this service (runtime reload flow).
-   *
-   * @param values Next validated configuration dictionary to store as the internal snapshot.
-   * @returns `void`.
-   */
-  _replaceSnapshot(values: T): void {
-    this.values = cloneConfigDictionary(values);
   }
 
   private _resolve(key: string): unknown {
@@ -96,4 +76,11 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
 
     return resolved;
   }
+}
+
+export function replaceConfigServiceSnapshot<T extends Record<string, unknown>>(
+  service: ConfigService<T>,
+  values: T,
+): void {
+  service['values'] = cloneConfigDictionary(values);
 }

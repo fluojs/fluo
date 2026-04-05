@@ -1,4 +1,4 @@
-import { fallbackClone } from '@konekti/core';
+import { fallbackClone } from '@konekti/core/internal';
 
 export function cloneConfigDictionary<T>(value: T): T {
   try {
