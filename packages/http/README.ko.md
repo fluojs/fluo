@@ -93,7 +93,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | 익스포트(Export) | 위치 | 설명 |
 |---|---|---|
 | `FrameworkRequest` | `src/types.ts` | 어댑터에 독립적인 요청 형태 |
-| `FrameworkResponse` | `src/types.ts` | 어댑터에 독립적인 응답 형태 |
+| `FrameworkResponse` | `src/types.ts` | SSE 및 기타 스트리밍 응답용 optional `stream` capability를 포함하는 어댑터에 독립적인 응답 형태 |
 | `RequestContext` | `src/request-context.ts` | 런타임 컨텍스트: 요청, 응답, 주체(principal), requestId, 컨테이너 |
 
 ### 라우트 데코레이터
@@ -261,8 +261,13 @@ class EventsController {
 - `comment(text)`는 주석 프레임을 작성합니다.
 - `close()`는 멱등(idempotent)하며 `ctx.request.signal`이 중단될 때도 실행됩니다.
 - `encodeSseMessage()`와 `encodeSseComment()`는 테스트 및 커스텀 프레이밍 요구사항을 위해 익스포트됩니다.
-- 현재 SSE는 Node 어댑터 또는 `write()`, `end()`, `writableEnded` 및 선택적으로 `flushHeaders()`를 노출하는 커스텀 `FrameworkResponse.raw` 객체가 필요합니다.
+- 이제 SSE는 `FrameworkResponse.raw`를 Node writable response처럼 덕타이핑하지 않고, 명시적인 어댑터 계약인 `FrameworkResponse.stream`에 의존합니다.
+- 내장 Node, Express, Fastify 어댑터는 SSE 및 기타 응답 스트리밍 통합을 위해 `response.stream`을 제공합니다.
 - 요청 옵저버는 핸들러가 반환될 때 완료됩니다. SSE 소켓의 전체 수명 동안 열려 있지 않습니다.
+
+#### 0.x 마이그레이션 노트
+
+- 이전에 SSE를 위해 `FrameworkResponse.raw.write()` / `end()` / `writableEnded`에 의존하던 커스텀 어댑터나 테스트는 이제 `FrameworkResponse.stream`을 제공해야 합니다.
 
 ### 속도 제한(Rate limiting) 주의사항
 
