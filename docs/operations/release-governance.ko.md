@@ -30,6 +30,7 @@
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
+- `@konekti/platform-bun`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
@@ -64,7 +65,7 @@
 - 전체 테스트 커버리지 및 CI 검증
 - 전용 트러블슈팅 가이드 제공
 
-추가 런타임이나 통합은 package README나 거버넌스 문서에 명시적으로 문서화되지 않는 한 공개 보장이 아닙니다. 현재 공식 런타임 지원은 Node.js로 제한되며, Bun 및 fetch 스타일 어댑터는 **preview** 상태로 유지됩니다.
+추가 런타임이나 통합은 package README나 거버넌스 문서에 명시적으로 문서화되지 않는 한 공개 보장이 아닙니다. 현재 공식 런타임 지원은 Node.js와 Bun으로 제한됩니다. 다른 fetch 스타일 어댑터는 출판된 어댑터 계약과 함께 패키지 문서/테스트가 승격되기 전까지 **preview** 상태를 유지합니다.
 
 공개 부트스트랩 계약은 package-first를 유지합니다. `pnpm add -g @konekti/cli` 이후 `konekti new`를 사용하며, 릴리스 표면은 출판된 `@konekti/*` 패키지 제품군으로 한정됩니다.
 

@@ -11,6 +11,7 @@ const ssotPairs = [
   ['docs/operations/behavioral-contract-policy.md', 'docs/operations/behavioral-contract-policy.ko.md'],
   ['docs/operations/release-governance.md', 'docs/operations/release-governance.ko.md'],
   ['docs/operations/platform-conformance-authoring-checklist.md', 'docs/operations/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];
 
 const contractGateTriggers = new Set([
@@ -22,6 +23,8 @@ const contractGateTriggers = new Set([
   'docs/operations/release-governance.ko.md',
   'docs/operations/platform-conformance-authoring-checklist.md',
   'docs/operations/platform-conformance-authoring-checklist.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [

@@ -16,6 +16,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/runtime`
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
+- `@konekti/platform-bun`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
@@ -51,6 +52,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing. Node lifecycle helpers are isolated to the `@konekti/runtime/node` subpath instead of the root barrel.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
+- **`@konekti/platform-bun`**: Bun-based HTTP adapter that reuses the shared `@konekti/runtime/web` Request/Response bridge for fetch-style runtime parity.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
 - **`@konekti/validation`**: Validation decorators, mapped DTO helpers, and validation engine.

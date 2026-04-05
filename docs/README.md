@@ -43,6 +43,7 @@ Konekti is highly composable. Use these links to discover and select the right t
 - `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
 - `reference/package-surface.md` - Overview of the public API surface across the framework.
 - `reference/toolchain-contract-matrix.md` - Versioning and compatibility across the ecosystem.
+- `../packages/platform-bun/README.md` - Official Bun adapter package contract and startup path.
 
 ## migration
 
