@@ -11,6 +11,11 @@ export {
   type RunHttpAdapterApplicationOptions,
 } from './http-adapter-shared.js';
 export {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+  registerShutdownSignals,
+} from './node-shutdown.js';
+export {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
   HTTP_APPLICATION_ADAPTER,
