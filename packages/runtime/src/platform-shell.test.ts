@@ -7,7 +7,7 @@ import type {
   PlatformSnapshot,
   PlatformState,
   PlatformValidationResult,
-} from './platform-contract.js';
+} from './index.js';
 import { RuntimePlatformShell } from './platform-shell.js';
 
 class StubPlatformComponent implements PlatformComponent {
