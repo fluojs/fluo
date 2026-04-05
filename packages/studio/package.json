@@ -10,7 +10,7 @@
     "devtools"
   ],
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
