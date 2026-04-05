@@ -5,18 +5,15 @@ import { Controller, Get, Post, type RequestContext } from '@konekti/http';
 import type { Dispatcher } from '@konekti/http';
 
 import {
-  asMock,
-  createDeepMock,
-  createMock,
   createTestApp,
   createTestingModule,
   extractModuleControllers,
   extractModuleImports,
   extractModuleProviders,
-  makeRequest,
-  mockToken,
   Test,
 } from './index.js';
+import { makeRequest } from './http.js';
+import { asMock, createDeepMock, createMock, mockToken } from './mock.js';
 
 @Controller('/users')
 class UserController {
@@ -102,7 +99,7 @@ describe('@konekti/testing', () => {
       .overrideProvider(Logger, { name: 'fake-logger' })
       .compile();
 
-    const service = await testingModule.resolve(UserService);
+    const service = await testingModule.resolve<UserService>(UserService);
 
     expect(service.logger).toEqual({ name: 'fake-logger' });
   });
@@ -129,7 +126,7 @@ describe('@konekti/testing', () => {
       .useValue({ name: 'nest-style-fake' })
       .compile();
 
-    const service = await testingModule.resolve(UserService);
+    const service = await testingModule.resolve<UserService>(UserService);
 
     expect(service.logger).toEqual({ name: 'nest-style-fake' });
     expect(testingModule.get<Logger>(Logger)).toEqual({ name: 'nest-style-fake' });
@@ -196,7 +193,7 @@ describe('@konekti/testing', () => {
       .overrideProvider(Logger, FakeLogger)
       .compile();
 
-    const service = await testingModule.resolve(UserService);
+    const service = await testingModule.resolve<UserService>(UserService);
 
     expect(service.logger).toBeInstanceOf(FakeLogger);
     expect(service.logger.name).toBe('fake-logger');
@@ -327,7 +324,7 @@ describe('asMock', () => {
 describe('makeRequest', () => {
   it('dispatches a normalized request and captures the response', async () => {
     const dispatcher: Dispatcher = {
-      async dispatch(request, response) {
+      async dispatch(request: any, response: any) {
         expect(request.method).toBe('POST');
         expect(request.path).toBe('/users');
         expect(request.url).toBe('/users?page=1&tag=a&tag=b');
@@ -650,7 +647,7 @@ describe('overrideModule', () => {
       .overrideModule(RealModule, FakeModule)
       .compile();
 
-    const consumer = await testingModule.resolve(ConsumerService);
+    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
     expect(consumer.dep.value()).toBe('fake');
   });
 });

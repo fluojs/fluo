@@ -29,6 +29,38 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    },
+    "./module": {
+      "types": "./dist/module.d.ts",
+      "import": "./dist/module.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    "./mock": {
+      "types": "./dist/mock.d.ts",
+      "import": "./dist/mock.js"
+    },
+    "./platform-conformance": {
+      "types": "./dist/platform-conformance.d.ts",
+      "import": "./dist/platform-conformance.js"
+    },
+    "./http-adapter-portability": {
+      "types": "./dist/http-adapter-portability.d.ts",
+      "import": "./dist/http-adapter-portability.js"
+    },
+    "./web-runtime-adapter-portability": {
+      "types": "./dist/web-runtime-adapter-portability.d.ts",
+      "import": "./dist/web-runtime-adapter-portability.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
     "./vitest": {
       "types": "./dist/vitest.d.ts",
       "import": "./dist/vitest.js"
