@@ -75,6 +75,8 @@ export class UserRepository {
 }
 ```
 
+`PrismaService<PrismaClient>` now infers the generated transaction client type directly from `PrismaClient['$transaction']`, so `current()` preserves real Prisma model autocomplete inside and outside transaction scopes without requiring a separate `PrismaTransactionClient` annotation.
+
 ### 3. Wrap a service method in a transaction
 
 ```typescript
@@ -153,7 +155,7 @@ Convenience wrappers that call `createPrismaProviders` (sync) or resolve the sam
 
 Nested transaction option overrides are rejected while already inside an active transaction context.
 
-The public package also exports `PRISMA_OPTIONS`, `PrismaTransactionClient`, `PrismaModuleOptions`, and `PrismaHandleProvider`.
+The public package also exports `PRISMA_OPTIONS`, `PrismaTransactionClient<TClient>`, `PrismaModuleOptions`, and `PrismaHandleProvider`.
 
 ### `PrismaTransactionInterceptor`
 
@@ -164,12 +166,14 @@ HTTP interceptor (`src/transaction.ts`) that wraps each request in `prismaServic
 Seam interface that `PrismaService` is generic over. `$connect`, `$disconnect`, and `$transaction` are optional — allowing lightweight test seams and fallback behavior when lifecycle/transaction capabilities are absent.
 
 ```typescript
-interface PrismaClientLike {
+interface PrismaClientLike<TTransactionClient = unknown, TTransactionOptions = unknown> {
   $connect?(): Promise<void>;
   $disconnect?(): Promise<void>;
-  $transaction?<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
+  $transaction?<T>(fn: (tx: TTransactionClient) => Promise<T>, options?: TTransactionOptions): Promise<T>;
 }
 ```
+
+`PrismaTransactionClient<TClient>` is a helper alias that extracts the transaction-scoped client type from a concrete Prisma client type when you need that type directly.
 
 ### `createPrismaPlatformStatusSnapshot(input)`
 

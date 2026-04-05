@@ -6,7 +6,7 @@ import type { PrismaClientLike } from './types.js';
 
 @Inject([PrismaService])
 export class PrismaTransactionInterceptor implements Interceptor {
-  constructor(private readonly prisma: PrismaService<PrismaClientLike<unknown>, unknown>) {}
+  constructor(private readonly prisma: PrismaService<PrismaClientLike>) {}
 
   async intercept(context: InterceptorContext, next: { handle(): Promise<unknown> }): Promise<unknown> {
     return this.prisma.requestTransaction(async () => next.handle(), context.requestContext.request.signal);

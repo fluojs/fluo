@@ -5,7 +5,12 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 import { PrismaService } from './service.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
 import { PrismaTransactionInterceptor } from './transaction.js';
-import type { PrismaClientLike, PrismaModuleOptions } from './types.js';
+import type {
+  InferPrismaTransactionClient,
+  InferPrismaTransactionOptions,
+  PrismaClientLike,
+  PrismaModuleOptions,
+} from './types.js';
 
 interface NormalizedPrismaModuleOptions<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -68,8 +73,8 @@ function createPrismaRuntimeProviders<
  */
 export function createPrismaProviders<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = TClient,
-  TTransactionOptions = unknown,
+  TTransactionClient = InferPrismaTransactionClient<TClient>,
+  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >(
   options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): Provider[] {
@@ -81,8 +86,8 @@ export function createPrismaProviders<
 
 function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = TClient,
-  TTransactionOptions = unknown,
+  TTransactionClient = InferPrismaTransactionClient<TClient>,
+  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >(
   options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
 ): ModuleType {
@@ -96,8 +101,8 @@ function buildPrismaModule<
 
 function buildPrismaModuleAsync<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = TClient,
-  TTransactionOptions = unknown,
+  TTransactionClient = InferPrismaTransactionClient<TClient>,
+  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >(options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>): ModuleType {
   class PrismaAsyncModuleDefinition {}
 
@@ -142,8 +147,8 @@ export class PrismaModule {
    */
   static forRoot<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-    TTransactionClient = TClient,
-    TTransactionOptions = unknown,
+    TTransactionClient = InferPrismaTransactionClient<TClient>,
+    TTransactionOptions = InferPrismaTransactionOptions<TClient>,
   >(
     options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
   ): ModuleType {
@@ -158,8 +163,8 @@ export class PrismaModule {
    */
   static forRootAsync<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-    TTransactionClient = TClient,
-    TTransactionOptions = unknown,
+    TTransactionClient = InferPrismaTransactionClient<TClient>,
+    TTransactionOptions = InferPrismaTransactionOptions<TClient>,
   >(
     options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>,
   ): ModuleType {

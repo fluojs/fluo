@@ -11,7 +11,12 @@ import { Inject } from '@konekti/core';
 
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';
-import type { PrismaClientLike, PrismaHandleProvider } from './types.js';
+import type {
+  InferPrismaTransactionClient,
+  InferPrismaTransactionOptions,
+  PrismaClientLike,
+  PrismaHandleProvider,
+} from './types.js';
 
 const NESTED_TRANSACTION_OPTIONS_NOT_SUPPORTED_ERROR =
   'Nested Prisma transaction options are not supported because the active transaction context is reused.';
@@ -38,8 +43,8 @@ type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = TClient,
-  TTransactionOptions = unknown,
+  TTransactionClient = InferPrismaTransactionClient<TClient>,
+  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
 >
   implements PrismaHandleProvider<TClient, TTransactionClient, TTransactionOptions>, OnModuleInit, OnApplicationShutdown
 {
