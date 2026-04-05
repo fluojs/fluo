@@ -34,6 +34,7 @@ npm install @konekti/runtime
 ### 0.x 마이그레이션 노트
 
 - Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
+- 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 
 ## 빠른 시작
 
@@ -457,7 +458,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 - 기본 CORS 미들웨어
 - 런타임 옵션(`port`, 기본 `3000`)으로 포트 결정
 - 시작 로그
-- `SIGTERM`/`SIGINT` → `app.close()` 연결
+- Node 소유 시작 경로를 위한 명시적 `SIGTERM`/`SIGINT` → `app.close()` 등록
 - 요청 중단 시그널 → `FrameworkRequest.signal` 브리지
 
 Node 어댑터는 종료 시 새로운 연결 수락을 중단하고, 시작된 요청들을 정해진 시간 동안 드레인(drain)하며, 유휴 상태의 keep-alive 연결을 닫고, 종료 타임아웃이 만료되면 남은 연결들을 강제로 종료합니다. 기본 10초 드레인 윈도우를 변경하려면 `@konekti/runtime/node` 부트스트랩 옵션의 `shutdownTimeoutMs`를 사용하세요.
