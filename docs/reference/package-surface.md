@@ -17,6 +17,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
 - `@konekti/platform-bun`
+- `@konekti/platform-deno`
 - `@konekti/platform-socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
@@ -53,6 +54,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-bun`**: Bun-based HTTP adapter that reuses the shared `@konekti/runtime/web` Request/Response bridge for fetch-style runtime parity.
+- **`@konekti/platform-deno`**: Deno `Deno.serve(...)` adapter built on the shared runtime Web request/response core.
 - **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
 - **`@konekti/validation`**: Validation decorators, mapped DTO helpers, and validation engine.
