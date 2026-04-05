@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Middleware } from '@konekti/http';
+
 import { createHttpAdapterMiddleware } from './http-adapter-shared.js';
 
 type TestContext = {
@@ -79,12 +81,20 @@ async function runMiddlewareChain(
       return;
     }
 
+    if (!isMiddlewareInstance(current)) {
+      throw new Error('Expected object middleware in shared middleware test harness.');
+    }
+
     await current.handle(context as never, async () => {
       await dispatch(index + 1);
     });
   };
 
   await dispatch(0);
+}
+
+function isMiddlewareInstance(value: unknown): value is Middleware {
+  return typeof value === 'object' && value !== null && 'handle' in value && typeof value.handle === 'function';
 }
 
 describe('createHttpAdapterMiddleware', () => {
