@@ -4,11 +4,10 @@ import {
   createErrorResponse,
   HttpException,
   InternalServerErrorException,
+  type FrameworkResponseCompression,
   type FrameworkResponse,
   type FrameworkResponseStream,
 } from '@konekti/http';
-
-import { compressResponse } from './compression.js';
 
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
@@ -46,7 +45,10 @@ function createFrameworkResponseStream(response: ServerResponse): FrameworkRespo
   };
 }
 
-export function createFrameworkResponse(response: ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {
+export function createFrameworkResponse(
+  response: ServerResponse,
+  compression?: FrameworkResponseCompression,
+): MutableFrameworkResponse {
   const mergeSetCookieHeader = (
     current: string | string[] | number | undefined,
     incoming: string | string[],
@@ -98,14 +100,20 @@ export function createFrameworkResponse(response: ServerResponse, acceptEncoding
         ? Buffer.from(serialized.payload, 'utf8')
         : serialized.payload;
 
-      if (acceptEncoding && payload.byteLength >= 256) {
+      if (compression) {
         this.committed = true;
 
-        return compressResponse(response, payload, acceptEncoding, contentType).catch(() => {
-          if (!response.writableEnded) {
-            response.end();
-          }
-        });
+        return Promise.resolve(compression.write(payload, { contentType }))
+          .then((handled) => {
+            if (!handled && !response.writableEnded) {
+              response.end(payload);
+            }
+          })
+          .catch(() => {
+            if (!response.writableEnded) {
+              response.end();
+            }
+          });
       }
 
       response.end(payload);

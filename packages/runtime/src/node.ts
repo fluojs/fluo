@@ -28,6 +28,7 @@ import {
   type MutableFrameworkResponse,
   writeNodeAdapterErrorResponse,
 } from './node-response.js';
+import { createNodeResponseCompression } from './node-compression.js';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
@@ -209,7 +210,9 @@ function createNodeRequestResponseFactory(
     createResponse(response, request) {
       return createFrameworkResponse(
         response,
-        compression ? request.headers['accept-encoding'] as string | undefined : undefined,
+        compression
+          ? createNodeResponseCompression(response, request.headers['accept-encoding'] as string | undefined)
+          : undefined,
       );
     },
     resolveRequestId(request) {
@@ -259,6 +262,11 @@ export async function runNodeApplication(
     ),
   }, adapter);
 }
+
+export {
+  compressNodeResponse,
+  createNodeResponseCompression,
+} from './node-compression.js';
 
 function createNodeServer(
   httpsOptions: HttpsServerOptions | undefined,

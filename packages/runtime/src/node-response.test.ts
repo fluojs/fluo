@@ -1,6 +1,6 @@
 import type { ServerResponse } from 'node:http';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFrameworkResponse } from './node-response.js';
 
@@ -56,5 +56,33 @@ describe('createFrameworkResponse', () => {
 
     expect(rawResponse.getHeader('content-type')).toBe('text/plain');
     expect(frameworkResponse.headers['content-type']).toBe('text/plain');
+  });
+
+  it('falls back to the raw response when compression declines the body', async () => {
+    const rawResponse = createMockServerResponse();
+    const endSpy = vi.fn();
+    rawResponse.end = endSpy as typeof rawResponse.end;
+    const compression = { write: vi.fn().mockResolvedValue(false) };
+    const frameworkResponse = createFrameworkResponse(rawResponse, compression);
+
+    await frameworkResponse.send('hello');
+
+    expect(compression.write).toHaveBeenCalledOnce();
+    expect(endSpy).toHaveBeenCalledWith(Buffer.from('hello', 'utf8'));
+    expect(frameworkResponse.committed).toBe(true);
+  });
+
+  it('lets the compression strategy own the write when it handles the body', async () => {
+    const rawResponse = createMockServerResponse();
+    const endSpy = vi.fn();
+    rawResponse.end = endSpy as typeof rawResponse.end;
+    const compression = { write: vi.fn().mockResolvedValue(true) };
+    const frameworkResponse = createFrameworkResponse(rawResponse, compression);
+
+    await frameworkResponse.send({ ok: true });
+
+    expect(compression.write).toHaveBeenCalledOnce();
+    expect(endSpy).not.toHaveBeenCalled();
+    expect(frameworkResponse.committed).toBe(true);
   });
 });
