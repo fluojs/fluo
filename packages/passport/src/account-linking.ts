@@ -107,6 +107,8 @@ export class AccountLinkRejectedError extends KonektiError {
 
 /**
  * Conservative baseline policy that never auto-links ambiguous candidates.
+ *
+ * @returns An `AccountLinkPolicy` implementation that requires explicit user confirmation for non-explicit matches.
  */
 export function createConservativeAccountLinkPolicy(): AccountLinkPolicy {
   return {
@@ -169,6 +171,13 @@ const DEFAULT_SKIP_REASON =
 
 /**
  * Resolves account-linking flow using the provided policy and fallback rules.
+ *
+ * @param context Identity, candidate accounts, and optional explicit link-attempt confirmation input.
+ * @param policy Optional account-link policy implementation. When omitted, `options.fallback` controls behavior.
+ * @param options Runtime fallback behavior used only when `policy` is not configured.
+ * @returns A normalized framework decision: `linked`, `create-account`, or `skipped`.
+ * @throws {AccountLinkRejectedError} When policy returns `action: 'reject'`.
+ * @throws {AccountLinkConflictError} When policy returns `action: 'conflict'` and explicit confirmation is required.
  */
 export async function resolveAccountLinking(
   context: AccountLinkContext,
