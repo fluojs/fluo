@@ -36,6 +36,10 @@ import {
   type MultipartOptions,
   type UploadedFile,
 } from '@konekti/runtime';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@konekti/runtime/internal';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {
@@ -105,6 +109,11 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private dispatcher?: Dispatcher;
   private pluginsReady = false;
   private readonly app: ReturnType<typeof fastify>;
+  private readonly requestResponseFactory: RequestResponseFactory<
+    FastifyRequest,
+    FastifyReply,
+    FastifyFrameworkResponse
+  >;
 
   constructor(
     private readonly port: number,
@@ -118,6 +127,10 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
     this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
+    this.requestResponseFactory = createFastifyRequestResponseFactory(
+      this.multipartOptions,
+      this.preserveRawBody,
+    );
   }
 
   getServer(): unknown {
@@ -201,56 +214,39 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   private async handleRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const frameworkResponse = createFrameworkResponse(reply);
-    const signal = createRequestSignal(reply.raw);
-
-    try {
-      await this.dispatchRequest(request, signal, frameworkResponse);
-    } catch (error: unknown) {
-      await this.handleRequestError(error, request, signal, frameworkResponse);
-    }
+    await dispatchWithRequestResponseFactory({
+      dispatcher: this.dispatcher,
+      dispatcherNotReadyMessage: 'Fastify adapter received a request before dispatcher binding completed.',
+      factory: this.requestResponseFactory,
+      rawRequest: request,
+      rawResponse: reply,
+    });
   }
+}
 
-  private async dispatchRequest(
-    request: FastifyRequest,
-    signal: AbortSignal,
-    frameworkResponse: FastifyFrameworkResponse,
-  ): Promise<void> {
-    const frameworkRequest = await createFrameworkRequest(
-      request,
-      signal,
-      this.multipartOptions,
-      this.preserveRawBody,
-    );
-
-    const dispatcher = this.dispatcher;
-
-    if (!dispatcher) {
-      throw new Error('Fastify adapter received a request before dispatcher binding completed.');
-    }
-
-    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-    if (!frameworkResponse.committed) {
-      await frameworkResponse.send(undefined);
-    }
-  }
-
-  private async handleRequestError(
-    error: unknown,
-    request: FastifyRequest,
-    signal: AbortSignal,
-    frameworkResponse: FastifyFrameworkResponse,
-  ): Promise<void> {
-    if (signal.aborted || frameworkResponse.committed) {
-      return;
-    }
-
-    const requestId = resolveRequestIdFromHeaders(request.raw.headers);
-    const httpError = toHttpException(error);
-    frameworkResponse.setStatus(httpError.status);
-    await frameworkResponse.send(createErrorResponse(httpError, requestId));
-  }
+function createFastifyRequestResponseFactory(
+  multipartOptions?: MultipartOptions,
+  preserveRawBody = false,
+): RequestResponseFactory<FastifyRequest, FastifyReply, FastifyFrameworkResponse> {
+  return {
+    async createRequest(request: FastifyRequest, signal: AbortSignal) {
+      return createFrameworkRequest(request, signal, multipartOptions, preserveRawBody);
+    },
+    createRequestSignal(reply: FastifyReply) {
+      return createRequestSignal(reply.raw);
+    },
+    createResponse(reply: FastifyReply) {
+      return createFrameworkResponse(reply);
+    },
+    resolveRequestId(request: FastifyRequest) {
+      return resolveRequestIdFromHeaders(request.raw.headers);
+    },
+    async writeErrorResponse(error: unknown, response: FastifyFrameworkResponse, requestId?: string) {
+      const httpError = toHttpException(error);
+      response.setStatus(httpError.status);
+      await response.send(createErrorResponse(httpError, requestId));
+    },
+  };
 }
 
 export function createFastifyAdapter(
