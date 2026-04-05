@@ -31,6 +31,10 @@ import {
   type MutableFrameworkResponse,
   writeNodeAdapterErrorResponse,
 } from './node-response.js';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from './request-response-factory.js';
 import { registerShutdownSignals } from './node-shutdown.js';
 import type { MultipartOptions, UploadedFile } from './multipart.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
@@ -101,6 +105,11 @@ type NodeRequestListener = RequestListener;
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
   private dispatcher?: Dispatcher;
+  private readonly requestResponseFactory: RequestResponseFactory<
+    import('node:http').IncomingMessage,
+    import('node:http').ServerResponse,
+    MutableFrameworkResponse
+  >;
   private readonly sockets = new Set<Socket>();
 
   constructor(
@@ -115,6 +124,12 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
+    this.requestResponseFactory = createNodeRequestResponseFactory(
+      compression,
+      multipartOptions,
+      maxBodySize,
+      preserveRawBody,
+    );
     this.server = createNodeServer(this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
 
@@ -162,55 +177,52 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     request: import('node:http').IncomingMessage,
     response: import('node:http').ServerResponse,
   ): Promise<void> {
-    const frameworkResponse = createFrameworkResponse(response, this.compression ? request.headers['accept-encoding'] as string | undefined : undefined);
-    const signal = createRequestSignal(response);
-
-    try {
-      await this.dispatchRequest(request, signal, frameworkResponse);
-    } catch (error: unknown) {
-      await this.handleRequestError(error, request, signal, frameworkResponse);
-    }
+    await dispatchWithRequestResponseFactory({
+      dispatcher: this.dispatcher,
+      dispatcherNotReadyMessage: 'Node HTTP adapter received a request before dispatcher binding completed.',
+      factory: this.requestResponseFactory,
+      rawRequest: request,
+      rawResponse: response,
+    });
   }
+}
 
-  private async dispatchRequest(
-    request: import('node:http').IncomingMessage,
-    signal: AbortSignal,
-    frameworkResponse: MutableFrameworkResponse,
-  ): Promise<void> {
-    const frameworkRequest = await createFrameworkRequest(
-      request,
-      signal,
-      this.multipartOptions,
-      this.maxBodySize,
-      this.preserveRawBody,
-    );
-
-    const dispatcher = this.dispatcher;
-
-    if (!dispatcher) {
-      throw new Error('Node HTTP adapter received a request before dispatcher binding completed.');
-    }
-
-    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-    if (!frameworkResponse.committed) {
-      await frameworkResponse.send(undefined);
-    }
-  }
-
-  private async handleRequestError(
-    error: unknown,
-    request: import('node:http').IncomingMessage,
-    signal: AbortSignal,
-    frameworkResponse: MutableFrameworkResponse,
-  ): Promise<void> {
-    if (shouldSkipNodeAdapterErrorResponse(signal, frameworkResponse)) {
-      return;
-    }
-
-    const requestId = resolveRequestIdFromHeaders(request.headers);
-    await writeNodeAdapterErrorResponse(error, frameworkResponse, requestId);
-  }
+function createNodeRequestResponseFactory(
+  compression: boolean,
+  multipartOptions: MultipartOptions | undefined,
+  maxBodySize: number,
+  preserveRawBody: boolean,
+): RequestResponseFactory<
+  import('node:http').IncomingMessage,
+  import('node:http').ServerResponse,
+  MutableFrameworkResponse
+> {
+  return {
+    async createRequest(request, signal) {
+      return createFrameworkRequest(
+        request,
+        signal,
+        multipartOptions,
+        maxBodySize,
+        preserveRawBody,
+      );
+    },
+    createRequestSignal(response) {
+      return createRequestSignal(response);
+    },
+    createResponse(response, request) {
+      return createFrameworkResponse(
+        response,
+        compression ? request.headers['accept-encoding'] as string | undefined : undefined,
+      );
+    },
+    resolveRequestId(request) {
+      return resolveRequestIdFromHeaders(request.headers);
+    },
+    async writeErrorResponse(error, response, requestId) {
+      await writeNodeAdapterErrorResponse(error, response, requestId);
+    },
+  };
 }
 
 export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, compression = false, multipartOptions?: MultipartOptions): HttpApplicationAdapter {
@@ -371,10 +383,6 @@ function closeNodeServerWithDrain(
 
     closeIdleConnections(server);
   });
-}
-
-function shouldSkipNodeAdapterErrorResponse(signal: AbortSignal, frameworkResponse: FrameworkResponse): boolean {
-  return signal.aborted || frameworkResponse.committed;
 }
 
 function formatListenMessage(target: NodeListenTarget): string {

@@ -49,6 +49,10 @@ import {
   type MultipartOptions,
   type UploadedFile,
 } from '@konekti/runtime';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@konekti/runtime/internal';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {
@@ -121,6 +125,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private readonly app: Express;
+  private readonly requestResponseFactory: RequestResponseFactory<
+    ExpressRequest,
+    ExpressResponse,
+    ExpressFrameworkResponse
+  >;
   private readonly server: ExpressServer;
   private readonly sockets = new Set<Socket>();
 
@@ -136,6 +145,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   ) {
     this.app = express();
+    this.requestResponseFactory = createExpressRequestResponseFactory(
+      this.multipartOptions,
+      this.maxBodySize,
+      this.preserveRawBody,
+    );
     this.server = createExpressServer(this.httpsOptions, this.app);
     this.app.use((request: ExpressRequest, response: ExpressResponse) => {
       void this.handleRequest(request, response);
@@ -203,57 +217,46 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   private async handleRequest(request: ExpressRequest, response: ExpressResponse): Promise<void> {
-    const frameworkResponse = createFrameworkResponse(response);
-    const signal = createRequestSignal(response);
-
-    try {
-      await this.dispatchRequest(request, signal, frameworkResponse);
-    } catch (error: unknown) {
-      await this.handleRequestError(error, request, signal, frameworkResponse);
-    }
+    await dispatchWithRequestResponseFactory({
+      dispatcher: this.dispatcher,
+      dispatcherNotReadyMessage: 'Express adapter received a request before dispatcher binding completed.',
+      factory: this.requestResponseFactory,
+      rawRequest: request,
+      rawResponse: response,
+    });
   }
+}
 
-  private async dispatchRequest(
-    request: ExpressRequest,
-    signal: AbortSignal,
-    frameworkResponse: ExpressFrameworkResponse,
-  ): Promise<void> {
-    const frameworkRequest = await createFrameworkRequest(
-      request,
-      signal,
-      this.multipartOptions,
-      this.maxBodySize,
-      this.preserveRawBody,
-    );
-
-    const dispatcher = this.dispatcher;
-
-    if (!dispatcher) {
-      throw new Error('Express adapter received a request before dispatcher binding completed.');
-    }
-
-    await dispatcher.dispatch(frameworkRequest, frameworkResponse);
-
-    if (!frameworkResponse.committed) {
-      await frameworkResponse.send(undefined);
-    }
-  }
-
-  private async handleRequestError(
-    error: unknown,
-    request: ExpressRequest,
-    signal: AbortSignal,
-    frameworkResponse: ExpressFrameworkResponse,
-  ): Promise<void> {
-    if (signal.aborted || frameworkResponse.committed) {
-      return;
-    }
-
-    const requestId = resolveRequestIdFromHeaders(request.headers);
-    const httpError = toHttpException(error);
-    frameworkResponse.setStatus(httpError.status);
-    await frameworkResponse.send(createErrorResponse(httpError, requestId));
-  }
+function createExpressRequestResponseFactory(
+  multipartOptions?: MultipartOptions,
+  maxBodySize = DEFAULT_MAX_BODY_SIZE,
+  preserveRawBody = false,
+): RequestResponseFactory<ExpressRequest, ExpressResponse, ExpressFrameworkResponse> {
+  return {
+    async createRequest(request: ExpressRequest, signal: AbortSignal) {
+      return createFrameworkRequest(
+        request,
+        signal,
+        multipartOptions,
+        maxBodySize,
+        preserveRawBody,
+      );
+    },
+    createRequestSignal(response: ExpressResponse) {
+      return createRequestSignal(response);
+    },
+    createResponse(response: ExpressResponse) {
+      return createFrameworkResponse(response);
+    },
+    resolveRequestId(request: ExpressRequest) {
+      return resolveRequestIdFromHeaders(request.headers);
+    },
+    async writeErrorResponse(error: unknown, response: ExpressFrameworkResponse, requestId?: string) {
+      const httpError = toHttpException(error);
+      response.setStatus(httpError.status);
+      await response.send(createErrorResponse(httpError, requestId));
+    },
+  };
 }
 
 export function createExpressAdapter(
