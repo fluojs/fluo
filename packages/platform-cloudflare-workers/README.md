@@ -61,7 +61,7 @@ export default {
 
 ### Supported options
 
-Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime options from `@konekti/runtime/internal` plus the shared Web bridge options:
+Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime options from `@konekti/runtime/internal/http-adapter` plus the shared Web bridge options:
 
 - `cors` (`false | string | string[] | CorsOptions`)
 - `globalPrefix`

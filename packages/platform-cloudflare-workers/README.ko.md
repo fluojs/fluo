@@ -61,7 +61,7 @@ export default {
 
 ### 지원 옵션
 
-Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal`의 공유 HTTP 어댑터 미들웨어/런타임 옵션과 공유 Web 브리지 옵션을 함께 지원합니다.
+Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공유 HTTP 어댑터 미들웨어/런타임 옵션과 공유 Web 브리지 옵션을 함께 지원합니다.
 
 - `cors` (`false | string | string[] | CorsOptions`)
 - `globalPrefix`

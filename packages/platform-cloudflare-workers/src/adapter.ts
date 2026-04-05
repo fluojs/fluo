@@ -2,7 +2,7 @@ import type { Dispatcher, HttpApplicationAdapter } from '@konekti/http';
 import {
   bootstrapHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
-} from '@konekti/runtime/internal';
+} from '@konekti/runtime/internal/http-adapter';
 import type {
   Application,
   ModuleType,

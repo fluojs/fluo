@@ -6,7 +6,7 @@ import {
   type BootstrapHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
-} from '@konekti/runtime/internal';
+} from '@konekti/runtime/internal/http-adapter';
 import { dispatchWebRequest } from '@konekti/runtime/web';
 
 export interface DenoServeOnListenInfo {

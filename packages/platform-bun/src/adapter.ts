@@ -13,14 +13,16 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@konekti/runtime';
+import {
+  createNodeShutdownSignalRegistration,
+  defaultNodeShutdownSignals,
+} from '@konekti/runtime/node';
 import { dispatchWebRequest } from '@konekti/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
-  createNodeShutdownSignalRegistration,
-  defaultNodeShutdownSignals,
   runHttpAdapterApplication,
   type HttpAdapterListenTarget,
-} from '@konekti/runtime/internal';
+} from '@konekti/runtime/internal/http-adapter';
 
 declare module '@konekti/http' {
   interface FrameworkRequest {
