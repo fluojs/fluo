@@ -31,6 +31,10 @@ Runtime-managed adapters may also expose `FrameworkResponse.stream` when the tra
 npm install @konekti/runtime
 ```
 
+### 0.x migration note
+
+- Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
+
 ## Quick Start
 
 ### Minimal Node.js app
@@ -295,6 +299,7 @@ await bootstrapApplication({
 
 ```typescript
 import { Controller, Get, Version, VersioningType } from '@konekti/http';
+import { runNodeApplication } from '@konekti/runtime/node';
 
 @Version('1')
 @Controller('/users')
@@ -370,8 +375,8 @@ Runtime validates component identity/dependency edges, starts components in depe
 | Export | Location | Description |
 |---|---|---|
 | `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | Canonical HTTP application entrypoint — returns `Application` |
-| `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
-| `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
+| `@konekti/runtime/node` → `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
+| `@konekti/runtime/node` → `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
 | `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PersistencePlatformStatusSnapshot`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
 | `PLATFORM_SHELL` | `src/tokens.ts` | Runtime token exposing the current platform shell orchestrator and snapshot/report API. |
@@ -385,7 +390,7 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
 | `@Global()` | `@konekti/core` | Marks a module as globally visible |
 
-`@konekti/runtime` root barrel intentionally keeps only public runtime tokens (`APPLICATION_LOGGER`, `PLATFORM_SHELL`). Internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`) are available for framework-internal package composition via `@konekti/runtime/internal`.
+`@konekti/runtime` root barrel intentionally excludes Node lifecycle helpers so the transport-agnostic package boundary stays focused on orchestration. Import Node bootstrap helpers from `@konekti/runtime/node`. Internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`) remain available for framework-internal package composition via `@konekti/runtime/internal`.
 
 ## Architecture
 
@@ -449,13 +454,13 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 `KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
 
-Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createNodeHttpAdapter`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`.
+Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `parseMultipart`, `compressResponse`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Node-specific helpers live under `@konekti/runtime/node`.
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 
-### Node startup concerns owned by runtime
+### Node startup concerns isolated to `@konekti/runtime/node`
 
-`runNodeApplication()` consolidates Node-specific startup details that should not live in application code:
+The `@konekti/runtime/node` subpath consolidates Node-specific startup details that should not live in the transport-agnostic runtime root:
 - HTTP adapter creation and binding
 - Default CORS middleware
 - Port resolution from runtime options (`port`, default `3000`)
@@ -463,7 +468,7 @@ Additional public exports also include helpers such as `KonektiFactory`, `create
 - `SIGTERM`/`SIGINT` → `app.close()` wiring
 - Request abort signal → `FrameworkRequest.signal` bridge
 
-The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in Node bootstrap options to override the default 10-second drain window.
+The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in `@konekti/runtime/node` bootstrap options to override the default 10-second drain window.
 
 ## File reading order for contributors
 
