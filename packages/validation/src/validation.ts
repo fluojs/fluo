@@ -1,17 +1,19 @@
 import validator from 'validator';
 
 import {
+  type Constructor,
+  type MetadataPropertyKey,
+} from '@konekti/core';
+import {
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
   type ClassValidationRule,
-  type Constructor,
   type DtoFieldBindingMetadata,
   type DtoFieldValidationRule,
-  type MetadataPropertyKey,
   type ValidationIssueMetadata,
   type ValidationRuleResult,
-} from '@konekti/core';
+} from '@konekti/core/internal';
 
 import { DtoValidationError } from './errors.js';
 import type { ValidationIssue, Validator } from './types.js';

@@ -1,4 +1,5 @@
-import { getControllerMetadata, getRouteMetadata, type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { getControllerMetadata, getRouteMetadata } from '@konekti/core/internal';
 
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';

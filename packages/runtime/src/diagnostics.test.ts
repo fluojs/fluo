@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Scope, defineModuleMetadata } from '@konekti/core';
+import { Scope } from '@konekti/core';
+import { defineModuleMetadata } from '@konekti/core/internal';
 
 import { compileModuleGraph } from './module-graph.js';
 import {

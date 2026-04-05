@@ -1,4 +1,5 @@
-import { getDtoBindingSchema, type Constructor } from '@konekti/core';
+import { type Constructor } from '@konekti/core';
+import { getDtoBindingSchema } from '@konekti/core/internal';
 import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/validation';
 
 import { BadRequestException } from './exceptions.js';

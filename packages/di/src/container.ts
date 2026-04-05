@@ -1,4 +1,5 @@
-import { InvariantError, formatTokenName, getClassDiMetadata, type Token } from '@konekti/core';
+import { InvariantError, formatTokenName, type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 
 import {
   CircularDependencyError,
