@@ -5,7 +5,7 @@ import type {
   PlatformShellSnapshot,
   PlatformSnapshot,
   PlatformValidationResult,
-} from './platform-contract.js';
+} from './index.js';
 
 describe('platform contract spine', () => {
   it('freezes the shared platform snapshot shape for tooling consumers', () => {
