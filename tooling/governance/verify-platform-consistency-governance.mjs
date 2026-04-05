@@ -147,6 +147,22 @@ function collectPackageDirs() {
     .map((entry) => entry.name);
 }
 
+function enforcePackageDirectoriesHaveManifests() {
+  const packagesRoot = join(repoRoot, 'packages');
+
+  for (const entry of readdirSync(packagesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const manifestPath = join(packagesRoot, entry.name, 'package.json');
+    assert(
+      existsSync(manifestPath),
+      `packages/${entry.name} must contain package.json so packages/* does not admit ghost workspace members.`,
+    );
+  }
+}
+
 function collectMarkdownFiles(relativeRoot) {
   const absoluteRoot = join(repoRoot, relativeRoot);
   if (!existsSync(absoluteRoot)) {
@@ -337,6 +353,7 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
 const changedFiles = changedFilesFromGit();
 
 enforceSsotMirrorStructure();
+enforcePackageDirectoriesHaveManifests();
 enforceReleaseGovernancePublishSurfaceSync();
 enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
 enforceContractCompanionUpdates(changedFiles);
