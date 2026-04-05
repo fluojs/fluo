@@ -52,11 +52,9 @@
     "@konekti/config": "workspace:*",
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "busboy": "^1.6.0"
+    "@konekti/http": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/serialization": "workspace:*",
-    "@types/busboy": "^1.5.4"
+    "@konekti/serialization": "workspace:*"
   }
 }
