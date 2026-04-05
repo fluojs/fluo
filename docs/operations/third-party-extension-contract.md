@@ -60,6 +60,7 @@ Adapters must map native objects to the following contracts:
 
 - **`FrameworkRequest`**: Method, path, url, headers, query, cookies, params, body, and rawBody.
 - **`FrameworkResponse`**: Must provide `setStatus`, `setHeader`, `redirect`, and `send`. It must also track the `committed` state to prevent double-writes.
+- **`FrameworkResponse.stream`**: Optional, but required when the adapter claims SSE or streamed HTTP-response support. This capability must abstract transport-specific writable details behind the framework contract (`write`, `close`, `closed`, optional `flush`, optional `waitForDrain`, optional `onClose`) instead of requiring consumers to duck-type raw Node response objects.
 
 ## DI Token Naming Conventions
 
