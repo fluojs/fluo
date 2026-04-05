@@ -39,11 +39,7 @@
 
 **왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하고, `runNodeApplication()` 같은 Node 전용 호환 헬퍼는 이제 `@konekti/runtime/node`에 위치합니다.
 
-**공식 런타임 매트릭스:**
-- **Node.js:** `@konekti/platform-fastify`(스타터 기본) 또는 Express 미들웨어 호환이 필요할 때 `@konekti/platform-express`
-- **Bun:** Bun 네이티브 fetch 스타일 시작 경로용 `@konekti/platform-bun`
-- **Deno:** `Deno.serve(...)` 시작 경로용 `@konekti/platform-deno`
-- **Cloudflare Workers:** Worker `fetch` 엔트리포인트와 stateless isolate 라이프사이클용 `@konekti/platform-cloudflare-workers`
+**표준 런타임 매트릭스:** 공식 런타임/패키지 매핑은 [`package-surface.ko.md`](./package-surface.ko.md#canonical-runtime-package-matrix)를 기준으로 삼으세요. 이 가이드는 작업 기준 패키지 선택에만 집중하고, 런타임별 시작 세부사항은 각 어댑터 README로 연결합니다.
 
 **사용하지 않는 경우:**
 - Node.js에서 Express 미들웨어 호환이 필요하면 `platform-fastify` 대신 `@konekti/platform-express`로 교체하세요.

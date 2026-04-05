@@ -39,11 +39,7 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 
 **Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, `platform-fastify` gives the starter its default adapter-first HTTP listener on Node.js, and `validation` + `config` handle input safety and environment binding. New HTTP apps should prefer `KonektiFactory.create(..., { adapter })` with an explicit runtime adapter, while Node-only compatibility helpers such as `runNodeApplication()` now live under `@konekti/runtime/node`.
 
-**Official runtime matrix:**
-- **Node.js:** `@konekti/platform-fastify` (starter default) or `@konekti/platform-express` when Express middleware compatibility matters.
-- **Bun:** `@konekti/platform-bun` for Bun-native fetch-style startup.
-- **Deno:** `@konekti/platform-deno` for `Deno.serve(...)` startup.
-- **Cloudflare Workers:** `@konekti/platform-cloudflare-workers` for Worker `fetch` entrypoints and stateless isolate lifecycles.
+**Canonical runtime matrix:** See [`package-surface.md`](./package-surface.md#canonical-runtime-package-matrix) for the authoritative runtime/package mapping. This guide stays focused on task-based package selection and links out to the adapter READMEs for runtime-specific startup details.
 
 **When not to use:**
 - If you need Express middleware compatibility on Node.js, swap `platform-fastify` for `@konekti/platform-express`.
