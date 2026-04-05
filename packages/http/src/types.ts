@@ -26,6 +26,7 @@ export interface FrameworkRequest {
 }
 
 export interface FrameworkResponse {
+  compression?: FrameworkResponseCompression;
   statusCode?: number;
   statusSet?: boolean;
   headers: Record<string, string | string[]>;
@@ -36,6 +37,17 @@ export interface FrameworkResponse {
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
   send(body: unknown): MaybePromise<void>;
+}
+
+export interface FrameworkResponseCompression {
+  write(
+    body: Uint8Array,
+    options?: FrameworkResponseCompressionWriteOptions,
+  ): MaybePromise<boolean>;
+}
+
+export interface FrameworkResponseCompressionWriteOptions {
+  contentType?: string;
 }
 
 export interface FrameworkResponseStream {
