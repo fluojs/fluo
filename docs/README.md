@@ -40,12 +40,14 @@ Practical guides for day-to-day development once your application is running.
 
 Konekti is highly composable. Use these links to discover and select the right tools for your task.
 
-Official transport packages now include `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, and `@konekti/platform-deno`; use each package README for runtime-specific startup and hosting details.
+Official transport packages now include `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`; use each package README for runtime-specific startup and hosting details.
 
 - `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
 - `reference/package-surface.md` - Overview of the public API surface across the framework.
 - `reference/toolchain-contract-matrix.md` - Versioning and compatibility across the ecosystem.
 - `../packages/platform-bun/README.md` - Official Bun adapter package contract and startup path.
+- `../packages/platform-deno/README.md` - Official Deno adapter package contract and startup path.
+- `../packages/platform-cloudflare-workers/README.md` - Official Cloudflare Workers adapter package contract and startup path.
 
 ## migration
 

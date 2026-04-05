@@ -40,12 +40,14 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
-이제 official transport package에는 `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`가 포함되며, 런타임별 시작/호스팅 세부사항은 각 package README를 참고하세요.
+이제 official transport package에는 `@konekti/platform-fastify`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers`가 포함되며, 런타임별 시작/호스팅 세부사항은 각 package README를 참고하세요.
 
 - `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
 - `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.
 - `reference/toolchain-contract-matrix.ko.md` - 에코시스템 버전 관리 및 호환성 매트릭스.
 - `../packages/platform-bun/README.ko.md` - 공식 Bun 어댑터 패키지 계약과 시작 경로.
+- `../packages/platform-deno/README.ko.md` - 공식 Deno 어댑터 패키지 계약과 시작 경로.
+- `../packages/platform-cloudflare-workers/README.ko.md` - 공식 Cloudflare Workers 어댑터 패키지 계약과 시작 경로.
 
 ## 마이그레이션
 

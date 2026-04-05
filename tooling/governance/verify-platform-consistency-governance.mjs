@@ -34,6 +34,14 @@ const removedRuntimeModuleFactoryNames = [
   'createRedisModule',
 ];
 
+const officialTransportDocsPackages = [
+  '@konekti/platform-fastify',
+  '@konekti/platform-express',
+  '@konekti/platform-bun',
+  '@konekti/platform-deno',
+  '@konekti/platform-cloudflare-workers',
+];
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -329,6 +337,27 @@ function enforceReleaseGovernancePublishSurfaceSync() {
   );
 }
 
+function enforceDocsHubOfficialTransportLinks() {
+  const docsReadme = readFileSync(join(repoRoot, 'docs/README.md'), 'utf8');
+  const docsReadmeKo = readFileSync(join(repoRoot, 'docs/README.ko.md'), 'utf8');
+  const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+
+  for (const packageName of officialTransportDocsPackages) {
+    if (!packageSurface.includes(`- \`${packageName}\``)) {
+      continue;
+    }
+
+    assert(
+      docsReadme.includes(packageName),
+      `docs/README.md must mention ${packageName} when it is part of the official transport package set.`,
+    );
+    assert(
+      docsReadmeKo.includes(packageName),
+      `docs/README.ko.md must mention ${packageName} when it is part of the official transport package set.`,
+    );
+  }
+}
+
 function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
   const markdownFiles = [
     ...collectMarkdownFiles('docs'),
@@ -358,6 +387,7 @@ const changedFiles = changedFilesFromGit();
 enforceSsotMirrorStructure();
 enforcePackageDirectoriesHaveManifests();
 enforceReleaseGovernancePublishSurfaceSync();
+enforceDocsHubOfficialTransportLinks();
 enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
 enforceContractCompanionUpdates(changedFiles);
 enforceAlignmentClaimsBackedByHarness(changedFiles);

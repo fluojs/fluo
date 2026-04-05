@@ -14,6 +14,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/platform-cloudflare-workers`
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
 - `@konekti/platform-bun`
@@ -51,6 +52,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/di`**: Provider resolution and lifecycle scopes.
 - **`@konekti/http`**: HTTP execution, binding, exceptions, and route metadata.
 - **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing. Node lifecycle helpers are isolated to the `@konekti/runtime/node` subpath instead of the root barrel.
+- **`@konekti/platform-cloudflare-workers`**: Cloudflare Workers HTTP adapter built on the shared `@konekti/runtime/web` Request/Response bridge, including eager/lazy Worker fetch entrypoints and explicit stateless lifecycle semantics for Worker isolates.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-bun`**: Bun-based HTTP adapter that reuses the shared `@konekti/runtime/web` Request/Response bridge for fetch-style runtime parity.
