@@ -606,6 +606,13 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      '@konekti/platform-express':
+        specifier: workspace:*
+        version: link:../platform-express
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../platform-fastify
 
   packages/throttler:
     dependencies:

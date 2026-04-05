@@ -18,6 +18,7 @@
 모든 공식 플랫폼-지향 패키지는 `@konekti/testing`의 공유 conformance harness를 실행하는 테스트를 포함해야 합니다.
 
 - `createPlatformConformanceHarness(...)`
+- HTTP 어댑터와 adapter-first 런타임 패키지에는 `createHttpAdapterPortabilityHarness(...)`
 - `assertAll()` **또는** 항목별 invariant 단언
 
 하니스가 보장해야 하는 최소 invariant:
@@ -31,6 +32,8 @@
 - snapshot이 민감 정보 키를 포함하지 않도록 sanitize된다.
 
 리소스 소유/점유 semantics가 있는 플랫폼 패키지는 하니스 테스트에서 `captureValidationSideEffects`를 제공해 숨은 리소스 변화를 명시적으로 검증해야 합니다.
+
+HTTP 어댑터는 요청 정규화, `rawBody` opt-in 동작, SSE 프레이밍, 시작 로그, 종료 시그널 정리에 대해 내장 Node 어댑터와의 parity를 증명하는 portability 단언을 포함해야 합니다.
 
 ## 패키지 작성 체크리스트
 

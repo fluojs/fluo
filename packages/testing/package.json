@@ -44,6 +44,10 @@
     "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
+  "devDependencies": {
+    "@konekti/platform-express": "workspace:*",
+    "@konekti/platform-fastify": "workspace:*"
+  },
   "dependencies": {
     "@konekti/config": "workspace:*",
     "@konekti/core": "workspace:*",

@@ -18,6 +18,7 @@ Use this checklist whenever a package starts participating in the runtime-owned 
 Every official platform-facing package must include tests that execute the shared conformance harness from `@konekti/testing`:
 
 - `createPlatformConformanceHarness(...)`
+- `createHttpAdapterPortabilityHarness(...)` for HTTP adapters and adapter-first runtime packages
 - `assertAll()` **or** explicit per-invariant assertions
 
 Minimum invariants covered by the harness:
@@ -31,6 +32,8 @@ Minimum invariants covered by the harness:
 - snapshots are sanitized (no sensitive credential/secret key paths).
 
 For platform packages with ownership/resource semantics, provide `captureValidationSideEffects` in harness tests so hidden resource mutations are asserted explicitly.
+
+For HTTP adapters, include portability assertions that prove parity with the built-in Node adapter for request normalization, `rawBody` opt-in behavior, SSE framing, startup logging, and shutdown signal cleanup.
 
 ## package authoring checklist
 

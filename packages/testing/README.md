@@ -228,6 +228,33 @@ The kit enforces these invariants:
 - diagnostics keep stable non-empty `code` values and include error-level `fixHint`.
 - snapshots remain sanitized (no secret-bearing key paths).
 
+### HTTP adapter portability harness
+
+Use `createHttpAdapterPortabilityHarness(...)` when an HTTP adapter must prove parity with the built-in Node runtime adapter for request normalization, raw-body handling, SSE streaming, startup logging, HTTPS startup, and shutdown signal cleanup.
+
+```ts
+import { createHttpAdapterPortabilityHarness } from '@konekti/testing';
+import { bootstrapExpressApplication, runExpressApplication } from '@konekti/platform-express';
+
+const harness = createHttpAdapterPortabilityHarness({
+  bootstrap: bootstrapExpressApplication,
+  name: 'express',
+  run: runExpressApplication,
+});
+
+await harness.assertPreservesRawBodyForJsonAndText();
+await harness.assertExcludesRawBodyForMultipart();
+await harness.assertSupportsSseStreaming();
+```
+
+The adapter portability harness covers these parity expectations:
+
+- malformed cookie values remain observable instead of aborting the request path.
+- `rawBody` stays opt-in for JSON/text requests and remains unset for multipart parsing.
+- SSE responses keep `text/event-stream` framing.
+- startup logs reflect explicit host and HTTPS listen targets.
+- signal-driven startup helpers remove registered shutdown listeners on close.
+
 ### Resolving tokens directly
 
 ```typescript
@@ -277,6 +304,10 @@ createTestingModule(options: TestingModuleOptions): TestingModuleBuilder
 Shared platform conformance test harness for official platform-facing packages.
 
 `captureValidationSideEffects` is optional. Without it, validation-side-effect coverage is limited to the unconditional state-transition guard (`validate()` must not change `component.state()`).
+
+### `createHttpAdapterPortabilityHarness(options)`
+
+Shared HTTP adapter portability harness for built-in and external transport adapters.
 
 ### `TestingModuleBuilder`
 
