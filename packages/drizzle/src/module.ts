@@ -5,7 +5,11 @@ import { defineModule, type ModuleType } from '@konekti/runtime';
 import { DrizzleDatabase } from './database.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
 import { DrizzleTransactionInterceptor } from './transaction.js';
-import type { DrizzleDatabaseLike, DrizzleModuleOptions, DrizzleRuntimeOptions } from './types.js';
+import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
+
+type DrizzleRuntimeOptions = {
+  strictTransactions: boolean;
+};
 
 type ResolvedDrizzleModuleOptions<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
@@ -110,6 +114,12 @@ function createDrizzleProvidersAsync<
   return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>(normalizedOptionsProvider);
 }
 
+/**
+ * Creates Drizzle providers for manual module composition.
+ *
+ * @param options Drizzle module options with a database handle, optional dispose hook, and strict transaction policy.
+ * @returns Provider definitions equivalent to `DrizzleModule.forRoot(...)`.
+ */
 export function createDrizzleProviders<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
@@ -149,7 +159,11 @@ function buildDrizzleModuleAsync<
   });
 }
 
+/**
+ * Module entrypoint for wiring a Drizzle database into the Konekti runtime lifecycle.
+ */
 export class DrizzleModule {
+  /** Creates a module definition from static Drizzle options. */
   static forRoot<
     TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
     TTransactionDatabase = TDatabase,
@@ -158,6 +172,7 @@ export class DrizzleModule {
     return buildDrizzleModule<TDatabase, TTransactionDatabase, TTransactionOptions>(options);
   }
 
+  /** Creates a module definition from DI-aware async Drizzle options. */
   static forRootAsync<
     TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
     TTransactionDatabase = TDatabase,

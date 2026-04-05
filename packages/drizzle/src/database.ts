@@ -14,8 +14,6 @@ import { createDrizzlePlatformStatusSnapshot } from './status.js';
 import type {
   DrizzleDatabaseLike,
   DrizzleHandleProvider,
-  DrizzleRuntimeOptions,
-  DrizzleTransactionRunner,
 } from './types.js';
 
 const TRANSACTION_NOT_SUPPORTED_ERROR = 'Transaction not supported: Drizzle database does not implement transaction.';
@@ -32,6 +30,18 @@ type ActiveRequestTransactionHandle = {
   settle(): void;
 };
 
+type DrizzleTransactionRunner<TTransactionDatabase, TTransactionOptions> = <T>(
+  callback: (database: TTransactionDatabase) => Promise<T>,
+  options?: TTransactionOptions,
+) => Promise<T>;
+
+type DrizzleRuntimeOptions = {
+  strictTransactions: boolean;
+};
+
+/**
+ * Transaction-aware Drizzle wrapper that integrates request scoping and shutdown handling with the Konekti runtime.
+ */
 @Inject([DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS])
 export class DrizzleDatabase<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
@@ -49,10 +59,12 @@ export class DrizzleDatabase<
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
   ) {}
 
+  /** Returns the active transaction handle when present, otherwise the root Drizzle database handle. */
   current(): TDatabase | TTransactionDatabase {
     return this.transactions.getStore() ?? this.database;
   }
 
+  /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
 
@@ -69,6 +81,7 @@ export class DrizzleDatabase<
     this.lifecycleState = 'stopped';
   }
 
+  /** Produces the shared persistence status snapshot for platform diagnostics surfaces. */
   createPlatformStatusSnapshot() {
     return createDrizzlePlatformStatusSnapshot({
       activeRequestTransactions: this.activeRequestTransactions.size,
@@ -78,10 +91,12 @@ export class DrizzleDatabase<
     });
   }
 
+  /** Opens a Drizzle transaction boundary or reuses the current one when already inside a transaction. */
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
     return this.executeTransaction(fn, options, false);
   }
 
+  /** Opens an abort-aware request transaction boundary for the current HTTP request. */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     return this.executeTransaction(fn, options, true, signal);
   }
