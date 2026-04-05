@@ -14,7 +14,6 @@ import { createMongoosePlatformStatusSnapshot } from './status.js';
 import type {
   MongooseConnectionLike,
   MongooseHandleProvider,
-  MongooseRuntimeOptions,
   MongooseSessionLike,
 } from './types.js';
 
@@ -28,6 +27,10 @@ type ActiveRequestTransaction = {
 type ActiveRequestTransactionHandle = {
   active: ActiveRequestTransaction;
   settle(): void;
+};
+
+type MongooseRuntimeOptions = {
+  strictTransactions: boolean;
 };
 
 async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: () => Promise<T>): Promise<T> {
@@ -47,6 +50,9 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
   }
 }
 
+/**
+ * Session-aware Mongoose wrapper that integrates request scoping and shutdown handling with the Konekti runtime.
+ */
 @Inject([MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS])
 export class MongooseConnection<TConnection extends MongooseConnectionLike = MongooseConnectionLike>
   implements MongooseHandleProvider<TConnection>, OnApplicationShutdown
@@ -61,14 +67,17 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     private readonly connectionOptions: MongooseRuntimeOptions = { strictTransactions: false },
   ) {}
 
+  /** Returns the root Mongoose connection handle. */
   current(): TConnection {
     return this.connection;
   }
 
+  /** Returns the active Mongoose session for the current async context, if one exists. */
   currentSession(): MongooseSessionLike | undefined {
     return this.sessions.getStore();
   }
 
+  /** Aborts active request transactions, waits for settlement, then runs the optional dispose hook. */
   async onApplicationShutdown(): Promise<void> {
     this.lifecycleState = 'shutting-down';
 
@@ -85,6 +94,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     this.lifecycleState = 'stopped';
   }
 
+  /** Produces the shared persistence status snapshot for platform diagnostics surfaces. */
   createPlatformStatusSnapshot() {
     return createMongoosePlatformStatusSnapshot({
       activeRequestTransactions: this.activeRequestTransactions.size,
@@ -95,6 +105,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     });
   }
 
+  /** Opens a Mongoose session transaction boundary or reuses the current one when already active. */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
@@ -115,6 +126,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
+  /** Opens an abort-aware request transaction boundary for the current HTTP request. */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
