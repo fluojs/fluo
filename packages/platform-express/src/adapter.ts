@@ -9,6 +9,7 @@ import {
   type ServerOptions as HttpsServerOptions,
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
+import { Readable } from 'node:stream';
 import { URL } from 'node:url';
 
 import express, {
@@ -437,7 +438,15 @@ async function parseMultipartRequest(
   options: MultipartOptions = {},
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
   try {
-    return await parseMultipart(request, options);
+    return await parseMultipart(
+      {
+        body: Readable.toWeb(request),
+        headers: normalizeHeaders(request.headers),
+        method: request.method,
+        url: new URL(request.url ?? '/', 'http://localhost').toString(),
+      },
+      options,
+    );
   } catch (error: unknown) {
     if (isExpressMultipartTooLargeError(error)) {
       if (error instanceof PayloadTooLargeException) {
