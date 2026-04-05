@@ -1,8 +1,8 @@
 import { Container, type Provider } from '@konekti/di';
+import { DefaultBinder } from '@konekti/http/internal';
 import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
 import { performance } from 'node:perf_hooks';
 import {
-  DefaultBinder,
   createDispatcher,
   createHandlerMapping,
   createNoopHttpApplicationAdapter,
