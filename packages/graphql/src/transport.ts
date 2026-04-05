@@ -1,12 +1,4 @@
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
-
-interface NodeWritableResponse {
-  end(chunk?: unknown): void;
-  flushHeaders?: () => void;
-  once(event: 'drain', listener: () => void): this;
-  writableEnded?: boolean;
-  write(chunk: unknown): boolean;
-}
+import type { FrameworkRequest, FrameworkResponse, FrameworkResponseStream } from '@konekti/http';
 
 export function isGraphqlPath(path: string): boolean {
   return path === '/graphql' || path === '/graphql/';
@@ -92,20 +84,6 @@ export function toFetchRequest(request: FrameworkRequest): Request {
   });
 }
 
-function isNodeWritableResponse(raw: unknown): raw is NodeWritableResponse {
-  if (typeof raw !== 'object' || raw === null) {
-    return false;
-  }
-
-  const candidate = raw as {
-    end?: unknown;
-    once?: unknown;
-    write?: unknown;
-  };
-
-  return typeof candidate.write === 'function' && typeof candidate.end === 'function' && typeof candidate.once === 'function';
-}
-
 function readSetCookieValues(headers: Headers): string[] {
   const setCookieHeaders = headers as Headers & {
     getSetCookie?: () => string[];
@@ -143,11 +121,11 @@ export async function writeFetchResponse(fetchResponse: Response, frameworkRespo
     frameworkResponse.setHeader(name, value);
   }
 
-  const raw = frameworkResponse.raw;
+  const stream = frameworkResponse.stream;
 
-  if (fetchResponse.body && isNodeWritableResponse(raw)) {
+  if (fetchResponse.body && stream) {
     frameworkResponse.committed = true;
-    raw.flushHeaders?.();
+    stream.flush?.();
 
     const reader = fetchResponse.body.getReader();
 
@@ -158,21 +136,19 @@ export async function writeFetchResponse(fetchResponse: Response, frameworkRespo
         break;
       }
 
-      if (raw.writableEnded) {
+      if (stream.closed) {
         break;
       }
 
-      const canContinue = raw.write(Buffer.from(value));
+      const canContinue = stream.write(value);
 
-      if (!canContinue && !raw.writableEnded) {
-        await new Promise<void>((resolve) => {
-          raw.once('drain', () => resolve());
-        });
+      if (!canContinue && !stream.closed) {
+        await stream.waitForDrain?.();
       }
     }
 
-    if (!raw.writableEnded) {
-      raw.end();
+    if (!stream.closed) {
+      stream.close();
     }
 
     return;
