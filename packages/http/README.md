@@ -93,7 +93,7 @@ const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, 
 | Export | Location | Description |
 |---|---|---|
 | `FrameworkRequest` | `src/types.ts` | Adapter-agnostic request shape |
-| `FrameworkResponse` | `src/types.ts` | Adapter-agnostic response shape |
+| `FrameworkResponse` | `src/types.ts` | Adapter-agnostic response shape, including optional `stream` capability for SSE and other streamed responses |
 | `RequestContext` | `src/request-context.ts` | Runtime context: request, response, principal, requestId, container |
 
 ### Route decorators
@@ -261,8 +261,13 @@ class EventsController {
 - `comment(text)` writes a comment frame.
 - `close()` is idempotent and also runs when `ctx.request.signal` aborts.
 - `encodeSseMessage()` and `encodeSseComment()` are exported for tests and custom framing needs.
-- SSE currently requires the Node adapter or a custom `FrameworkResponse.raw` object exposing `write()`, `end()`, `writableEnded`, and optional `flushHeaders()`.
+- SSE now depends on the explicit adapter-facing `FrameworkResponse.stream` contract instead of duck-typing `FrameworkResponse.raw` as a Node writable response.
+- Built-in Node, Express, and Fastify adapters expose `response.stream` for SSE and other response-streaming integrations.
 - Request observers still complete when the handler returns. They do not stay open for the full lifetime of the SSE socket.
+
+#### 0.x migration note
+
+- Custom adapters or tests that previously relied on `FrameworkResponse.raw.write()` / `end()` / `writableEnded` for SSE must now provide `FrameworkResponse.stream`.
 
 ### Rate limiting caveat
 

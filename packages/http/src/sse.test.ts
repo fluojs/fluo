@@ -1,61 +1,54 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkResponse, RequestContext } from './types.js';
+import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from './types.js';
 import { SseResponse, encodeSseComment, encodeSseMessage } from './sse.js';
 
-interface MockSseStream {
+interface MockSseStream extends FrameworkResponseStream {
+  _closed: boolean;
   backpressure: boolean;
   closeListeners: Array<() => void>;
-  flushHeadersCalls: number;
-  onCalls: number;
-  removeListenerCalls: number;
-  writableEnded: boolean;
-  writes: string[];
-  endCalls: number;
-  flushHeaders(): void;
-  on(event: 'close', listener: () => void): void;
-  removeListener(event: 'close', listener: () => void): void;
+  flushCalls: number;
+  onCloseCalls: number;
+  removeCloseListenerCalls: number;
+  writes: Array<string | Uint8Array>;
+  closeCalls: number;
   emitClose(): void;
-  write(chunk: string): boolean;
-  end(): void;
 }
 
 function createMockSseStream(): MockSseStream {
   return {
     backpressure: false,
     closeListeners: [],
+    close() {
+      this.closeCalls += 1;
+      this._closed = true;
+    },
+    closeCalls: 0,
     emitClose() {
       for (const listener of [...this.closeListeners]) {
         listener();
       }
     },
-    end() {
-      this.endCalls += 1;
-      this.writableEnded = true;
+    flush() {
+      this.flushCalls += 1;
     },
-    endCalls: 0,
-    flushHeaders() {
-      this.flushHeadersCalls += 1;
+    flushCalls: 0,
+    get closed() {
+      return this._closed;
     },
-    flushHeadersCalls: 0,
-    on(event, listener) {
-      this.onCalls += 1;
+    _closed: false,
+    onClose(listener: () => void) {
+      this.onCloseCalls += 1;
+      this.closeListeners.push(listener);
 
-      if (event === 'close') {
-        this.closeListeners.push(listener);
-      }
-    },
-    onCalls: 0,
-    removeListener(event, listener) {
-      this.removeListenerCalls += 1;
-
-      if (event === 'close') {
+      return () => {
+        this.removeCloseListenerCalls += 1;
         this.closeListeners = this.closeListeners.filter((entry) => entry !== listener);
-      }
+      };
     },
-    removeListenerCalls: 0,
-    writableEnded: false,
-    write(chunk: string) {
+    onCloseCalls: 0,
+    removeCloseListenerCalls: 0,
+    write(chunk: string | Uint8Array) {
       this.writes.push(chunk);
       return !this.backpressure;
     },
@@ -63,11 +56,10 @@ function createMockSseStream(): MockSseStream {
   };
 }
 
-function createMockResponse(stream: MockSseStream): FrameworkResponse & { raw: MockSseStream } {
+function createMockResponse(stream?: MockSseStream): FrameworkResponse {
   return {
     committed: false,
     headers: {},
-    raw: stream,
     redirect(status, location) {
       this.setStatus(status);
       this.setHeader('Location', location);
@@ -85,6 +77,7 @@ function createMockResponse(stream: MockSseStream): FrameworkResponse & { raw: M
     },
     statusCode: undefined,
     statusSet: false,
+    stream,
   };
 }
 
@@ -159,10 +152,10 @@ describe('SseResponse', () => {
     expect(response.headers.Connection).toBe('keep-alive');
     expect(response.headers['Cache-Control']).toBe('no-cache, no-transform');
     expect(response.headers['X-Accel-Buffering']).toBe('no');
-    expect(stream.flushHeadersCalls).toBe(1);
+    expect(stream.flushCalls).toBe(1);
     expect(stream.writes).toEqual(['event: message\nid: 1\ndata: hello\n\n', ': note\n\n']);
-    expect(stream.endCalls).toBe(1);
-    expect(stream.removeListenerCalls).toBe(1);
+    expect(stream.closeCalls).toBe(1);
+    expect(stream.removeCloseListenerCalls).toBe(0);
   });
 
   it('closes the stream when the request signal aborts', () => {
@@ -174,9 +167,9 @@ describe('SseResponse', () => {
     controller.abort(new Error('client-disconnected'));
     sse.send('ignored-after-abort');
 
-    expect(stream.endCalls).toBe(1);
+    expect(stream.closeCalls).toBe(1);
     expect(stream.writes).toEqual([]);
-    expect(stream.onCalls).toBe(0);
+    expect(stream.onCloseCalls).toBe(0);
   });
 
   it('surfaces backpressure from send and comment calls', () => {
@@ -217,13 +210,13 @@ describe('SseResponse', () => {
     const response = createMockResponse(stream);
     const sse = new SseResponse(createContext(response));
 
-    expect(stream.onCalls).toBe(1);
+    expect(stream.onCloseCalls).toBe(1);
 
     stream.emitClose();
     sse.send('ignored-after-close');
 
-    expect(stream.endCalls).toBe(1);
-    expect(stream.removeListenerCalls).toBe(1);
+    expect(stream.closeCalls).toBe(1);
+    expect(stream.removeCloseListenerCalls).toBe(1);
     expect(stream.writes).toEqual([]);
   });
 
@@ -234,6 +227,12 @@ describe('SseResponse', () => {
 
     new SseResponse(createContext(response, controller.signal));
 
-    expect(stream.onCalls).toBe(0);
+    expect(stream.onCloseCalls).toBe(0);
+  });
+
+  it('throws when the adapter does not expose response.stream support', () => {
+    expect(() => new SseResponse(createContext(createMockResponse()))).toThrow(
+      'SseResponse requires adapter-provided response.stream support.',
+    );
   });
 });

@@ -59,6 +59,7 @@ await app.listen();
 ## supported operations
 
 - Express 요청/응답을 `FrameworkRequest` / `FrameworkResponse`로 브리지합니다.
+- SSE 및 기타 어댑터 소유 응답 스트리밍 경로를 위해 `FrameworkResponse.stream`을 노출합니다.
 - 모든 인바운드 요청을 Konekti HTTP 디스패처로 전달합니다.
 - 멀티파트가 아닌 요청에서 `rawBody` 선택(opt-in) 보존을 지원합니다.
 - multipart form-data 파싱과 `UploadedFile[]` 노출을 지원합니다.
@@ -68,6 +69,7 @@ await app.listen();
 
 - multipart 요청에서는 `rawBody`를 채우지 않습니다.
 - 디스패처가 응답을 커밋하지 않으면 어댑터가 빈 페이로드를 전송해 응답을 종료합니다.
+- 이제 SSE 및 기타 스트리밍 응답은 `FrameworkResponse.raw`에 의존하지 않으며, 어댑터가 `FrameworkResponse.stream` 뒤에서 구체 writable semantics를 소유합니다.
 - 시작 로그는 런타임 컨벤션(`Listening on ...`)을 따르며 와일드카드 호스트 바인딩 상세를 포함합니다.
 - 문자열/JSON/바이너리 페이로드 직렬화 동작은 runtime/fastify 어댑터 기대치와 일치합니다.
 

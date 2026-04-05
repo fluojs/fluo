@@ -173,6 +173,7 @@ Maps DTO fields to GraphQL argument names for input binding.
 
 - Endpoint path: `/graphql` (and `/graphql/`) via GET/POST.
 - Transport: Konekti request/response is bridged to GraphQL Yoga Fetch API, and subscriptions can also use `graphql-ws` over the shared Node HTTP server when enabled.
+- Streamed GraphQL HTTP responses (including SSE subscription delivery) use adapter-provided `FrameworkResponse.stream` when available instead of reaching through `FrameworkResponse.raw`.
 - Context: each resolver receives `request` and optional `principal`; custom context is merged in.
 - Reserved internal context keys are protected; custom context cannot override the per-operation DI container symbol.
 - Discovery: resolvers are discovered from compiled modules during bootstrap.
@@ -481,6 +482,7 @@ class AppModule {}
 
 - Subscriptions are supported through GraphQL Yoga (SSE by default).
 - Set `GraphqlModule.forRoot({ subscriptions: { websocket: { enabled: true } } })` to enable the `graphql-ws` protocol on the shared Node HTTP adapter.
+- Custom adapters must expose `FrameworkResponse.stream` to preserve streamed GraphQL/SSE parity.
 - Websocket subscription context is still per GraphQL operation, so request-scoped resolvers and dependencies stay isolated across concurrent subscriptions.
 - `@Subscription()` resolvers must return an `AsyncIterable`; otherwise an error is thrown.
 

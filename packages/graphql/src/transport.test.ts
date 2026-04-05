@@ -4,7 +4,8 @@ import type { FrameworkResponse } from '@konekti/http';
 
 import { writeFetchResponse } from './transport.js';
 
-function createFrameworkResponseMock(): FrameworkResponse {
+function createFrameworkResponseMock(): FrameworkResponse & { writes: Uint8Array[] } {
+  const writes: Uint8Array[] = [];
   return {
     committed: false,
     headers: {},
@@ -13,6 +14,17 @@ function createFrameworkResponseMock(): FrameworkResponse {
     setHeader: vi.fn(),
     setStatus: vi.fn(),
     statusCode: 200,
+    stream: {
+      close: vi.fn(),
+      closed: false,
+      flush: vi.fn(),
+      waitForDrain: vi.fn(async () => {}),
+      write: vi.fn((chunk: Uint8Array | string) => {
+        writes.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
+        return true;
+      }),
+    },
+    writes,
   };
 }
 
@@ -62,5 +74,26 @@ describe('writeFetchResponse', () => {
 
     expect(frameworkResponse.setHeader).toHaveBeenCalledWith('set-cookie', 'a=1; Path=/');
     expect(frameworkResponse.setHeader).toHaveBeenCalledWith('set-cookie', 'b=2; Path=/');
+  });
+
+  it('streams fetch bodies through the explicit response.stream contract', async () => {
+    const fetchResponse = new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('chunk-1'));
+        controller.enqueue(new TextEncoder().encode('chunk-2'));
+        controller.close();
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+
+    await writeFetchResponse(fetchResponse, frameworkResponse);
+
+    expect(frameworkResponse.send).not.toHaveBeenCalled();
+    expect(frameworkResponse.stream?.flush).toHaveBeenCalledOnce();
+    expect(frameworkResponse.stream?.close).toHaveBeenCalledOnce();
+    expect(frameworkResponse.writes.map((chunk: Uint8Array) => Buffer.from(chunk).toString('utf8'))).toEqual(['chunk-1', 'chunk-2']);
   });
 });

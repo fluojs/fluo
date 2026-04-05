@@ -5,11 +5,46 @@ import {
   HttpException,
   InternalServerErrorException,
   type FrameworkResponse,
+  type FrameworkResponseStream,
 } from '@konekti/http';
 
 import { compressResponse } from './compression.js';
 
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
+
+function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
+  return {
+    close() {
+      if (!response.writableEnded) {
+        response.end();
+      }
+    },
+    get closed() {
+      return response.writableEnded;
+    },
+    flush() {
+      response.flushHeaders?.();
+    },
+    onClose(listener: () => void) {
+      response.on('close', listener);
+      return () => {
+        response.removeListener('close', listener);
+      };
+    },
+    waitForDrain() {
+      if (response.writableEnded) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        response.once('drain', () => resolve());
+      });
+    },
+    write(chunk: string | Uint8Array) {
+      return response.write(chunk);
+    },
+  };
+}
 
 export function createFrameworkResponse(response: ServerResponse, acceptEncoding?: string): MutableFrameworkResponse {
   const mergeSetCookieHeader = (
@@ -36,6 +71,7 @@ export function createFrameworkResponse(response: ServerResponse, acceptEncoding
     committed: response.headersSent || response.writableEnded,
     headers: {},
     raw: response,
+    stream: createFrameworkResponseStream(response),
     redirect(status: number, location: string) {
       this.setStatus(status);
       this.setHeader('Location', location);

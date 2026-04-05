@@ -60,6 +60,7 @@ export interface HttpApplicationAdapter {
 
 - **`FrameworkRequest`**: method, path, url, headers, query, cookies, params, body, rawBody를 포함해야 합니다.
 - **`FrameworkResponse`**: `setStatus`, `setHeader`, `redirect`, `send` 메서드를 제공해야 합니다. 또한 중복 쓰기를 방지하기 위해 `committed` 상태를 추적해야 합니다.
+- **`FrameworkResponse.stream`**: 선택 사항이지만, 어댑터가 SSE 또는 스트리밍 HTTP 응답 지원을 주장한다면 필수입니다. 이 capability는 raw Node response 객체를 덕타이핑하게 만들지 말고, 프레임워크 계약(`write`, `close`, `closed`, optional `flush`, optional `waitForDrain`, optional `onClose`) 뒤에 전송 계층별 writable 세부 구현을 숨겨야 합니다.
 
 ## DI Token Naming Conventions
 
