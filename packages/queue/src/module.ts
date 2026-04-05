@@ -24,6 +24,9 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
 
 /**
  * Creates queue lifecycle providers and normalized queue options.
+ *
+ * @param options Queue module defaults for attempts, backoff, concurrency, and rate limiting.
+ * @returns Provider definitions that register normalized `QUEUE_OPTIONS` and the runtime `QUEUE` service.
  */
 export function createQueueProviders(options: QueueModuleOptions = {}): Provider[] {
   return [
@@ -42,7 +45,12 @@ export function createQueueProviders(options: QueueModuleOptions = {}): Provider
  * Runtime module entrypoint for queue lifecycle wiring.
  */
 export class QueueModule {
-  /** Registers queue providers globally using canonical `forRoot(...)` semantics. */
+  /**
+   * Registers queue providers globally using canonical `forRoot(...)` semantics.
+   *
+   * @param options Queue runtime defaults used by discovered workers and enqueued jobs.
+   * @returns A module definition that exports the global `QUEUE` token.
+   */
   static forRoot(options: QueueModuleOptions = {}): ModuleType {
     class QueueModuleDefinition {}
 

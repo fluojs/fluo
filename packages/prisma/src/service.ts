@@ -53,7 +53,11 @@ export class PrismaService<
     private readonly serviceOptions: PrismaServiceOptions = { strictTransactions: false },
   ) {}
 
-  /** Returns the active transaction client, or the root Prisma client outside a transaction. */
+  /**
+   * Returns the active Prisma handle for the current async context.
+   *
+   * @returns The request/transaction-scoped client when a transaction is active; otherwise the root client.
+   */
   current(): TClient | TTransactionClient {
     return this.transactions.getStore() ?? this.client;
   }
@@ -109,6 +113,11 @@ export class PrismaService<
     this.lifecycleState = 'stopped';
   }
 
+  /**
+   * Creates a shared platform-status snapshot for runtime/CLI/Studio health surfaces.
+   *
+   * @returns Platform snapshot data reflecting lifecycle state and transaction capability diagnostics.
+   */
   createPlatformStatusSnapshot() {
     return createPrismaPlatformStatusSnapshot({
       activeRequestTransactions: this.activeRequestTransactions.size,
@@ -121,7 +130,17 @@ export class PrismaService<
     });
   }
 
-  /** Opens a transaction boundary and executes the callback within that context. */
+  /**
+   * Opens a Prisma interactive transaction boundary and executes the callback in that context.
+   *
+   * @param fn Callback executed inside the transaction flow where `current()` resolves from ALS to the active transaction client,
+   * or reuses the already-active context / direct-execution path when no new boundary is opened.
+   * @param options Optional Prisma transaction options forwarded to `$transaction`.
+   * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
+   * nested context reuse or non-strict `$transaction` fallback applies.
+   * @throws {Error} When nested transaction options are provided while already inside an active transaction.
+   * @throws {Error} When strict transaction mode is enabled and the Prisma client does not implement `$transaction`.
+   */
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
     return this.runWithTransactionClient(
       fn,
@@ -132,6 +151,17 @@ export class PrismaService<
 
   /**
    * Opens an abort-aware request transaction boundary.
+   *
+   * @param fn Callback executed inside the request-scoped transaction flow where `current()` resolves from ALS to the active
+   * transaction client, or reuses the already-active context / direct-execution path when no new boundary is opened.
+   * @param signal Optional abort signal propagated to request transaction handling.
+   * @param options Optional Prisma transaction options forwarded to `$transaction`.
+   * @returns The callback result, after commit when a new interactive transaction is opened, or from direct execution when
+   * nested context reuse or non-strict `$transaction` fallback applies.
+   * @throws {Error} When nested transaction options are provided while already inside an active transaction.
+   * @throws {Error} When strict transaction mode is enabled and the Prisma client does not implement `$transaction`.
+   * @throws {Error} Propagates an abort-related error when `signal` aborts before the transaction callback settles; concrete
+   * error type/message depends on the runtime abort implementation.
    */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     const abortContext = createRequestAbortContext(signal);
