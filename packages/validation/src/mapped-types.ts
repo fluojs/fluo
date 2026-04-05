@@ -1,13 +1,15 @@
 import {
+  type Constructor,
+  type MetadataPropertyKey,
+} from '@konekti/core';
+import {
   appendClassValidationRule,
   appendDtoFieldValidationRule,
   defineDtoFieldBindingMetadata,
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
-  type Constructor,
-  type MetadataPropertyKey,
-} from '@konekti/core';
+} from '@konekti/core/internal';
 
 type DtoConstructor<T = object> = Constructor<T>;
 

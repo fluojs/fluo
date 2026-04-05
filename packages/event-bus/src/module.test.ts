@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Scope, defineControllerMetadata } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
+import { defineControllerMetadata } from '@konekti/core/internal';
 import { Container } from '@konekti/di';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 

@@ -1,4 +1,5 @@
-import { getDtoBindingSchema, getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
+import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@konekti/core/internal';
 import type { HandlerDescriptor, HttpMethod } from '@konekti/http';
 import {
   type ApiParameterMetadata,

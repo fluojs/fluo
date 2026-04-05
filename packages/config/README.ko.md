@@ -52,11 +52,16 @@ const config = loadConfig({
 const service = new ConfigService(config);
 service.get('DATABASE_URL');          // string | undefined 반환
 service.getOrThrow('DATABASE_URL');   // 없으면 throw
-service.getOptional('REDIS_URL');     // deprecated: get() 사용
 service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 ```
 
 실제로는 루트 모듈에서 `@konekti/config`의 `ConfigModule.forRoot()`를 사용합니다. 부트스트랩 시 `loadConfig()`를 호출하고, 결과 `ConfigService`를 provider로 등록합니다.
+
+## 0.x 마이그레이션 노트
+
+- `ConfigService#getOptional()`은 제거되었습니다. 선택적 조회는 `get()`, 필수 조회는 `getOrThrow()`를 사용하세요.
+- `ConfigService`는 더 이상 공개 스냅샷 변경 메서드를 노출하지 않습니다. 런타임 리로드는 `ConfigReloadModule` / `ConfigReloadManager`가 내부적으로 처리합니다.
+- `ConfigMode`는 더 이상 지원되는 패키지 surface가 아닙니다. 대신 `envFile` / `envFilePath`를 사용하세요.
 
 ## 핵심 API
 
@@ -96,10 +101,13 @@ type ConfigReloader = {
 class ConfigService {
   get<T>(key: string): T | undefined
   getOrThrow<T>(key: string): T       // 없으면 throw
-  getOptional<T>(key: string): T | undefined // deprecated: get() 사용
   snapshot(): ConfigDictionary        // 현재 정규화된 값을 deep clone으로 반환
 }
 ```
+
+### `ConfigReloadModule`
+
+`ConfigReloadModule.forRoot()`는 reloader 토큰과 구체 클래스 `ConfigReloadManager`를 함께 export합니다. 클래스 기반 DI를 선호하면 `ConfigReloadManager`를, 명시적 토큰이 필요하면 `CONFIG_RELOADER`를 주입하세요.
 
 ### 타입
 
@@ -127,7 +135,7 @@ createConfigReloader(options)
   → close()로 감시 중단 + 구독 정리
 ```
 
-`ConfigService`는 부트스트랩 이후 의도적으로 읽기 전용입니다. 동적 리로드가 필요하면 `createConfigReloader()`를 명시적으로 사용합니다.
+`ConfigService`는 부트스트랩 이후 의도적으로 읽기 전용입니다. 동적 리로드가 필요하면 `ConfigService` 공개 변경 메서드가 아니라 `createConfigReloader()` / `ConfigReloadModule`을 명시적으로 사용합니다.
 
 ## 파일 읽기 순서 (기여자용)
 

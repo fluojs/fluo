@@ -1,4 +1,5 @@
-import { InvariantError, getDtoBindingSchema, type Constructor, type MetadataPropertyKey, type MetadataSource, type Token } from '@konekti/core';
+import { InvariantError, type Constructor, type MetadataPropertyKey, type MetadataSource, type Token } from '@konekti/core';
+import { getDtoBindingSchema } from '@konekti/core/internal';
 
 import { BadRequestException, type HttpExceptionDetail } from './exceptions.js';
 import { toInputErrorDetail } from './input-error-detail.js';

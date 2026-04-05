@@ -1,4 +1,5 @@
-import { Inject, fallbackClone, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { fallbackClone, getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import {
   type ApplicationLogger,

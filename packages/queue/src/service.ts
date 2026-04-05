@@ -1,4 +1,5 @@
-import { Inject, fallbackClone } from '@konekti/core';
+import { Inject } from '@konekti/core';
+import { fallbackClone } from '@konekti/core/internal';
 import type { Container } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import {

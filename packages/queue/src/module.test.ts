@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope, defineControllerMetadata } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
+import { defineControllerMetadata } from '@konekti/core/internal';
 import { REDIS_CLIENT } from '@konekti/redis';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 

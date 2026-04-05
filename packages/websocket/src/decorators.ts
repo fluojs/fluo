@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import { webSocketGatewayMetadataSymbol, webSocketHandlerMetadataSymbol } from './metadata.js';
 import type { WebSocketEventMap, WebSocketGatewayHandlerMetadata, WebSocketGatewayOptions } from './types.js';

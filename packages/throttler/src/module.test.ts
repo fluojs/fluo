@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/http';
 
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';

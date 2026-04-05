@@ -1,4 +1,5 @@
-import { ensureSymbolMetadataPolyfill, metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
+import { type MetadataPropertyKey } from '@konekti/core';
+import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@konekti/core/internal';
 
 import type { HandlerMetadata } from './types.js';
 

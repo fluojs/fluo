@@ -1,4 +1,5 @@
-import { getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { type MetadataPropertyKey, type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 import type { FactoryProvider, Provider, ValueProvider } from '@konekti/di';
 import type { CompiledModule } from '@konekti/runtime';
 

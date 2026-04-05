@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, getClassDiMetadata, getModuleMetadata, type Constructor, type Token } from '@konekti/core';
+import { Inject, type Constructor, type Token } from '@konekti/core';
+import { getClassDiMetadata, getModuleMetadata } from '@konekti/core/internal';
 import { Container, type Provider } from '@konekti/di';
 
 import { JwtModule } from './module.js';

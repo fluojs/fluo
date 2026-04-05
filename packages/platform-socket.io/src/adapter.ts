@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage } from 'node:http';
 
-import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import type { HttpApplicationAdapter } from '@konekti/http';
 import {

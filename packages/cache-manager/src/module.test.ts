@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, getModuleMetadata } from '@konekti/core';
+import { Inject } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule } from '@konekti/runtime';
 

@@ -1,6 +1,7 @@
 import { Container, type Provider } from '@konekti/di';
 import { DefaultBinder } from '@konekti/http/internal';
-import { InvariantError, defineModuleMetadata, getClassDiMetadata, type Token } from '@konekti/core';
+import { InvariantError, type Token } from '@konekti/core';
+import { defineModuleMetadata, getClassDiMetadata } from '@konekti/core/internal';
 import { performance } from 'node:perf_hooks';
 import {
   createDispatcher,

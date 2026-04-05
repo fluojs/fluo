@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import {
   CacheEvict,

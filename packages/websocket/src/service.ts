@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
-import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Provider, Container } from '@konekti/di';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';

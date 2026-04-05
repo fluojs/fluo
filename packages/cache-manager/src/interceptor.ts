@@ -1,4 +1,5 @@
-import { Inject, metadataSymbol } from '@konekti/core';
+import { Inject } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@konekti/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';

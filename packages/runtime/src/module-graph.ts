@@ -1,5 +1,6 @@
 import type { Provider } from '@konekti/di';
-import { getClassDiMetadata, getOwnClassDiMetadata, getModuleMetadata, type Token } from '@konekti/core';
+import { type Token } from '@konekti/core';
+import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from '@konekti/core/internal';
 import type { MiddlewareLike } from '@konekti/http';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
