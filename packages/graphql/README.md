@@ -109,7 +109,7 @@ interface GraphQLContext {
 
 ### Other exports
 
-- `createGraphqlProviders(options)`
+- `createGraphqlProviders(options)` — registers GraphQL module options + lifecycle providers only; does not register `GraphqlEndpointController` or expose `/graphql` by itself
 - `createDataLoader(batchFn, options?)` — first-party request-scoped DataLoader factory
 - `createDataLoaderMap(definitions)` — named DataLoader set factory
 - `DataLoader` — re-exported from the `dataloader` package

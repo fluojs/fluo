@@ -113,8 +113,8 @@ class UserController {}
 | Method | Signature | Description |
 |---|---|---|
 | `current()` | `() => TClient \| TTransactionClient` | Returns the active transaction client (from ALS), or the root client if no transaction is open |
-| `transaction()` | `(fn: () => Promise<T>) => Promise<T>` | Runs `fn` inside a Prisma interactive transaction; stores the tx client in ALS |
-| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal) => Promise<T>` | Like `transaction()`, intended for request boundaries. Uses abort-aware execution and retries once without `signal` when a Prisma driver rejects signal options |
+| `transaction()` | `(fn: () => Promise<T>, options?: TTransactionOptions) => Promise<T>` | Runs `fn` inside a Prisma interactive transaction (or reuses active context/direct fallback as needed), stores the tx client in ALS, and rejects nested option overrides in an already-active transaction context |
+| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions) => Promise<T>` | Request-boundary variant of `transaction()` with abort-aware execution; retries once without `signal` when a Prisma driver rejects abort-signal transaction options |
 
 ### `PRISMA_CLIENT`
 
