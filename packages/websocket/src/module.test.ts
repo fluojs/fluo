@@ -9,7 +9,8 @@ import { Inject, Scope } from '@konekti/core';
 import { getModuleMetadata } from '@konekti/core/internal';
 import { Container } from '@konekti/di';
 import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
-import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { HTTP_APPLICATION_ADAPTER } from '@konekti/runtime/internal';
 import type { HttpApplicationAdapter } from '@konekti/http';
 
