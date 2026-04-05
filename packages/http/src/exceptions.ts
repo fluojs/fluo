@@ -9,16 +9,18 @@ export interface HttpExceptionDetail {
 
 /**
  * Optional metadata used when creating an {@link HttpException}.
- *
- * @param cause Original error or value that triggered this HTTP exception.
- * @param code Stable application-level error code serialized into API responses.
- * @param details Field-level or source-level details for validation and binding failures.
- * @param meta Additional structured metadata serialized for observability and client diagnostics.
  */
 export interface HttpExceptionOptions {
+  /** Original error or value that triggered this HTTP exception. */
   cause?: unknown;
+
+  /** Stable application-level error code serialized into API responses. */
   code?: string;
+
+  /** Field-level or source-level details for validation and binding failures. */
   details?: HttpExceptionDetail[];
+
+  /** Additional structured metadata serialized for observability and client diagnostics. */
   meta?: Record<string, unknown>;
 }
 

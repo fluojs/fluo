@@ -172,7 +172,7 @@ export function getControllerTags(target: Function): string[] | undefined {
 }
 
 /**
- * Read combined operation, response, parameter, body, and security metadata for a controller method.
+ * Read OpenAPI metadata registered for a controller method.
  *
  * @param target Controller class token.
  * @param propertyKey Controller method key to inspect.
@@ -218,7 +218,9 @@ type ClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => voi
 type MethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 
 /**
- * Attach one OpenAPI tag to a controller class.
+ * Attach an OpenAPI tag to a controller class.
+ *
+ * Multiple tags can be declared by stacking `@ApiTag(...)` decorators.
  *
  * @param tag Tag label appended to the controller-level tag list.
  * @returns A class decorator that stores controller tag metadata.
