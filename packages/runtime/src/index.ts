@@ -5,7 +5,12 @@ export * from './errors.js';
 export * from './health.js';
 export * from './json-logger.js';
 export * from './logger.js';
-export * from './multipart.js';
+export type {
+  MultipartOptions,
+  MultipartRequestLike,
+  MultipartResult,
+  UploadedFile,
+} from './multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,

@@ -46,6 +46,8 @@ export interface WebFrameworkResponse extends FrameworkResponse {
   toResponse(): Response;
 }
 
+export { parseMultipart } from './multipart.js';
+
 interface WebFrameworkResponseStream {
   readonly closed: boolean;
   close(): void;
