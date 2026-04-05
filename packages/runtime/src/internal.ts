@@ -1,4 +1,16 @@
 export {
+  bootstrapHttpAdapterApplication,
+  createHttpAdapterMiddleware,
+  defaultNodeCompatibleShutdownSignals,
+  formatHttpAdapterListenMessage,
+  runHttpAdapterApplication,
+  type BootstrapHttpAdapterApplicationOptions,
+  type HttpAdapterCorsInput,
+  type HttpAdapterListenTarget,
+  type HttpAdapterMiddlewareOptions,
+  type RunHttpAdapterApplicationOptions,
+} from './http-adapter-shared.js';
+export {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
   HTTP_APPLICATION_ADAPTER,

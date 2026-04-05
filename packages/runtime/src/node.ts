@@ -3,24 +3,18 @@ import { createServer as createHttpsServer, type ServerOptions as HttpsServerOpt
 import type { AddressInfo, Socket } from 'node:net';
 
 import {
-  createCorsMiddleware,
-  createErrorResponse,
-  createSecurityHeadersMiddleware,
-  matchRoutePattern,
-  normalizeRoutePattern,
-  NotFoundException,
   type CorsOptions,
   type Dispatcher,
-  type FrameworkResponse,
   type HttpApplicationAdapter,
-  type MiddlewareContext,
   type MiddlewareLike,
-  type Next,
   type SecurityHeadersOptions,
 } from '@konekti/http';
 
-import { bootstrapApplication } from './bootstrap.js';
-import { createConsoleApplicationLogger } from './logger.js';
+import {
+  bootstrapHttpAdapterApplication,
+  defaultNodeCompatibleShutdownSignals,
+  runHttpAdapterApplication,
+} from './http-adapter-shared.js';
 import {
   createFrameworkRequest,
   createRequestSignal,
@@ -35,7 +29,6 @@ import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
 } from './request-response-factory.js';
-import { registerShutdownSignals } from './node-shutdown.js';
 import type { MultipartOptions, UploadedFile } from './multipart.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from './types.js';
 
@@ -244,62 +237,22 @@ export async function bootstrapNodeApplication(
   rootModule: ModuleType,
   options: BootstrapNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
-
-  return bootstrapApplication({
-    ...options,
-    adapter: createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
-    logger,
-    middleware: createNodeMiddleware(options),
+  return bootstrapHttpAdapterApplication(
     rootModule,
-  });
+    options,
+    createNodeHttpAdapter(options, options.compression ?? false, options.multipart),
+  );
 }
 
 export async function runNodeApplication(
   rootModule: ModuleType,
   options: RunNodeApplicationOptions,
 ): Promise<Application> {
-  const logger = options.logger ?? createConsoleApplicationLogger();
   const adapter = createNodeHttpAdapter(options, options.compression ?? false, options.multipart) as NodeHttpApplicationAdapter;
-  const app = await bootstrapApplication({
+  return runHttpAdapterApplication(rootModule, {
     ...options,
-    adapter,
-    logger,
-    middleware: createNodeMiddleware(options),
-    rootModule,
-  });
-
-  try {
-    await app.listen();
-    logger.log(formatListenMessage(adapter.getListenTarget()), 'KonektiFactory');
-  } catch (error: unknown) {
-    logger.error('Failed to start application.', error, 'KonektiFactory');
-
-    if (app.state !== 'closed') {
-      try {
-        await app.close('bootstrap-failed');
-      } catch (closeError) {
-        logger.error('Failed to close application after startup failure.', closeError, 'KonektiFactory');
-      }
-    }
-
-    throw error;
-  }
-
-  const unregisterShutdownSignals = registerShutdownSignals(app, logger, options.shutdownSignals ?? defaultShutdownSignals(), options.forceExitTimeoutMs);
-  const close = app.close.bind(app);
-  let shutdownSignalsUnregistered = false;
-
-  app.close = async (signal?: string) => {
-    if (!shutdownSignalsUnregistered) {
-      unregisterShutdownSignals();
-      shutdownSignalsUnregistered = true;
-    }
-
-    await close(signal);
-  };
-
-  return app;
+    shutdownSignals: options.shutdownSignals ?? defaultNodeCompatibleShutdownSignals(),
+  }, adapter);
 }
 
 function createNodeServer(
@@ -385,12 +338,6 @@ function closeNodeServerWithDrain(
   });
 }
 
-function formatListenMessage(target: NodeListenTarget): string {
-  return target.url.endsWith(target.bindTarget)
-    ? `Listening on ${target.url}`
-    : `Listening on ${target.url} (bound to ${target.bindTarget})`;
-}
-
 function resolveNodeListenTarget(
   address: AddressInfo | string | null,
   port: number,
@@ -419,133 +366,6 @@ function formatHostForAuthority(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
-function createNodeMiddleware(options: BootstrapNodeApplicationOptions): MiddlewareLike[] {
-  const middleware = [...(options.middleware ?? [])];
-
-  if (options.securityHeaders !== false) {
-    middleware.unshift(createSecurityHeadersMiddleware(
-      typeof options.securityHeaders === 'object' ? options.securityHeaders : undefined,
-    ));
-  }
-
-  if (options.globalPrefix) {
-    middleware.unshift(createGlobalPrefixMiddleware(options.globalPrefix, options.globalPrefixExclude));
-  }
-
-  if (options.cors !== undefined && options.cors !== false) {
-    const defaultCorsOptions: CorsOptions = {
-      allowHeaders: ['Authorization', 'Content-Type'],
-      exposeHeaders: ['X-Request-Id'],
-    };
-
-    const corsOptions = resolveCorsOptions(options.cors, defaultCorsOptions);
-
-    middleware.unshift(createCorsMiddleware(corsOptions));
-  }
-
-  return middleware;
-}
-
-function createGlobalPrefixMiddleware(prefix: string, exclude: readonly string[] | undefined): MiddlewareLike {
-  const normalizedPrefix = normalizeRoutePattern(prefix);
-
-  if (normalizedPrefix === '/') {
-    return {
-      async handle(_context: MiddlewareContext, next: Next) {
-        await next();
-      },
-    };
-  }
-
-  const exclusions = [...(exclude ?? [])].map((path) => normalizeRoutePattern(path));
-
-  return {
-    async handle(context: MiddlewareContext, next: Next) {
-      const requestPath = normalizeRoutePattern(context.request.path);
-
-      if (matchesExcludedPath(requestPath, exclusions)) {
-        await next();
-        return;
-      }
-
-      if (shouldRejectGlobalPrefixRequest(requestPath, normalizedPrefix, exclusions)) {
-        await writeGlobalPrefixNotFound(context.requestContext.requestId, context.response);
-        return;
-      }
-
-      const strippedPath = stripGlobalPrefix(requestPath, normalizedPrefix);
-      context.request = rewriteGlobalPrefixRequest(context.request, requestPath, strippedPath);
-      await next();
-    },
-  };
-}
-
-function shouldRejectGlobalPrefixRequest(
-  requestPath: string,
-  normalizedPrefix: string,
-  exclusions: readonly string[],
-): boolean {
-  if (!matchesPrefix(requestPath, normalizedPrefix)) {
-    return true;
-  }
-
-  return matchesExcludedPath(stripGlobalPrefix(requestPath, normalizedPrefix), exclusions);
-}
-
-function rewriteGlobalPrefixRequest(
-  request: MiddlewareContext['request'],
-  requestPath: string,
-  strippedPath: string,
-): MiddlewareContext['request'] {
-  return {
-    ...request,
-    path: strippedPath,
-    url: rewritePrefixedUrl(request.url, requestPath, strippedPath),
-  };
-}
-
-function writeGlobalPrefixNotFound(requestId: string | undefined, response: FrameworkResponse): Promise<void> {
-  const error = new NotFoundException('Resource not found.');
-  response.setStatus(error.status);
-  return Promise.resolve(response.send(createErrorResponse(error, requestId)));
-}
-
-function matchesPrefix(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(`${prefix}/`);
-}
-
-function stripGlobalPrefix(path: string, prefix: string): string {
-  if (path === prefix) {
-    return '/';
-  }
-
-  return normalizeRoutePattern(path.slice(prefix.length));
-}
-
-function matchesExcludedPath(path: string, exclusions: readonly string[]): boolean {
-  return exclusions.some((pattern) => matchRoutePattern(pattern, path));
-}
-
-function rewritePrefixedUrl(url: string, originalPath: string, rewrittenPath: string): string {
-  if (!url.startsWith(originalPath)) {
-    return rewrittenPath;
-  }
-
-  return rewrittenPath + url.slice(originalPath.length);
-}
-
-function resolveCorsOptions(cors: Exclude<CorsInput, false> | undefined, defaults: CorsOptions): CorsOptions {
-  if (cors === undefined) {
-    return defaults;
-  }
-
-  if (typeof cors === 'string' || Array.isArray(cors)) {
-    return { ...defaults, allowOrigin: cors };
-  }
-
-  return { ...defaults, ...cors };
-}
-
 function closeIdleConnections(server: import('node:http').Server): void {
   server.closeIdleConnections?.();
 }
@@ -559,10 +379,6 @@ function forceCloseConnections(server: import('node:http').Server, sockets: Read
   for (const socket of sockets) {
     socket.destroy();
   }
-}
-
-function defaultShutdownSignals(): false | readonly NodeApplicationSignal[] {
-  return ['SIGINT', 'SIGTERM'];
 }
 
 function resolveNodePort(value: number | undefined): number {
