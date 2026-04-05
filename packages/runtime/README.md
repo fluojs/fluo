@@ -36,6 +36,7 @@ npm install @konekti/runtime
 - Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 - Node-only response compression no longer exports from the `@konekti/runtime` root barrel. Transport-owned response writers should use the adapter-facing `FrameworkResponse.compression` seam, and Node runtimes that still need explicit zlib compression can import `createNodeResponseCompression` / `compressNodeResponse` from `@konekti/runtime/node`.
+- Fetch-style runtimes can now import `createWebRequestResponseFactory`, `createWebFrameworkRequest`, and `dispatchWebRequest` from `@konekti/runtime/web` to share native Web `Request` / `Response` bridging across Bun, Deno, and Cloudflare Worker adapters.
 
 ## Quick Start
 
@@ -379,6 +380,8 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | Canonical HTTP application entrypoint — returns `Application` |
 | `@konekti/runtime/node` → `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
 | `@konekti/runtime/node` → `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
+| `@konekti/runtime/web` → `dispatchWebRequest({ request, dispatcher, ... })` | `src/web.ts` | Shared fetch-style adapter entrypoint that translates a native Web `Request` into framework contracts and returns a native Web `Response` |
+| `@konekti/runtime/web` → `createWebRequestResponseFactory(options)` | `src/web.ts` | Shared request/response factory seam for Bun, Deno, and Cloudflare Worker-style adapters |
 | `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
 | `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PersistencePlatformStatusSnapshot`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
 | `PLATFORM_SHELL` | `src/tokens.ts` | Runtime token exposing the current platform shell orchestrator and snapshot/report API. |
@@ -457,6 +460,8 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 `KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
 
 Additional public exports also include helpers such as `KonektiFactory`, `createHealthModule`, `parseMultipart`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Node-specific helpers live under `@konekti/runtime/node`.
+
+The `@konekti/runtime/web` subpath keeps fetch-style adapter work transport-neutral: it translates native Web `Request` objects into `FrameworkRequest`, preserves the existing raw-body/multipart/error-envelope contracts, exposes `FrameworkResponse.stream` as a Web-stream-backed capability, and finalizes framework writes back into a native Web `Response`.
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 
