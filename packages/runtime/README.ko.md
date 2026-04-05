@@ -377,7 +377,7 @@ await app.listen();
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | 진단 페이로드에서 모듈 레벨 Mermaid 그래프 텍스트 생성 |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | HTTP 런타임 없이 DI/생명주기 컨텍스트 부트스트랩 |
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | DI/생명주기 컨텍스트를 부트스트랩하고 트랜스포트 기반 마이크로서비스 런타임 연결 |
-| `bootstrapModule(module)` | `src/bootstrap.ts` | 하위 레벨: 모듈 그래프 컴파일 + 컨테이너 빌드 |
+| `bootstrapModule(rootModule, options)` | `src/bootstrap.ts` | 하위 레벨 부트스트랩 기준선: 모듈 그래프를 컴파일하고 런타임/모듈 프로바이더를 포함한 루트 컨테이너를 초기화 |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | 데코레이터 없이 모듈 메타데이터를 연결하는 하위 레벨 헬퍼 |
 | `Application` | `src/types.ts` | 인터페이스: `container`, `modules`, `rootModule`, `state`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
 | `@Module(metadata)` | `@konekti/core` | 모듈 프로바이더, 컨트롤러, 임포트, 익스포트 선언 |

@@ -377,7 +377,7 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | Emit module-level Mermaid graph text from diagnostics payload |
 | `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
 | `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context and attach a transport-backed microservice runtime |
-| `bootstrapModule(module)` | `src/bootstrap.ts` | Lower-level: compile module graph + build container |
+| `bootstrapModule(rootModule, options)` | `src/bootstrap.ts` | Lower-level bootstrap baseline: compile the module graph and initialize the root container with runtime/module providers |
 | `defineModule(cls, metadata)` | `src/bootstrap.ts` | Low-level helper to attach module metadata without decorator |
 | `Application` | `src/types.ts` | Interface: `container`, `modules`, `rootModule`, `state`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
 | `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
