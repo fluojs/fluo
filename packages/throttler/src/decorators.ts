@@ -1,6 +1,7 @@
 import type { ThrottlerHandlerOptions } from './types.js';
 import { validateThrottleOptions } from './validation.js';
 
+/** Shared controller metadata key used to store per-route throttling metadata records. */
 export const throttleRouteMetadataKey = Symbol.for('konekti.standard.route');
 const throttleKey = Symbol.for('konekti.throttler.throttle');
 const skipThrottleKey = Symbol.for('konekti.throttler.skip');
@@ -42,6 +43,12 @@ function getRouteRecord(metadata: unknown, name: string | symbol): StandardMetad
   return record;
 }
 
+/**
+ * Override throttling policy for a controller class or handler method.
+ *
+ * @param options Rate-limit window and request cap for the decorated target.
+ * @returns A decorator that stores throttling metadata on the class or method.
+ */
 export function Throttle(options: ThrottlerHandlerOptions): ClassOrMethodDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     if (context.kind === 'class') {
@@ -54,6 +61,11 @@ export function Throttle(options: ThrottlerHandlerOptions): ClassOrMethodDecorat
   return decorator as ClassOrMethodDecoratorLike;
 }
 
+/**
+ * Disable throttling for a controller class or handler method.
+ *
+ * @returns A decorator that marks the target as exempt from `ThrottlerGuard`.
+ */
 export function SkipThrottle(): ClassOrMethodDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext | ClassMethodDecoratorContext) => {
     if (context.kind === 'class') {
@@ -66,20 +78,44 @@ export function SkipThrottle(): ClassOrMethodDecoratorLike {
   return decorator as ClassOrMethodDecoratorLike;
 }
 
+/**
+ * Read method-level throttle metadata from a metadata bag.
+ *
+ * @param bag Route-level metadata bag captured from the controller.
+ * @returns A defensive copy of the stored throttle options, if present.
+ */
 export function getThrottleMetadata(bag: StandardMetadataBag): ThrottlerHandlerOptions | undefined {
   const metadata = bag[throttleKey] as ThrottlerHandlerOptions | undefined;
   return metadata ? cloneThrottleOptions(metadata) : undefined;
 }
 
+/**
+ * Read method-level skip metadata from a metadata bag.
+ *
+ * @param bag Route-level metadata bag captured from the controller.
+ * @returns `true` when throttling should be skipped for the handler.
+ */
 export function getSkipThrottleMetadata(bag: StandardMetadataBag): boolean {
   return bag[skipThrottleKey] === true;
 }
 
+/**
+ * Read class-level throttle metadata from a metadata bag.
+ *
+ * @param bag Controller metadata bag.
+ * @returns A defensive copy of the stored throttle options, if present.
+ */
 export function getClassThrottleMetadata(bag: StandardMetadataBag): ThrottlerHandlerOptions | undefined {
   const metadata = bag[classThrottleKey] as ThrottlerHandlerOptions | undefined;
   return metadata ? cloneThrottleOptions(metadata) : undefined;
 }
 
+/**
+ * Read class-level skip metadata from a metadata bag.
+ *
+ * @param bag Controller metadata bag.
+ * @returns `true` when throttling should be skipped for the controller.
+ */
 export function getClassSkipThrottleMetadata(bag: StandardMetadataBag): boolean {
   return bag[classSkipThrottleKey] === true;
 }

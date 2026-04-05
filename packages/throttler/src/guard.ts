@@ -55,6 +55,9 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
   ].join('|');
 }
 
+/**
+ * Guard that enforces module-, class-, and method-level throttling policies.
+ */
 @Inject([THROTTLER_OPTIONS])
 export class ThrottlerGuard implements Guard {
   private readonly store: ThrottlerStore;
@@ -64,6 +67,13 @@ export class ThrottlerGuard implements Guard {
     this.store = options.store ?? createMemoryThrottlerStore();
   }
 
+  /**
+   * Evaluate whether the current request is still within its allowed rate-limit window.
+   *
+   * @param context Guard execution context for the current handler invocation.
+   * @returns `true` when the request is allowed to proceed.
+   * @throws TooManyRequestsException When the request exceeds the configured limit.
+   */
   async canActivate(context: GuardContext): Promise<boolean> {
     const { handler, requestContext } = context;
 

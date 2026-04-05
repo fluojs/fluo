@@ -2,12 +2,18 @@ import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
 import { metadataSymbol } from '@konekti/core/internal';
 import type { OpenApiSchemaObject } from './schema-builder.js';
 
+/**
+ * User-facing operation metadata accepted by `@ApiOperation(...)`.
+ */
 export interface ApiOperationOptions {
   summary?: string;
   description?: string;
   deprecated?: boolean;
 }
 
+/**
+ * User-facing response metadata accepted by `@ApiResponse(...)`.
+ */
 export interface ApiResponseOptions {
   status: number;
   description?: string;
@@ -15,12 +21,18 @@ export interface ApiResponseOptions {
   type?: Constructor;
 }
 
+/**
+ * User-facing parameter metadata accepted by `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, and `@ApiCookie(...)`.
+ */
 export interface ApiParameterOptions {
   description?: string;
   required?: boolean;
   schema?: OpenApiSchemaObject;
 }
 
+/**
+ * User-facing request-body metadata accepted by `@ApiBody(...)`.
+ */
 export interface ApiBodyOptions {
   description?: string;
   required?: boolean;
@@ -28,16 +40,25 @@ export interface ApiBodyOptions {
   content?: Record<string, { schema: OpenApiSchemaObject }>;
 }
 
+/**
+ * Normalized operation metadata stored on controller methods.
+ */
 export interface ApiOperationMetadata {
   summary?: string;
   description?: string;
   deprecated?: boolean;
 }
 
+/**
+ * Stored OpenAPI security requirement metadata for a single operation.
+ */
 export interface ApiSecurityRequirementMetadata {
   [scheme: string]: string[];
 }
 
+/**
+ * Normalized response metadata stored on controller methods.
+ */
 export interface ApiResponseMetadata {
   status: number;
   description?: string;
@@ -45,6 +66,9 @@ export interface ApiResponseMetadata {
   type?: Constructor;
 }
 
+/**
+ * Normalized parameter metadata stored on controller methods.
+ */
 export interface ApiParameterMetadata {
   name: string;
   in: 'cookie' | 'header' | 'path' | 'query';
@@ -53,6 +77,9 @@ export interface ApiParameterMetadata {
   schema?: OpenApiSchemaObject;
 }
 
+/**
+ * Normalized request-body metadata stored on controller methods.
+ */
 export interface ApiBodyMetadata {
   description?: string;
   required?: boolean;
@@ -60,6 +87,9 @@ export interface ApiBodyMetadata {
   content?: Record<string, { schema: OpenApiSchemaObject }>;
 }
 
+/**
+ * Aggregated OpenAPI metadata snapshot for a controller method.
+ */
 export interface MethodApiMetadata {
   operation?: ApiOperationMetadata;
   responses: ApiResponseMetadata[];

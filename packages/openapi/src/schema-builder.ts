@@ -11,20 +11,32 @@ import {
 
 type OpenApiOperationMethod = Lowercase<HttpMethod>;
 
+/**
+ * OpenAPI `info` object emitted in the generated document.
+ */
 export interface OpenApiInfoObject {
   title: string;
   version: string;
 }
 
+/**
+ * OpenAPI response object emitted for an operation status code.
+ */
 export interface OpenApiResponseObject {
   description: string;
   content?: Record<string, OpenApiMediaTypeObject>;
 }
 
+/**
+ * OpenAPI security requirement object emitted on an operation.
+ */
 export interface OpenApiSecurityRequirementObject {
   [scheme: string]: string[];
 }
 
+/**
+ * JSON Schema-compatible OpenAPI schema object used across parameters, bodies, and components.
+ */
 export interface OpenApiSchemaObject {
   $ref?: string;
   type?: 'array' | 'boolean' | 'integer' | 'number' | 'object' | 'string';
@@ -49,6 +61,9 @@ export interface OpenApiSchemaObject {
   maxLength?: number;
 }
 
+/**
+ * OpenAPI parameter object emitted for path, query, header, or cookie bindings.
+ */
 export interface OpenApiParameterObject {
   name: string;
   in: 'cookie' | 'header' | 'path' | 'query';
@@ -57,16 +72,25 @@ export interface OpenApiParameterObject {
   description?: string;
 }
 
+/**
+ * OpenAPI media-type object wrapping a schema.
+ */
 export interface OpenApiMediaTypeObject {
   schema: OpenApiSchemaObject;
 }
 
+/**
+ * OpenAPI request-body object emitted for handler body bindings.
+ */
 export interface OpenApiRequestBodyObject {
   description?: string;
   content: Record<string, OpenApiMediaTypeObject>;
   required?: boolean;
 }
 
+/**
+ * OpenAPI security scheme object registered in `components.securitySchemes`.
+ */
 export interface OpenApiSecuritySchemeObject {
   type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect';
   description?: string;
@@ -100,11 +124,17 @@ export interface OpenApiSecuritySchemeObject {
   openIdConnectUrl?: string;
 }
 
+/**
+ * OpenAPI components object emitted for shared schemas and security schemes.
+ */
 export interface OpenApiComponentsObject {
   schemas?: Record<string, OpenApiSchemaObject>;
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
 }
 
+/**
+ * OpenAPI operation object emitted for a single HTTP method on a path.
+ */
 export interface OpenApiOperationObject {
   operationId: string;
   tags: string[];
@@ -117,10 +147,16 @@ export interface OpenApiOperationObject {
   security?: OpenApiSecurityRequirementObject[];
 }
 
+/**
+ * OpenAPI path-item object containing one or more HTTP method operations.
+ */
 export interface OpenApiPathItemObject {
   [method: string]: OpenApiOperationObject | undefined;
 }
 
+/**
+ * Root OpenAPI 3.1.0 document produced by `buildOpenApiDocument(...)`.
+ */
 export interface OpenApiDocument {
   openapi: '3.1.0';
   info: OpenApiInfoObject;
@@ -128,6 +164,9 @@ export interface OpenApiDocument {
   components?: OpenApiComponentsObject;
 }
 
+/**
+ * Input used by `buildOpenApiDocument(...)` to assemble an OpenAPI document.
+ */
 export interface BuildOpenApiDocumentOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   descriptors: readonly HandlerDescriptor[];
@@ -138,6 +177,9 @@ export interface BuildOpenApiDocumentOptions {
   documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
 }
 
+/**
+ * Controls whether common framework error responses are injected automatically.
+ */
 export type DefaultErrorResponsesPolicy = 'inject' | 'omit';
 
 function expressPathToOpenApi(path: string): string {
@@ -1118,6 +1160,12 @@ function registerExtraModels(
   }
 }
 
+/**
+ * Build an OpenAPI 3.1.0 document directly from handler descriptors.
+ *
+ * @param options Document-generation input including handlers, metadata, and optional schema transforms.
+ * @returns A generated OpenAPI document ready to serialize or serve.
+ */
 export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
   const paths: Record<string, OpenApiPathItemObject> = {};
   const componentSchemas: Record<string, OpenApiSchemaObject> = {};

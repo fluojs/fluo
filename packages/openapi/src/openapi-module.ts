@@ -21,7 +21,9 @@ import {
 const SWAGGER_UI_CSS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css';
 const SWAGGER_UI_BUNDLE_JS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js';
 
-/** Public options for `OpenApiModule.forRoot(...)` and `forRootAsync(...)`. */
+/**
+ * Public options for `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
+ */
 export interface OpenApiModuleOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   title: string;

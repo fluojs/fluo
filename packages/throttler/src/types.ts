@@ -1,19 +1,31 @@
 import type { MiddlewareContext } from '@konekti/http';
 
+/**
+ * Snapshot of a client's current rate-limit window state.
+ */
 export interface ThrottlerStoreEntry {
   count: number;
   resetAt: number;
 }
 
+/**
+ * Input passed to a `ThrottlerStore` when consuming a request slot.
+ */
 export interface ThrottlerConsumeInput {
   now: number;
   ttlSeconds: number;
 }
 
+/**
+ * Store contract used by `ThrottlerGuard` to track request windows.
+ */
 export interface ThrottlerStore {
   consume(key: string, input: ThrottlerConsumeInput): ThrottlerStoreEntry | Promise<ThrottlerStoreEntry>;
 }
 
+/**
+ * Per-handler or per-controller throttle override.
+ */
 export interface ThrottlerHandlerOptions {
   /** Seconds in the rate-limit window. */
   ttl: number;
@@ -21,6 +33,9 @@ export interface ThrottlerHandlerOptions {
   limit: number;
 }
 
+/**
+ * Public configuration options for `ThrottlerModule.forRoot(...)`.
+ */
 export interface ThrottlerModuleOptions {
   /** Seconds in the rate-limit window (module-wide default). */
   ttl: number;
