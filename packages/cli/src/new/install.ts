@@ -24,6 +24,13 @@ export function resolveInstallCommand(
   packageManager: PackageManager,
   options: ResolveInstallCommandOptions = {},
 ): InstallCommand {
+  if (packageManager === 'bun') {
+    return {
+      args: ['install'],
+      command: 'bun',
+    };
+  }
+
   if (packageManager === 'yarn') {
     const isCorepackAvailable = options.isCorepackAvailable ?? checkCommandAvailability('corepack');
 

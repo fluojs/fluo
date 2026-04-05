@@ -24,6 +24,10 @@ function parsePackageManager(value: string | undefined): PackageManager | undefi
     return undefined;
   }
 
+  if (value.startsWith('bun')) {
+    return 'bun';
+  }
+
   if (value.startsWith('pnpm')) {
     return 'pnpm';
   }
@@ -63,6 +67,10 @@ function detectFromDirectory(startDirectory: string): PackageManager | undefined
       if (fromPackageManagerField) {
         return fromPackageManagerField;
       }
+    }
+
+    if (existsSync(join(currentDirectory, 'bun.lock')) || existsSync(join(currentDirectory, 'bun.lockb'))) {
+      return 'bun';
     }
 
     if (existsSync(join(currentDirectory, 'pnpm-lock.yaml'))) {
