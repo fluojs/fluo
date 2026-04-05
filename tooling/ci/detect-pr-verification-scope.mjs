@@ -293,6 +293,15 @@ export function resolveVerificationScope(changedFiles) {
     .map((packageName) => directoryByPackageName.get(packageName))
     .filter((directory) => typeof directory === 'string')
     .sort((left, right) => left.localeCompare(right));
+  const testScriptPackageNames = packageNames.filter((packageName) => {
+    const directory = directoryByPackageName.get(packageName);
+    const manifest = directory ? manifestsByDirectory.get(directory) : undefined;
+    return typeof manifest?.manifest?.scripts?.test === 'string' && manifest.manifest.scripts.test.trim().length > 0;
+  });
+  const testPathFallbackDirectories = packageDirectories.filter((directory) => {
+    const manifest = manifestsByDirectory.get(directory);
+    return !(typeof manifest?.manifest?.scripts?.test === 'string' && manifest.manifest.scripts.test.trim().length > 0);
+  });
 
   return {
     mode: 'scoped',
@@ -300,6 +309,8 @@ export function resolveVerificationScope(changedFiles) {
     filters: packageNames.map((name) => `--filter=${name}`),
     packageNames,
     packageDirectories,
+    testScriptPackageNames,
+    testPathFallbackDirectories,
   };
 }
 
@@ -371,7 +382,9 @@ export function writeGithubOutput(result) {
     `reason=${result.reason}`,
     `filter_args=${result.filters.join(' ')}`,
     `package_names=${result.packageNames.join(',')}`,
-    `test_paths=${result.packageDirectories.join(' ')}`,
+    `test_filter_args=${(result.testScriptPackageNames ?? []).map((name) => `--filter=${name}`).join(' ')}`,
+    `test_package_names=${(result.testScriptPackageNames ?? []).join(',')}`,
+    `test_paths=${(result.testPathFallbackDirectories ?? result.packageDirectories).join(' ')}`,
   ];
   lines.push(`is_scoped=${result.mode === 'scoped' ? 'true' : 'false'}`);
 

@@ -19,6 +19,8 @@ jobs:
       reason: ${{ steps.resolve.outputs.reason }}
       filter_args: ${{ steps.resolve.outputs.filter_args }}
       package_names: ${{ steps.resolve.outputs.package_names }}
+      test_filter_args: ${{ steps.resolve.outputs.test_filter_args }}
+      test_package_names: ${{ steps.resolve.outputs.test_package_names }}
       test_paths: ${{ steps.resolve.outputs.test_paths }}
 
     steps:
@@ -112,8 +114,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test (scoped PR)
-        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'
+      - name: Test (scoped PR package scripts)
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_package_names != ''
+        run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.test_filter_args }} run test
+
+      - name: Test (scoped PR fallback paths)
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_paths != ''
         run: pnpm vitest run ${{ needs.resolve-pr-verification-scope.outputs.test_paths }}
 
       - name: Test (full)
