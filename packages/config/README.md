@@ -52,11 +52,16 @@ const config = loadConfig({
 const service = new ConfigService(config);
 service.get('DATABASE_URL');          // returns string | undefined
 service.getOrThrow('DATABASE_URL');   // throws if missing
-service.getOptional('REDIS_URL');     // deprecated: use get()
 service.snapshot();                   // returns a deep-cloned snapshot
 ```
 
 In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your root module, which calls `loadConfig()` during bootstrap and registers the resulting `ConfigService` as a provider.
+
+## 0.x migration note
+
+- `ConfigService#getOptional()` was removed. Use `get()` for optional reads and `getOrThrow()` for required reads.
+- `ConfigService` no longer exposes public snapshot-mutation methods. Runtime reload wiring updates snapshots internally through `ConfigReloadModule` / `ConfigReloadManager`.
+- `ConfigMode` is no longer part of the supported package surface. Use `envFile` / `envFilePath` instead.
 
 ## Key API
 
@@ -98,10 +103,13 @@ When used together with `@konekti/runtime` and `watch: true`, the runtime can ap
 class ConfigService {
   get<T>(key: string): T | undefined
   getOrThrow<T>(key: string): T       // throws if missing
-  getOptional<T>(key: string): T | undefined // deprecated: use get()
   snapshot(): ConfigDictionary        // returns deep-cloned normalized values
 }
 ```
+
+### `ConfigReloadModule`
+
+`ConfigReloadModule.forRoot()` exports the reloader token and the concrete `ConfigReloadManager` class. Inject `ConfigReloadManager` when you prefer class-based DI, or `CONFIG_RELOADER` when you need an explicit token.
 
 ### Types
 
@@ -129,7 +137,7 @@ createConfigReloader(options)
   → close() to stop watching and clear subscriptions
 ```
 
-`ConfigService` remains intentionally read-only after bootstrap. Dynamic reload is an explicit opt-in flow through `createConfigReloader()`.
+`ConfigService` remains intentionally read-only after bootstrap. Dynamic reload is an explicit opt-in flow through `createConfigReloader()` / `ConfigReloadModule`, not through public mutation methods on `ConfigService`.
 
 That explicit reload path is still config-scoped. Konekti does not treat it as a general code hot reload or HMR mechanism.
 

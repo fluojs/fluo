@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope, defineControllerMetadata, defineModuleMetadata } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
+import { defineControllerMetadata, defineModuleMetadata } from '@konekti/core/internal';
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';

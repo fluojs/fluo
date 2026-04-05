@@ -1,4 +1,5 @@
-import { metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
+import { type MetadataPropertyKey } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import { mergeAuthRequirements, normalizeDeclaredScopes } from './scope.js';
 import type { AuthRequirement } from './types.js';

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { getClassValidationRules, getControllerMetadata, getDtoBindingSchema, getDtoValidationSchema, getRouteMetadata } from '@konekti/core';
+import {
+  getClassValidationRules,
+  getControllerMetadata,
+  getDtoBindingSchema,
+  getDtoValidationSchema,
+  getRouteMetadata,
+} from '@konekti/core/internal';
 
 import {
   Convert,

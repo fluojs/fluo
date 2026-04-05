@@ -1,4 +1,5 @@
-import { getClassDiMetadata, type Token } from '@konekti/core';
+import { type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import type { ApplicationLogger, CompiledModule } from '@konekti/runtime';
 

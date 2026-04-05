@@ -1,7 +1,8 @@
 import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
-import { Inject, Scope, getModuleMetadata } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 import { bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';

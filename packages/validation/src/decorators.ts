@@ -1,14 +1,16 @@
 import {
+  type Constructor,
+  type MetadataPropertyKey,
+} from '@konekti/core';
+import {
   metadataSymbol,
   type ClassValidationRule,
-  type Constructor,
   type CustomClassValidator,
   type CustomFieldValidator,
   type CustomValidationDecoratorOptions,
   type DtoFieldValidationRule,
-  type MetadataPropertyKey,
   type ValidationDecoratorOptions,
-} from '@konekti/core';
+} from '@konekti/core/internal';
 
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
 

@@ -5,7 +5,8 @@ import type { Duplex } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
-import { Inject, Scope, getModuleMetadata } from '@konekti/core';
+import { Inject, Scope } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 import { Container } from '@konekti/di';
 import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
 import { bootstrapApplication, bootstrapNodeApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';

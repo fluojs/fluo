@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import { queueWorkerMetadataSymbol } from './metadata.js';
 import type { QueueJobType, QueueWorkerMetadata, QueueWorkerOptions } from './types.js';

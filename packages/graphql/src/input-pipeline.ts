@@ -1,4 +1,5 @@
-import { getDtoValidationSchema, type Constructor, type DtoFieldValidationRule, type MetadataPropertyKey } from '@konekti/core';
+import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { getDtoValidationSchema, type DtoFieldValidationRule } from '@konekti/core/internal';
 import { DefaultValidator } from '@konekti/validation';
 
 import { isGraphqlListTypeRef } from './types.js';

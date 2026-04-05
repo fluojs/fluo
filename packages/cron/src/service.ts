@@ -1,4 +1,5 @@
-import { Inject, getClassDiMetadata, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
+import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import { Cron as CronValidator } from 'croner';

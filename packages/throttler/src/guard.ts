@@ -1,4 +1,5 @@
-import { Inject, metadataSymbol } from '@konekti/core';
+import { Inject } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 import { TooManyRequestsException, type Guard, type GuardContext, type MiddlewareContext } from '@konekti/http';
 
 import {

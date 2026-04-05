@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import { microserviceMetadataSymbol } from './metadata.js';
 import type { HandlerKind, HandlerMetadata, Pattern } from './types.js';

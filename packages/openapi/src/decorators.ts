@@ -1,4 +1,5 @@
-import { metadataSymbol, type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 import type { OpenApiSchemaObject } from './schema-builder.js';
 
 export interface ApiOperationOptions {

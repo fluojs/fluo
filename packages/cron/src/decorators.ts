@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 import { Cron as CronValidator } from 'croner';
 
 import { schedulingMetadataSymbol } from './metadata.js';

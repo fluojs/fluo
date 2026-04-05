@@ -1,11 +1,13 @@
 import {
-  metadataSymbol,
   type Constructor,
-  type ControllerMetadata,
-  type DtoFieldBindingMetadata,
   type MetadataPropertyKey,
   type MetadataSource,
 } from '@konekti/core';
+import {
+  metadataSymbol,
+  type ControllerMetadata,
+  type DtoFieldBindingMetadata,
+} from '@konekti/core/internal';
 
 import type { ConverterLike, GuardLike, HttpMethod, InterceptorLike } from './types.js';
 

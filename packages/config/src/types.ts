@@ -1,8 +1,3 @@
-/**
- * @deprecated Use `envFile` option instead. Mode-based env file selection is removed.
- */
-export type ConfigMode = 'dev' | 'prod' | 'test';
-
 export type ConfigDictionary = Record<string, unknown>;
 
 /**

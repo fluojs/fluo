@@ -1,4 +1,5 @@
-import { defineModuleMetadata, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@konekti/core';
+import { type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@konekti/core';
+import { defineModuleMetadata } from '@konekti/core/internal';
 import type { Provider } from '@konekti/di';
 
 import { JwtConfigurationError } from './errors.js';

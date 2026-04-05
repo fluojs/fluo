@@ -1,4 +1,5 @@
-import { metadataSymbol, type MetadataPropertyKey } from '@konekti/core';
+import { type MetadataPropertyKey } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import type {
   CommandHandlerMetadata,

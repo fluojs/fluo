@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core';
+import { metadataSymbol } from '@konekti/core/internal';
 
 import type { EventHandlerMetadata, EventType } from './types.js';
 import { eventBusMetadataSymbol } from './metadata.js';

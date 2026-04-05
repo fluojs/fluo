@@ -1,5 +1,5 @@
 import type { MaybePromise, Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 import {
   isForwardRef,
   isOptionalToken,
