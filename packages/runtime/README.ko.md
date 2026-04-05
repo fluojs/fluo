@@ -23,6 +23,8 @@
 
 `KonektiFactory`는 canonical public startup facade입니다. HTTP 앱의 기본 흐름은 `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`이며, `@konekti/platform-fastify`나 `@konekti/platform-express` 같은 트랜스포트 패키지를 선택할 때는 `options.adapter`를 전달합니다.
 
+트랜스포트가 SSE 또는 기타 스트리밍 HTTP 응답 본문을 지원하면, 런타임이 관리하는 어댑터는 `FrameworkResponse.stream`도 노출할 수 있습니다.
+
 ## 설치
 
 ```bash

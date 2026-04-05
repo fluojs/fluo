@@ -23,6 +23,8 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 
 `KonektiFactory` is the canonical public startup facade. For HTTP apps, the default flow is `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`, with optional `options.adapter` when selecting a transport package such as `@konekti/platform-fastify` or `@konekti/platform-express`.
 
+Runtime-managed adapters may also expose `FrameworkResponse.stream` when the transport supports SSE or other streamed HTTP response bodies.
+
 ## Installation
 
 ```bash
