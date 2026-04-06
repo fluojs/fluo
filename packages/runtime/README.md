@@ -469,6 +469,21 @@ Runtime validates component identity/dependency edges, starts components in depe
 - Adapterless bootstrap still runs module/application bootstrap hooks.
 - `close()` still executes runtime cleanup and shutdown hooks even when no HTTP adapter was provided.
 
+### Operational surface ownership audit (#824)
+
+The remaining runtime-owned operational surfaces stay intentionally narrow and bootstrap-scoped:
+
+| surface | ownership decision | why it stays or moves |
+| --- | --- | --- |
+| `createHealthModule()` (`/health`, `/ready`) | **Stay in `@konekti/runtime`** | These endpoints reflect the assembled application shell's bootstrap state and the runtime-managed platform readiness gate. They provide the minimal liveness/readiness baseline for the orchestrator itself, not a richer health-indicator composition layer. |
+| `APPLICATION_LOGGER`, `createConsoleApplicationLogger()`, `createJsonApplicationLogger()` | **Stay in `@konekti/runtime`** | Bootstrap and shell lifecycle code need a default logger before optional observability packages are installed. This remains a thin application-shell logging seam, not a full logging backend or telemetry product. |
+| `PLATFORM_SHELL` and the platform readiness/health snapshot contracts | **Stay in `@konekti/runtime`** | The runtime owns `platform.components` orchestration, dependency-ordered start/stop, and aggregate readiness/health evaluation for the assembled shell. Packages contribute component reports, but the orchestration envelope belongs to runtime. |
+| Metrics exposure (`/metrics`) | **Do not move into `@konekti/runtime`** | Metrics collection and scrape exposure belong to `@konekti/metrics`, which owns Prometheus-specific behavior and registry policy. |
+| Enriched operational health indicators | **Do not move into `@konekti/runtime`** | Indicator composition and expanded health semantics belong to `@konekti/terminus`, leaving runtime with only the baseline shell liveness/readiness contract. |
+| Transport- or app-specific logging integrations | **Do not move into `@konekti/runtime`** | Adapters and applications can replace `APPLICATION_LOGGER` or add observers/middleware, but runtime should only provide the bootstrap-safe default seam. |
+
+This audit does not extract additional code. The result is an explicit ownership boundary: runtime keeps only the operational surfaces required to assemble, report on, and safely bootstrap the application shell.
+
 ## Architecture
 
 ### Bootstrap flow

@@ -469,6 +469,21 @@ await app.listen();
 - adapterless bootstrap도 module/application bootstrap hook을 실행합니다.
 - HTTP adapter가 없어도 `close()`는 runtime cleanup과 shutdown hook을 계속 실행합니다.
 
+### Operational surface ownership audit (#824)
+
+남아 있는 runtime-owned 운영 표면은 의도적으로 좁고 부트스트랩 범위에 한정됩니다.
+
+| surface | ownership decision | why it stays or moves |
+| --- | --- | --- |
+| `createHealthModule()` (`/health`, `/ready`) | **`@konekti/runtime`에 유지** | 이 엔드포인트들은 조립된 애플리케이션 셸의 부트스트랩 상태와 런타임 소유 platform readiness 게이트를 반영합니다. 즉, 오케스트레이터 자체를 위한 최소한의 liveness/readiness 기준선이지, 더 풍부한 health indicator 조합 계층이 아닙니다. |
+| `APPLICATION_LOGGER`, `createConsoleApplicationLogger()`, `createJsonApplicationLogger()` | **`@konekti/runtime`에 유지** | 부트스트랩 및 셸 라이프사이클 코드는 선택적 observability 패키지가 설치되지 않았더라도 기본 로거가 필요합니다. 이는 얇은 애플리케이션 셸 로깅 seam으로 남으며, 전체 로깅 백엔드나 텔레메트리 제품 역할을 하지 않습니다. |
+| `PLATFORM_SHELL` 및 platform readiness/health snapshot 계약 | **`@konekti/runtime`에 유지** | 런타임은 `platform.components` 오케스트레이션, 의존성 순서 start/stop, 조립된 셸에 대한 집계 readiness/health 평가를 소유합니다. 각 패키지는 컴포넌트 리포트를 제공할 수 있지만, 오케스트레이션 envelope 자체는 런타임의 책임입니다. |
+| Metrics 노출 (`/metrics`) | **`@konekti/runtime`로 옮기지 않음** | 메트릭 수집과 스크레이프 노출은 Prometheus 특화 동작과 registry 정책을 소유하는 `@konekti/metrics`의 책임입니다. |
+| 확장된 운영 헬스 인디케이터 | **`@konekti/runtime`로 옮기지 않음** | 인디케이터 조합과 확장된 health semantics는 `@konekti/terminus`의 책임으로 두고, 런타임은 셸의 기본 liveness/readiness 계약만 유지합니다. |
+| transport 또는 앱 전용 로깅 통합 | **`@konekti/runtime`로 옮기지 않음** | 어댑터와 애플리케이션은 `APPLICATION_LOGGER`를 교체하거나 observer/middleware를 추가할 수 있지만, 런타임은 부트스트랩에 안전한 기본 seam만 제공해야 합니다. |
+
+이 감사 결과는 추가 코드 추출을 요구하지 않습니다. 대신 런타임은 애플리케이션 셸을 조립하고, 보고하고, 안전하게 부트스트랩하는 데 필요한 운영 표면만 유지한다는 소유권 경계를 명시합니다.
+
 ## 아키텍처
 
 ### 부트스트랩 흐름
