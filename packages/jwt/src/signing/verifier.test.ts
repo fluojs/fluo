@@ -2,7 +2,7 @@ import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
 function encodeBase64Url(value: string): string {

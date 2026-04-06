@@ -2,9 +2,9 @@ import { createHmac, createSign } from 'node:crypto';
 
 import { Inject } from '@konekti/core';
 
-import { JwtConfigurationError } from './errors.js';
-import { normalizeRefreshTokenOptions } from './refresh-token.js';
-import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from './types.js';
+import { JwtConfigurationError } from '../errors.js';
+import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
+import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from '../types.js';
 import { ASYMMETRIC_HASH, HMAC_HASH, JWT_OPTIONS } from './verifier.js';
 
 function encodeBase64Url(value: Buffer | string): string {

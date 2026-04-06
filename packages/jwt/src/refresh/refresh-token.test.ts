@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { RefreshTokenService, type RefreshTokenRecord, type RefreshTokenStore } from './refresh-token.js';
-import { DefaultJwtSigner } from './signer.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import { DefaultJwtSigner } from '../signing/signer.js';
+import { DefaultJwtVerifier } from '../signing/verifier.js';
 
 class InMemoryRefreshTokenStore implements RefreshTokenStore {
   private readonly records = new Map<string, RefreshTokenRecord>();

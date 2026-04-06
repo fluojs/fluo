@@ -1,6 +1,6 @@
 import { createPublicKey, type KeyObject } from 'node:crypto';
 
-import { JwtConfigurationError, JwtInvalidTokenError } from './errors.js';
+import { JwtConfigurationError, JwtInvalidTokenError } from '../errors.js';
 
 interface Jwk {
   kid?: string;

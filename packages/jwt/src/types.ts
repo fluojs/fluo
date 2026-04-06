@@ -1,6 +1,6 @@
 import type { KeyObject } from 'node:crypto';
 
-import type { RefreshTokenOptions } from './refresh-token.js';
+import type { RefreshTokenOptions } from './refresh/refresh-token.js';
 
 export type JwtAlgorithm = 'HS256' | 'HS384' | 'HS512' | 'RS256' | 'RS384' | 'RS512' | 'ES256' | 'ES384' | 'ES512';
 
