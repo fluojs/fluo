@@ -66,6 +66,7 @@ await runDenoApplication(AppModule, {
 - Exposes `handle(request)` for direct request dispatch in tests and custom `Deno.serve(...)` composition.
 - Supports `rawBody` opt-in for non-multipart requests.
 - Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
+- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` so future runtime-specific websocket work starts from an explicit contract.
 - Logs runtime-style listen messages through `runDenoApplication()`.
 
 ## runtime invariants
@@ -87,4 +88,4 @@ await runDenoApplication(AppModule, {
 - No Bun-, Cloudflare-, or Deno Deploy-specific bootstrap helpers are provided here.
 - No Deno-native HTTPS/TLS passthrough is exposed yet; add that in a dedicated issue when the public contract is defined.
 - The adapter targets native Web `Request` / `Response` semantics and does not provide a Node compatibility layer.
-- Raw `@konekti/websocket/node` hosting remains unsupported here until a tested server-backed realtime capability seam exists for Deno.
+- The fetch-style websocket capability exposed here is contract-only. Raw `@konekti/websocket/node` hosting remains unsupported until a Deno-specific raw websocket host and tests land in a dedicated issue.

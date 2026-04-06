@@ -26,6 +26,7 @@ It does **not** participate in the production runtime — the testing module exi
 - `@konekti/testing/platform-conformance`: `createPlatformConformanceHarness(...)`.
 - `@konekti/testing/http-adapter-portability`: `createHttpAdapterPortabilityHarness(...)`.
 - `@konekti/testing/web-runtime-adapter-portability`: `createWebRuntimeHttpAdapterPortabilityHarness(...)`.
+- `@konekti/testing/fetch-style-websocket-conformance`: `createFetchStyleWebSocketConformanceHarness(...)`.
 - `@konekti/testing/vitest`: `konektiBabelDecoratorsPlugin()`.
 
 ## Migration note
@@ -302,6 +303,32 @@ The Web-runtime portability harness covers these parity expectations:
 - SSE responses keep `text/event-stream` framing.
 - adapters stay verifiable through direct `Request` / `Response` dispatch without assuming Node listener ownership.
 
+### Fetch-style websocket conformance harness
+
+Use `createFetchStyleWebSocketConformanceHarness(...)` when a fetch-style runtime adapter needs to lock the shared raw websocket expansion contract without claiming runtime support yet.
+
+```ts
+import { createFetchStyleWebSocketConformanceHarness } from '@konekti/testing/fetch-style-websocket-conformance';
+import { createBunAdapter } from '@konekti/platform-bun';
+
+const harness = createFetchStyleWebSocketConformanceHarness({
+  createAdapter: () => createBunAdapter(),
+  expectedReason:
+    'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+  name: 'bun',
+});
+
+harness.assertExposesRawWebSocketExpansionContract();
+```
+
+The fetch-style websocket conformance harness locks these invariants:
+
+- the adapter exposes `getRealtimeCapability()`.
+- the capability stays on `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade' }`.
+- the shared contract version remains `1` until a deliberate contract change lands.
+- `support: 'contract-only'` remains explicit until a runtime-specific raw websocket host ships with tests.
+- the adapter keeps a stable reason string explaining why support is not claimed yet.
+
 ### Resolving tokens directly
 
 ```typescript
@@ -359,6 +386,10 @@ Shared HTTP adapter portability harness for built-in and external transport adap
 ### `createWebRuntimeHttpAdapterPortabilityHarness(options)`
 
 Shared fetch-style runtime adapter portability harness for official Web runtime adapters.
+
+### `createFetchStyleWebSocketConformanceHarness(options)`
+
+Shared raw websocket expansion-contract harness for fetch-style runtime adapters.
 
 ### `TestingModuleBuilder`
 

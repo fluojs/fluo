@@ -57,6 +57,10 @@
       "types": "./dist/web-runtime-adapter-portability.d.ts",
       "import": "./dist/web-runtime-adapter-portability.js"
     },
+    "./fetch-style-websocket-conformance": {
+      "types": "./dist/fetch-style-websocket-conformance.d.ts",
+      "import": "./dist/fetch-style-websocket-conformance.js"
+    },
     "./types": {
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js"

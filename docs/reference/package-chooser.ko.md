@@ -173,6 +173,8 @@
 
 현재 이 브랜치에서 정직하게 지원하는 raw `@konekti/websocket/node` 범위는 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 한정됩니다.
 
+`@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` 같은 fetch-style 어댑터는 이후 작업을 위해 공용 `raw-websocket-expansion` contract-only capability를 노출할 수 있지만, 그 계약만으로 raw websocket 런타임 지원을 주장하는 것은 아닙니다.
+
 ### 선택 B — Socket.IO
 
 | 패키지 | 역할 |
@@ -183,9 +185,10 @@
 
 **사용하지 않는 경우:**
 - 실시간 요구가 서버 전송 이벤트(SSE)에 한정된다면 `@konekti/http`의 표준 HTTP 스트리밍 응답으로 충분할 수 있습니다.
-- 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면(예: Worker 계열 어댑터), Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
+- 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면 Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
+- 선택한 런타임이 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`를 보고한다면, 그것은 현재 raw websocket 지원이 아니라 이후 작업용 계약으로 취급하세요.
 - 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 `@konekti/platform-socket.io` 지원을 가정하지 마세요.
-- 별도 브랜치에서 호환 가능한 server-backed 구현과 테스트가 추가되지 않았다면 Bun/Deno에서 raw `@konekti/websocket/node` 지원을 가정하지 마세요.
+- 별도 브랜치에서 호환 가능한 런타임별 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 raw `@konekti/websocket/node` 지원을 가정하지 마세요.
 
 ---
 

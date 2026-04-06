@@ -13,8 +13,18 @@ export interface UnsupportedHttpAdapterRealtimeCapability {
   reason: string;
 }
 
+export interface FetchStyleHttpAdapterRealtimeCapability {
+  contract: 'raw-websocket-expansion';
+  kind: 'fetch-style';
+  mode: 'request-upgrade';
+  reason: string;
+  support: 'contract-only' | 'supported';
+  version: 1;
+}
+
 export type HttpAdapterRealtimeCapability =
   | ServerBackedHttpAdapterRealtimeCapability
+  | FetchStyleHttpAdapterRealtimeCapability
   | UnsupportedHttpAdapterRealtimeCapability;
 
 export function createServerBackedHttpAdapterRealtimeCapability(
@@ -33,6 +43,22 @@ export function createUnsupportedHttpAdapterRealtimeCapability(
     kind: 'unsupported',
     mode: 'no-op',
     reason,
+  };
+}
+
+export function createFetchStyleHttpAdapterRealtimeCapability(
+  reason: string,
+  options: {
+    support?: FetchStyleHttpAdapterRealtimeCapability['support'];
+  } = {},
+): FetchStyleHttpAdapterRealtimeCapability {
+  return {
+    contract: 'raw-websocket-expansion',
+    kind: 'fetch-style',
+    mode: 'request-upgrade',
+    reason,
+    support: options.support ?? 'contract-only',
+    version: 1,
   };
 }
 

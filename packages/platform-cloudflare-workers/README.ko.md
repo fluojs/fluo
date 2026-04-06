@@ -76,7 +76,7 @@ Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공
 
 - Request/Response 변환 로직을 복제하지 않고 공유 `@konekti/runtime/web` fetch-style 어댑터 seam의 `dispatchWebRequest(...)`를 재사용합니다.
 - native Worker `Request`를 Konekti `FrameworkRequest` / `FrameworkResponse` 계약으로 브리지합니다.
-- Worker 플랫폼이 Node 스타일 listener 소유권을 암시하지 않도록, 명시적인 `{ kind: 'unsupported', mode: 'no-op', reason }` realtime capability를 노출합니다.
+- Worker 플랫폼이 Node 스타일 listener 소유권을 암시하지 않으면서도 이후 확장 seam을 정직하게 문서화할 수 있도록 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` capability를 노출합니다.
 - 멀티파트가 아닌 요청에 대해 `rawBody` opt-in 동작을 유지합니다.
 - 공유 Web 코어를 통해 multipart 파싱과 `request.files` 노출을 지원합니다.
 - 공유 Web `FrameworkResponse.stream` 구현을 통해 SSE 및 기타 스트리밍 응답을 지원합니다.
@@ -101,3 +101,4 @@ Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공
 - Worker `env`와 `ExecutionContext`는 `fetch()` 경계에서 받지만, Konekti `RequestContext`로 자동 주입되지는 않습니다.
 - `port`, `host`, `https`, `shutdownSignals`, `forceExitTimeoutMs` 같은 Node 전용 옵션은 지원하지 않습니다.
 - 이 패키지는 Bun/Deno 전용 동작을 추가하지 않으며, 공유 Web 코어 위의 Cloudflare Workers 범위에만 집중합니다.
+- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Worker 전용 host와 테스트가 별도 이슈에서 추가되기 전까지 raw websocket 지원은 범위 밖입니다.

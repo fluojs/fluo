@@ -6,6 +6,7 @@ import * as mock from './mock.js';
 import * as portability from './http-adapter-portability.js';
 import * as webPortability from './web-runtime-adapter-portability.js';
 import * as conformance from './platform-conformance.js';
+import * as fetchStyleWebsocket from './fetch-style-websocket-conformance.js';
 
 describe('@konekti/testing surface', () => {
   it('keeps the root barrel focused on module/app helpers', () => {
@@ -17,6 +18,7 @@ describe('@konekti/testing surface', () => {
     expect('createPlatformConformanceHarness' in testing).toBe(false);
     expect('createHttpAdapterPortabilityHarness' in testing).toBe(false);
     expect('createWebRuntimeHttpAdapterPortabilityHarness' in testing).toBe(false);
+    expect('createFetchStyleWebSocketConformanceHarness' in testing).toBe(false);
   });
 
   it('exposes responsibility-specific helpers from subpaths', () => {
@@ -27,5 +29,6 @@ describe('@konekti/testing surface', () => {
     expect(conformance.createPlatformConformanceHarness).toBeTypeOf('function');
     expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
+    expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
   });
 });
