@@ -28,13 +28,11 @@ npm install @konekti/di
 import { Container } from '@konekti/di';
 import { Inject, Scope } from '@konekti/core';
 
-const LOGGER = Symbol('Logger');
-
 class Logger {
   log(msg: string) { console.log(msg); }
 }
 
-@Inject([LOGGER])
+@Inject([Logger])
 @Scope('singleton')
 class UserService {
   constructor(private logger: Logger) {}
@@ -45,13 +43,18 @@ class UserService {
 }
 
 const container = new Container();
-container.register(
-  { provide: LOGGER, useClass: Logger },
-  UserService,
-);
+container.register(Logger, UserService);
 
 const svc = await container.resolve<UserService>(UserService);
 svc.greet('world');
+```
+
+구체 클래스가 있는 의존성은 그 클래스를 토큰으로 쓰는 것이 Konekti의 기본 패턴입니다. 인터페이스 전용 계약, config 객체, runtime handle에는 symbol이 여전히 적합합니다:
+
+```typescript
+const LOGGER = Symbol('Logger');
+
+container.register({ provide: LOGGER, useClass: Logger });
 ```
 
 ### Request scope
