@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
+  getOfficialTransportDocsPackages,
   isGovernedPackageSourcePath,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -80,5 +81,11 @@ describe('enforceNoDirectProcessEnvInOrdinaryPackageSource', () => {
         },
       ),
     ).not.toThrow();
+  });
+});
+
+describe('officialTransportDocsPackages', () => {
+  it('includes platform-socket.io for docs-hub transport discoverability enforcement', () => {
+    expect(getOfficialTransportDocsPackages()).toContain('@konekti/platform-socket.io');
   });
 });
