@@ -233,7 +233,15 @@ Use global converters for transport-wide normalization such as trimming strings 
 | `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
 | `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
 
-Additional public exports include `All`, `Options`, `Head`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+Additional public exports include `All`, `Options`, `Head`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
+
+### Adapter realtime capability
+
+`HttpApplicationAdapter` now exposes an optional `getRealtimeCapability()` seam for platform-owned realtime behavior.
+
+- Server-backed adapters return `{ kind: 'server-backed', server }` when the selected platform owns a concrete realtime listener lifecycle.
+- Worker/fetch-style runtimes that do not own that lifecycle should return `{ kind: 'unsupported', mode: 'no-op', reason }` instead of implying Node-style upgrade listeners.
+- Consumers should prefer this explicit capability over assuming `getServer()` implies websocket or Socket.IO support.
 
 ### Server-Sent Events (SSE)
 

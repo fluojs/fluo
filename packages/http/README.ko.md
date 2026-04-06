@@ -233,7 +233,15 @@ global converter는 문자열 trim, query primitive coercion 같은 transport-wi
 | `createCorsMiddleware(options)` | `src/cors.ts` | CORS 미들웨어 함수 반환 |
 | `createRequestContext()` | `src/request-context.ts` | ALS 기반 컨텍스트 팩토리 |
 
-추가적인 공개 익스포트에는 `All`, `Options`, `Head`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 포함됩니다.
+추가적인 공개 익스포트에는 `All`, `Options`, `Head`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `PayloadTooLargeException` 등이 포함됩니다.
+
+### 어댑터 realtime capability
+
+`HttpApplicationAdapter`는 이제 플랫폼 소유 realtime 동작을 위한 선택적 `getRealtimeCapability()` seam을 노출합니다.
+
+- 서버를 직접 소유하는 어댑터는 선택된 플랫폼이 구체적인 realtime listener lifecycle을 가질 때 `{ kind: 'server-backed', server }`를 반환합니다.
+- 그 lifecycle을 소유하지 않는 Worker/fetch-style 런타임은 Node식 upgrade listener가 있는 것처럼 암시하지 말고 `{ kind: 'unsupported', mode: 'no-op', reason }`를 반환해야 합니다.
+- websocket 또는 Socket.IO 지원 여부를 판단할 때는 `getServer()` 존재를 추정하기보다 이 명시적 capability를 우선 사용해야 합니다.
 
 ### 서버 전송 이벤트 (SSE)
 
