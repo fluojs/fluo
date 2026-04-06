@@ -74,6 +74,7 @@ export class AppModule {}
 ## Runtime behavior
 
 - `@konekti/websocket` 데코레이터와 메타데이터 디스커버리를 재사용합니다
+- 플랫폼이 선택한 realtime capability를 소비하며, 선택된 HTTP 어댑터가 `{ kind: 'server-backed', server }`를 보고할 때만 부팅합니다
 - `@WebSocketGateway({ path })`를 Socket.IO 네임스페이스로 매핑합니다 (`/`는 기본 네임스페이스 사용)
 - 연결된 네임스페이스 소켓마다 `@OnConnect()`, `@OnMessage(event?)`, `@OnDisconnect()` 핸들러를 바인딩합니다
 - 런타임 DI 컨테이너에서 게이트웨이 인스턴스를 resolve하며, singleton이 아닌 게이트웨이는 경고 후 건너뜁니다
@@ -81,6 +82,11 @@ export class AppModule {}
 - 비동기 `@OnDisconnect()` 핸들러가 끝날 때까지 room helper를 사용할 수 있게 유지한 뒤, 소켓을 내부 레지스트리에서 제거합니다
 - 소켓 단위 `error` 이벤트를 로깅하고, 오류가 난 소켓을 내부 레지스트리에서 제거합니다
 - 타임아웃을 고려한 종료 처리로 Socket.IO 서버를 닫습니다
+
+## 의도된 제한 사항
+
+- `@konekti/platform-socket.io`는 `getServer()` 존재만으로 유효한 realtime 런타임이라고 가정하지 않습니다. 선택된 플랫폼 어댑터가 보고하는 명시적 realtime capability만 따릅니다.
+- `{ kind: 'unsupported', mode: 'no-op' }`를 보고하는 런타임은 그 명시적 경계에서 중단됩니다. 이 패키지는 Worker/fetch-style 런타임을 위해 Node listener lifecycle을 에뮬레이션하지 않습니다.
 
 ## `@konekti/websocket`과의 차이
 

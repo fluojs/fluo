@@ -74,6 +74,7 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 ## Runtime behavior
 
 - Reuses `@konekti/websocket` decorators and metadata discovery
+- Consumes the platform-selected realtime capability and only boots when the chosen HTTP adapter reports `{ kind: 'server-backed', server }`
 - Maps `@WebSocketGateway({ path })` to Socket.IO namespaces (`/` uses the default namespace)
 - Binds `@OnConnect()`, `@OnMessage(event?)`, and `@OnDisconnect()` handlers for each connected namespace socket
 - Resolves gateway instances from the runtime DI container and skips non-singleton gateways with warnings
@@ -81,6 +82,11 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 - Keeps room helpers available until async `@OnDisconnect()` handlers settle, then removes the socket from the internal registry
 - Logs socket-level `error` events and removes errored sockets from the internal registry
 - Closes the Socket.IO server with timeout-aware shutdown handling
+
+## Intentional limitations
+
+- `@konekti/platform-socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
+- Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary. This package does not emulate Node listener lifecycle for Worker/fetch-style runtimes.
 
 ## Difference from `@konekti/websocket`
 
