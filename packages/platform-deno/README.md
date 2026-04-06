@@ -88,4 +88,4 @@ await runDenoApplication(AppModule, {
 - No Bun-, Cloudflare-, or Deno Deploy-specific bootstrap helpers are provided here.
 - No Deno-native HTTPS/TLS passthrough is exposed yet; add that in a dedicated issue when the public contract is defined.
 - The adapter targets native Web `Request` / `Response` semantics and does not provide a Node compatibility layer.
-- The fetch-style websocket capability exposed here is contract-only. Raw `@konekti/websocket/node` hosting remains unsupported until a Deno-specific raw websocket host and tests land in a dedicated issue.
+- The fetch-style websocket capability exposed here is contract-only. Deno uses `Deno.upgradeWebSocket()` for websocket handling, which is incompatible with the Node `upgrade`-listener model (`ws` + `handleUpgrade`) required by `@konekti/websocket/node`. A dedicated `@konekti/websocket/deno` binding subpath with Deno-native websocket hosting and end-to-end tests is needed before raw websocket support can be claimed.

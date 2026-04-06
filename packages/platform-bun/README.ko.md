@@ -82,4 +82,4 @@ await app.listen();
 - Bun의 native `fetch` + `Bun.serve()` 계약을 넘는 standalone app builder는 제공하지 않으며, 프레임워크 통합은 계속 Konekti 런타임 facade를 통해 흐릅니다.
 - Node 전용 writable response escape hatch는 제공하지 않으며, 스트리밍 응답은 `FrameworkResponse.stream`을 사용해야 합니다.
 - Deno, Cloudflare Workers 같은 다른 fetch-style 런타임은 별도 어댑터 범위로 유지됩니다.
-- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Bun 전용 raw websocket host와 테스트가 별도 이슈에서 추가되기 전까지 raw `@konekti/websocket/node` 호스팅은 계속 unsupported입니다.
+- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Bun은 websocket 처리에 `Bun.serve()` + `server.upgrade()`를 사용하며, 이는 `@konekti/websocket/node`가 요구하는 Node `upgrade` 리스너 모델(`ws` + `handleUpgrade`)과 호환되지 않습니다. raw websocket 지원을 주장하려면 Bun 네이티브 websocket 호스팅과 end-to-end 테스트를 갖춘 전용 `@konekti/websocket/bun` 바인딩 서브패스가 필요합니다.

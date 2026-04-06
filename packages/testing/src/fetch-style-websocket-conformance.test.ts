@@ -36,7 +36,7 @@ describe('official fetch-style runtime websocket contract', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
       createAdapter: () => createBunAdapter(),
       expectedReason:
-        'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+        'Bun uses Bun.serve() with server.upgrade() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/bun binding is needed before raw websocket support can be claimed.',
       name: 'bun',
     });
 
@@ -47,7 +47,7 @@ describe('official fetch-style runtime websocket contract', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
       createAdapter: () => createDenoAdapter(),
       expectedReason:
-        'Deno exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+        'Deno uses Deno.upgradeWebSocket() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/deno binding is needed before raw websocket support can be claimed.',
       name: 'deno',
     });
 
