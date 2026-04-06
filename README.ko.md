@@ -55,7 +55,16 @@ export class UsersService {
 }
 ```
 
-Konekti 명시적 토큰 주입:
+Konekti class-first 명시적 주입:
+
+```ts
+@Inject([UsersRepository])
+class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
+
+구체 클래스가 있는 의존성은 클래스를 토큰으로 바로 사용합니다. 인터페이스 전용 바인딩이나 config/runtime seam에는 symbol도 계속 유효합니다:
 
 ```ts
 const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');

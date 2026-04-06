@@ -28,13 +28,11 @@ npm install @konekti/di
 import { Container } from '@konekti/di';
 import { Inject, Scope } from '@konekti/core';
 
-const LOGGER = Symbol('Logger');
-
 class Logger {
   log(msg: string) { console.log(msg); }
 }
 
-@Inject([LOGGER])
+@Inject([Logger])
 @Scope('singleton')
 class UserService {
   constructor(private logger: Logger) {}
@@ -45,13 +43,18 @@ class UserService {
 }
 
 const container = new Container();
-container.register(
-  { provide: LOGGER, useClass: Logger },
-  UserService,
-);
+container.register(Logger, UserService);
 
 const svc = await container.resolve<UserService>(UserService);
 svc.greet('world');
+```
+
+When a dependency has a concrete class, Konekti prefers using that class as the token. Symbols remain the right choice for interface-only contracts, config objects, and runtime handles:
+
+```typescript
+const LOGGER = Symbol('Logger');
+
+container.register({ provide: LOGGER, useClass: Logger });
 ```
 
 ### Request scope
