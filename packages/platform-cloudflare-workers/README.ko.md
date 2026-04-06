@@ -76,6 +76,7 @@ Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공
 
 - Request/Response 변환 로직을 복제하지 않고 공유 `@konekti/runtime/web` fetch-style 어댑터 seam의 `dispatchWebRequest(...)`를 재사용합니다.
 - native Worker `Request`를 Konekti `FrameworkRequest` / `FrameworkResponse` 계약으로 브리지합니다.
+- Worker 플랫폼이 Node 스타일 listener 소유권을 암시하지 않도록, 명시적인 `{ kind: 'unsupported', mode: 'no-op', reason }` realtime capability를 노출합니다.
 - 멀티파트가 아닌 요청에 대해 `rawBody` opt-in 동작을 유지합니다.
 - 공유 Web 코어를 통해 multipart 파싱과 `request.files` 노출을 지원합니다.
 - 공유 Web `FrameworkResponse.stream` 구현을 통해 SSE 및 기타 스트리밍 응답을 지원합니다.

@@ -63,6 +63,16 @@ describe('@konekti/platform-cloudflare-workers', () => {
     );
   });
 
+  it('exposes an explicit unsupported realtime capability for Worker runtimes', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+
+    expect(adapter.getRealtimeCapability()).toEqual({
+      kind: 'unsupported',
+      mode: 'no-op',
+      reason: 'Cloudflare Workers does not expose a server-backed realtime listener lifecycle.',
+    });
+  });
+
   it('boots a Worker application that reuses shared runtime middleware and Web request handling', async () => {
     @Controller('/webhooks')
     class WebhookController {

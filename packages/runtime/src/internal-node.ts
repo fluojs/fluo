@@ -3,6 +3,7 @@ import { createServer as createHttpsServer, type ServerOptions as HttpsServerOpt
 import type { AddressInfo, Socket } from 'node:net';
 
 import {
+  createServerBackedHttpAdapterRealtimeCapability,
   type CorsOptions,
   type Dispatcher,
   type HttpApplicationAdapter,
@@ -144,6 +145,10 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getServer(): NodeServer {
     return this.server;
+  }
+
+  getRealtimeCapability() {
+    return createServerBackedHttpAdapterRealtimeCapability(this.server);
   }
 
   getListenTarget(): NodeListenTarget {

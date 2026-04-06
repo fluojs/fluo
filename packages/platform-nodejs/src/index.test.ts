@@ -82,4 +82,17 @@ describe('@konekti/platform-nodejs', () => {
       await app.close();
     }
   });
+
+  it('exposes a server-backed realtime capability on the raw Node adapter', async () => {
+    const adapter = createNodejsAdapter();
+
+    try {
+      expect(adapter.getRealtimeCapability?.()).toEqual({
+        kind: 'server-backed',
+        server: adapter.getServer(),
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
 });

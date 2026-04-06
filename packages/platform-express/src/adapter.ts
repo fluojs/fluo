@@ -20,6 +20,7 @@ import express, {
 
 import {
   BadRequestException,
+  createServerBackedHttpAdapterRealtimeCapability,
   createErrorResponse,
   HttpException,
   InternalServerErrorException,
@@ -165,6 +166,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getServer(): unknown {
     return this.server;
+  }
+
+  getRealtimeCapability() {
+    return createServerBackedHttpAdapterRealtimeCapability(this.server);
   }
 
   getListenTarget(): ExpressListenTarget {

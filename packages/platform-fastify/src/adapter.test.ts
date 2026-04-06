@@ -160,6 +160,19 @@ describe('@konekti/platform-fastify', () => {
     }
   });
 
+  it('exposes a server-backed realtime capability on the Fastify adapter', async () => {
+    const adapter = createFastifyAdapter() as FastifyHttpApplicationAdapter;
+
+    try {
+      expect(adapter.getRealtimeCapability()).toEqual({
+        kind: 'server-backed',
+        server: adapter.getServer(),
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('preserves raw body for JSON and text requests when enabled', async () => {
     @Controller('/webhooks')
     class WebhookController {

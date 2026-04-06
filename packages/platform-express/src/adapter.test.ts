@@ -176,6 +176,19 @@ describe('@konekti/platform-express', () => {
     }
   });
 
+  it('exposes a server-backed realtime capability on the Express adapter', async () => {
+    const adapter = createExpressAdapter() as ExpressHttpApplicationAdapter;
+
+    try {
+      expect(adapter.getRealtimeCapability()).toEqual({
+        kind: 'server-backed',
+        server: adapter.getServer(),
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('preserves raw body for JSON and text requests when enabled', async () => {
     @Controller('/webhooks')
     class WebhookController {

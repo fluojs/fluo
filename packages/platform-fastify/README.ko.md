@@ -61,6 +61,7 @@ await app.listen();
 - `rawBody`는 선택 사항(opt-in)이며 멀티파트가 아닌 요청에 대해서만 채워집니다.
 - 멀티파트 요청은 `request.body` 필드와 `request.files` (`UploadedFile[]`)를 노출합니다.
 - 이제 어댑터가 `FrameworkResponse.stream`을 노출하므로 SSE 및 기타 스트리밍 응답은 raw Node response 덕타이핑에 의존하지 않습니다.
+- 선택된 플랫폼의 Node 소유 realtime listener 경계가 필요한 통합을 위해 어댑터는 `{ kind: 'server-backed', server }` realtime capability를 노출합니다.
 - 시작 로그는 런타임 컨벤션을 따르며 와일드카드 호스트에 대한 바인딩 대상 상세 정보를 포함합니다.
 - 시그널 기반 종료는 `@konekti/runtime/node`에 문서화된 Node 호환 종료 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
 - `forceExitTimeoutMs`가 `shutdownTimeoutMs`보다 짧으면 전체 drain window가 끝나기 전에 watchdog이 의도적으로 프로세스를 종료할 수 있습니다.

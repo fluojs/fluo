@@ -94,7 +94,7 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 ## Intentional limitations
 
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
-- This package does not yet define the future cross-platform realtime capability shape. Follow issue-driven platform work for Bun, Deno, Cloudflare, or broader realtime abstractions.
+- Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
 
 ## Provider registration constraints
 
