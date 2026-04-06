@@ -84,6 +84,6 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 
 ## Difference from `@konekti/websocket`
 
-- `@konekti/websocket` targets raw `ws` upgrade handling on the shared Node server
+- `@konekti/websocket/node` targets raw `ws` upgrade handling on the shared Node server while `@konekti/websocket` root stays focused on shared gateway decorators and metadata
 - `@konekti/platform-socket.io` targets Socket.IO v4 namespaces, rooms, acknowledgements, and transport fallback behavior
 - The decorators stay shared, but the transport-specific server and room implementation live in this package
