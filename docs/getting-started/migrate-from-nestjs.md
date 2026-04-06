@@ -162,7 +162,7 @@ export class UsersController {
 
 ### `@Inject(TOKEN)` -> explicit token list
 
-Konekti uses an explicit token list (`@Inject([TOKEN_A, TOKEN_B])`) for constructor dependency metadata.
+Konekti uses an explicit token list (`@Inject([TOKEN_A, TOKEN_B])`) for constructor dependency metadata. When a dependency has a concrete class, prefer the class itself as the token. Keep symbols for interface-only contracts or runtime handles.
 
 ### NestJS
 
@@ -176,6 +176,17 @@ export class BillingService {
 ```
 
 ### Konekti
+
+```typescript
+import { Inject } from '@konekti/core';
+
+@Inject([PaymentClient])
+export class BillingService {
+  constructor(private readonly client: PaymentClient) {}
+}
+```
+
+If the dependency is intentionally abstracted behind an interface or runtime-specific token, symbols remain valid:
 
 ```typescript
 import { Inject } from '@konekti/core';

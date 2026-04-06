@@ -162,7 +162,7 @@ export class UsersController {
 
 ### `@Inject(TOKEN)` -> 명시적 토큰 목록
 
-Konekti는 `@Inject([TOKEN_A, TOKEN_B])` 형태로 생성자 의존성 토큰 목록을 명시합니다.
+Konekti는 `@Inject([TOKEN_A, TOKEN_B])` 형태로 생성자 의존성 토큰 목록을 명시합니다. 구체 클래스가 있는 의존성은 클래스를 토큰으로 우선 사용하고, 인터페이스 전용 계약이나 runtime handle에는 symbol을 유지합니다.
 
 ### NestJS
 
@@ -176,6 +176,17 @@ export class BillingService {
 ```
 
 ### Konekti
+
+```typescript
+import { Inject } from '@konekti/core';
+
+@Inject([PaymentClient])
+export class BillingService {
+  constructor(private readonly client: PaymentClient) {}
+}
+```
+
+의존성이 인터페이스나 런타임별 토큰 뒤에 추상화되어 있다면 symbol도 계속 유효합니다:
 
 ```typescript
 import { Inject } from '@konekti/core';
