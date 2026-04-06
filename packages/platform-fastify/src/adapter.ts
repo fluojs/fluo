@@ -7,6 +7,7 @@ import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyRawBody from 'fastify-raw-body';
 
 import {
+  createServerBackedHttpAdapterRealtimeCapability,
   createErrorResponse,
   HttpException,
   InternalServerErrorException,
@@ -135,6 +136,10 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getServer(): unknown {
     return this.app.server;
+  }
+
+  getRealtimeCapability() {
+    return createServerBackedHttpAdapterRealtimeCapability(this.app.server);
   }
 
   getListenTarget(): FastifyListenTarget {
