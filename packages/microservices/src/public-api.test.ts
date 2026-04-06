@@ -34,6 +34,7 @@ describe('@konekti/microservices public API surface', () => {
     expect(microservicesPublicApi).toHaveProperty('RedisStreamsMicroserviceTransport');
     expect(microservicesPublicApi).toHaveProperty('GrpcMicroserviceTransport');
     expect(microservicesPublicApi).toHaveProperty('MqttMicroserviceTransport');
+    expect(microservicesPublicApi).toHaveProperty('MicroserviceLifecycleService');
     expect(microservicesPublicApi).toHaveProperty('MICROSERVICE');
     expect(microservicesPublicApi).toHaveProperty('createMicroservicePlatformStatusSnapshot');
   });
@@ -62,7 +63,6 @@ describe('@konekti/microservices public API surface', () => {
     expect(microservicesPublicApi).not.toHaveProperty('defineHandlerMetadata');
     expect(microservicesPublicApi).not.toHaveProperty('getHandlerMetadataEntries');
     expect(microservicesPublicApi).not.toHaveProperty('microserviceMetadataSymbol');
-    expect(microservicesPublicApi).not.toHaveProperty('MicroserviceLifecycleService');
     expect(microservicesPublicApi).not.toHaveProperty('MICROSERVICE_OPTIONS');
     expect(microservicesPublicApi).not.toHaveProperty('HandlerDescriptor');
     expect(microservicesPublicApi).not.toHaveProperty('HandlerMetadata');

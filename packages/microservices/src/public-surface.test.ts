@@ -12,13 +12,13 @@ describe('@konekti/microservices root barrel public surface', () => {
     expect(microservices).toHaveProperty('ServerStreamPattern');
     expect(microservices).toHaveProperty('ClientStreamPattern');
     expect(microservices).toHaveProperty('BidiStreamPattern');
+    expect(microservices).toHaveProperty('MicroserviceLifecycleService');
     expect(microservices).toHaveProperty('MICROSERVICE');
     expect(microservices).not.toHaveProperty('MICROSERVICE_OPTIONS');
     expect(microservices).toHaveProperty('createMicroservicePlatformStatusSnapshot');
     expect(microservices).not.toHaveProperty('defineHandlerMetadata');
     expect(microservices).not.toHaveProperty('getHandlerMetadataEntries');
     expect(microservices).not.toHaveProperty('microserviceMetadataSymbol');
-    expect(microservices).not.toHaveProperty('MicroserviceLifecycleService');
     expect(Object.keys(microservices).sort()).toMatchSnapshot();
   });
 });
