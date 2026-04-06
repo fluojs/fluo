@@ -55,7 +55,7 @@ await app.listen();
 ## supported operations
 
 - Selects the raw Node.js HTTP listener through the adapter-first runtime facade (`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`).
-- Preserves the current Node request/response bridge, startup logging, graceful shutdown, HTTPS, and retry semantics by delegating to the existing runtime-owned implementation.
+- Preserves the current Node request/response bridge, startup logging, graceful shutdown, HTTPS, and retry semantics by owning the raw Node adapter entrypoints and composing the explicit `@konekti/runtime/internal-node` seam.
 - Keeps compatibility bootstrap helpers available for users who still want the helper-wrapper path.
 
 ## runtime invariants
@@ -72,6 +72,6 @@ await app.listen();
 
 ## intentional limitations
 
-- This package normalizes the public package boundary for raw Node startup; it does not yet migrate the underlying implementation ownership out of `@konekti/runtime/node`.
+- This package owns the raw Node adapter boundary directly, but still relies on the explicit `@konekti/runtime/internal-node` seam for shared Node-only transport internals.
 - No new adapterless startup semantics are introduced here. If you omit an adapter entirely, use `createApplicationContext()` for DI/lifecycle-only bootstraps instead of expecting HTTP serving behavior.
-- Advanced Node-only internals such as compression helpers and shutdown-registration utilities remain on `@konekti/runtime/node` for now.
+- Advanced Node-only internals such as compression helpers and shutdown-registration utilities remain available through `@konekti/runtime/node` as compatibility exports.
