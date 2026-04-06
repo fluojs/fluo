@@ -30,8 +30,8 @@
       "import": "./dist/index.js"
     },
     "./node": {
-      "types": "./dist/node/node.d.ts",
-      "import": "./dist/node/node.js"
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     },
     "./web": {
       "types": "./dist/web.d.ts",
@@ -42,16 +42,16 @@
       "import": "./dist/internal.js"
     },
     "./internal/http-adapter": {
-      "types": "./dist/adapters/internal-http-adapter.d.ts",
-      "import": "./dist/adapters/internal-http-adapter.js"
+      "types": "./dist/internal-http-adapter.d.ts",
+      "import": "./dist/internal-http-adapter.js"
     },
     "./internal/request-response-factory": {
-      "types": "./dist/adapters/internal-request-response-factory.d.ts",
-      "import": "./dist/adapters/internal-request-response-factory.js"
+      "types": "./dist/internal-request-response-factory.d.ts",
+      "import": "./dist/internal-request-response-factory.js"
     },
     "./internal-node": {
-      "types": "./dist/node/internal-node.d.ts",
-      "import": "./dist/node/internal-node.js"
+      "types": "./dist/internal-node.d.ts",
+      "import": "./dist/internal-node.js"
     }
   },
   "main": "./dist/index.js",
@@ -59,7 +59,7 @@
   "typesVersions": {
     "*": {
       "internal-node": [
-        "./dist/node/internal-node.d.ts"
+        "./dist/internal-node.d.ts"
       ]
     }
   },
