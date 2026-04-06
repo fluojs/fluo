@@ -173,6 +173,8 @@ Import the transport-specific entrypoint you need: `@konekti/microservices/kafka
 
 Current honest support for raw `@konekti/websocket/node` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 
+Fetch-style adapters such as `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` may expose the shared `raw-websocket-expansion` contract-only capability for future work, but that contract does **not** claim raw websocket runtime support by itself.
+
 ### option B — Socket.IO
 
 | package | role |
@@ -183,9 +185,10 @@ Current honest support for `@konekti/platform-socket.io` is limited to the serve
 
 **When not to use:**
 - If your real-time needs are limited to server-sent events (SSE), a standard HTTP streaming response from `@konekti/http` may be enough.
-- If your selected runtime reports realtime as `{ kind: 'unsupported', mode: 'no-op' }` (for example Worker-style adapters), stop at that explicit boundary instead of expecting Node listener emulation.
+- If your selected runtime reports realtime as `{ kind: 'unsupported', mode: 'no-op' }`, stop at that explicit boundary instead of expecting Node listener emulation.
+- If your selected runtime reports `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`, treat that as a future-work contract only — not as current raw websocket support.
 - Do not assume Bun, Deno, or Cloudflare Workers support for `@konekti/platform-socket.io` unless a branch explicitly adds and tests a compatible implementation there.
-- Do not assume Bun or Deno support for raw `@konekti/websocket/node` unless a branch explicitly adds and tests a compatible server-backed implementation.
+- Do not assume Bun, Deno, or Cloudflare Workers support for raw `@konekti/websocket/node` unless a branch explicitly adds and tests a compatible runtime-specific implementation there.
 
 ---
 
