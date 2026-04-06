@@ -87,7 +87,7 @@ await app.listen();
 
 Use this adapter-first form for every HTTP runtime target (`@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
 
-Platform-selected HTTP adapters may also expose `getRealtimeCapability()` for realtime packages. Server-backed adapters report `{ kind: 'server-backed', server }`, while Worker/fetch-style runtimes report an explicit `{ kind: 'unsupported', mode: 'no-op', reason }` boundary instead of implying Node listener ownership. Packages such as `@konekti/websocket/node` and `@konekti/platform-socket.io` consume that seam rather than reaching directly for raw Node server assumptions.
+Platform-selected HTTP adapters may also expose `getRealtimeCapability()` for realtime packages. Server-backed adapters report `{ kind: 'server-backed', server }`, while fetch-style runtimes can now expose a contract-only `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', version: 1, support: 'contract-only', reason }` boundary before runtime-specific raw websocket support lands. Packages such as `@konekti/websocket/node` and `@konekti/platform-socket.io` consume that seam rather than reaching directly for raw Node server assumptions.
 
 ### Adapterless bootstrap semantics
 
