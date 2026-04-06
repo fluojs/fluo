@@ -2,6 +2,40 @@ import type { MaybePromise } from '@konekti/core';
 
 import type { Dispatcher } from './types.js';
 
+export interface ServerBackedHttpAdapterRealtimeCapability {
+  kind: 'server-backed';
+  server: unknown;
+}
+
+export interface UnsupportedHttpAdapterRealtimeCapability {
+  kind: 'unsupported';
+  mode: 'no-op';
+  reason: string;
+}
+
+export type HttpAdapterRealtimeCapability =
+  | ServerBackedHttpAdapterRealtimeCapability
+  | UnsupportedHttpAdapterRealtimeCapability;
+
+export function createServerBackedHttpAdapterRealtimeCapability(
+  server: unknown,
+): ServerBackedHttpAdapterRealtimeCapability {
+  return {
+    kind: 'server-backed',
+    server,
+  };
+}
+
+export function createUnsupportedHttpAdapterRealtimeCapability(
+  reason: string,
+): UnsupportedHttpAdapterRealtimeCapability {
+  return {
+    kind: 'unsupported',
+    mode: 'no-op',
+    reason,
+  };
+}
+
 /**
  * Minimal HTTP adapter contract that binds the application lifecycle to a transport implementation.
  */
@@ -12,6 +46,8 @@ export interface HttpApplicationAdapter {
    * @returns The transport-native server instance, or `undefined` when the adapter does not expose it.
    */
   getServer?(): unknown;
+
+  getRealtimeCapability?(): HttpAdapterRealtimeCapability;
 
   /**
    * Starts the adapter and binds request dispatching to the framework dispatcher.
@@ -38,6 +74,11 @@ export interface HttpApplicationAdapter {
 export function createNoopHttpApplicationAdapter(): HttpApplicationAdapter {
   return {
     async close() {},
+    getRealtimeCapability() {
+      return createUnsupportedHttpAdapterRealtimeCapability(
+        'No-op HTTP adapter does not expose a server-backed realtime capability.',
+      );
+    },
     async listen() {},
   };
 }
