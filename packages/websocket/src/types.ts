@@ -1,15 +1,14 @@
-import type { IncomingMessage } from 'node:http';
-
 import type { MetadataPropertyKey, Token } from '@konekti/core';
-import type { WebSocket } from 'ws';
+import type {
+  TypedOnMessageHandler as NodeTypedOnMessageHandler,
+  WebSocketGatewayContext as NodeWebSocketGatewayContext,
+  WebSocketModuleOptions as NodeWebSocketModuleOptions,
+} from './node-types.js';
 
 export type WebSocketEventMap = Record<string, unknown>;
 
-export type TypedOnMessageHandler<TEvents extends WebSocketEventMap, K extends keyof TEvents> = (
-  payload: TEvents[K],
-  socket: WebSocket,
-  request: IncomingMessage,
-) => void | Promise<void>;
+export type TypedOnMessageHandler<TEvents extends WebSocketEventMap, K extends keyof TEvents> =
+  NodeTypedOnMessageHandler<TEvents, K>;
 
 export interface WebSocketGatewayOptions {
   path?: string;
@@ -41,10 +40,7 @@ export interface WebSocketGatewayDescriptor {
   token: Token;
 }
 
-export interface WebSocketGatewayContext {
-  request: IncomingMessage;
-  socket: WebSocket;
-}
+export type WebSocketGatewayContext = NodeWebSocketGatewayContext;
 
 export interface WebSocketRoomService {
   joinRoom(socketId: string, room: string): void;
@@ -53,21 +49,4 @@ export interface WebSocketRoomService {
   getRooms(socketId: string): ReadonlySet<string>;
 }
 
-export interface WebSocketModuleOptions {
-  backpressure?: {
-    maxBufferedAmountBytes?: number;
-    policy?: 'close' | 'drop';
-  };
-  buffer?: {
-    maxPendingMessagesPerSocket?: number;
-    overflowPolicy?: 'close' | 'drop-newest' | 'drop-oldest';
-  };
-  heartbeat?: {
-    enabled?: boolean;
-    intervalMs?: number;
-    timeoutMs?: number;
-  };
-  shutdown?: {
-    timeoutMs?: number;
-  };
-}
+export type WebSocketModuleOptions = NodeWebSocketModuleOptions;
