@@ -3,6 +3,7 @@
 exports[`@konekti/queue root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
 [
   "QUEUE",
+  "QueueLifecycleService",
   "QueueModule",
   "QueueWorker",
   "createQueuePlatformStatusSnapshot",

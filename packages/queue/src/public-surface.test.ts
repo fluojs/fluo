@@ -7,6 +7,7 @@ describe('@konekti/queue root barrel public surface', () => {
     expect(queue).toHaveProperty('QueueModule');
     expect(queue).not.toHaveProperty('createQueueModule');
     expect(queue).toHaveProperty('createQueueProviders');
+    expect(queue).toHaveProperty('QueueLifecycleService');
     expect(queue).toHaveProperty('QUEUE');
     expect(queue).toHaveProperty('QueueWorker');
     expect(queue).toHaveProperty('createQueuePlatformStatusSnapshot');
