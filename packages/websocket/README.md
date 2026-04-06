@@ -88,6 +88,8 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 
 The current branch does **not** claim raw `@konekti/websocket/node` support for `@konekti/platform-bun`, `@konekti/platform-deno`, or `@konekti/platform-cloudflare-workers`.
 
+Those fetch-style adapters may still expose a shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` capability so future runtime-specific websocket work plugs into one honest contract. That contract alone does **not** make `@konekti/websocket/node` supported there.
+
 ## Runtime behavior
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
@@ -105,7 +107,7 @@ The current branch does **not** claim raw `@konekti/websocket/node` support for 
 
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
-- Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
+- Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` or a fetch-style `raw-websocket-expansion` capability stop at that explicit boundary until a runtime-specific websocket host is implemented; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
 - Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; this package does not claim Bun or Deno support until a tested server-backed implementation exists.
 
 ## Provider registration constraints

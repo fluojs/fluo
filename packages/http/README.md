@@ -240,7 +240,8 @@ Additional public exports include `All`, `Options`, `Head`, `RequestDto`, `HttpC
 `HttpApplicationAdapter` now exposes an optional `getRealtimeCapability()` seam for platform-owned realtime behavior.
 
 - Server-backed adapters return `{ kind: 'server-backed', server }` when the selected platform owns a concrete realtime listener lifecycle.
-- Worker/fetch-style runtimes that do not own that lifecycle should return `{ kind: 'unsupported', mode: 'no-op', reason }` instead of implying Node-style upgrade listeners.
+- Fetch-style runtimes that may grow raw websocket support later should return `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', version: 1, support, reason }` so the shared expansion seam stays explicit before runtime-specific support lands.
+- Adapters that are genuinely outside any realtime ownership model can still return `{ kind: 'unsupported', mode: 'no-op', reason }`.
 - Consumers should prefer this explicit capability over assuming `getServer()` implies websocket or Socket.IO support.
 
 ### Server-Sent Events (SSE)

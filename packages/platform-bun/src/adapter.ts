@@ -5,6 +5,7 @@ import type {
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@konekti/http';
+import { createFetchStyleHttpAdapterRealtimeCapability } from '@konekti/http';
 import type {
   Application,
   ApplicationLogger,
@@ -125,6 +126,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter {
       bindTarget: `${bindHost}:${String(port)}`,
       url,
     };
+  }
+
+  getRealtimeCapability() {
+    return createFetchStyleHttpAdapterRealtimeCapability(
+      'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+    );
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {

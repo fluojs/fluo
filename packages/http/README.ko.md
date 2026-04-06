@@ -240,7 +240,8 @@ global converter는 문자열 trim, query primitive coercion 같은 transport-wi
 `HttpApplicationAdapter`는 이제 플랫폼 소유 realtime 동작을 위한 선택적 `getRealtimeCapability()` seam을 노출합니다.
 
 - 서버를 직접 소유하는 어댑터는 선택된 플랫폼이 구체적인 realtime listener lifecycle을 가질 때 `{ kind: 'server-backed', server }`를 반환합니다.
-- 그 lifecycle을 소유하지 않는 Worker/fetch-style 런타임은 Node식 upgrade listener가 있는 것처럼 암시하지 말고 `{ kind: 'unsupported', mode: 'no-op', reason }`를 반환해야 합니다.
+- 이후 raw websocket 지원이 확장될 수 있는 fetch-style 런타임은 런타임별 지원이 추가되기 전에도 공용 확장 seam이 드러나도록 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', version: 1, support, reason }`를 반환해야 합니다.
+- 어떤 realtime 소유 모델에도 속하지 않는 어댑터는 계속 `{ kind: 'unsupported', mode: 'no-op', reason }`를 반환할 수 있습니다.
 - websocket 또는 Socket.IO 지원 여부를 판단할 때는 `getServer()` 존재를 추정하기보다 이 명시적 capability를 우선 사용해야 합니다.
 
 ### 서버 전송 이벤트 (SSE)

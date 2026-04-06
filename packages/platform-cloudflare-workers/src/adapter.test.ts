@@ -63,13 +63,17 @@ describe('@konekti/platform-cloudflare-workers', () => {
     );
   });
 
-  it('exposes an explicit unsupported realtime capability for Worker runtimes', async () => {
+  it('exposes a fetch-style raw websocket expansion contract for Worker runtimes', async () => {
     const adapter = createCloudflareWorkerAdapter();
 
     expect(adapter.getRealtimeCapability()).toEqual({
-      kind: 'unsupported',
-      mode: 'no-op',
-      reason: 'Cloudflare Workers does not expose a server-backed realtime listener lifecycle.',
+      contract: 'raw-websocket-expansion',
+      kind: 'fetch-style',
+      mode: 'request-upgrade',
+      reason:
+        'Cloudflare Workers exposes a fetch-style raw websocket expansion contract only. Add a Worker-specific raw websocket host before claiming support.',
+      support: 'contract-only',
+      version: 1,
     });
   });
 

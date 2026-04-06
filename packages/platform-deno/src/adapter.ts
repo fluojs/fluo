@@ -1,4 +1,4 @@
-import type { Dispatcher, HttpApplicationAdapter } from '@konekti/http';
+import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@konekti/http';
 import type { Application, ModuleType, MultipartOptions } from '@konekti/runtime';
 import {
   bootstrapHttpAdapterApplication,
@@ -75,6 +75,12 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getListenTarget(): HttpAdapterListenTarget {
     return createListenTarget(this.options.hostname, this.options.port);
+  }
+
+  getRealtimeCapability() {
+    return createFetchStyleHttpAdapterRealtimeCapability(
+      'Deno exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+    );
   }
 
   async handle(request: Request): Promise<Response> {
