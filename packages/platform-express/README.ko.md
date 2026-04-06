@@ -60,6 +60,7 @@ await app.listen();
 
 - Express 요청/응답을 `FrameworkRequest` / `FrameworkResponse`로 브리지합니다.
 - SSE 및 기타 어댑터 소유 응답 스트리밍 경로를 위해 `FrameworkResponse.stream`을 노출합니다.
+- Node가 소유하는 realtime listener 경계가 필요한 통합을 위해 `{ kind: 'server-backed', server }` realtime capability를 노출합니다.
 - 모든 인바운드 요청을 Konekti HTTP 디스패처로 전달합니다.
 - 멀티파트가 아닌 요청에서 `rawBody` 선택(opt-in) 보존을 지원합니다.
 - multipart form-data 파싱과 `UploadedFile[]` 노출을 지원합니다.
