@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based WebSocket gateway integration for Konekti applications using a shared Node HTTP/S server upgrade listener.
+Decorator-based WebSocket gateway authoring core for Konekti applications, with the current raw `ws` Node binding isolated on the explicit `@konekti/websocket/node` subpath.
 
 ## See also
 
@@ -18,11 +18,14 @@ Decorator-based WebSocket gateway integration for Konekti applications using a s
 npm install @konekti/websocket ws
 ```
 
+Import decorators and shared gateway contracts from `@konekti/websocket`, then add the current Node-only binding from `@konekti/websocket/node` when you want raw `ws` support on a Node-backed HTTP adapter.
+
 ## Quick Start
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway, WebSocketModule } from '@konekti/websocket';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
+import { NodeWebSocketModule } from '@konekti/websocket/node';
 import type { WebSocket } from 'ws';
 
 @WebSocketGateway({ path: '/chat' })
@@ -40,7 +43,7 @@ class ChatGateway {
 }
 
 @Module({
-  imports: [WebSocketModule.forRoot()],
+  imports: [NodeWebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
@@ -48,12 +51,19 @@ export class AppModule {}
 
 ## API
 
-- `WebSocketModule.forRoot()` - registers lifecycle discovery and gateway wiring
-- `createWebSocketProviders()` - returns raw providers for custom module composition
 - `@WebSocketGateway({ path? })` - marks a singleton provider/controller class as a WebSocket gateway
 - `@OnMessage(event?)` - handles inbound messages, optionally filtered by event name
 - `@OnConnect()` - handles accepted socket connections
 - `@OnDisconnect()` - handles socket close events
+
+## Node binding subpath
+
+- `NodeWebSocketModule.forRoot()` from `@konekti/websocket/node` - registers the current raw `ws` upgrade listener binding for Node-backed adapters
+- `createNodeWebSocketProviders()` from `@konekti/websocket/node` - returns raw providers for custom Node websocket module composition
+
+### Compatibility aliases
+
+`WebSocketModule.forRoot()` and `createWebSocketProviders()` remain available on the root barrel as compatibility aliases for the current Node binding, but the explicit Node-only seam now lives on `@konekti/websocket/node`.
 
 ### Internal module wiring tokens
 
@@ -61,9 +71,9 @@ export class AppModule {}
 `WEBSOCKET_OPTIONS` is localized to internal module wiring and is intentionally not part of the root entrypoint token surface.
 It still uses a stable `Symbol.for(...)` key to preserve package-internal DI identity across module boundaries, without promoting the token into the public contract.
 
-### Module options
+### Node module options
 
-`WebSocketModule.forRoot(options)` and `createWebSocketProviders(options)` accept:
+`NodeWebSocketModule.forRoot(options)` and `createNodeWebSocketProviders(options)` accept:
 
 - `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
 - `shutdown.timeoutMs` (default: `5000`)
@@ -72,14 +82,19 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
 - Gateway instances resolve from `RUNTIME_CONTAINER`
-- Uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
+- The explicit Node seam uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
 - Gateway path matching is exact and normalized (`/chat` != `/notifications`)
 - Non-singleton gateways are skipped with warnings
 - Handlers for gateways sharing the same socket/path execute in discovery order, not `Promise.all` parallel fan-out
-- Shutdown removes the shared upgrade listener and terminates all active clients
+- Node binding shutdown removes the shared upgrade listener and terminates all active clients
 - `message` and `close` events are buffered until `@OnConnect()` handlers complete, then replayed in order so connect-phase events are not silently dropped
 - Attachment server shutdown is timeout-aware and logs close timeout failures instead of hanging indefinitely
 - `getRooms(socketId)` returns a defensive snapshot (`ReadonlySet`) so callers cannot mutate internal room indexes
+
+## Intentional limitations
+
+- `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
+- This package does not yet define the future cross-platform realtime capability shape. Follow issue-driven platform work for Bun, Deno, Cloudflare, or broader realtime abstractions.
 
 ## Provider registration constraints
 
