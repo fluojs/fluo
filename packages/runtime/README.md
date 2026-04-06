@@ -23,7 +23,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 
 `KonektiFactory` is the canonical public startup facade. For HTTP apps, select a transport explicitly through `options.adapter` and keep the runtime focused on assembly/orchestration.
 
-If you intentionally omit an adapter, `KonektiFactory.create(...)` still assembles the application shell, but it does not select an HTTP serving target for you.
+If you intentionally omit an adapter, `KonektiFactory.create(...)` still assembles the application shell, but it does not select an HTTP serving target for you. That adapterless path is intentional: `ready()`, `dispatch()`, and `close()` stay available on the assembled shell, while `listen()` throws until you provide `options.adapter`.
 
 Runtime-managed adapters may also expose `FrameworkResponse.stream` when the transport supports SSE or other streamed HTTP response bodies.
 
@@ -85,6 +85,26 @@ await app.listen();
 ```
 
 Use this adapter-first form for every HTTP runtime target (`@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
+
+### Adapterless bootstrap semantics
+
+```typescript
+import { KonektiFactory } from '@konekti/runtime';
+
+const app = await KonektiFactory.create(AppModule);
+
+await app.ready();
+await app.close();
+```
+
+Omitting `options.adapter` is an intentional shell-only bootstrap mode. Use it when you need the compiled module graph, lifecycle hooks, dispatcher, or manual orchestration without letting `@konekti/runtime` pick an HTTP listener.
+
+- `ready()` still validates runtime-owned platform readiness.
+- `dispatch()` remains available for tests or transport-owned request bridging.
+- `close()` still runs shutdown hooks and resource cleanup.
+- `listen()` throws until you pass an explicit HTTP adapter.
+
+If you only need DI + lifecycle access and not the HTTP dispatcher, prefer `KonektiFactory.createApplicationContext(...)` instead.
 
 ### Global request converters
 
@@ -424,6 +444,29 @@ Runtime validates component identity/dependency edges, starts components in depe
 | `@Global()` | `@konekti/core` | Marks a module as globally visible |
 
 `@konekti/runtime` root barrel intentionally stays transport-neutral. Import Node bootstrap and shutdown helpers from `@konekti/runtime/node`, and shared fetch-style request/response helpers such as `dispatchWebRequest()` / `parseMultipart()` from `@konekti/runtime/web`. `@konekti/runtime/internal` is now reserved for framework-internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`), while transport helper seams live on explicit internal subpaths.
+
+## Behavioral contract
+
+### Supported operations
+
+- `KonektiFactory.create(rootModule, { adapter })` assembles the runtime shell and enables `listen()` for the selected HTTP transport.
+- `KonektiFactory.create(rootModule)` assembles the same shell without selecting an HTTP listener.
+- `KonektiFactory.createApplicationContext(rootModule)` assembles DI + lifecycle only, without the HTTP dispatcher/adapter seam.
+
+### Intentional limitations
+
+- `@konekti/runtime` does not guess a default HTTP adapter when none is provided.
+- Adapterless `KonektiFactory.create(...)` does not silently open a port or bind a transport.
+
+### Runtime invariants
+
+- `listen()` always requires an explicit HTTP adapter.
+- Adapterless bootstrap keeps the application in the `bootstrapped` state until it is closed.
+
+### Lifecycle guarantees
+
+- Adapterless bootstrap still runs module/application bootstrap hooks.
+- `close()` still executes runtime cleanup and shutdown hooks even when no HTTP adapter was provided.
 
 ## Architecture
 

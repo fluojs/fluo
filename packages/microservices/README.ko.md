@@ -418,14 +418,19 @@ for await (const message of reader) {
 런타임 앱 부트스트랩을 사용하고 동일한 컨테이너에서 마이크로서비스 런타임을 해결(resolve)합니다.
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 import { MicroserviceLifecycleService, MICROSERVICE } from '@konekti/microservices';
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
 const microservice = await app.container.resolve(MicroserviceLifecycleService);
 
 await Promise.all([app.listen(), microservice.listen()]);
 ```
+
+하이브리드 HTTP + 마이크로서비스 구성에서도 `app.listen()`을 호출하려면 명시적인 HTTP adapter가 필요합니다. HTTP 리스너 없이 공유 DI 컨테이너와 마이크로서비스 런타임만 필요하다면 `KonektiFactory.createApplicationContext(...)`를 사용하거나, 런타임 셸을 adapterless 상태로 두고 `app.listen()`은 호출하지 마세요.
 
 기존 코드베이스를 위한 호환 토큰 대안:
 

@@ -368,6 +368,22 @@ describe('bootstrapApplication', () => {
     expect(app.rootModule).toBe(AppModule);
   });
 
+  it('treats adapterless bootstrap as an application shell and rejects listen()', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const app = await KonektiFactory.create(AppModule, {});
+
+    await expect(app.ready()).resolves.toBeUndefined();
+    await expect(app.listen()).rejects.toThrow(
+      'Application cannot listen without an HTTP adapter. Provide options.adapter for HTTP startup, or use createApplicationContext() for adapterless DI-only bootstrap.',
+    );
+    expect(app.state).toBe('bootstrapped');
+
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(app.state).toBe('closed');
+  });
+
   it('applies global converters through KonektiFactory.create()', async () => {
     class QueryNumberConverter implements Converter {
       convert(value: unknown, target: { source: string }) {

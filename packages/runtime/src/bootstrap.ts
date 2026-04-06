@@ -5,7 +5,6 @@ import { defineModuleMetadata, getClassDiMetadata } from '@konekti/core/internal
 import {
   createDispatcher,
   createHandlerMapping,
-  createNoopHttpApplicationAdapter,
   type FrameworkRequest,
   type FrameworkResponse,
   type HttpApplicationAdapter,
@@ -415,6 +414,7 @@ class KonektiApplication implements Application {
     readonly dispatcher: Dispatcher,
     readonly bootstrapTiming: Application['bootstrapTiming'],
     private readonly adapter: HttpApplicationAdapter,
+    private readonly hasHttpAdapter: boolean,
     private readonly platformShell: RuntimePlatformShell,
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
@@ -470,6 +470,12 @@ class KonektiApplication implements Application {
 
     if (this.applicationState === 'ready') {
       return;
+    }
+
+    if (!this.hasHttpAdapter) {
+      throw new InvariantError(
+        'Application cannot listen without an HTTP adapter. Provide options.adapter for HTTP startup, or use createApplicationContext() for adapterless DI-only bootstrap.',
+      );
     }
 
     await this.ready();
@@ -912,7 +918,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   const logger = options.logger ?? createConsoleApplicationLogger();
   let lifecycleInstances: unknown[] = [];
   let bootstrappedContainer: Container | undefined;
-  const adapter = options.adapter ?? createNoopHttpApplicationAdapter();
+  const hasHttpAdapter = options.adapter !== undefined;
+  const adapter = options.adapter ?? {
+    async close() {},
+    async listen() {},
+  };
   const runtimeCleanup: Array<() => void> = [];
   const platformShell = createRuntimePlatformShell(options.platform?.components);
   const timingEnabled = options.diagnostics?.timing === true;
@@ -923,7 +933,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     logger.log('Starting Konekti application...', 'KonektiFactory');
     const runtimeProviders = createRuntimeProviders(options, logger);
 
-  const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
+    const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
     const bootstrapped = bootstrapModule(options.rootModule, {
       duplicateProviderPolicy: options.duplicateProviderPolicy,
       logger,
@@ -981,7 +991,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     }
 
     const bootstrapTiming = timingEnabled
-    ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
+      ? createBootstrapTimingDiagnostics(timingPhases, runtimePerformance.now() - timingStart)
       : undefined;
 
     return new KonektiApplication(
@@ -991,6 +1001,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       dispatcher,
       bootstrapTiming,
       adapter,
+      hasHttpAdapter,
       platformShell,
       lifecycleInstances,
       logger,

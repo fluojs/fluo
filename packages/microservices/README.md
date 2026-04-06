@@ -461,14 +461,19 @@ for await (const message of reader) {
 Use runtime app bootstrap and resolve the microservice runtime from the same container:
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 import { MicroserviceLifecycleService, MICROSERVICE } from '@konekti/microservices';
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
 const microservice = await app.container.resolve(MicroserviceLifecycleService);
 
 await Promise.all([app.listen(), microservice.listen()]);
 ```
+
+Hybrid HTTP + microservice composition still requires an explicit HTTP adapter for `app.listen()`. If you only need the shared DI container and microservice runtime without an HTTP listener, use `KonektiFactory.createApplicationContext(...)` or keep the runtime shell adapterless and do not call `app.listen()`.
 
 Compatibility token alternative for existing codebases:
 

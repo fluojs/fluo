@@ -492,6 +492,10 @@ describe('@konekti/microservices', () => {
     });
 
     const app = await KonektiFactory.create(AppModule, {
+      adapter: {
+        async close() {},
+        async listen() {},
+      },
     });
     const microservice = await app.container.resolve<{
       emit(pattern: string, payload: unknown): Promise<void>;
