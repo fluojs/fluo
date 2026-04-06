@@ -37,12 +37,13 @@
 | 유효성 검사 | `@konekti/validation` ★ | 입력 DTO 검증 및 구체화 |
 | CLI | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build 스크립트 |
 
-**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하고, `runNodeApplication()` 같은 Node 전용 호환 헬퍼는 이제 `@konekti/runtime/node`에 위치합니다.
+**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하세요. 같은 런타임 facade 위에서 bare Node HTTP가 필요하면 `@konekti/platform-nodejs`를 사용하고, `runNodeApplication()` 같은 호환 헬퍼만 `@konekti/runtime/node`에 남겨 두세요.
 
 **표준 런타임 매트릭스:** 공식 런타임/패키지 매핑은 [`package-surface.ko.md`](./package-surface.ko.md#canonical-runtime-package-matrix)를 기준으로 삼으세요. 이 가이드는 작업 기준 패키지 선택에만 집중하고, 런타임별 시작 세부사항은 각 어댑터 README로 연결합니다.
 
 **사용하지 않는 경우:**
 - Node.js에서 Express 미들웨어 호환이 필요하면 `platform-fastify` 대신 `@konekti/platform-express`로 교체하세요.
+- Fastify나 Express 없이 bare Node 리스너가 필요하면 `@konekti/platform-nodejs`를 선택하세요.
 - 비-HTTP 서비스(순수 메시지 소비자 등)를 만든다면 `http`와 `platform-*`을 건너뛰세요 — [마이크로서비스 소비자 실행](#마이크로서비스-소비자-실행)을 참고하세요.
 
 **다음 단계:** [`getting-started/quick-start.ko.md`](../getting-started/quick-start.ko.md) · [`concepts/architecture-overview.ko.md`](../concepts/architecture-overview.ko.md)

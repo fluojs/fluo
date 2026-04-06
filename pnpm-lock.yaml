@@ -478,6 +478,15 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0
 
+  packages/platform-nodejs:
+    dependencies:
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/platform-socket.io:
     dependencies:
       '@konekti/core':
@@ -646,6 +655,9 @@ importers:
       '@konekti/platform-fastify':
         specifier: workspace:*
         version: link:../platform-fastify
+      '@konekti/platform-nodejs':
+        specifier: workspace:*
+        version: link:../platform-nodejs
 
   packages/throttler:
     dependencies:

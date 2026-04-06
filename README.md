@@ -93,7 +93,7 @@ The generated application includes:
 - sample `health/` module at `/health-info/`
 - pre-configured `dev`, `build`, `typecheck`, and `test` scripts
 
-That starter path is the default Node.js + Fastify onboarding path, not the entire runtime story. For the canonical runtime/package matrix, see `docs/reference/package-surface.md`; runtime-specific startup details stay in the published `@konekti/platform-*` adapter READMEs.
+That starter path is the default Node.js + Fastify onboarding path, not the entire runtime story. For the canonical runtime/package matrix, see `docs/reference/package-surface.md`; runtime-specific startup details stay in the published `@konekti/platform-*` adapter READMEs, including `@konekti/platform-nodejs` for raw Node HTTP.
 
 The generated `dev` script uses a watch-driven process restart path for source changes. Konekti's targeted in-process reload path is reserved for validated config snapshots, not general code HMR.
 
@@ -118,6 +118,7 @@ The generated `dev` script uses a watch-driven process restart path for source c
 - `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
 - `docs/reference/package-surface.md` - public package surface reference and canonical runtime/package matrix
 - `docs/reference/package-chooser.md` - pick packages by task
+- `packages/platform-nodejs/README.md` - official raw Node.js runtime startup path
 - `packages/platform-bun/README.md` - official Bun runtime startup path
 - `packages/platform-deno/README.md` - official Deno runtime startup path
 - `packages/platform-cloudflare-workers/README.md` - official Cloudflare Workers runtime startup path

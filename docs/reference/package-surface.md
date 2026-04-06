@@ -14,6 +14,7 @@ This page provides an overview of the current public package family within the K
 - `@konekti/http`
 - `@konekti/di`
 - `@konekti/runtime`
+- `@konekti/platform-nodejs`
 - `@konekti/platform-cloudflare-workers`
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
@@ -49,7 +50,7 @@ This section is the canonical source of truth for public runtime/package guidanc
 
 | runtime target | canonical package guide | notes |
 | --- | --- | --- |
-| Node.js | `@konekti/platform-fastify` starter path, with `@konekti/platform-express` as the Node.js compatibility-oriented alternative | Starter apps and official examples stay on Fastify by default. Reach for Express when middleware compatibility matters. |
+| Node.js | `@konekti/platform-fastify` starter path, `@konekti/platform-nodejs` for raw Node HTTP, and `@konekti/platform-express` as the middleware-compatibility alternative | Starter apps and official examples stay on Fastify by default. Reach for `platform-nodejs` when you want the bare Node listener on the same adapter-first runtime facade. |
 | Bun | `packages/platform-bun/README.md` | Official Bun-native fetch-style startup path. |
 | Deno | `packages/platform-deno/README.md` | Official `Deno.serve(...)` startup path. |
 | Cloudflare Workers | `packages/platform-cloudflare-workers/README.md` | Official Worker `fetch` entrypoint and stateless isolate lifecycle path. |
@@ -67,6 +68,7 @@ Current `platform-*` packages:
 - `@konekti/platform-deno`
 - `@konekti/platform-express`
 - `@konekti/platform-fastify`
+- `@konekti/platform-nodejs`
 - `@konekti/platform-socket.io`
 
 Rationale for the prefix:
@@ -97,7 +99,8 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/config`**: Configuration loading and typed access.
 - **`@konekti/di`**: Provider resolution and lifecycle scopes.
 - **`@konekti/http`**: HTTP execution, binding, exceptions, and route metadata.
-- **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing. The root barrel stays transport-neutral: Node lifecycle helpers live under `@konekti/runtime/node`, fetch-style request/response bridging lives under `@konekti/runtime/web`, and `@konekti/runtime/internal` is reserved for framework-internal wiring tokens while adapter helpers move to explicit internal subpaths.
+- **`@konekti/runtime`**: Application bootstrap/runtime orchestration, runtime-enforced platform shell registration (`platform.components`) with dependency-ordered start/stop, shared platform contract spine types (`PlatformOptionsBase`, `PlatformComponent`, lifecycle/readiness/health/diagnostic/snapshot contracts), versioned module diagnostics export, and opt-in bootstrap timing. The root barrel stays transport-neutral: raw Node adapter selection now belongs to `@konekti/platform-nodejs`, Node-only compatibility helpers stay under `@konekti/runtime/node`, fetch-style request/response bridging lives under `@konekti/runtime/web`, and `@konekti/runtime/internal` is reserved for framework-internal wiring tokens while adapter helpers move to explicit internal subpaths.
+- **`@konekti/platform-nodejs`**: Raw Node.js HTTP adapter package that exposes the adapter-first startup path for bare Node while preserving the current runtime-owned compatibility helpers behind the package boundary.
 - **`@konekti/platform-cloudflare-workers`**: Cloudflare Workers HTTP adapter built on the shared `@konekti/runtime/web` Request/Response bridge, including eager/lazy Worker fetch entrypoints and explicit stateless lifecycle semantics for Worker isolates.
 - **`@konekti/platform-fastify`**: Fastify-based HTTP adapter.
 - **`@konekti/platform-express`**: Express-based HTTP adapter.

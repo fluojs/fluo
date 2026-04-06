@@ -636,6 +636,7 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
     expect(readmeContent).toContain('@konekti/runtime/node');
+    expect(readmeContent).toContain('@konekti/platform-nodejs');
     expect(readmeContent).toContain('createFastifyAdapter');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(mainContent).toContain("from '@konekti/platform-fastify'");

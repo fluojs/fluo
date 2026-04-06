@@ -40,12 +40,13 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
-공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로와 `@konekti/platform-express` Node.js 대안을 계속 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다.
+공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로, raw Node `@konekti/platform-nodejs` 경로, `@konekti/platform-express` Node.js 대안을 함께 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다.
 
 - `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
 - `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.
 - `reference/toolchain-contract-matrix.ko.md` - 에코시스템 버전 관리 및 호환성 매트릭스.
 - `../packages/platform-fastify/README.ko.md` - 기본 Node.js 스타터 경로를 위한 `@konekti/platform-fastify` 계약.
+- `../packages/platform-nodejs/README.ko.md` - 런타임 facade 위 raw Node.js HTTP 시작 경로를 위한 `@konekti/platform-nodejs` 계약.
 - `../packages/platform-express/README.ko.md` - Node.js 호환성 중심 앱을 위한 `@konekti/platform-express` 계약.
 - `../packages/platform-bun/README.ko.md` - `@konekti/platform-bun` 계약과 시작 경로.
 - `../packages/platform-deno/README.ko.md` - `@konekti/platform-deno` 계약과 시작 경로.
