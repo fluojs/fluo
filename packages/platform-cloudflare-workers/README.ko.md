@@ -101,4 +101,4 @@ Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공
 - Worker `env`와 `ExecutionContext`는 `fetch()` 경계에서 받지만, Konekti `RequestContext`로 자동 주입되지는 않습니다.
 - `port`, `host`, `https`, `shutdownSignals`, `forceExitTimeoutMs` 같은 Node 전용 옵션은 지원하지 않습니다.
 - 이 패키지는 Bun/Deno 전용 동작을 추가하지 않으며, 공유 Web 코어 위의 Cloudflare Workers 범위에만 집중합니다.
-- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Worker 전용 host와 테스트가 별도 이슈에서 추가되기 전까지 raw websocket 지원은 범위 밖입니다.
+- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Cloudflare Workers는 websocket 처리에 `WebSocketPair`(주로 Durable Objects와 함께 사용)를 사용하며, 이는 `@konekti/websocket/node`가 요구하는 Node upgrade-listener 모델과 호환되지 않습니다. 전용 `@konekti/websocket/cloudflare-workers` 바인딩과 테스트가 추가되기 전까지 raw websocket 지원은 범위 밖입니다.

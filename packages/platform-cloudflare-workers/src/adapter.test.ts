@@ -71,7 +71,7 @@ describe('@konekti/platform-cloudflare-workers', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Cloudflare Workers exposes a fetch-style raw websocket expansion contract only. Add a Worker-specific raw websocket host before claiming support.',
+        'Cloudflare Workers uses WebSocketPair (often paired with Durable Objects) for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/cloudflare-workers binding is needed before raw websocket support can be claimed.',
       support: 'contract-only',
       version: 1,
     });
