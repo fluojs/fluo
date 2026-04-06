@@ -82,7 +82,7 @@ export class AppModule {}
 
 - `onApplicationBootstrap()`에서 `COMPILED_MODULES`를 기준으로 게이트웨이 탐색
 - 게이트웨이 인스턴스는 `RUNTIME_CONTAINER`에서 해석
-- 명시적 Node seam은 `ws`의 `noServer` 모드와 단일 Node 서버 `upgrade` 리스너를 사용
+- 명시적 Node seam은 플랫폼이 선택한 realtime capability를 소비하며, 그 capability가 `server-backed`일 때 `ws`의 `noServer` 모드와 단일 Node 서버 `upgrade` 리스너를 사용합니다
 - 게이트웨이 경로는 정규화 후 정확히 일치해야 연결 처리
 - `request`/`transient` 스코프 게이트웨이는 경고 후 제외
 - Node 바인딩 종료 시 업그레이드 리스너 제거 및 활성 소켓 정리
@@ -94,6 +94,7 @@ export class AppModule {}
 
 - `@konekti/websocket` 루트는 게이트웨이 작성용 데코레이터, 메타데이터, 디스크립터, 공용 room 계약에 집중하며, 현재 raw `ws` Node 런타임 배선은 의도적으로 `@konekti/websocket/node`로 격리합니다.
 - 이제 명시적 realtime capability seam의 소유권은 플랫폼 선택 경계에 있습니다. 이 패키지 자체가 런타임/플랫폼 결정을 내리지는 않으며, 현재 raw `ws` 바인딩은 계속 Node 기반 server capability를 전제로 합니다.
+- `{ kind: 'unsupported', mode: 'no-op' }`를 보고하는 런타임은 그 명시적 경계에서 중단되며, 이 패키지는 Worker/fetch-style 런타임을 위해 Node upgrade listener 라이프사이클을 에뮬레이션하지 않습니다.
 
 ## 프로바이더 등록 제약
 
