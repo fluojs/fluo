@@ -93,7 +93,7 @@ export class AppModule {}
 ## 의도된 제한 사항
 
 - `@konekti/websocket` 루트는 게이트웨이 작성용 데코레이터, 메타데이터, 디스크립터, 공용 room 계약에 집중하며, 현재 raw `ws` Node 런타임 배선은 의도적으로 `@konekti/websocket/node`로 격리합니다.
-- 이 패키지는 아직 최종 cross-platform realtime capability 형태를 정의하지 않습니다. Bun, Deno, Cloudflare, 더 넓은 realtime 추상화는 후속 이슈 흐름에서 다룹니다.
+- 이제 명시적 realtime capability seam의 소유권은 플랫폼 선택 경계에 있습니다. 이 패키지 자체가 런타임/플랫폼 결정을 내리지는 않으며, 현재 raw `ws` 바인딩은 계속 Node 기반 server capability를 전제로 합니다.
 
 ## 프로바이더 등록 제약
 
