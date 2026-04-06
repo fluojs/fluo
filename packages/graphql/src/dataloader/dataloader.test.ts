@@ -7,7 +7,7 @@ import {
   createRequestScopedDataLoaderFactory,
   getRequestScopedDataLoader,
 } from './dataloader.js';
-import type { GraphQLContext } from './types.js';
+import type { GraphQLContext } from '../types.js';
 
 function createContext(): GraphQLContext {
   return {

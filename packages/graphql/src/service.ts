@@ -34,8 +34,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
-import { createCodeFirstSchema, resolveSchema } from './schema.js';
-import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport.js';
+import { createCodeFirstSchema, resolveSchema } from './schema/schema.js';
+import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport/transport.js';
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 import type {
   GraphQLContext,

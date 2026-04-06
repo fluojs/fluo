@@ -15,7 +15,7 @@ import type {
 } from 'graphql';
 import { DtoValidationError } from '@konekti/validation';
 
-import { createGraphqlInput, resolveArgType, resolveOutputType } from './input-pipeline.js';
+import { createGraphqlInput, resolveArgType, resolveOutputType } from '../pipeline/input-pipeline.js';
 import {
   GRAPHQL_OPERATION_CONTAINER,
   isGraphqlListTypeRef,
@@ -26,7 +26,7 @@ import {
   type ResolverDescriptor,
   type ResolverHandlerDescriptor,
   type ResolverHandlerType,
-} from './types.js';
+} from '../types.js';
 
 type YogaGraphqlDeps = {
   GraphQLError: typeof GraphQLErrorType;

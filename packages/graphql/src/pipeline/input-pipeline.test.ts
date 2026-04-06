@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { IsBoolean, IsInt, MinLength } from '@konekti/validation';
 
-import { Arg } from './decorators.js';
+import { Arg } from '../decorators.js';
 import { createGraphqlInput, resolveArgScalarType, resolveArgType } from './input-pipeline.js';
-import { listOf } from './types.js';
-import type { ResolverHandlerDescriptor } from './types.js';
+import { listOf } from '../types.js';
+import type { ResolverHandlerDescriptor } from '../types.js';
 
 class ScalarInput {
   @Arg('count')
