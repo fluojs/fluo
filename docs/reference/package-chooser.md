@@ -169,7 +169,7 @@ Import the transport-specific entrypoint you need: `@konekti/microservices/kafka
 
 | package | role |
 |---------|------|
-| `@konekti/websocket` | decorator-based gateway discovery, Node HTTP/S upgrade wiring |
+| `@konekti/websocket` + `@konekti/websocket/node` | shared gateway decorators/contracts plus the explicit Node `ws` upgrade binding |
 
 ### option B — Socket.IO
 
