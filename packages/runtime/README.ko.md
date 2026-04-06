@@ -21,7 +21,9 @@
 4. `@konekti/http`에서 `createHandlerMapping()`과 `createDispatcher()`를 호출합니다.
 5. `dispatch()`, `listen()`, `ready()`, `close()`를 포함하는 `KonektiApplication` 셸을 반환합니다.
 
-`KonektiFactory`는 canonical public startup facade입니다. HTTP 앱의 기본 흐름은 `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`이며, `@konekti/platform-fastify`나 `@konekti/platform-express` 같은 트랜스포트 패키지를 선택할 때는 `options.adapter`를 전달합니다.
+`KonektiFactory`는 canonical public startup facade입니다. HTTP 앱은 `options.adapter`로 트랜스포트를 명시적으로 선택해 런타임이 조립/orchestration 역할에 집중하도록 유지해야 합니다.
+
+의도적으로 어댑터를 생략하더라도 `KonektiFactory.create(...)`는 애플리케이션 셸을 조립할 수 있지만, HTTP 서빙 대상을 대신 선택해 주지는 않습니다.
 
 트랜스포트가 SSE 또는 기타 스트리밍 HTTP 응답 본문을 지원하면, 런타임이 관리하는 어댑터는 `FrameworkResponse.stream`도 노출할 수 있습니다.
 
@@ -33,7 +35,7 @@ npm install @konekti/runtime
 
 ### 0.x 마이그레이션 노트
 
-- Node 전용 시작 헬퍼는 `@konekti/runtime` 루트 배럴에서 분리되었습니다. `createNodeHttpAdapter`, `bootstrapNodeApplication`, `runNodeApplication`은 `@konekti/runtime/node`에서 import 하세요.
+- raw Node adapter-first 시작 경로는 이제 `@konekti/platform-nodejs`에 있습니다. `@konekti/runtime/node`는 호환 헬퍼와 shutdown registration, compression helper 같은 고급 Node 전용 유틸리티용으로 유지됩니다.
 - transport 지향 multipart 파싱은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. 공유 Web/fetch-style 파싱 헬퍼는 이제 `@konekti/runtime/web` 아래에 있습니다.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 - `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰으로 범위를 줄였습니다. 공유 어댑터 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`, 요청/응답 팩토리 헬퍼는 `@konekti/runtime/internal/request-response-factory`로 이동했습니다.
@@ -42,12 +44,13 @@ npm install @konekti/runtime
 
 ## 빠른 시작
 
-### 최소 Node.js 앱
+### 최소 raw Node.js 앱
 
 ```typescript
 import { Module, Global } from '@konekti/core';
-import { KonektiFactory } from '@konekti/runtime';
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Get } from '@konekti/http';
+import { KonektiFactory } from '@konekti/runtime';
 import type { RequestContext } from '@konekti/http';
 
 @Controller('/health')
@@ -61,7 +64,10 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class AppModule {}
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
 await app.listen();
 ```
 
@@ -78,13 +84,14 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-`@konekti/platform-fastify`, `@konekti/platform-express`처럼 트랜스포트 패키지를 사용할 때는 위 adapter-first 형태를 사용하세요. canonical startup path는 계속 `KonektiFactory.create(...)`이며, 트랜스포트별 `run*Application()` 헬퍼는 호환/고급 경로로 유지됩니다.
+`@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`처럼 모든 HTTP 트랜스포트 패키지는 위 adapter-first 형태를 사용하세요. canonical startup path는 계속 `KonektiFactory.create(...)`이며, 트랜스포트별 `run*Application()` 헬퍼는 호환/고급 경로로 유지됩니다.
 
 ### global request converters
 
 HTTP 앱에서는 사용자가 실제로 호출하는 런타임 entrypoint를 통해 transport-wide request converter를 등록합니다.
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 
 class TrimStringConverter {
@@ -94,8 +101,8 @@ class TrimStringConverter {
 }
 
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   converters: [TrimStringConverter],
-  port: 3000,
 });
 
 await app.listen();
@@ -106,9 +113,11 @@ await app.listen();
 ### 고급 부트스트랩 + 수동 listen
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { bootstrapApplication } from '@konekti/runtime';
 
 const app = await bootstrapApplication({
+  adapter: createNodejsAdapter({ port: 3000 }),
   rootModule: AppModule,
 });
 
@@ -190,9 +199,13 @@ await microservice.listen();
 ### 하이브리드 구성 (한 프로세스 내 HTTP + 마이크로서비스)
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
 await app.connectMicroservice();
 await app.startAllMicroservices();
 await app.listen();
@@ -201,6 +214,7 @@ await app.listen();
 ### 로우(Raw) 웹훅 바디 (선택 사항)
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Post, type RequestContext } from '@konekti/http';
 import { KonektiFactory } from '@konekti/runtime';
 
@@ -220,7 +234,7 @@ class WebhookController {
 }
 
 const app = await KonektiFactory.create(AppModule, {
-  rawBody: true,
+  adapter: createNodejsAdapter({ port: 3000, rawBody: true }),
 });
 
 await app.listen();
@@ -231,15 +245,18 @@ await app.listen();
 ### 호스트 바인딩 및 HTTPS
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { readFileSync } from 'node:fs';
 
 const app = await KonektiFactory.create(AppModule, {
-  host: '127.0.0.1',
-  https: {
-    cert: readFileSync('./certs/dev.crt'),
-    key: readFileSync('./certs/dev.key'),
-  },
-  port: 8443,
+  adapter: createNodejsAdapter({
+    host: '127.0.0.1',
+    https: {
+      cert: readFileSync('./certs/dev.crt'),
+      key: readFileSync('./certs/dev.key'),
+    },
+    port: 8443,
+  }),
 });
 
 await app.listen();
@@ -250,7 +267,10 @@ await app.listen();
 ### 애플리케이션 라우트를 위한 글로벌 접두사(Prefix)
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
+
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   globalPrefix: '/api',
   globalPrefixExclude: ['/internal/*'],
 });
@@ -265,6 +285,7 @@ await app.listen();
 ### 글로벌 예외 필터
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { NotFoundException } from '@konekti/http';
 import type { ExceptionFilterHandler } from '@konekti/runtime';
 
@@ -281,6 +302,7 @@ class DomainExceptionFilter implements ExceptionFilterHandler {
 }
 
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   filters: [new DomainExceptionFilter()],
 });
 
@@ -303,8 +325,9 @@ await bootstrapApplication({
 ### 버전 관리 전략
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Get, Version, VersioningType } from '@konekti/http';
-import { runNodeApplication } from '@konekti/runtime/node';
+import { KonektiFactory } from '@konekti/runtime';
 
 @Version('1')
 @Controller('/users')
@@ -315,12 +338,15 @@ class UsersController {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   versioning: {
     header: 'X-API-Version',
     type: VersioningType.HEADER,
   },
 });
+
+await app.listen();
 ```
 
 런타임은 네 가지 버전 관리 전략을 지원합니다.

@@ -40,7 +40,7 @@ pnpm add -g @konekti/cli
 
 처음 실행하는 표준 경로는 다음과 같습니다: CLI 설치 -> `konekti new my-app` -> `cd my-app` -> `pnpm dev`.
 
-생성된 스타터는 기본 adapter-first HTTP 리스너로 `@konekti/platform-fastify`를 의존합니다. `runNodeApplication()` 같은 Node 호환 헬퍼 wrapper 경로가 필요할 때만 `@konekti/runtime/node`를 사용하세요.
+생성된 스타터는 기본 adapter-first HTTP 리스너로 `@konekti/platform-fastify`를 의존합니다. 같은 런타임 facade 위에서 bare Node HTTP가 필요하면 `@konekti/platform-nodejs`를 사용하고, `runNodeApplication()` 같은 Node 호환 헬퍼 wrapper 경로가 필요할 때만 `@konekti/runtime/node`를 사용하세요.
 
 package-manager 선택 범위는 런타임 매트릭스보다 넓습니다. `pnpm`, `npm`, `yarn`, `bun` 모두 같은 스캐폴드를 설치/실행할 수 있지만, 실제 런타임 선택은 `src/main.ts`와 import한 어댑터 패키지에서 명시적으로 결정됩니다.
 
@@ -69,7 +69,7 @@ konekti new my-app
 
 한 번만 실행하는 zero-install 부트스트랩에는 `pnpm dlx @konekti/cli new my-app`도 보조 경로로 계속 지원됩니다.
 
-스캐폴드 이후 런타임별 시작 가이드가 필요하면 먼저 `../../docs/reference/package-surface.ko.md`를 확인한 뒤 `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` 공식 README를 참고하세요.
+스캐폴드 이후 런타임별 시작 가이드가 필요하면 먼저 `../../docs/reference/package-surface.ko.md`를 확인한 뒤 `@konekti/platform-nodejs`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` 공식 README를 참고하세요.
 
 전체 온보딩 흐름은 `../../docs/getting-started/quick-start.ko.md`부터 시작하세요.
 
@@ -117,7 +117,7 @@ konekti migrate ./src --skip testing
 
 마이그레이션 codemod는 helper-style `create*` API(예: `createTestingModule(...)`)를 의도적으로 유지합니다. 이는 해당 API가 런타임 모듈 엔트리포인트가 아니라 빌더이기 때문입니다.
 
-safe rewrite 이후에는 release-facing docs/examples를 portability redesign에 맞춰 정렬하세요. 새 앱은 대상 런타임에 맞는 명시적 adapter-first startup(`createFastifyAdapter(...)`, `createExpressAdapter(...)`, `createBunAdapter(...)`, `createDenoAdapter(...)`, 또는 Cloudflare Workers entrypoint)을 우선 사용하고, Node 전용 호환 경로는 `@konekti/runtime/node`로 안내해야 합니다.
+safe rewrite 이후에는 release-facing docs/examples를 portability redesign에 맞춰 정렬하세요. 새 앱은 대상 런타임에 맞는 명시적 adapter-first startup(`createNodejsAdapter(...)`, `createFastifyAdapter(...)`, `createExpressAdapter(...)`, `createBunAdapter(...)`, `createDenoAdapter(...)`, 또는 Cloudflare Workers entrypoint)을 우선 사용하고, Node 전용 호환 경로는 `@konekti/runtime/node`로 안내해야 합니다.
 
 마이그레이션 커맨드는 constructor `@Inject(TOKEN)` 파라미터 데코레이터, `@RequestDto` 구조로 옮겨야 하는 요청 파라미터 데코레이터, pipe/converter 전환 지점, 지원하지 않는 Nest bootstrap 형태(타입 인자/adapter-specific startup), 지원하지 않는 Nest testing metadata/chain 같은 수동 후속 작업 항목을 warning/report로 출력합니다.
 

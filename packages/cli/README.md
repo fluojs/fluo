@@ -40,7 +40,7 @@ After installation, use the `konekti` binary directly.
 
 The canonical first-run path is: install the CLI -> `konekti new my-app` -> `cd my-app` -> `pnpm dev`.
 
-Generated starters depend on `@konekti/platform-fastify` for the default adapter-first HTTP listener. Keep `@konekti/runtime/node` for Node compatibility helpers such as `runNodeApplication()` when you explicitly want the helper-wrapper path.
+Generated starters depend on `@konekti/platform-fastify` for the default adapter-first HTTP listener. Use `@konekti/platform-nodejs` when you want bare Node HTTP on that same runtime facade, and keep `@konekti/runtime/node` only for compatibility helpers such as `runNodeApplication()`.
 
 Package-manager selection is broader than the runtime matrix: `pnpm`, `npm`, `yarn`, and `bun` can all install/run the same scaffold, but runtime choice remains explicit in `src/main.ts` and the adapter package you import.
 
@@ -69,7 +69,7 @@ The generated `dev` script is a runner-level restart path based on Node watch mo
 
 For a one-off no-install bootstrap, `pnpm dlx @konekti/cli new my-app` remains supported as a secondary path.
 
-If you want runtime-specific startup guidance after scaffolding, check `../../docs/reference/package-surface.md` first and then jump to the official package READMEs for `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
+If you want runtime-specific startup guidance after scaffolding, check `../../docs/reference/package-surface.md` first and then jump to the official package READMEs for `@konekti/platform-nodejs`, `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers`.
 
 For the broader onboarding flow, start with `../../docs/getting-started/quick-start.md`.
 
@@ -117,7 +117,7 @@ Current safe first-phase transforms:
 
 The migration codemod intentionally preserves helper-style `create*` APIs (for example `createTestingModule(...)`) because they are builders, not runtime module entrypoints.
 
-After the safe rewrite lands, release-facing docs/examples should be aligned to the portability redesign: prefer explicit adapter-first startup for the runtime you are targeting (`createFastifyAdapter(...)`, `createExpressAdapter(...)`, `createBunAdapter(...)`, `createDenoAdapter(...)`, or the Cloudflare Workers entrypoint), and point Node-only compatibility flows to `@konekti/runtime/node`.
+After the safe rewrite lands, release-facing docs/examples should be aligned to the portability redesign: prefer explicit adapter-first startup for the runtime you are targeting (`createNodejsAdapter(...)`, `createFastifyAdapter(...)`, `createExpressAdapter(...)`, `createBunAdapter(...)`, `createDenoAdapter(...)`, or the Cloudflare Workers entrypoint), and point Node-only compatibility flows to `@konekti/runtime/node`.
 
 The migration command prints warning/report output for manual follow-up areas such as constructor `@Inject(TOKEN)` parameter decorators, request-parameter decorators that should move to `@RequestDto`, pipe/converter migration hotspots, unsupported Nest bootstrap variants (type-argument/adapter-specific startup), and unsupported Nest testing metadata or builder chains.
 

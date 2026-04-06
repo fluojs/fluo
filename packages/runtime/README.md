@@ -21,7 +21,9 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 4. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
 5. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
 
-`KonektiFactory` is the canonical public startup facade. For HTTP apps, the default flow is `const app = await KonektiFactory.create(AppModule, { ...options }); await app.listen();`, with optional `options.adapter` when selecting a transport package such as `@konekti/platform-fastify` or `@konekti/platform-express`.
+`KonektiFactory` is the canonical public startup facade. For HTTP apps, select a transport explicitly through `options.adapter` and keep the runtime focused on assembly/orchestration.
+
+If you intentionally omit an adapter, `KonektiFactory.create(...)` still assembles the application shell, but it does not select an HTTP serving target for you.
 
 Runtime-managed adapters may also expose `FrameworkResponse.stream` when the transport supports SSE or other streamed HTTP response bodies.
 
@@ -33,7 +35,7 @@ npm install @konekti/runtime
 
 ### 0.x migration note
 
-- Node-specific startup helpers moved off the `@konekti/runtime` root barrel. Import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@konekti/runtime/node`.
+- Raw Node adapter-first startup now lives at `@konekti/platform-nodejs`. Keep `@konekti/runtime/node` for compatibility helpers and advanced Node-only utilities such as shutdown registration and compression helpers.
 - Transport-facing multipart parsing no longer exports from the `@konekti/runtime` root barrel. Shared Web/fetch-style parsing helpers now live under `@konekti/runtime/web`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 - `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
@@ -42,12 +44,13 @@ npm install @konekti/runtime
 
 ## Quick Start
 
-### Minimal Node.js app
+### Minimal raw Node.js app
 
 ```typescript
 import { Module, Global } from '@konekti/core';
-import { KonektiFactory } from '@konekti/runtime';
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Get } from '@konekti/http';
+import { KonektiFactory } from '@konekti/runtime';
 import type { RequestContext } from '@konekti/http';
 
 @Controller('/health')
@@ -61,7 +64,10 @@ class HealthController {
 @Module({ controllers: [HealthController] })
 class AppModule {}
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
 await app.listen();
 ```
 
@@ -78,13 +84,14 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-Use this adapter-first form when you need a transport package (`@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
+Use this adapter-first form for every HTTP runtime target (`@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
 
 ### Global request converters
 
 For HTTP apps, register transport-wide request converters through the runtime entrypoints users already call.
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 
 class TrimStringConverter {
@@ -94,8 +101,8 @@ class TrimStringConverter {
 }
 
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   converters: [TrimStringConverter],
-  port: 3000,
 });
 
 await app.listen();
@@ -106,9 +113,11 @@ These converters are HTTP binding concerns. They run before DTO validation and a
 ### Advanced bootstrap with manual listen
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { bootstrapApplication } from '@konekti/runtime';
 
 const app = await bootstrapApplication({
+  adapter: createNodejsAdapter({ port: 3000 }),
   rootModule: AppModule,
 });
 
@@ -190,9 +199,13 @@ await microservice.listen();
 ### Hybrid composition (HTTP + microservice in one process)
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
 
-const app = await KonektiFactory.create(AppModule);
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+});
+
 await app.connectMicroservice();
 await app.startAllMicroservices();
 await app.listen();
@@ -201,6 +214,7 @@ await app.listen();
 ### Raw webhook body (opt-in)
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Post, type RequestContext } from '@konekti/http';
 import { KonektiFactory } from '@konekti/runtime';
 
@@ -220,7 +234,7 @@ class WebhookController {
 }
 
 const app = await KonektiFactory.create(AppModule, {
-  rawBody: true,
+  adapter: createNodejsAdapter({ port: 3000, rawBody: true }),
 });
 
 await app.listen();
@@ -231,15 +245,18 @@ await app.listen();
 ### Host binding and HTTPS
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { readFileSync } from 'node:fs';
 
 const app = await KonektiFactory.create(AppModule, {
-  host: '127.0.0.1',
-  https: {
-    cert: readFileSync('./certs/dev.crt'),
-    key: readFileSync('./certs/dev.key'),
-  },
-  port: 8443,
+  adapter: createNodejsAdapter({
+    host: '127.0.0.1',
+    https: {
+      cert: readFileSync('./certs/dev.crt'),
+      key: readFileSync('./certs/dev.key'),
+    },
+    port: 8443,
+  }),
 });
 
 await app.listen();
@@ -250,7 +267,10 @@ When `host` is set, the Node adapter binds explicitly to that host instead of th
 ### Global prefix for application routes
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
+
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   globalPrefix: '/api',
   globalPrefixExclude: ['/internal/*'],
 });
@@ -265,6 +285,7 @@ await app.listen();
 ### Global exception filters
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { NotFoundException } from '@konekti/http';
 import type { ExceptionFilterHandler } from '@konekti/runtime';
 
@@ -281,6 +302,7 @@ class DomainExceptionFilter implements ExceptionFilterHandler {
 }
 
 const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   filters: [new DomainExceptionFilter()],
 });
 
@@ -303,8 +325,9 @@ await bootstrapApplication({
 ### Versioning strategies
 
 ```typescript
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { Controller, Get, Version, VersioningType } from '@konekti/http';
-import { runNodeApplication } from '@konekti/runtime/node';
+import { KonektiFactory } from '@konekti/runtime';
 
 @Version('1')
 @Controller('/users')
@@ -315,12 +338,15 @@ class UsersController {
   }
 }
 
-await runNodeApplication(AppModule, {
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
   versioning: {
     header: 'X-API-Version',
     type: VersioningType.HEADER,
   },
 });
+
+await app.listen();
 ```
 
 Runtime supports four versioning strategies:

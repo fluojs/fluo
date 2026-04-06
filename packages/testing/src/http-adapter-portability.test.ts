@@ -9,6 +9,10 @@ import {
   runExpressApplication,
 } from '@konekti/platform-express';
 import {
+  bootstrapNodejsApplication,
+  runNodejsApplication,
+} from '@konekti/platform-nodejs';
+import {
   bootstrapNodeApplication,
   runNodeApplication,
 } from '@konekti/runtime/node';
@@ -113,6 +117,15 @@ registerPortabilitySuite(
     bootstrap: bootstrapNodeApplication,
     name: 'node',
     run: runNodeApplication,
+  }),
+);
+
+registerPortabilitySuite(
+  'nodejs-platform',
+  createHttpAdapterPortabilityHarness({
+    bootstrap: bootstrapNodejsApplication,
+    name: 'nodejs-platform',
+    run: runNodejsApplication,
   }),
 );
 
