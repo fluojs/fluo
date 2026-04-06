@@ -56,6 +56,39 @@ This section is the canonical source of truth for public runtime/package guidanc
 
 Package-level runtime behavior, startup APIs, and intentional limitations stay documented in the corresponding adapter README.
 
+## `platform-*` naming convention
+
+The `platform-*` prefix is reserved for packages that implement the `PlatformAdapter` interface and bridge Konekti's abstract HTTP layer to a specific runtime, server library, or protocol surface.
+
+Current `platform-*` packages:
+
+- `@konekti/platform-bun`
+- `@konekti/platform-cloudflare-workers`
+- `@konekti/platform-deno`
+- `@konekti/platform-express`
+- `@konekti/platform-fastify`
+- `@konekti/platform-socket.io`
+
+Rationale for the prefix:
+
+- **NestJS migration familiarity**: NestJS uses the same `platform-*` convention, so the naming stays recognizable for teams moving from NestJS.
+- **Collision prevention**: names like `@konekti/express` or `@konekti/bun` could be confused with the underlying library or runtime itself.
+- **Adapter signal**: the prefix tells readers that the package is an adapter layer for `@konekti/runtime`, not the upstream runtime or library.
+
+Use `platform-*` when a package:
+
+- implements `PlatformAdapter`
+- acts as a runtime or protocol bridge into the Konekti runtime
+- owns runtime-specific request/response or gateway integration semantics
+
+Do not use `platform-*` when a package:
+
+- only wraps a third-party library for DI or lifecycle ownership
+- does not implement `PlatformAdapter`
+- exposes an integration surface without acting as a runtime/protocol adapter
+
+For example, `@konekti/redis` stays a client wrapper package rather than a `platform-*` package because it integrates Redis into DI/runtime lifecycle without serving as the runtime adapter boundary itself.
+
 ## package responsibilities
 
 Konekti packages follow a **class-first** public surface rule. Concrete services, guards, and interceptors use the class itself as the primary injection token, while symbols and constants are reserved for interfaces, configuration, and runtime handles.

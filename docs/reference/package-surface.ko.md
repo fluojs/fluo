@@ -56,6 +56,39 @@
 
 런타임별 동작, startup API, intentional limitation 상세는 각 어댑터 README가 계속 소유합니다.
 
+## `platform-*` 네이밍 규칙
+
+`platform-*` 접두사는 `PlatformAdapter` 인터페이스를 구현하고, Konekti의 추상 HTTP 레이어를 특정 런타임, 서버 라이브러리, 또는 프로토콜 인터페이스에 연결하는 패키지에만 사용합니다.
+
+현재 `platform-*` 패키지:
+
+- `@konekti/platform-bun`
+- `@konekti/platform-cloudflare-workers`
+- `@konekti/platform-deno`
+- `@konekti/platform-express`
+- `@konekti/platform-fastify`
+- `@konekti/platform-socket.io`
+
+이 접두사를 사용하는 이유:
+
+- **NestJS 마이그레이션 친숙성**: NestJS도 동일한 `platform-*` 규칙을 사용하므로, NestJS에서 이동하는 팀이 익숙한 패턴을 그대로 찾을 수 있습니다.
+- **이름 충돌 방지**: `@konekti/express`나 `@konekti/bun` 같은 이름은 실제 라이브러리 또는 런타임 자체와 혼동될 수 있습니다.
+- **어댑터 역할 신호**: 이 접두사는 해당 패키지가 업스트림 런타임/라이브러리 자체가 아니라 `@konekti/runtime`용 어댑터 계층임을 분명히 보여줍니다.
+
+다음에 해당하면 `platform-*`를 사용합니다:
+
+- `PlatformAdapter`를 구현한다
+- Konekti 런타임으로 들어오는 런타임/프로토콜 브리지 역할을 한다
+- 런타임별 request/response 또는 gateway 통합 시맨틱을 소유한다
+
+다음에 해당하면 `platform-*`를 사용하지 않습니다:
+
+- DI 또는 라이프사이클 소유를 위해 서드파티 라이브러리를 감싸기만 한다
+- `PlatformAdapter`를 구현하지 않는다
+- 런타임/프로토콜 어댑터가 아닌 통합 인터페이스만 제공한다
+
+예를 들어 `@konekti/redis`는 Redis를 DI/런타임 라이프사이클에 통합하는 클라이언트 래퍼 패키지이며, 런타임 어댑터 경계 자체를 담당하지 않으므로 `platform-*` 패키지로 분류하지 않습니다.
+
 ## package responsibilities
 
 Konekti 패키지는 **클래스 우선(class-first)** 공개 인터페이스 규칙을 따릅니다. 구체 서비스, 가드, 인터셉터는 클래스 자체를 주요 주입 토큰으로 사용하며, 심볼과 상수는 인터페이스, 설정 및 런타임 핸들을 위해 예약됩니다.
