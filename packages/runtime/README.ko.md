@@ -23,7 +23,7 @@
 
 `KonektiFactory`는 canonical public startup facade입니다. HTTP 앱은 `options.adapter`로 트랜스포트를 명시적으로 선택해 런타임이 조립/orchestration 역할에 집중하도록 유지해야 합니다.
 
-의도적으로 어댑터를 생략하더라도 `KonektiFactory.create(...)`는 애플리케이션 셸을 조립할 수 있지만, HTTP 서빙 대상을 대신 선택해 주지는 않습니다.
+의도적으로 어댑터를 생략하더라도 `KonektiFactory.create(...)`는 애플리케이션 셸을 조립할 수 있지만, HTTP 서빙 대상을 대신 선택해 주지는 않습니다. 이 adapterless 경로는 의도된 동작입니다. 조립된 셸에서는 `ready()`, `dispatch()`, `close()`를 계속 사용할 수 있지만, `listen()`은 `options.adapter`가 제공되기 전까지 예외를 던집니다.
 
 트랜스포트가 SSE 또는 기타 스트리밍 HTTP 응답 본문을 지원하면, 런타임이 관리하는 어댑터는 `FrameworkResponse.stream`도 노출할 수 있습니다.
 
@@ -85,6 +85,26 @@ await app.listen();
 ```
 
 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`처럼 모든 HTTP 트랜스포트 패키지는 위 adapter-first 형태를 사용하세요. canonical startup path는 계속 `KonektiFactory.create(...)`이며, 트랜스포트별 `run*Application()` 헬퍼는 호환/고급 경로로 유지됩니다.
+
+### Adapterless bootstrap semantics
+
+```typescript
+import { KonektiFactory } from '@konekti/runtime';
+
+const app = await KonektiFactory.create(AppModule);
+
+await app.ready();
+await app.close();
+```
+
+`options.adapter`를 생략하는 것은 의도적인 shell-only bootstrap 모드입니다. `@konekti/runtime`이 HTTP 리스너를 선택하지 않도록 하면서도 컴파일된 모듈 그래프, 라이프사이클 훅, 디스패처, 수동 orchestration이 필요할 때 사용하세요.
+
+- `ready()`는 여전히 runtime-owned platform readiness를 검증합니다.
+- `dispatch()`는 테스트나 transport-owned request bridging에 계속 사용할 수 있습니다.
+- `close()`는 shutdown hook과 리소스 정리를 계속 수행합니다.
+- `listen()`은 명시적인 HTTP adapter를 전달하기 전까지 예외를 던집니다.
+
+HTTP dispatcher까지도 필요 없고 DI + lifecycle만 필요하다면 `KonektiFactory.createApplicationContext(...)`를 우선 사용하세요.
 
 ### global request converters
 
@@ -424,6 +444,29 @@ await app.listen();
 | `@Global()` | `@konekti/core` | 모듈을 전역적으로 가시성 있게 표시 |
 
 `@konekti/runtime` 루트 배럴은 의도적으로 transport-neutral 경계를 유지합니다. Node 부트스트랩/종료 헬퍼는 `@konekti/runtime/node`, `dispatchWebRequest()` / `parseMultipart()` 같은 공유 fetch-style 요청/응답 헬퍼는 `@konekti/runtime/web`에서 import 하세요. `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰(`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`) 전용이며, transport 헬퍼 seam은 명시적인 internal 서브패스로 분리되었습니다.
+
+## Behavioral contract
+
+### Supported operations
+
+- `KonektiFactory.create(rootModule, { adapter })`는 런타임 셸을 조립하고 선택한 HTTP transport에서 `listen()`을 가능하게 합니다.
+- `KonektiFactory.create(rootModule)`는 HTTP 리스너를 선택하지 않은 채 동일한 셸을 조립합니다.
+- `KonektiFactory.createApplicationContext(rootModule)`는 HTTP dispatcher/adapter seam 없이 DI + lifecycle만 조립합니다.
+
+### Intentional limitations
+
+- `@konekti/runtime`은 어댑터가 없을 때 기본 HTTP adapter를 추측하지 않습니다.
+- adapterless `KonektiFactory.create(...)`는 포트를 암묵적으로 열거나 transport를 바인딩하지 않습니다.
+
+### Runtime invariants
+
+- `listen()`은 항상 명시적인 HTTP adapter를 요구합니다.
+- adapterless bootstrap은 닫히기 전까지 애플리케이션을 `bootstrapped` 상태로 유지합니다.
+
+### Lifecycle guarantees
+
+- adapterless bootstrap도 module/application bootstrap hook을 실행합니다.
+- HTTP adapter가 없어도 `close()`는 runtime cleanup과 shutdown hook을 계속 실행합니다.
 
 ## 아키텍처
 
