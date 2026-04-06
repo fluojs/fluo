@@ -2,10 +2,10 @@ import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
 import { Counter, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
-import { METER_PROVIDER } from './meter-provider.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
-import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
+import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
