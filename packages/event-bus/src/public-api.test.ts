@@ -13,6 +13,7 @@ describe('@konekti/event-bus public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(eventBusPublicApi).toHaveProperty('EventBusModule');
     expect(eventBusPublicApi).toHaveProperty('createEventBusProviders');
+    expect(eventBusPublicApi).toHaveProperty('EventBusLifecycleService');
     expect(eventBusPublicApi).toHaveProperty('EVENT_BUS');
     expect(eventBusPublicApi).toHaveProperty('OnEvent');
     expect(eventBusPublicApi).toHaveProperty('createEventBusPlatformStatusSnapshot');
