@@ -26,7 +26,7 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
  * Creates queue lifecycle providers and normalized queue options.
  *
  * @param options Queue module defaults for attempts, backoff, concurrency, and rate limiting.
- * @returns Provider definitions that register normalized `QUEUE_OPTIONS` and the runtime `QUEUE` service.
+ * @returns Provider definitions that register normalized `QUEUE_OPTIONS`, `QueueLifecycleService`, and the compatibility alias `QUEUE`.
  */
 export function createQueueProviders(options: QueueModuleOptions = {}): Provider[] {
   return [
@@ -34,9 +34,13 @@ export function createQueueProviders(options: QueueModuleOptions = {}): Provider
       provide: QUEUE_OPTIONS,
       useValue: normalizeQueueModuleOptions(options),
     },
+    QueueLifecycleService,
     {
+      inject: [QueueLifecycleService],
       provide: QUEUE,
-      useClass: QueueLifecycleService,
+      useFactory: (service: unknown) => ({
+        enqueue: (job: object) => (service as QueueLifecycleService).enqueue(job),
+      }),
     },
   ];
 }
@@ -49,13 +53,13 @@ export class QueueModule {
    * Registers queue providers globally using canonical `forRoot(...)` semantics.
    *
    * @param options Queue runtime defaults used by discovered workers and enqueued jobs.
-   * @returns A module definition that exports the global `QUEUE` token.
+   * @returns A module definition that exports `QueueLifecycleService` and the compatibility token `QUEUE`.
    */
   static forRoot(options: QueueModuleOptions = {}): ModuleType {
     class QueueModuleDefinition {}
 
     return defineModule(QueueModuleDefinition, {
-      exports: [QUEUE],
+      exports: [QueueLifecycleService, QUEUE],
       global: true,
       providers: createQueueProviders(options),
     });
