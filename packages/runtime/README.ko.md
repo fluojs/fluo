@@ -35,7 +35,7 @@ npm install @konekti/runtime
 
 ### 0.x 마이그레이션 노트
 
-- raw Node adapter-first 시작 경로는 이제 `@konekti/platform-nodejs`에 있습니다. `@konekti/runtime/node`는 호환 헬퍼와 shutdown registration, compression helper 같은 고급 Node 전용 유틸리티용으로 유지됩니다.
+- raw Node adapter-first 시작 경로는 이제 `@konekti/platform-nodejs`에 있습니다. `@konekti/runtime/node`는 호환 entrypoint로 유지되고, 실제 구현은 이제 platform 패키지가 직접 조합하는 명시적 Node 전용 seam인 `@konekti/runtime/internal-node` 뒤에 위치합니다.
 - transport 지향 multipart 파싱은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. 공유 Web/fetch-style 파싱 헬퍼는 이제 `@konekti/runtime/web` 아래에 있습니다.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 - `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰으로 범위를 줄였습니다. 공유 어댑터 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`, 요청/응답 팩토리 헬퍼는 `@konekti/runtime/internal/request-response-factory`로 이동했습니다.
@@ -485,9 +485,9 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 `createHealthModule()`은 런타임 소유의 활성/준비 상태 쌍을 노출합니다. `/health`는 `200 { status: 'ok' }`를 반환하는 활성(liveness) 엔드포인트이며, `/ready`는 시작 상태와 등록된 준비 상태 확인(readiness checks) 결과를 `starting`, `ready`, `unavailable` 상태로 반영합니다.
 
-### `@konekti/runtime/node`로 격리된 Node 시작 관심사
+### 명시적 Node 전용 seam으로 격리된 Node 시작 관심사
 
-`@konekti/runtime/node` 서브패스는 transport-agnostic 런타임 루트 밖에서 Node 전용 시작 세부사항을 묶습니다.
+명시적인 `@konekti/runtime/internal-node` seam이 이제 raw Node transport 구현을 소유하고, `@konekti/runtime/node`는 기존 import를 위한 호환 wrapper로 남습니다. 이렇게 하면 transport-agnostic runtime 루트 밖으로 Node 전용 시작 세부사항을 분리하면서도 이미 정착된 공개 startup 경로를 유지할 수 있습니다.
 - HTTP 어댑터 생성 및 바인딩
 - 선택적인 Node 소유 응답 압축 헬퍼 (`createNodeResponseCompression`, `compressNodeResponse`)
 - 기본 CORS 미들웨어

@@ -35,7 +35,7 @@ npm install @konekti/runtime
 
 ### 0.x migration note
 
-- Raw Node adapter-first startup now lives at `@konekti/platform-nodejs`. Keep `@konekti/runtime/node` for compatibility helpers and advanced Node-only utilities such as shutdown registration and compression helpers.
+- Raw Node adapter-first startup now lives at `@konekti/platform-nodejs`. Keep `@konekti/runtime/node` as the compatibility entrypoint, while the implementation now lives behind the explicit `@konekti/runtime/internal-node` seam that platform-owned Node packages compose directly.
 - Transport-facing multipart parsing no longer exports from the `@konekti/runtime` root barrel. Shared Web/fetch-style parsing helpers now live under `@konekti/runtime/web`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 - `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
@@ -493,9 +493,9 @@ The `@konekti/runtime/web` subpath keeps fetch-style adapter work transport-neut
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 
-### Node startup concerns isolated to `@konekti/runtime/node`
+### Node startup concerns isolated to the explicit Node-only seam
 
-The `@konekti/runtime/node` subpath consolidates Node-specific startup details that should not live in the transport-agnostic runtime root:
+The explicit `@konekti/runtime/internal-node` seam now owns the raw Node transport implementation, while `@konekti/runtime/node` remains a compatibility wrapper for existing imports. This keeps transport-specific startup details out of the transport-agnostic runtime root while preserving the established public startup path:
 - HTTP adapter creation and binding
 - Optional Node-owned response compression helpers (`createNodeResponseCompression`, `compressNodeResponse`)
 - Default CORS middleware
