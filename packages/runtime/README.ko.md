@@ -87,6 +87,8 @@ await app.listen();
 
 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`처럼 모든 HTTP 트랜스포트 패키지는 위 adapter-first 형태를 사용하세요. canonical startup path는 계속 `KonektiFactory.create(...)`이며, 트랜스포트별 `run*Application()` 헬퍼는 호환/고급 경로로 유지됩니다.
 
+플랫폼이 선택한 HTTP 어댑터는 realtime 패키지를 위해 `getRealtimeCapability()`를 노출할 수도 있습니다. 서버를 직접 소유하는 어댑터는 `{ kind: 'server-backed', server }`를 보고하고, Worker/fetch-style 런타임은 Node listener 소유를 암시하는 대신 명시적인 `{ kind: 'unsupported', mode: 'no-op', reason }` 경계를 보고합니다. `@konekti/websocket/node`, `@konekti/platform-socket.io` 같은 패키지는 이제 raw Node 서버를 직접 가정하지 않고 이 seam을 소비합니다.
+
 ### Adapterless bootstrap semantics
 
 ```typescript

@@ -3,7 +3,11 @@ import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { Inject, Scope } from '@konekti/core';
 import { getModuleMetadata } from '@konekti/core/internal';
-import { defineModule, type ApplicationLogger } from '@konekti/runtime';
+import {
+  createNoopHttpApplicationAdapter,
+  createServerBackedHttpAdapterRealtimeCapability,
+} from '@konekti/http';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
@@ -151,6 +155,27 @@ describe('@konekti/platform-socket.io', () => {
     expect(probe.server).toBeDefined();
 
     await app.close();
+  });
+
+  it('fails fast when the selected adapter reports unsupported realtime behavior', async () => {
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter: createNoopHttpApplicationAdapter(),
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
 
   it('boots a real Node app and handles connect, message, room broadcast, and disconnect', async () => {
@@ -339,8 +364,8 @@ describe('@konekti/platform-socket.io', () => {
       createLogger(loggerEvents),
       {
         async close() {},
-        getServer() {
-          return {};
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
         },
       } as never,
       {
@@ -389,8 +414,8 @@ describe('@konekti/platform-socket.io', () => {
       createLogger(loggerEvents),
       {
         async close() {},
-        getServer() {
-          return {};
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
         },
       } as never,
       {
@@ -437,8 +462,8 @@ describe('@konekti/platform-socket.io', () => {
       createLogger([]),
       {
         async close() {},
-        getServer() {
-          return {};
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
         },
       } as never,
       {

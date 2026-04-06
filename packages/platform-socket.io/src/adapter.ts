@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
 import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
 import {
   type ApplicationLogger,
   type CompiledModule,
@@ -104,6 +104,26 @@ function isNodeHttpServerLike(value: unknown): value is NodeHttpServerLike {
   return typeof value === 'object' && value !== null;
 }
 
+function resolveServerBackedRealtimeCapability(
+  adapter: HttpApplicationAdapter,
+): Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }> {
+  if (typeof adapter.getRealtimeCapability !== 'function') {
+    throw new Error(
+      'Socket.IO bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability.',
+    );
+  }
+
+  const capability = adapter.getRealtimeCapability();
+
+  if (capability.kind !== 'server-backed') {
+    throw new Error(
+      `Socket.IO bootstrap requires a server-backed realtime capability. ${capability.reason}`,
+    );
+  }
+
+  return capability;
+}
+
 function extractPayload(args: unknown[]): unknown {
   if (args.length === 0) {
     return undefined;
@@ -142,17 +162,12 @@ export class SocketIoLifecycleService
       return this.io;
     }
 
-    if (typeof this.adapter.getServer !== 'function') {
-      throw new Error(
-        'Socket.IO bootstrap requires an HTTP adapter with getServer(). Use the Node HTTP adapter or provide a compatible adapter implementation.',
-      );
-    }
-
-    const httpServer = this.adapter.getServer();
+    const capability = resolveServerBackedRealtimeCapability(this.adapter);
+    const httpServer = capability.server;
 
     if (!isNodeHttpServerLike(httpServer)) {
       throw new Error(
-        'Socket.IO bootstrap requires adapter.getServer() to return a Node HTTP/S server instance.',
+        'Socket.IO bootstrap requires the selected realtime capability to expose a Node HTTP/S server instance.',
       );
     }
 

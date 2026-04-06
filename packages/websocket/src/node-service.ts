@@ -7,7 +7,7 @@ import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Provider, Container } from '@konekti/di';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
@@ -152,6 +152,26 @@ function hasNodeUpgradeServer(value: unknown): value is NodeUpgradeServer {
   const maybeServer = value as { off?: unknown; on?: unknown };
 
   return typeof maybeServer.on === 'function' && typeof maybeServer.off === 'function';
+}
+
+function resolveServerBackedRealtimeCapability(
+  adapter: HttpApplicationAdapter,
+): Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }> {
+  if (typeof adapter.getRealtimeCapability !== 'function') {
+    throw new Error(
+      'WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability.',
+    );
+  }
+
+  const capability = adapter.getRealtimeCapability();
+
+  if (capability.kind !== 'server-backed') {
+    throw new Error(
+      `WebSocket gateway bootstrap requires a server-backed realtime capability. ${capability.reason}`,
+    );
+  }
+
+  return capability;
 }
 
 function rejectUpgradeRequest(socket: Duplex): void {
@@ -308,17 +328,12 @@ export class NodeWebSocketGatewayLifecycleService
   }
 
   private resolveUpgradeServer(): NodeUpgradeServer {
-    if (typeof this.adapter.getServer !== 'function') {
-      throw new Error(
-        'WebSocket gateway bootstrap requires an HTTP adapter with getServer(). Use the Node HTTP adapter or provide a compatible adapter implementation.',
-      );
-    }
-
-    const server = this.adapter.getServer();
+    const capability = resolveServerBackedRealtimeCapability(this.adapter);
+    const server = capability.server;
 
     if (!hasNodeUpgradeServer(server)) {
       throw new Error(
-        'WebSocket gateway bootstrap requires adapter.getServer() to return a Node HTTP/S server that supports upgrade listeners.',
+        'WebSocket gateway bootstrap requires the selected realtime capability to expose a Node HTTP/S server that supports upgrade listeners.',
       );
     }
 

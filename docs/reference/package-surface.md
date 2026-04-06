@@ -106,7 +106,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-bun`**: Bun-based HTTP adapter that reuses the shared `@konekti/runtime/web` fetch-style adapter seam for fetch-style runtime parity.
 - **`@konekti/platform-deno`**: Deno `Deno.serve(...)` adapter built on the shared `@konekti/runtime/web` fetch-style adapter seam.
-- **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators.
+- **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators, consuming the platform-selected realtime capability instead of assuming direct raw Node server ownership.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
 - **`@konekti/validation`**: Validation decorators, mapped DTO helpers, and validation engine.
 - **`@konekti/jwt`**: Core JWT logic.
@@ -119,7 +119,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/cron`**: Decorator-based (`@Cron`, `@Interval`, `@Timeout`) and runtime-registry task scheduling with distributed lock support.
 - **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery, saga/process-manager support, and event-bus delegation.
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
-- **`@konekti/websocket`**: Transport-neutral WebSocket gateway authoring decorators, metadata, descriptors, and shared contracts. The current raw `ws` Node binding lives on the explicit `@konekti/websocket/node` subpath.
+- **`@konekti/websocket`**: Transport-neutral WebSocket gateway authoring decorators, metadata, descriptors, and shared contracts. The current raw `ws` binding lives on the explicit `@konekti/websocket/node` subpath and consumes the platform-selected server-backed realtime capability.
 - **`@konekti/queue`**: Redis-backed background jobs with worker discovery and DLQ support.
 - **`@konekti/redis`**: App-scoped Redis lifecycle ownership (`lazyConnect` bootstrap + graceful shutdown), raw token injection, and `RedisService` facade with `getRawClient()` escape hatch.
 - **`@konekti/prisma`**: Prisma lifecycle and ALS-backed transaction context, including async module factory, strict transaction mode, and abort-aware request transaction handling.
