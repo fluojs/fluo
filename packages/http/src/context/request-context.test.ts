@@ -11,7 +11,7 @@ import {
   runWithRequestContext,
   setContextValue,
 } from './request-context.js';
-import type { RequestContext } from './types.js';
+import type { RequestContext } from '../types.js';
 
 function createMockContext(): RequestContext {
   const root = new Container();

@@ -8,7 +8,7 @@ import type {
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
-} from './types.js';
+} from '../types.js';
 
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
   switch (handler.route.method) {

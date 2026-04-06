@@ -1,6 +1,6 @@
 export * from './adapter.js';
-export * from './correlation.js';
-export * from './cors.js';
+export * from './middleware/correlation.js';
+export * from './middleware/cors.js';
 export {
   All,
   Controller,
@@ -27,7 +27,7 @@ export {
   UseInterceptors,
   Version,
 } from './decorators.js';
-export * from './dispatcher.js';
+export * from './dispatch/dispatcher.js';
 export * from './errors.js';
 export * from './exceptions.js';
 export * from './mapping.js';
@@ -36,9 +36,9 @@ export {
   isMiddlewareRouteConfig,
   matchRoutePattern,
   normalizeRoutePattern,
-} from './middleware.js';
-export * from './rate-limit.js';
-export * from './request-context.js';
-export * from './security-headers.js';
-export * from './sse.js';
+} from './middleware/middleware.js';
+export * from './middleware/rate-limit.js';
+export * from './context/request-context.js';
+export * from './middleware/security-headers.js';
+export * from './context/sse.js';
 export * from './types.js';

@@ -1,6 +1,6 @@
 import type { Constructor, Token } from '@konekti/core';
 
-import type { Middleware, MiddlewareContext, MiddlewareLike, MiddlewareRouteConfig, Next, RequestContext } from './types.js';
+import type { Middleware, MiddlewareContext, MiddlewareLike, MiddlewareRouteConfig, Next, RequestContext } from '../types.js';
 
 function isMiddleware(value: MiddlewareLike): value is Middleware {
   return typeof value === 'object' && value !== null && 'handle' in value;

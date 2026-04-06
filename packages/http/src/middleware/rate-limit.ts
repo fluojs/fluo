@@ -1,5 +1,5 @@
-import type { MiddlewareContext, Middleware } from './types.js';
-import { TooManyRequestsException, createErrorResponse } from './exceptions.js';
+import type { MiddlewareContext, Middleware } from '../types.js';
+import { TooManyRequestsException, createErrorResponse } from '../exceptions.js';
 
 export interface RateLimitStoreEntry {
   count: number;

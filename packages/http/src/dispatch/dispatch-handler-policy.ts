@@ -1,8 +1,8 @@
 import { InvariantError, type Token } from '@konekti/core';
 
-import { DefaultBinder } from './binding.js';
-import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';
-import type { ArgumentResolverContext, Binder, HandlerDescriptor, RequestContext } from './types.js';
+import { DefaultBinder } from '../adapters/binding.js';
+import { HttpDtoValidationAdapter } from '../adapters/dto-validation-adapter.js';
+import type { ArgumentResolverContext, Binder, HandlerDescriptor, RequestContext } from '../types.js';
 
 const defaultBinder = new DefaultBinder();
 const defaultValidator = new HttpDtoValidationAdapter();

@@ -1,1 +1,1 @@
-export { DefaultBinder } from './binding.js';
+export { DefaultBinder } from './adapters/binding.js';

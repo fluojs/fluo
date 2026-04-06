@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMemoryRateLimitStore, createRateLimitMiddleware } from './rate-limit.js';
-import type { MiddlewareContext } from './types.js';
+import type { MiddlewareContext } from '../types.js';
 
 function createContext(remoteAddress = '127.0.0.1') {
   const response = {

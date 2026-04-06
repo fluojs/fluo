@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Middleware } from './types.js';
+import type { Middleware } from '../types.js';
 
 const REQUEST_ID_HEADER = 'x-request-id';
 const CORRELATION_ID_HEADER = 'x-correlation-id';

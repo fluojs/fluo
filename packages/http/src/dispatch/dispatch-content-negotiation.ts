@@ -1,10 +1,10 @@
-import { NotAcceptableException } from './exceptions.js';
+import { NotAcceptableException } from '../exceptions.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
   HandlerDescriptor,
   ResponseFormatter,
-} from './types.js';
+} from '../types.js';
 
 interface AcceptToken {
   mediaRange: string;

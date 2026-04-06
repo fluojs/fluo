@@ -6,7 +6,7 @@ import {
   FromQuery,
   FromPath,
   Optional,
-} from './decorators.js';
+} from '../decorators.js';
 import {
   ArrayMinSize,
   IsEmail,
@@ -16,10 +16,10 @@ import {
   ValidateIf,
   ValidateNested,
 } from '@konekti/validation';
-import { BadRequestException } from './exceptions.js';
+import { BadRequestException } from '../exceptions.js';
 import { DefaultBinder } from './binding.js';
 import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';
-import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from './types.js';
+import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from '../types.js';
 
 function createRequest(overrides: Partial<FrameworkRequest> = {}): FrameworkRequest {
   return {

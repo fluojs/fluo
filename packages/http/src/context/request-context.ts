@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { KonektiError } from '@konekti/core';
 
-import type { ContextKey, RequestContext } from './types.js';
+import type { ContextKey, RequestContext } from '../types.js';
 
 const requestContextStore = new AsyncLocalStorage<RequestContext>();
 

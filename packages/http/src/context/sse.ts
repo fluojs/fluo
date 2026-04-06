@@ -1,4 +1,4 @@
-import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from './types.js';
+import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
 
 export interface SseSendOptions {
   event?: string;

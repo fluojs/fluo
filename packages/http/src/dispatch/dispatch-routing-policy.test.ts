@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { HandlerNotFoundError } from './errors.js';
+import { HandlerNotFoundError } from '../errors.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
-import type { FrameworkRequest, HandlerDescriptor, HandlerMapping, RequestContext } from './types.js';
+import type { FrameworkRequest, HandlerDescriptor, HandlerMapping, RequestContext } from '../types.js';
 
 function createRequest(path: string, method: FrameworkRequest['method']): FrameworkRequest {
   return {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from './types.js';
+import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
 import { SseResponse, encodeSseComment, encodeSseMessage } from './sse.js';
 
 interface MockSseStream extends FrameworkResponseStream {

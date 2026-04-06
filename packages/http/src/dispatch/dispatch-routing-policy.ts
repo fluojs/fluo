@@ -1,5 +1,5 @@
-import { HandlerNotFoundError } from './errors.js';
-import type { FrameworkRequest, HandlerMapping, HandlerMatch, RequestContext } from './types.js';
+import { HandlerNotFoundError } from '../errors.js';
+import type { FrameworkRequest, HandlerMapping, HandlerMatch, RequestContext } from '../types.js';
 
 export function matchHandlerOrThrow(handlerMapping: HandlerMapping, request: FrameworkRequest): HandlerMatch {
   const match = handlerMapping.match(request);

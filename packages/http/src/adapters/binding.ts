@@ -1,9 +1,9 @@
 import { InvariantError, type Constructor, type MetadataPropertyKey, type MetadataSource, type Token } from '@konekti/core';
 import { getDtoBindingSchema } from '@konekti/core/internal';
 
-import { BadRequestException, type HttpExceptionDetail } from './exceptions.js';
-import { toInputErrorDetail } from './input-error-detail.js';
-import type { ArgumentResolverContext, Binder, Converter, ConverterLike, ConverterTarget, FrameworkRequest } from './types.js';
+import { BadRequestException, type HttpExceptionDetail } from '../exceptions.js';
+import { toInputErrorDetail } from '../input-error-detail.js';
+import type { ArgumentResolverContext, Binder, Converter, ConverterLike, ConverterTarget, FrameworkRequest } from '../types.js';
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 

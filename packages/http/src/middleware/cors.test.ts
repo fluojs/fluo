@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from './types.js';
+import type { FrameworkRequest, FrameworkResponse } from '../types.js';
 import { createCorsMiddleware } from './cors.js';
 
 function createRequest(method: FrameworkRequest['method'], origin?: string): FrameworkRequest {

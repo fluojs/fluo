@@ -35,7 +35,7 @@ import {
 import { IsNumber, IsString, MinLength, ValidateNested } from '@konekti/validation';
 
 import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
-import { forRoutes, runMiddlewareChain } from './middleware.js';
+import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {

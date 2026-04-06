@@ -1,11 +1,11 @@
-import { HandlerNotFoundError } from './errors.js';
+import { HandlerNotFoundError } from '../errors.js';
 import {
   HttpException,
   InternalServerErrorException,
   NotFoundException,
   createErrorResponse,
-} from './exceptions.js';
-import type { FrameworkResponse } from './types.js';
+} from '../exceptions.js';
+import type { FrameworkResponse } from '../types.js';
 
 function toHttpException(error: unknown): HttpException {
   if (error instanceof HttpException) {

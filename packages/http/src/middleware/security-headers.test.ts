@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createSecurityHeadersMiddleware } from './security-headers.js';
-import type { MiddlewareContext } from './types.js';
+import type { MiddlewareContext } from '../types.js';
 
 function createContext() {
   return {

@@ -2,9 +2,9 @@ import { type Constructor } from '@konekti/core';
 import { getDtoBindingSchema } from '@konekti/core/internal';
 import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/validation';
 
-import { BadRequestException } from './exceptions.js';
-import { toInputErrorDetail } from './input-error-detail.js';
-import type { ValidationIssue, Validator } from './types.js';
+import { BadRequestException } from '../exceptions.js';
+import { toInputErrorDetail } from '../input-error-detail.js';
+import type { ValidationIssue, Validator } from '../types.js';
 
 export class HttpDtoValidationAdapter implements Validator {
   private readonly validator = new BaseDefaultValidator();

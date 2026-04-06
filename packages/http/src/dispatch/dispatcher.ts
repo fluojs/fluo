@@ -4,12 +4,12 @@ import type { Container } from '@konekti/di';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { resolveContentNegotiation, writeErrorResponse, writeSuccessResponse, type ResolvedContentNegotiation } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
-import { RequestAbortedError } from './errors.js';
-import { runGuardChain } from './guards.js';
-import { runInterceptorChain } from './interceptors.js';
-import { runMiddlewareChain } from './middleware.js';
-import { createRequestContext, runWithRequestContext } from './request-context.js';
-import { SseResponse } from './sse.js';
+import { RequestAbortedError } from '../errors.js';
+import { runGuardChain } from '../guards.js';
+import { runInterceptorChain } from '../interceptors.js';
+import { runMiddlewareChain } from '../middleware/middleware.js';
+import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
+import { SseResponse } from '../context/sse.js';
 import type {
   Binder,
   ContentNegotiationOptions,
@@ -27,7 +27,7 @@ import type {
   RequestObservationContext,
   RequestObserver,
   RequestObserverLike,
-} from './types.js';
+} from '../types.js';
 
 export type ErrorHandler = (error: unknown, request: FrameworkRequest, response: FrameworkResponse, requestId?: string) => Promise<boolean | void> | boolean | void;
 
