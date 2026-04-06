@@ -37,7 +37,7 @@ Packages marked with ★ are included in the `konekti new` starter scaffold and 
 | validation | `@konekti/validation` ★ | input DTO validation and materialization |
 | cli | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build scripts |
 
-**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, `platform-fastify` gives the starter its default adapter-first HTTP listener on Node.js, and `validation` + `config` handle input safety and environment binding. New HTTP apps should prefer `KonektiFactory.create(..., { adapter })` with an explicit runtime adapter. For bare Node HTTP on that same runtime facade, use `@konekti/platform-nodejs`; keep `@konekti/runtime/node` only for compatibility helpers such as `runNodeApplication()`.
+**Why this combination:** The ★ packages ship with `konekti new`. `runtime` wires the module graph, `http` provides the request chain, `platform-fastify` gives the starter its default adapter-first HTTP listener on Node.js, and `validation` + `config` handle input safety and environment binding. New HTTP apps should prefer `KonektiFactory.create(..., { adapter })` with an explicit runtime adapter. For bare Node HTTP on that same runtime facade, use `@konekti/platform-nodejs`; keep `@konekti/runtime/node` for advanced Node-only utilities such as explicit shutdown registration or compression helpers, not as the primary startup path.
 
 **Canonical runtime matrix:** See [`package-surface.md`](./package-surface.md#canonical-runtime-package-matrix) for the authoritative runtime/package mapping. This guide stays focused on task-based package selection and links out to the adapter READMEs for runtime-specific startup details.
 

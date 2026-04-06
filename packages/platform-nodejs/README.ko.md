@@ -37,6 +37,15 @@ await app.listen();
 - `bootstrapNodejsApplication(rootModule, options)` - 암묵적 listen 없이 부트스트랩만 수행하는 호환 헬퍼입니다.
 - `runNodejsApplication(rootModule, options)` - bootstrap + listen + startup logging + shutdown signal wiring을 제공하는 호환 헬퍼입니다.
 
+### Node 헬퍼 소유권
+
+| concern | public home | 역할 |
+| --- | --- | --- |
+| 기본 raw Node 시작 경로 | `@konekti/platform-nodejs` → `createNodejsAdapter()` | 런타임 facade 위에서 raw Node 어댑터를 선택하는 canonical adapter-first 경로입니다. |
+| Node 전용 startup wrapper | `@konekti/platform-nodejs` → `bootstrapNodejsApplication()` / `runNodejsApplication()` | transport-neutral runtime root가 아니라 raw Node 패키지에 남겨 두는 호환 wrapper입니다. |
+| shutdown signal wiring 유틸리티 | `@konekti/runtime/node` → `createNodeShutdownSignalRegistration()` / `registerShutdownSignals()` | 기본 시작 모델이 아닌, 호환 또는 커스텀 Node 부트스트랩을 위한 고급 프로세스 헬퍼입니다. |
+| 명시적 Node compression helper | `@konekti/runtime/node` → `createNodeResponseCompression()` / `compressNodeResponse()` | 기본 startup entrypoint와 분리해 두는 고급 Node 전용 응답 작성 유틸리티입니다. |
+
 ### 지원 옵션
 
 `createNodejsAdapter()`, `bootstrapNodejsApplication()`, `runNodejsApplication()`은 현재 raw Node 옵션 형태를 그대로 유지합니다.
@@ -74,4 +83,4 @@ await app.listen();
 
 - 이 패키지는 raw Node 어댑터 경계를 직접 소유하지만, 공유되는 Node 전용 transport 내부 구현은 명시적인 `@konekti/runtime/internal-node` seam에 의존합니다.
 - 여기서는 새로운 adapterless startup 시맨틱을 도입하지 않습니다. 어댑터를 생략한 경우 HTTP 서빙을 기대하지 말고, DI/생명주기 전용 부트스트랩에는 `createApplicationContext()`를 사용하세요.
-- compression helper나 shutdown registration utility 같은 고급 Node 전용 내부 API는 호환 export로서 계속 `@konekti/runtime/node`에서도 사용할 수 있습니다.
+- compression helper나 shutdown registration utility 같은 고급 Node 전용 내부 API는 `@konekti/runtime/node`에 남겨 두어, 기본 `@konekti/platform-nodejs` startup surface가 어댑터 선택과 Node 전용 wrapper entrypoint에 집중되도록 유지합니다.

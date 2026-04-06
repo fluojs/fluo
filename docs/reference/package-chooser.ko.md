@@ -37,7 +37,7 @@
 | 유효성 검사 | `@konekti/validation` ★ | 입력 DTO 검증 및 구체화 |
 | CLI | `@konekti/cli` ★ | `konekti new`, `konekti g`, dev/build 스크립트 |
 
-**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하세요. 같은 런타임 facade 위에서 bare Node HTTP가 필요하면 `@konekti/platform-nodejs`를 사용하고, `runNodeApplication()` 같은 호환 헬퍼만 `@konekti/runtime/node`에 남겨 두세요.
+**왜 이 조합인가:** ★ 패키지는 `konekti new`와 함께 제공됩니다. `runtime`이 모듈 그래프를 조립하고, `http`가 요청 체인을 제공하며, `platform-fastify`가 Node.js 기준 스타터의 기본 adapter-first HTTP 리스너를 담당하고, `validation` + `config`가 입력 안전성과 환경 바인딩을 처리합니다. 새 HTTP 앱은 `KonektiFactory.create(..., { adapter })`로 대상 런타임 어댑터를 명시하는 방식을 우선 사용하세요. 같은 런타임 facade 위에서 bare Node HTTP가 필요하면 `@konekti/platform-nodejs`를 사용하고, `@konekti/runtime/node`는 기본 startup path가 아니라 명시적 shutdown 등록이나 compression helper 같은 고급 Node 전용 유틸리티에만 사용하세요.
 
 **표준 런타임 매트릭스:** 공식 런타임/패키지 매핑은 [`package-surface.ko.md`](./package-surface.ko.md#canonical-runtime-package-matrix)를 기준으로 삼으세요. 이 가이드는 작업 기준 패키지 선택에만 집중하고, 런타임별 시작 세부사항은 각 어댑터 README로 연결합니다.
 
