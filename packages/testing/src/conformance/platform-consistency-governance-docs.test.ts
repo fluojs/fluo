@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(packageDirectory, '..', '..', '..');
+const repoRoot = resolve(packageDirectory, '..', '..', '..', '..');
 
 const ssotPairs: Array<[englishPath: string, koreanPath: string]> = [
   ['docs/concepts/platform-consistency-design.md', 'docs/concepts/platform-consistency-design.ko.md'],

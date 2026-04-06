@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import * as testing from './index.js';
 import * as http from './http.js';
 import * as mock from './mock.js';
-import * as portability from './http-adapter-portability.js';
-import * as webPortability from './web-runtime-adapter-portability.js';
-import * as conformance from './platform-conformance.js';
-import * as fetchStyleWebsocket from './fetch-style-websocket-conformance.js';
+import * as portability from './portability/http-adapter-portability.js';
+import * as webPortability from './portability/web-runtime-adapter-portability.js';
+import * as conformance from './conformance/platform-conformance.js';
+import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 
 describe('@konekti/testing surface', () => {
   it('keeps the root barrel focused on module/app helpers', () => {
