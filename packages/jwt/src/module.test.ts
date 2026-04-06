@@ -5,10 +5,10 @@ import { getClassDiMetadata, getModuleMetadata } from '@konekti/core/internal';
 import { Container, type Provider } from '@konekti/di';
 
 import { JwtModule } from './module.js';
-import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh-token.js';
+import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh/refresh-token.js';
 import { JwtService } from './service.js';
-import { DefaultJwtSigner } from './signer.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import { DefaultJwtSigner } from './signing/signer.js';
+import { DefaultJwtVerifier } from './signing/verifier.js';
 
 class NoopRefreshTokenStore implements RefreshTokenStore {
   async save(_: RefreshTokenRecord): Promise<void> {}

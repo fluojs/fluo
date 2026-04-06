@@ -3,11 +3,11 @@ import { defineModuleMetadata } from '@konekti/core/internal';
 import type { Provider } from '@konekti/di';
 
 import { JwtConfigurationError } from './errors.js';
-import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh-token.js';
+import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh/refresh-token.js';
 import { JwtService } from './service.js';
 import type { JwtVerifierOptions } from './types.js';
-import { DefaultJwtSigner } from './signer.js';
-import { DefaultJwtVerifier, JWT_OPTIONS } from './verifier.js';
+import { DefaultJwtSigner } from './signing/signer.js';
+import { DefaultJwtVerifier, JWT_OPTIONS } from './signing/verifier.js';
 
 type ModuleType = Constructor;
 

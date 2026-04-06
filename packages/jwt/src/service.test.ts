@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { JwtService } from './service.js';
-import { DefaultJwtSigner } from './signer.js';
+import { DefaultJwtSigner } from './signing/signer.js';
 import type { JwtVerifierOptions } from './types.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import { DefaultJwtVerifier } from './signing/verifier.js';
 
 function createJwtService(options: JwtVerifierOptions): JwtService {
   return new JwtService(options, new DefaultJwtSigner(options), new DefaultJwtVerifier(options));

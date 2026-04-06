@@ -1,8 +1,8 @@
 import { Inject } from '@konekti/core';
 
-import { DefaultJwtSigner } from './signer.js';
+import { DefaultJwtSigner } from './signing/signer.js';
 import type { JwtClaims, JwtVerifierOptions } from './types.js';
-import { DefaultJwtVerifier, JWT_OPTIONS } from './verifier.js';
+import { DefaultJwtVerifier, JWT_OPTIONS } from './signing/verifier.js';
 
 type DurationUnit = 's' | 'm' | 'h' | 'd';
 

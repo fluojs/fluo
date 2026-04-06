@@ -3,10 +3,10 @@ import type { KeyObject } from 'node:crypto';
 
 import { Inject } from '@konekti/core';
 
-import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from './errors.js';
+import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { JwksClient } from './jwks.js';
-import { normalizeRefreshTokenOptions } from './refresh-token.js';
-import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from './types.js';
+import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
+import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
 
 export const JWT_OPTIONS = Symbol.for('konekti.jwt.options');
 
