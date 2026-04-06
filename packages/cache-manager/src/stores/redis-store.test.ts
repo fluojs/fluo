@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RedisStore } from './redis-store.js';
-import type { RedisCompatibleClient } from './types.js';
+import type { RedisCompatibleClient } from '../types.js';
 
 class MockRedisClient implements RedisCompatibleClient {
   readonly deletedKeys: string[][] = [];

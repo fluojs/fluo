@@ -4,7 +4,7 @@ import type { CallHandler, HttpMethod, InterceptorContext, Principal, RequestCon
 
 import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
-import { MemoryStore } from './memory-store.js';
+import { MemoryStore } from './stores/memory-store.js';
 import { CacheService } from './service.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
 
