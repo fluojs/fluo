@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Bun-backed HTTP adapter for Konekti runtime applications, built on the shared `@konekti/runtime/web` Request/Response bridge.
+Bun-backed HTTP adapter for Konekti runtime applications, built on the shared `@konekti/runtime/web` fetch-style adapter seam.
 
 ## See also
 
@@ -33,7 +33,7 @@ await app.listen();
 ## API
 
 - `createBunAdapter(options)` - create a Bun `HttpApplicationAdapter`
-- `createBunFetchHandler({ dispatcher, ...options })` - create a Bun `fetch(request)` handler backed by the shared web adapter core
+- `createBunFetchHandler({ dispatcher, ...options })` - create a Bun `fetch(request)` handler backed by the shared fetch-style adapter seam
 - `bootstrapBunApplication(rootModule, options)` - advanced bootstrap helper without implicit startup logging
 - `runBunApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
 
@@ -57,16 +57,16 @@ await app.listen();
 
 ## supported operations
 
-- Bridges native Bun `Request` handling into Konekti `FrameworkRequest` / `FrameworkResponse` by reusing `@konekti/runtime/web`.
+- Bridges native Bun `Request` handling into Konekti `FrameworkRequest` / `FrameworkResponse` by reusing the shared `@konekti/runtime/web` fetch-style adapter seam.
 - Preserves shared fetch-style request semantics for query strings, cookies, JSON/text body parsing, multipart parsing, and canonical error envelopes.
-- Exposes `FrameworkResponse.stream` through the shared web adapter core so SSE and streamed responses stay transport-owned instead of depending on raw Node writers.
+- Exposes `FrameworkResponse.stream` through that shared seam so SSE and streamed responses stay transport-owned instead of depending on raw Node writers.
 - Supports adapter-first startup via `KonektiFactory.create(..., { adapter: createBunAdapter(...) })` and Bun-oriented compatibility helpers via `runBunApplication()`.
 
 ## runtime invariants
 
 - `rawBody` is opt-in and remains unset for multipart requests.
-- If the dispatcher does not commit a response, the shared web adapter core finalizes the Bun response with an empty payload.
-- SSE framing and streamed response behavior reuse the same shared web core that powers other fetch-style runtime adapters.
+- If the dispatcher does not commit a response, the shared fetch-style adapter seam finalizes the Bun response with an empty payload.
+- SSE framing and streamed response behavior reuse the same shared seam that powers other fetch-style runtime adapters.
 - Startup errors caused by missing `globalThis.Bun.serve()` fail fast with an explicit adapter error.
 
 ## lifecycle guarantees
