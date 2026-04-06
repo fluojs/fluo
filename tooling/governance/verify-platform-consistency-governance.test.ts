@@ -82,3 +82,13 @@ describe('enforceNoDirectProcessEnvInOrdinaryPackageSource', () => {
     ).not.toThrow();
   });
 });
+
+describe('officialTransportDocsPackages', () => {
+  it('includes platform-socket.io for docs-hub transport discoverability enforcement', async () => {
+    const governanceModule = (await import('./verify-platform-consistency-governance.mjs')) as unknown as {
+      getOfficialTransportDocsPackages: () => string[];
+    };
+
+    expect(governanceModule.getOfficialTransportDocsPackages()).toContain('@konekti/platform-socket.io');
+  });
+});

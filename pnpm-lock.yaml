@@ -505,6 +505,15 @@ importers:
         specifier: workspace:*
         version: link:../websocket
     devDependencies:
+      '@konekti/platform-express':
+        specifier: workspace:*
+        version: link:../platform-express
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../platform-fastify
+      '@konekti/platform-nodejs':
+        specifier: workspace:*
+        version: link:../platform-nodejs
       socket.io:
         specifier: ^4.8.1
         version: 4.8.3

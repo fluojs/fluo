@@ -71,6 +71,20 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 - `transports`
 - `shutdown.timeoutMs` (default: `5000`)
 
+## Supported adapter matrix
+
+`@konekti/platform-socket.io` is currently documented and regression-tested on the server-backed adapters that expose a compatible Node HTTP/S host through the realtime capability seam:
+
+- `@konekti/platform-nodejs`
+- `@konekti/platform-fastify`
+- `@konekti/platform-express`
+
+The following runtimes remain explicitly unsupported for Socket.IO in this package today:
+
+- `@konekti/platform-bun`
+- `@konekti/platform-deno`
+- `@konekti/platform-cloudflare-workers`
+
 ## Runtime behavior
 
 - Reuses `@konekti/websocket` decorators and metadata discovery
@@ -86,7 +100,9 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 ## Intentional limitations
 
 - `@konekti/platform-socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
+- Socket.IO support claims are currently limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`, where namespace, room, and shutdown behavior are regression-tested.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary. This package does not emulate Node listener lifecycle for Worker/fetch-style runtimes.
+- Bun, Deno, and Cloudflare Workers remain outside the Socket.IO support claim until this package gains a tested compatible implementation for those runtimes.
 
 ## Difference from `@konekti/websocket`
 

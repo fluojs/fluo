@@ -7,7 +7,10 @@ import {
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
 } from '@konekti/http';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { createExpressAdapter } from '@konekti/platform-express';
+import { createFastifyAdapter } from '@konekti/platform-fastify';
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
+import { bootstrapApplication, defineModule, KonektiFactory, type Application, type ApplicationLogger, type ModuleType } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
@@ -88,6 +91,36 @@ function onceEvent<T>(socket: ClientSocket, event: string): Promise<T> {
 function onceDisconnected(socket: ClientSocket): Promise<string> {
   return new Promise((resolve) => {
     socket.once('disconnect', (reason: string) => resolve(reason));
+  });
+}
+
+interface SupportedSocketIoAdapterScenario {
+  createAdapter: (options: { port: number; shutdownTimeoutMs?: number }) => ReturnType<typeof createNodejsAdapter>;
+  name: string;
+}
+
+const supportedSocketIoAdapterScenarios: readonly SupportedSocketIoAdapterScenario[] = [
+  {
+    createAdapter: ({ port, shutdownTimeoutMs }) => createNodejsAdapter({ port, shutdownTimeoutMs }),
+    name: 'platform-nodejs',
+  },
+  {
+    createAdapter: ({ port, shutdownTimeoutMs }) => createFastifyAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof createNodejsAdapter>,
+    name: 'platform-fastify',
+  },
+  {
+    createAdapter: ({ port, shutdownTimeoutMs }) => createExpressAdapter({ port, shutdownTimeoutMs }) as ReturnType<typeof createNodejsAdapter>,
+    name: 'platform-express',
+  },
+];
+
+async function createSocketIoAdapterFirstApplication(
+  rootModule: ModuleType,
+  scenario: SupportedSocketIoAdapterScenario,
+  options: { port: number; shutdownTimeoutMs?: number },
+): Promise<Application> {
+  return KonektiFactory.create(rootModule, {
+    adapter: scenario.createAdapter(options),
   });
 }
 
@@ -178,7 +211,8 @@ describe('@konekti/platform-socket.io', () => {
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
 
-  it('boots a real Node app and handles connect, message, room broadcast, and disconnect', async () => {
+  for (const scenario of supportedSocketIoAdapterScenarios) {
+    it(`boots a real ${scenario.name} app and handles connect, message, room broadcast, and disconnect`, async () => {
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -221,43 +255,41 @@ describe('@konekti/platform-socket.io', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
+      const port = await findAvailablePort();
+      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port });
+      const state = await app.container.resolve(GatewayState);
+      const roomService = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
+
+      await app.listen();
+
+      const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
+
+      socket.emit('ping', { value: 'hello' });
+      const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
+
+      expect(broadcast).toEqual({ value: 'hello' });
+      expect(state.messages).toEqual([{ value: 'hello' }]);
+      expect(state.connectCount).toBe(1);
+      expect(state.lastSocketId).toBeDefined();
+      expect(roomService.getRooms(state.lastSocketId!)).toEqual(new Set([state.lastSocketId!, 'room:chat']));
+
+      const disconnected = onceDisconnected(socket);
+      socket.disconnect();
+
+      expect(await disconnected).toBe('io client disconnect');
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(state.disconnectCount).toBe(1);
+      expect(state.disconnectReason).toBe('client namespace disconnect');
+
+      await app.close();
     });
-    const state = await app.container.resolve(GatewayState);
-    const roomService = await app.container.resolve<SocketIoRoomService>(SOCKETIO_ROOM_SERVICE);
-
-    await app.listen();
-
-    const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
-
-    socket.emit('ping', { value: 'hello' });
-    const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
-
-    expect(broadcast).toEqual({ value: 'hello' });
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(state.connectCount).toBe(1);
-    expect(state.lastSocketId).toBeDefined();
-    expect(roomService.getRooms(state.lastSocketId!)).toEqual(new Set([state.lastSocketId!, 'room:chat']));
-
-    const disconnected = onceDisconnected(socket);
-    socket.disconnect();
-
-    expect(await disconnected).toBe('io client disconnect');
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.disconnectCount).toBe(1);
-    expect(state.disconnectReason).toBe('client namespace disconnect');
-
-    await app.close();
-  });
+  }
 
   it('warns and skips non-singleton gateways', async () => {
     const loggerEvents: string[] = [];
@@ -513,7 +545,8 @@ describe('@konekti/platform-socket.io', () => {
     expect(socketRegistry.has(socket.id)).toBe(false);
   });
 
-  it('isolates same room names across namespaces', async () => {
+  for (const scenario of supportedSocketIoAdapterScenarios) {
+    it(`isolates same room names across namespaces on ${scenario.name}`, async () => {
     class GatewayState {
       adminMessages: unknown[] = [];
       chatMessages: unknown[] = [];
@@ -565,49 +598,47 @@ describe('@konekti/platform-socket.io', () => {
       providers: [GatewayState, ChatGateway, AdminGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
+      const port = await findAvailablePort();
+      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, { port });
+      const state = await app.container.resolve(GatewayState);
+
+      await app.listen();
+
+      const chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      const adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+
+      await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
+
+      const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
+      let adminReceivedChatBroadcast = false;
+      adminSocket.once('chat:broadcast', () => {
+        adminReceivedChatBroadcast = true;
+      });
+
+      chatSocket.emit('ping', 'chat-message');
+
+      expect(await chatBroadcast).toBe('chat-message');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(adminReceivedChatBroadcast).toBe(false);
+      expect(state.chatMessages).toEqual(['chat-message']);
+      expect(state.adminMessages).toEqual([]);
+
+      const chatDisconnected = onceDisconnected(chatSocket);
+      const adminDisconnected = onceDisconnected(adminSocket);
+      chatSocket.disconnect();
+      adminSocket.disconnect();
+      await Promise.all([chatDisconnected, adminDisconnected]);
+
+      await app.close();
     });
-    const state = await app.container.resolve(GatewayState);
-
-    await app.listen();
-
-    const chatSocket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    const adminSocket = createClient(`http://127.0.0.1:${String(port)}/admin`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-
-    await Promise.all([onceConnected(chatSocket), onceConnected(adminSocket)]);
-
-    const chatBroadcast = onceEvent<string>(chatSocket, 'chat:broadcast');
-    let adminReceivedChatBroadcast = false;
-    adminSocket.once('chat:broadcast', () => {
-      adminReceivedChatBroadcast = true;
-    });
-
-    chatSocket.emit('ping', 'chat-message');
-
-    expect(await chatBroadcast).toBe('chat-message');
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(adminReceivedChatBroadcast).toBe(false);
-    expect(state.chatMessages).toEqual(['chat-message']);
-    expect(state.adminMessages).toEqual([]);
-
-    const chatDisconnected = onceDisconnected(chatSocket);
-    const adminDisconnected = onceDisconnected(adminSocket);
-    chatSocket.disconnect();
-    adminSocket.disconnect();
-    await Promise.all([chatDisconnected, adminDisconnected]);
-
-    await app.close();
-  });
+  }
 
   it('requires an explicit namespace when room helpers are used outside gateway handler context', async () => {
     @WebSocketGateway({ path: '/' })
@@ -638,7 +669,8 @@ describe('@konekti/platform-socket.io', () => {
     await app.close();
   });
 
-  it('closes active socket.io clients during application shutdown', async () => {
+  for (const scenario of supportedSocketIoAdapterScenarios) {
+    it(`closes active socket.io clients during ${scenario.name} application shutdown`, async () => {
     @WebSocketGateway({ path: '/shutdown' })
     class ShutdownGateway {
       @OnConnect()
@@ -651,24 +683,24 @@ describe('@konekti/platform-socket.io', () => {
       providers: [ShutdownGateway],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
-      cors: false,
-      port,
-      shutdownTimeoutMs: 200,
+      const port = await findAvailablePort();
+      const app = await createSocketIoAdapterFirstApplication(AppModule, scenario, {
+        port,
+        shutdownTimeoutMs: 200,
+      });
+
+      await app.listen();
+
+      const socket = createClient(`http://127.0.0.1:${String(port)}/shutdown`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
+
+      const disconnected = onceDisconnected(socket);
+      await app.close();
+
+      expect(['server shutting down', 'transport close']).toContain(await disconnected);
     });
-
-    await app.listen();
-
-    const socket = createClient(`http://127.0.0.1:${String(port)}/shutdown`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
-    await onceConnected(socket);
-
-    const disconnected = onceDisconnected(socket);
-    await app.close();
-
-    expect(['server shutting down', 'transport close']).toContain(await disconnected);
-  });
+  }
 });
