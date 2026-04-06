@@ -48,10 +48,21 @@
     "./internal/request-response-factory": {
       "types": "./dist/internal-request-response-factory.d.ts",
       "import": "./dist/internal-request-response-factory.js"
+    },
+    "./internal-node": {
+      "types": "./dist/internal-node.d.ts",
+      "import": "./dist/internal-node.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "internal-node": [
+        "./dist/internal-node.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
