@@ -28,19 +28,31 @@ npm install @konekti/redis ioredis
 
 ```typescript
 import { Module } from '@konekti/core';
-import { RedisModule } from '@konekti/redis';
+import { RedisModule, type RedisModuleOptions } from '@konekti/redis';
+
+type RedisConfig = {
+  host: string;
+  port: number;
+  password?: string;
+};
+
+declare const redisConfig: RedisConfig; // resolved once at the application boundary
+
+const redisOptions: RedisModuleOptions = {
+  host: redisConfig.host,
+  port: redisConfig.port,
+  password: redisConfig.password,
+};
 
 @Module({
   imports: [
-    RedisModule.forRoot({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT ?? 6379),
-      password: process.env.REDIS_PASSWORD,
-    }),
+    RedisModule.forRoot(redisOptions),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first: Konekti resolves environment values at the application boundary and passes typed module options into `RedisModule.forRoot(...)`. See `../../docs/concepts/config-and-environments.md`.
 
 ### 2. Inject the raw Redis client
 

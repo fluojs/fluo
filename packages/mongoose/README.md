@@ -29,23 +29,33 @@ npm install @konekti/mongoose
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
-const connection = mongoose.createConnection(process.env.MONGODB_URI);
-
 @Module({
   imports: [
-    MongooseModule.forRoot({
-      connection,
-      dispose: async (conn) => {
-        await conn.close();
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const connection = mongoose.createConnection(
+          config.getOrThrow<string>('MONGODB_URI'),
+        );
+
+        return {
+          connection,
+          dispose: async (conn) => {
+            await conn.close();
+          },
+        };
       },
     }),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first: Konekti resolves environment values at the application boundary and passes typed options/providers into package modules. See `../../docs/concepts/config-and-environments.md`.
 
 ### Using the connection in a repository
 

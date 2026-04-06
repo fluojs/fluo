@@ -30,25 +30,34 @@ npm install @konekti/drizzle
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import { DrizzleModule } from '@konekti/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
-
 @Module({
   imports: [
-    DrizzleModule.forRoot({
-      database: db,
-      dispose: async (database) => {
-        await pool.end();
+    DrizzleModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const pool = new Pool({
+          connectionString: config.getOrThrow<string>('DATABASE_URL'),
+        });
+
+        return {
+          database: drizzle(pool),
+          dispose: async () => {
+            await pool.end();
+          },
+        };
       },
     }),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first 원칙: Konekti는 환경 값을 애플리케이션 경계에서 해석한 뒤 타입이 지정된 옵션/프로바이더로 패키지 모듈에 전달합니다. `../../docs/concepts/config-and-environments.ko.md`를 참고하세요.
 
 ### 비동기 모듈 등록
 

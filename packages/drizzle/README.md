@@ -30,25 +30,34 @@ npm install @konekti/drizzle
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import { DrizzleModule } from '@konekti/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
-
 @Module({
   imports: [
-    DrizzleModule.forRoot({
-      database: db,
-      dispose: async (database) => {
-        await pool.end();
+    DrizzleModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const pool = new Pool({
+          connectionString: config.getOrThrow<string>('DATABASE_URL'),
+        });
+
+        return {
+          database: drizzle(pool),
+          dispose: async () => {
+            await pool.end();
+          },
+        };
       },
     }),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first: Konekti resolves environment values at the application boundary and passes typed options/providers into package modules. See `../../docs/concepts/config-and-environments.md`.
 
 ### Async module registration
 

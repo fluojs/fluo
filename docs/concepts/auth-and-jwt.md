@@ -62,21 +62,27 @@ The recommended authentication patterns are:
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import {
   createPassportProviders,
   createCookieAuthPreset,
 } from '@konekti/passport';
-import { createJwtCoreProviders } from '@konekti/jwt';
+import { JwtModule } from '@konekti/jwt';
 
 @Module({
-  providers: [
-    ...createJwtCoreProviders({
-      algorithms: ['HS256'],
-      secret: process.env.JWT_SECRET!,
-      issuer: 'my-app',
-      audience: 'my-app-clients',
-      accessTokenTtlSeconds: 3600,
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+      }),
     }),
+  ],
+  providers: [
     ...createCookieAuthPreset({
       cookieAuth: {
         accessTokenCookieName: 'access_token',
@@ -99,6 +105,8 @@ import { createJwtCoreProviders } from '@konekti/jwt';
 })
 export class AuthModule {}
 ```
+
+> Config-first: resolve env-backed secrets at the application boundary and pass typed options/providers into auth modules. See `./config-and-environments.md`.
 
 The preset includes:
 - `CookieAuthStrategy`: Extracts JWT from HttpOnly cookies

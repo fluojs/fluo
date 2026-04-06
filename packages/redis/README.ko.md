@@ -28,19 +28,31 @@ npm install @konekti/redis ioredis
 
 ```typescript
 import { Module } from '@konekti/core';
-import { RedisModule } from '@konekti/redis';
+import { RedisModule, type RedisModuleOptions } from '@konekti/redis';
+
+type RedisConfig = {
+  host: string;
+  port: number;
+  password?: string;
+};
+
+declare const redisConfig: RedisConfig; // 애플리케이션 경계에서 한 번 해석된 설정
+
+const redisOptions: RedisModuleOptions = {
+  host: redisConfig.host,
+  port: redisConfig.port,
+  password: redisConfig.password,
+};
 
 @Module({
   imports: [
-    RedisModule.forRoot({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT ?? 6379),
-      password: process.env.REDIS_PASSWORD,
-    }),
+    RedisModule.forRoot(redisOptions),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first 원칙: Konekti는 환경 값을 애플리케이션 경계에서 해석한 뒤 타입이 지정된 모듈 옵션으로 `RedisModule.forRoot(...)`에 전달합니다. `../../docs/concepts/config-and-environments.ko.md`를 참고하세요.
 
 ### 2. Raw Redis client 주입
 

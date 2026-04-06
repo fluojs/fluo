@@ -62,21 +62,27 @@
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import {
   createPassportProviders,
   createCookieAuthPreset,
 } from '@konekti/passport';
-import { createJwtCoreProviders } from '@konekti/jwt';
+import { JwtModule } from '@konekti/jwt';
 
 @Module({
-  providers: [
-    ...createJwtCoreProviders({
-      algorithms: ['HS256'],
-      secret: process.env.JWT_SECRET!,
-      issuer: 'my-app',
-      audience: 'my-app-clients',
-      accessTokenTtlSeconds: 3600,
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+      }),
     }),
+  ],
+  providers: [
     ...createCookieAuthPreset({
       cookieAuth: {
         accessTokenCookieName: 'access_token',
@@ -99,6 +105,8 @@ import { createJwtCoreProviders } from '@konekti/jwt';
 })
 export class AuthModule {}
 ```
+
+> Config-first 원칙: env 기반 비밀값은 애플리케이션 경계에서 해석하고, auth 모듈에는 타입이 지정된 옵션/프로바이더만 전달하세요. `./config-and-environments.ko.md`를 참고하세요.
 
 Preset에 포함된 것:
 - `CookieAuthStrategy`: HttpOnly 쿠키에서 JWT 추출

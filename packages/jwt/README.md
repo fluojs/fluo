@@ -38,22 +38,27 @@ npm install @konekti/jwt
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createJwtCoreProviders, DefaultJwtSigner, DefaultJwtVerifier } from '@konekti/jwt';
+import { ConfigService } from '@konekti/config';
+import { JwtModule } from '@konekti/jwt';
 
 @Module({
-  providers: [
-    ...createJwtCoreProviders({
-      algorithms: ['HS256'],
-      secret: process.env.JWT_SECRET!,
-      issuer: 'my-app',
-      audience: 'my-app-clients',
-      accessTokenTtlSeconds: 3600,
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+      }),
     }),
   ],
-  exports: [DefaultJwtVerifier, DefaultJwtSigner],
 })
-export class JwtModule {}
+export class AuthModule {}
 ```
+
+> Config-first: Konekti resolves environment values at the application boundary and passes typed options/providers into package modules. See `../../docs/concepts/config-and-environments.md`.
 
 ### Runtime module entrypoints
 
@@ -230,7 +235,8 @@ For refresh token lifecycle (issue, rotate, revoke with replay detection), use `
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createJwtCoreProviders } from '@konekti/jwt';
+import { ConfigService } from '@konekti/config';
+import { JwtModule } from '@konekti/jwt';
 import {
   createPassportProviders,
   createRefreshTokenProviders,
@@ -239,19 +245,24 @@ import {
 } from '@konekti/passport';
 
 @Module({
-  providers: [
-    ...createJwtCoreProviders({
-      algorithms: ['HS256'],
-      secret: process.env.JWT_SECRET!,
-      issuer: 'my-app',
-      audience: 'my-app-clients',
-      accessTokenTtlSeconds: 3600,
-      refreshToken: {
-        secret: process.env.REFRESH_TOKEN_SECRET!,
-        expiresInSeconds: 604800, // 7 days
-        rotation: true,
-      },
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+        refreshToken: {
+          secret: config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
+          expiresInSeconds: config.get<number>('REFRESH_TOKEN_TTL_SECONDS') ?? 604800,
+          rotation: true,
+        },
+      }),
     }),
+  ],
+  providers: [
     JwtRefreshTokenAdapter,
     RefreshTokenStrategy,
     ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
