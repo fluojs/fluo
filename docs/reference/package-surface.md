@@ -119,7 +119,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/cron`**: Decorator-based (`@Cron`, `@Interval`, `@Timeout`) and runtime-registry task scheduling with distributed lock support.
 - **`@konekti/cqrs`**: Command/query buses with bootstrap-time handler discovery, saga/process-manager support, and event-bus delegation.
 - **`@konekti/event-bus`**: In-process event publishing and discovery.
-- **`@konekti/websocket`**: Decorator-based WebSocket gateway discovery and Node upgrade wiring.
+- **`@konekti/websocket`**: Transport-neutral WebSocket gateway authoring decorators, metadata, descriptors, and shared contracts. The current raw `ws` Node binding lives on the explicit `@konekti/websocket/node` subpath.
 - **`@konekti/queue`**: Redis-backed background jobs with worker discovery and DLQ support.
 - **`@konekti/redis`**: App-scoped Redis lifecycle ownership (`lazyConnect` bootstrap + graceful shutdown), raw token injection, and `RedisService` facade with `getRawClient()` escape hatch.
 - **`@konekti/prisma`**: Prisma lifecycle and ALS-backed transaction context, including async module factory, strict transaction mode, and abort-aware request transaction handling.
