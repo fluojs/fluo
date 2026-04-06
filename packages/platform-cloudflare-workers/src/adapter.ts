@@ -1,4 +1,8 @@
-import type { Dispatcher, HttpApplicationAdapter } from '@konekti/http';
+import {
+  createUnsupportedHttpAdapterRealtimeCapability,
+  type Dispatcher,
+  type HttpApplicationAdapter,
+} from '@konekti/http';
 import {
   bootstrapHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
@@ -64,6 +68,12 @@ export class CloudflareWorkerHttpApplicationAdapter
 
   async close(): Promise<void> {
     this.dispatcher = undefined;
+  }
+
+  getRealtimeCapability() {
+    return createUnsupportedHttpAdapterRealtimeCapability(
+      'Cloudflare Workers does not expose a server-backed realtime listener lifecycle.',
+    );
   }
 
   async fetch<Env = unknown>(
