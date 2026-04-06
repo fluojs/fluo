@@ -1,7 +1,7 @@
 import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@konekti/http';
 import type { Registry } from 'prom-client';
 
-import { createPrometheusCounter, createPrometheusHistogram } from './prometheus-metrics-factory.js';
+import { createPrometheusCounter, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';
 
 type HttpMetricLabels = {
   method: string;

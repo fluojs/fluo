@@ -5,7 +5,7 @@ import type {
   HistogramConfiguration,
 } from 'prom-client';
 
-import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './prometheus-metrics-factory.js';
+import { createPrometheusCounter, createPrometheusGauge, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';
 
 export class MetricsService {
   constructor(private readonly registry: Registry) {}

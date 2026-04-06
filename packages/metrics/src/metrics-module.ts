@@ -9,9 +9,9 @@ import {
   type HttpMetricsPathLabelMode,
   type HttpMetricsPathLabelNormalizer,
 } from './http-metrics-middleware.js';
-import { METER_PROVIDER } from './meter-provider.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsService } from './metrics-service.js';
-import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
+import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 export interface MetricsHttpOptions {
   pathLabelMode?: HttpMetricsPathLabelMode;
