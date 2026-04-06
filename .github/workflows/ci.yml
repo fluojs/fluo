@@ -154,7 +154,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run official web runtime adapter portability suite
-        run: pnpm vitest run packages/testing/src/web-runtime-adapter-portability.test.ts --testNamePattern "${{ matrix.adapter }} web runtime adapter portability"
+        run: pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --testNamePattern "${{ matrix.adapter }} web runtime adapter portability"
 
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
