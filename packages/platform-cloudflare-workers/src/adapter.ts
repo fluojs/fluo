@@ -1,5 +1,5 @@
 import {
-  createUnsupportedHttpAdapterRealtimeCapability,
+  createFetchStyleHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
 } from '@konekti/http';
@@ -71,8 +71,8 @@ export class CloudflareWorkerHttpApplicationAdapter
   }
 
   getRealtimeCapability() {
-    return createUnsupportedHttpAdapterRealtimeCapability(
-      'Cloudflare Workers does not expose a server-backed realtime listener lifecycle.',
+    return createFetchStyleHttpAdapterRealtimeCapability(
+      'Cloudflare Workers exposes a fetch-style raw websocket expansion contract only. Add a Worker-specific raw websocket host before claiming support.',
     );
   }
 
