@@ -38,22 +38,75 @@ npm install @konekti/jwt
 
 ```typescript
 import { Module } from '@konekti/core';
-import { createJwtCoreProviders, DefaultJwtSigner, DefaultJwtVerifier } from '@konekti/jwt';
+import { ConfigService } from '@konekti/config';
+import { JwtModule } from '@konekti/jwt';
 
 @Module({
-  providers: [
-    ...createJwtCoreProviders({
-      algorithms: ['HS256'],
-      secret: process.env.JWT_SECRET!,
-      issuer: 'my-app',
-      audience: 'my-app-clients',
-      accessTokenTtlSeconds: 3600,
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+      }),
     }),
   ],
-  exports: [DefaultJwtVerifier, DefaultJwtSigner],
 })
-export class JwtModule {}
+export class AuthModule {}
 ```
+
+> Config-first 원칙: Konekti는 환경 값을 애플리케이션 경계에서 해석한 뒤 타입이 지정된 옵션/프로바이더로 패키지 모듈에 전달합니다. `../../docs/concepts/config-and-environments.ko.md`를 참고하세요.
+
+## Refresh token 통합
+
+refresh token lifecycle(발행, 로테이션, replay detection이 포함된 폐기)에는 `@konekti/passport`를 사용하세요:
+
+```typescript
+import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
+import { JwtModule } from '@konekti/jwt';
+import {
+  createPassportProviders,
+  createRefreshTokenProviders,
+  JwtRefreshTokenAdapter,
+  RefreshTokenStrategy,
+} from '@konekti/passport';
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        issuer: config.getOrThrow<string>('JWT_ISSUER'),
+        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
+        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
+        refreshToken: {
+          secret: config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
+          expiresInSeconds: config.get<number>('REFRESH_TOKEN_TTL_SECONDS') ?? 604800,
+          rotation: true,
+        },
+      }),
+    }),
+  ],
+  providers: [
+    JwtRefreshTokenAdapter,
+    RefreshTokenStrategy,
+    ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
+    ...createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'refresh-token', token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+전체 refresh token lifecycle 세부 정보는 `@konekti/passport` 문서를 참고하세요.
 
 ### 런타임 모듈 엔트리포인트
 
