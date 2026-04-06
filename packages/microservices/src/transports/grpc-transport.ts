@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from './types.js';
+import type { MicroserviceTransport, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from '../types.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 

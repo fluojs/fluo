@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from './types.js';
+import type { MicroserviceTransport, TransportHandler } from '../types.js';
 
 interface NatsMessageLike {
   readonly data: Uint8Array;

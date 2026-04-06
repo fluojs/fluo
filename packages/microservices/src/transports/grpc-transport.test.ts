@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { GrpcMicroserviceTransport } from './grpc-transport.js';
-import type { ServerStreamWriter } from './types.js';
+import type { ServerStreamWriter } from '../types.js';
 
 class FakeGrpcMetadata {
   private readonly values = new Map<string, unknown[]>();

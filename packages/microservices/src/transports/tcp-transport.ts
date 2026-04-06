@@ -1,6 +1,6 @@
 import { createServer, Socket } from 'node:net';
 
-import type { MicroserviceTransport, TransportHandler, TransportPacket } from './types.js';
+import type { MicroserviceTransport, TransportHandler, TransportPacket } from '../types.js';
 
 interface WireResponse {
   error?: string;
