@@ -6,8 +6,8 @@ import {
   AuthenticationExpiredError,
   AuthenticationFailedError,
   AuthenticationRequiredError,
-} from './errors.js';
-import type { AuthStrategy, AuthStrategyResult } from './types.js';
+} from '../errors.js';
+import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 
 export interface RefreshTokenService {
   issueRefreshToken(subject: string): Promise<string>;
