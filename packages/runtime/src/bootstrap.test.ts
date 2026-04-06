@@ -725,11 +725,16 @@ describe('runtime platform shell enforcement', () => {
   it('prevents listen() when critical platform readiness is not ready', async () => {
     const events: string[] = [];
     const unavailable = createComponent('redis.default', events, 'not-ready', true);
+    const adapter = {
+      async close() {},
+      async listen() {},
+    };
 
     class AppModule {}
     defineModuleMetadata(AppModule, {});
 
     const app = await KonektiFactory.create(AppModule, {
+      adapter,
       platform: {
         components: [{ component: unavailable, dependencies: [] }],
       },
@@ -811,6 +816,10 @@ describe('KonektiFactory.createMicroservice', () => {
     });
 
     const app = await KonektiFactory.create(AppModule, {
+      adapter: {
+        async close() {},
+        async listen() {},
+      },
     });
     const microservice = await app.container.resolve<MicroserviceRuntime>(MICROSERVICE_TOKEN);
 
