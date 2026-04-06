@@ -17,10 +17,10 @@ import { Inject, Module } from '@konekti/core';
 import {
   CommandBus,
   CommandHandler,
-  COMMAND_BUS,
+  CommandBusLifecycleService,
   CqrsEventBus,
+  CqrsEventBusService,
   CqrsModule,
-  EVENT_BUS,
   EventHandler,
   ICommand,
   ICommandHandler,
@@ -29,8 +29,8 @@ import {
   IQuery,
   IQueryHandler,
   QueryBus,
+  QueryBusLifecycleService,
   QueryHandler,
-  QUERY_BUS,
 } from '@konekti/cqrs';
 
 class CreateUserCommand implements ICommand {
@@ -78,7 +78,7 @@ class AuditLogProjection implements IEventHandler<UserCreatedEvent> {
   }
 }
 
-@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])
 class UserService {
   constructor(
     private readonly commandBus: CommandBus,
@@ -110,13 +110,26 @@ class UserService {
 export class AppModule {}
 ```
 
+기존 코드베이스를 위한 호환 토큰 대안:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from '@konekti/cqrs';
+
+@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+class LegacyUserService {}
+```
+
 ## API
 
-- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - 글로벌 `COMMAND_BUS`, `QUERY_BUS`, CQRS `EVENT_BUS`를 등록하고 내부적으로 `EventBusModule.forRoot()`를 import합니다.
+- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - 글로벌 `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`와 호환 alias `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`를 등록하고 내부적으로 `EventBusModule.forRoot()`를 import합니다.
 - `createCqrsProviders()` - 수동 조합을 위한 raw provider 목록을 반환합니다.
-- `COMMAND_BUS` - `CommandBus`용 DI 토큰입니다.
-- `QUERY_BUS` - `QueryBus`용 DI 토큰입니다.
-- `EVENT_BUS` - `CqrsEventBus`용 정식 CQRS 이벤트 버스 토큰입니다.
+- `CommandBusLifecycleService` - `CommandBus`용 기본 class-first DI 진입점입니다.
+- `QueryBusLifecycleService` - `QueryBus`용 기본 class-first DI 진입점입니다.
+- `CqrsEventBusService` - `CqrsEventBus`용 기본 class-first DI 진입점입니다.
+- `COMMAND_BUS` - 명시적 토큰 seam이 여전히 필요한 경우를 위한 `CommandBus` 호환 DI 토큰입니다.
+- `QUERY_BUS` - 명시적 토큰 seam이 여전히 필요한 경우를 위한 `QueryBus` 호환 DI 토큰입니다.
+- `EVENT_BUS` - 명시적 토큰 seam이 여전히 필요한 경우를 위한 `CqrsEventBus` 호환 CQRS 이벤트 버스 토큰입니다.
 - `ICommand`, `IQuery<TResult>`, `IEvent` - CQRS 메시지 마커 인터페이스입니다.
 - `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - 핸들러 계약 인터페이스입니다.
 - `@CommandHandler(CommandClass)` - 클래스에 command handler 메타데이터를 기록합니다.
@@ -127,14 +140,19 @@ export class AppModule {}
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
+- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, 호환 토큰(`COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`), CQRS 데코레이터(`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler 계약, status snapshot helper를 지원합니다.
 - **compatibility-only**: 저수준 metadata helper/symbol(`define*Metadata`, `get*Metadata`, `*MetadataSymbol`)은 0.x 호환성을 위해 유지되지만, 신규 애플리케이션 코드의 기본 import 경로로는 권장하지 않습니다.
 - **internal**: `CQRS_EVENT_BUS`는 공개 루트 배럴 계약에 포함되지 않습니다.
+
+### class-first DI 가이드
+
+- 애플리케이션 코드에서는 `@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])`를 우선 사용하세요.
+- `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`는 기존 explicit-token 호출부 호환성을 위한 대안 경로로만 유지됩니다.
 
 ### 마이그레이션 노트 (0.x)
 
 - `CQRS_EVENT_BUS`는 공개 패키지 표면에서 제거되었습니다.
-- CQRS 이벤트 버스 DI 사용 코드는 `EVENT_BUS`로 마이그레이션하세요.
+- 신규 CQRS 이벤트 버스 DI 코드는 `CqrsEventBusService`를 우선 사용하고, `EVENT_BUS`는 호환성을 위해 계속 지원됩니다.
 - `CommandHandlerNotFoundError`는 루트 배럴에서 제거되었습니다. 대신 `CommandHandlerNotFoundException`을 사용하세요.
 - `QueryHandlerNotFoundError`는 루트 배럴에서 제거되었습니다. 대신 `QueryHandlerNotFoundException`을 사용하세요.
 
@@ -152,10 +170,10 @@ import { Inject, Module } from '@konekti/core';
 import {
   CommandBus,
   CommandHandler,
-  COMMAND_BUS,
+  CommandBusLifecycleService,
   CqrsEventBus,
+  CqrsEventBusService,
   CqrsModule,
-  EVENT_BUS,
   ICommand,
   ICommandHandler,
   IEvent,
@@ -187,7 +205,7 @@ class CompleteOrderCommand implements ICommand {
   constructor(public readonly orderId: string) {}
 }
 
-@Inject([EVENT_BUS])
+@Inject([CqrsEventBusService])
 @CommandHandler(StartPaymentCommand)
 class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
   constructor(private readonly eventBus: CqrsEventBus) {}
@@ -197,7 +215,7 @@ class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
   }
 }
 
-@Inject([EVENT_BUS])
+@Inject([CqrsEventBusService])
 @CommandHandler(ReserveInventoryCommand)
 class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
   constructor(private readonly eventBus: CqrsEventBus) {}
@@ -214,7 +232,7 @@ class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
   }
 }
 
-@Inject([COMMAND_BUS])
+@Inject([CommandBusLifecycleService])
 @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
 class OrderFulfillmentSaga implements ISaga<IEvent> {
   constructor(private readonly commandBus: CommandBus) {}

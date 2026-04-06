@@ -15,7 +15,7 @@ npm install @konekti/queue @konekti/redis
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { QueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
+import { QueueModule, Queue, QueueLifecycleService, QueueWorker } from '@konekti/queue';
 import { RedisModule } from '@konekti/redis';
 
 class SendWelcomeEmailJob {
@@ -29,7 +29,7 @@ class SendWelcomeEmailWorker {
   }
 }
 
-@Inject([QUEUE])
+@Inject([QueueLifecycleService])
 class UserService {
   constructor(private readonly queue: Queue) {}
 
@@ -48,20 +48,38 @@ class UserService {
 export class AppModule {}
 ```
 
+Compatibility token alternative for existing codebases:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { QUEUE, type Queue } from '@konekti/queue';
+
+@Inject([QUEUE])
+class LegacyUserService {
+  constructor(private readonly queue: Queue) {}
+}
+```
+
 ## API
 
-- `QueueModule.forRoot(options?)` - registers global `QUEUE` and lifecycle worker processing
+- `QueueModule.forRoot(options?)` - registers global `QueueLifecycleService` plus compatibility alias `QUEUE`
 - `createQueueProviders(options?)` - returns raw providers for manual composition
-- `QUEUE` - DI token for queue enqueueing
+- `QueueLifecycleService` - primary class-first DI entry point for queue enqueueing
+- `QUEUE` - compatibility DI token for queue enqueueing
 - `Queue` - interface with `enqueue(job)`
 - `@QueueWorker(JobClass, options?)` - marks singleton worker classes for a job type
 - `createQueuePlatformStatusSnapshot(input)` - maps queue lifecycle/dependency/drain signals into shared platform snapshot fields
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker public types, and status snapshot helpers.
+- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QueueLifecycleService`, compatibility token `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker public types, and status snapshot helpers.
 - **compatibility-only**: none at the root barrel today; new compatibility shims (if any) must be explicitly documented here before release.
 - **internal**: `QUEUE_OPTIONS` remains internal and is intentionally excluded from the root barrel contract.
+
+### Class-first DI guidance
+
+- Prefer `@Inject([QueueLifecycleService])` for application code.
+- Keep `QUEUE` only as a compatibility alternative for existing explicit-token call sites.
 
 ## Runtime behavior
 

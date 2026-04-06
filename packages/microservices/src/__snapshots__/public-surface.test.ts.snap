@@ -9,6 +9,7 @@ exports[`@konekti/microservices root barrel public surface > keeps the documente
   "KafkaMicroserviceTransport",
   "MICROSERVICE",
   "MessagePattern",
+  "MicroserviceLifecycleService",
   "MicroservicesModule",
   "MqttMicroserviceTransport",
   "NatsMicroserviceTransport",

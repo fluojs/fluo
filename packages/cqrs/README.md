@@ -17,10 +17,10 @@ import { Inject, Module } from '@konekti/core';
 import {
   CommandBus,
   CommandHandler,
-  COMMAND_BUS,
+  CommandBusLifecycleService,
   CqrsEventBus,
+  CqrsEventBusService,
   CqrsModule,
-  EVENT_BUS,
   EventHandler,
   ICommand,
   ICommandHandler,
@@ -29,8 +29,8 @@ import {
   IQuery,
   IQueryHandler,
   QueryBus,
+  QueryBusLifecycleService,
   QueryHandler,
-  QUERY_BUS,
 } from '@konekti/cqrs';
 
 class CreateUserCommand implements ICommand {
@@ -78,7 +78,7 @@ class AuditLogProjection implements IEventHandler<UserCreatedEvent> {
   }
 }
 
-@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])
 class UserService {
   constructor(
     private readonly commandBus: CommandBus,
@@ -110,13 +110,26 @@ class UserService {
 export class AppModule {}
 ```
 
+Compatibility token alternative for existing codebases:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from '@konekti/cqrs';
+
+@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+class LegacyUserService {}
+```
+
 ## API
 
-- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - registers global `COMMAND_BUS`, `QUERY_BUS`, and CQRS `EVENT_BUS`, and imports `EventBusModule.forRoot()`.
+- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - registers global `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, plus compatibility aliases `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS`, and imports `EventBusModule.forRoot()`.
 - `createCqrsProviders()` - returns raw providers for manual composition.
-- `COMMAND_BUS` - DI token for `CommandBus`.
-- `QUERY_BUS` - DI token for `QueryBus`.
-- `EVENT_BUS` - canonical CQRS event-bus token for `CqrsEventBus`.
+- `CommandBusLifecycleService` - primary class-first DI entry point for `CommandBus`.
+- `QueryBusLifecycleService` - primary class-first DI entry point for `QueryBus`.
+- `CqrsEventBusService` - primary class-first DI entry point for `CqrsEventBus`.
+- `COMMAND_BUS` - compatibility DI token for `CommandBus` when an explicit token seam is still required.
+- `QUERY_BUS` - compatibility DI token for `QueryBus` when an explicit token seam is still required.
+- `EVENT_BUS` - compatibility CQRS event-bus token for `CqrsEventBus` when an explicit token seam is still required.
 - `ICommand`, `IQuery<TResult>`, `IEvent` - marker interfaces for CQRS message types.
 - `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - handler contracts.
 - `@CommandHandler(CommandClass)` - marks a class as a command handler.
@@ -127,14 +140,19 @@ export class AppModule {}
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`, CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
+- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, compatibility tokens (`COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`), CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
 - **compatibility-only**: low-level metadata helpers/symbols (`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) remain available for 0.x compatibility but are not recommended for new application code.
 - **internal**: `CQRS_EVENT_BUS` is not part of the public root barrel contract.
+
+### Class-first DI guidance
+
+- Prefer `@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])` for application code.
+- Keep `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS` only for compatibility with existing explicit-token call sites.
 
 ### migration notes (0.x)
 
 - `CQRS_EVENT_BUS` has been removed from the public package surface.
-- Migrate all CQRS event-bus DI usage to `EVENT_BUS`.
+- Prefer `CqrsEventBusService` for new CQRS event-bus DI usage; `EVENT_BUS` remains supported for compatibility.
 - `CommandHandlerNotFoundError` has been removed from the root barrel. Use `CommandHandlerNotFoundException` instead.
 - `QueryHandlerNotFoundError` has been removed from the root barrel. Use `QueryHandlerNotFoundException` instead.
 
@@ -152,10 +170,10 @@ import { Inject, Module } from '@konekti/core';
 import {
   CommandBus,
   CommandHandler,
-  COMMAND_BUS,
+  CommandBusLifecycleService,
   CqrsEventBus,
+  CqrsEventBusService,
   CqrsModule,
-  EVENT_BUS,
   ICommand,
   ICommandHandler,
   IEvent,
@@ -187,7 +205,7 @@ class CompleteOrderCommand implements ICommand {
   constructor(public readonly orderId: string) {}
 }
 
-@Inject([EVENT_BUS])
+@Inject([CqrsEventBusService])
 @CommandHandler(StartPaymentCommand)
 class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
   constructor(private readonly eventBus: CqrsEventBus) {}
@@ -197,7 +215,7 @@ class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
   }
 }
 
-@Inject([EVENT_BUS])
+@Inject([CqrsEventBusService])
 @CommandHandler(ReserveInventoryCommand)
 class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
   constructor(private readonly eventBus: CqrsEventBus) {}
@@ -214,7 +232,7 @@ class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
   }
 }
 
-@Inject([COMMAND_BUS])
+@Inject([CommandBusLifecycleService])
 @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
 class OrderFulfillmentSaga implements ISaga<IEvent> {
   constructor(private readonly commandBus: CommandBus) {}

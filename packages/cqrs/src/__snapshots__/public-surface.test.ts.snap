@@ -3,8 +3,10 @@
 exports[`@konekti/cqrs root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
 [
   "COMMAND_BUS",
+  "CommandBusLifecycleService",
   "CommandHandler",
   "CommandHandlerNotFoundException",
+  "CqrsEventBusService",
   "CqrsModule",
   "DuplicateCommandHandlerError",
   "DuplicateEventHandlerError",
@@ -12,6 +14,7 @@ exports[`@konekti/cqrs root barrel public surface > keeps the documented root ex
   "EVENT_BUS",
   "EventHandler",
   "QUERY_BUS",
+  "QueryBusLifecycleService",
   "QueryHandler",
   "QueryHandlerNotFoundException",
   "Saga",

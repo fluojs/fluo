@@ -7,6 +7,7 @@ import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './kafka-transport.js';
 import { MicroservicesModule } from './module.js';
+import { MicroserviceLifecycleService } from './service.js';
 import { MICROSERVICE } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
 import { TcpMicroserviceTransport } from './tcp-transport.js';
@@ -225,6 +226,27 @@ describe('@konekti/microservices', () => {
     expect(store.createdEvents).toEqual(['ayden']);
 
     await microservice.close();
+  });
+
+  it('resolves MicroserviceLifecycleService directly and keeps MICROSERVICE as a compatibility alias', async () => {
+    const transport = new InMemoryLoopbackTransport();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const microserviceByClass = await app.container.resolve(MicroserviceLifecycleService);
+    const microserviceByToken = await app.container.resolve(MICROSERVICE);
+
+    expect(microserviceByClass).toBeInstanceOf(MicroserviceLifecycleService);
+    expect(typeof microserviceByToken.listen).toBe('function');
+    expect(typeof microserviceByToken.close).toBe('function');
+    expect(typeof microserviceByToken.send).toBe('function');
+    expect(typeof microserviceByToken.emit).toBe('function');
+
+    await app.close();
   });
 
   it('handles TCP transport send and receive', async () => {

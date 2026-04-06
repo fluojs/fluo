@@ -7,7 +7,15 @@ import { CqrsEventBusService } from './event-bus.js';
 import { QueryBusLifecycleService } from './query-bus.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
-import type { CommandHandlerClass, EventHandlerClass, QueryHandlerClass, SagaClass } from './types.js';
+import type {
+  CommandHandlerClass,
+  EventHandlerClass,
+  ICommand,
+  IEvent,
+  IQuery,
+  QueryHandlerClass,
+  SagaClass,
+} from './types.js';
 
 export interface CqrsModuleOptions {
   commandHandlers?: readonly CommandHandlerClass[];
@@ -41,18 +49,31 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
 
 export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
   return [
+    CommandBusLifecycleService,
     {
+      inject: [CommandBusLifecycleService],
       provide: COMMAND_BUS,
-      useClass: CommandBusLifecycleService,
+      useFactory: (service: unknown) => ({
+        execute: (command: ICommand) => (service as CommandBusLifecycleService).execute(command),
+      }),
     },
+    QueryBusLifecycleService,
     {
+      inject: [QueryBusLifecycleService],
       provide: QUERY_BUS,
-      useClass: QueryBusLifecycleService,
+      useFactory: (service: unknown) => ({
+        execute: (query: IQuery<unknown>) => (service as QueryBusLifecycleService).execute(query),
+      }),
     },
     CqrsSagaLifecycleService,
+    CqrsEventBusService,
     {
+      inject: [CqrsEventBusService],
       provide: EVENT_BUS,
-      useClass: CqrsEventBusService,
+      useFactory: (service: unknown) => ({
+        publish: (event: IEvent) => (service as CqrsEventBusService).publish(event),
+        publishAll: (events: readonly IEvent[]) => (service as CqrsEventBusService).publishAll(events),
+      }),
     },
     ...collectOptionHandlerProviders(options),
   ];
@@ -63,7 +84,14 @@ export class CqrsModule {
     class CqrsModuleDefinition {}
 
     return defineModule(CqrsModuleDefinition, {
-      exports: [COMMAND_BUS, QUERY_BUS, EVENT_BUS],
+      exports: [
+        CommandBusLifecycleService,
+        QueryBusLifecycleService,
+        CqrsEventBusService,
+        COMMAND_BUS,
+        QUERY_BUS,
+        EVENT_BUS,
+      ],
       global: true,
       imports: [EventBusModule.forRoot(options.eventBus)],
       providers: createCqrsProviders(options),

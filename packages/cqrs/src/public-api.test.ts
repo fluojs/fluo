@@ -6,6 +6,9 @@ describe('@konekti/cqrs public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(cqrsPublicApi).toHaveProperty('CqrsModule');
     expect(cqrsPublicApi).toHaveProperty('createCqrsProviders');
+    expect(cqrsPublicApi).toHaveProperty('CommandBusLifecycleService');
+    expect(cqrsPublicApi).toHaveProperty('QueryBusLifecycleService');
+    expect(cqrsPublicApi).toHaveProperty('CqrsEventBusService');
     expect(cqrsPublicApi).toHaveProperty('COMMAND_BUS');
     expect(cqrsPublicApi).toHaveProperty('QUERY_BUS');
     expect(cqrsPublicApi).toHaveProperty('EVENT_BUS');

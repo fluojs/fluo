@@ -46,9 +46,10 @@ await microservice.listen();
 
 ## API
 
-- `MicroservicesModule.forRoot(options)` - registers global `MICROSERVICE` lifecycle service
+- `MicroservicesModule.forRoot(options)` - registers global `MicroserviceLifecycleService` plus compatibility alias `MICROSERVICE`
 - `createMicroservicesProviders(options)` - returns raw providers for manual composition
-- `MICROSERVICE` - DI token for the runtime microservice service
+- `MicroserviceLifecycleService` - primary class-first DI entry point for the runtime microservice service
+- `MICROSERVICE` - compatibility DI token for the runtime microservice service
 - `@MessagePattern(pattern)` - request/reply handler registration
 - `@EventPattern(pattern)` - event handler registration
 - `@ServerStreamPattern(pattern)` - gRPC server-streaming handler registration
@@ -66,8 +67,13 @@ await microservice.listen();
 
 ### Root barrel public surface governance (0.x)
 
-- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, `MICROSERVICE`, and status snapshot helpers.
-- **internal**: metadata helpers (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), low-level lifecycle wiring (`MicroserviceLifecycleService`, `MICROSERVICE_OPTIONS`), and transport-internal wire/descriptor types are non-contract internals and are not part of the root barrel public contract.
+- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, `MicroserviceLifecycleService`, compatibility token `MICROSERVICE`, transport decorators (`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), transport adapters, and status snapshot helpers.
+- **internal**: metadata helpers (`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), `MICROSERVICE_OPTIONS`, and transport-internal wire/descriptor types are non-contract internals and are not part of the root barrel public contract.
+
+### Class-first DI guidance
+
+- Prefer resolving or injecting `MicroserviceLifecycleService` when you need the concrete runtime service from the container.
+- Keep `MICROSERVICE` only as a compatibility alternative for existing explicit-token call sites.
 
 ### migration notes (0.x)
 
@@ -455,10 +461,19 @@ for await (const message of reader) {
 Use runtime app bootstrap and resolve the microservice runtime from the same container:
 
 ```typescript
+import { KonektiFactory } from '@konekti/runtime';
+import { MicroserviceLifecycleService, MICROSERVICE } from '@konekti/microservices';
+
 const app = await KonektiFactory.create(AppModule);
-const microservice = await app.container.resolve(MICROSERVICE);
+const microservice = await app.container.resolve(MicroserviceLifecycleService);
 
 await Promise.all([app.listen(), microservice.listen()]);
+```
+
+Compatibility token alternative for existing codebases:
+
+```typescript
+const microservice = await app.container.resolve(MICROSERVICE);
 ```
 
 The app and microservice runtime resolve handlers from the same container in this composition, so singleton providers are shared across HTTP and microservice flows.

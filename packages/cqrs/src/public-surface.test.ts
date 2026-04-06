@@ -7,6 +7,9 @@ describe('@konekti/cqrs root barrel public surface', () => {
     expect(cqrs).toHaveProperty('CqrsModule');
     expect(cqrs).not.toHaveProperty('createCqrsModule');
     expect(cqrs).toHaveProperty('createCqrsProviders');
+    expect(cqrs).toHaveProperty('CommandBusLifecycleService');
+    expect(cqrs).toHaveProperty('QueryBusLifecycleService');
+    expect(cqrs).toHaveProperty('CqrsEventBusService');
     expect(cqrs).toHaveProperty('COMMAND_BUS');
     expect(cqrs).toHaveProperty('QUERY_BUS');
     expect(cqrs).toHaveProperty('EVENT_BUS');

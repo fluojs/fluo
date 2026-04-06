@@ -6,6 +6,7 @@ import { OnEvent, type EventBusTransport } from '@konekti/event-bus';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
+import { CommandBusLifecycleService } from './command-bus.js';
 import {
   CommandHandlerNotFoundException,
   DuplicateCommandHandlerError,
@@ -16,6 +17,7 @@ import {
 import { CqrsEventBusService } from './event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
+import { QueryBusLifecycleService } from './query-bus.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
@@ -200,6 +202,31 @@ describe('@konekti/cqrs', () => {
     await app.close();
   });
 
+  it('resolves class-first CQRS services and keeps token aliases functional', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const commandBusByClass = await app.container.resolve(CommandBusLifecycleService);
+    const commandBusByToken = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const queryBusByClass = await app.container.resolve(QueryBusLifecycleService);
+    const queryBusByToken = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const eventBusByClass = await app.container.resolve(CqrsEventBusService);
+    const eventBusByToken = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    expect(commandBusByClass).toBeInstanceOf(CommandBusLifecycleService);
+    expect(queryBusByClass).toBeInstanceOf(QueryBusLifecycleService);
+    expect(eventBusByClass).toBeInstanceOf(CqrsEventBusService);
+    expect(typeof commandBusByToken.execute).toBe('function');
+    expect(typeof queryBusByToken.execute).toBe('function');
+    expect(typeof eventBusByToken.publish).toBe('function');
+    expect(typeof eventBusByToken.publishAll).toBe('function');
+
+    await app.close();
+  });
+
   it('fails bootstrap when duplicate command handlers are registered for one command type', async () => {
     @CommandHandler(CreateUserCommand)
     class FirstCreateUserHandler {
@@ -273,7 +300,7 @@ describe('@konekti/cqrs', () => {
     expect(publish).toHaveBeenNthCalledWith(3, events[1]);
   });
 
-  it('exposes EVENT_BUS as the canonical CQRS event-bus token', async () => {
+  it('keeps EVENT_BUS available as a compatibility CQRS event-bus token', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
@@ -282,7 +309,8 @@ describe('@konekti/cqrs', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
 
-    expect(eventBus).toBeInstanceOf(CqrsEventBusService);
+    expect(typeof eventBus.publish).toBe('function');
+    expect(typeof eventBus.publishAll).toBe('function');
 
     await app.close();
   });

@@ -1,5 +1,6 @@
 export { QueueWorker } from './decorators.js';
 export { QueueModule, createQueueProviders } from './module.js';
+export { QueueLifecycleService } from './service.js';
 export * from './status.js';
 export { QUEUE } from './tokens.js';
 export type {

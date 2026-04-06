@@ -9,7 +9,7 @@ import type { MicroserviceModuleOptions } from './types.js';
  * Creates DI providers for the microservice runtime and transport options.
  *
  * @param options Microservice transport configuration consumed by the runtime lifecycle service.
- * @returns Provider definitions that register `MICROSERVICE_OPTIONS` and the runtime `MICROSERVICE` service.
+ * @returns Provider definitions that register `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, and the compatibility alias `MICROSERVICE`.
  */
 export function createMicroservicesProviders(options: MicroserviceModuleOptions): Provider[] {
   return [
@@ -17,9 +17,25 @@ export function createMicroservicesProviders(options: MicroserviceModuleOptions)
       provide: MICROSERVICE_OPTIONS,
       useValue: options,
     },
+    MicroserviceLifecycleService,
     {
+      inject: [MicroserviceLifecycleService],
       provide: MICROSERVICE,
-      useClass: MicroserviceLifecycleService,
+      useFactory: (service: unknown) => {
+        const runtime = service as MicroserviceLifecycleService;
+
+        return {
+          bidiStream: runtime.bidiStream ? (pattern: string, signal?: AbortSignal) => runtime.bidiStream!(pattern, signal) : undefined,
+          clientStream: runtime.clientStream ? (pattern: string, signal?: AbortSignal) => runtime.clientStream!(pattern, signal) : undefined,
+          close: (_signal?: string) => runtime.close(),
+          emit: (pattern: string, payload: unknown) => runtime.emit(pattern, payload),
+          listen: () => runtime.listen(),
+          send: (pattern: string, payload: unknown, signal?: AbortSignal) => runtime.send(pattern, payload, signal),
+          serverStream: runtime.serverStream
+            ? (pattern: string, payload: unknown, signal?: AbortSignal) => runtime.serverStream!(pattern, payload, signal)
+            : undefined,
+        };
+      },
     },
   ];
 }
@@ -32,13 +48,13 @@ export class MicroservicesModule {
    * Registers the microservice runtime providers as a global module.
    *
    * @param options Transport and handler runtime options for the microservice lifecycle service.
-   * @returns A module definition that exports the global `MICROSERVICE` token.
+   * @returns A module definition that exports `MicroserviceLifecycleService` and the compatibility token `MICROSERVICE`.
    */
   static forRoot(options: MicroserviceModuleOptions): ModuleType {
     class MicroservicesModuleDefinition {}
 
     return defineModule(MicroservicesModuleDefinition, {
-      exports: [MICROSERVICE],
+      exports: [MicroserviceLifecycleService, MICROSERVICE],
       global: true,
       providers: createMicroservicesProviders(options),
     });

@@ -8,6 +8,7 @@ export {
 export { GrpcMicroserviceTransport, type GrpcMicroserviceTransportOptions } from './grpc-transport.js';
 export { KafkaMicroserviceTransport, type KafkaMicroserviceTransportOptions } from './kafka-transport.js';
 export { MicroservicesModule, createMicroservicesProviders } from './module.js';
+export { MicroserviceLifecycleService } from './service.js';
 export { MqttMicroserviceTransport, type MqttMicroserviceTransportOptions } from './mqtt-transport.js';
 export { NatsMicroserviceTransport, type NatsMicroserviceTransportOptions } from './nats-transport.js';
 export {

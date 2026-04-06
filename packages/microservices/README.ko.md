@@ -46,9 +46,10 @@ await microservice.listen();
 
 ## API
 
-- `MicroservicesModule.forRoot(options)` - 글로벌 `MICROSERVICE` 생명주기 서비스를 등록합니다.
+- `MicroservicesModule.forRoot(options)` - 글로벌 `MicroserviceLifecycleService`와 호환 alias `MICROSERVICE`를 등록합니다.
 - `createMicroservicesProviders(options)` - 수동 구성을 위한 로우(raw) 프로바이더를 반환합니다.
-- `MICROSERVICE` - 런타임 마이크로서비스 서비스를 위한 DI 토큰입니다.
+- `MicroserviceLifecycleService` - 런타임 마이크로서비스 서비스를 위한 기본 class-first DI 진입점입니다.
+- `MICROSERVICE` - 런타임 마이크로서비스 서비스를 위한 호환 DI 토큰입니다.
 - `@MessagePattern(pattern)` - 요청/응답 핸들러를 등록합니다.
 - `@EventPattern(pattern)` - 이벤트 핸들러를 등록합니다.
 - `@ServerStreamPattern(pattern)` - gRPC 서버 스트리밍 핸들러를 등록합니다.
@@ -66,8 +67,13 @@ await microservice.listen();
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, `MICROSERVICE`, status snapshot helper를 지원합니다.
-- **internal**: metadata helper(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), 저수준 lifecycle wiring(`MicroserviceLifecycleService`, `MICROSERVICE_OPTIONS`), transport 내부 wire/descriptor 타입은 비계약 내부 동작이며 루트 배럴 공개 계약에 포함되지 않습니다.
+- **supported**: `MicroservicesModule.forRoot`, `createMicroservicesProviders`, `MicroserviceLifecycleService`, 호환 토큰 `MICROSERVICE`, 트랜스포트 데코레이터(`@MessagePattern`, `@EventPattern`, `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`), 트랜스포트 어댑터, status snapshot helper를 지원합니다.
+- **internal**: metadata helper(`defineHandlerMetadata`, `getHandlerMetadataEntries`, `microserviceMetadataSymbol`), `MICROSERVICE_OPTIONS`, transport 내부 wire/descriptor 타입은 비계약 내부 동작이며 루트 배럴 공개 계약에 포함되지 않습니다.
+
+### class-first DI 가이드
+
+- 컨테이너에서 구체 런타임 서비스를 직접 다뤄야 한다면 `MicroserviceLifecycleService` resolve/inject를 우선 사용하세요.
+- `MICROSERVICE`는 기존 explicit-token 호출부 호환성을 위한 대안 경로로만 유지됩니다.
 
 ### 마이그레이션 노트 (0.x)
 
@@ -412,10 +418,19 @@ for await (const message of reader) {
 런타임 앱 부트스트랩을 사용하고 동일한 컨테이너에서 마이크로서비스 런타임을 해결(resolve)합니다.
 
 ```typescript
+import { KonektiFactory } from '@konekti/runtime';
+import { MicroserviceLifecycleService, MICROSERVICE } from '@konekti/microservices';
+
 const app = await KonektiFactory.create(AppModule);
-const microservice = await app.container.resolve(MICROSERVICE);
+const microservice = await app.container.resolve(MicroserviceLifecycleService);
 
 await Promise.all([app.listen(), microservice.listen()]);
+```
+
+기존 코드베이스를 위한 호환 토큰 대안:
+
+```typescript
+const microservice = await app.container.resolve(MICROSERVICE);
 ```
 
 이 구성에서 앱과 마이크로서비스 런타임은 동일한 컨테이너에서 핸들러를 해결하므로, 싱글톤 프로바이더가 HTTP 및 마이크로서비스 흐름 전반에서 공유됩니다.

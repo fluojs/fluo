@@ -15,7 +15,7 @@ npm install @konekti/event-bus
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { EventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
+import { EventBusModule, EventBus, EventBusLifecycleService, OnEvent } from '@konekti/event-bus';
 
 class UserRegisteredEvent {
   constructor(public readonly userId: string) {}
@@ -28,7 +28,7 @@ class WelcomeEmailService {
   }
 }
 
-@Inject([EVENT_BUS])
+@Inject([EventBusLifecycleService])
 class UserService {
   constructor(private readonly eventBus: EventBus) {}
 
@@ -44,11 +44,24 @@ class UserService {
 export class AppModule {}
 ```
 
+기존 코드베이스를 위한 호환 토큰 대안:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { EVENT_BUS, type EventBus } from '@konekti/event-bus';
+
+@Inject([EVENT_BUS])
+class LegacyUserService {
+  constructor(private readonly eventBus: EventBus) {}
+}
+```
+
 ## API
 
-- `EventBusModule.forRoot()` - 글로벌 `EVENT_BUS` 및 생명주기 검색 서비스를 등록합니다.
+- `EventBusModule.forRoot()` - 글로벌 `EventBusLifecycleService`와 호환 alias `EVENT_BUS`를 등록합니다.
 - `createEventBusProviders()` - 수동 구성을 위한 로우(raw) 프로바이더를 반환합니다.
-- `EVENT_BUS` - 애플리케이션 이벤트 버스 인스턴스를 위한 DI 토큰입니다.
+- `EventBusLifecycleService` - 애플리케이션 이벤트 버스 인스턴스를 위한 기본 class-first DI 진입점입니다.
+- `EVENT_BUS` - 애플리케이션 이벤트 버스 인스턴스를 위한 호환 DI 토큰입니다.
 - `EventBus` - `publish(event, options?)` 메서드를 포함하는 인터페이스입니다.
 - `EventBusTransport` - 외부 트랜스포트 어댑터를 위한 인터페이스입니다.
 - `@OnEvent(EventClass)` - 프로바이더/컨트롤러 메서드를 이벤트 핸들러로 표시합니다.
@@ -58,8 +71,13 @@ export class AppModule {}
 
 런타임 루트 배럴 거버넌스 테스트는 런타임 export를 기준으로 동작합니다. 아래에 문서화된 공개 TypeScript 전용 계약은 계속 패키지 API의 일부이지만, `Object.keys(...)` snapshot assertion에는 나타나지 않습니다.
 
-- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
-- **internal**: metadata helper/descriptor(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`, `EventHandlerMetadata`, `EventHandlerDescriptor`)와 `EVENT_BUS_OPTIONS`, 그리고 문서화되지 않은 lifecycle/runtime wiring 세부사항은 비계약 내부 동작이며 루트 배럴 공개 계약에 포함되지 않습니다.
+- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EventBusLifecycleService`, 호환 토큰 `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, status snapshot helper를 지원합니다.
+- **internal**: metadata helper/descriptor(`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`, `EventHandlerMetadata`, `EventHandlerDescriptor`)와 `EVENT_BUS_OPTIONS`, 그리고 `EventBusLifecycleService`를 제외한 문서화되지 않은 lifecycle/runtime wiring 세부사항은 비계약 내부 동작이며 루트 배럴 공개 계약에 포함되지 않습니다.
+
+### class-first DI 가이드
+
+- 애플리케이션 코드에서는 `@Inject([EventBusLifecycleService])`를 우선 사용하세요.
+- `EVENT_BUS`는 기존 explicit-token 호출부 호환성을 위한 대안 경로로만 유지됩니다.
 
 ### 마이그레이션 노트 (0.x)
 

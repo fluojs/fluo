@@ -224,6 +224,7 @@ vi.mock('bullmq', () => ({
 import { QueueWorker } from './decorators.js';
 import { getQueueWorkerMetadata } from './metadata.js';
 import { QueueModule } from './module.js';
+import { QueueLifecycleService } from './service.js';
 import { QUEUE } from './tokens.js';
 import type { Queue } from './types.js';
 
@@ -325,6 +326,36 @@ describe('@konekti/queue', () => {
         jobName: 'welcome-job',
       },
     });
+  });
+
+  it('resolves QueueLifecycleService directly and keeps QUEUE as a compatibility alias', async () => {
+    const redis = new MockRedisClient();
+
+    class RedisTestModule {}
+    defineModule(RedisTestModule, {
+      exports: [REDIS_CLIENT],
+      global: true,
+      providers: [
+        {
+          provide: REDIS_CLIENT,
+          useValue: redis,
+        },
+      ],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisTestModule, QueueModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const queueByClass = await app.container.resolve(QueueLifecycleService);
+    const queueByToken = await app.container.resolve<Queue>(QUEUE);
+
+    expect(queueByClass).toBeInstanceOf(QueueLifecycleService);
+    expect(typeof queueByToken.enqueue).toBe('function');
+
+    await app.close();
   });
 
   it('discovers queue workers across imported modules and rehydrates job prototypes before handle(job)', async () => {

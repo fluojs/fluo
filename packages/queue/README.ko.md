@@ -15,7 +15,7 @@ npm install @konekti/queue @konekti/redis
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { QueueModule, QUEUE, Queue, QueueWorker } from '@konekti/queue';
+import { QueueModule, Queue, QueueLifecycleService, QueueWorker } from '@konekti/queue';
 import { RedisModule } from '@konekti/redis';
 
 class SendWelcomeEmailJob {
@@ -29,7 +29,7 @@ class SendWelcomeEmailWorker {
   }
 }
 
-@Inject([QUEUE])
+@Inject([QueueLifecycleService])
 class UserService {
   constructor(private readonly queue: Queue) {}
 
@@ -48,20 +48,38 @@ class UserService {
 export class AppModule {}
 ```
 
+기존 코드베이스를 위한 호환 토큰 대안:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { QUEUE, type Queue } from '@konekti/queue';
+
+@Inject([QUEUE])
+class LegacyUserService {
+  constructor(private readonly queue: Queue) {}
+}
+```
+
 ## API
 
-- `QueueModule.forRoot(options?)` - 글로벌 `QUEUE`와 lifecycle 기반 worker 처리를 등록합니다
+- `QueueModule.forRoot(options?)` - 글로벌 `QueueLifecycleService`와 호환 alias `QUEUE`를 등록합니다
 - `createQueueProviders(options?)` - 수동 조합을 위한 raw provider 목록을 반환합니다
-- `QUEUE` - queue enqueue를 위한 DI 토큰입니다
+- `QueueLifecycleService` - queue enqueue를 위한 기본 class-first DI 진입점입니다
+- `QUEUE` - queue enqueue를 위한 호환 DI 토큰입니다
 - `Queue` - `enqueue(job)`를 제공하는 인터페이스입니다
 - `@QueueWorker(JobClass, options?)` - 특정 job type을 처리할 singleton worker 클래스를 표시합니다
 - `createQueuePlatformStatusSnapshot(input)` - queue lifecycle/dependency/drain 신호를 공통 platform snapshot 필드로 매핑합니다
 
 ### 루트 배럴 공개 표면 거버넌스 (0.x)
 
-- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
+- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QueueLifecycleService`, 호환 토큰 `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
 - **compatibility-only**: 현재 루트 배럴에는 별도 항목이 없습니다. 향후 호환성 shim이 추가되면 릴리스 전에 이 섹션에 명시적으로 문서화되어야 합니다.
 - **internal**: `QUEUE_OPTIONS`는 내부 항목으로 유지되며 루트 배럴 공개 계약에서 의도적으로 제외됩니다.
+
+### class-first DI 가이드
+
+- 애플리케이션 코드에서는 `@Inject([QueueLifecycleService])`를 우선 사용하세요.
+- `QUEUE`는 기존 explicit-token 호출부 호환성을 위한 대안 경로로만 유지됩니다.
 
 ## 런타임 동작
 
