@@ -169,7 +169,7 @@
 
 | 패키지 | 역할 |
 |--------|------|
-| `@konekti/websocket` | 데코레이터 기반 게이트웨이 탐색, Node HTTP/S 업그레이드 연결 |
+| `@konekti/websocket` + `@konekti/websocket/node` | 공용 게이트웨이 데코레이터/계약과 명시적 Node `ws` 업그레이드 바인딩 |
 
 ### 선택 B — Socket.IO
 
