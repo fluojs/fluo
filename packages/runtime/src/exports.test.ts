@@ -18,6 +18,16 @@ describe('runtime export boundaries', () => {
     expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
   });
 
+  it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
+    expect(runtime.createHealthModule).toBeTypeOf('function');
+    expect(runtime.createConsoleApplicationLogger).toBeTypeOf('function');
+    expect(runtime.createJsonApplicationLogger).toBeTypeOf('function');
+    expect(runtime).toHaveProperty('APPLICATION_LOGGER');
+    expect(runtime).toHaveProperty('PLATFORM_SHELL');
+    expect(runtime).not.toHaveProperty('MetricsModule');
+    expect(runtime).not.toHaveProperty('TerminusModule');
+  });
+
   it('keeps internal root focused on wiring tokens', () => {
     expect(Object.keys(runtimeInternal).sort()).toEqual([
       'APPLICATION_LOGGER',
