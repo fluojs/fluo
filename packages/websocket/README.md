@@ -82,7 +82,7 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
 - Gateway instances resolve from `RUNTIME_CONTAINER`
-- The explicit Node seam uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
+- The explicit Node seam consumes the platform-selected realtime capability and, when that capability is `server-backed`, uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
 - Gateway path matching is exact and normalized (`/chat` != `/notifications`)
 - Non-singleton gateways are skipped with warnings
 - Handlers for gateways sharing the same socket/path execute in discovery order, not `Promise.all` parallel fan-out
@@ -95,6 +95,7 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
+- Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
 
 ## Provider registration constraints
 
