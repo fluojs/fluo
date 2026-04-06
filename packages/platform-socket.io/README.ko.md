@@ -71,6 +71,20 @@ export class AppModule {}
 - `transports`
 - `shutdown.timeoutMs` (기본값: `5000`)
 
+## 지원 어댑터 매트릭스
+
+`@konekti/platform-socket.io`는 현재 realtime capability seam을 통해 호환 가능한 Node HTTP/S host를 노출하는 server-backed 어댑터에서만 문서화·회귀 테스트되어 있습니다.
+
+- `@konekti/platform-nodejs`
+- `@konekti/platform-fastify`
+- `@konekti/platform-express`
+
+현재 이 패키지에서 Socket.IO 미지원 상태를 명시적으로 유지하는 런타임은 다음과 같습니다.
+
+- `@konekti/platform-bun`
+- `@konekti/platform-deno`
+- `@konekti/platform-cloudflare-workers`
+
 ## Runtime behavior
 
 - `@konekti/websocket` 데코레이터와 메타데이터 디스커버리를 재사용합니다
@@ -86,7 +100,9 @@ export class AppModule {}
 ## 의도된 제한 사항
 
 - `@konekti/platform-socket.io`는 `getServer()` 존재만으로 유효한 realtime 런타임이라고 가정하지 않습니다. 선택된 플랫폼 어댑터가 보고하는 명시적 realtime capability만 따릅니다.
+- 현재 Socket.IO 지원 주장은 namespace, room, shutdown 동작이 회귀 테스트된 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
 - `{ kind: 'unsupported', mode: 'no-op' }`를 보고하는 런타임은 그 명시적 경계에서 중단됩니다. 이 패키지는 Worker/fetch-style 런타임을 위해 Node listener lifecycle을 에뮬레이션하지 않습니다.
+- Bun, Deno, Cloudflare Workers는 이 패키지에 테스트된 호환 구현이 추가되기 전까지 Socket.IO 지원 주장 범위에 포함되지 않습니다.
 
 ## `@konekti/websocket`과의 차이
 

@@ -40,12 +40,12 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
-공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로, raw Node `@konekti/platform-nodejs` 경로, `@konekti/platform-express` Node.js 대안을 함께 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다. Raw `@konekti/websocket/node` 지원은 현재 테스트된 server-backed 어댑터(`platform-nodejs`, `platform-fastify`, `platform-express`)로 의도적으로 한정해 문서화되어 있으며, Bun·Deno·Cloudflare Workers는 테스트된 server-backed 구현이 생기기 전까지 그 지원 주장에 포함되지 않습니다.
+공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로, raw Node `@konekti/platform-nodejs` 경로, `@konekti/platform-express` Node.js 대안을 함께 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다. Raw `@konekti/websocket/node`와 `@konekti/platform-socket.io` 지원은 현재 테스트된 server-backed 어댑터(`platform-nodejs`, `platform-fastify`, `platform-express`)로 의도적으로 한정해 문서화되어 있으며, Bun·Deno·Cloudflare Workers는 테스트된 호환 구현이 생기기 전까지 그 지원 주장에 포함되지 않습니다.
 
 - `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
 - `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.
-- `reference/package-chooser.ko.md#실시간-통신-추가` - 현재 raw websocket 지원 어댑터 집합까지 포함한 작업 중심 realtime 패키지 가이드.
-- `reference/package-surface.ko.md#package-responsibilities` - 정직한 raw websocket 지원 경계를 포함한 표준 패키지 소유권 요약.
+- `reference/package-chooser.ko.md#실시간-통신-추가` - raw websocket과 Socket.IO 모두의 현재 지원 어댑터 집합을 포함한 작업 중심 realtime 패키지 가이드.
+- `reference/package-surface.ko.md#package-responsibilities` - 정직한 raw websocket 및 Socket.IO 지원 경계를 포함한 표준 패키지 소유권 요약.
 - `reference/toolchain-contract-matrix.ko.md` - 에코시스템 버전 관리 및 호환성 매트릭스.
 - `../packages/platform-fastify/README.ko.md` - 기본 Node.js 스타터 경로를 위한 `@konekti/platform-fastify` 계약.
 - `../packages/platform-nodejs/README.ko.md` - 런타임 facade 위 raw Node.js HTTP 시작 경로를 위한 `@konekti/platform-nodejs` 계약.

@@ -106,7 +106,7 @@ Konekti packages follow a **class-first** public surface rule. Concrete services
 - **`@konekti/platform-express`**: Express-based HTTP adapter.
 - **`@konekti/platform-bun`**: Bun-based HTTP adapter that reuses the shared `@konekti/runtime/web` fetch-style adapter seam for fetch-style runtime parity.
 - **`@konekti/platform-deno`**: Deno `Deno.serve(...)` adapter built on the shared `@konekti/runtime/web` fetch-style adapter seam.
-- **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators, consuming the platform-selected realtime capability instead of assuming direct raw Node server ownership.
+- **`@konekti/platform-socket.io`**: Socket.IO v4 gateway adapter built on the shared Konekti runtime and websocket decorators, consuming the platform-selected realtime capability instead of assuming direct raw Node server ownership. The current honest support claim is limited to the documented/tested server-backed adapters `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 - **`@konekti/microservices`**: Transport abstraction, pattern decorators, and microservice runtime. Subpath exports include `./tcp`, `./redis`, `./nats`, `./kafka`, `./rabbitmq`, `./grpc`, and `./mqtt` transport entrypoints.
 - **`@konekti/validation`**: Validation decorators, mapped DTO helpers, and validation engine.
 - **`@konekti/jwt`**: Core JWT logic.

@@ -179,9 +179,12 @@
 |--------|------|
 | `@konekti/platform-socket.io` | 선택된 플랫폼이 server-backed realtime capability를 보고할 때만 부팅하는, 공유 Konekti 런타임 위의 Socket.IO v4 게이트웨이 어댑터 |
 
+현재 `@konekti/platform-socket.io`의 정직한 지원 범위는 이 브랜치에서 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
+
 **사용하지 않는 경우:**
 - 실시간 요구가 서버 전송 이벤트(SSE)에 한정된다면 `@konekti/http`의 표준 HTTP 스트리밍 응답으로 충분할 수 있습니다.
 - 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면(예: Worker 계열 어댑터), Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
+- 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 `@konekti/platform-socket.io` 지원을 가정하지 마세요.
 - 별도 브랜치에서 호환 가능한 server-backed 구현과 테스트가 추가되지 않았다면 Bun/Deno에서 raw `@konekti/websocket/node` 지원을 가정하지 마세요.
 
 ---

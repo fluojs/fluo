@@ -51,6 +51,9 @@
     "socket.io": "^4.0.0"
   },
   "devDependencies": {
+    "@konekti/platform-express": "workspace:*",
+    "@konekti/platform-fastify": "workspace:*",
+    "@konekti/platform-nodejs": "workspace:*",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
   }
