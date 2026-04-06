@@ -29,8 +29,8 @@
       "import": "./dist/index.js"
     },
     "./redis": {
-      "types": "./dist/redis-transport.d.ts",
-      "import": "./dist/redis-transport.js"
+      "types": "./dist/transports/redis-transport.d.ts",
+      "import": "./dist/transports/redis-transport.js"
     }
   },
   "main": "./dist/index.js",
