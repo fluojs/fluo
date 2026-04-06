@@ -3,12 +3,12 @@ import { EVENT_BUS as KONEKTI_EVENT_BUS, type EventBus } from '@konekti/event-bu
 import type { OnApplicationShutdown, OnApplicationBootstrap } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
-import { CqrsBusBase } from './discovery.js';
-import { createIsolatedEvent } from './event-clone.js';
-import { getEventHandlerMetadata } from './metadata.js';
+import { CqrsBusBase } from '../discovery.js';
+import { createIsolatedEvent } from '../event-clone.js';
+import { getEventHandlerMetadata } from '../metadata.js';
 import { CqrsSagaLifecycleService } from './saga-bus.js';
-import { createCqrsPlatformStatusSnapshot } from './status.js';
-import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from './types.js';
+import { createCqrsPlatformStatusSnapshot } from '../status.js';
+import type { CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from '../types.js';
 
 function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   if (typeof value !== 'object' || value === null) {

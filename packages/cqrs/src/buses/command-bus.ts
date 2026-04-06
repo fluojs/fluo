@@ -2,16 +2,16 @@ import { Inject, InvariantError } from '@konekti/core';
 import type { OnApplicationBootstrap } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
-import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from './errors.js';
-import { getCommandHandlerMetadata } from './metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage } from './discovery.js';
+import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
+import { getCommandHandlerMetadata } from '../metadata.js';
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
   CommandBus,
   CommandHandlerDescriptor,
   CommandType,
   ICommand,
   ICommandHandler,
-} from './types.js';
+} from '../types.js';
 
 function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, unknown> {
   if (typeof value !== 'object' || value === null) {

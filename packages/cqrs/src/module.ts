@@ -2,10 +2,10 @@ import type { Provider } from '@konekti/di';
 import { EventBusModule, type EventBusModuleOptions } from '@konekti/event-bus';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
-import { CommandBusLifecycleService } from './command-bus.js';
-import { CqrsEventBusService } from './event-bus.js';
-import { QueryBusLifecycleService } from './query-bus.js';
-import { CqrsSagaLifecycleService } from './saga-bus.js';
+import { CommandBusLifecycleService } from './buses/command-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
+import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandHandlerClass,

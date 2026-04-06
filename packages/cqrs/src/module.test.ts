@@ -6,7 +6,7 @@ import { OnEvent, type EventBusTransport } from '@konekti/event-bus';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
-import { CommandBusLifecycleService } from './command-bus.js';
+import { CommandBusLifecycleService } from './buses/command-bus.js';
 import {
   CommandHandlerNotFoundException,
   DuplicateCommandHandlerError,
@@ -14,11 +14,11 @@ import {
   QueryHandlerNotFoundException,
   SagaExecutionError,
 } from './errors.js';
-import { CqrsEventBusService } from './event-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
-import { QueryBusLifecycleService } from './query-bus.js';
-import { CqrsSagaLifecycleService } from './saga-bus.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
+import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,

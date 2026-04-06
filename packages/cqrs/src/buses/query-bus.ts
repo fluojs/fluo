@@ -4,16 +4,16 @@ import {
 } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
-import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from './errors.js';
-import { getQueryHandlerMetadata } from './metadata.js';
-import { CqrsBusBase, createDuplicateHandlerMessage } from './discovery.js';
+import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from '../errors.js';
+import { getQueryHandlerMetadata } from '../metadata.js';
+import { CqrsBusBase, createDuplicateHandlerMessage } from '../discovery.js';
 import type {
   IQuery,
   IQueryHandler,
   QueryBus,
   QueryHandlerDescriptor,
   QueryType,
-} from './types.js';
+} from '../types.js';
 
 function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>, unknown> {
   if (typeof value !== 'object' || value === null) {

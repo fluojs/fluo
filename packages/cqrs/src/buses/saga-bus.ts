@@ -4,11 +4,11 @@ import { Inject, InvariantError, KonektiError, type Token } from '@konekti/core'
 import type { OnApplicationBootstrap, OnApplicationShutdown } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 
-import { CqrsBusBase } from './discovery.js';
-import { SagaExecutionError } from './errors.js';
-import { createIsolatedEvent } from './event-clone.js';
-import { getSagaMetadata } from './metadata.js';
-import type { CqrsEventType, IEvent, ISaga, SagaDescriptor } from './types.js';
+import { CqrsBusBase } from '../discovery.js';
+import { SagaExecutionError } from '../errors.js';
+import { createIsolatedEvent } from '../event-clone.js';
+import { getSagaMetadata } from '../metadata.js';
+import type { CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
 
 function isSaga(value: unknown): value is ISaga<IEvent> {
   if (typeof value !== 'object' || value === null) {

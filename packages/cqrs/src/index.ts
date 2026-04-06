@@ -25,9 +25,9 @@ export {
 } from './metadata.js';
 export { CqrsModule, createCqrsProviders, type CqrsModuleOptions } from './module.js';
 export * from './status.js';
-export { CommandBusLifecycleService } from './command-bus.js';
-export { CqrsEventBusService } from './event-bus.js';
-export { QueryBusLifecycleService } from './query-bus.js';
+export { CommandBusLifecycleService } from './buses/command-bus.js';
+export { CqrsEventBusService } from './buses/event-bus.js';
+export { QueryBusLifecycleService } from './buses/query-bus.js';
 export { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 export type {
   CommandBus,
