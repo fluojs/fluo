@@ -12,7 +12,11 @@ import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { HTTP_APPLICATION_ADAPTER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import {
+  createNoopHttpApplicationAdapter,
+  createServerBackedHttpAdapterRealtimeCapability,
+  type HttpApplicationAdapter,
+} from '@konekti/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
@@ -117,15 +121,15 @@ function createTestLifecycleService(
 ): WebSocketGatewayLifecycleService {
   const adapter: HttpApplicationAdapter = {
     async close() {},
-    getServer() {
-      return {
+    getRealtimeCapability() {
+      return createServerBackedHttpAdapterRealtimeCapability({
         off() {
           return this;
         },
         on() {
           return this;
         },
-      };
+      });
     },
     async listen() {},
   };
@@ -347,7 +351,7 @@ describe('@konekti/websocket', () => {
     await app.close();
   });
 
-  it('fails fast when the HTTP adapter does not expose a Node server', async () => {
+  it('fails fast when the HTTP adapter does not expose a realtime capability seam', async () => {
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       @OnMessage('ping')
@@ -368,10 +372,31 @@ describe('@konekti/websocket', () => {
         },
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('WebSocket gateway bootstrap requires an HTTP adapter with getServer()');
+    ).rejects.toThrow('WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability()');
   });
 
-  it('exposes a Node server through the runtime adapter token', async () => {
+  it('fails fast when the selected adapter reports unsupported realtime behavior', async () => {
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter: createNoopHttpApplicationAdapter(),
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('WebSocket gateway bootstrap requires a server-backed realtime capability');
+  });
+
+  it('exposes a server-backed realtime capability through the runtime adapter token', async () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [WebSocketModule.forRoot()],
@@ -383,8 +408,11 @@ describe('@konekti/websocket', () => {
     });
     const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
 
-    expect(typeof adapter.getServer).toBe('function');
-    expect(adapter.getServer?.()).toBeDefined();
+    expect(typeof adapter.getRealtimeCapability).toBe('function');
+    expect(adapter.getRealtimeCapability?.()).toEqual({
+      kind: 'server-backed',
+      server: expect.anything(),
+    });
 
     await app.close();
   });
