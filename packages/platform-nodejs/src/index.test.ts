@@ -14,6 +14,7 @@ import {
   createNodejsAdapter,
   runNodejsApplication,
 } from './index.js';
+import * as platformNodejsApi from './index.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -44,6 +45,13 @@ describe('@konekti/platform-nodejs', () => {
   it('re-exports the existing Node compatibility helpers through the platform package', () => {
     expect(bootstrapNodejsApplication).toBe(bootstrapNodeApplication);
     expect(runNodejsApplication).toBe(runNodeApplication);
+  });
+
+  it('keeps advanced process and compression utilities off the primary platform startup surface', () => {
+    expect(platformNodejsApi).not.toHaveProperty('compressNodeResponse');
+    expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
+    expect(platformNodejsApi).not.toHaveProperty('createNodeShutdownSignalRegistration');
+    expect(platformNodejsApi).not.toHaveProperty('registerShutdownSignals');
   });
 
   it('supports adapter-first startup on the runtime facade for raw Node', async () => {

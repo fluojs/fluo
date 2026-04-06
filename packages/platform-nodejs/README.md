@@ -37,6 +37,15 @@ await app.listen();
 - `bootstrapNodejsApplication(rootModule, options)` - compatibility bootstrap helper without implicit listen
 - `runNodejsApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
 
+### Node helper ownership
+
+| concern | public home | role |
+| --- | --- | --- |
+| Primary raw Node startup | `@konekti/platform-nodejs` → `createNodejsAdapter()` | Canonical raw Node adapter-first path on the runtime facade. |
+| Node-scoped startup wrappers | `@konekti/platform-nodejs` → `bootstrapNodejsApplication()` / `runNodejsApplication()` | Compatibility wrappers that stay with the raw Node package instead of the transport-neutral runtime root. |
+| Shutdown signal wiring utilities | `@konekti/runtime/node` → `createNodeShutdownSignalRegistration()` / `registerShutdownSignals()` | Advanced process helpers for compatibility or custom Node bootstraps, not part of the primary startup model. |
+| Explicit Node compression helpers | `@konekti/runtime/node` → `createNodeResponseCompression()` / `compressNodeResponse()` | Advanced Node-only response-writer utilities, kept separate from the primary startup entrypoints. |
+
 ### Supported options
 
 `createNodejsAdapter()`, `bootstrapNodejsApplication()`, and `runNodejsApplication()` preserve the current raw-Node option shape:
@@ -74,4 +83,4 @@ await app.listen();
 
 - This package owns the raw Node adapter boundary directly, but still relies on the explicit `@konekti/runtime/internal-node` seam for shared Node-only transport internals.
 - No new adapterless startup semantics are introduced here. If you omit an adapter entirely, use `createApplicationContext()` for DI/lifecycle-only bootstraps instead of expecting HTTP serving behavior.
-- Advanced Node-only internals such as compression helpers and shutdown-registration utilities remain available through `@konekti/runtime/node` as compatibility exports.
+- Advanced Node-only internals such as compression helpers and shutdown-registration utilities stay on `@konekti/runtime/node`, so the primary `@konekti/platform-nodejs` startup surface remains focused on adapter selection and Node-scoped wrapper entrypoints.

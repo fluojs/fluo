@@ -36,6 +36,7 @@ npm install @konekti/runtime
 ### 0.x migration note
 
 - Raw Node adapter-first startup now lives at `@konekti/platform-nodejs`. Keep `@konekti/runtime/node` as the compatibility entrypoint, while the implementation now lives behind the explicit `@konekti/runtime/internal-node` seam that platform-owned Node packages compose directly.
+- Node-scoped startup wrappers now belong conceptually to `@konekti/platform-nodejs`, while explicit shutdown-signal wiring and compression helpers stay on `@konekti/runtime/node` as advanced Node-only utilities.
 - Transport-facing multipart parsing no longer exports from the `@konekti/runtime` root barrel. Shared Web/fetch-style parsing helpers now live under `@konekti/runtime/web`.
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 - `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
@@ -546,6 +547,13 @@ The explicit `@konekti/runtime/internal-node` seam now owns the raw Node transpo
 - Startup log
 - Explicit `SIGTERM`/`SIGINT` → `app.close()` registration for Node-owned startup paths
 - Request abort signal → `FrameworkRequest.signal` bridge
+
+| concern | public home | guidance |
+| --- | --- | --- |
+| Canonical raw Node startup | `@konekti/platform-nodejs` | Prefer `KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })` for the primary Node startup model. |
+| Compatibility startup wrappers | `@konekti/platform-nodejs` | `bootstrapNodejsApplication()` / `runNodejsApplication()` stay Node-scoped, but remain secondary to the adapter-first path. |
+| Shutdown signal wiring | `@konekti/runtime/node` | `createNodeShutdownSignalRegistration()` and `registerShutdownSignals()` are advanced Node process utilities, not part of the primary startup surface. |
+| Explicit compression helpers | `@konekti/runtime/node` | `createNodeResponseCompression()` and `compressNodeResponse()` stay available for Node-only response writing without widening the runtime root barrel. |
 
 The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in `@konekti/runtime/node` bootstrap options to override the default 10-second drain window.
 

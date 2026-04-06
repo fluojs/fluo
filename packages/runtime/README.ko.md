@@ -36,6 +36,7 @@ npm install @konekti/runtime
 ### 0.x 마이그레이션 노트
 
 - raw Node adapter-first 시작 경로는 이제 `@konekti/platform-nodejs`에 있습니다. `@konekti/runtime/node`는 호환 entrypoint로 유지되고, 실제 구현은 이제 platform 패키지가 직접 조합하는 명시적 Node 전용 seam인 `@konekti/runtime/internal-node` 뒤에 위치합니다.
+- Node 전용 startup wrapper는 개념적으로 `@konekti/platform-nodejs`에 속하고, 명시적 shutdown signal wiring 및 compression helper는 고급 Node 전용 유틸리티로서 `@konekti/runtime/node`에 남겨 둡니다.
 - transport 지향 multipart 파싱은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. 공유 Web/fetch-style 파싱 헬퍼는 이제 `@konekti/runtime/web` 아래에 있습니다.
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 - `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰으로 범위를 줄였습니다. 공유 어댑터 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`, 요청/응답 팩토리 헬퍼는 `@konekti/runtime/internal/request-response-factory`로 이동했습니다.
@@ -538,6 +539,13 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 - 시작 로그
 - Node 소유 시작 경로를 위한 명시적 `SIGTERM`/`SIGINT` → `app.close()` 등록
 - 요청 중단 시그널 → `FrameworkRequest.signal` 브리지
+
+| concern | public home | guidance |
+| --- | --- | --- |
+| canonical raw Node 시작 경로 | `@konekti/platform-nodejs` | 기본 Node 시작 모델에서는 `KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`를 우선 사용하세요. |
+| 호환 startup wrapper | `@konekti/platform-nodejs` | `bootstrapNodejsApplication()` / `runNodejsApplication()`은 Node 전용 경로에 남기되, adapter-first 경로보다 우선하지 않습니다. |
+| shutdown signal wiring | `@konekti/runtime/node` | `createNodeShutdownSignalRegistration()`과 `registerShutdownSignals()`는 기본 startup surface가 아닌 고급 Node 프로세스 유틸리티입니다. |
+| 명시적 compression helper | `@konekti/runtime/node` | `createNodeResponseCompression()`과 `compressNodeResponse()`는 런타임 루트 배럴을 넓히지 않고 Node 전용 응답 작성에 사용합니다. |
 
 Node 어댑터는 종료 시 새로운 연결 수락을 중단하고, 시작된 요청들을 정해진 시간 동안 드레인(drain)하며, 유휴 상태의 keep-alive 연결을 닫고, 종료 타임아웃이 만료되면 남은 연결들을 강제로 종료합니다. 기본 10초 드레인 윈도우를 변경하려면 `@konekti/runtime/node` 부트스트랩 옵션의 `shutdownTimeoutMs`를 사용하세요.
 
