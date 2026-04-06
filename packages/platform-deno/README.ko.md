@@ -88,4 +88,4 @@ await runDenoApplication(AppModule, {
 - Bun, Cloudflare, Deno Deploy 전용 bootstrap helper는 여기서 제공하지 않습니다.
 - 아직 Deno native HTTPS/TLS passthrough는 노출하지 않습니다. public contract가 정의되면 별도 이슈로 추가하세요.
 - 이 어댑터는 native Web `Request` / `Response` 의미론을 대상으로 하며 Node compatibility layer는 제공하지 않습니다.
-- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Deno 전용 raw websocket host와 테스트가 별도 이슈에서 추가되기 전까지 raw `@konekti/websocket/node` 호스팅은 계속 unsupported입니다.
+- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Deno는 websocket 처리에 `Deno.upgradeWebSocket()`을 사용하며, 이는 `@konekti/websocket/node`가 요구하는 Node `upgrade` 리스너 모델(`ws` + `handleUpgrade`)과 호환되지 않습니다. raw websocket 지원을 주장하려면 Deno 네이티브 websocket 호스팅과 end-to-end 테스트를 갖춘 전용 `@konekti/websocket/deno` 바인딩 서브패스가 필요합니다.

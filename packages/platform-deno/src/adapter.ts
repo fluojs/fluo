@@ -79,7 +79,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Deno exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+      'Deno uses Deno.upgradeWebSocket() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/deno binding is needed before raw websocket support can be claimed.',
     );
   }
 

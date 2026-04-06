@@ -130,7 +130,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+      'Bun uses Bun.serve() with server.upgrade() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/bun binding is needed before raw websocket support can be claimed.',
     );
   }
 
