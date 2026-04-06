@@ -55,7 +55,7 @@ await app.listen();
 ## supported operations
 
 - adapter-first 런타임 facade(`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`)를 통해 raw Node.js HTTP 리스너를 명시적으로 선택합니다.
-- 기존 런타임 소유 구현에 위임하여 현재 Node request/response 브리지, startup logging, graceful shutdown, HTTPS, retry 시맨틱을 그대로 유지합니다.
+- raw Node 어댑터 entrypoint를 이 패키지가 직접 소유하고, 명시적인 `@konekti/runtime/internal-node` seam을 조합하여 현재 Node request/response 브리지, startup logging, graceful shutdown, HTTPS, retry 시맨틱을 그대로 유지합니다.
 - 헬퍼 wrapper 경로가 필요한 사용자를 위해 호환 부트스트랩 헬퍼도 계속 제공합니다.
 
 ## runtime invariants
@@ -72,6 +72,6 @@ await app.listen();
 
 ## intentional limitations
 
-- 이 패키지는 raw Node 시작 경계의 공개 패키지 구조를 정리하는 역할만 하며, 실제 구현 소유권을 `@konekti/runtime/node` 밖으로 옮기지는 않습니다.
+- 이 패키지는 raw Node 어댑터 경계를 직접 소유하지만, 공유되는 Node 전용 transport 내부 구현은 명시적인 `@konekti/runtime/internal-node` seam에 의존합니다.
 - 여기서는 새로운 adapterless startup 시맨틱을 도입하지 않습니다. 어댑터를 생략한 경우 HTTP 서빙을 기대하지 말고, DI/생명주기 전용 부트스트랩에는 `createApplicationContext()`를 사용하세요.
-- compression helper나 shutdown registration utility 같은 고급 Node 전용 내부 API는 당분간 `@konekti/runtime/node`에 남아 있습니다.
+- compression helper나 shutdown registration utility 같은 고급 Node 전용 내부 API는 호환 export로서 계속 `@konekti/runtime/node`에서도 사용할 수 있습니다.
