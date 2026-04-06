@@ -61,6 +61,7 @@ await app.listen();
 - Express 요청/응답을 `FrameworkRequest` / `FrameworkResponse`로 브리지합니다.
 - SSE 및 기타 어댑터 소유 응답 스트리밍 경로를 위해 `FrameworkResponse.stream`을 노출합니다.
 - Node가 소유하는 realtime listener 경계가 필요한 통합을 위해 `{ kind: 'server-backed', server }` realtime capability를 노출합니다.
+- 그 realtime capability seam을 통해 raw `@konekti/websocket/node` 게이트웨이 호스팅을 지원합니다.
 - 모든 인바운드 요청을 Konekti HTTP 디스패처로 전달합니다.
 - 멀티파트가 아닌 요청에서 `rawBody` 선택(opt-in) 보존을 지원합니다.
 - multipart form-data 파싱과 `UploadedFile[]` 노출을 지원합니다.
@@ -85,7 +86,7 @@ await app.listen();
 - 이 어댑터는 `@konekti/runtime`를 대체하지 않으며, 부트스트랩/생명주기/DI/종료 소유권은 런타임 패키지에 유지됩니다.
 - Express plugin/middleware passthrough 계층은 제공하지 않으며, 미들웨어/가드/인터셉터는 Konekti 디스패처 계약을 통해 동작합니다.
 - standalone Express 모드는 제공하지 않습니다. 이 어댑터는 런타임 소유 시작 경로를 전제로 합니다.
-- 이 패키지에는 WebSocket upgrade 처리가 포함되지 않습니다.
+- 이 패키지가 자체 WebSocket 게이트웨이 API나 별도 트랜스포트 표면을 제공하지는 않으며, realtime 통합은 노출된 server-backed capability seam을 통해 붙어야 합니다.
 
 #### 0.x 마이그레이션 노트
 

@@ -61,6 +61,7 @@ await app.listen();
 - Bridges Express requests and responses into `FrameworkRequest` / `FrameworkResponse`.
 - Exposes `FrameworkResponse.stream` for SSE and other adapter-owned response streaming paths.
 - Exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need a Node-owned realtime listener boundary.
+- Supports raw `@konekti/websocket/node` gateway hosting through that realtime capability seam.
 - Dispatches every incoming request through the Konekti HTTP dispatcher.
 - Supports `rawBody` opt-in for non-multipart requests.
 - Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
@@ -85,7 +86,7 @@ await app.listen();
 - This adapter does not replace `@konekti/runtime`; runtime bootstrap, lifecycle, DI, and shutdown ownership stay in the runtime package.
 - No Express plugin/middleware passthrough layer is provided; middleware/guards/interceptors run through Konekti dispatcher contracts.
 - No standalone Express mode; this adapter is designed for runtime-managed startup.
-- No WebSocket upgrade handling in this package.
+- This package does not ship its own WebSocket gateway API or alternate transport surface; realtime integrations should consume the exposed server-backed capability seam instead.
 
 #### 0.x migration note
 
