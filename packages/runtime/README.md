@@ -40,7 +40,7 @@ npm install @konekti/runtime
 - Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
 - `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
 - Node-only response compression no longer exports from the `@konekti/runtime` root barrel. Transport-owned response writers should use the adapter-facing `FrameworkResponse.compression` seam, and Node runtimes that still need explicit zlib compression can import `createNodeResponseCompression` / `compressNodeResponse` from `@konekti/runtime/node`.
-- Fetch-style runtimes can now import `createWebRequestResponseFactory`, `createWebFrameworkRequest`, and `dispatchWebRequest` from `@konekti/runtime/web` to share native Web `Request` / `Response` bridging across Bun, Deno, and Cloudflare Worker adapters.
+- Fetch-style runtimes can now import `createWebRequestResponseFactory`, `createWebFrameworkRequest`, and `dispatchWebRequest` from `@konekti/runtime/web`, the dedicated fetch-style adapter seam that keeps native Web `Request` / `Response` bridging shared across Bun, Deno, and Cloudflare Worker adapters without widening the runtime root barrel.
 
 ## Quick Start
 
@@ -532,7 +532,7 @@ Request-scoped and transient providers are excluded from lifecycle hooks — onl
 
 Additional public root exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Shared multipart and fetch-style request/response helpers live under `@konekti/runtime/web`, while Node-specific helpers live under `@konekti/runtime/node`.
 
-The `@konekti/runtime/web` subpath keeps fetch-style adapter work transport-neutral: it translates native Web `Request` objects into `FrameworkRequest`, preserves the existing raw-body/multipart/error-envelope contracts, exposes `FrameworkResponse.stream` as a Web-stream-backed capability, and finalizes framework writes back into a native Web `Response`.
+The `@konekti/runtime/web` subpath is the long-term home for fetch-style bridge ownership: it is shared by environment-specific adapter packages, but it stays outside the transport-neutral runtime root barrel so the runtime package remains focused on orchestration rather than choosing a concrete execution target. That subpath translates native Web `Request` objects into `FrameworkRequest`, preserves the existing raw-body/multipart/error-envelope contracts, exposes `FrameworkResponse.stream` as a Web-stream-backed capability, and finalizes framework writes back into a native Web `Response`.
 
 `createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
 

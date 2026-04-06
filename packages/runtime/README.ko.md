@@ -40,7 +40,7 @@ npm install @konekti/runtime
 - 공유 어댑터 부트스트랩은 더 이상 Node 전역 shutdown 등록을 암묵적으로 import 하지 않습니다. 공유 어댑터 헬퍼를 조합하는 런타임은 shutdown signal 연결을 명시적으로 제공해야 하며, `@konekti/runtime/node`는 기존 `SIGTERM` / `SIGINT` 동작을 계속 유지합니다.
 - `@konekti/runtime/internal`은 이제 프레임워크 내부 wiring 토큰으로 범위를 줄였습니다. 공유 어댑터 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`, 요청/응답 팩토리 헬퍼는 `@konekti/runtime/internal/request-response-factory`로 이동했습니다.
 - Node 전용 응답 압축은 더 이상 `@konekti/runtime` 루트 배럴에서 export 되지 않습니다. transport 소유 응답 작성기는 어댑터 지향 `FrameworkResponse.compression` seam을 사용해야 하며, 명시적인 zlib 압축이 계속 필요한 Node 런타임은 `@konekti/runtime/node`에서 `createNodeResponseCompression` / `compressNodeResponse`를 import 하세요.
-- 이제 fetch 스타일 런타임은 `@konekti/runtime/web`에서 `createWebRequestResponseFactory`, `createWebFrameworkRequest`, `dispatchWebRequest`를 import 하여 Bun, Deno, Cloudflare Workers 어댑터 전반에 걸쳐 native Web `Request` / `Response` 브리징을 공유할 수 있습니다.
+- 이제 fetch 스타일 런타임은 `@konekti/runtime/web`에서 `createWebRequestResponseFactory`, `createWebFrameworkRequest`, `dispatchWebRequest`를 import 하여 Bun, Deno, Cloudflare Workers 어댑터 전반에 걸쳐 native Web `Request` / `Response` 브리징을 공유할 수 있습니다. 이 서브패스는 런타임 루트 배럴을 넓히지 않으면서 fetch-style 어댑터가 함께 쓰는 전용 seam입니다.
 
 ## 빠른 시작
 
@@ -524,7 +524,7 @@ KonektiFactory.create(options)  [또는 bootstrapApplication]
 
 추가적인 루트 공개 익스포트에는 `KonektiFactory`, `createHealthModule`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, `createAbortError`와 같은 헬퍼들이 포함됩니다. 공유 multipart 및 fetch-style 요청/응답 헬퍼는 `@konekti/runtime/web`, Node 전용 헬퍼는 `@konekti/runtime/node`에 위치합니다.
 
-`@konekti/runtime/web` 서브패스는 fetch 스타일 어댑터 작업을 transport-neutral하게 유지합니다. native Web `Request`를 `FrameworkRequest`로 변환하고, 기존 raw-body/multipart/error-envelope 계약을 유지하며, `FrameworkResponse.stream`을 Web Stream 기반 capability로 노출하고, 프레임워크 응답 쓰기를 다시 native Web `Response`로 마무리합니다.
+`@konekti/runtime/web` 서브패스는 fetch-style 브리지의 장기 소유 위치입니다. Bun/Deno/Cloudflare Workers 같은 환경별 어댑터 패키지가 함께 재사용하지만, transport-neutral한 런타임 루트 배럴 바깥에 남겨 두어 `@konekti/runtime` 자체는 계속 orchestration에만 집중합니다. 이 서브패스는 native Web `Request`를 `FrameworkRequest`로 변환하고, 기존 raw-body/multipart/error-envelope 계약을 유지하며, `FrameworkResponse.stream`을 Web Stream 기반 capability로 노출하고, 프레임워크 응답 쓰기를 다시 native Web `Response`로 마무리합니다.
 
 `createHealthModule()`은 런타임 소유의 활성/준비 상태 쌍을 노출합니다. `/health`는 `200 { status: 'ok' }`를 반환하는 활성(liveness) 엔드포인트이며, `/ready`는 시작 상태와 등록된 준비 상태 확인(readiness checks) 결과를 `starting`, `ready`, `unavailable` 상태로 반영합니다.
 
