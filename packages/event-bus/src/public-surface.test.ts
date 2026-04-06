@@ -7,6 +7,7 @@ describe('@konekti/event-bus root barrel public surface', () => {
     expect(eventBus).toHaveProperty('EventBusModule');
     expect(eventBus).not.toHaveProperty('createEventBusModule');
     expect(eventBus).toHaveProperty('createEventBusProviders');
+    expect(eventBus).toHaveProperty('EventBusLifecycleService');
     expect(eventBus).toHaveProperty('EVENT_BUS');
     expect(eventBus).not.toHaveProperty('EVENT_BUS_OPTIONS');
     expect(eventBus).toHaveProperty('OnEvent');

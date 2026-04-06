@@ -133,6 +133,22 @@ describe('@konekti/event-bus', () => {
     await app.close();
   });
 
+  it('resolves EventBusLifecycleService directly and keeps EVENT_BUS as a compatibility alias', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [EventBusModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBusByClass = await app.container.resolve(EventBusLifecycleService);
+    const eventBusByToken = await app.container.resolve<EventBus>(EVENT_BUS);
+
+    expect(eventBusByClass).toBeInstanceOf(EventBusLifecycleService);
+    expect(typeof eventBusByToken.publish).toBe('function');
+
+    await app.close();
+  });
+
   it('dispatches to multiple handlers and isolates handler failures without propagating to publisher', async () => {
     const loggerEvents: string[] = [];
 
