@@ -1,6 +1,6 @@
 import type { Redis } from 'ioredis';
 
-import type { EventBusTransport } from './types.js';
+import type { EventBusTransport } from '../types.js';
 
 export interface RedisEventBusTransportOptions {
   publishClient: Redis;
