@@ -49,6 +49,7 @@ Konekti maintains a narrow public surface, moving most behavior behind stable de
 - `@konekti/di`: explicit token-based provider resolution and scopes.
 - `@konekti/http`: request execution, validation/materialization entrypoints, exceptions, and route metadata.
 - `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, adapter bootstrapping, and dev-mode config reload application.
+- `@konekti/platform-*`: runtime/protocol adapter packages that implement `PlatformAdapter` and bridge the abstract HTTP layer to concrete runtimes or server libraries; see `../reference/package-surface.md#platform--naming-convention` for naming rationale and package-selection guidance.
 - `@konekti/validation` package: input materialization and validation engine.
 - `@konekti/serialization` package: output shaping and response serialization decorators plus interceptor support.
 - `@konekti/jwt`: token-core concerns.
@@ -85,6 +86,7 @@ Implementation details are located in:
 Konekti is currently HTTP-first.
 
 - The official runtime and starter paths assume HTTP request/response execution.
+- Packages named `@konekti/platform-*` mark the runtime/protocol adapter boundary rather than generic library wrappers.
 - Adapter-agnostic framework types exist but do not imply supported non-HTTP surfaces.
 - Support for non-HTTP transports (e.g., websockets, gateways) is deferred to future updates.
 

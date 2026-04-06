@@ -49,6 +49,7 @@ Konekti는 공개되는 인터페이스를 좁게 유지하며, 대부분의 동
 - `@konekti/di`: 명시적인 토큰 기반 프로바이더 해결 및 스코프.
 - `@konekti/http`: 요청 실행, 유효성 검사/물질화(materialization) 진입점, 예외, 라우트 메타데이터.
 - `@konekti/runtime`: 설정 조립, DI, 핸들러 매핑, 상태 확인(health/readiness), 어댑터 부트스트랩, 개발 모드 설정 리로드 적용.
+- `@konekti/platform-*`: `PlatformAdapter`를 구현하고 추상 HTTP 레이어를 구체 런타임 또는 서버 라이브러리에 연결하는 런타임/프로토콜 어댑터 패키지입니다. 네이밍 이유와 선택 기준은 `../reference/package-surface.ko.md#platform--네이밍-규칙`을 참조하세요.
 - `@konekti/validation` 패키지: 입력 물질화(materialization) 및 유효성 검사 엔진.
 - `@konekti/serialization` 패키지: 출력 형태 조정 및 응답 직렬화 데코레이터와 인터셉터 지원.
 - `@konekti/jwt`: 토큰 핵심 로직.
@@ -85,6 +86,7 @@ bootstrap -> handler mapping -> app middleware -> route match -> module middlewa
 Konekti는 현재 HTTP 우선(HTTP-first)입니다.
 
 - 공식 런타임 및 스타터 경로는 HTTP 요청/응답 실행을 전제로 합니다.
+- `@konekti/platform-*`라는 이름은 범용 라이브러리 래퍼가 아니라 런타임/프로토콜 어댑터 경계를 의미합니다.
 - 어댑터에 구애받지 않는 프레임워크 타입이 존재하지만, 지원되는 비 HTTP 인터페이스를 의미하지는 않습니다.
 - 비 HTTP 트랜스포트(예: 웹소켓, 게이트웨이) 지원은 향후 업데이트로 유보되었습니다.
 
