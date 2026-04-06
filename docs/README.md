@@ -40,10 +40,12 @@ Practical guides for day-to-day development once your application is running.
 
 Konekti is highly composable. Use these links to discover and select the right tools for your task.
 
-For the canonical runtime/package matrix, start with `reference/package-surface.md`. This hub keeps the starter/default-path framing short, still points readers to the default `@konekti/platform-fastify` starter path, the raw Node `@konekti/platform-nodejs` path, the `@konekti/platform-express` Node.js alternative, and links to the published adapter READMEs for runtime-specific startup or hosting details.
+For the canonical runtime/package matrix, start with `reference/package-surface.md`. This hub keeps the starter/default-path framing short, still points readers to the default `@konekti/platform-fastify` starter path, the raw Node `@konekti/platform-nodejs` path, the `@konekti/platform-express` Node.js alternative, and links to the published adapter READMEs for runtime-specific startup or hosting details. Raw `@konekti/websocket/node` support is intentionally documented as limited to the currently tested server-backed adapters (`platform-nodejs`, `platform-fastify`, and `platform-express`), while Bun, Deno, and Cloudflare Workers remain outside that support claim until a tested server-backed implementation exists.
 
 - `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
 - `reference/package-surface.md` - Overview of the public API surface across the framework.
+- `reference/package-chooser.md#add-real-time-communication` - Task-oriented raw websocket vs Socket.IO package guidance, including the current supported raw websocket adapter set.
+- `reference/package-surface.md#package-responsibilities` - Canonical package ownership summary, including the honest raw websocket support boundary.
 - `reference/toolchain-contract-matrix.md` - Versioning and compatibility across the ecosystem.
 - `../packages/platform-fastify/README.md` - `@konekti/platform-fastify` contract for the default Node.js starter path.
 - `../packages/platform-nodejs/README.md` - `@konekti/platform-nodejs` contract for raw Node.js HTTP startup on the runtime facade.
