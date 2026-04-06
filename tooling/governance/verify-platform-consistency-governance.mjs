@@ -406,6 +406,10 @@ function enforceContractCompanionUpdates(changedFiles) {
     return;
   }
 
+  // Contract-governing docs must remain discoverable from the docs hub, and any
+  // such discoverability updates should stay coupled to this governance rule so
+  // future contract-boundary edits do not silently bypass the companion checks.
+
   assert(
     hasChanged(changedFiles, 'docs/README.md') && hasChanged(changedFiles, 'docs/README.ko.md'),
     'contract-governing doc updates must include docs/README.md and docs/README.ko.md discoverability updates.',
