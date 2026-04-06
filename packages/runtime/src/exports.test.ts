@@ -12,6 +12,8 @@ import * as runtimeWeb from './web.js';
 describe('runtime export boundaries', () => {
   it('keeps the root barrel transport-neutral', () => {
     expect(runtime).not.toHaveProperty('parseMultipart');
+    expect(runtime).not.toHaveProperty('dispatchWebRequest');
+    expect(runtime).not.toHaveProperty('createWebRequestResponseFactory');
     expect(runtime).not.toHaveProperty('createNodeShutdownSignalRegistration');
     expect(runtime).not.toHaveProperty('bootstrapHttpAdapterApplication');
   });
@@ -40,6 +42,7 @@ describe('runtime export boundaries', () => {
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as { exports: Record<string, unknown> };
 
+    expect(packageJson.exports).toHaveProperty('./web');
     expect(packageJson.exports).toHaveProperty('./internal');
     expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
     expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
