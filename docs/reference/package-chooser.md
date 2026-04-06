@@ -169,16 +169,17 @@ Import the transport-specific entrypoint you need: `@konekti/microservices/kafka
 
 | package | role |
 |---------|------|
-| `@konekti/websocket` + `@konekti/websocket/node` | shared gateway decorators/contracts plus the explicit Node `ws` upgrade binding |
+| `@konekti/websocket` + `@konekti/websocket/node` | shared gateway decorators/contracts plus the explicit `ws` binding that consumes a platform-selected server-backed realtime capability |
 
 ### option B — Socket.IO
 
 | package | role |
 |---------|------|
-| `@konekti/platform-socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime |
+| `@konekti/platform-socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime, booting only when the selected platform reports a server-backed realtime capability |
 
 **When not to use:**
 - If your real-time needs are limited to server-sent events (SSE), a standard HTTP streaming response from `@konekti/http` may be enough.
+- If your selected runtime reports realtime as `{ kind: 'unsupported', mode: 'no-op' }` (for example Worker-style adapters), stop at that explicit boundary instead of expecting Node listener emulation.
 
 ---
 
