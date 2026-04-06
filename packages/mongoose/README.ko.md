@@ -29,23 +29,33 @@ npm install @konekti/mongoose
 
 ```typescript
 import { Module } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
-const connection = mongoose.createConnection(process.env.MONGODB_URI);
-
 @Module({
   imports: [
-    MongooseModule.forRoot({
-      connection,
-      dispose: async (conn) => {
-        await conn.close();
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const connection = mongoose.createConnection(
+          config.getOrThrow<string>('MONGODB_URI'),
+        );
+
+        return {
+          connection,
+          dispose: async (conn) => {
+            await conn.close();
+          },
+        };
       },
     }),
   ],
 })
 export class AppModule {}
 ```
+
+> Config-first 원칙: Konekti는 환경 값을 애플리케이션 경계에서 해석한 뒤 타입이 지정된 옵션/프로바이더로 패키지 모듈에 전달합니다. `../../docs/concepts/config-and-environments.ko.md`를 참고하세요.
 
 ### 저장소에서 연결 사용하기
 
