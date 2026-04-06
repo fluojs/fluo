@@ -4,7 +4,7 @@ import type { GuardContext, RequestContext } from '@konekti/http';
 import type { DefaultJwtVerifier } from '@konekti/jwt';
 
 import { CookieAuthStrategy, normalizeCookieAuthOptions } from './cookie-auth.js';
-import { AuthenticationRequiredError } from './errors.js';
+import { AuthenticationRequiredError } from '../errors.js';
 
 function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): DefaultJwtVerifier {
   return {

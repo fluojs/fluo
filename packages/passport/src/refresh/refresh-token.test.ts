@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DefaultJwtVerifier } from '@konekti/jwt';
 import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
 
-import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
+import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
 import { RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
-import type { AuthStrategyResult } from './types.js';
+import type { AuthStrategyResult } from '../types.js';
 import type { GuardContext, RequestContext } from '@konekti/http';
 
 function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> = {}): RefreshTokenService {

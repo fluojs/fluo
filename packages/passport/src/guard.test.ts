@@ -9,8 +9,8 @@ import { RequireScopes, UseAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
 import { AuthGuard } from './guard.js';
 import { createPassportProviders } from './module.js';
-import { createPassportJsStrategyBridge } from './passport-js.js';
-import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
+import { createPassportJsStrategyBridge } from './adapters/passport-js.js';
+import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh/refresh-token.js';
 import type { AuthStrategy } from './types.js';
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {

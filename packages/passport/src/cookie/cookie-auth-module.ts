@@ -8,7 +8,7 @@ import {
   type CookieAuthOptions,
 } from './cookie-auth.js';
 import { CookieManager, type CookieManagerConfig } from './cookie-manager.js';
-import type { AuthStrategyRegistration } from './types.js';
+import type { AuthStrategyRegistration } from '../types.js';
 
 export interface CookieAuthPresetConfig {
   cookieAuth?: CookieAuthOptions;

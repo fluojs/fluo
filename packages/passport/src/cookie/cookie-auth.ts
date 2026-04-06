@@ -2,8 +2,8 @@ import { Inject } from '@konekti/core';
 import type { GuardContext } from '@konekti/http';
 import { DefaultJwtVerifier } from '@konekti/jwt';
 
-import { AuthenticationRequiredError } from './errors.js';
-import type { AuthStrategy, AuthStrategyResult } from './types.js';
+import { AuthenticationRequiredError } from '../errors.js';
+import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 
 export const COOKIE_AUTH_OPTIONS = Symbol.for('konekti.passport.cookie-auth-options');
 
