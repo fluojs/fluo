@@ -7,7 +7,7 @@ import { UsersModule } from './users/users.module';
 const RuntimeHealthModule = createHealthModule();
 
 @Module({
-  imports: [ConfigModule.forRoot({ envFile: '.env' }), RuntimeHealthModule, UsersModule],
+  imports: [ConfigModule.forRoot({ envFile: '.env', processEnv: process.env }), RuntimeHealthModule, UsersModule],
   controllers: [],
   providers: [],
 })

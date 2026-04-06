@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
+const directProcessEnvPattern = /\bprocess\s*(?:\?\.|\.)\s*env\b/g;
 
 const ssotPairs = [
   ['docs/concepts/platform-consistency-design.md', 'docs/concepts/platform-consistency-design.ko.md'],
@@ -41,6 +42,13 @@ const officialTransportDocsPackages = [
   '@konekti/platform-deno',
   '@konekti/platform-cloudflare-workers',
 ];
+
+const packageSourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.mts', '.cts']);
+
+const directProcessEnvAllowedPackageSourcePaths = new Set([
+  'packages/cli/src/cli.ts',
+  'packages/cli/src/new/scaffold.ts',
+]);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -143,6 +151,10 @@ function assert(condition, message) {
   }
 }
 
+function read(relativePath) {
+  return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
 function hasChanged(changedFiles, path) {
   return changedFiles.includes(path);
 }
@@ -206,6 +218,124 @@ function collectMarkdownFiles(relativeRoot) {
   }
 
   return markdownPaths;
+}
+
+function collectFiles(relativeRoot, predicate) {
+  const absoluteRoot = join(repoRoot, relativeRoot);
+  if (!existsSync(absoluteRoot)) {
+    return [];
+  }
+
+  const stack = [absoluteRoot];
+  const filePaths = [];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const absoluteEntry = join(current, entry.name);
+
+      if (entry.isDirectory()) {
+        stack.push(absoluteEntry);
+        continue;
+      }
+
+      const relativePath = absoluteEntry.replace(`${repoRoot}/`, '');
+      if (!predicate(relativePath, entry.name)) {
+        continue;
+      }
+
+      filePaths.push(relativePath);
+    }
+  }
+
+  return filePaths.sort((left, right) => left.localeCompare(right));
+}
+
+export function isGovernedPackageSourcePath(relativePath) {
+  if (!relativePath.startsWith('packages/')) {
+    return false;
+  }
+
+  if (!relativePath.includes('/src/')) {
+    return false;
+  }
+
+  if (relativePath.endsWith('.d.ts')) {
+    return false;
+  }
+
+  if (/\.(test|spec)\.[^.]+$/.test(relativePath)) {
+    return false;
+  }
+
+  if (directProcessEnvAllowedPackageSourcePaths.has(relativePath)) {
+    return false;
+  }
+
+  return packageSourceExtensions.has(extname(relativePath));
+}
+
+function findLineNumberFromIndex(source, index) {
+  let lineNumber = 1;
+
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    if (source[cursor] === '\n') {
+      lineNumber += 1;
+    }
+  }
+
+  return lineNumber;
+}
+
+export function collectDirectProcessEnvViolations(relativePaths, readSource) {
+  const violations = [];
+
+  for (const relativePath of relativePaths) {
+    if (!isGovernedPackageSourcePath(relativePath)) {
+      continue;
+    }
+
+    const source = readSource(relativePath);
+    directProcessEnvPattern.lastIndex = 0;
+
+    for (const match of source.matchAll(directProcessEnvPattern)) {
+      const matchIndex = match.index ?? 0;
+      const lineNumber = findLineNumberFromIndex(source, matchIndex);
+      const excerpt = source.split('\n')[lineNumber - 1]?.trim() ?? 'process.env';
+
+      violations.push({
+        excerpt,
+        line: lineNumber,
+        path: relativePath,
+      });
+    }
+  }
+
+  return violations;
+}
+
+function collectGovernedPackageSourceFiles() {
+  return collectFiles('packages', (relativePath) => isGovernedPackageSourcePath(relativePath));
+}
+
+export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
+  relativePaths = collectGovernedPackageSourceFiles(),
+  readSource = read,
+) {
+  const violations = collectDirectProcessEnvViolations(relativePaths, readSource);
+  assert(
+    violations.length === 0,
+    [
+      'ordinary package source must not read process.env directly.',
+      'Move env access to the application/bootstrap boundary and pass explicit parameters or typed config instead.',
+      `Approved source exceptions: ${[...directProcessEnvAllowedPackageSourcePaths].join(', ')}.`,
+      ...violations.map((violation) => `${violation.path}:${violation.line} ${violation.excerpt}`),
+    ].join('\n'),
+  );
 }
 
 function packageHasConformanceHarness(packageName) {
@@ -445,15 +575,22 @@ function enforceRemovedRuntimeFactoryNamesNotUsedInDocs() {
   );
 }
 
-const changedFiles = changedFilesFromGit();
+export function main() {
+  const changedFiles = changedFilesFromGit();
 
-enforceSsotMirrorStructure();
-enforcePackageDirectoriesHaveManifests();
-enforceReleaseGovernancePublishSurfaceSync();
-enforceDocsHubOfficialTransportLinks();
-enforceCanonicalRuntimeMatrixReferences();
-enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
-enforceContractCompanionUpdates(changedFiles);
-enforceAlignmentClaimsBackedByHarness(changedFiles);
+  enforceSsotMirrorStructure();
+  enforcePackageDirectoriesHaveManifests();
+  enforceReleaseGovernancePublishSurfaceSync();
+  enforceDocsHubOfficialTransportLinks();
+  enforceCanonicalRuntimeMatrixReferences();
+  enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
+  enforceNoDirectProcessEnvInOrdinaryPackageSource();
+  enforceContractCompanionUpdates(changedFiles);
+  enforceAlignmentClaimsBackedByHarness(changedFiles);
 
-console.log('Platform consistency governance checks passed.');
+  console.log('Platform consistency governance checks passed.');
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

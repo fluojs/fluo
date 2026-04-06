@@ -135,6 +135,7 @@ This keeps narrow PR feedback fast while preserving governance safeguards and re
 - SSOT mirror structure checks for `.md` / `.ko.md` document pairs.
 - Contract-governing doc changes must include companion updates (docs index, CI/tooling enforcement, regression-test evidence).
 - Package README alignment/conformance claims must be backed by harness tests (`createPlatformConformanceHarness(...)`).
+- Ordinary `packages/*/src/**` source must not read `process.env` directly outside the repo-approved CLI boundary/template exceptions.
 
 ## GitHub Releases
 

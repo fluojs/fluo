@@ -56,6 +56,10 @@ interface MetricsModuleOptions {
   provider?: 'prometheus';    // only supported provider at this time
   defaultMetrics?: boolean;   // collect Node.js default metrics (default: true)
   middleware?: MiddlewareLike[];
+  platformTelemetry?: {
+    env?: string;             // defaults to 'unknown'
+    instance?: string;        // defaults to 'local'
+  };
   registry?: Registry;        // external Prometheus registry to share with custom metrics
 }
 
@@ -136,6 +140,17 @@ Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality
 - `konekti_metrics_registry_mode{mode="isolated|shared"}`
 
 `runtime.shell` is exported as a synthetic component identity so aggregate shell readiness/health can be correlated with component-level series.
+
+`MetricsModule` does not read `process.env` implicitly for those labels. If you want system env values to appear there, pass them explicitly at the application boundary:
+
+```typescript
+MetricsModule.forRoot({
+  platformTelemetry: {
+    env: process.env.NODE_ENV,
+    instance: process.env.HOSTNAME,
+  },
+})
+```
 
 ### Provider contract
 

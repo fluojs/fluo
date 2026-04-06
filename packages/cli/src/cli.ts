@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { runGenerateCommand } from './commands/generate.js';
 import { inspectUsage, runInspectCommand } from './commands/inspect.js';
 import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
-import { newUsage, runNewCommand, type NewCommandRuntimeOptions } from './commands/new.js';
+import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
 import { generatorManifest, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
@@ -367,5 +367,5 @@ export async function runCli(
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  process.exitCode = await runCli();
+  process.exitCode = await runCli(undefined, { userAgent: process.env.npm_config_user_agent });
 }

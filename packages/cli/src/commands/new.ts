@@ -16,9 +16,9 @@ function isHelpFlag(value: string | undefined): boolean {
 /** Runtime dependency overrides for the `konekti new` command. */
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
-  env?: NodeJS.ProcessEnv;
   stderr?: CliStream;
   stdout?: CliStream;
+  userAgent?: string;
 }
 
 type NewOptionHelpEntry = {
@@ -176,7 +176,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       throw new Error(newUsage());
     }
 
-    const answers = resolveBootstrapAnswers(parsed, runtime.cwd ?? process.cwd(), runtime.env ?? process.env);
+    const answers = resolveBootstrapAnswers(parsed, runtime.cwd ?? process.cwd(), runtime.userAgent);
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,

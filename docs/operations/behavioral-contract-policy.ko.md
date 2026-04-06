@@ -30,6 +30,7 @@ Konekti에서 behavioral contract는 다음에 대한 권한 있는 기준입니
   - `0.x`: minor 버전 증가 + 명시적 migration note 필요.
   - `1.0+`: major 버전 증가 + migration guide 필요.
 - **시맨틱 변경**: 타입 시그니처가 같더라도 기존 동작 방식이 바뀌면 breaking change입니다.
+- **환경 소유권**: 일반 패키지 소스는 `process.env`를 직접 읽으면 안 됩니다. 환경 값은 애플리케이션/부트스트랩 경계에서 들어와 명시적 파라미터, 타입이 지정된 config provider, 또는 주입 옵션으로 전달되어야 합니다.
 
 세부 버전 정책은 `release-governance.ko.md`를, 확장 안정성 규칙은 `third-party-extension-contract.ko.md`를 참고하세요.
 
@@ -40,6 +41,7 @@ Konekti에서 behavioral contract는 다음에 대한 권한 있는 기준입니
 - [ ] 새 behavioral contract를 영향 받은 패키지 README에 문서화했다.
 - [ ] intentional limitation을 조용히 제거하지 않고 명시했다.
 - [ ] runtime invariant를 regression test로 커버했다.
+- [ ] 문서화된 boundary/template 예외 파일이 아닌 한 패키지 내부가 `process.env`를 직접 읽지 않는다.
 
 ## CI enforcement
 
@@ -50,6 +52,7 @@ behavioral contract 거버넌스는 CI에서 `pnpm verify:platform-consistency-g
 - SSOT English/Korean mirror 문서 구조가 서로 드리프트한 경우.
 - contract-governing 문서 변경 시 docs index, CI/tooling enforcement, regression-test evidence 동반 업데이트가 없는 경우.
 - 패키지 README의 alignment/conformance claim에 대해 conformance harness 테스트(`createPlatformConformanceHarness(...)`) 근거가 없는 경우.
+- repo에서 승인한 boundary/template 예외 외에 일반 `packages/*/src/**` 소스가 `process.env`를 직접 읽는 경우.
 
 ## 강한 contract 예시
 
@@ -63,3 +66,4 @@ behavioral contract 거버넌스는 CI에서 `pnpm verify:platform-consistency-g
 - **silent removal**: transport contract에 문서화된 `send()`를 "core에서 안 쓰니까"라는 이유로 제거.
 - **undocumented limitations**: base interface 옵션 중 절반을 무시하는 새 adapter를 문서 없이 추가.
 - **implicit side effects**: 문서화되지 않은 신규 백그라운드 프로세스/리소스 할당 도입.
+- **암묵적 env 소유권**: 애플리케이션 경계에서 설정을 명시적으로 전달받지 않고 라이브러리 패키지가 `process.env`를 직접 읽는 경우.

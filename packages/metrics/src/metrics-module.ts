@@ -1,7 +1,7 @@
-import { Controller, Get, type MiddlewareLike, type RequestContext } from '@konekti/http';
 import type { Provider } from '@konekti/di';
-import { PLATFORM_SHELL, defineModule, type ModuleType, type PlatformShellSnapshot } from '@konekti/runtime';
-import { Gauge, type Registry, Registry as PrometheusRegistry, collectDefaultMetrics } from 'prom-client';
+import { Controller, Get, type MiddlewareLike, type RequestContext } from '@konekti/http';
+import { defineModule, type ModuleType, PLATFORM_SHELL, type PlatformShellSnapshot } from '@konekti/runtime';
+import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Registry } from 'prom-client';
 
 import {
   HttpMetricsMiddleware,
@@ -25,6 +25,10 @@ export interface MetricsModuleOptions {
   provider?: 'prometheus';
   defaultMetrics?: boolean;
   middleware?: MiddlewareLike[];
+  platformTelemetry?: {
+    env?: string;
+    instance?: string;
+  };
   /** External Prometheus registry to share between built-in and custom metrics. */
   registry?: Registry;
 }
@@ -43,7 +47,11 @@ export class MetricsModule {
     const registry = options.registry ?? new PrometheusRegistry();
     const metricsService = new MetricsService(registry);
     const meterProvider = new PrometheusMeterProvider(registry);
-    const platformTelemetry = new RuntimePlatformTelemetry(registry, options.registry ? 'shared' : 'isolated');
+    const platformTelemetry = new RuntimePlatformTelemetry(
+      registry,
+      options.registry ? 'shared' : 'isolated',
+      options.platformTelemetry,
+    );
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       MetricsModule.registeredRegistries.add(registry);
@@ -130,6 +138,7 @@ class RuntimePlatformTelemetry {
   constructor(
     registry: Registry,
     private readonly registryMode: RegistryMode,
+    private readonly labels: MetricsModuleOptions['platformTelemetry'] = {},
   ) {
     this.readinessGauge = getOrCreateGauge(registry, {
       help: 'Runtime platform component readiness from shared platform snapshot semantics.',
@@ -158,8 +167,8 @@ class RuntimePlatformTelemetry {
     }
 
     const snapshot = await platformShell.snapshot();
-    const env = process.env.NODE_ENV ?? 'unknown';
-    const instance = process.env.HOSTNAME ?? 'local';
+    const env = this.labels?.env ?? 'unknown';
+    const instance = this.labels?.instance ?? 'local';
 
     this.readinessGauge.reset();
     this.healthGauge.reset();

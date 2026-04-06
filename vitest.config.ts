@@ -31,6 +31,14 @@ export default mergeConfig(
             include: ['examples/**/*.test.ts'],
           },
         },
+        {
+          extends: true,
+          test: {
+            name: 'tooling',
+            exclude: configDefaults.exclude,
+            include: ['tooling/**/*.test.ts'],
+          },
+        },
       ],
     },
   }),

@@ -134,6 +134,7 @@
 - SSOT 문서 `.md` / `.ko.md` 쌍의 구조(헤더 레벨/개수) 동기화 검증
 - 계약 거버닝 문서 변경 시 companion 업데이트(문서 인덱스, CI/툴링 강제, 회귀 테스트 증거) 검증
 - package README의 alignment/conformance 주장 시 `createPlatformConformanceHarness(...)` 기반 테스트 존재 검증
+- repo에서 승인한 CLI boundary/template 예외 외에는 일반 `packages/*/src/**` 소스가 `process.env`를 직접 읽지 않는지 검증
 
 ## GitHub Releases
 

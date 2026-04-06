@@ -97,9 +97,9 @@ function detectFromDirectory(startDirectory: string): PackageManager | undefined
 
 export function detectPackageManager(
   startDirectory: string,
-  env: NodeJS.ProcessEnv = process.env,
+  userAgent?: string,
 ): PackageManager {
-  return detectFromUserAgent(env.npm_config_user_agent)
+  return detectFromUserAgent(userAgent)
     ?? detectFromDirectory(startDirectory)
     ?? DEFAULT_PACKAGE_MANAGER;
 }
@@ -107,7 +107,7 @@ export function detectPackageManager(
 export function resolveBootstrapAnswers(
   partial: Partial<BootstrapAnswers>,
   cwd: string,
-  env: NodeJS.ProcessEnv = process.env,
+  userAgent?: string,
 ): BootstrapAnswers {
   if (!partial.projectName) {
     throw new Error('Project name is required.');
@@ -116,7 +116,7 @@ export function resolveBootstrapAnswers(
   const projectName = assertValidProjectName(partial.projectName);
 
   return {
-    packageManager: partial.packageManager ?? detectPackageManager(cwd, env),
+    packageManager: partial.packageManager ?? detectPackageManager(cwd, userAgent),
     projectName,
     targetDirectory: partial.targetDirectory ?? `./${projectName}`,
   };

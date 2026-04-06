@@ -30,8 +30,8 @@ Practical guides for day-to-day development once your application is running.
 - `getting-started/generator-workflow.md` - Using the CLI to generate modules and providers.
 - `operations/testing-guide.md` - Unit and integration testing patterns.
 - `operations/platform-conformance-authoring-checklist.md` - Platform-facing package conformance harness gate and authoring checklist.
-- `operations/release-governance.md` - Release checks, CI governance gates (PR affected-scope build/typecheck/test with safe full fallback and governance gate vs `main` full verification + release-readiness gate), and platform consistency enforcement commands.
-- `operations/behavioral-contract-policy.md` - Behavioral contract documentation requirements and CI governance enforcement rules.
+- `operations/release-governance.md` - Release checks, CI governance gates (PR affected-scope build/typecheck/test with safe full fallback and governance gate vs `main` full verification + release-readiness gate), including the package-source `process.env` boundary guard.
+- `operations/behavioral-contract-policy.md` - Behavioral contract documentation requirements and CI governance enforcement rules, including explicit env-ownership rules for package internals.
 - `operations/deployment.md` - Moving from local development to production.
 - `concepts/auth-and-jwt.md` - Implementing authentication and session management.
 - `concepts/openapi.md` - Documenting and exposing your API surface.

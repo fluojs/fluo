@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawn } from 'node:child_process';
 
 import { installDependencies } from './install.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
@@ -284,6 +284,7 @@ const RuntimeHealthModule = createHealthModule();
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
+      processEnv: process.env,
     }),
     HealthModule,
     RuntimeHealthModule,

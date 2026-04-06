@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe('detectPackageManager', () => {
   it('detects bun from npm_config_user_agent', () => {
-    expect(detectPackageManager(process.cwd(), { npm_config_user_agent: 'bun/1.2.5 npm/? node/v22.0.0 darwin arm64' })).toBe('bun');
+    expect(detectPackageManager(process.cwd(), 'bun/1.2.5 npm/? node/v22.0.0 darwin arm64')).toBe('bun');
   });
 
   it('detects bun from bun lockfiles in parent directories', () => {
@@ -26,7 +26,7 @@ describe('detectPackageManager', () => {
 
     writeFileSync(join(workspaceDirectory, 'bun.lock'), 'lockfileVersion = 1\n');
 
-    expect(detectPackageManager(nestedDirectory, {})).toBe('bun');
+    expect(detectPackageManager(nestedDirectory)).toBe('bun');
   });
 });
 
@@ -40,7 +40,7 @@ describe('resolveBootstrapAnswers', () => {
       JSON.stringify({ name: 'workspace', packageManager: 'bun@1.2.5' }, null, 2),
     );
 
-    expect(resolveBootstrapAnswers({ projectName: 'starter-app' }, workspaceDirectory, {})).toEqual({
+    expect(resolveBootstrapAnswers({ projectName: 'starter-app' }, workspaceDirectory)).toEqual({
       packageManager: 'bun',
       projectName: 'starter-app',
       targetDirectory: './starter-app',

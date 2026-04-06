@@ -13,13 +13,14 @@ This guide outlines the configuration management implemented across `@konekti/co
 
 ## responsibilities
 
-- **`@konekti/config`**: Handles configuration loading, precedence, validation, and typed access.
-- **Bootstrap**: Consumes pre-loaded configurations instead of re-reading environment variables.
+- **`@konekti/config`**: Handles configuration loading, precedence, validation, and typed access from explicit bootstrap inputs.
+- **Bootstrap**: Consumes caller-supplied configuration inputs instead of re-reading environment variables implicitly.
 - **Integrations**: Should use typed configuration providers rather than direct environment access.
 
 ## core configuration principles
 
 - **Explicit File Selection**: Specify the env file path directly via `envFile` (or alias `envFilePath`), or use the `.env` default.
+- **Explicit Environment Source**: If system env should participate, pass `processEnv: process.env` at the application boundary.
 - **Deterministic Precedence**: One clear order for configuration resolution.
 - **Early Validation**: Configuration is validated at application startup.
 - **Typed Access**: Configurations are accessed via `ConfigService`.
@@ -32,10 +33,10 @@ The env file path is controlled by the `envFile` option (or alias `envFilePath`)
 
 The configuration resolution order is deterministic:
 
-1.  **Runtime Overrides**: Passed directly during bootstrap.
-2.  **Process Environment**: Standard system environment variables.
-3.  **Env File**: Loaded from the path set by `envFile` / `envFilePath` (defaults to `.env`).
-4.  **Default Values**: Hardcoded fallback values.
+1.  **Default Values**: Hardcoded fallback values.
+2.  **Env File**: Loaded from the path set by `envFile` / `envFilePath` (defaults to `.env`).
+3.  **Process Environment**: Only when the caller passes an explicit `processEnv` object.
+4.  **Runtime Overrides**: Passed directly during bootstrap.
 
 ### merge behavior
 
@@ -51,7 +52,7 @@ The configuration resolution order is deterministic:
 
 ## usage recommendations
 
-Use `ConfigService` for general application configuration. For complex integrations, prefer the typed configuration providers provided by those specific packages.
+Use `ConfigService` for general application configuration. Keep env-to-parameter translation at the application boundary, and prefer typed configuration providers for integrations rather than letting packages read env directly.
 
 ## reload behavior
 

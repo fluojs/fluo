@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -89,7 +89,7 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app'], {
       cwd: workspaceDirectory,
-      env: { npm_config_user_agent: 'npm/10.0.0 node/v22.0.0 darwin x64' },
+      userAgent: 'npm/10.0.0 node/v22.0.0 darwin x64',
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -107,7 +107,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -125,7 +124,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'yarn'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -142,7 +140,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
@@ -161,7 +158,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
@@ -185,7 +181,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', '--target-directory', 'custom-app', 'starter-app'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -204,7 +199,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app', '--target-directory', 'custom-app'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -837,7 +831,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', 'starter-app', '--package-manager', 'bun'], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
@@ -885,7 +878,6 @@ describe('CLI command runner', () => {
 
     const exitCode = await runCli(['new', "starter'app"], {
       cwd: workspaceDirectory,
-      env: {},
       skipInstall: true,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },

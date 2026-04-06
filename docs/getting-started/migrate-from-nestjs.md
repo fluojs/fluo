@@ -534,6 +534,7 @@ import { ConfigModule } from '@konekti/config';
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
+      processEnv: process.env,
       validate: (raw) => {
         if (!raw.DATABASE_URL) {
           throw new Error('DATABASE_URL is required');

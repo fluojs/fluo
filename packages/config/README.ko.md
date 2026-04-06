@@ -18,7 +18,7 @@
 
 1. `defaults` (인라인 객체)
 2. env 파일 (`envFile` 옵션으로 지정, 기본값 `.env`)
-3. `process.env`
+3. 호출자가 명시적으로 전달한 `processEnv`
 4. `runtimeOverrides` (인라인 객체)
 
 병합 후 validation이 실행됩니다. validation에 실패하면 앱이 시작을 거부합니다.
@@ -42,6 +42,7 @@ import { loadConfig, ConfigService } from '@konekti/config';
 
 const config = loadConfig({
   envFile: '.env',
+  processEnv: process.env,
   defaults: { PORT: '3000' },
   validate: (raw) => {
     if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -55,7 +56,7 @@ service.getOrThrow('DATABASE_URL');   // 없으면 throw
 service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 ```
 
-실제로는 루트 모듈에서 `@konekti/config`의 `ConfigModule.forRoot()`를 사용합니다. 부트스트랩 시 `loadConfig()`를 호출하고, 결과 `ConfigService`를 provider로 등록합니다.
+실제로는 루트 모듈에서 `@konekti/config`의 `ConfigModule.forRoot()`를 사용하고, 앱 경계에서 시스템 env가 필요하면 `processEnv`로 명시적으로 전달한 뒤 결과 `ConfigService`를 provider로 등록합니다.
 
 ## 0.x 마이그레이션 노트
 
@@ -73,7 +74,7 @@ service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
 | `envFilePath` | `string` | `envFile`의 별칭 |
 | `defaults` | `ConfigDictionary` | 가장 낮은 우선순위 값 |
 | `cwd` | `string` | env 파일을 해석할 작업 디렉터리 지정 |
-| `processEnv` | `NodeJS.ProcessEnv` | 실제 `process.env` 대신 사용할 소스 |
+| `processEnv` | `NodeJS.ProcessEnv` | 호출자가 명시적으로 전달하는 프로세스 환경 소스 |
 | `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
 | `validate` | `(raw) => T` | 유효하지 않으면 throw, 타입 딕셔너리 반환 |
 | `watch` | `boolean` | `createConfigReloader(options)`에서 env 파일 watch 리로드를 활성화할 때 사용 |
@@ -120,7 +121,7 @@ class ConfigService {
 ```
 bootstrapApplication(options)
   → loadConfig(options)
-      → defaults + env 파일 + process.env + runtimeOverrides 읽기
+      → defaults + env 파일 + 명시적 processEnv + runtimeOverrides 읽기
       → 우선순위 순서로 병합
       → validate(merged)
       → ConfigDictionary

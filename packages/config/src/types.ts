@@ -26,6 +26,7 @@ export type DotValue<T, K extends string> = K extends keyof T
 export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
+  processEnv?: NodeJS.ProcessEnv;
   validate?: (raw: ConfigDictionary) => ConfigDictionary;
   defaults?: ConfigDictionary;
   /** Supply a custom file parser (e.g. for YAML or TOML). Receives raw file content,
@@ -37,7 +38,6 @@ export interface ConfigModuleOptions {
 
 export interface ConfigLoadOptions extends ConfigModuleOptions {
   cwd?: string;
-  processEnv?: NodeJS.ProcessEnv;
   runtimeOverrides?: ConfigDictionary;
 }
 

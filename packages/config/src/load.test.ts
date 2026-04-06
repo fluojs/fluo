@@ -1,9 +1,8 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
-import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 import { getModuleMetadata } from '@konekti/core/internal';
+import { describe, expect, it } from 'vitest';
 
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
@@ -46,6 +45,26 @@ describe('loadConfig', () => {
       NAME: 'from-runtime',
       PORT: '4000',
     });
+  });
+
+  it('does not read live process.env unless it is passed explicitly', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'konekti-config-live-process-env-'));
+    const previousValue = process.env.KONEKTI_CONFIG_TEST_ONLY;
+    process.env.KONEKTI_CONFIG_TEST_ONLY = 'from-live-process-env';
+
+    try {
+      const implicit = loadConfig({ cwd });
+      const explicit = loadConfig({ cwd, processEnv: process.env });
+
+      expect(implicit['KONEKTI_CONFIG_TEST_ONLY']).toBeUndefined();
+      expect(explicit['KONEKTI_CONFIG_TEST_ONLY']).toBe('from-live-process-env');
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.KONEKTI_CONFIG_TEST_ONLY;
+      } else {
+        process.env.KONEKTI_CONFIG_TEST_ONLY = previousValue;
+      }
+    }
   });
 
   it('supports envFilePath as alias for envFile', () => {

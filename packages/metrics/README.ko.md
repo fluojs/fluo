@@ -56,6 +56,10 @@ interface MetricsModuleOptions {
   provider?: 'prometheus';    // 현재 지원되는 provider
   defaultMetrics?: boolean;   // Node.js 기본 메트릭 수집 (기본값: true)
   middleware?: MiddlewareLike[];
+  platformTelemetry?: {
+    env?: string;             // 기본값 'unknown'
+    instance?: string;        // 기본값 'local'
+  };
   registry?: Registry;        // 커스텀 메트릭과 공유할 외부 Prometheus registry
 }
 
@@ -134,6 +138,17 @@ MetricsModule.forRoot({
 - `konekti_metrics_registry_mode{mode="isolated|shared"}`
 
 `runtime.shell`은 합산 셸 readiness/health를 컴포넌트 단위 시계열과 상관분석할 수 있도록 제공되는 합성 컴포넌트 식별자입니다.
+
+이 라벨을 위해 `MetricsModule`이 `process.env`를 암묵적으로 읽지는 않습니다. 시스템 env 값을 사용하고 싶다면 애플리케이션 경계에서 명시적으로 전달하세요:
+
+```typescript
+MetricsModule.forRoot({
+  platformTelemetry: {
+    env: process.env.NODE_ENV,
+    instance: process.env.HOSTNAME,
+  },
+})
+```
 
 ### Provider 계약
 

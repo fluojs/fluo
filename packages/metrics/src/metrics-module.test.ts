@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'vitest';
-
 import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
 import { Counter, Registry } from 'prom-client';
-
-import { MetricsModule } from './metrics-module.js';
+import { describe, expect, it } from 'vitest';
 import { METER_PROVIDER } from './meter-provider.js';
+import { MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './prometheus-meter-provider.js';
 
@@ -69,10 +67,43 @@ describe('MetricsModule', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('text/plain');
     expect(response.body).toEqual(expect.stringContaining('konekti_metrics_registry_mode{mode="isolated"} 1'));
-    expect(response.body).toEqual(expect.stringContaining('konekti_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready"'));
-    expect(response.body).toEqual(expect.stringContaining('konekti_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy"'));
+    expect(response.body).toEqual(expect.stringContaining('konekti_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="unknown",instance="local"} 1'));
+    expect(response.body).toEqual(expect.stringContaining('konekti_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="unknown",instance="local"} 1'));
     expect(response.body).toEqual(expect.stringContaining('process_cpu_seconds_total'));
     expect(response.body).toEqual(expect.stringContaining('nodejs_heap_size_total_bytes'));
+
+    await app.close();
+  });
+
+  it('uses explicit platform telemetry labels when provided', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          platformTelemetry: {
+            env: 'production',
+            instance: 'api-1',
+          },
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('/metrics'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.body)).toContain(
+      'konekti_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="production",instance="api-1"} 1',
+    );
+    expect(String(response.body)).toContain(
+      'konekti_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="production",instance="api-1"} 1',
+    );
 
     await app.close();
   });

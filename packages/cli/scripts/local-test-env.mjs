@@ -16,7 +16,7 @@ function isPathInsideDirectory(parentDirectory, candidatePath) {
   return resolvedCandidatePath === resolvedParentDirectory || resolvedCandidatePath.startsWith(resolvedParentDirectory + sep);
 }
 
-function resolveSandboxRoot(env = process.env) {
+function resolveSandboxRoot(env) {
   const requestedSandboxRoot = env.KONEKTI_CLI_SANDBOX_ROOT ? resolve(env.KONEKTI_CLI_SANDBOX_ROOT) : undefined;
 
   if (requestedSandboxRoot && isPathInsideDirectory(repoRoot, requestedSandboxRoot)) {
@@ -31,7 +31,7 @@ function resolveSandboxRoot(env = process.env) {
   };
 }
 
-const { sandboxRoot, warning: sandboxRootWarning } = resolveSandboxRoot();
+const { sandboxRoot, warning: sandboxRootWarning } = resolveSandboxRoot(process.env);
 const defaultProjectName = 'starter-app';
 
 function run(command, args, cwd) {

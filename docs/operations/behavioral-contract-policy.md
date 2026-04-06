@@ -30,6 +30,7 @@ Every `@konekti/*` package must maintain the following sections in its `README.m
   - `0.x`: requires a minor version bump and explicit migration notes.
   - `1.0+`: requires a major version bump and a migration guide.
 - **changing semantics**: changing how an existing operation behaves (even if the type signature remains the same) is a breaking change.
+- **environment ownership**: ordinary package source must not read `process.env` directly. Environment values must enter through the application/bootstrap boundary and be passed as explicit parameters, typed config providers, or injected options.
 
 Refer to `release-governance.md` for detailed versioning policy and `third-party-extension-contract.md` for extension stability rules.
 
@@ -40,6 +41,7 @@ PRs affecting package behavior must verify:
 - [ ] New behavioral contracts are documented in the affected package README.
 - [ ] Intentional limitations are explicitly stated rather than silently removed.
 - [ ] Runtime invariants are covered by regression tests.
+- [ ] Package internals do not read `process.env` directly unless the file is a documented boundary/template exception.
 
 ## CI enforcement
 
@@ -50,6 +52,7 @@ The governance check fails pull requests when:
 - SSOT English/Korean mirror docs drift structurally.
 - Contract-governing docs change without companion updates to docs index, CI/tooling enforcement, and regression-test evidence.
 - Package README alignment/conformance claims are not backed by conformance harness tests (`createPlatformConformanceHarness(...)`).
+- Ordinary `packages/*/src/**` source reads `process.env` directly outside repo-approved boundary/template exceptions.
 
 ## strong contract examples
 
@@ -63,3 +66,4 @@ The following packages serve as models for strong behavioral contracts:
 - **silent removal**: removing a method like `send()` from a transport because "it wasn't used in the core" despite being a documented part of the transport contract.
 - **undocumented limitations**: adding a new adapter that silently ignores half of the configuration options provided by the base interface.
 - **implicit side effects**: introducing new background processes or resource allocations that are not documented in the package lifecycle.
+- **implicit env ownership**: a library package reaching into `process.env` instead of requiring the application boundary to pass configuration explicitly.

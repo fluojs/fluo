@@ -18,7 +18,7 @@ Sources, in merge order (lowest → highest precedence):
 
 1. `defaults` (inline object)
 2. env file (path set by `envFile` option, defaults to `.env`)
-3. `process.env`
+3. explicit `processEnv` passed by the caller
 4. `runtimeOverrides` (inline object)
 
 Validation runs after merging. If validation fails, the app refuses to start.
@@ -42,6 +42,7 @@ import { loadConfig, ConfigService } from '@konekti/config';
 
 const config = loadConfig({
   envFile: '.env',
+  processEnv: process.env,
   defaults: { PORT: '3000' },
   validate: (raw) => {
     if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -55,7 +56,7 @@ service.getOrThrow('DATABASE_URL');   // throws if missing
 service.snapshot();                   // returns a deep-cloned snapshot
 ```
 
-In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your root module, which calls `loadConfig()` during bootstrap and registers the resulting `ConfigService` as a provider.
+In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your root module, pass any system env explicitly at the app boundary, and let it register the resulting `ConfigService` as a provider.
 
 ## 0.x migration note
 
@@ -73,7 +74,7 @@ In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your 
 | `envFilePath` | `string` | Alias for `envFile` |
 | `defaults` | `ConfigDictionary` | Lowest-precedence values |
 | `cwd` | `string` | Resolve the env file from a custom working directory |
-| `processEnv` | `NodeJS.ProcessEnv` | Override the source used instead of the live `process.env` |
+| `processEnv` | `NodeJS.ProcessEnv` | Explicit process-environment source supplied by the caller |
 | `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
 | `validate` | `(raw) => T` | Throws on invalid config, returns typed dictionary |
 | `watch` | `boolean` | Used by `createConfigReloader(options)` to enable env file watch reloads |
@@ -122,7 +123,7 @@ class ConfigService {
 ```
 bootstrapApplication(options)
   → loadConfig(options)
-      → read defaults + env file + process.env + runtimeOverrides
+      → read defaults + env file + explicit processEnv + runtimeOverrides
       → merge in precedence order
       → validate(merged)
       → ConfigDictionary
