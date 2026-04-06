@@ -2,8 +2,8 @@ import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
 import { getDtoValidationSchema, type DtoFieldValidationRule } from '@konekti/core/internal';
 import { DefaultValidator } from '@konekti/validation';
 
-import { isGraphqlListTypeRef } from './types.js';
-import type { GraphqlArgType, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from './types.js';
+import { isGraphqlListTypeRef } from '../types.js';
+import type { GraphqlArgType, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from '../types.js';
 
 const defaultValidator = new DefaultValidator();
 

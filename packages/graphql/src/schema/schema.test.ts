@@ -16,8 +16,8 @@ import {
 import type { Container } from '@konekti/di';
 
 import { createCodeFirstSchema } from './schema.js';
-import { listOf } from './types.js';
-import type { ResolverDescriptor } from './types.js';
+import { listOf } from '../types.js';
+import type { ResolverDescriptor } from '../types.js';
 
 const deps = {
   GraphQLBoolean,
