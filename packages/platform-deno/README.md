@@ -87,3 +87,4 @@ await runDenoApplication(AppModule, {
 - No Bun-, Cloudflare-, or Deno Deploy-specific bootstrap helpers are provided here.
 - No Deno-native HTTPS/TLS passthrough is exposed yet; add that in a dedicated issue when the public contract is defined.
 - The adapter targets native Web `Request` / `Response` semantics and does not provide a Node compatibility layer.
+- Raw `@konekti/websocket/node` hosting remains unsupported here until a tested server-backed realtime capability seam exists for Deno.
