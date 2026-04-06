@@ -15,7 +15,7 @@ npm install @konekti/event-bus
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { EventBusModule, EVENT_BUS, EventBus, OnEvent } from '@konekti/event-bus';
+import { EventBusModule, EventBus, EventBusLifecycleService, OnEvent } from '@konekti/event-bus';
 
 class UserRegisteredEvent {
   constructor(public readonly userId: string) {}
@@ -28,7 +28,7 @@ class WelcomeEmailService {
   }
 }
 
-@Inject([EVENT_BUS])
+@Inject([EventBusLifecycleService])
 class UserService {
   constructor(private readonly eventBus: EventBus) {}
 
@@ -44,11 +44,24 @@ class UserService {
 export class AppModule {}
 ```
 
+Compatibility token alternative for existing codebases:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { EVENT_BUS, type EventBus } from '@konekti/event-bus';
+
+@Inject([EVENT_BUS])
+class LegacyUserService {
+  constructor(private readonly eventBus: EventBus) {}
+}
+```
+
 ## API
 
-- `EventBusModule.forRoot()` - registers global `EVENT_BUS` and lifecycle discovery service
+- `EventBusModule.forRoot()` - registers global `EventBusLifecycleService` plus compatibility alias `EVENT_BUS`
 - `createEventBusProviders()` - returns raw providers for manual composition
-- `EVENT_BUS` - DI token for the application event bus instance
+- `EventBusLifecycleService` - primary class-first DI entry point for the application event bus instance
+- `EVENT_BUS` - compatibility DI token for the application event bus instance
 - `EventBus` - interface with `publish(event, options?)`
 - `EventBusTransport` - interface for external transport adapters
 - `@OnEvent(EventClass)` - marks provider/controller methods as event handlers
@@ -58,8 +71,13 @@ export class AppModule {}
 
 Runtime root-barrel governance tests cover runtime exports. Public TypeScript-only contracts documented below remain part of the package API, but they are not represented in `Object.keys(...)` snapshot assertions.
 
-- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
-- **internal**: metadata helpers/descriptors (`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`, `EventHandlerMetadata`, `EventHandlerDescriptor`) plus `EVENT_BUS_OPTIONS` and undocumented lifecycle/runtime wiring details are non-contract internals and are not part of the root barrel public contract.
+- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EventBusLifecycleService`, compatibility token `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
+- **internal**: metadata helpers/descriptors (`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`, `EventHandlerMetadata`, `EventHandlerDescriptor`) plus `EVENT_BUS_OPTIONS` and undocumented lifecycle/runtime wiring details other than `EventBusLifecycleService` are non-contract internals and are not part of the root barrel public contract.
+
+### Class-first DI guidance
+
+- Prefer `@Inject([EventBusLifecycleService])` for application code.
+- Keep `EVENT_BUS` only as a compatibility alternative for existing explicit-token call sites.
 
 ### migration notes (0.x)
 
