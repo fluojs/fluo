@@ -1,7 +1,7 @@
 import type { Provider } from '@konekti/di';
 import { defineModule, type ModuleType } from '@konekti/runtime';
 
-import { WEBSOCKET_OPTIONS_INTERNAL } from './options-token.internal.js';
+import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 

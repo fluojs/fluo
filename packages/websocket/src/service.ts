@@ -1,1 +1,1 @@
-export { NodeWebSocketGatewayLifecycleService as WebSocketGatewayLifecycleService } from './node-service.js';
+export { NodeWebSocketGatewayLifecycleService as WebSocketGatewayLifecycleService } from './node/node-service.js';

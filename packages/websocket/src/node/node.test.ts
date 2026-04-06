@@ -7,7 +7,7 @@ import { Inject } from '@konekti/core';
 import { defineModule } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
 
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
 import { NodeWebSocketModule, createNodeWebSocketProviders } from './node.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service.js';

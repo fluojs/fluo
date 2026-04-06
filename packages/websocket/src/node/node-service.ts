@@ -10,13 +10,13 @@ import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME
 import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
-import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
-import { WEBSOCKET_OPTIONS_INTERNAL } from './options-token.internal.js';
+import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from '../metadata.js';
+import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
   WebSocketGatewayHandlerDescriptor,
   WebSocketRoomService,
-} from './types.js';
+} from '../types.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 interface DiscoveryCandidate {
