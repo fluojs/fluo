@@ -5,12 +5,12 @@ import { defineControllerMetadata, defineModuleMetadata } from '@konekti/core/in
 import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
-import { KafkaMicroserviceTransport } from './kafka-transport.js';
+import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
 import { MicroservicesModule } from './module.js';
 import { MicroserviceLifecycleService } from './service.js';
 import { MICROSERVICE } from './tokens.js';
-import { RedisPubSubMicroserviceTransport } from './redis-transport.js';
-import { TcpMicroserviceTransport } from './tcp-transport.js';
+import { RedisPubSubMicroserviceTransport } from './transports/redis-transport.js';
+import { TcpMicroserviceTransport } from './transports/tcp-transport.js';
 import type {
   MicroserviceTransport,
   ServerStreamWriter,

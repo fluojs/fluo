@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from './types.js';
+import type { MicroserviceTransport, TransportHandler } from '../types.js';
 
 interface KafkaConsumerLike {
   subscribe(topic: string, handler: (message: string) => Promise<void> | void): Promise<void>;
