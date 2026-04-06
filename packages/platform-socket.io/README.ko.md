@@ -84,6 +84,6 @@ export class AppModule {}
 
 ## `@konekti/websocket`과의 차이
 
-- `@konekti/websocket`은 공용 Node 서버의 raw `ws` upgrade 처리에 초점을 둡니다
+- `@konekti/websocket/node`는 공용 Node 서버의 raw `ws` upgrade 처리에 초점을 두고, `@konekti/websocket` 루트는 공용 게이트웨이 데코레이터와 메타데이터에 집중합니다
 - `@konekti/platform-socket.io`는 Socket.IO v4 네임스페이스, room, acknowledgement, transport fallback 동작에 초점을 둡니다
 - 데코레이터는 공유하지만, transport 전용 서버와 room 구현은 이 패키지가 담당합니다

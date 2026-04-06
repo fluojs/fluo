@@ -1,6 +1,6 @@
 {
   "name": "@konekti/websocket",
-  "description": "Decorator-based WebSocket gateway discovery and Node HTTP upgrade wiring for Konekti.",
+  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node ws binding on the node subpath.",
   "keywords": [
     "konekti",
     "websocket",
@@ -28,10 +28,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "node": [
+        "./dist/node.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
