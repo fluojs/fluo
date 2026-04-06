@@ -171,6 +171,8 @@
 |--------|------|
 | `@konekti/websocket` + `@konekti/websocket/node` | 공용 게이트웨이 데코레이터/계약과 플랫폼이 선택한 server-backed realtime capability를 소비하는 명시적 `ws` 바인딩 |
 
+현재 이 브랜치에서 정직하게 지원하는 raw `@konekti/websocket/node` 범위는 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 한정됩니다.
+
 ### 선택 B — Socket.IO
 
 | 패키지 | 역할 |
@@ -180,6 +182,7 @@
 **사용하지 않는 경우:**
 - 실시간 요구가 서버 전송 이벤트(SSE)에 한정된다면 `@konekti/http`의 표준 HTTP 스트리밍 응답으로 충분할 수 있습니다.
 - 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면(예: Worker 계열 어댑터), Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
+- 별도 브랜치에서 호환 가능한 server-backed 구현과 테스트가 추가되지 않았다면 Bun/Deno에서 raw `@konekti/websocket/node` 지원을 가정하지 마세요.
 
 ---
 

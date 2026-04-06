@@ -8,6 +8,7 @@ import { WebSocket } from 'ws';
 import { Inject, Scope } from '@konekti/core';
 import { getModuleMetadata } from '@konekti/core/internal';
 import { Container } from '@konekti/di';
+import { bootstrapExpressApplication } from '@konekti/platform-express';
 import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
@@ -223,10 +224,10 @@ describe('@konekti/websocket', () => {
     const firstProviders = getModuleMetadata(firstModule)?.providers;
     const secondProviders = getModuleMetadata(secondModule)?.providers;
     const firstOptionsProvider = firstProviders?.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     ) as { useValue?: WebSocketModuleOptions } | undefined;
     const secondOptionsProvider = secondProviders?.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     ) as { useValue?: WebSocketModuleOptions } | undefined;
 
     expect(firstModule).not.toBe(secondModule);
@@ -517,6 +518,69 @@ describe('@konekti/websocket', () => {
 
     const port = await findAvailablePort();
     const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+    await onceOpen(socket);
+    socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+
+    const incoming = await onceMessage(socket);
+    expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
+
+    socket.close();
+    await onceClosed(socket);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.connectCount).toBe(1);
+    expect(state.messages).toEqual([{ value: 'hello' }]);
+    expect(state.disconnectCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('boots an Express app, connects websocket client, handles message, and disconnects', async () => {
+    class GatewayState {
+      connectCount = 0;
+      disconnectCount = 0;
+      messages: unknown[] = [];
+    }
+
+    @Inject([GatewayState])
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connectCount += 1;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown, socket: WebSocket) {
+        this.state.messages.push(payload);
+        socket.send(JSON.stringify({ event: 'pong', data: payload }));
+      }
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnectCount += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot()],
+      providers: [GatewayState, ChatGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
       cors: false,
       port,
     });

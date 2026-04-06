@@ -78,6 +78,16 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 - `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
 - `shutdown.timeoutMs` (default: `5000`)
 
+### Supported raw websocket host adapters
+
+`@konekti/websocket/node` currently supports the platform adapters that expose a tested Node-owned `{ kind: 'server-backed', server }` realtime capability and a compatible HTTP/S `upgrade` listener boundary:
+
+- `@konekti/platform-nodejs`
+- `@konekti/platform-fastify`
+- `@konekti/platform-express`
+
+The current branch does **not** claim raw `@konekti/websocket/node` support for `@konekti/platform-bun`, `@konekti/platform-deno`, or `@konekti/platform-cloudflare-workers`.
+
 ## Runtime behavior
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
@@ -96,6 +106,7 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
+- Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; this package does not claim Bun or Deno support until a tested server-backed implementation exists.
 
 ## Provider registration constraints
 

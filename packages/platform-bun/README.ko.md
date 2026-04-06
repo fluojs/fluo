@@ -81,3 +81,4 @@ await app.listen();
 - Bun의 native `fetch` + `Bun.serve()` 계약을 넘는 standalone app builder는 제공하지 않으며, 프레임워크 통합은 계속 Konekti 런타임 facade를 통해 흐릅니다.
 - Node 전용 writable response escape hatch는 제공하지 않으며, 스트리밍 응답은 `FrameworkResponse.stream`을 사용해야 합니다.
 - Deno, Cloudflare Workers 같은 다른 fetch-style 런타임은 별도 어댑터 범위로 유지됩니다.
+- 이 어댑터가 Node 스타일 upgrade host용 테스트된 호환 realtime capability seam을 노출하기 전까지는 raw `@konekti/websocket/node` 호스팅을 지원하지 않습니다.

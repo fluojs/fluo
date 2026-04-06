@@ -78,6 +78,16 @@ export class AppModule {}
 - `heartbeat.enabled`, `heartbeat.intervalMs`, `heartbeat.timeoutMs`
 - `shutdown.timeoutMs` (기본값: `5000`)
 
+### raw websocket 지원 호스트 어댑터
+
+현재 `@konekti/websocket/node`는 테스트된 Node 소유 `{ kind: 'server-backed', server }` realtime capability와 호환 가능한 HTTP/S `upgrade` listener 경계를 노출하는 플랫폼 어댑터만 지원합니다.
+
+- `@konekti/platform-nodejs`
+- `@konekti/platform-fastify`
+- `@konekti/platform-express`
+
+이 브랜치는 `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers`에 대해 raw `@konekti/websocket/node` 지원을 주장하지 않습니다.
+
 ## 런타임 동작
 
 - `onApplicationBootstrap()`에서 `COMPILED_MODULES`를 기준으로 게이트웨이 탐색
@@ -95,6 +105,7 @@ export class AppModule {}
 - `@konekti/websocket` 루트는 게이트웨이 작성용 데코레이터, 메타데이터, 디스크립터, 공용 room 계약에 집중하며, 현재 raw `ws` Node 런타임 배선은 의도적으로 `@konekti/websocket/node`로 격리합니다.
 - 이제 명시적 realtime capability seam의 소유권은 플랫폼 선택 경계에 있습니다. 이 패키지 자체가 런타임/플랫폼 결정을 내리지는 않으며, 현재 raw `ws` 바인딩은 계속 Node 기반 server capability를 전제로 합니다.
 - `{ kind: 'unsupported', mode: 'no-op' }`를 보고하는 런타임은 그 명시적 경계에서 중단되며, 이 패키지는 Worker/fetch-style 런타임을 위해 Node upgrade listener 라이프사이클을 에뮬레이션하지 않습니다.
+- 그 seam을 통해 호환 가능한 Node upgrade-listener host를 노출하지 않는 fetch-style 런타임은 `@konekti/websocket/node`에서 계속 unsupported 상태이며, 테스트된 server-backed 구현이 생기기 전까지 Bun/Deno 지원을 주장하지 않습니다.
 
 ## 프로바이더 등록 제약
 

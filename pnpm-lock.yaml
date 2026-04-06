@@ -724,6 +724,9 @@ importers:
         specifier: ^8.18.3
         version: 8.19.0
     devDependencies:
+      '@konekti/platform-express':
+        specifier: workspace:*
+        version: link:../platform-express
       '@konekti/platform-fastify':
         specifier: workspace:*
         version: link:../platform-fastify

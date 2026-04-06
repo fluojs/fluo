@@ -62,6 +62,7 @@ await app.listen();
 - Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
 - The adapter exposes `FrameworkResponse.stream` so SSE and other streamed responses do not depend on raw Node response duck-typing.
 - The adapter exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need the selected platform's Node-owned realtime listener boundary.
+- Raw `@konekti/websocket/node` gateway hosting is supported through that realtime capability seam.
 - Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
 - Signal-driven shutdown follows the same Node compatibility shutdown path documented at `@konekti/runtime/node`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
 - If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
@@ -89,6 +90,7 @@ Treat these numbers as directional; validate in your deployment topology and pay
 - No Fastify plugin passthrough — framework middleware and guards run through the Konekti dispatcher, not Fastify's hook system; native Fastify plugins are not automatically bridged
 - rawBody is opt-in and excluded for multipart requests — this matches the Node adapter behavior
 - No standalone Fastify mode — the adapter requires the Konekti runtime bootstrap path; it cannot be used as a standalone Fastify server
+- This package does not add a Fastify-specific WebSocket gateway API; realtime integrations should consume the exposed server-backed capability seam instead
 
 #### 0.x migration note
 

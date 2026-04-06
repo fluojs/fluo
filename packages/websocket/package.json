@@ -59,6 +59,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@konekti/platform-express": "workspace:*",
     "@konekti/platform-fastify": "workspace:*",
     "@types/ws": "^8.18.1"
   }
