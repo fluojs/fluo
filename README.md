@@ -55,7 +55,16 @@ export class UsersService {
 }
 ```
 
-Konekti explicit token injection:
+Konekti class-first explicit injection:
+
+```ts
+@Inject([UsersRepository])
+class UsersService {
+  constructor(private readonly repo: UsersRepository) {}
+}
+```
+
+When a dependency has a concrete class, use the class itself as the token. Symbols remain valid for interface-only bindings and config/runtime seams:
 
 ```ts
 const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
