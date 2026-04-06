@@ -49,9 +49,17 @@ class AppModule {}
 @Module({ providers: [ConfigService] })
 class CoreModule {}
 
-// Explicit injection token
-@Inject([CONFIG_TOKEN])
+// Class-first injection for concrete services
+@Inject([ConfigService])
 class MyService {
+  constructor(private config: ConfigService) {}
+}
+
+// Symbols remain valid for config values and interface-only seams
+const CONFIG_TOKEN = Symbol('CONFIG_TOKEN');
+
+@Inject([CONFIG_TOKEN])
+class UsesConfigValue {
   constructor(private config: Config) {}
 }
 
