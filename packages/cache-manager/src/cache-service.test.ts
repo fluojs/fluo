@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MemoryStore } from './memory-store.js';
-import { RedisStore } from './redis-store.js';
+import { MemoryStore } from './stores/memory-store.js';
+import { RedisStore } from './stores/redis-store.js';
 import { CacheService } from './service.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 

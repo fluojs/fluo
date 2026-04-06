@@ -1,5 +1,5 @@
-import type { CacheStore } from './types.js';
-import { cloneCacheValue } from './clone.js';
+import type { CacheStore } from '../types.js';
+import { cloneCacheValue } from '../clone.js';
 
 interface MemoryCacheEntry<T = unknown> {
   expiresAt?: number;

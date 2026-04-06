@@ -1,4 +1,4 @@
-import type { CacheStore, RedisCompatibleClient } from './types.js';
+import type { CacheStore, RedisCompatibleClient } from '../types.js';
 
 export interface RedisStoreOptions {
   keyPrefix?: string;
