@@ -62,6 +62,7 @@ await app.listen();
 - 멀티파트 요청은 `request.body` 필드와 `request.files` (`UploadedFile[]`)를 노출합니다.
 - 이제 어댑터가 `FrameworkResponse.stream`을 노출하므로 SSE 및 기타 스트리밍 응답은 raw Node response 덕타이핑에 의존하지 않습니다.
 - 선택된 플랫폼의 Node 소유 realtime listener 경계가 필요한 통합을 위해 어댑터는 `{ kind: 'server-backed', server }` realtime capability를 노출합니다.
+- 그 realtime capability seam을 통해 raw `@konekti/websocket/node` 게이트웨이 호스팅을 지원합니다.
 - 시작 로그는 런타임 컨벤션을 따르며 와일드카드 호스트에 대한 바인딩 대상 상세 정보를 포함합니다.
 - 시그널 기반 종료는 `@konekti/runtime/node`에 문서화된 Node 호환 종료 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
 - `forceExitTimeoutMs`가 `shutdownTimeoutMs`보다 짧으면 전체 drain window가 끝나기 전에 watchdog이 의도적으로 프로세스를 종료할 수 있습니다.
@@ -89,6 +90,7 @@ wrk -t16 -c128 -d30s http://127.0.0.1:3000/health
 - Fastify plugin passthrough는 제공하지 않습니다. 프레임워크 미들웨어와 가드는 Fastify hook이 아니라 Konekti 디스패처를 통해 실행되며, native Fastify plugin은 자동 브리지되지 않습니다.
 - `rawBody`는 opt-in이며 multipart 요청에서는 제외됩니다. 이 동작은 Node 어댑터와 동일합니다.
 - standalone Fastify 모드는 지원하지 않습니다. 이 어댑터는 Konekti 런타임 부트스트랩 경로가 필요하며 단독 Fastify 서버로 사용할 수 없습니다.
+- 이 패키지는 Fastify 전용 WebSocket 게이트웨이 API를 추가하지 않으며, realtime 통합은 노출된 server-backed capability seam을 통해 붙어야 합니다.
 
 #### 0.x 마이그레이션 노트
 
