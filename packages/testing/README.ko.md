@@ -329,7 +329,7 @@ const harness = createFetchStyleWebSocketConformanceHarness({
   createAdapter: () => createBunAdapter(),
   expectedSupport: 'supported',
   expectedReason:
-    'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
+    'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
   name: 'bun',
 });
 

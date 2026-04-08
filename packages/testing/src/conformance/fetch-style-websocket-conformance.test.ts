@@ -37,7 +37,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createBunAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
       name: 'bun',
     });
 
@@ -49,7 +49,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createDenoAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
       name: 'deno',
     });
 
@@ -61,7 +61,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createCloudflareWorkerAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websocket/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
       name: 'cloudflare-workers',
     });
 
