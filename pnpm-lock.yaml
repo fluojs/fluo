@@ -733,6 +733,9 @@ importers:
         specifier: ^8.18.3
         version: 8.19.0
     devDependencies:
+      '@konekti/platform-bun':
+        specifier: workspace:*
+        version: link:../platform-bun
       '@konekti/platform-express':
         specifier: workspace:*
         version: link:../platform-express

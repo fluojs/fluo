@@ -32,11 +32,12 @@ describe('fetch-style websocket conformance harness', () => {
 });
 
 describe('official fetch-style runtime websocket contract', () => {
-  it('keeps Bun on the shared contract-only websocket expansion seam', () => {
+  it('keeps Bun on the shared supported websocket expansion seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
       createAdapter: () => createBunAdapter(),
+      expectedSupport: 'supported',
       expectedReason:
-        'Bun uses Bun.serve() with server.upgrade() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/bun binding is needed before raw websocket support can be claimed.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
       name: 'bun',
     });
 

@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based WebSocket gateway authoring core for Konekti applications, with the current raw `ws` Node binding isolated on the explicit `@konekti/websocket/node` subpath.
+Decorator-based WebSocket gateway authoring core for Konekti applications, with runtime-specific raw websocket bindings isolated on explicit subpaths such as `@konekti/websocket/node` and `@konekti/websocket/bun`.
 
 ## See also
 
@@ -18,7 +18,7 @@ Decorator-based WebSocket gateway authoring core for Konekti applications, with 
 npm install @konekti/websocket ws
 ```
 
-Import decorators and shared gateway contracts from `@konekti/websocket`, then add the current Node-only binding from `@konekti/websocket/node` when you want raw `ws` support on a Node-backed HTTP adapter.
+Import decorators and shared gateway contracts from `@konekti/websocket`, then add the runtime-specific binding subpath that matches your HTTP adapter (`@konekti/websocket/node` for Node upgrade-listener hosts or `@konekti/websocket/bun` for `@konekti/platform-bun`).
 
 ## Quick Start
 
@@ -88,7 +88,14 @@ It still uses a stable `Symbol.for(...)` key to preserve package-internal DI ide
 
 The current branch does **not** claim raw `@konekti/websocket/node` support for `@konekti/platform-bun`, `@konekti/platform-deno`, or `@konekti/platform-cloudflare-workers`.
 
-Those fetch-style adapters may still expose a shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` capability so future runtime-specific websocket work plugs into one honest contract. That contract alone does **not** make `@konekti/websocket/node` supported there.
+Those fetch-style runtimes use the shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support, version: 1, reason }` seam for runtime-specific websocket bindings. That capability alone still does **not** make `@konekti/websocket/node` supported there.
+
+## Bun binding subpath
+
+- `BunWebSocketModule.forRoot()` from `@konekti/websocket/bun` - registers the Bun-native raw websocket binding for `@konekti/platform-bun`
+- `createBunWebSocketProviders()` from `@konekti/websocket/bun` - returns raw providers for custom Bun websocket module composition
+
+`@konekti/websocket/bun` consumes Bun's shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` realtime capability and hosts gateways through `Bun.serve()` + `server.upgrade()`.
 
 ## Runtime behavior
 
@@ -108,7 +115,7 @@ Those fetch-style adapters may still expose a shared `{ kind: 'fetch-style', con
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` or a fetch-style `raw-websocket-expansion` capability stop at that explicit boundary until a runtime-specific websocket host is implemented; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
-- Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; this package does not claim Bun or Deno support until a tested server-backed implementation exists.
+- Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; Bun raw websocket hosting is claimed only through `@konekti/websocket/bun`, while other runtimes still require their own dedicated bindings.
 
 ## Provider registration constraints
 

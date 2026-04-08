@@ -319,7 +319,7 @@ Web-runtime portability harness는 다음 parity 기대값을 검증합니다.
 
 ### Fetch-style websocket conformance harness
 
-fetch-style 런타임 어댑터가 아직 지원을 주장하지 않으면서도 공용 raw websocket 확장 계약을 고정해야 할 때는 `createFetchStyleWebSocketConformanceHarness(...)`를 사용하세요.
+fetch-style 런타임 어댑터가 공용 raw websocket 확장 계약과 정직한 지원 수준을 함께 고정해야 할 때는 `createFetchStyleWebSocketConformanceHarness(...)`를 사용하세요.
 
 ```ts
 import { createFetchStyleWebSocketConformanceHarness } from '@konekti/testing/fetch-style-websocket-conformance';
@@ -327,8 +327,9 @@ import { createBunAdapter } from '@konekti/platform-bun';
 
 const harness = createFetchStyleWebSocketConformanceHarness({
   createAdapter: () => createBunAdapter(),
+  expectedSupport: 'supported',
   expectedReason:
-    'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+    'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
   name: 'bun',
 });
 
@@ -340,8 +341,8 @@ harness.assertExposesRawWebSocketExpansionContract();
 - 어댑터가 `getRealtimeCapability()`를 노출해야 함
 - capability가 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade' }` 형태를 유지해야 함
 - 의도적인 계약 변경 전까지 공용 계약 버전이 `1`로 유지되어야 함
-- 런타임별 raw websocket host와 테스트가 추가되기 전까지 `support: 'contract-only'`가 명시적으로 유지되어야 함
-- 아직 지원을 주장하지 않는 이유를 설명하는 안정적인 `reason` 문자열을 유지해야 함
+- 문서화된 런타임 상태에 맞는 정직한 `support` 값(`'contract-only'` 또는 `'supported'`)을 유지해야 함
+- websocket 호스팅이 어떻게 지원되는지 또는 왜 아직 지원을 주장하지 않는지를 설명하는 안정적인 `reason` 문자열을 유지해야 함
 
 ## 핵심 API
 

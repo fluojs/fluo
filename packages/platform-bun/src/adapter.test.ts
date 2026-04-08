@@ -4,16 +4,20 @@ import { Controller, Get, Post, SseResponse, type FrameworkRequest, type Framewo
 import { defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import {
+  BunHttpApplicationAdapter,
   createBunAdapter,
   createBunFetchHandler,
   runBunApplication,
   type BunServeOptions,
   type BunServerLike,
+  type BunServerWebSocket,
+  type BunWebSocketBinding,
 } from './adapter.js';
 
 type MockBunServer = BunServerLike & {
-  fetch(request: Request): Promise<Response>;
+  fetch(request: Request): Promise<Response | undefined>;
   stop: ReturnType<typeof vi.fn<(closeActiveConnections?: boolean) => void>>;
+  upgrade: ReturnType<typeof vi.fn<(request: Request, options?: { data?: unknown; headers?: HeadersInit }) => boolean>>;
 };
 
 type MockBun = {
@@ -44,10 +48,21 @@ function installMockBun(): MockBun {
     let server!: MockBunServer;
 
     server = {
-      fetch: async (request: Request): Promise<Response> => await options.fetch(request, server),
+      fetch: async (request: Request): Promise<Response | undefined> => await options.fetch(request, server),
       hostname,
       port,
       stop: vi.fn<(closeActiveConnections?: boolean) => void>(),
+      upgrade: vi.fn((_request: Request, upgradeOptions?: { data?: unknown; headers?: HeadersInit }) => {
+        const websocket = options.websocket;
+
+        if (!websocket) {
+          return false;
+        }
+
+        const socket = createMockServerWebSocket(upgradeOptions?.data);
+        void Promise.resolve(websocket.open?.(socket));
+        return true;
+      }),
       url: new URL(`${protocol}://${hostname}:${String(port)}`),
     };
 
@@ -58,6 +73,36 @@ function installMockBun(): MockBun {
 
   (globalThis as typeof globalThis & { Bun?: MockBun }).Bun = mockBun;
   return mockBun;
+}
+
+function createMockServerWebSocket(data: unknown): BunServerWebSocket<unknown> {
+  const subscriptions = new Set<string>();
+
+  return {
+    close() {},
+    cork(callback: (socket: BunServerWebSocket<unknown>) => void) {
+      callback(this);
+    },
+    data,
+    isSubscribed(topic: string) {
+      return subscriptions.has(topic);
+    },
+    publish() {},
+    readyState: 1,
+    remoteAddress: '127.0.0.1',
+    send() {
+      return 1;
+    },
+    subscribe(topic: string) {
+      subscriptions.add(topic);
+    },
+    get subscriptions() {
+      return [...subscriptions];
+    },
+    unsubscribe(topic: string) {
+      subscriptions.delete(topic);
+    },
+  };
 }
 
 describe('@konekti/platform-bun', () => {
@@ -230,5 +275,56 @@ describe('@konekti/platform-bun', () => {
     await expect(adapter.listen({ dispatch: async () => undefined })).rejects.toThrow(
       'Bun adapter requires globalThis.Bun.serve()',
     );
+  });
+
+  it('reports supported fetch-style websocket hosting for the official Bun binding seam', () => {
+    const adapter = createBunAdapter();
+
+    expect(adapter.getRealtimeCapability?.()).toEqual({
+      contract: 'raw-websocket-expansion',
+      kind: 'fetch-style',
+      mode: 'request-upgrade',
+      reason:
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
+      support: 'supported',
+      version: 1,
+    });
+  });
+
+  it('delegates websocket upgrade requests through a configured Bun websocket binding before HTTP dispatch', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+      }),
+    };
+    const bindingFetch = vi.fn<BunWebSocketBinding['fetch']>(async (request, server) => {
+      if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+        const upgraded = server.upgrade(request, { data: { path: '/chat' } });
+        return upgraded ? undefined : new Response(null, { status: 400 });
+      }
+
+      return new Response('not-upgraded', { status: 202 });
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    const upgradeResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+    const httpResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/http'));
+
+    expect(mockBun.lastOptions?.websocket).toBeDefined();
+    expect(upgradeResponse).toBeUndefined();
+    expect(mockBun.lastServer?.upgrade).toHaveBeenCalledTimes(1);
+    expect(httpResponse?.status).toBe(200);
+    expect(bindingFetch).toHaveBeenCalledTimes(1);
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
   });
 });
