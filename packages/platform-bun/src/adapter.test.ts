@@ -285,7 +285,7 @@ describe('@konekti/platform-bun', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
       support: 'supported',
       version: 1,
     });

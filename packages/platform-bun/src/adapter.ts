@@ -159,7 +159,7 @@ export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions
 const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
 const BUN_WEBSOCKET_SUPPORT_REASON =
-  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.';
+  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.';
 
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private server?: BunServerLike;
