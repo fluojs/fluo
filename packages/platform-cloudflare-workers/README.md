@@ -101,4 +101,4 @@ Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime optio
 - Worker `env` and `ExecutionContext` values are accepted at the `fetch()` boundary but are not injected into Konekti `RequestContext` automatically.
 - No Node-only options such as `port`, `host`, `https`, `shutdownSignals`, or `forceExitTimeoutMs` are supported.
 - This package does not add Bun- or Deno-specific behavior; it stays focused on Cloudflare Workers over the shared Web core.
-- Raw websocket hosting for Cloudflare Workers is provided through the dedicated `@konekti/websocket/cloudflare-workers` binding. The supported scope is intentionally isolate-local and stateless: in-memory room membership is limited to the active Worker instance, while Durable Objects and cross-isolate coordination remain out of scope.
+- Raw websocket hosting for Cloudflare Workers is provided through the dedicated `@konekti/websockets/cloudflare-workers` binding. The supported scope is intentionally isolate-local and stateless: in-memory room membership is limited to the active Worker instance, while Durable Objects and cross-isolate coordination remain out of scope.
