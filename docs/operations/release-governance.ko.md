@@ -33,7 +33,7 @@
 - `@konekti/platform-express`
 - `@konekti/platform-bun`
 - `@konekti/platform-deno`
-- `@konekti/platform-socket.io`
+- `@konekti/socket.io`
 - `@konekti/microservices`
 - `@konekti/jwt`
 - `@konekti/passport`
@@ -45,7 +45,7 @@
 - `@konekti/cron`
 - `@konekti/cqrs`
 - `@konekti/event-bus`
-- `@konekti/websocket`
+- `@konekti/websockets`
 - `@konekti/queue`
 - `@konekti/redis`
 - `@konekti/prisma`
