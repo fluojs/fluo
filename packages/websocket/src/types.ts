@@ -10,12 +10,18 @@ export type WebSocketEventMap = Record<string, unknown>;
 export type TypedOnMessageHandler<TEvents extends WebSocketEventMap, K extends keyof TEvents> =
   NodeTypedOnMessageHandler<TEvents, K>;
 
+export interface WebSocketGatewayServerBackedOptions {
+  port: number;
+}
+
 export interface WebSocketGatewayOptions {
   path?: string;
+  serverBacked?: WebSocketGatewayServerBackedOptions;
 }
 
 export interface WebSocketGatewayMetadata {
   path: string;
+  serverBacked?: WebSocketGatewayServerBackedOptions;
 }
 
 export type WebSocketGatewayHandlerType = 'connect' | 'disconnect' | 'message';
@@ -36,6 +42,7 @@ export interface WebSocketGatewayDescriptor {
   handlers: WebSocketGatewayHandlerDescriptor[];
   moduleName: string;
   path: string;
+  serverBacked?: WebSocketGatewayServerBackedOptions;
   targetName: string;
   token: Token;
 }

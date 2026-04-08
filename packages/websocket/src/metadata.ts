@@ -1,6 +1,9 @@
 import type { MetadataPropertyKey } from '@konekti/core';
 
-import type { WebSocketGatewayHandlerMetadata, WebSocketGatewayMetadata } from './types.js';
+import type {
+  WebSocketGatewayHandlerMetadata,
+  WebSocketGatewayMetadata,
+} from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
@@ -23,6 +26,11 @@ const handlerMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, WebSoc
 function cloneGatewayMetadata(metadata: WebSocketGatewayMetadata): WebSocketGatewayMetadata {
   return {
     path: metadata.path,
+    serverBacked: metadata.serverBacked
+      ? {
+          port: metadata.serverBacked.port,
+        }
+      : undefined,
   };
 }
 

@@ -272,6 +272,12 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
 }
 
 function createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
+  const gatewayMetadata = getWebSocketGatewayMetadata(candidate.targetType);
+
+  if (!gatewayMetadata) {
+    throw new Error(`Missing websocket gateway metadata for ${candidate.targetType.name}.`);
+  }
+
   return {
     handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
       event: entry.metadata.event,
@@ -281,6 +287,11 @@ function createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): W
     })),
     moduleName: candidate.moduleName,
     path: normalizeGatewayPath(path),
+    serverBacked: gatewayMetadata.serverBacked
+      ? {
+          port: gatewayMetadata.serverBacked.port,
+        }
+      : undefined,
     targetName: candidate.targetType.name,
     token: candidate.token,
   };

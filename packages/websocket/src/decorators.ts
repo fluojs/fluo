@@ -28,6 +28,11 @@ function defineStandardGatewayMetadata(metadata: unknown, options: WebSocketGate
   const bag = getStandardMetadataBag(metadata);
   bag[webSocketGatewayMetadataSymbol] = {
     path: normalizeGatewayPath(options.path),
+    serverBacked: options.serverBacked
+      ? {
+          port: options.serverBacked.port,
+        }
+      : undefined,
   };
 }
 
