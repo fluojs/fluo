@@ -2,29 +2,29 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
-import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Provider, Container } from '@konekti/di';
+import { Inject } from '@konekti/core';
+import type { Container } from '@konekti/di';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
+import type { HttpApplicationAdapter } from '@konekti/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
-import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from '../metadata.js';
+import {
+  dispatchGatewayDisconnect,
+  dispatchGatewayMessage,
+  discoverGatewayDescriptors,
+  isFinitePositiveInteger,
+  normalizeGatewayPath,
+  resolveGatewayInstance,
+  runGatewayHandlers,
+  type ResolvedGatewayInstance,
+} from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
-  WebSocketGatewayHandlerDescriptor,
   WebSocketRoomService,
 } from '../types.js';
 import type { WebSocketModuleOptions } from './node-types.js';
-
-interface DiscoveryCandidate {
-  moduleName: string;
-  scope: 'request' | 'singleton' | 'transient';
-  targetType: Function;
-  token: Token;
-}
 
 interface GatewayAttachment {
   descriptors: WebSocketGatewayDescriptor[];
@@ -42,7 +42,7 @@ interface ConnectionHandlerState {
   processingMessageQueue: boolean;
   queuedMessages: RawData[];
   queuedMessagesStartIndex: number;
-  resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>;
+  resolved: ResolvedGatewayInstance[];
   socketId: string;
 }
 
@@ -52,18 +52,7 @@ interface NodeUpgradeServer {
   on(event: 'upgrade', listener: NodeUpgradeListener): this;
 }
 
-interface ClassProviderLike {
-  provide: Token;
-  scope?: 'request' | 'singleton' | 'transient';
-  useClass: new (...args: unknown[]) => unknown;
-}
-
 type NodeUpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
-
-type ParsedWebSocketMessage = {
-  event?: string;
-  payload: unknown;
-};
 
 type BufferedDisconnectEvent = {
   code: number;
@@ -74,75 +63,20 @@ const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
 const DEFAULT_MAX_BUFFERED_AMOUNT_BYTES = 1_048_576;
 
-function isFinitePositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && Number.isInteger(value);
-}
+type ServerBackedRealtimeCapability = {
+  kind: 'server-backed';
+  reason?: string;
+  server: unknown;
+};
 
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    const classProvider = provider as ClassProviderLike;
-    return classProvider.scope ?? getClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
-}
-
-function methodKeyToName(methodKey: MetadataPropertyKey): string {
-  return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
-}
-
-function isClassProvider(provider: Provider): provider is ClassProviderLike {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function normalizeGatewayPath(path: string): string {
-  if (path === '/') {
-    return '/';
-  }
-
-  const normalized = `/${path.replace(/^\/+/, '').replace(/\/+$/, '')}`;
-
-  return normalized === '' ? '/' : normalized;
-}
-
-function parseIncomingMessage(data: RawData): ParsedWebSocketMessage {
-  const text =
-    typeof data === 'string'
-      ? data
-      : data instanceof ArrayBuffer
-        ? Buffer.from(data).toString('utf8')
-        : Array.isArray(data)
-          ? Buffer.concat(data as Buffer[]).toString('utf8')
-          : ArrayBuffer.isView(data)
-            ? Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8')
-            : String(data);
-  let parsed: unknown = text;
-
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    return { payload: text };
-  }
-
-  if (typeof parsed === 'object' && parsed !== null && 'event' in parsed) {
-    const event = (parsed as { event?: unknown }).event;
-
-    if (typeof event === 'string') {
-      return {
-        event,
-        payload: (parsed as { data?: unknown }).data,
+type RealtimeAwareHttpApplicationAdapter = HttpApplicationAdapter & {
+  getRealtimeCapability?: () =>
+    | ServerBackedRealtimeCapability
+    | {
+        kind: 'fetch-style' | 'unsupported';
+        reason: string;
       };
-    }
-  }
-
-  return {
-    payload: parsed,
-  };
-}
+};
 
 function hasNodeUpgradeServer(value: unknown): value is NodeUpgradeServer {
   if (typeof value !== 'object' || value === null) {
@@ -155,8 +89,8 @@ function hasNodeUpgradeServer(value: unknown): value is NodeUpgradeServer {
 }
 
 function resolveServerBackedRealtimeCapability(
-  adapter: HttpApplicationAdapter,
-): Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }> {
+  adapter: RealtimeAwareHttpApplicationAdapter,
+): ServerBackedRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
       'WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability.',
@@ -220,7 +154,7 @@ export class NodeWebSocketGatewayLifecycleService
       return;
     }
 
-    const descriptors = this.discoverGatewayDescriptors();
+    const descriptors = discoverGatewayDescriptors(this.compiledModules, this.logger, 'WebSocketGatewayLifecycleService');
 
     if (descriptors.length === 0) {
       return;
@@ -500,10 +434,31 @@ export class NodeWebSocketGatewayLifecycleService
         continue;
       }
 
-      await this.handleMessage(state.resolved, socket, request, nextMessage);
+      await this.handleMessage(
+        state.resolved,
+        socket,
+        request,
+        nextMessage,
+      );
     }
 
     this.clearQueuedMessages(state);
+  }
+
+  private async handleMessage(
+    resolved: readonly ResolvedGatewayInstance[],
+    socket: WebSocket,
+    request: IncomingMessage,
+    data: RawData,
+  ): Promise<void> {
+    await dispatchGatewayMessage(
+      resolved,
+      socket,
+      request,
+      data,
+      this.logger,
+      'WebSocketGatewayLifecycleService',
+    );
   }
 
   private enqueueDisconnectDispatch(
@@ -611,7 +566,12 @@ export class NodeWebSocketGatewayLifecycleService
     state: ConnectionHandlerState,
   ): Promise<void> {
     for (const descriptor of descriptors) {
-      const instance = await this.resolveGatewayInstance(descriptor);
+      const instance = await resolveGatewayInstance(
+        this.runtimeContainer,
+        descriptor,
+        this.logger,
+        'WebSocketGatewayLifecycleService',
+      );
 
       if (instance !== undefined) {
         state.resolved.push({ descriptor, instance });
@@ -625,7 +585,14 @@ export class NodeWebSocketGatewayLifecycleService
     request: IncomingMessage,
   ): Promise<void> {
     for (const { descriptor, instance } of state.resolved) {
-      await this.runHandlers(instance, descriptor, 'connect', socket, request, state.socketId);
+      await runGatewayHandlers(
+        instance,
+        descriptor,
+        'connect',
+        [socket, request, state.socketId],
+        this.logger,
+        'WebSocketGatewayLifecycleService',
+      );
     }
   }
 
@@ -654,184 +621,22 @@ export class NodeWebSocketGatewayLifecycleService
     }
   }
 
-  private async handleMessage(
-    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
-    socket: WebSocket,
-    request: IncomingMessage,
-    data: RawData,
-  ): Promise<void> {
-    const parsed = parseIncomingMessage(data);
-
-    for (const { descriptor, instance } of resolved) {
-      const handlers = this.selectMessageHandlers(descriptor, parsed.event);
-
-      for (const handler of handlers) {
-        await this.invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request]);
-      }
-    }
-  }
-
-  private selectMessageHandlers(
-    descriptor: WebSocketGatewayDescriptor,
-    event: string | undefined,
-  ): WebSocketGatewayHandlerDescriptor[] {
-    return descriptor.handlers.filter(
-      (handler) =>
-        handler.type === 'message' &&
-        (handler.event === undefined || handler.event === event),
-    );
-  }
-
   private async handleDisconnect(
-    resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }>,
+    resolved: ResolvedGatewayInstance[],
     socket: WebSocket,
     code: number,
     reason: Buffer,
     socketId: string,
   ): Promise<void> {
-    for (const { descriptor, instance } of resolved) {
-      await this.runHandlers(instance, descriptor, 'disconnect', socket, code, reason.toString('utf8'), socketId);
-    }
-  }
-
-  private async runHandlers(
-    instance: unknown,
-    descriptor: WebSocketGatewayDescriptor,
-    type: WebSocketGatewayHandlerDescriptor['type'],
-    ...args: unknown[]
-  ): Promise<void> {
-    const handlers = descriptor.handlers.filter((handler) => handler.type === type);
-
-    for (const handler of handlers) {
-      await this.invokeGatewayMethod(instance, descriptor, handler, args);
-    }
-  }
-
-  private async invokeGatewayMethod(
-    instance: unknown,
-    descriptor: WebSocketGatewayDescriptor,
-    handler: WebSocketGatewayHandlerDescriptor,
-    args: unknown[],
-  ): Promise<void> {
-    const value = (instance as Record<MetadataPropertyKey, unknown>)[handler.methodKey];
-
-    if (typeof value !== 'function') {
-      this.logger.warn(
-        `WebSocket gateway handler ${descriptor.targetName}.${handler.methodName} is not callable and was skipped.`,
-        'WebSocketGatewayLifecycleService',
-      );
-      return;
-    }
-
-    try {
-      await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args));
-    } catch (error) {
-      this.logger.error(
-        `WebSocket gateway handler ${descriptor.targetName}.${handler.methodName} failed.`,
-        error,
-        'WebSocketGatewayLifecycleService',
-      );
-    }
-  }
-
-  private async resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {
-    try {
-      return await this.runtimeContainer.resolve(descriptor.token);
-    } catch (error) {
-      this.logger.error(
-        `Failed to resolve WebSocket gateway ${descriptor.targetName} from module ${descriptor.moduleName}.`,
-        error,
-        'WebSocketGatewayLifecycleService',
-      );
-      return undefined;
-    }
-  }
-
-  private discoverGatewayDescriptors(): WebSocketGatewayDescriptor[] {
-    const seenTargets = new Set<Function>();
-    const descriptors: WebSocketGatewayDescriptor[] = [];
-
-    for (const candidate of this.discoveryCandidates()) {
-      const gatewayMetadata = getWebSocketGatewayMetadata(candidate.targetType);
-
-      if (!gatewayMetadata) {
-        continue;
-      }
-
-      if (this.shouldSkipGatewayCandidate(candidate, seenTargets)) {
-        continue;
-      }
-
-      seenTargets.add(candidate.targetType);
-      descriptors.push(this.createGatewayDescriptor(candidate, gatewayMetadata.path));
-    }
-
-    return descriptors;
-  }
-
-  private shouldSkipGatewayCandidate(candidate: DiscoveryCandidate, seenTargets: Set<Function>): boolean {
-    if (candidate.scope !== 'singleton') {
-      this.logger.warn(
-        `${candidate.targetType.name} in module ${candidate.moduleName} declares @WebSocketGateway() but is registered with ${candidate.scope} scope. WebSocket gateways are registered only for singleton providers.`,
-        'WebSocketGatewayLifecycleService',
-      );
-      return true;
-    }
-
-    return seenTargets.has(candidate.targetType);
-  }
-
-  private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
-    return {
-      handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
-        event: entry.metadata.event,
-        methodKey: entry.propertyKey,
-        methodName: methodKeyToName(entry.propertyKey),
-        type: entry.metadata.type,
-      })),
-      moduleName: candidate.moduleName,
-      path: normalizeGatewayPath(path),
-      targetName: candidate.targetType.name,
-      token: candidate.token,
-    };
-  }
-
-  private discoveryCandidates(): DiscoveryCandidate[] {
-    const candidates: DiscoveryCandidate[] = [];
-
-    for (const compiledModule of this.compiledModules) {
-      for (const provider of compiledModule.definition.providers ?? []) {
-        if (typeof provider === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider,
-            token: provider as Token,
-          });
-          continue;
-        }
-
-        if (isClassProvider(provider)) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider.useClass,
-            token: provider.provide,
-          });
-        }
-      }
-
-      for (const controller of compiledModule.definition.controllers ?? []) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(controller),
-          targetType: controller,
-          token: controller,
-        });
-      }
-    }
-
-    return candidates;
+    await dispatchGatewayDisconnect(
+      resolved,
+      socket,
+      code,
+      reason.toString('utf8'),
+      socketId,
+      this.logger,
+      'WebSocketGatewayLifecycleService',
+    );
   }
 
   private resolveShutdownTimeoutMs(): number {
