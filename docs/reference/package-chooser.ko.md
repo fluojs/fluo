@@ -184,15 +184,16 @@
 
 | 패키지 | 역할 |
 |--------|------|
-| `@konekti/socket.io` | 선택된 플랫폼이 server-backed realtime capability를 보고할 때만 부팅하는, 공유 Konekti 런타임 위의 Socket.IO v4 게이트웨이 어댑터 |
+| `@konekti/socket.io` | Node/Fastify/Express에서는 server-backed 경로로, `@konekti/platform-bun`에서는 공식 `@socket.io/bun-engine` 경로로 부팅하는 공유 Konekti 런타임 위의 Socket.IO v4 게이트웨이 어댑터 |
 
-현재 `@konekti/socket.io`의 정직한 지원 범위는 이 브랜치에서 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
+현재 `@konekti/socket.io`의 정직한 지원 범위는 이 브랜치에서 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`와 공식 `@socket.io/bun-engine` 통합 경로를 사용하는 `@konekti/platform-bun`으로 제한됩니다.
 
 **사용하지 않는 경우:**
 - 실시간 요구가 서버 전송 이벤트(SSE)에 한정된다면 `@konekti/http`의 표준 HTTP 스트리밍 응답으로 충분할 수 있습니다.
 - 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면 Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
 - 선택한 런타임이 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`를 보고한다면, 그것은 현재 raw websocket 지원이 아니라 이후 작업용 계약으로 취급하세요.
-- 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 `@konekti/socket.io` 지원을 가정하지 마세요.
+- 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Deno·Cloudflare Workers에서 `@konekti/socket.io` 지원을 가정하지 마세요.
+- `@konekti/platform-bun`에서 `@konekti/socket.io`를 사용할 때는 `@WebSocketGateway({ serverBacked })`를 사용하지 마세요. 이 opt-in은 계속 server-backed 전용이며 Bun 경로는 이를 명시적으로 거부합니다.
 - 별도 브랜치에서 호환 가능한 런타임별 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 raw `@konekti/websockets/node` 지원을 가정하지 마세요.
 - Bun·Deno·Cloudflare Workers websocket 바인딩에서는 `@WebSocketGateway({ serverBacked })`를 사용하지 마세요. 현재 브랜치는 이 server-backed 전용 메타데이터를 그 런타임들에서 명시적으로 거부합니다.
 
@@ -385,7 +386,7 @@ Redis 백엔드 선택 시 `@konekti/redis`와 함께 사용하세요 — `cache
 | REST API + Prisma + 인증 | `prisma` + `jwt` + `passport` | 가장 일반적인 풀스택 웹 API 셋업 |
 | REST API + Drizzle + 인증 | `drizzle` + `jwt` + `passport` | Prisma 대신 Drizzle을 쓰는 동일 패턴 |
 | 마이크로서비스 + Redis 큐 | `microservices` + `queue` + `redis` | 영속적 작업 재시도가 있는 메시지 주도 처리 |
-| 실시간 + 캐싱 | `platform-socket.io` 또는 `websocket` + `cache-manager` + `redis` | 캐시된 데이터와 라이브 푸시 업데이트 |
+| 실시간 + 캐싱 | `@konekti/socket.io` 또는 `@konekti/websockets` + `@konekti/cache-manager` + `@konekti/redis` | 캐시된 데이터와 라이브 푸시 업데이트 |
 | CQRS + 이벤트 소싱 | `cqrs` + `event-bus` + `prisma` 또는 `drizzle` | 영속적 이벤트 저장소를 가진 커맨드/쿼리 분리 |
 | 운영 준비 API | `metrics` + `terminus` + `openapi` | 프로덕션 관측성, 헬스 체크, API 문서 |
 | 스케줄링 워커 | `cron` + `redis` + `queue` | 분산 락과 영속적 큐 폴백이 있는 시간 기반 작업 |
