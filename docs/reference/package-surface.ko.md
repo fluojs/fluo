@@ -57,11 +57,11 @@
 
 런타임별 동작, startup API, intentional limitation 상세는 각 어댑터 README가 계속 소유합니다.
 
-## `platform-*` 네이밍 규칙
+## 런타임/프로토콜 어댑터 네이밍 규칙
 
-`platform-*` 접두사는 `PlatformAdapter` 인터페이스를 구현하고, Konekti의 추상 HTTP 레이어를 특정 런타임, 서버 라이브러리, 또는 프로토콜 인터페이스에 연결하는 패키지에만 사용합니다.
+`platform-*` 접두사는 `PlatformAdapter` 인터페이스를 구현하고, Konekti의 추상 HTTP 레이어를 특정 런타임, 서버 라이브러리, 또는 프로토콜 인터페이스에 연결하는 패키지에만 사용합니다. `@konekti/socket.io`는 명시적인 예외로, 여전히 어댑터 패키지이지만 `platform-*` 접두사 대신 업스트림 전송 계층 브랜드를 공개 이름으로 사용합니다.
 
-현재 `platform-*` 패키지:
+현재 이 계열의 어댑터 패키지:
 
 - `@konekti/platform-bun`
 - `@konekti/platform-cloudflare-workers`
@@ -71,17 +71,20 @@
 - `@konekti/platform-nodejs`
 - `@konekti/socket.io`
 
-이 접두사를 사용하는 이유:
+이 네이밍을 사용하는 이유:
 
-- **NestJS 마이그레이션 친숙성**: NestJS도 동일한 `platform-*` 규칙을 사용하므로, NestJS에서 이동하는 팀이 익숙한 패턴을 그대로 찾을 수 있습니다.
+- **NestJS 마이그레이션 친숙성**: 런타임 어댑터의 기본 규칙으로 `platform-*`를 유지하므로, NestJS에서 이동하는 팀이 익숙한 패턴을 그대로 찾을 수 있습니다.
 - **이름 충돌 방지**: `@konekti/express`나 `@konekti/bun` 같은 이름은 실제 라이브러리 또는 런타임 자체와 혼동될 수 있습니다.
-- **어댑터 역할 신호**: 이 접두사는 해당 패키지가 업스트림 런타임/라이브러리 자체가 아니라 `@konekti/runtime`용 어댑터 계층임을 분명히 보여줍니다.
+- **어댑터 역할 신호**: 이 규칙은 해당 패키지가 업스트림 런타임/라이브러리 자체가 아니라 `@konekti/runtime`용 어댑터 계층임을 분명히 보여줍니다.
+- **전송 브랜드 예외**: `@konekti/socket.io`는 HTTP `PlatformAdapter`보다는 Socket.IO 전송 계층 어댑터라는 성격을 드러내기 위해 업스트림 브랜드 이름을 따릅니다.
 
-다음에 해당하면 `platform-*`를 사용합니다:
+기본적으로 다음에 해당하면 `platform-*`를 사용합니다:
 
 - `PlatformAdapter`를 구현한다
 - Konekti 런타임으로 들어오는 런타임/프로토콜 브리지 역할을 한다
 - 런타임별 request/response 또는 gateway 통합 시맨틱을 소유한다
+
+업스트림 전송 계층 브랜드를 중심으로 공개 이름을 가져가야 하는 경우에만, 여기서 문서화된 명시적 예외로 non-`platform-*` 어댑터 이름을 사용합니다.
 
 다음에 해당하면 `platform-*`를 사용하지 않습니다:
 
