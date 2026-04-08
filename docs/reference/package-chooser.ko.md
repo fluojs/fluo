@@ -169,29 +169,29 @@
 
 | 패키지 | 역할 |
 |--------|------|
-| `@konekti/websocket` + `@konekti/websocket/node` | 공용 게이트웨이 데코레이터/계약과 플랫폼이 선택한 server-backed realtime capability를 소비하는 명시적 `ws` 바인딩 |
-| `@konekti/websocket` + `@konekti/websocket/bun` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-bun`의 supported fetch-style request-upgrade capability를 소비하는 Bun 네이티브 raw websocket 바인딩 |
-| `@konekti/websocket` + `@konekti/websocket/deno` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-deno`의 supported fetch-style request-upgrade capability를 소비하는 Deno 네이티브 raw websocket 바인딩 |
-| `@konekti/websocket` + `@konekti/websocket/cloudflare-workers` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-cloudflare-workers`의 supported fetch-style request-upgrade capability를 isolate-local 범위에서 소비하는 Worker 네이티브 raw websocket 바인딩 |
+| `@konekti/websockets` + `@konekti/websockets/node` | 공용 게이트웨이 데코레이터/계약과 플랫폼이 선택한 server-backed realtime capability를 소비하는 명시적 `ws` 바인딩 |
+| `@konekti/websockets` + `@konekti/websockets/bun` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-bun`의 supported fetch-style request-upgrade capability를 소비하는 Bun 네이티브 raw websocket 바인딩 |
+| `@konekti/websockets` + `@konekti/websockets/deno` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-deno`의 supported fetch-style request-upgrade capability를 소비하는 Deno 네이티브 raw websocket 바인딩 |
+| `@konekti/websockets` + `@konekti/websockets/cloudflare-workers` | 공용 게이트웨이 데코레이터/계약과 `@konekti/platform-cloudflare-workers`의 supported fetch-style request-upgrade capability를 isolate-local 범위에서 소비하는 Worker 네이티브 raw websocket 바인딩 |
 
-현재 이 브랜치에서 정직하게 지원하는 raw `@konekti/websocket/node` 범위는 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 한정됩니다.
+현재 이 브랜치에서 정직하게 지원하는 raw `@konekti/websockets/node` 범위는 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 한정됩니다.
 
-`@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers`는 이제 전용 `@konekti/websocket/bun`, `@konekti/websocket/deno`, `@konekti/websocket/cloudflare-workers` 바인딩과 짝을 이루어 공식 raw websocket 호스팅을 제공합니다. 다만 Cloudflare Workers 경로는 isolate-local/stateless 범위에 한정되며, Durable Object와 cross-isolate coordination은 여전히 범위 밖입니다.
+`@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers`는 이제 전용 `@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers` 바인딩과 짝을 이루어 공식 raw websocket 호스팅을 제공합니다. 다만 Cloudflare Workers 경로는 isolate-local/stateless 범위에 한정되며, Durable Object와 cross-isolate coordination은 여전히 범위 밖입니다.
 
 ### 선택 B — Socket.IO
 
 | 패키지 | 역할 |
 |--------|------|
-| `@konekti/platform-socket.io` | 선택된 플랫폼이 server-backed realtime capability를 보고할 때만 부팅하는, 공유 Konekti 런타임 위의 Socket.IO v4 게이트웨이 어댑터 |
+| `@konekti/socket.io` | 선택된 플랫폼이 server-backed realtime capability를 보고할 때만 부팅하는, 공유 Konekti 런타임 위의 Socket.IO v4 게이트웨이 어댑터 |
 
-현재 `@konekti/platform-socket.io`의 정직한 지원 범위는 이 브랜치에서 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
+현재 `@konekti/socket.io`의 정직한 지원 범위는 이 브랜치에서 문서화·테스트된 server-backed 어댑터인 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
 
 **사용하지 않는 경우:**
 - 실시간 요구가 서버 전송 이벤트(SSE)에 한정된다면 `@konekti/http`의 표준 HTTP 스트리밍 응답으로 충분할 수 있습니다.
 - 선택한 런타임이 realtime을 `{ kind: 'unsupported', mode: 'no-op' }`로 보고한다면 Node listener 에뮬레이션을 기대하지 말고 그 명시적 경계에서 멈추세요.
 - 선택한 런타임이 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`를 보고한다면, 그것은 현재 raw websocket 지원이 아니라 이후 작업용 계약으로 취급하세요.
-- 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 `@konekti/platform-socket.io` 지원을 가정하지 마세요.
-- 별도 브랜치에서 호환 가능한 런타임별 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 raw `@konekti/websocket/node` 지원을 가정하지 마세요.
+- 별도 브랜치에서 호환 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 `@konekti/socket.io` 지원을 가정하지 마세요.
+- 별도 브랜치에서 호환 가능한 런타임별 구현과 테스트가 추가되지 않았다면 Bun·Deno·Cloudflare Workers에서 raw `@konekti/websockets/node` 지원을 가정하지 마세요.
 
 ---
 
