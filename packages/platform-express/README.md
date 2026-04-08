@@ -61,7 +61,7 @@ await app.listen();
 - Bridges Express requests and responses into `FrameworkRequest` / `FrameworkResponse`.
 - Exposes `FrameworkResponse.stream` for SSE and other adapter-owned response streaming paths.
 - Exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need a Node-owned realtime listener boundary.
-- Supports raw `@konekti/websocket/node` gateway hosting through that realtime capability seam.
+- Supports raw `@konekti/websockets/node` gateway hosting through that realtime capability seam.
 - Dispatches every incoming request through the Konekti HTTP dispatcher.
 - Supports `rawBody` opt-in for non-multipart requests.
 - Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
