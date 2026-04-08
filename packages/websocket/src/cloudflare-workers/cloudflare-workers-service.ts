@@ -85,7 +85,7 @@ function resolveSupportedFetchStyleRealtimeCapability(
 ): FetchStyleRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Cloudflare Workers WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-cloudflare-workers together with @konekti/websocket/cloudflare-workers.',
+      'Cloudflare Workers WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-cloudflare-workers together with @konekti/websockets/cloudflare-workers.',
     );
   }
 
@@ -138,7 +138,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
     if (!hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
       throw new Error(
-        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose Cloudflare websocket binding configuration. Use @konekti/platform-cloudflare-workers with @konekti/websocket/cloudflare-workers.',
+        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose Cloudflare websocket binding configuration. Use @konekti/platform-cloudflare-workers with @konekti/websockets/cloudflare-workers.',
       );
     }
 
