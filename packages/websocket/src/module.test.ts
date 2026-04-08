@@ -14,14 +14,20 @@ import { bootstrapApplication, defineModule, type ApplicationLogger } from '@kon
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
 import { HTTP_APPLICATION_ADAPTER } from '@konekti/runtime/internal';
 import {
+  Controller,
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
+  Get,
   type HttpApplicationAdapter,
 } from '@konekti/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
-import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from './metadata.js';
+import {
+  defineWebSocketGatewayMetadata,
+  getWebSocketGatewayMetadata,
+  getWebSocketHandlerMetadataEntries,
+} from './metadata.js';
 import { WebSocketModule, createWebSocketProviders } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 import type { WebSocketModuleOptions } from './types.js';
@@ -104,6 +110,26 @@ function onceClosed(socket: WebSocket): Promise<void> {
     socket.once('close', () => resolve());
   });
 }
+
+type ServerBackedGatewayScenario = {
+  bootstrap: typeof bootstrapNodeApplication | typeof bootstrapFastifyApplication | typeof bootstrapExpressApplication;
+  name: string;
+};
+
+const serverBackedGatewayScenarios: readonly ServerBackedGatewayScenario[] = [
+  {
+    bootstrap: bootstrapNodeApplication,
+    name: 'platform-nodejs',
+  },
+  {
+    bootstrap: bootstrapFastifyApplication,
+    name: 'platform-fastify',
+  },
+  {
+    bootstrap: bootstrapExpressApplication,
+    name: 'platform-express',
+  },
+];
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -236,7 +262,7 @@ describe('@konekti/websockets', () => {
   });
 
   it('writes gateway and handler metadata with standard decorators', () => {
-    @WebSocketGateway({ path: '/chat' })
+    @WebSocketGateway({ path: '/chat', serverBacked: { port: 4100 } })
     class ChatGateway {
       @OnConnect()
       onConnect() {}
@@ -248,7 +274,10 @@ describe('@konekti/websockets', () => {
       onDisconnect() {}
     }
 
-    expect(getWebSocketGatewayMetadata(ChatGateway)).toEqual({ path: '/chat' });
+    expect(getWebSocketGatewayMetadata(ChatGateway)).toEqual({
+      path: '/chat',
+      serverBacked: { port: 4100 },
+    });
     expect(getWebSocketHandlerMetadataEntries(ChatGateway.prototype)).toEqual([
       { metadata: { event: undefined, type: 'connect' }, propertyKey: 'onConnect' },
       { metadata: { event: 'ping', type: 'message' }, propertyKey: 'onPing' },
@@ -606,6 +635,91 @@ describe('@konekti/websockets', () => {
 
     await app.close();
   });
+
+  for (const scenario of serverBackedGatewayScenarios) {
+    it(`boots ${scenario.name} with a dedicated serverBacked websocket listener`, async () => {
+      class GatewayState {
+        connectCount = 0;
+        disconnectCount = 0;
+        messages: unknown[] = [];
+      }
+
+      @Controller('/health')
+      class HealthController {
+        @Get('/')
+        health() {
+          return { ok: true };
+        }
+      }
+
+      @Inject([GatewayState])
+      class ChatGateway {
+        constructor(private readonly state: GatewayState) {}
+
+        @OnConnect()
+        onConnect() {
+          this.state.connectCount += 1;
+        }
+
+        @OnMessage('ping')
+        onPing(payload: unknown, socket: WebSocket) {
+          this.state.messages.push(payload);
+          socket.send(JSON.stringify({ event: 'pong', data: payload }));
+        }
+
+        @OnDisconnect()
+        onDisconnect() {
+          this.state.disconnectCount += 1;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        controllers: [HealthController],
+        imports: [WebSocketModule.forRoot()],
+        providers: [GatewayState, ChatGateway],
+      });
+
+      const appPort = await findAvailablePort();
+      const websocketPort = await findAvailablePort();
+      defineWebSocketGatewayMetadata(ChatGateway, {
+        path: '/chat',
+        serverBacked: { port: websocketPort },
+      });
+
+      const app = await scenario.bootstrap(AppModule, {
+        cors: false,
+        port: appPort,
+      });
+      const state = await app.container.resolve(GatewayState);
+
+      await app.listen();
+
+      const socket = new WebSocket(`ws://127.0.0.1:${String(websocketPort)}/chat`);
+      await onceOpen(socket);
+      socket.send(JSON.stringify({ event: 'ping', data: { value: scenario.name } }));
+
+      const incoming = await onceMessage(socket);
+      expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: scenario.name } });
+
+      socket.close();
+      await onceClosed(socket);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const healthResponse = await fetch(`http://127.0.0.1:${String(appPort)}/health`);
+      expect(healthResponse.status).toBe(200);
+      await expect(healthResponse.json()).resolves.toEqual({ ok: true });
+
+      const mainPortResponse = await fetch(`http://127.0.0.1:${String(appPort)}/chat`);
+      expect(mainPortResponse.status).toBe(404);
+
+      expect(state.connectCount).toBe(1);
+      expect(state.messages).toEqual([{ value: scenario.name }]);
+      expect(state.disconnectCount).toBe(1);
+
+      await app.close();
+    });
+  }
 
   it('buffers messages and disconnects that arrive before async onConnect completes', async () => {
     const connected = createDeferred<void>();

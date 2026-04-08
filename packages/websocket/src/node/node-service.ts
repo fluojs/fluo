@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -22,14 +23,21 @@ import {
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
+  WebSocketGatewayServerBackedOptions,
   WebSocketRoomService,
 } from '../types.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
 interface GatewayAttachment {
+  bindingTarget: GatewayBindingTarget;
   descriptors: WebSocketGatewayDescriptor[];
   path: string;
   server: WebSocketServer;
+}
+
+interface GatewayAttachmentGroup {
+  attachmentsByPath: Map<string, GatewayAttachment>;
+  target: GatewayBindingTarget;
 }
 
 interface ConnectionHandlerState {
@@ -52,6 +60,18 @@ interface NodeUpgradeServer {
   on(event: 'upgrade', listener: NodeUpgradeListener): this;
 }
 
+interface OwnedGatewayServer {
+  close(callback?: (error?: Error) => void): void;
+  listen(port: number, callback?: () => void): this;
+  readonly listening: boolean;
+}
+
+interface OwnedGatewayServerRegistration {
+  listener: NodeUpgradeListener;
+  port: number;
+  server: OwnedGatewayServer & NodeUpgradeServer;
+}
+
 type NodeUpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
 type BufferedDisconnectEvent = {
@@ -68,6 +88,17 @@ type ServerBackedRealtimeCapability = {
   reason?: string;
   server: unknown;
 };
+
+type GatewayBindingTarget =
+  | {
+      key: 'application-server';
+      kind: 'application-server';
+    }
+  | {
+      key: `owned-server:${number}`;
+      kind: 'owned-server';
+      port: number;
+    };
 
 type RealtimeAwareHttpApplicationAdapter = HttpApplicationAdapter & {
   getRealtimeCapability?: () =>
@@ -132,6 +163,7 @@ export class NodeWebSocketGatewayLifecycleService
 {
   private attachments: GatewayAttachment[] = [];
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private ownedUpgradeServers: OwnedGatewayServerRegistration[] = [];
   private readonly pingPending = new Set<string>();
   private readonly pingSentAt = new Map<string, number>();
   private readonly roomSockets = new Map<string, Set<string>>();
@@ -150,7 +182,7 @@ export class NodeWebSocketGatewayLifecycleService
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    if (this.upgradeListener) {
+    if (this.upgradeListener || this.ownedUpgradeServers.length > 0 || this.attachments.length > 0) {
       return;
     }
 
@@ -160,17 +192,34 @@ export class NodeWebSocketGatewayLifecycleService
       return;
     }
 
-    const attachmentsByPath = this.prepareGatewayAttachments(descriptors);
-    this.attachUpgradeServerListener(attachmentsByPath);
+    await this.prepareGatewayAttachments(descriptors);
     this.startHeartbeatIfEnabled();
   }
 
-  private prepareGatewayAttachments(
+  private async prepareGatewayAttachments(
     descriptors: WebSocketGatewayDescriptor[],
-  ): Map<string, GatewayAttachment> {
-    const attachmentsByPath = this.buildGatewayAttachments(descriptors);
-    this.attachConnectionHandlersToServers(attachmentsByPath);
-    return attachmentsByPath;
+  ): Promise<void> {
+    const attachmentGroups = this.buildGatewayAttachmentGroups(descriptors);
+
+    for (const group of attachmentGroups.values()) {
+      this.attachConnectionHandlersToServers(group.attachmentsByPath);
+    }
+
+    await this.attachGatewayServers(attachmentGroups);
+    this.attachments = Array.from(attachmentGroups.values()).flatMap((group) => Array.from(group.attachmentsByPath.values()));
+  }
+
+  private async attachGatewayServers(
+    attachmentGroups: Map<string, GatewayAttachmentGroup>,
+  ): Promise<void> {
+    for (const group of attachmentGroups.values()) {
+      if (group.target.kind === 'application-server') {
+        this.attachUpgradeServerListener(group.attachmentsByPath);
+        continue;
+      }
+
+      await this.attachOwnedGatewayServerListener(group);
+    }
   }
 
   private attachUpgradeServerListener(attachmentsByPath: Map<string, GatewayAttachment>): void {
@@ -180,7 +229,23 @@ export class NodeWebSocketGatewayLifecycleService
     upgradeServer.on('upgrade', listener);
     this.upgradeServer = upgradeServer;
     this.upgradeListener = listener;
-    this.attachments = Array.from(attachmentsByPath.values());
+  }
+
+  private async attachOwnedGatewayServerListener(group: GatewayAttachmentGroup): Promise<void> {
+    if (group.target.kind !== 'owned-server') {
+      return;
+    }
+
+    const server = createOwnedGatewayServer();
+    const listener = this.createUpgradeListener(server, group.attachmentsByPath);
+
+    server.on('upgrade', listener);
+    await this.listenOwnedGatewayServer(server, group.target.port);
+    this.ownedUpgradeServers.push({
+      listener,
+      port: group.target.port,
+      server,
+    });
   }
 
   private startHeartbeatIfEnabled(): void {
@@ -193,27 +258,71 @@ export class NodeWebSocketGatewayLifecycleService
     this.startHeartbeat(intervalMs, timeoutMs);
   }
 
-  private buildGatewayAttachments(
+  private buildGatewayAttachmentGroups(
     descriptors: WebSocketGatewayDescriptor[],
-  ): Map<string, GatewayAttachment> {
-    const attachmentsByPath = new Map<string, GatewayAttachment>();
+  ): Map<string, GatewayAttachmentGroup> {
+    const attachmentGroups = new Map<string, GatewayAttachmentGroup>();
 
     for (const descriptor of descriptors) {
-      const current = attachmentsByPath.get(descriptor.path);
+      const bindingTarget = this.resolveBindingTarget(descriptor);
+      const group = attachmentGroups.get(bindingTarget.key) ?? this.createAttachmentGroup(bindingTarget);
+      const current = group.attachmentsByPath.get(descriptor.path);
 
       if (current) {
         current.descriptors.push(descriptor);
+        attachmentGroups.set(bindingTarget.key, group);
         continue;
       }
 
-      attachmentsByPath.set(descriptor.path, {
+      group.attachmentsByPath.set(descriptor.path, {
+        bindingTarget,
         descriptors: [descriptor],
         path: descriptor.path,
         server: new WebSocketServer({ noServer: true }),
       });
+      attachmentGroups.set(bindingTarget.key, group);
     }
 
-    return attachmentsByPath;
+    return attachmentGroups;
+  }
+
+  private createAttachmentGroup(target: GatewayBindingTarget): GatewayAttachmentGroup {
+    return {
+      attachmentsByPath: new Map<string, GatewayAttachment>(),
+      target,
+    };
+  }
+
+  private resolveBindingTarget(descriptor: WebSocketGatewayDescriptor): GatewayBindingTarget {
+    const serverBacked = descriptor.serverBacked;
+
+    if (!serverBacked) {
+      return {
+        key: 'application-server',
+        kind: 'application-server',
+      };
+    }
+
+    const port = this.resolveServerBackedPort(descriptor.path, serverBacked);
+
+    return {
+      key: `owned-server:${String(port)}` as `owned-server:${number}`,
+      kind: 'owned-server',
+      port,
+    };
+  }
+
+  private resolveServerBackedPort(
+    path: string,
+    options: WebSocketGatewayServerBackedOptions,
+  ): number {
+    if (!isFinitePositiveInteger(options.port)) {
+      throw new Error(
+        `WebSocket gateway serverBacked.port for path ${path} must be a finite positive integer.`,
+      );
+    }
+
+    return options.port;
   }
 
   private attachConnectionHandlersToServers(attachmentsByPath: Map<string, GatewayAttachment>): void {
@@ -699,9 +808,11 @@ export class NodeWebSocketGatewayLifecycleService
     this.detachUpgradeServerListener();
 
     const attachments = this.attachments.splice(0);
+    const ownedUpgradeServers = this.ownedUpgradeServers.splice(0);
     const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
     await this.closeGatewayAttachments(attachments, shutdownTimeoutMs);
+    await this.closeOwnedUpgradeServers(ownedUpgradeServers, shutdownTimeoutMs);
     this.clearConnectionTrackingState();
   }
 
@@ -719,8 +830,79 @@ export class NodeWebSocketGatewayLifecycleService
       this.upgradeServer.off('upgrade', this.upgradeListener);
     }
 
+    for (const registration of this.ownedUpgradeServers) {
+      registration.server.off('upgrade', registration.listener);
+    }
+
     this.upgradeServer = undefined;
     this.upgradeListener = undefined;
+  }
+
+  private async closeOwnedUpgradeServers(
+    registrations: readonly OwnedGatewayServerRegistration[],
+    shutdownTimeoutMs: number,
+  ): Promise<void> {
+    await Promise.all(
+      registrations.map(async (registration) => {
+        try {
+          await this.closeOwnedUpgradeServerWithTimeout(registration, shutdownTimeoutMs);
+        } catch (error) {
+          this.logger.error(
+            `Failed to close owned websocket listener on port ${String(registration.port)} within ${String(shutdownTimeoutMs)}ms.`,
+            error,
+            'WebSocketGatewayLifecycleService',
+          );
+        }
+      }),
+    );
+  }
+
+  private closeOwnedUpgradeServerWithTimeout(
+    registration: OwnedGatewayServerRegistration,
+    timeoutMs: number,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        reject(new Error(`Timed out while closing owned websocket listener on port ${String(registration.port)} after ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+
+      registration.server.close((error?: Error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
+  private listenOwnedGatewayServer(server: OwnedGatewayServer, port: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const httpServer = server as HttpServer;
+      const onError = (error: Error) => {
+        reject(error);
+      };
+
+      httpServer.once('error', onError);
+      server.listen(port, () => {
+        httpServer.off('error', onError);
+        resolve();
+      });
+    });
   }
 
   private async closeGatewayAttachments(
@@ -892,4 +1074,11 @@ export class NodeWebSocketGatewayLifecycleService
       this.socketRooms.delete(socketId);
     }
   }
+}
+
+function createOwnedGatewayServer(): OwnedGatewayServer & NodeUpgradeServer {
+  return createHttpServer((_request, response) => {
+    response.statusCode = 404;
+    response.end();
+  }) as OwnedGatewayServer & NodeUpgradeServer;
 }
