@@ -1,150 +1,68 @@
-# di and modules
+# DI와 모듈
 
 <p><a href="./di-and-modules.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/core`, `@konekti/di`, 그리고 `@konekti/runtime`에 구현된 의존성 주입(DI) 및 모듈 시스템을 설명합니다.
+Konekti는 **명시적 토큰 기반 Dependency Injection (DI) 시스템**과 계층적 **Module Graph**를 통해 애플리케이션 복잡성을 관리합니다. “마법” 같은 reflection에 의존하는 프레임워크와 달리, Konekti는 모든 provider와 consumer 사이에 명확한 계약을 요구합니다.
 
-### 관련 문서
+## 이 개념이 중요한 이유
 
-- `./architecture-overview.ko.md`
-- `./http-runtime.ko.md`
-- `../../packages/di/README.ko.md`
-- `../../packages/runtime/README.ko.md`
+대규모 애플리케이션에서 프레임워크가 constructor type을 바탕으로 필요한 것을 “추측”하는 암시적 DI는 재앙의 지름길입니다. 이는 다음을 초래합니다:
+- **보이지 않는 결합**: 깨지기 전까지 의존성 트리가 얼마나 깊은지 알기 어렵습니다.
+- **어려운 테스트**: 무엇이 주입되는지 100% 확실하지 않으면 mocking이 번거롭습니다.
+- **런타임의 놀라움**: 순환 의존성이나 누락된 provider는 종종 런타임에서 난해한 `undefined` 오류로 이어집니다.
 
-## DI 원칙
+Konekti는 의존성 그래프를 **감사 가능하고 명시적으로** 만들어 이러한 문제를 제거합니다. 어떤 class를 보더라도 그것이 무엇을 필요로 하는지, 그 요구사항이 어디에서 오는지, 어떤 scope에 속하는지 정확히 확인할 수 있습니다.
 
-- **클래스 우선 공개 서비스(Class-first public services)**: 구체 클래스(서비스, 가드, 인터셉터)는 기본적으로 자기 자신을 주입 토큰으로 사용합니다.
-- **명시적 토큰 DI**: 의존성은 추론된 타입이 아닌 명시적인 토큰(클래스, 심볼 또는 상수)에 의해 식별됩니다.
-- **리플렉션 기반 자동 연결 없음**: Konekti는 의존성 해결을 위해 런타임 타입 리플렉션에 의존하지 않습니다.
-- **생성자 우선 주입**: 생성자 주입이 기본이며 권장되는 패턴입니다.
-- **`@Inject([...])`**: 생성자 의존성 메타데이터를 저장합니다.
-- **`@Scope(...)`**: 프로바이더의 생명주기 스코프를 정의합니다.
+## 핵심 아이디어
 
-## 공개 서비스 가이드라인
+### 토큰 기반 DI
+Konekti에서 모든 의존성은 **Token**으로 식별됩니다. token은 다음이 될 수 있습니다:
+- **Class**: 가장 일반적인 경우입니다. class constructor 자체가 고유 식별자 역할을 합니다.
+- **Symbol 또는 String**: consumer를 바꾸지 않고 구현을 교체하고 싶을 때 사용하는 추상 인터페이스(예: `ILogger`)용입니다.
+- **Configuration Key**: 특정 설정 값을 service에 직접 주입할 때 사용합니다.
 
-Konekti는 패키지의 공개 인터페이스(public surface)에 대해 **클래스 우선(class-first)** 규칙을 따릅니다:
+명시적 token을 사용함으로써 `emitDecoratorMetadata`가 필요 없어지고, 코드가 최신 JavaScript 빌드 도구와 호환되도록 보장합니다.
 
-1. **구체 서비스/가드/인터셉터**: 클래스 자체를 토큰으로 사용합니다. 이를 통해 안정적인 서비스 구현체에 대해 불필요한 `PROVIDER_TOKEN` 상수 내보내기를 줄일 수 있습니다.
-2. **추상 인터페이스/핸들**: 구현체를 교체해야 하거나 여러 구현체가 공존하는 경우 명시적인 `Symbol` 또는 `const` 토큰을 사용합니다.
-3. **옵션/설정/런타임 경계**: 자연스러운 클래스 표현이 없는 설정 객체나 런타임 전용 핸들에는 명시적 토큰을 사용합니다.
+### “경계”로서의 module
+Konekti의 **Module**은 단순한 정리 도구가 아니라 **보안과 캡슐화의 경계**입니다.
+- **기본값은 비공개**: `UserModule`에 정의된 service는 `UserModule`이 `exports` 배열에 명시적으로 포함하고, `AuthModule`이 `imports`에 `UserModule`을 포함하지 않는 한 `AuthModule`에서 보이지 않습니다.
+- **캡슐화된 구현**: 이를 통해 시스템의 다른 부분에서 실수로 사용되거나 결합될 수 없는 내부 “helper” service를 둘 수 있습니다.
 
-이 가이드라인은 공개 DI 인터페이스가 문서화된 런타임 책임과 일치하도록 보장함으로써 `behavioral-contract-policy.md`와 궤를 같이 합니다.
-
-## 프로바이더 형태
-
-- `useClass`
-- `useFactory`
-- `useValue`
-
-각 토큰은 단일 프로바이더 또는 멀티 프로바이더 컬렉션 중 하나의 등록 모드만 사용해야 합니다.
-
-## 스코프 (Scopes)
-
-- `singleton`: 애플리케이션 생명주기당 하나의 인스턴스.
-- `request`: 들어오는 요청당 하나의 인스턴스.
-- `transient`: 주입될 때마다 새로운 인스턴스.
-
-## 프로바이더 재정의 (Overrides)
-
-- `override()`를 호출하면 교체된 토큰에 대해 캐시된 모든 싱글톤 또는 요청 스코프 인스턴스가 무효화됩니다.
-- `onDestroy()`를 구현한 인스턴스가 제거되면 즉시 폐기됩니다.
-- 재정의된 후에는 이전 인스턴스가 유지되지 않습니다.
-
-## 주입 전략
-
-Konekti는 의존성 선언을 위해 데코레이터로 작성된 메타데이터를 사용합니다.
+### 생성자 주입 패턴
+우리는 **Constructor Injection**을 기본 패턴으로 권장합니다. 이는 표준 class 기반 프로그래밍과 잘 맞고, 단위 테스트를 매우 단순하게 만듭니다. mock object를 생성자에 그대로 전달하면 됩니다.
 
 ```ts
-@Inject([USER_REPOSITORY, LOGGER])
-@Scope('singleton')
-class UserService {
+@Inject([UsersRepository, 'APP_CONFIG'])
+export class UsersService {
   constructor(
-    private readonly userRepository: UserRepository,
-    private readonly logger: Logger,
+    private readonly repo: UsersRepository,
+    private readonly config: any
   ) {}
 }
 ```
 
-## 명시적 토큰 vs 리플렉션
+## provider 유형
 
-Konekti는 런타임 타입 리플렉션 대신 명시적인 토큰 메타데이터(클래스, 심볼 또는 상수)를 사용하여 의존성을 해결합니다.
+- **Class Provider**: 프레임워크가 인스턴스화하는 표준 service입니다.
+- **Value Provider**: 상수, configuration, 외부 library 인스턴스를 주입합니다.
+- **Factory Provider**: 다른 service나 environment state를 기반으로 동적으로 생성되는 로직 기반 provider입니다.
+- **Alias Provider**: 하나의 token을 다른 token에 매핑합니다(예: `ILogger`를 `PinoLogger`에 매핑).
 
-- **주입 토큰**(`@Inject([...])`)이 신뢰할 수 있는 단일 출처(source of truth) 역할을 합니다.
-- **클래스 기반 토큰**: 구체 클래스(서비스, 가드, 인터셉터)는 명시적 토큰으로 취급됩니다.
-- **`"emitDecoratorMetadata": true` 설정은 필요하지 않습니다**.
-- **리플렉션 기반의 생성자 자동 연결(autowiring)은 지원되지 않습니다**.
+## injection scope
 
-이를 통해 의존성 해결이 예측 가능하며 선언된 메타데이터에만 기반하도록 보장합니다.
+- **Singleton (Default)**: 앱 전체에서 공유되는 하나의 인스턴스입니다. stateless service와 connection pool에 가장 적합합니다.
+- **Request**: 들어오는 각 HTTP request마다 새 인스턴스가 생성됩니다. 현재 사용자 같은 request별 상태를 저장할 때 유용합니다.
+- **Transient**: 주입 지점마다 새 인스턴스가 생성됩니다.
 
-## 토큰 소유권
+## 경계
 
-- **클래스 토큰**(서비스/가드/인터셉터)은 패키지의 공개 규약 중 일부입니다.
-- **명시적 심볼/상수 토큰**은 인터페이스, 핸들 및 설정에 사용됩니다.
-- 모듈이나 패키지 경계를 넘는 토큰은 공개 규약의 일부입니다.
-- 내보내는 비클래스(non-class) 토큰은 문자열 리터럴이 아닌 안정적인 상수나 심볼(symbol)로 정의되어야 합니다.
-- 토큰 소유권은 해당 리소스를 제공하는 패키지에 있습니다.
-- 생성된 코드와 예제는 프레임워크와 동일한 토큰 작성 규칙을 따릅니다.
+- **전역 scope 없음**: 명시적으로 표시되지 않은 한 “global” provider는 없습니다. 우리는 import/export 체인의 안전성을 선호합니다.
+- **순환 의존성 감지**: Konekti의 DI container는 bootstrap 시점에 순환 의존성을 감지하고 명확한 오류를 발생시켜 stack overflow를 방지합니다.
+- **엄격한 검증**: 필요한 의존성이 module graph에서 빠져 있으면 애플리케이션은 **시작에 실패**합니다. 운영 중 충돌보다 부트 시점의 실패를 선호합니다.
 
-## 모듈의 역할
+## 관련 문서
 
-모듈은 다음과 같은 몇 가지 중요한 기능을 수행합니다:
-
-- **가시성 경계**: 어떤 프로바이더에 접근 가능한지 정의합니다.
-- **기능 그룹화**: 관련 로직을 조직화합니다.
-- **부트스트랩 순서**: 결정론적인 애플리케이션 시작을 보장합니다.
-- **캡슐화**: 명시적인 import/export 지점을 제공합니다.
-
-## 모듈 엔트리포인트 네이밍 시맨틱
-
-공개 런타임 모듈 API를 문서화/작성할 때는 `docs/reference/package-surface.ko.md`에 정의된 저장소 전역 문법 계약을 따르세요.
-
-- `forRoot(...)`: 표준 런타임 모듈 초기화 엔트리포인트
-- `forRootAsync(...)`: 지연된 설정 계산을 위한 비동기 변형
-- `register(...)`: 루트 소유권을 의미하지 않는 스코프/반복 등록 엔트리포인트
-- `forFeature(...)`: 기존 루트 아래 기능 슬라이스를 추가하는 등록 엔트리포인트
-- `create*`: 런타임 모듈 엔트리포인트가 아닌 helper/builder 전용
-
-## 가시성 규칙
-
-- 프로바이더는 기본적으로 정의된 모듈 내에서 비공개(private)로 유지됩니다.
-- 모듈 간 접근을 위해서는 프로바이더가 해당 모듈의 `exports` 목록에 있어야 하며, 소비하는 모듈은 해당 모듈을 `imports`에 포함해야 합니다.
-- 토큰이 로컬에 없거나 명시적으로 import/export 되지 않은 경우, 부트스트랩 중에 해결 실패가 발생합니다.
-
-요약:
-- **모듈 내부**: 모든 로컬 프로바이더에 대한 접근이 허용됩니다.
-- **모듈 간**: `exports`와 `imports`가 모두 필요합니다.
-
-## 진단 및 에러
-
-- 생성자 의존성 메타데이터는 생성자의 인자 개수(arity)와 일치해야 합니다.
-- 부트스트랩 에러는 로컬 프로바이더 누락, 내보내기(export) 누락, 가져오기(import) 누락, 잘못된 메타데이터를 구분합니다.
-- 조기 실패(fail-fast)는 프레임워크의 핵심 기능입니다.
-- 동일한 토큰에 대해 단일 및 멀티 프로바이더를 모두 등록하면 부트스트랩 에러가 발생합니다.
-
-## 테스트
-
-- 유닛 테스트에서는 가능한 경우 직접 생성(direct construction) 방식을 사용하세요.
-- 통합 테스트에서는 테스트 모듈과 프로바이더 재정의를 사용하세요.
-- `@Inject([...])`는 메타데이터를 제공할 뿐이며 테스트 환경에서의 수동 인스턴스화를 방해하지 않습니다.
-
-## 런타임 동작
-
-`@konekti/runtime`은 모듈 및 DI 메타데이터를 처리하여 다음을 수행합니다:
-
-- 모듈 그래프 구축.
-- 가시성 규칙(imports/exports) 강제.
-- 프로바이더 및 컨트롤러 등록.
-- 싱글톤 스코프 프로바이더 인스턴스화.
-- 애플리케이션 쉘 조립.
-
-저수준 API를 사용할 수도 있지만, 권장되는 개발 경험은 데코레이터 기반 방식입니다.
-
-## 진단 그래프와 부트스트랩 타이밍
-
-`@konekti/runtime`은 컴파일된 모듈 그래프(`CompiledModule[]`)를 기반으로 버전 고정(`version: 1`) 진단 내보내기를 제공합니다.
-
-- `createRuntimeDiagnosticsGraph(modules, rootModule)`는 모듈 관계, 프로바이더/토큰 소속, export 관계, 프로바이더 scope/type 주석을 기계 판독 가능한 형태로 출력합니다.
-- `renderRuntimeDiagnosticsMermaid(graph)`는 모듈 노드 + 모듈 import 엣지 중심의 모듈 레벨 Mermaid 그래프를 출력합니다.
-- 부트스트랩 타이밍은 `KonektiFactory.createApplicationContext(..., { diagnostics: { timing: true } })` 또는 `KonektiFactory.create(..., { diagnostics: { timing: true } })`에서만 수집되는 opt-in 기능이며, 기본 경로에서는 타이밍 수집 오버헤드가 없습니다.
-
-CLI의 `konekti inspect` 명령은 이 런타임 진단 표면을 그대로 호출하는 얇은 래퍼입니다.
+- [Architecture Overview](./architecture-overview.ko.md)
+- [Decorators and Metadata](./decorators-and-metadata.ko.md)
+- [HTTP Runtime](./http-runtime.ko.md)
+- [DI Package README](../../packages/di/README.ko.md)

@@ -1,90 +1,53 @@
-# dev reload architecture
+# 개발 리로드 아키텍처
 
-<p><strong><kbd>한국어</kbd></strong> <a href="./dev-reload-architecture.md"><kbd>English</kbd></a></p>
+<p><a href="./dev-reload-architecture.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti의 개발 중 갱신 경로는 두 가지이며, 서로 같은 것으로 보면 안 됩니다.
+Konekti는 개발 중 변경 사항을 소스 코드에 대한 **전체 프로세스 재시작**과 설정에 대한 **인프로세스 리로드**라는 두 개의 별도 경로로 엄격하게 분리합니다. 이 구분은 개발 속도를 희생하지 않으면서도 최대한의 신뢰성을 확보하기 위한 의도적인 아키텍처 선택입니다.
 
-## 관련 문서
+## 이 개념이 중요한 이유
 
-- `./architecture-overview.ko.md`
-- `./config-and-environments.ko.md`
-- `./lifecycle-and-shutdown.ko.md`
-- `../../packages/cli/README.ko.md`
-- `../../packages/runtime/README.ko.md`
+현대적인 백엔드 개발은 변경 사항이 즉시 반영되는 “라이브”한 느낌을 요구합니다. 하지만 전통적인 “hot module replacement”(HMR)나 단순한 “file-watching restart”는 종종 **상태 없는 로직**과 **상태를 가진 인프라**의 경계를 흐립니다.
 
-## 현재 지원하는 두 가지 경로
+부분 리로드 중에 database connection이나 network socket이 제대로 정리되지 않으면 애플리케이션은 정의되지 않은 상태에 들어가며, 수동 재시작 후 사라지는 “phantom bug”가 발생합니다. Konekti는 코드와 로직, 그리고 로직에는 깨끗한 시작점이 필요하다는 명확한 경계를 강제함으로써 이러한 오류를 제거합니다.
 
-### 1. 소스 코드 변경은 프로세스 재시작을 사용한다
+## 핵심 아이디어
 
-`@konekti/cli`가 생성하는 starter 앱의 `dev` 스크립트는 Node watch mode와 `tsx`를 기반으로 합니다.
+### “깨끗한 시작점” 원칙 (code changes)
+기본 개발 runner(`@konekti/cli`)는 전체 source tree를 감시합니다. `.ts` 파일이 변경되면:
+1. runner가 현재 process에 `SIGTERM`을 보냅니다.
+2. 애플리케이션이 [graceful shutdown sequence](./lifecycle-and-shutdown.ko.md)를 실행하여 database pool을 닫고 진행 중인 요청을 마무리합니다.
+3. runner가 완전히 새로운 process를 시작합니다.
 
-즉 기본 starter 개발 경험에서 소스 파일이 바뀌면:
+이렇게 하면 최신 TC39 standard decorator를 사용해 dependency graph를 처음부터 다시 구성할 수 있고, 오래된 memory나 “zombie” connection이 남지 않습니다. 우리는 위험한 HMR이 주는 미세한 속도 향상보다 **절대적 정확성**을 우선합니다.
 
-- Node가 변경을 감지하고
-- 프로세스를 다시 시작하며
-- runtime이 처음부터 다시 bootstrap 됩니다
+### “live tune” 경로 (config changes)
+`.env` 파일 편집이나 JSON config 수정과 같은 configuration 업데이트는 다른 경로를 따릅니다. configuration은 **static logic**이 아니라 **dynamic data**로 설계되었기 때문에, Konekti는 process를 종료하지 않고도 이러한 변경을 적용할 수 있습니다.
 
-이것은 watch 기반 재시작 모델이며, in-process HMR이 아닙니다.
-
-### 2. 설정 변경은 제한된 in-process reload를 사용할 수 있다
-
-`@konekti/config`는 env 파일 기반 설정을 명시적으로 다시 읽기 위한 `createConfigReloader()`를 제공합니다.
-
-`@konekti/runtime`은 호출자가 `watch: true`를 설정해 실행할 때 이 reloader를 받아들여 사용할 수 있습니다.
-
-이 경로는 의도적으로 좁게 유지됩니다.
-
-- 검증된 config snapshot에만 한정됩니다
-- 애플리케이션 전체를 다시 만들지 않고 기존 `ConfigService` 참조를 유지합니다
-- 새 snapshot이 적용된 뒤 runtime이 관리하는 reload participant를 호출합니다
-- runtime 쪽 reload 처리에 실패하면 이전 snapshot으로 되돌립니다
-
-이것은 범용 코드 hot reload API가 아닙니다.
+이를 통해 개발자는 다음을 할 수 있습니다:
+- feature flag를 즉시 전환합니다.
+- 현재 debug context를 잃지 않고 log level을 조정합니다.
+- API key나 secret을 갱신하고 즉시 통합 상태를 확인합니다.
 
 ## 책임 경계
 
-### `@konekti/cli`
+### runner orchestration
+**CLI**(`@konekti/cli`)는 “supervisor” 역할을 합니다. 파일 watcher와 process lifecycle을 소유하며, 코드가 무엇을 하는지는 알지 못하고 그저 변경되었고 새 환경이 필요하다는 사실만 압니다.
 
-starter workflow 기준 개발용 runner orchestration을 담당합니다.
+### config snapshot production
+**Config Package**(`@konekti/config`)는 환경을 “관찰”하는 책임을 집니다. 파일 기반 configuration과 environment variable을 병합하여 immutable한 **Config Snapshot**을 생성합니다. 파일이 변경되면 새 snapshot을 만들고 정의된 schema에 대해 검증합니다.
 
-- starter `pnpm dev` 동작
-- 소스 변경 시 프로세스 재시작
-- 향후 builder 선택 같은 runner 레벨 결정
+### runtime application
+**Runtime**(`@konekti/runtime`)은 “consumer” 역할을 합니다. 안정적인 참조 역할을 하는 `ConfigService`를 호스팅합니다. Config Package에서 새로 검증된 snapshot이 도착하면 `ConfigService`가 내부 state를 갱신하고, 새 데이터에 반응해야 하는 service들을 위한 “reload hook”을 트리거합니다(예: cache TTL 업데이트).
 
-### `@konekti/config`
+## 경계
 
-config snapshot 생성을 담당합니다.
+- **Statelessness Required**: 인프로세스 리로드가 안정적으로 동작하려면 `ConfigService`를 사용하는 service가 constructor에서 config 값을 로컬 private variable에 “굽지” 않아야 합니다. 항상 service를 조회하거나 update를 구독해야 합니다.
+- **Validation Barrier**: 새 config snapshot은 검증에 실패하면 **절대** 적용되지 않습니다. 애플리케이션은 “last known good” configuration으로 계속 실행되며, CLI는 console에 validation error를 보고합니다.
+- **Development-Only**: 이 아키텍처는 지원하지만, 일반적으로 production에서는 새 config가 새 deployment를 의미하는 “immutable infrastructure” 패턴을 유지하기 위해 인프로세스 리로딩을 비활성화합니다.
 
-- env 파일 경로 결정
-- config merge와 validation
-- config source 감시
-- 명시적인 reload subscription과 error 전달
+## 관련 문서
 
-### `@konekti/runtime`
-
-승인된 config reload를 runtime에 적용하는 책임을 집니다.
-
-- `ConfigService` 참조 안정성 유지
-- dev mode에서 검증된 config snapshot 적용
-- runtime이 관리하는 reload participant 호출
-- runtime 쪽 reload 처리 실패 시 이전 snapshot 복구
-
-## 현재 보장하는 것
-
-- Konekti는 공개 `@konekti/hot-reload` 패키지를 제공하지 않습니다.
-- 생성된 starter 앱은 코드 변경에 대해 계속 프로세스 재시작을 사용합니다.
-- runtime config reload는 opt-in이며 dev 전용입니다.
-- 잘못된 watched config는 마지막 정상 runtime snapshot을 덮어쓰지 않습니다.
-- 애플리케이션을 닫으면 runtime이 소유한 config watch 경로도 함께 닫힙니다.
-
-## 왜 아직 `@konekti/hot-reload` 패키지가 없는가
-
-지금의 Konekti에는 공개 패키지 경계로 승격할 만큼 넓고 안정적인 reload 추상화가 아직 없습니다.
-
-현재 안정적인 분리는 다음과 같습니다.
-
-- CLI는 restart orchestration을 맡고
-- config는 snapshot production을 맡고
-- runtime은 reload application semantics를 맡습니다
-
-나중에 더 넓은 공유 계약이 실제로 생기면, 그때 검증된 경계에서 패키지를 뽑아내는 편이 더 안전합니다.
+- [Architecture Overview](./architecture-overview.ko.md)
+- [Config and Environments](./config-and-environments.ko.md)
+- [Lifecycle and Shutdown](./lifecycle-and-shutdown.ko.md)
+- [CLI README](../../packages/cli/README.ko.md)

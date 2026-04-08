@@ -2,14 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Deno-backed HTTP adapter for Konekti runtime applications, built on the shared `@konekti/runtime/web` fetch-style adapter seam.
+Deno-backed HTTP adapter for the Konekti runtime, built on native `Deno.serve`.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -17,75 +20,55 @@ Deno-backed HTTP adapter for Konekti runtime applications, built on the shared `
 deno add npm:@konekti/platform-deno npm:@konekti/runtime npm:@konekti/http
 ```
 
+## When to Use
+
+Use this package when running Konekti applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
+
 ## Quick Start
 
 ```typescript
-import { Controller, Get } from '@konekti/http';
 import { runDenoApplication } from '@konekti/platform-deno';
-
-@Controller('/health')
-class HealthController {
-  @Get('/')
-  check() {
-    return { status: 'ok' };
-  }
-}
-
-class AppModule {}
+import { AppModule } from './app.module.ts';
 
 await runDenoApplication(AppModule, {
   port: 3000,
 });
 ```
 
-## API
+## Common Patterns
 
-- `createDenoAdapter(options)` - create a Deno `HttpApplicationAdapter`
-- `bootstrapDenoApplication(rootModule, options)` - advanced bootstrap helper without implicit OS signal wiring
-- `runDenoApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging
-- `DenoHttpApplicationAdapter.handle(request)` - dispatch a native Web `Request` manually and receive a native Web `Response`
+### Manual Request Dispatching
+For testing or custom `Deno.serve` implementations, you can use the adapter's `handle` method to dispatch native web requests manually.
 
-### Supported options
+```typescript
+const adapter = createDenoAdapter({ port: 3000 });
+const response = await adapter.handle(new Request('http://localhost:3000/health'));
+```
 
-`createDenoAdapter()`, `bootstrapDenoApplication()`, and `runDenoApplication()` support:
+### Deno-Native WebSocket Support
+The adapter supports Deno's native `Deno.upgradeWebSocket` through the `@konekti/websockets/deno` binding.
 
-- `port`
-- `hostname`
-- `rawBody`
-- `multipart`
-- `maxBodySize`
-- `cors` (`false | string | string[] | CorsOptions`) via the bootstrap helpers
-- `globalPrefix` / `globalPrefixExclude` via the bootstrap helpers
-- `securityHeaders` via the bootstrap helpers
-- `serve` for explicit `Deno.serve` injection during tests or custom hosting shells
-- `onListen` to observe Deno's bound address callback
+```typescript
+// Gateways automatically use Deno's native upgrade when the Deno adapter is active
+@WebSocketGateway({ path: '/ws' })
+export class MyGateway {}
+```
 
-## supported operations
+## Public API Overview
 
-- Bridges native Web `Request` / `Response` handling through the shared `@konekti/runtime/web` fetch-style adapter seam so Deno shares the same request parsing, raw-body, multipart, error-envelope, and SSE semantics as the other fetch-style adapters.
-- Exposes `handle(request)` for direct request dispatch in tests and custom `Deno.serve(...)` composition.
-- Supports `rawBody` opt-in for non-multipart requests.
-- Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
-- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Deno-native request-upgrade hosting through `Deno.upgradeWebSocket(request)`.
-- Logs runtime-style listen messages through `runDenoApplication()`.
+- `createDenoAdapter(options)`: Factory for the Deno HTTP adapter.
+- `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
+- `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
+- `handle(request)`: Manual `Request` to `Response` dispatcher.
 
-## runtime invariants
+## Related Packages
 
-- `rawBody` is never populated for multipart requests.
-- SSE and other streamed responses flow through native Web `Response` streaming rather than Node-only response objects.
-- If the dispatcher has not been bound yet, incoming requests are serialized through the canonical framework error envelope instead of hanging.
-- The adapter keeps request/response translation in the shared fetch-style adapter seam instead of forking Deno-specific parsing logic.
+- `@konekti/runtime`: Core framework runtime.
+- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/deno`.
+- `@konekti/http`: HTTP decorators and abstractions.
 
-## lifecycle guarantees
+## Example Sources
 
-- `listen()` starts `Deno.serve(...)` and binds the Konekti dispatcher before requests are handled.
-- `close()` aborts the active serve signal, calls the underlying server `shutdown()`, and waits for `finished` before resolving.
-- `runDenoApplication()` adds startup logging but does not install implicit OS signal handlers.
+- `packages/platform-deno/src/adapter.test.ts`
+- `packages/websockets/src/deno/deno.test.ts`
 
-## intentional limitations
-
-- This package does not replace `@konekti/runtime`; module graph compilation, DI, lifecycle hooks, and application orchestration remain in the runtime package.
-- No Bun-, Cloudflare-, or Deno Deploy-specific bootstrap helpers are provided here.
-- No Deno-native HTTPS/TLS passthrough is exposed yet; add that in a dedicated issue when the public contract is defined.
-- The adapter targets native Web `Request` / `Response` semantics and does not provide a Node compatibility layer.
-- Raw websocket hosting for Deno is provided through the dedicated `@konekti/websockets/deno` binding. `@konekti/websockets/node` still remains Node-upgrade-listener-specific and is not claimed for Deno.

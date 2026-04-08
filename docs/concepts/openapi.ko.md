@@ -1,74 +1,70 @@
-# OpenAPI
+# OpenAPI 문서화
 
 <p><a href="./openapi.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/openapi`, `@konekti/http`, 그리고 입력 유효성 검사 메타데이터 시스템에서 사용되는 OpenAPI 생성 모델을 설명합니다.
+문서화는 나중에 덧붙이는 작업이 되어서는 안 됩니다. Konekti는 HTTP 라우트, 유효성 검사 규칙 및 보안 설정에서 메타데이터를 집계하여 자동으로 **OpenAPI 3.1.0** 문서를 생성하는 기능을 제공합니다. 이를 통해 API 명세와 실제 구현을 항상 완벽하게 동기화할 수 있습니다.
 
-### 관련 문서
+## 왜 Konekti의 OpenAPI인가요?
 
-- `./http-runtime.ko.md`
-- `../../packages/openapi/README.ko.md`
-- `../../packages/http/README.ko.md`
+- **수동 동기화 제로**: 코드가 곧 문서입니다. 라우트나 DTO의 변경 사항이 생성된 명세에 자동으로 반영됩니다.
+- **대화형 UI**: 내장된 **Swagger UI** 지원을 통해 개발자가 브라우저에서 직접 엔드포인트를 테스트할 수 있습니다.
+- **기계 읽기 가능**: 생성된 `openapi.json`을 사용하여 클라이언트 라이브러리를 생성하거나, 계약 테스트를 수행하고, API 게이트웨이와 통합할 수 있습니다.
+- **DTO 통합**: `@konekti/validation` 데코레이터를 풍부한 JSON Schema 컴포넌트로 자동 변환합니다.
 
-## 등록 및 서빙
+## 책임 분담
 
-OpenAPI 지원을 활성화하려면 `OpenApiModule.forRoot(...)`를 사용하세요. 기본적으로 다음 기능을 제공합니다:
+- **`@konekti/openapi` (생성기)**: 메타데이터 수집을 오케스트레이션하고 최종 명세를 생성하는 핵심 엔진입니다. 선택적인 Swagger UI 미들웨어도 제공합니다.
+- **`@konekti/http` (소스)**: 경로, 메서드, HTTP 상태 코드 및 URI 버전 정보와 같은 라우트 레벨의 메타데이터를 공급합니다.
+- **`@konekti/validation` (스키마)**: 클래스 기반 DTO와 유효성 검사 규칙(예: `@IsEmail()`, `@Min(1)`)을 OpenAPI 스키마 컴포넌트로 변환합니다.
 
-- **JSON 문서**: `GET /openapi.json`
-- **Swagger UI** (선택 사항): `GET /docs`
+## 일반적인 워크플로우
 
-OpenAPI 문서는 애플리케이션 시작 시점에 핸들러 디스크립터(handler descriptors)로부터 구축됩니다. `OpenApiModule.forRoot(...)`는 빌드된 디스크립터, `createHandlerMapping()`에서 사용하는 `HandlerSource[]` 모델, 또는 두 입력의 조합을 받아들입니다.
+### 1. 설정 없는 자동 탐색
+`OpenApiModule.forRoot()`를 가져오는 것만으로도 Konekti는 컨트롤러 스캔을 시작합니다. 경로, 메서드와 같은 대부분의 기본 정보는 자동으로 캡처됩니다.
 
-Konekti 용어에서 **OpenAPI**는 canonical 계약 산출물이자 패키지 정체성입니다. **Swagger UI**는 `/docs`에 마운트되는 선택적 뷰어일 뿐입니다.
+### 2. 데코레이터를 통한 보완
+비즈니스 로직을 오염시키지 않으면서 전용 문서화 데코레이터를 사용하여 사람이 읽기 쉬운 문맥을 추가할 수 있습니다.
 
-## 문서화 데코레이터
-
-Konekti는 OpenAPI 메타데이터를 위해 특화된 몇 가지 데코레이터를 제공합니다:
-
-- **`@ApiTag(tag)`**: 작업을 그룹화합니다.
-- **`@ApiOperation({ summary, description, deprecated })`**: 엔드포인트의 목적과 deprecated 상태를 설명합니다.
-- **`@ApiResponse(status, { description, schema, type })`**: 가능한 응답 코드와 구조를 문서화합니다.
-- **`@ApiBearerAuth()`**: 작업에 대해 Bearer 인증을 선언합니다.
-- **`@ApiSecurity(name, scopes?)`**: API key/OAuth2/OpenID Connect 이름 등 일반화된 OpenAPI 보안 요구사항을 선언합니다.
-- **`@ApiExcludeEndpoint()`**: 해당 핸들러를 생성되는 `paths`에서 제외합니다.
-
-이 데코레이터들은 문서화에만 영향을 미치며 런타임 동작을 변경하지 않습니다.
-
-## 라우트 및 유효성 검사 메타데이터에서 스키마 추출
-
-OpenAPI 생성기는 라우트 메타데이터와 입력 유효성 검사 메타데이터에서 스키마 정보를 추출합니다:
-
-- **메타데이터 읽기**: 요청 바인딩 메타데이터와 입력 유효성 검사 메타데이터는 정규화된 헬퍼 API를 통해 접근됩니다.
-- **컴포넌트 스키마**: 검증기 메타데이터(예: `@IsString()`)를 사용하여 `components.schemas`를 구성합니다.
-- **요청 바디**: `requestBody`를 통해 연결됩니다.
-- **파라미터**: 바인딩된 입력 필드는 파라미터 정의로 매핑됩니다.
-- **응답**: 응답 모델은 `@ApiResponse(..., { type: ... })`를 사용하여 문서화할 수 있습니다.
-- **명시적 구성 스키마**: 명시적 데코레이터 스키마는 `allOf`, `oneOf`, `anyOf`, `not`, `discriminator` 같은 구성 키워드를 사용할 수 있습니다.
-- **중첩**: 중첩된 모델과 배열은 스키마 참조로 표현됩니다.
-- **추가 모델 등록**: `extraModels` 옵션으로 요청/응답 메타데이터에서 자동 탐색되지 않는 스키마를 컴포넌트에 등록할 수 있습니다.
-
-## 생성 프로세스
-
-- **라우트 메타데이터**: 핸들러 디스크립터에서 추출됩니다.
-- **버저닝**: `@Version(...)`을 통해 정의된 버저닝은 URI 경로(예: `/v1/users`)에 반영됩니다.
-- **구성**: 태그, 작업, 응답, 스키마 메타데이터와 명시적 OpenAPI 구성 키워드가 하나의 OpenAPI 3.1 문서로 결합됩니다.
-- **라이프사이클**: 문서는 시작 시점에 한 번 생성되어 정적으로 서빙됩니다.
-
-## 아키텍처 경계
-
-- **`@konekti/openapi`**: 스키마 생성 및 서빙 레이어를 처리합니다.
-- **`@konekti/http`**: 라우트 및 요청 메타데이터 작성을 관리합니다.
-- **`@konekti/validation`**: OpenAPI가 스키마 힌트로 읽을 수 있는 입력 유효성 검사 메타데이터를 제공합니다.
-- **출력 형태 조정**: 런타임 응답 직렬화는 문서 생성과 별개의 관심사입니다.
-- **디커플링**: `@konekti/openapi`는 정규화된 메타데이터와만 상호작용하며 패키지 내부 저장소에 접근하지 않습니다.
-- **인증 방식**: 인증 스킴(scheme)은 OpenAPI 데코레이터를 사용하여 애플리케이션 레벨에서 선언됩니다.
-- **보안 스킴 확장성**: 모듈/문서 옵션의 `securitySchemes`를 통해 API key, HTTP, OAuth2, OpenID Connect 스킴을 등록할 수 있습니다.
-- **문서 후처리**: `documentTransform`은 문서 생성 후 빌드 시점에 생성된 문서를 한 번 후처리할 수 있으며, 지정하지 않으면 no-op입니다.
-
-## 개념적 흐름
-
-```text
-@konekti/http는 라우트 및 바인딩 메타데이터를 기록합니다.
-@konekti/validation은 입력 유효성 검사 메타데이터를 기록합니다.
-@konekti/openapi는 이 둘과 명시적인 응답 스키마 선언을 함께 읽어 문서를 조립합니다.
+```typescript
+@ApiTag('Users')
+@Controller('/users')
+class UsersController {
+  @ApiOperation({ summary: '새 사용자 프로필 생성' })
+  @ApiResponse(201, { description: '사용자가 성공적으로 생성됨' })
+  @Post('/')
+  create(@FromBody() dto: CreateUserDto) {
+    // ...
+  }
+}
 ```
+
+### 3. 자동 스키마 생성
+DTO 클래스는 자동으로 OpenAPI "Components"가 됩니다.
+
+```typescript
+export class CreateUserDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  name: string;
+}
+```
+
+### 4. 문서 제공
+생성된 문서는 런타임에 노출됩니다:
+- **JSON 명세**: `GET /openapi.json`
+- **Swagger UI**: `GET /docs` (선택 사항)
+
+## 주요 경계
+
+- **시작 시점의 오버헤드**: 문서 생성은 애플리케이션 부트스트랩 시점에 한 번만 발생합니다. 요청 처리 시점의 성능에는 전혀 영향을 주지 않습니다.
+- **표준 데코레이터**: Konekti의 다른 부분과 마찬가지로, OpenAPI 시스템은 레거시 컴파일러 플래그를 피하고 TC39 표준 데코레이터를 사용합니다.
+- **보안 우선**: JWT나 API 키와 같은 인증 요구 사항은 `@ApiBearerAuth()` 데코레이터를 통해 명시적으로 문서화되어 보안 상태가 명확하게 전달되도록 합니다.
+
+## 다음 단계
+
+- **설정**: [OpenAPI 패키지 README](../../packages/openapi/README.ko.md)에서 사용 가능한 옵션을 확인하세요.
+- **유효성 검사**: [Validation 패키지](../../packages/validation/README.ko.md)에서 DTO 작동 방식을 알아보세요.
+- **라이브 예제**: [예제 디렉토리](../../examples/README.ko.md)를 확인해 보세요.

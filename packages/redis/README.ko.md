@@ -2,19 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Konekti를 위한 공유 Redis 연결 계층입니다. 애플리케이션 수명 주기에 따라 관리되는 단일 `ioredis` 클라이언트를 제공합니다.
 
-Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, raw `ioredis` client 또는 선택적 Redis facade를 주입받아 사용합니다.
+## 목차
 
-## 관련 문서
-
-- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
-- `../../docs/reference/package-surface.ko.md`
-
-## 이 패키지가 하는 일
-
-`@konekti/redis`는 Konekti에서 앱 범위 Redis client lifecycle을 담당합니다. singleton `ioredis` client를 만들고, `REDIS_CLIENT` DI 토큰으로 노출하며, 모듈 초기화 시 연결하고, 애플리케이션 종료 시 정리합니다.
-
-또한 `RedisService`를 facade의 기본 주입 식별자로 제공해 JSON 친화적인 `get`/`set`/`del` 사용을 지원하면서, 필요하면 raw `ioredis` 접근도 그대로 유지합니다.
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [일반적인 패턴](#일반적인-패턴)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -22,124 +20,91 @@ Konekti를 위한 공유 Redis 연결 레이어입니다. 한 번 등록하고, 
 npm install @konekti/redis ioredis
 ```
 
+## 사용 시점
+
+- 캐싱, 큐, 전송률 제한(Throttler) 등 여러 모듈에서 공유할 Redis 연결이 필요할 때.
+- 애플리케이션 시작 시 자동 연결, 종료 시 안전한 연결 해제 기능을 원할 때.
+- JSON 데이터를 다루기 편한 고수준의 Redis 파사드(Facade)가 필요할 때.
+
 ## 빠른 시작
 
-### 1. 모듈 등록
+### 모듈 등록
 
 ```typescript
 import { Module } from '@konekti/core';
-import { RedisModule, type RedisModuleOptions } from '@konekti/redis';
-
-type RedisConfig = {
-  host: string;
-  port: number;
-  password?: string;
-};
-
-declare const redisConfig: RedisConfig; // 애플리케이션 경계에서 한 번 해석된 설정
-
-const redisOptions: RedisModuleOptions = {
-  host: redisConfig.host,
-  port: redisConfig.port,
-  password: redisConfig.password,
-};
+import { RedisModule } from '@konekti/redis';
 
 @Module({
   imports: [
-    RedisModule.forRoot(redisOptions),
+    RedisModule.forRoot({
+      host: 'localhost',
+      port: 6379,
+    }),
   ],
 })
 export class AppModule {}
 ```
 
-> Config-first 원칙: Konekti는 환경 값을 애플리케이션 경계에서 해석한 뒤 타입이 지정된 모듈 옵션으로 `RedisModule.forRoot(...)`에 전달합니다. `../../docs/concepts/config-and-environments.ko.md`를 참고하세요.
+### Redis 서비스 사용
 
-### 2. Raw Redis client 주입
+`RedisService`를 주입받아 고수준 작업을 수행하거나, `REDIS_CLIENT`를 통해 원시 `ioredis` 인스턴스를 직접 사용할 수 있습니다.
+
+```typescript
+import { Inject } from '@konekti/core';
+import { RedisService } from '@konekti/redis';
+
+export class CacheRepository {
+  @Inject([RedisService])
+  private readonly redis: RedisService;
+
+  async saveUser(id: string, user: object) {
+    await this.redis.set(`user:${id}`, user, 3600);
+  }
+
+  async getUser(id: string) {
+    return await this.redis.get(`user:${id}`);
+  }
+}
+```
+
+## 일반적인 패턴
+
+### 원시 클라이언트 접근 (Raw Client Access)
+
+파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
 
 ```typescript
 import { Inject } from '@konekti/core';
 import { REDIS_CLIENT } from '@konekti/redis';
 import type Redis from 'ioredis';
 
-@Inject([REDIS_CLIENT])
-export class CacheService {
-  constructor(private readonly redis: Redis) {}
+export class AdvancedService {
+  @Inject([REDIS_CLIENT])
+  private readonly client: Redis;
 
-  async remember(key: string, value: string) {
-    await this.redis.set(key, value);
+  async executeComplex() {
+    return await this.client.pipeline().set('foo', 'bar').get('foo').exec();
   }
 }
 ```
 
-## 핵심 API
+## 공개 API 개요
 
-| Export | 위치 | 설명 |
-|---|---|---|
-| `RedisModule.forRoot(options)` | `src/module.ts` | global singleton Redis client 모듈 등록 |
-| `createRedisProviders(options)` | `src/module.ts` | 수동 조합을 위한 raw provider 목록 반환 |
-| `REDIS_CLIENT` | `src/tokens.ts` | 공유 raw `ioredis` client용 DI 토큰 |
-| `RedisService` | `src/redis-service.ts` | JSON codec 기반 `get`/`set`/`del` facade + `getRawClient()` escape hatch |
-| `createRedisPlatformStatusSnapshot(input)` | `src/status.ts` | Redis 연결 상태를 공통 ownership/readiness/health/details 스냅샷 형태로 매핑 |
-| `RedisModuleOptions` | `src/types.ts` | `lazyConnect`를 제외한 `ioredis` 옵션 |
+### 핵심 구성 요소
+- `RedisModule`: 전역 Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
+- `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
+- `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
 
-## RedisService codec 동작
-
-- `get(key)`는 키가 없으면 `null`을 반환합니다.
-- `get(key)`는 유효한 JSON payload를 파싱해서 반환합니다.
-- `get(key)`는 non-JSON 또는 malformed JSON payload라면 저장된 raw 문자열을 그대로 반환합니다.
-- `set(key, value)`는 항상 `JSON.stringify(value)`로 저장하고, `ttlSeconds > 0`이면 Redis `EX`를 사용합니다.
-- `getRawClient()`는 facade 표면 밖의 명령이 필요할 때 공유 raw `ioredis` client를 반환합니다.
-
-## 라이프사이클 동작
-
-- `RedisModule.forRoot()`는 항상 `lazyConnect: true`로 client를 생성합니다.
-- `onModuleInit()`은 `wait` 상태에서만 `connect()`를 호출하므로, Redis가 필수인 경우 connect 실패를 bootstrap 단계에서 바로 드러냅니다.
-- `onApplicationShutdown()`은 이미 `end`면 종료 작업을 건너뛰고, `quit` 불가능 상태에서는 `disconnect()`를 직접 호출하며, 그 외에는 `quit()` 우선 + 실패 시 `disconnect()` 폴백을 사용합니다.
-- `quit()`가 실패했고 client가 여전히 닫히지 않았다면, 원래 `quit` 오류를 다시 던집니다.
-
-## 0.x 마이그레이션 노트
-
-- `@konekti/redis`의 `REDIS_SERVICE` 호환성 alias는 `0.x` 라인에서 제거되었습니다.
-- DI 사용 코드를 `@Inject([REDIS_SERVICE])`에서 `@Inject([RedisService])`로 마이그레이션하세요.
-- raw client DI 토큰은 기존처럼 `REDIS_CLIENT`를 사용합니다.
-
-## 플랫폼 상태 스냅샷 시맨틱
-
-`createRedisPlatformStatusSnapshot({ status })`를 사용하면, 런타임에서 안전하게 쓸 수 있는 ownership/readiness/health/details를 공통 플랫폼 계약 형태로 내보낼 수 있습니다.
-
-- `ownership`: Redis는 프레임워크 소유 리소스입니다 (`ownsResources: true`, `externallyManaged: false`).
-- `readiness`: client 상태가 `ready`일 때만 `ready`; `wait`는 `not-ready`; connect/reconnect 단계는 `degraded`로 보고합니다.
-- `health`: ready면 `healthy`, connecting/reconnecting/waiting 단계는 `degraded`, 닫힌 상태(`close`/`end`)는 `unhealthy`로 보고합니다.
-- `details`: 자격 증명 없이 안정적인 진단 필드(`connectionState`, `lazyConnect`)를 포함합니다.
-
-## 구조
-
-```text
-RedisModule.forRoot(options)
-  -> REDIS_CLIENT를 global singleton 토큰으로 등록
-  -> connect/quit를 관리하는 lifecycle provider 등록
-
-service/repository 코드
-  -> @Inject([REDIS_CLIENT]) 또는 @Inject([RedisService])
-  -> raw client 또는 facade codec helper
-
-app bootstrap
-  -> onModuleInit()
-  -> redis.connect()
-
-app.close()
-  -> onApplicationShutdown()
-  -> redis.quit() 또는 redis.disconnect()
-```
+### 타입
+- `RedisModuleOptions`: `ioredis` 생성자에 전달되는 설정 옵션입니다.
 
 ## 관련 패키지
 
-- `@konekti/runtime` - module init 및 shutdown hook 실행
-- `@konekti/di` - `REDIS_CLIENT` 토큰 resolve
-- `@konekti/core` - `@Inject()` metadata 제공
+- `@konekti/cache-manager`: Redis를 백엔드로 사용하는 캐싱 패키지입니다.
+- `@konekti/queue`: Redis 기반의 분산 작업 큐 패키지입니다.
+- `@konekti/throttler`: Redis 기반의 분산 전송률 제한 패키지입니다.
 
-## 한 줄 mental model
+## 예제 소스
 
-```text
-@konekti/redis = Konekti DI와 lifecycle hook에 연결된 앱 범위 단일 ioredis client
-```
+- `packages/redis/src/module.test.ts`: 모듈 수명 주기 및 DI 연결 예제.
+- `packages/redis/src/redis-service.ts`: 파사드 구현 및 코덱 로직.

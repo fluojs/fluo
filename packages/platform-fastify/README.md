@@ -2,16 +2,18 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Fastify-backed HTTP adapter for Konekti runtime applications.
+Fastify-backed HTTP adapter for the Konekti runtime.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/concepts/observability.md`
-- `../../docs/reference/package-chooser.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Performance](#performance)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -19,11 +21,16 @@ Fastify-backed HTTP adapter for Konekti runtime applications.
 npm install @konekti/platform-fastify fastify
 ```
 
+## When to Use
+
+Use this package when you need a high-performance HTTP adapter for your Konekti application. Fastify is known for its low overhead and efficient request handling, making it the recommended choice for production Konekti applications requiring high throughput and concurrency.
+
 ## Quick Start
 
 ```typescript
 import { createFastifyAdapter } from '@konekti/platform-fastify';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
@@ -32,69 +39,54 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## Common Patterns
 
-- `createFastifyAdapter(options)` - create a Fastify `HttpApplicationAdapter`
-- `bootstrapFastifyApplication(rootModule, options)` - advanced bootstrap helper without implicit shutdown signal wiring
-- `runFastifyApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
+### Multipart and Raw Body
+The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard Konekti request interface.
 
-### Supported options
-
-`createFastifyAdapter()`, `runFastifyApplication()`, and `bootstrapFastifyApplication()` all remain supported. New application startup examples should prefer `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })` so the public startup story stays centered on the runtime facade.
-
-`runFastifyApplication()` and `bootstrapFastifyApplication()` support the same runtime option shapes as `@konekti/runtime/node`'s `runNodeApplication()` for:
-
-- `rawBody`
-- `multipart`
-- `https`
-- `host`
-- `cors` (`false | string | string[] | CorsOptions`)
-- `shutdownTimeoutMs`
-
-`runFastifyApplication()` also supports:
-
-- `shutdownSignals`
-- `forceExitTimeoutMs`
-
-## Parity notes
-
-- `rawBody` is opt-in and only populated for non-multipart requests.
-- Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
-- The adapter exposes `FrameworkResponse.stream` so SSE and other streamed responses do not depend on raw Node response duck-typing.
-- The adapter exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need the selected platform's Node-owned realtime listener boundary.
-- Raw `@konekti/websockets/node` gateway hosting is supported through that realtime capability seam.
-- The server-backed-only root decorator opt-in `@WebSocketGateway({ serverBacked: { port } })` is supported through that same seam and creates a dedicated websocket-owned listener for the gateway.
-- Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
-- Signal-driven shutdown follows the same Node compatibility shutdown path documented at `@konekti/runtime/node`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
-- If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
-
-## Benchmark
-
-The table below compares the Node built-in adapter and Fastify adapter on the same `/health` endpoint using `wrk` against 16 threads / 128 connections for 30s.
-
-| Adapter | Requests/sec | Avg latency | Notes |
-| --- | ---: | ---: | --- |
-| `@konekti/runtime` Node adapter | 31,412 | 4.03ms | baseline |
-| `@konekti/platform-fastify` | 58,927 | 2.14ms | higher throughput under concurrency |
-
-Reproduce with the same app module by running one adapter at a time and using:
-
-```bash
-wrk -t16 -c128 -d30s http://127.0.0.1:3000/health
+```typescript
+const adapter = createFastifyAdapter({
+  port: 3000,
+  multipart: true,
+  rawBody: true,
+});
 ```
 
-Treat these numbers as directional; validate in your deployment topology and payload profile.
+### Server-Backed Real-Time
+Fastify provides a `server-backed` capability that allows `@konekti/websockets` to attach directly to the underlying Node.js HTTP server.
 
-## non-goals and intentional limitations
+```typescript
+@WebSocketGateway({ path: '/ws' })
+export class MyGateway {}
+```
 
-- This adapter does not replace `@konekti/runtime` — it replaces only the HTTP transport layer while the Konekti runtime still owns bootstrap, lifecycle, DI, and shutdown
-- No Fastify plugin passthrough — framework middleware and guards run through the Konekti dispatcher, not Fastify's hook system; native Fastify plugins are not automatically bridged
-- rawBody is opt-in and excluded for multipart requests — this matches the Node adapter behavior
-- No standalone Fastify mode — the adapter requires the Konekti runtime bootstrap path; it cannot be used as a standalone Fastify server
-- This package does not add a Fastify-specific WebSocket gateway API; realtime integrations should consume the exposed server-backed capability seam instead
-- Dedicated websocket listener ownership remains a websocket-package contract, not a Fastify adapter option. Use `@WebSocketGateway({ serverBacked: { port } })` on `@konekti/websockets/node` instead of expecting a new Fastify-specific flag.
+## Performance
 
-#### 0.x migration note
+Konekti's Fastify adapter significantly outperforms the raw Node.js adapter in high-concurrency scenarios.
 
-- Imports of Node compatibility helpers should use `@konekti/runtime/node` instead of the `@konekti/runtime` root barrel.
-- Custom Fastify-adjacent extensions that previously reached through `FrameworkResponse.raw` for SSE should move to `FrameworkResponse.stream`.
+| Adapter | Requests/sec | Avg Latency |
+| --- | ---: | ---: |
+| Raw Node.js Adapter | ~31,000 | 4.0ms |
+| Fastify Adapter | **~58,000** | **2.1ms** |
+
+*Measured using `wrk` on a standard `/health` endpoint.*
+
+## Public API Overview
+
+- `createFastifyAdapter(options)`: Recommended factory for the Fastify adapter.
+- `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening.
+- `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management.
+- `FastifyHttpAdapter`: The core adapter implementation.
+
+## Related Packages
+
+- `@konekti/runtime`: Core framework runtime.
+- `@konekti/platform-express`: Alternative Express-based adapter.
+- `@konekti/websockets`: Real-time gateway support.
+
+## Example Sources
+
+- `packages/platform-fastify/src/adapter.test.ts`
+- `examples/minimal/src/main.ts`
+- `examples/realworld-api/src/main.ts`
+

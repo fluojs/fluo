@@ -2,74 +2,48 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./generator-workflow.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the CLI generator system and available schematics for Konekti.
+Eliminate manual boilerplate and maintain a consistent project structure using the Konekti CLI. The generators create real Konekti building blocks that follow the framework's module-first conventions.
 
-## command syntax
+### who this is for
+Developers who want to stay productive by automating the creation of modules, controllers, and services while ensuring architectural consistency.
+
+### 1. generating a complete feature module
+A **module** is the primary unit of organization in Konekti. One command gives you a clean module entry point, and you can add the remaining pieces with focused generators.
 
 ```sh
-konekti generate <schematic> <name>
-konekti g <schematic> <name>
+konekti g module catalog
 ```
 
-## available schematics
+**What happens?**
+The CLI creates a `src/catalog/` directory with a `catalog.module.ts` entry point that you can extend with additional generated parts.
 
-| Schematic | Alias | Wiring |
-| --- | --- | --- |
-| `controller` | `co` | auto |
-| `guard` | `gu` | auto |
-| `interceptor` | `in` | auto |
-| `middleware` | `mi` | auto |
-| `module` | `mo` | manual |
-| `repository` | `repo` | auto |
-| `request-dto` | `req` | manual |
-| `response-dto` | `res` | manual |
-| `service` | `s` | auto |
+### 2. precise component generation
+Need to add a single building block to an existing feature? Use granular generators.
 
-### wiring behavior
+- **`konekti g controller name`**: Scaffolds an HTTP controller.
+- **`konekti g service name`**: Scaffolds a business logic service.
+- **`konekti g repo name`**: Scaffolds a data repository pattern.
+- **`konekti g module name`**: Scaffolds a clean module definition.
 
-Generators have one of two wiring behaviors:
+### 3. flexible output paths
+By default, the CLI targets `src/`. Use the `--target-directory` (or `-o`) flag to align with your project's directory structure.
 
-- **auto** — the generated class is auto-registered in the domain module. If the module file does not exist yet, the CLI creates it. The module's `controllers`, `providers`, or `middleware` array is updated automatically.
-- **manual** — files only. The generated class is not registered anywhere automatically. You must wire it into a module or controller yourself. The CLI prints a next-step hint with specific instructions after generation.
+```sh
+konekti g module auth --target-directory src/shared
+```
 
-After running any generator, the CLI output shows:
-1. A `CREATE` line for each generated file.
-2. A **Wiring** status line indicating whether the class was auto-registered or requires manual wiring.
-3. A **Next steps** hint with the recommended follow-up action (e.g., run `pnpm typecheck`, import a DTO, etc.).
+### 4. safe execution with dry runs
+Preview exactly which files will be modified or created before committing to the change.
 
-## generation conventions
+```sh
+konekti g module shop --dry-run
+```
 
-- **Language**: All files are generated in TypeScript.
-- **Naming**: Uses kebab-case for filenames and PascalCase for classes.
-- **Location**: Files are written to the `src/` directory by default in starter applications.
-- **Module Updates**: Generators with `auto` wiring automatically register new components in the appropriate module. Generators with `manual` wiring produce files only — you wire them yourself.
+### why use the CLI?
+- **Zero Boilerplate**: Skip manual directory creation, repetitive file naming, and import setup.
+- **Consistent Shape**: Generated files follow the naming and placement rules documented in Konekti's reference docs.
+- **Composable Workflow**: Start with a module, then add controllers, services, DTOs, events, or repositories as the feature grows.
 
-### example output
-
-- `user.controller.ts`
-- `user.service.ts`
-- `user.repo.ts`
-- `user.request.dto.ts`
-- `user.response.dto.ts`
-
-## implementation philosophy
-
-- **Granular Generation**: Use individual generators to build application components.
-- **DTO Separation**: Request and response DTOs are kept distinct to ensure clear API contracts.
-- **No Monolithic Resources**: The CLI currently avoids complex "resource" generators (e.g., `g resource`) to maintain simplicity.
-- **Neutrality**: Scaffolding remains package-manager-neutral, except for manager-specific lockfiles and commands.
-
-## module entrypoint naming governance
-
-Generated snippets and migration hints follow the repository-wide public module syntax contract:
-
-- Runtime module entrypoints: `forRoot(...)`, optional `forRootAsync(...)`, `register(...)`, `forFeature(...)`
-- Helper/builders only: `create*`
-
-Treat `../reference/package-surface.md` as the source-of-truth when adding or updating CLI-facing module naming guidance.
-
-## further reading
-
-- `./quick-start.md`
-- `./bootstrap-paths.md`
-- `../reference/toolchain-contract-matrix.md`
+### next steps
+- **Implement Logic**: Now that your files are ready, follow the [First Feature Path](./first-feature-path.md) to add logic.
+- **Verification**: Learn how to test your generated components in the [Testing Guide](../operations/testing-guide.md).

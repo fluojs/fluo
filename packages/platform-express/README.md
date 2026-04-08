@@ -2,16 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Express-backed HTTP adapter for Konekti runtime applications.
+Express-backed HTTP adapter for the Konekti runtime.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/concepts/observability.md`
-- `../../docs/reference/package-chooser.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -19,11 +20,16 @@ Express-backed HTTP adapter for Konekti runtime applications.
 npm install @konekti/platform-express express
 ```
 
+## When to Use
+
+Use this package when you want to run a Konekti application using Express as the underlying HTTP engine. This is useful for leveraging Express's robust ecosystem, mature Node.js server handling, and familiar request/response lifecycle within the Konekti decorator-based architecture.
+
 ## Quick Start
 
 ```typescript
 import { createExpressAdapter } from '@konekti/platform-express';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createExpressAdapter({ port: 3000 }),
@@ -32,64 +38,46 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## Common Patterns
 
-- `createExpressAdapter(options)` - create an Express `HttpApplicationAdapter`
-- `bootstrapExpressApplication(rootModule, options)` - advanced bootstrap helper without implicit shutdown signal wiring
-- `runExpressApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
+### Handling Streaming Responses (SSE)
+The Express adapter supports Server-Sent Events (SSE) via the shared `SseResponse` utility, abstracting away the Express-specific stream handling.
 
-### Supported options
+```typescript
+@Get('events')
+async streamEvents(@Res() res: FrameworkResponse) {
+  const events = new SseResponse();
+  events.send({ data: 'hello' });
+  return events;
+}
+```
 
-`createExpressAdapter()`, `runExpressApplication()`, and `bootstrapExpressApplication()` all remain supported. New application startup examples should prefer `KonektiFactory.create(..., { adapter: createExpressAdapter(...) })` so the public startup story stays centered on the runtime facade.
+### Body Parsing and Multipart
+The adapter handles `rawBody` and multipart form-data parsing out of the box when configured in the adapter options.
 
-`runExpressApplication()` and `bootstrapExpressApplication()` support the same runtime option shapes as `@konekti/runtime/node`'s `runNodeApplication()` for:
+```typescript
+const adapter = createExpressAdapter({
+  port: 3000,
+  rawBody: true,
+  multipart: true,
+});
+```
 
-- `rawBody`
-- `multipart`
-- `https`
-- `host`
-- `cors` (`false | string | string[] | CorsOptions`)
-- `shutdownTimeoutMs`
+## Public API Overview
 
-`runExpressApplication()` also supports:
+- `createExpressAdapter(options)`: Factory for the Express HTTP adapter.
+- `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
+- `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
+- `ExpressHttpAdapter`: The core adapter implementation class.
 
-- `shutdownSignals`
-- `forceExitTimeoutMs`
+## Related Packages
 
-## supported operations
+- `@konekti/runtime`: Core framework runtime.
+- `@konekti/platform-fastify`: Alternative high-performance adapter.
+- `@konekti/websockets`: Real-time gateway support for Express.
 
-- Bridges Express requests and responses into `FrameworkRequest` / `FrameworkResponse`.
-- Exposes `FrameworkResponse.stream` for SSE and other adapter-owned response streaming paths.
-- Exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need a Node-owned realtime listener boundary.
-- Supports raw `@konekti/websockets/node` gateway hosting through that realtime capability seam.
-- Supports the server-backed-only root decorator opt-in `@WebSocketGateway({ serverBacked: { port } })` through that same seam, creating a dedicated websocket-owned listener for the gateway.
-- Dispatches every incoming request through the Konekti HTTP dispatcher.
-- Supports `rawBody` opt-in for non-multipart requests.
-- Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
-- Supports startup retry (`EADDRINUSE`) and HTTPS listener options.
+## Example Sources
 
-## runtime invariants
+- `packages/platform-express/src/adapter.test.ts`
+- `examples/minimal/src/main.ts` (Fastify-based, but demonstrates the shared `KonektiFactory` pattern)
 
-- `rawBody` is never populated for multipart requests.
-- If the dispatcher does not commit a response, the adapter sends an empty payload to finalize the response.
-- SSE and other streamed responses no longer rely on `FrameworkResponse.raw`; the adapter owns the concrete writable semantics behind `FrameworkResponse.stream`.
-- Startup logs follow runtime conventions (`Listening on ...`) and include bind-target detail for wildcard hosts.
-- Response serialization behavior mirrors runtime/fastify adapter expectations for string, JSON, and binary payloads.
-
-## lifecycle guarantees
-
-- `close(signal?)` performs graceful shutdown and enforces `shutdownTimeoutMs`.
-- Signal-driven shutdown (`SIGINT` / `SIGTERM` by default) is supported through `runExpressApplication()`.
-- `forceExitTimeoutMs` can terminate the process when shutdown does not complete in time.
-
-## intentional limitations
-
-- This adapter does not replace `@konekti/runtime`; runtime bootstrap, lifecycle, DI, and shutdown ownership stay in the runtime package.
-- No Express plugin/middleware passthrough layer is provided; middleware/guards/interceptors run through Konekti dispatcher contracts.
-- No standalone Express mode; this adapter is designed for runtime-managed startup.
-- This package does not ship its own WebSocket gateway API or alternate transport surface; realtime integrations should consume the exposed server-backed capability seam instead.
-- Dedicated websocket listener ownership remains a websocket-package concern, not an Express adapter flag. Use `@WebSocketGateway({ serverBacked: { port } })` on `@konekti/websockets/node` instead of expecting an Express-specific option here.
-
-#### 0.x migration note
-
-- Imports of Node compatibility helpers should use `@konekti/runtime/node` instead of the `@konekti/runtime` root barrel.

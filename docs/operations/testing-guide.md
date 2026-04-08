@@ -1,50 +1,50 @@
-# testing guide
+# Testing Guide
 
-<p><strong><kbd>English</kbd></strong> <a href="./testing-guide.ko.md"><kbd>한국어</kbd></a></p>
+<p>
+  <strong>English</strong> | <a href="./testing-guide.ko.md"><kbd>한국어</kbd></a>
+</p>
 
+This document defines the testing architecture and verification policies for the Konekti framework. It serves as the authoritative guide for both framework contributors and application developers to ensure reliable, metadata-free verification of system behavior.
 
-This guide describes the current testing and verification baseline for Konekti.
+## When this document matters
 
-## commands
+- **Core Contribution**: When adding new features or fixing bugs in `@konekti/*` packages.
+- **Platform Authorship**: When creating new runtimes or third-party extensions.
+- **Application Development**: When establishing test suites for business logic, HTTP routes, or persistence layers.
 
-From the repository root:
+---
 
-```sh
-pnpm build
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm verify                  # runs build + typecheck + lint + test in sequence
-pnpm verify:release-readiness
-```
+## Verification Policy
 
-`pnpm verify` is the single pre-push command. Run it before opening or updating a PR to reproduce the same checks CI will perform.
+Konekti prioritizes **Explicit Verification** over implicit coverage. All platform-facing changes must demonstrate behavioral stability through the following hierarchy:
 
-`pnpm lint` runs [Biome](https://biomejs.dev/) against `packages/*/src/` and `tooling/`. The configuration lives in `biome.json` at the repository root. Formatter is intentionally disabled — Biome is used for linting only at this stage.
+1.  **Type Safety**: Every public API must be fully typed and pass `pnpm typecheck`.
+2.  **Unit Isolation**: Logic-heavy providers must have unit tests with zero external dependencies.
+3.  **Module Wiring (Slices)**: Verify that decorators and DI tokens resolve correctly within a `TestingModule`.
+4.  **Runtime Parity**: Cross-platform features must pass the `platform-conformance` harness across all supported runtimes (Node.js, Bun, Deno, etc.).
 
-Generated starter projects expose the same commands through the selected package manager.
+---
 
-## official testing API
+## The Testing Toolbox (`@konekti/testing`)
 
-`@konekti/testing` provides a stable public testing surface with a narrowed root barrel plus responsibility-specific subpaths:
+The `@konekti/testing` package is the official gateway for all verification activities.
 
-- `createTestingModule(...)`
-- Provider override support (single and batch)
-- `TestingModuleRef.resolve(...)` and `resolveAll(...)`
-- `TestingModuleRef.dispatch(...)`
-- `createTestApp(...)` for end-to-end style request dispatch
-- `TestApp.dispatch(...)` for direct request execution without fluent builder
-- `@konekti/testing/platform-conformance` for `createPlatformConformanceHarness(...)`
-- `@konekti/testing/http` for fluent request building and request principal injection helpers
-- Predictable cleanup through `createTestApp`'s `close()` lifecycle path
-- Module introspection utilities: `extractModuleProviders(...)`, `extractModuleControllers(...)`, `extractModuleImports(...)`
-- Mock utilities via `@konekti/testing/mock`: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`
+### Core Utilities
+- `createTestingModule()`: The primary entry point for module-level integration tests.
+- `createTestApp()`: Boots a full application instance for end-to-end (E2E) style verification.
+- `TestingModuleRef`: A handle to the compiled test environment for dependency resolution and dispatching.
 
-## recipe catalog
+### Specialized Subpaths
+- `@konekti/testing/mock`: Advanced mocking utilities (`createMock`, `createDeepMock`).
+- `@konekti/testing/http`: Fluent request builders and security principal injectors.
+- `@konekti/testing/platform-conformance`: Standardized test suites for cross-runtime verification.
 
-### 1) Unit testing a provider with overrides
+---
 
-Use this pattern when you want real module wiring but fake external collaborators.
+## Implementation Recipes
+
+### 1. Module Slice with Provider Overrides
+Use this when you need real DI wiring but want to fake external collaborators like repositories or third-party clients.
 
 ```ts
 import { createTestingModule } from '@konekti/testing';
@@ -62,23 +62,18 @@ const moduleRef = await createTestingModule({ rootModule: AppModule })
 const service = await moduleRef.resolve(UserService);
 ```
 
-If multiple tokens are involved, prefer one `overrideProviders([...])` call over repeated single overrides.
-
-### 2) Guard/interceptor/filter testing
-
-Use override helpers to force deterministic request paths:
+### 2. Guard and Interceptor Verification
+Verify request-level policies without booting a full network listener.
 
 ```ts
 const moduleRef = await createTestingModule({ rootModule: AppModule })
   .overrideGuard(AuthGuard)
   .overrideInterceptor(LoggingInterceptor)
-  .overrideFilter(AppExceptionFilter, { catch: () => ({ ok: false }) })
   .compile();
 ```
 
-This is the closest Konekti equivalent to common NestJS `overrideProvider()` / `overrideGuard()` test setups.
-
-### 3) Slice-style HTTP testing with `createTestApp()`
+### 3. E2E-style HTTP Testing
+Use `createTestApp` for high-confidence verification of the entire request lifecycle.
 
 ```ts
 import { createTestApp } from '@konekti/testing';
@@ -91,116 +86,33 @@ const response = await app
   .send();
 
 expect(response.status).toBe(200);
-
 await app.close();
 ```
 
-Use `app.dispatch({...})` when a test already has a full request object and does not need the fluent builder.
+### 4. Persistence Boundaries (Prisma/Drizzle)
+Keep the module wiring real but override the low-level client tokens to avoid network/database coupling in CI.
+- Override `PRISMA_CLIENT` for Prisma-based modules.
+- Override `DRIZZLE_DATABASE` for Drizzle-based modules.
 
-### 4) GraphQL module testing pattern
+---
 
-For GraphQL, validate request flows through `/graphql` and assert response payloads (`packages/graphql/src/module.test.ts` is the canonical anchor):
+## Repository Standards
 
-```ts
-const app = await createTestApp({ rootModule: AppModule });
+### Commands
+| Command | Description |
+| :--- | :--- |
+| `pnpm test` | Runs the full Vitest suite across the workspace. |
+| `pnpm verify` | Sequential execution: Build → Typecheck → Lint → Test. |
+| `pnpm verify:release-readiness` | Comprehensive gate for public releases, including packed CLI verification. |
 
-const response = await app
-  .request('POST', '/graphql')
-  .header('content-type', 'application/json')
-  .body({ query: '{ echo(value: "hello") }' })
-  .send();
+### Generated Templates
+When using the CLI (`konekti g repo <Name>`), the following templates are provided as the baseline:
+- `<name>.repo.test.ts`: Unit test template for business logic.
+- `<name>.repo.slice.test.ts`: Integration template using `createTestingModule`.
 
-expect(response.status).toBe(200);
+---
 
-await app.close();
-```
-
-### 5) Prisma / Drizzle / Redis integration boundaries
-
-For persistence/cache-backed tests, keep module wiring real and override only external handles:
-
-- Prisma: override `PRISMA_CLIENT`
-- Drizzle: override `DRIZZLE_DATABASE` (and `DRIZZLE_DISPOSE` when shutdown behavior matters)
-- Redis: override `REDIS_CLIENT` or `RedisService`
-
-This keeps transaction/lifecycle behavior in the graph while removing external network/database coupling.
-
-### 6) OpenAPI document verification
-
-Prefer stable structural assertions against `/openapi.json` (`packages/openapi/src/openapi-module.test.ts`) and use snapshots only after normalizing dynamic fields.
-
-```ts
-const app = await createTestApp({ rootModule: AppModule });
-const response = await app.request('GET', '/openapi.json').send();
-
-expect(response.status).toBe(200);
-expect(response.body).toEqual(
-  expect.objectContaining({
-    openapi: '3.1.0',
-    paths: expect.any(Object),
-  }),
-);
-```
-
-## runner and tooling alignment
-
-- Default examples in this repo use Vitest (`vi.fn`, `vi.spyOn`, `vi.mock`) and should avoid Jest-only syntax.
-- Starter scaffold keeps two complementary request-flow templates:
-  - `src/app.test.ts`: runtime integration-style dispatch test.
-  - `src/app.e2e.test.ts`: `@konekti/testing` `createTestApp()`-based e2e-style test.
-- `konekti g repo <Name>` adds:
-  - `<name>.repo.test.ts` (unit template)
-  - `<name>.repo.slice.test.ts` (`createTestingModule` slice/integration template)
-
-Use these generated files as the baseline story when documenting new test recipes.
-
-Current public boundary:
-
-- keep `@konekti/testing` as the public testing baseline
-- keep the root barrel focused on module compilation, app bootstrap testing, and provider/module introspection
-- import mocks, HTTP request helpers, and portability/conformance harnesses from their dedicated subpaths
-- module introspection utilities are explicitly stable public API, not internal helpers
-- official generated templates now include:
-  - starter unit templates: `src/health/*.test.ts`
-  - starter integration template: `src/app.test.ts`
-  - starter e2e-style template: `src/app.e2e.test.ts` (uses `createTestApp`)
-  - slice unit template: `<name>.repo.test.ts` from `konekti g repo <Name>`
-  - slice/integration template: `<name>.repo.slice.test.ts` from `konekti g repo <Name>` (uses `createTestingModule`)
-- choose unit templates for fast logic checks; choose slice/e2e templates for module wiring and route-level confidence
-
-Primary evidence:
-
-- `packages/testing/src/module.ts`
-- `packages/testing/src/app.ts`
-- `packages/testing/src/http.ts`
-- `packages/testing/src/module.test.ts`
-- `packages/testing/src/platform-conformance.test.ts`
-- `packages/testing/README.md`
-- `packages/testing/README.ko.md`
-
-See `./platform-conformance-authoring-checklist.md` for the package-level checklist and PR evidence requirements for platform-facing packages.
-
-## runtime and slice coverage
-
-Use these files as the contract examples when expanding tests:
-
-- `packages/runtime/src/application.test.ts`
-- `packages/http/src/dispatcher.test.ts`
-- `packages/prisma/src/vertical-slice.test.ts`
-- `packages/drizzle/src/vertical-slice.test.ts`
-
-## generated app expectations
-
-`konekti new` emits runnable starter tests in both integration and e2e-style forms: `src/app.test.ts` and `src/app.e2e.test.ts`. The scaffold integration coverage in `packages/cli/src/cli.test.ts` verifies that a fresh project can run `typecheck`, `build`, and `test` immediately after install, then generate a repo slice and re-run `typecheck` + `test` with the generated `user.repo.test.ts` and `user.repo.slice.test.ts` templates.
-
-For contributor-facing manual verification, `packages/cli` now exposes a persistent sandbox harness:
-
-```sh
-pnpm --dir packages/cli run sandbox:test
-```
-
-That command refreshes `starter-app` directly at the temp sandbox path from local packed workspace packages, then reruns generated-app checks (`typecheck`, `build`, `test`), runs `konekti g repo User` through the installed CLI binary, and validates the generated repo templates by re-running `typecheck` and `test`.
-
-`KONEKTI_CLI_SANDBOX_ROOT=/path` is still available for advanced local setups, but it must point to a dedicated directory outside the monorepo workspace. Repo-internal paths are warned on and automatically replaced with the temp sandbox root so contributor verification keeps using a standalone app.
-
-For the outside-the-monorepo gate, use `pnpm verify:release-readiness`. That command is the current public release-readiness check, and it relies on the CLI test suite to exercise the packed CLI entrypoint and starter scaffolding that back the documented `@konekti/cli` flow. The command emits `tooling/release/release-readiness-summary.md` and updates the draft release-readiness entry in root `CHANGELOG.md` (`## [Unreleased]`).
+## Related Docs
+- [Behavioral Contract Policy](./behavioral-contract-policy.md)
+- [Platform Conformance Authoring Checklist](./platform-conformance-authoring-checklist.md)
+- [Release Governance](./release-governance.md)

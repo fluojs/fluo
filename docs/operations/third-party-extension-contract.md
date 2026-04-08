@@ -1,132 +1,97 @@
 # Third-Party Extension Contract
 
-<p><strong><kbd>English</kbd></strong> <a href="./third-party-extension-contract.ko.md"><kbd>한국어</kbd></a></p>
+<p>
+  <strong>English</strong> | <a href="./third-party-extension-contract.ko.md">한국어</a>
+</p>
 
-This document defines the contracts and conventions for authoring third-party extensions, platform adapters, and community integration packages for the Konekti framework.
+This contract defines the technical requirements and architectural conventions for authoring third-party extensions, platform adapters, and community integration packages for the Konekti framework. Adherence to these standards ensures cross-runtime compatibility and prevents metadata collisions.
 
-## Metadata Category Extension
+## When this document matters
 
-Konekti uses TC39 standard decorators and a `Symbol`-based metadata system. To define custom metadata categories without conflicting with framework-owned categories, follow the `Symbol.for()` naming convention.
+- **Extension Development**: When building a reusable library that integrates with Konekti's DI or metadata system.
+- **Platform Adapters**: When porting Konekti to a new HTTP runtime (e.g., Lambda, Cloudflare Workers, or a custom internal server).
+- **Integration Packages**: When wrapping existing libraries (e.g., Stripe, Auth0, or custom SQL drivers) for use within Konekti modules.
 
-### Token Naming Convention
+---
 
-Custom metadata keys must use a namespaced `Symbol.for()` pattern:
+## Metadata and Decorators
 
-- Format: `Symbol.for('konekti.extension.[package-name].[category]')`
-- Example: `Symbol.for('konekti.extension.my-audit.log-policy')`
+Konekti uses TC39 standard decorators and a `Symbol`-based metadata system. To prevent collisions between the framework and third-party extensions, follow these strict naming rules.
 
-### Authoring Custom Decorators
+### Metadata Key Naming
+Custom metadata keys MUST use a namespaced `Symbol.for()` pattern to ensure uniqueness across the ecosystem.
+- **Format**: `Symbol.for('konekti.extension.[package-name].[category]')`
+- **Example**: `Symbol.for('konekti.extension.audit-logger.policy')`
 
-Use the `metadata` property on the decorator context to store metadata. Access this via the `Symbol.metadata` primitive, using the `@konekti/core` compatibility boundary (`ensureMetadataSymbol()` / `metadataSymbol`) when you need to guarantee the symbol exists.
+### Authoring Decorators
+Use the `metadata` property on the decorator context. Always use the `@konekti/core` compatibility boundary (`metadataSymbol`) to ensure the symbol exists in the current environment.
 
-```typescript
+```ts
 import { metadataSymbol } from '@konekti/core';
 
-const MY_AUDIT_KEY = Symbol.for('konekti.extension.my-audit.log-policy');
+const AUDIT_KEY = Symbol.for('konekti.extension.audit-logger.policy');
 
-export function AuditLog(policy: string) {
+export function Audit(policy: string) {
   return (value: Function, context: ClassDecoratorContext) => {
+    // metadataSymbol is guaranteed by @konekti/core
     const metadata = context.metadata as Record<symbol, any>;
-    metadata[MY_AUDIT_KEY] = policy;
+    metadata[AUDIT_KEY] = policy;
   };
 }
 ```
 
-This approach ensures metadata is attached to the class during the decorator evaluation phase and can be retrieved later by your extension's runtime logic.
+---
 
-## Platform Adapter Authoring
+## Platform Adapter Architecture
 
-Platform adapters bridge the Konekti HTTP runtime to a specific transport or server implementation (for example, Node.js `http`, Fastify, or a serverless runtime).
+Platform adapters bridge the Konekti HTTP runtime to specific transport implementations.
 
-### HttpApplicationAdapter Interface
+### `HttpApplicationAdapter` Interface
+Every adapter must implement the core interface from `@konekti/http`:
 
-An adapter must implement the `HttpApplicationAdapter` interface from `@konekti/http`:
+- `listen(dispatcher: Dispatcher)`: Starts the transport and routes traffic to the framework `Dispatcher`.
+- `close(signal?: string)`: Performs a graceful shutdown of the underlying server.
+- `getServer()`: (Optional) Returns the native server instance (e.g., `http.Server` or `FastifyInstance`).
 
-```typescript
-export interface HttpApplicationAdapter {
-  getServer?(): unknown;
-  listen(dispatcher: Dispatcher): MaybePromise<void>;
-  close(signal?: string): MaybePromise<void>;
-}
-```
+### Request/Response Mapping
+Adapters are responsible for mapping native objects to Konekti's `FrameworkRequest` and `FrameworkResponse` abstractions.
+- **Commit Tracking**: The adapter MUST track the `committed` state of the response to prevent double-write errors.
+- **Stream Support**: If an adapter supports SSE or streaming, it must implement `FrameworkResponse.stream` using the framework's abstraction layer rather than exposing raw Node/Web streams.
 
-- **`getServer()`**: Optional. Returns the underlying server instance (for example, `http.Server`).
-- **`listen(dispatcher)`**: Starts the server and begins passing incoming requests to the `Dispatcher`. The adapter is responsible for wrapping the native request/response into `FrameworkRequest` and `FrameworkResponse` shapes.
-- **`close(signal)`**: Gracefully shuts down the server.
+---
 
-When a transport package composes the shared runtime adapter bootstrap path (`runHttpAdapterApplication(...)` via `@konekti/runtime/internal/http-adapter`), shutdown-signal registration is a separate runtime-owned concern. The shared helper no longer reaches into Node globals on behalf of every adapter. Runtime packages that want managed signal wiring must provide an explicit shutdown-registration strategy, while transports that do not own process signals can omit it.
+## Dependency Injection (DI) Standards
 
-#### 0.x migration note
-
-- Runtime/adapter packages that previously relied on implicit Node signal registration from the shared helper must now register shutdown signals explicitly in their owning runtime package.
-
-### Request/Response Bridging
-
-Adapters must map native objects to the following contracts:
-
-- **`FrameworkRequest`**: Method, path, url, headers, query, cookies, params, body, and rawBody.
-- **`FrameworkResponse`**: Must provide `setStatus`, `setHeader`, `redirect`, and `send`. It must also track the `committed` state to prevent double-writes.
-- **`FrameworkResponse.stream`**: Optional, but required when the adapter claims SSE or streamed HTTP-response support. This capability must abstract transport-specific writable details behind the framework contract (`write`, `close`, `closed`, optional `flush`, optional `waitForDrain`, optional `onClose`) instead of requiring consumers to duck-type raw Node response objects.
-
-## DI Token Naming Conventions
-
-To prevent collision across third-party packages, all exported injection tokens must follow a consistent naming convention.
-
+### Token Naming
+To prevent collisions in the DI container, all exported injection tokens must be unique and descriptive.
 - **Format**: `ALL_CAPS_SNAKE_CASE`
-- **Namespacing**: Prefix with the package name.
-- **Example**: `MY_PACKAGE_CACHE_CLIENT`, `STRIPE_INTEGRATION_OPTIONS`.
+- **Prefix**: Use the package name as a prefix.
+- **Example**: `REDIS_EXTENSION_CLIENT`, `AUTH0_MODULE_OPTIONS`.
 
-```typescript
-// @my-org/konekti-cache
-export const MY_CACHE_CLIENT = Symbol.for('MY_CACHE_CLIENT');
-```
+### Module Entrypoints
+Follow the framework-wide canonical naming for runtime module entrypoints:
+- `forRoot(options)`: For global, root-level configuration.
+- `forRootAsync(options)`: For configuration that requires factory-based async injection.
+- `forFeature(options)`: For domain-specific or scoped configuration.
+- `register(options)`: For one-off, non-global module registration.
 
-Avoid using short or generic names like `CLIENT` or `CONFIG`.
+---
 
-## Module Authoring Conventions
+## Stability Tier List
 
-Runtime module entrypoints should follow the repository-wide canonical syntax (`forRoot(...)`, optional `forRootAsync(...)`, `register(...)`, `forFeature(...)`) so migration guidance, scaffolding, and package READMEs stay aligned.
+Extension authors should prioritize dependencies according to these stability tiers:
 
-Keep `create*` names for helper/builders that are **not** runtime module entrypoints (for example test builders such as `createTestingModule(...)`, or small runtime helpers such as `createHealthModule()`).
+| Tier | Stability | Package/API |
+| :--- | :--- | :--- |
+| **Tier 1** | Stable | `@konekti/core` (Decorators, Types), `HttpApplicationAdapter`. |
+| **Tier 2** | Stable | `FrameworkRequest`, `FrameworkResponse`, `Dispatcher`. |
+| **Tier 3** | Internal | `WeakMaps`, `Metadata` internals (Use `get*Metadata` helpers instead). |
+| **Tier 4** | Experimental | `@konekti/runtime` assembly logic, Compiler internals. |
 
-Use `../reference/package-surface.md` as the source-of-truth for this naming policy.
+---
 
-### Runtime Module Entrypoint Pattern (`forRoot`)
-
-Expose a module class with a static `forRoot(...)` entrypoint that returns the configured runtime module type.
-
-```typescript
-import { defineModuleMetadata } from '@konekti/core';
-
-export class MyExtensionModule {
-  static forRoot(options: MyExtensionOptions): new () => MyExtensionModule {
-    class MyExtensionRuntimeModule extends MyExtensionModule {}
-
-    defineModuleMetadata(MyExtensionRuntimeModule, {
-      global: true,
-      exports: [MyExtensionService],
-      providers: [
-        { provide: MY_EXTENSION_OPTIONS, useValue: options },
-        MyExtensionService,
-      ],
-    });
-
-    return MyExtensionRuntimeModule;
-  }
-}
-```
-
-## Stability Guarantees
-
-Extension authors should rely only on stable APIs to ensure compatibility across minor framework updates. Refer to `release-governance.md` for the full tier list.
-
-| Category | Stability | Note |
-|---|---|---|
-| `@konekti/core` types | Stable | Base primitives like `Constructor`, `Token`, `MaybePromise`. |
-| `@konekti/core` decorators | Stable | `@Module`, `@Inject`, `@Scope`, `@Global`. |
-| `HttpApplicationAdapter` | Stable | The core contract for server adapters. |
-| `FrameworkRequest` / `FrameworkResponse` | Stable | The internal request/response abstraction. |
-| Metadata WeakMaps | Internal | Do not read directly from framework WeakMaps. Use provided `get*Metadata` helpers. |
-| `@konekti/runtime` Internals | At-Risk | Compiler and module graph assembly logic may change. |
-
-Changes to stable APIs will trigger a major version bump after the `1.0` graduation. During the `0.x` phase, check migration notes in every minor release.
+## Related Docs
+- [Behavioral Contract Policy](./behavioral-contract-policy.md)
+- [Platform Conformance Authoring Checklist](./platform-conformance-authoring-checklist.md)
+- [Release Governance](./release-governance.md)
+- [Testing Guide](./testing-guide.md)

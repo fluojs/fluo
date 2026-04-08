@@ -2,8 +2,19 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-
 Decorator-based scheduling for Konekti applications with lifecycle-managed startup/shutdown and optional Redis distributed locking.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+  - [Distributed Locking](#distributed-locking)
+  - [Dynamic Scheduling](#dynamic-scheduling)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -11,26 +22,35 @@ Decorator-based scheduling for Konekti applications with lifecycle-managed start
 npm install @konekti/cron croner
 ```
 
+## When to Use
+
+- When you need to run periodic background tasks (e.g., database cleanup, report generation).
+- When you want to schedule tasks using standard Cron expressions.
+- When running in a multi-instance environment and you need to ensure a task runs only on one instance at a time (Distributed Locking).
+- When you need simple one-off delayed tasks (Timeout) or fixed-rate intervals.
+
 ## Quick Start
 
+Register the `CronModule` and use decorators to schedule your methods.
+
 ```typescript
-import { Inject, Module } from '@konekti/core';
+import { Module } from '@konekti/core';
 import { CronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
 
 class BillingService {
   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
   async reconcilePendingInvoices() {
-    // run periodic work
+    console.log('Reconciling invoices...');
   }
 
-  @Interval(15_000, { name: 'billing.poll' })
-  pollBillingProvider() {
-    // run every 15s
+  @Interval(15_000) // 15 seconds
+  async pollStatus() {
+    console.log('Polling status...');
   }
 
-  @Timeout(30_000, { name: 'billing.initial-sync' })
-  runInitialSync() {
-    // run once 30s after bootstrap
+  @Timeout(5_000) // 5 seconds after startup
+  async initialSync() {
+    console.log('Running initial sync...');
   }
 }
 
@@ -38,10 +58,14 @@ class BillingService {
   imports: [CronModule.forRoot()],
   providers: [BillingService],
 })
-export class AppModule {}
+class AppModule {}
 ```
 
-## Distributed locking (optional)
+## Common Patterns
+
+### Distributed Locking
+
+To prevent scheduled tasks from running concurrently across multiple server instances, enable distributed mode. This requires `@konekti/redis`.
 
 ```typescript
 import { Module } from '@konekti/core';
@@ -50,7 +74,7 @@ import { RedisModule } from '@konekti/redis';
 
 @Module({
   imports: [
-    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     CronModule.forRoot({
       distributed: {
         enabled: true,
@@ -60,77 +84,55 @@ import { RedisModule } from '@konekti/redis';
     }),
   ],
 })
-export class AppModule {}
+class AppModule {}
 ```
 
-To run in distributed mode, register `REDIS_CLIENT` (for example via `RedisModule.forRoot(...)`) alongside `CronModule.forRoot(...)`. In distributed mode each tick acquires a Redis lock before running and attempts lock renewal while work is in progress; if lock ownership is lost or renewal fails before completion, the tick is treated as failed. If `REDIS_CLIENT` is missing or does not implement the required `set`/`eval` lock operations, application bootstrap fails instead of silently falling back to in-process scheduling.
+### Dynamic Scheduling
 
-## Runtime registry (dynamic scheduling)
-
-`CronModule.forRoot()` registers an injectable runtime registry token backed by the lifecycle service:
+You can manage tasks at runtime using the `SCHEDULING_REGISTRY`.
 
 ```typescript
 import { Inject } from '@konekti/core';
 import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@konekti/cron';
 
-@Inject([SCHEDULING_REGISTRY])
-class TaskRegistrar {
-  constructor(private readonly scheduling: SchedulingRegistry) {}
+class TaskManager {
+  constructor(
+    @Inject([SCHEDULING_REGISTRY]) private readonly registry: SchedulingRegistry
+  ) {}
 
-  register() {
-    this.scheduling.addCron('sync.cron', '*/5 * * * * *', async () => {});
-    this.scheduling.addInterval('sync.interval', 5_000, async () => {});
-    this.scheduling.addTimeout('sync.timeout', 30_000, async () => {});
+  addNewTask() {
+    this.registry.addCron('dynamic-job', '0 * * * *', () => {
+      console.log('Dynamic job running!');
+    });
+  }
+
+  stopTask() {
+    this.registry.remove('dynamic-job');
   }
 }
 ```
 
-Registry API:
+## Public API Overview
 
-- `addCron(name, expression, callback, options?)`
-- `addInterval(name, ms, callback, options?)`
-- `addTimeout(name, ms, callback, options?)`
-- `remove(name)`
-- `enable(name)` / `disable(name)`
-- `get(name)` / `getAll()`
-- `updateCronExpression(name, expression)` (cron tasks only)
+### Modules
+- `CronModule.forRoot(options)`: Configures the scheduler and enables distributed locking if requested.
 
-Task names are global and name-based. Duplicate names across cron/interval/timeout fail fast.
+### Decorators
+- `@Cron(expression, options?)`: Schedules a method using a cron expression.
+- `@Interval(ms, options?)`: Schedules a method to run at a fixed interval.
+- `@Timeout(ms, options?)`: Schedules a method to run once after a delay.
 
-Dynamic tasks accept the same scheduling options as decorator-based tasks. When module-level distributed mode is enabled and a runtime task keeps `distributed: true` (the default), registry-triggered cron/interval/timeout executions reuse the same Redis lock acquisition, renewal, release, and shutdown cleanup path as decorator-discovered tasks. Crash recovery still relies on lock TTL expiry rather than a separate heartbeat/orphan reaper.
+### Constants & Tokens
+- `CronExpression`: Enum-like object with common cron patterns (e.g., `EVERY_HOUR`, `EVERY_DAY_AT_MIDNIGHT`).
+- `SCHEDULING_REGISTRY`: Injection token for the `SchedulingRegistry` service.
 
-Timeout behavior: after a timeout task fires, its task definition remains in the registry but is disabled (not scheduled). Calling `enable(name)` schedules it again using the full configured delay.
+## Related Packages
 
-## API
+- `@konekti/redis`: Required for distributed locking functionality.
+- `@konekti/core`: Required for DI and Module management.
+- `croner`: The underlying scheduling engine.
 
-- `@Cron(expression, options?)` - marks a provider/controller method as a cron task
-- `@Interval(ms, options?)` - marks a provider/controller method as an interval task
-- `@Timeout(ms, options?)` - marks a provider/controller method as a timeout task
-- `CronExpression` - common cron expression constants
-- `CronModule.forRoot(options?)` - registers cron lifecycle service and scheduler wiring
-- `createCronProviders(options?)` - returns raw providers for manual composition
-- `SCHEDULING_REGISTRY` - inject runtime scheduling registry
-- `SchedulingRegistry` - runtime API for dynamic task registration and control
-- `createCronPlatformStatusSnapshot(input)` - maps scheduler lifecycle/distributed-lock/drain visibility into shared platform snapshot fields
+## Example Sources
 
-### Root barrel public surface governance (0.x)
-
-- **supported**: scheduling decorators (`@Cron`, `@Interval`, `@Timeout`), `CronExpression`, `CronModule.forRoot`, `createCronProviders`, `SCHEDULING_REGISTRY`, and status snapshot helpers.
-- **compatibility-only**: `normalizeCronModuleOptions` and metadata helper exports (`defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `get*TaskMetadata*`, `schedulingMetadataSymbol`, `cronMetadataSymbol`) remain exported for 0.x compatibility and framework/tooling integration, but are not recommended for new app-level imports.
-- **internal**: `CRON_OPTIONS` and scheduler lifecycle internals beyond documented APIs are not part of the root-barrel contract.
-
-## non-goals and intentional limitations
-
-- No silent fallback to in-process scheduling — if distributed mode is enabled and `REDIS_CLIENT` is missing or incompatible, bootstrap fails explicitly rather than silently degrading
-- No sub-second scheduling — cron expressions follow standard 5-field cron syntax via `croner`; minimum resolution is one second
-- No built-in job queue or persistence — `@Cron` is a fire-and-forget tick scheduler; for durable job processing with retries and persistence, use `@konekti/queue`
-- No private method scheduling decorators — `@Cron`, `@Interval`, and `@Timeout` reject private methods
-
-## Platform status snapshot semantics
-
-Use `createCronPlatformStatusSnapshot(...)` (or `CronLifecycleService#createPlatformStatusSnapshot()`) to expose scheduler lifecycle and distributed-lock behavior in the shared platform snapshot shape.
-
-- `dependencies`: when distributed mode is enabled, snapshots expose explicit `redis.default` dependency edges.
-- `readiness`: lifecycle transitions and distributed Redis dependency availability are surfaced explicitly.
-- `health`: lock ownership loss/renewal failures are represented as degraded health (not silent).
-- `details`: includes total/enabled/running task counts, active in-flight ticks, owned lock count, and lock-failure counters.
+- `packages/cron/src/module.test.ts`: Comprehensive tests for decorators and module lifecycle.
+- `packages/cron/src/scheduler.ts`: Implementation details of the core scheduling logic.

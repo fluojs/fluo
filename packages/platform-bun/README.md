@@ -2,14 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Bun-backed HTTP adapter for Konekti runtime applications, built on the shared `@konekti/runtime/web` fetch-style adapter seam.
+Bun-backed HTTP adapter for the Konekti runtime, built on native `Bun.serve()`.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -17,11 +20,16 @@ Bun-backed HTTP adapter for Konekti runtime applications, built on the shared `@
 npm install @konekti/platform-bun
 ```
 
+## When to Use
+
+Use this package when running Konekti applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.
+
 ## Quick Start
 
 ```typescript
 import { createBunAdapter } from '@konekti/platform-bun';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
@@ -30,57 +38,49 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## Common Patterns
 
-- `createBunAdapter(options)` - create a Bun `HttpApplicationAdapter`
-- `createBunFetchHandler({ dispatcher, ...options })` - create a Bun `fetch(request)` handler backed by the shared fetch-style adapter seam
-- `bootstrapBunApplication(rootModule, options)` - advanced bootstrap helper without implicit startup logging
-- `runBunApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
+### Manual Fetch Handling
+If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
 
-### Supported options
+```typescript
+import { createBunFetchHandler } from '@konekti/platform-bun';
 
-`createBunAdapter()`, `bootstrapBunApplication()`, and `runBunApplication()` support these Bun-oriented adapter options:
+const handler = await createBunFetchHandler({ 
+  dispatcher: app.getHttpDispatcher(),
+  port: 3000 
+});
 
-- `port`
-- `hostname`
-- `tls`
-- `idleTimeout`
-- `development`
-- `maxBodySize`
-- `rawBody`
-- `multipart`
+Bun.serve({
+  fetch: handler,
+  port: 3000,
+});
+```
 
-`runBunApplication()` also supports:
+### Native WebSocket Upgrade
+The adapter supports Bun's native `server.upgrade()` through the `@konekti/websockets/bun` binding.
 
-- `shutdownSignals`
-- `forceExitTimeoutMs`
+```typescript
+// gateways automatically use Bun's native upgrade when the Bun adapter is active
+@WebSocketGateway({ path: '/ws' })
+export class MyGateway {}
+```
 
-## supported operations
+## Public API Overview
 
-- Bridges native Bun `Request` handling into Konekti `FrameworkRequest` / `FrameworkResponse` by reusing the shared `@konekti/runtime/web` fetch-style adapter seam.
-- Preserves shared fetch-style request semantics for query strings, cookies, JSON/text body parsing, multipart parsing, and canonical error envelopes.
-- Exposes `FrameworkResponse.stream` through that shared seam so SSE and streamed responses stay transport-owned instead of depending on raw Node writers.
-- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Bun-native request-upgrade hosting through `Bun.serve()` + `server.upgrade()`.
-- Hosts Bun-native realtime integrations through an explicit binding seam consumed by `@konekti/websockets/bun` for raw websockets and `@konekti/socket.io` for the official `@socket.io/bun-engine` path.
-- Supports adapter-first startup via `KonektiFactory.create(..., { adapter: createBunAdapter(...) })` and Bun-oriented compatibility helpers via `runBunApplication()`.
+- `createBunAdapter(options)`: Recommended factory for the Bun adapter.
+- `createBunFetchHandler(options)`: Creates a native `fetch(request)` handler for custom `Bun.serve()` setups.
+- `bootstrapBunApplication(module, options)`: Advanced bootstrap without implicit startup logging.
+- `runBunApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
 
-## runtime invariants
+## Related Packages
 
-- `rawBody` is opt-in and remains unset for multipart requests.
-- If the dispatcher does not commit a response, the shared fetch-style adapter seam finalizes the Bun response with an empty payload.
-- SSE framing and streamed response behavior reuse the same shared seam that powers other fetch-style runtime adapters.
-- Startup errors caused by missing `globalThis.Bun.serve()` fail fast with an explicit adapter error.
+- `@konekti/runtime`: Core framework runtime.
+- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/bun`.
+- `@konekti/socket.io`: Supports the native Bun engine.
 
-## lifecycle guarantees
+## Example Sources
 
-- `listen(dispatcher)` creates exactly one Bun server instance for the adapter lifecycle.
-- `close(signal?)` stops the active Bun server and releases the adapter-owned server handle.
-- `runBunApplication()` mirrors the runtime startup log format and can register shutdown signal cleanup for Bun environments that expose Node-compatible process signals.
+- `packages/platform-bun/src/adapter.test.ts`
+- `packages/websockets/src/bun/bun.test.ts`
 
-## intentional limitations
-
-- This adapter does not replace `@konekti/runtime`; runtime bootstrap, DI, middleware, guards, and shutdown ownership remain in the runtime package.
-- No standalone Bun app builder is provided beyond Bun's native `fetch` + `Bun.serve()` contract; framework integration still flows through the Konekti runtime facade.
-- No Node-specific writable response escape hatch is exposed; streamed responses must use `FrameworkResponse.stream`.
-- Other fetch-style runtimes such as Deno and Cloudflare Workers remain separate adapter concerns.
-- Raw websocket hosting for Bun is provided through the dedicated `@konekti/websockets/bun` binding, while Bun-specific Socket.IO hosting now flows through `@konekti/socket.io` and the official `@socket.io/bun-engine` path. `@konekti/websockets/node` still remains Node-upgrade-listener-specific and is not claimed for Bun.

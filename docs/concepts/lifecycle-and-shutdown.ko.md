@@ -1,67 +1,55 @@
-# lifecycle and shutdown
+# 라이프사이클 및 종료
 
 <p><a href="./lifecycle-and-shutdown.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 부트스트랩, 준비 상태(readiness), 그리고 종료 프로세스를 포함한 애플리케이션 생명주기를 설명합니다.
+Konekti는 서비스가 시작되고, health를 알리고, 우아하게 종료되는 방식을 규정하는 엄격하고 결정론적인 **Application Lifecycle**을 제공합니다. 이 lifecycle은 애플리케이션이 결코 “half-alive” 상태에 머물지 않도록 보장합니다.
 
-### 관련 문서
+## 이 개념이 중요한 이유
 
-- `./config-and-environments.ko.md`
-- `./transactions.ko.md`
-- `../../packages/runtime/README.ko.md`
+현대의 cloud-native 환경(Kubernetes, AWS 등)에서는 애플리케이션이 시작되고 멈추는 방식이 요청 처리만큼 중요합니다.
+- **Startup Race**: database connection이 준비되기 전에 앱이 트래픽을 받기 시작하면 500 error가 급증합니다.
+- **“Dirty” Shutdown**: database에 아직 쓰는 중인 process를 종료하면 data corruption 위험이 생깁니다.
+- **Zombie Resource**: Redis client나 message broker connection을 닫지 않으면 시간이 지남에 따라 resource exhaustion이 발생할 수 있습니다.
 
-## 생명주기 단계 (lifecycle phases)
+Konekti는 **구조화된 lifecycle contract**를 제공함으로써 이러한 위험을 제거합니다. 애플리케이션의 모든 module과 provider가 이 contract에 참여할 수 있으며, 의존성이 올바른 순서로 초기화되고 파괴되도록 보장합니다.
 
-애플리케이션 생명주기는 다음과 같은 명확한 단계들로 구성됩니다:
+## 핵심 아이디어
 
-1.  **설정 로딩**: 환경 변수 및 설정 데이터를 읽습니다.
-2.  **모듈 그래프 컴파일**: 내부 애플리케이션 구조를 빌드합니다.
-3.  **프로바이더 및 컨테이너 생성**: 의존성 주입 컨테이너를 인스턴스화합니다.
-4.  **초기화 훅**: 프로바이더 및 모듈 초기화 로직을 실행합니다.
-5.  **인프라 연결**: 외부 서비스(예: 데이터베이스)에 대한 연결을 수립합니다.
-6.  **트랜스포트 바인딩**: HTTP 어댑터를 바인딩하고 리스너를 시작합니다.
-7.  **준비 상태**: 애플리케이션이 완전히 초기화되어 요청을 수락합니다.
+### atomic bootstrap
+Bootstrap은 “all-or-nothing” 작업입니다.
+1. **Config Validation**: `.env`가 잘못되었으면 중지합니다.
+2. **Module Compilation**: DI graph가 깨졌으면 중지합니다.
+3. **Provider Initialization**: `onModuleInit` 중 database connection이 실패하면 중지합니다.
 
-## 부트스트랩 보장 사항
+Konekti는 process가 **완전히 기능할 때만** 살아 있도록 보장합니다.
 
-- **유효성 검사**: 유효하지 않은 설정은 포트에 바인딩하기 전에 애플리케이션 시작을 차단합니다.
-- **그래프 무결성**: 모듈이나 프로바이더 그래프의 오류는 시작 시점에 포착됩니다.
-- **원자성**: 인프라 실패는 애플리케이션이 부분적으로 시작된 상태로 남는 것을 방지합니다.
-- **준비 상태**: "앱 준비 완료" 신호는 트랜스포트가 들어오는 요청을 받을 준비가 완전히 되었음을 보장합니다.
-- **헬스 체크**: `/health`(활성 상태)와 `/ready`(준비 상태)는 별개의 관심사로 관리됩니다.
+### readiness vs. liveness
+Konekti는 “살아 있음”(process가 실행 중임)과 “준비됨”(process가 트래픽을 처리할 수 있음)을 구분합니다.
+- **Liveness**: runtime engine이 관리합니다.
+- **Readiness**: 모든 module에서 `onApplicationBootstrap`이 성공적으로 완료된 후에만 신호가 켜집니다. 이는 load balancer가 인스턴스로 트래픽 라우팅을 시작할 수 있다는 신호입니다.
 
-## 생명주기 훅 (lifecycle hooks)
+### graceful shutdown sequence
+`SIGTERM` 또는 `SIGINT`를 받으면 Konekti는 coordinated retreat을 시작합니다:
+1. **Stop Ingestion**: HTTP server가 즉시 새 connection 수락을 중단합니다.
+2. **Request Draining**: 진행 중인 요청에 configurable한 유예 시간을 주어 완료하게 합니다.
+3. **Reverse-Order Teardown**: shutdown hook(`onModuleDestroy`, `beforeApplicationShutdown`)은 초기화의 **정확한 역순**으로 실행됩니다. Module A가 Module B에 의존한다면 A의 정리 중 B의 리소스가 여전히 사용 가능하도록 Module A를 *먼저* 파괴합니다.
 
-런타임은 다음과 같은 표준 훅 시퀀스를 관리합니다:
+## lifecycle hooks
 
-- `onModuleInit`
-- `onApplicationBootstrap`
-- `onModuleDestroy`
-- `onApplicationShutdown`
+- **`onModuleInit`**: module의 provider가 인스턴스화되자마자 실행되어야 하는 logic입니다(예: socket connection 수립).
+- **`onApplicationBootstrap`**: *전체* application graph가 준비된 후 실행되는 logic입니다(예: background cron job 시작).
+- **`onModuleDestroy`**: 특정 module을 정리하는 logic입니다.
+- **`beforeApplicationShutdown`**: process가 종료되기 전에 정리를 수행할 수 있는 마지막 기회입니다.
 
-## 종료 시퀀스 (shutdown sequence)
+## 경계
 
-Konekti는 구조화된 종료 프로세스를 따릅니다:
+- **Dependency-Aware**: 정리 순서에 대해 걱정할 필요가 없습니다. Konekti는 `@Inject()` metadata를 기반으로 올바른 순서를 계산합니다.
+- **Timeout Protection**: shutdown hook이 너무 오래 걸리면(예: 멈춘 database query), Konekti는 결국 강제 종료하여 “zombie” process가 배포를 막지 않도록 합니다.
+- **Idempotency**: lifecycle hook은 애플리케이션 인스턴스당 정확히 한 번 실행되도록 보장됩니다.
 
-1.  **수신 중단**: 새로운 요청 수락을 중단합니다.
-2.  **신호 포착**: 종료 신호를 기록합니다.
-3.  **드레이닝 (Draining)**: 처리 중인(in-flight) 요청이 완료될 때까지 기다립니다.
-4.  **훅 실행**: destroy 및 shutdown 훅을 실행합니다.
-5.  **정리**: 인프라 클라이언트 연결을 해제합니다.
-6.  **관측성**: 필요한 경우 로그와 트레이스를 플러시(flush)합니다.
-7.  **종료**: 프로세스를 종료합니다.
+## 관련 문서
 
-## 요청 드레이닝 정책
-
-- 종료 단계 동안 새로운 요청은 거부됩니다.
-- 처리 중인 요청은 완료될 때까지 제한된 시간을 부여받습니다.
-- 타임아웃 창 내에 요청이 드레인되지 않으면 강제 종료가 발생합니다.
-- 요청 범위의 정리 작업은 `finally` 블록 내에서 안전하게 처리되어야 합니다.
-
-Node 어댑터의 기본 드레인 창은 10초입니다. `@konekti/runtime/node`의 `bootstrapNodeApplication()` 또는 `runNodeApplication()`의 `shutdownTimeoutMs` 옵션을 사용하여 이를 커스터마이징할 수 있습니다.
-
-## 통합 참고 사항
-
-- ORM 클라이언트는 프로바이더 생명주기에 통합되어야 합니다.
-- 활성 트랜잭션은 데이터베이스 연결이 끊기기 전에 해결되거나 정리되어야 합니다.
-- 런타임 소유의 어댑터는 요청 중단 또는 닫기 신호를 내부 프레임워크 모델로 매핑할 책임이 있습니다.
+- [Architecture Overview](./architecture-overview.ko.md)
+- [Dev Reload Architecture](./dev-reload-architecture.ko.md)
+- [Config and Environments](./config-and-environments.ko.md)
+- [Runtime Package README](../../packages/runtime/README.ko.md)

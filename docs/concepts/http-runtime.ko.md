@@ -1,84 +1,56 @@
-# http runtime
+# HTTP 런타임
 
 <p><a href="./http-runtime.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/http`, `@konekti/runtime`, 인증 패키지, 그리고 생성된 스타터 애플리케이션에서 사용되는 HTTP 실행 모델을 설명합니다.
+Konekti는 기반 웹 서버(Fastify, Bun, Cloudflare Workers 등)의 복잡성을 추상화하면서도 엄격한 phase 기반 요청 lifecycle을 제공하는 고성능 **HTTP Runtime Facade**를 제공합니다.
 
-### 관련 문서
+## 이 개념이 중요한 이유
 
-- `./architecture-overview.ko.md`
-- `./auth-and-jwt.ko.md`
-- `../../packages/http/README.ko.md`
+많은 프레임워크에서 “request journey”는 black box입니다. Middleware, filter, guard, interceptor가 서로 겹쳐 보이기 때문에 다음과 같은 단순한 질문에도 답하기 어렵습니다:
+- “인증 로직은 어디에 넣어야 하나요?”
+- “왜 내 validation error가 global filter에 잡히지 않나요?”
+- “내 response는 logger에 도달하기 전에 이미 serialized 되었나요?”
 
-## 요청 생명주기 (request lifecycle)
+Konekti는 **명시적인 실행 순서**로 이 모호함을 제거합니다. 모든 요청에 대해 명확하고 단방향인 여정을 정의함으로써 security, validation, observability가 API 전반에서 일관되게 처리되도록 보장합니다.
 
-요청 실행 경로는 다음 순서를 따릅니다:
+## 핵심 아이디어
 
-1.  **HTTP 어댑터**가 요청을 수신합니다.
-2.  **RequestContext** 생성.
-3.  **애플리케이션 미들웨어** 실행.
-4.  **라우트 매칭**.
-5.  **모듈 미들웨어** 실행.
-6.  **가드 체인** 검증.
-7.  **인터셉터 체인** 실행.
-8.  **입력 바인딩 및 물질화**.
-9.  **입력 유효성 검사**.
-10. **컨트롤러 호출**.
-11. **응답 직렬화** (인터셉터가 적용된 경우).
-12. **성공 상태 해결**.
-13. **응답 쓰기**.
-14. **예외 매핑** (에러 발생 시).
+### Runtime 추상화 (the facade)
+비즈니스 logic은 Node.js + Fastify에서 실행되는지, serverless Edge function에서 실행되는지에 의존해서는 안 됩니다.
+- **통합 컨텍스트**: Konekti는 raw request/response object를 `KonektiContext`로 감쌉니다.
+- **Platform Agnostic**: controller와 service는 한 번만 작성하면 됩니다. platform adapter(예: `@konekti/platform-fastify`)가 특정 server engine으로의 변환을 처리합니다.
 
-## 성공 상태 기본값 (success status defaults)
+### materialization gate
+Konekti는 들어오는 HTTP data(body, query, params)를 **신뢰할 수 없는 원시 입력**으로 취급합니다.
+- **Gatekeeper**: `@FromBody()` 같은 decorator를 사용해 데이터를 타입이 지정된 TypeScript class로 “materialize”합니다.
+- **Validation-First**: controller handler가 호출되기 전에 이 materialized data는 정의한 schema에 대해 검증됩니다. 검증에 실패하면 요청은 명확한 400 error로 거부되어 business logic이 손상된 데이터를 다루지 않게 됩니다.
 
-재정의되지 않는 한, 디스패처는 메서드 기반의 기본값을 사용합니다:
+### interceptor “onion”
+Konekti는 요청 처리를 위한 “onion” 모델을 사용합니다. 각 phase(Middleware -> Guard -> Interceptor)는 다음 단계를 감싸며, handler의 **전**과 **후** 모두에서 logic을 실행할 수 있게 합니다. 이는 logging, performance timing, response transformation에 특히 적합합니다.
 
-- `GET`, `PUT`, `PATCH`, `HEAD`: `200`
-- `POST`: `201`
-- `DELETE`, `OPTIONS`: 결과가 `undefined`이면 `204`, 그렇지 않으면 `200`.
+## 실행 순서
 
-이러한 기본값을 재정의하려면 `@HttpCode(code)`를 사용하세요. 상태 해결은 인터셉터 체인 이후에 발생하므로, 인터셉터는 여전히 최종 상태 코드에 영향을 줄 수 있습니다.
+1. **Platform Adapter**: 네트워크로부터 raw byte stream을 수신합니다.
+2. **Context Initialization**: `KonektiContext`를 생성합니다.
+3. **Global Middleware**: 원시 cross-cutting concern(CORS, compression 등)을 처리합니다.
+4. **Route Discovery**: URL path를 특정 Controller method와 매칭합니다.
+5. **Guard Check**: authorization boundary입니다. guard가 `false`를 반환하면 여정은 403으로 끝납니다.
+6. **Interceptor (Pre-Handler)**: 데이터가 처리되기 직전 logic을 실행합니다.
+7. **Input Materialization & Validation**: 원시 JSON이 타입이 지정되고 검증된 class instance가 됩니다.
+8. **Controller Handler**: business logic이 실행됩니다.
+9. **Interceptor (Post-Handler)**: 결과를 변환합니다(예: `{ data: ... }` 객체로 감싸기).
+10. **Response Serialization**: 결과를 JSON 또는 요청된 형식으로 다시 변환합니다.
+11. **Final Write**: platform adapter가 응답을 클라이언트로 보냅니다.
 
-## 입력 및 출력 경계
+## 경계
 
-- **바인딩 / 물질화**: `@konekti/http`가 요청의 raw 값을 추출하고 입력 물질화를 조정합니다.
-- **소스 데코레이터**: `@FromBody()`와 `@FromPath()`는 `@konekti/http`에서 제공합니다.
-- **유효성 검사**: `@IsString()`과 `@MinLength()`는 `@konekti/validation` 패키지에서 제공합니다.
-- **직렬화**: 출력 형태 조정은 별도의 관심사이며, 보통 `@konekti/serialization` 인터셉터가 담당합니다.
+- **Raw Access 금지**: platform portability를 유지하기 위해 `req`나 `res`를 직접 건드리는 것을 지양합니다. `KonektiContext`를 사용하세요.
+- **Contract-Based Responses**: controller의 반환값은 `@Produces()` 또는 `@HttpCode()` metadata를 기반으로 자동 serialization됩니다.
+- **Exception Boundary**: 어떤 phase에서든 포착되지 않은 error는 **Global Exception Filter**가 잡아 클라이언트에게 raw stack trace 대신 표준화된 error response를 전달합니다.
 
-Konekti는 요청 모델을 트랜스포트 계층과 애플리케이션 로직 사이의 명시적인 입력 경계로 취급합니다. 출력 형태 조정은 그 이후의 별도 응답 단계에서 처리됩니다.
+## 관련 문서
 
-## 스타터 앱 정책
-
-생성된 스타터 애플리케이션은 다음과 같은 몇 가지 HTTP 기본값을 유지합니다:
-
-- 내장된 `/health` 및 `/ready` 엔드포인트.
-- `health/` 모듈을 통한 예제 `/health-info/` 엔드포인트.
-- 런타임 부트스트랩 설정에 의해 관리되는 기본 CORS 정책.
-
-## 개발 경계 (development boundaries)
-
-HTTP 및 런타임 규약은 안정성과 명확성을 보장하기 위해 의도적으로 좁게 유지됩니다.
-
-### 현재 우선순위
-
-- 핸들러 시그니처를 `handler(input, ctx)`로 유지합니다.
-- 일반 반환 값과 `@HttpCode(...)`를 주요 응답 모델로 사용합니다.
-- 미들웨어를 애플리케이션 및 모듈 레벨로 제한합니다.
-- 현재의 불리언(허용/거부) 가드 모델을 유지합니다.
-
-### 유보된 기능 (deferred features)
-
-아키텍처의 명확성을 유지하기 위해 다음 항목들은 향후 업데이트로 유보되었습니다:
-
-- 트랜스포트 중립적인 `handler(requestObject)` API.
-- 성공 경로를 위한 퍼스트 클래스 응답 래퍼(wrapper) 객체.
-- 라우트 레벨 미들웨어 지원.
-- 불리언 허용/거부 이상의 복잡한 가드 결과.
-
-## 추가 정보
-
-- **HTTP API 상세**: `../../packages/http/README.ko.md`
-- **런타임 부트스트랩**: `../../packages/runtime/README.ko.md`
-- **인증 흐름**: `./auth-and-jwt.ko.md`
-- **스타터 기본값**: `../getting-started/quick-start.ko.md`
+- [Architecture Overview](./architecture-overview.ko.md)
+- [Decorators and Metadata](./decorators-and-metadata.ko.md)
+- [DI and Modules](./di-and-modules.ko.md)
+- [HTTP Package README](../../packages/http/README.ko.md)

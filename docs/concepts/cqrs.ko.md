@@ -1,141 +1,68 @@
-# cqrs
+# CQRS (명령 및 쿼리 책임 분리)
 
-이 문서는 Konekti의 CQRS 패키지 모델을 설명합니다.
+<p><a href="./cqrs.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-### 관련 문서
+아키텍처의 본질은 복잡성을 관리하는 것입니다. Konekti는 **시스템 상태를 변경하는 작업(명령, Command)**과 **데이터를 조회하는 작업(쿼리, Query)**을 각각의 전용 버스로 분리하여, 확장 가능하고 유지보수가 용이한 백엔드 시스템을 구축할 수 있도록 강력한 CQRS 구현을 제공합니다.
 
-- `./decorators-and-metadata.ko.md`
-- `./di-and-modules.ko.md`
-- `../../packages/cqrs/README.ko.md`
+## 왜 Konekti의 CQRS인가요?
 
-## `@konekti/cqrs`가 제공하는 것
+- **의도와 실행의 분리**: 애플리케이션 서비스는 "의도"(Command 또는 Query 객체)만 알면 되며, 그것이 어떻게 처리되는지에 대한 구현 세부 사항은 알 필요가 없습니다.
+- **명시적 도메인 모델링**: 상태 변경을 일급 객체인 `Command`로 다룸으로써 비즈니스 로직을 감사(Audit)하기 쉬워지고 추론하기 용이해집니다.
+- **이벤트 기반 오케스트레이션**: 내장된 **Saga** 지원을 통해 서로 다른 도메인 간의 복잡한 다단계 워크플로우를 강한 결합 없이 관리할 수 있습니다.
+- **설정이 필요 없는 탐색**: 표준 데코레이터를 사용하여 부트스트랩 시점에 핸들러가 자동으로 탐색되고 등록됩니다.
 
-`@konekti/cqrs`는 다음 세 가지 런타임 표면을 추가합니다.
+## 책임 분담
 
-- command 실행용 `CommandBus` (`COMMAND_BUS`)
-- query 실행용 `QueryBus` (`QUERY_BUS`)
-- `@konekti/event-bus`를 통한 이벤트 발행용 `CqrsEventBus` (`EVENT_BUS`)
+- **`@konekti/cqrs` (오케스트레이터)**: 핵심 `CommandBus`, `QueryBus`, `CqrsEventBus`를 제공합니다. 탐색 수명 주기를 관리하며 각 메시지가 지정된 핸들러에 도달하도록 보장합니다.
+- **`@konekti/event-bus` (엔진)**: 이벤트 분배를 위한 기반 인프라입니다. CQRS 패키지는 고성능 전달을 위해 이벤트 발행을 이 패키지에 위임합니다.
 
-또한 이슈 기대치에 맞춘 기본 계약도 공개합니다.
+## 일반적인 워크플로우
 
-- `ICommand`
-- `IQuery<TResult = unknown>`
-- `IEvent`
-- `ICommandHandler<TCommand extends ICommand, TResult = void>`
-- `IQueryHandler<TQuery extends IQuery<TResult>, TResult = unknown>`
-- `IEventHandler<TEvent extends IEvent>`
-- `ISaga<TEvent extends IEvent>` — 이벤트 기반 오케스트레이션을 위한 saga/process-manager 계약
-
-`CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })`는 위 토큰들을 글로벌로 등록하고 `EventBusModule.forRoot()`를 자동으로 import하므로, CQRS 이벤트 발행에 추가 모듈 연결이 필요하지 않습니다.
-
-- `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`: 생성되는 CQRS 모듈에 provider로 추가되는 선택적 편의 배열
-- `eventBus`: `EventBusModule.forRoot(eventBus)`로 그대로 전달되는 옵션
-
-## 핸들러 등록 모델
-
-command/query 핸들러는 클래스 단위로 선언되며 부트스트랩 시점에 탐색됩니다.
+### 1. 명령 흐름 (Command Flow - 쓰기)
+명령(Command)은 시스템 상태를 변경하려는 의도를 나타냅니다. 정확히 하나의 핸들러를 가지며, 종종 하나 이상의 이벤트를 발생시킵니다.
 
 ```typescript
-import {
-  CommandHandler,
-  ICommand,
-  ICommandHandler,
-  IQuery,
-  IQueryHandler,
-  QueryHandler,
-} from '@konekti/cqrs';
+// 1. 의도 발행 (Dispatch)
+await commandBus.execute(new CreateUserCommand('John Doe'));
 
-class CreateUserCommand implements ICommand {
-  constructor(public readonly name: string) {}
-}
-
-class GetUserQuery implements IQuery<{ id: string }> {
-  readonly __queryResultType__?: { id: string };
-
-  constructor(public readonly id: string) {}
-}
-
+// 2. 처리 (Handled by)
 @CommandHandler(CreateUserCommand)
-class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
-  execute(command: CreateUserCommand) {
-    return command.name;
-  }
-}
-
-@QueryHandler(GetUserQuery)
-class GetUserHandler implements IQueryHandler<GetUserQuery, { id: string }> {
-  execute(query: GetUserQuery) {
-    return { id: query.id };
+class CreateUserHandler implements ICommandHandler<CreateUserCommand> {
+  async execute(command: CreateUserCommand) {
+    // 데이터베이스 저장 로직...
+    // UserCreatedEvent 자동 발행...
   }
 }
 ```
 
-- 데코레이터는 **표준 TC39 클래스 데코레이터**와 `ClassDecoratorContext.metadata`로 구현됩니다.
-- 메타데이터 리더는 명시적 저장소와 표준 데코레이터 메타데이터를 안전하게 병합합니다.
-- 핸들러 탐색은 `onApplicationBootstrap()`에서 `COMPILED_MODULES`와 `RUNTIME_CONTAINER`를 사용해 수행됩니다.
-
-## command/query 불변 조건
-
-- 각 command type마다 정확히 하나의 핸들러만 허용됩니다.
-- 각 query type마다 정확히 하나의 핸들러만 허용됩니다.
-- 중복 등록은 typed framework error로 부트스트랩 단계에서 실패합니다.
-- 누락된 핸들러는 실행 시 typed framework error로 실패합니다.
-- 핸들러는 singleton 스코프여야 하며 `execute(...)`를 구현해야 합니다.
-
-## 이벤트 발행 모델
-
-`CqrsEventBus`는 얇은 퍼사드이지만 빈 래퍼는 아닙니다.
-
-- `publish(event)`는 `@konekti/event-bus`의 `EVENT_BUS.publish(event)`로 위임합니다.
-- `publish(event)`는 동시에 `@konekti/cqrs`가 탐색한 클래스 레벨 `@EventHandler()` 핸들러도 디스패치합니다.
-- `publishAll(events)`는 각 이벤트에 대해 순차적으로 `publish(event)`를 호출합니다.
-
-즉, 같은 이벤트 타입에 대해 클래스 레벨 `@EventHandler()`와 메서드 레벨 `@OnEvent(...)`를 함께 사용할 수 있습니다.
-
-## saga / process-manager 모델
-
-`@Saga(EventClass | EventClass[])`는 하나 이상의 이벤트 타입에 반응하는 saga/process-manager 클래스를 지정합니다.
+### 2. 쿼리 흐름 (Query Flow - 읽기)
+쿼리(Query)는 데이터를 조회하려는 의도를 나타냅니다. 명령과 마찬가지로, 예측 가능한 읽기 모델을 보장하기 위해 단 하나의 전용 핸들러에 의해 처리됩니다.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import {
-  CommandBus,
-  COMMAND_BUS,
-  IEvent,
-  ISaga,
-  Saga,
-} from '@konekti/cqrs';
+const user = await queryBus.execute(new GetUserQuery(userId));
+```
 
-class OrderSubmittedEvent implements IEvent {
-  constructor(public readonly orderId: string) {}
-}
+### 3. Saga (도메인 간 오케스트레이션)
+Saga는 이벤트를 수신하고 새로운 명령을 발행하여, 복잡한 워크플로우를 관리하는 "프로세스 관리자" 역할을 합니다.
 
-class StartPaymentCommand {
-  constructor(public readonly orderId: string) {}
-}
-
-@Inject([COMMAND_BUS])
-@Saga(OrderSubmittedEvent)
-class OrderSaga implements ISaga<OrderSubmittedEvent> {
-  constructor(private readonly commandBus: CommandBus) {}
-
-  async handle(event: OrderSubmittedEvent): Promise<void> {
-    await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+```typescript
+@Saga(UserCreatedEvent)
+class WelcomeSaga implements ISaga<UserCreatedEvent> {
+  async handle(event: UserCreatedEvent) {
+    // 사용자가 생성되면, "환영 이메일 전송" 명령을 트리거함
+    await this.commandBus.execute(new SendEmailCommand(event.userId));
   }
 }
 ```
 
-- `@Saga()`는 단일 이벤트 클래스 또는 배열을 허용합니다.
-- saga 클래스는 singleton 스코프여야 하며 `handle(event)`를 구현해야 합니다.
-- 서로 다른 saga 클래스는 같은 이벤트 타입을 함께 구독할 수 있고, 같은 saga 클래스의 중복 등록은 자동으로 dedupe됩니다.
-- saga 디스패치는 saga 인스턴스 단위 실행 체인으로 처리되어, 동시 `publish()` 상황에서도 saga별 처리 순서가 결정적으로 유지됩니다.
-- saga 내부에서 예상치 못한 예외가 발생하면 `publish()`는 `SagaExecutionError`를 throw합니다.
-- 애플리케이션 종료 시 진행 중인 saga 실행은 drain됩니다.
-- saga는 `CqrsModule.forRoot({ sagas: [...] })`의 `sagas` 옵션으로 등록하거나, 부트스트랩 시점 데코레이터 탐색에 맡길 수 있습니다.
+## 주요 경계
 
-## 한 줄 모델
+- **단일 핸들러 규칙**: 명령(Command)과 쿼리(Query)는 **일대일(Point-to-Point)** 방식입니다. 각 메시지는 반드시 하나의 핸들러만 가져야 합니다. 핸들러가 없거나 여러 개인 경우, Konekti는 부트스트랩 또는 실행 시점에 에러를 발생시킵니다.
+- **이벤트 다대다**: 명령과 달리, 단일 `Event`는 동시에 여러 `EventHandler` 및 `Saga`에 의해 처리될 수 있습니다.
+- **로컬 vs 분산**: 기본 CQRS 버스는 단일 프로세스 내에서 작동합니다. 분산 아키텍처의 경우, 커스텀 어댑터를 통해 이 버스들을 외부 브로커(Broker)와 연결할 수 있습니다.
 
-```text
-@konekti/cqrs = command/query 디스패치 계약 + 클래스 레벨 event-handler 퍼사드
-@konekti/event-bus = 메서드 레벨 event-handler 탐색 및 디스패치 런타임
-```
+## 다음 단계
+
+- **심층 탐구**: [CQRS 패키지 README](../../packages/cqrs/README.ko.md)를 살펴보세요.
+- **기반 인프라**: [이벤트 버스 패키지](../../packages/event-bus/README.ko.md)에 대해 알아보세요.
+- **예제**: [예제 앱](../../examples/README.ko.md)에서 복잡한 Saga 워크플로우를 확인해 보세요.

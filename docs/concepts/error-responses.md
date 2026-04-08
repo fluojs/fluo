@@ -1,71 +1,75 @@
-# error responses
+# Error Handling & Responses
 
 <p><strong><kbd>English</kbd></strong> <a href="./error-responses.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the standard error response format and exposure policies used in the Konekti HTTP runtime.
+A backend's quality is often judged by how it handles failure. Konekti enforces a **standardized error response format** across the entire framework, ensuring that your API remains predictable, actionable, and secure for clients even when things go wrong.
 
-### related documentation
+## Why Standardized Errors in Konekti?
 
-- `./http-runtime.md`
-- `./auth-and-jwt.md`
-- `../../packages/http/README.md`
+- **Predictable API Surface**: Clients can implement a single error-handling logic that works across all your endpoints, whether the error came from a database, a validation rule, or an auth guard.
+- **Actionable Feedback**: Validation errors include detailed field-level information, allowing frontend developers to show precise error messages to users without guessing.
+- **Security by Design**: Internal stack traces and sensitive database errors are automatically stripped in production, preventing information leakage.
+- **Request Correlation**: Every error response includes the `requestId`, making it trivial for developers to find the corresponding logs in their observability stack.
 
-## standard error format
+## Responsibility Split
 
-Success responses return plain objects. Error responses follow a standard envelope:
+- **`@konekti/http` (The Filter)**: Provides the global exception filter, the base `HttpException` class, and the set of standard exceptions (e.g., `NotFoundException`, `ForbiddenException`).
+- **`@konekti/validation` (The Reporter)**: Specialized in generating rich, nested error structures when DTO validation fails.
+- **`@konekti/core` (The Contract)**: Defines shared framework error primitives such as `KonektiError` and the lower-level invariants other packages build on.
 
-```ts
-type ErrorResponse = {
-  error: {
-    code: string;
-    status: number;
-    message: string;
-    requestId?: string;
-    details?: Array<{
-      field?: string;
-      source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
-      code: string;
-      message: string;
-    }>;
-    meta?: Record<string, unknown>;
-  };
-};
+## Typical Workflow
+
+### 1. Throwing an Exception
+Use built-in exceptions to communicate intent clearly and stay consistent with HTTP status codes.
+
+```typescript
+if (!user) {
+  throw new NotFoundException('User not found');
+}
 ```
 
-## default status mapping
+### 2. The Global Catch-All
+Any exception thrown (or unhandled) during a request is caught by the Konekti dispatcher. It identifies if the exception is a known `HttpException` or a raw JavaScript `Error`.
 
-The framework uses several standard HTTP status codes for common error scenarios:
+### 3. Envelope Formatting
+The error is wrapped in the standard Konekti envelope.
 
-- **400 (Bad Request)**: Binding and validation failures.
-- **401 (Unauthorized)**: Authentication failures.
-- **403 (Forbidden)**: Authorization failures.
-- **404 (Not Found)**: Resource not found.
-- **409 (Conflict)**: Resource conflict.
-- **500 (Internal Server Error)**: Uncaught internal exceptions.
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "status": 404,
+    "message": "User not found",
+    "requestId": "req_abc123",
+    "timestamp": "2024-04-08T..."
+  }
+}
+```
 
-## architectural split
+### 4. Validation Specifics
+When a DTO fails validation, the `details` array is populated with specific field violations.
 
-- **Core Layer**: Defines transport-agnostic error contracts.
-- **`@konekti/http`**: Provides HTTP-aware exception classes.
-- **Adapters**: Guards and resolvers translate internal failures into the HTTP exception model.
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "status": 400,
+    "message": "Bad Request",
+    "details": [
+      { "field": "email", "issue": "must be a valid email" }
+    ]
+  }
+}
+```
 
-## exposure policy
+## Core Boundaries
 
-### safe to expose
+- **The Production Shield**: In production mode, raw `Error` objects (like database connection failures) are mapped to a generic `INTERNAL_SERVER_ERROR` code to protect your infrastructure details.
+- **Correlation is Key**: Always include the `requestId` in your client-side error reporting or support tickets. It is the "glue" between the client experience and the server logs.
+- **Consistency over Customization**: While you can customize error filters, we strongly recommend sticking to the standard envelope to maintain ecosystem compatibility with our CLI and client generators.
 
-- Validation field paths.
-- Client-friendly validation messages.
-- Request IDs.
-- General authentication failure categories.
+## Next Steps
 
-### sensitive (do not expose)
-
-- Stack traces.
-- Internal cause chains.
-- Raw database or ORM error payloads.
-- JWT verification internal details.
-- Configuration or secret values.
-
-## request correlation
-
-The `requestId` is included in error responses when available. This ID serves as the primary correlation key across logs, traces, and metrics.
+- **Hierarchy**: Review the built-in exception classes in the [HTTP Package README](../../packages/http/README.md).
+- **Validation**: Learn about rich error reporting in the [Validation Package](../../packages/validation/README.md).
+- **Advanced**: Learn how to create custom exception filters in the [HTTP Package README](../../packages/http/README.md).

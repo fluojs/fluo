@@ -2,15 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Decorator-based OpenAPI 3.1.0 document generation for Konekti. Automatically generate and serve your API documentation with zero manual synchronization and optional Swagger UI support.
 
-Decorator-based OpenAPI 3.1.0 document generation for Konekti applications. Annotate controllers and handlers, then mount `OpenApiModule` to automatically serve the canonical spec at `/openapi.json` and an optional Swagger UI viewer at `/docs`.
+## Table of Contents
 
-OpenAPI is the contract and package identity. Swagger is used here only for the optional interactive UI layer and search/discoverability wording.
-
-## See also
-
-- `../../docs/concepts/openapi.md`
-- `../../docs/concepts/http-runtime.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Core Capabilities](#core-capabilities)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -18,312 +20,81 @@ OpenAPI is the contract and package identity. Swagger is used here only for the 
 pnpm add @konekti/openapi
 ```
 
+## When to Use
+
+- When you want to provide interactive documentation for your REST API using **Swagger UI**.
+- When you need a machine-readable **OpenAPI 3.1.0** specification for client generation or testing.
+- When you want to keep your API documentation in sync with your code using standard decorators.
+- When you need to document complex request/response models using DTOs and validation metadata.
+
 ## Quick Start
 
-```typescript
-import { Controller, Get, Post, Version } from '@konekti/http';
-import { Module } from '@konekti/core';
-import { bootstrapApplication } from '@konekti/runtime';
-import {
-  ApiTag,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  OpenApiModule,
-} from '@konekti/openapi';
+Register the `OpenApiModule` and annotate your controllers to generate the documentation.
 
-@Version('1')
+```typescript
+import { Controller, Get } from '@konekti/http';
+import { Module } from '@konekti/core';
+import { bootstrapNodeApplication } from '@konekti/runtime/node';
+import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@konekti/openapi';
+
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
   @ApiOperation({ summary: 'List all users' })
-  @ApiResponse(200, { description: 'Array of users' })
+  @ApiResponse(200, { description: 'Success' })
   @Get('/')
-  listUsers() {
+  list() {
     return [];
-  }
-
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a user' })
-  @ApiResponse(201, { description: 'Created user' })
-  @Post('/')
-  createUser() {
-    return {};
   }
 }
 
 @Module({
-  controllers: [UsersController],
   imports: [
     OpenApiModule.forRoot({
-      sources: [{ controllerToken: UsersController }],
       title: 'My API',
       version: '1.0.0',
-      ui: true,               // enable Swagger UI at /docs
-    }),
+      ui: true, // Enable Swagger UI at /docs
+    })
   ],
+  controllers: [UsersController]
 })
 class AppModule {}
 
-await bootstrapApplication({ rootModule: AppModule });
-// GET /openapi.json  → OpenAPI 3.1.0 JSON document
-// GET /docs          → Swagger UI
+const app = await bootstrapNodeApplication(AppModule);
+await app.listen(3000);
+// OpenAPI JSON: http://localhost:3000/openapi.json
+// Swagger UI: http://localhost:3000/docs
 ```
 
-## Core API
+## Core Capabilities
 
-### `OpenApiModule.forRoot(options)`
+### Automated Specification Generation
+Konekti inspects your controllers and methods to build a complete OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies.
 
-Registers two HTTP endpoints and returns a `ModuleType` to import into any module.
+### Integrated DTO Schemas
+Works seamlessly with `@konekti/validation`. Your DTO classes are automatically converted to OpenAPI components and referenced in the appropriate operations.
 
-```typescript
-interface OpenApiModuleOptions {
-  title: string;
-  version: string;
-  defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
-  descriptors?: readonly HandlerDescriptor[];  // handler descriptors from createHandlerMapping()
-  sources?: readonly HandlerSource[];          // same handler-source model consumed by createHandlerMapping()
-  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
-  extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // runs after document generation; no-op when omitted
-  ui?: boolean;                                 // serve Swagger UI at /docs (default: false)
-}
+### Versioning Support
+Handles URI-based versioning from `@konekti/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.
 
-class OpenApiModule {
-  static forRoot(options: OpenApiModuleOptions): ModuleType;
-  static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType;
-}
-```
+### Security Documentation
+Easily document authentication requirements like Bearer tokens or API keys using `@ApiBearerAuth()` and `@ApiSecurity()`.
 
-When both `sources` and `descriptors` are provided, OpenAPI generation composes both sets into a single document.
+## Public API Overview
 
-### `OpenApiModule.forRootAsync(options)`
+- `OpenApiModule`: Main entry point for OpenAPI integration.
+- `ApiTag`, `ApiOperation`, `ApiResponse`: Documentation decorators.
+- `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
+- `ApiExcludeEndpoint`: Omit specific handlers from documentation.
+- `buildOpenApiDocument`: Programmatic document builder (low-level).
 
-Resolves `OpenApiModuleOptions` from a DI-aware async factory and mounts the same `/openapi.json` + optional `/docs` endpoints.
+## Related Packages
 
-```typescript
-import { OpenApiModule } from '@konekti/openapi';
+- `@konekti/core`: Shared metadata utilities.
+- `@konekti/http`: Controller and routing integration.
+- `@konekti/validation`: Schema and model generation from DTOs.
 
-OpenApiModule.forRootAsync({
-  inject: [CONFIG_TOKEN],
-  useFactory: async (config: ConfigService) => ({
-    title: config.get('OPENAPI_TITLE') ?? 'My API',
-    version: config.get('OPENAPI_VERSION') ?? '1.0.0',
-    sources: [{ controllerToken: UsersController }],
-    ui: config.get('NODE_ENV') !== 'production',
-  }),
-});
-```
+## Example Sources
 
-**Endpoints:**
-
-| Route | Description |
-|-------|-------------|
-| `GET /openapi.json` | Returns the generated OpenAPI 3.1.0 JSON. |
-| `GET /docs` | Returns Swagger UI HTML (only when `ui: true`). |
-
----
-
-## Decorators
-
-### `@ApiTag(tag)`
-
-Attaches an OpenAPI tag to all operations on a controller class.
-
-```typescript
-@ApiTag('Products')
-@Controller('/products')
-class ProductsController { ... }
-```
-
-### `@ApiOperation(options)`
-
-Documents a handler's operation object.
-
-```typescript
-interface ApiOperationOptions {
-  summary?: string;
-  description?: string;
-  deprecated?: boolean;
-}
-
-@ApiOperation({ summary: 'Get product by ID', description: 'Returns a single product.' })
-@Get('/:id')
-getProduct() { ... }
-```
-
-### `@ApiResponse(status, options)`
-
-Documents a response for a handler.
-
-```typescript
-interface ApiResponseOptions {
-  description?: string;
-  schema?: OpenApiSchemaObject;
-  type?: Constructor;
-}
-
-@ApiResponse(200, { description: 'The product', type: ProductDto })
-@ApiResponse(404, { description: 'Not found' })
-@Get('/:id')
-getProduct() { ... }
-```
-
-Multiple `@ApiResponse` decorators can be stacked on the same handler.
-
-### Mapped DTO helpers from the `@konekti/validation` package
-
-OpenAPI generation preserves metadata from `PickType()`, `OmitType()`, `IntersectionType()`, and `PartialType()` request DTOs, so derived request bodies and parameter schemas continue to render from the resolved DTO class.
-
-This includes composition-friendly schemas (for example `allOf` / `oneOf` / `anyOf` / `not` and discriminator metadata) when explicit OpenAPI schema objects are provided.
-
-`PartialType()` also changes required semantics: request bodies and non-path parameters become optional in the generated OpenAPI document, while path parameters stay required because the OpenAPI spec requires that.
-
-### `@Version(value)` from `@konekti/http`
-
-When URI versioning is applied at the controller or handler level, OpenAPI paths reflect the resolved versioned route directly.
-
-```typescript
-@Version('1')
-@Controller('/users')
-class UsersController {
-  @Get('/')
-  listUsers() {}
-}
-
-// OpenAPI path: /v1/users
-```
-
-### `@ApiBearerAuth()`
-
-Marks a handler as requiring Bearer token authentication. Adds `bearerAuth` to the operation's `security` requirements and registers the `bearerAuth` security scheme in the generated document.
-
-```typescript
-@ApiBearerAuth()
-@Post('/')
-createProduct() { ... }
-```
-
-### `@ApiSecurity(name, scopes?)`
-
-Declares generic OpenAPI security requirements without affecting runtime authentication behavior.
-
-```typescript
-@ApiSecurity('apiKeyAuth')
-@ApiSecurity('oauth2Auth', ['users:read'])
-@Get('/')
-listProducts() { ... }
-```
-
-### `@ApiExcludeEndpoint()`
-
-Excludes a handler from generated OpenAPI `paths`.
-
-```typescript
-@ApiExcludeEndpoint()
-@Get('/internal')
-getInternalHealth() { ... }
-```
-
----
-
-## Document Structure
-
-The generated document follows OpenAPI 3.1.0:
-
-```json
-{
-  "openapi": "3.1.0",
-  "info": {
-    "title": "My API",
-    "version": "1.0.0"
-  },
-  "paths": {
-    "/users": {
-      "get": {
-        "operationId": "<auto-generated>",
-        "tags": ["Users"],
-        "summary": "List all users",
-        "responses": {
-          "200": { "description": "Array of users" }
-        }
-      }
-    }
-  }
-}
-```
-
-- **`operationId`** is auto-generated from the primary tag, handler name, HTTP method, and normalized route path (for example: `Users_listUsers_get_v1_users`).
-- **`tags`** default to the controller class name when `@ApiTag` is not used.
-- **`security`** requirements can be declared with `@ApiBearerAuth()` and/or `@ApiSecurity(...)`.
-- **`securitySchemes`** can be registered via module/document options (API key, HTTP, OAuth2, OpenID Connect). `bearerAuth` is still auto-added when needed by `@ApiBearerAuth()`.
-- Request DTOs decorated with the `@konekti/validation` package are emitted as `components.schemas` entries and linked through `requestBody`.
-- Explicit schemas provided through decorators can use OpenAPI composition keywords (`allOf`, `oneOf`, `anyOf`, `not`, `discriminator`) and are emitted as-is.
-- `extraModels` can register additional schema components even when they are not referenced by request/response DTO discovery.
-- Cookie-bound DTO fields are emitted as `in: cookie` parameters.
-- Request bodies are only marked `required: true` when at least one body-bound DTO field is required.
-- Default error responses (`400`, `401`, `403`, `404`, `500`) are injected by default and can be disabled with `defaultErrorResponsesPolicy: 'omit'`.
-- Non-body parameter fields are emitted as runtime-compatible scalar/array shapes; nested object refs are not emitted for query/header/cookie/path params.
-- `@ApiOperation({ deprecated: true })` emits OpenAPI operation deprecation metadata.
-- `@ApiExcludeEndpoint()` omits a handler from generated operations.
-
----
-
-## Low-Level API
-
-These are exported for advanced use cases (e.g. custom document generation pipelines).
-
-Additional public exports also include `OpenApiHandlerRegistry`, `OpenApiModuleOptions`, and the schema/type interfaces re-exported from `src/index.ts`.
-
-### Root barrel public-surface categories
-
-- **supported (`src/index.ts`)**: all documented decorators, `OpenApiModule`, `OpenApiHandlerRegistry`, `buildOpenApiDocument(...)`, metadata readers, and schema/type interfaces re-exported from `schema-builder.ts`.
-- **compatibility-only**: none.
-- **internal (non-public)**: none exported from the root barrel.
-
-### `buildOpenApiDocument(options)`
-
-Builds the OpenAPI document directly from handler descriptors without mounting a server.
-
-```typescript
-interface BuildOpenApiDocumentOptions {
-  defaultErrorResponsesPolicy?: 'inject' | 'omit'; // default: 'inject'
-  descriptors: readonly HandlerDescriptor[];
-  securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
-  extraModels?: Constructor[];
-  documentTransform?: (document: OpenApiDocument) => OpenApiDocument; // runs after document generation; no-op when omitted
-  title: string;
-  version: string;
-}
-
-function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument;
-```
-
-### Metadata readers
-
-Read decorator metadata programmatically:
-
-```typescript
-function getControllerTags(target: Function): string[] | undefined;
-function getMethodApiMetadata(target: Function, propertyKey: MetadataPropertyKey): MethodApiMetadata | undefined;
-```
-
-Both getters return defensive copies to prevent accidental external mutation of internal decorator metadata.
-
-```typescript
-interface MethodApiMetadata {
-  operation?: ApiOperationOptions;
-  responses: ApiResponseMetadata[];
-  security?: string[];
-  securityRequirements?: Record<string, string[]>[];
-  excludeEndpoint?: boolean;
-}
-```
-
-## Dependencies
-
-| Package | Role |
-|---------|------|
-| `@konekti/core` | Shared metadata utilities |
-| `@konekti/http` | Controller/routing decorators, `HandlerDescriptor` |
-| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |
+- `packages/openapi/src/module.test.ts`: Integration tests and usage examples.
+- `examples/openapi-swagger`: Complete OpenAPI application example.

@@ -1,82 +1,49 @@
-# 부트스트랩 경로 (bootstrap paths)
+# 부트스트랩 경로
 
-<p><a href="./bootstrap-paths.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p><strong><kbd>한국어</kbd></strong> <a href="./bootstrap-paths.md"><kbd>English</kbd></a></p>
 
+Konekti는 **런타임에 구애받지 않는 코어(Runtime-agnostic core)**를 기반으로 설계되었습니다. 즉, 비즈니스 로직을 한 번만 작성하면 전용 플랫폼 어댑터를 통해 TypeScript가 실행 가능한 거의 모든 환경에 배포할 수 있습니다.
 
-이 문서는 표준 첫 실행 경로를 이해한 뒤 참고하는 Konekti 부트스트랩 경로를 정리합니다.
+### 대상 독자
+로컬 Fastify 스타터를 넘어 Bun, Deno, 또는 Edge 함수와 같은 특정 환경을 타겟팅해야 하는 개발자.
 
-## 표준 첫 실행 경로
+### 1. 어댑터 패턴
+모든 Konekti 앱은 `KonektiFactory.create()`로 시작합니다. 두 번째 인자인 **플랫폼 어댑터(Platform Adapter)**는 프레임워크와 기반 런타임의 HTTP 서버를 연결하는 다리 역할을 합니다.
 
-전역 설치된 CLI를 사용하세요:
+```ts
+import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
+import { createFastifyAdapter } from '@konekti/platform-fastify'; // 또는 다른 어댑터
 
-```sh
-pnpm add -g @konekti/cli
-konekti new my-app
-cd my-app
-pnpm dev
+const app = await KonektiFactory.create(AppModule, createFastifyAdapter());
+await app.listen(3000);
 ```
 
-이것이 공개 온보딩의 기본 경로입니다.
+### 2. 표준 Node.js 경로
+- **Fastify (`@konekti/platform-fastify`)**: Node.js를 위한 기본 권장 경로입니다. 높은 성능을 제공하며 방대한 Fastify 플러그인 생태계를 활용할 수 있습니다.
+- **Express (`@konekti/platform-express`)**: 기존의 레거시 Express 미들웨어에 크게 의존하는 프로젝트에 가장 적합합니다.
+- **Raw Node (`@konekti/platform-nodejs`)**: Node.js의 네이티브 `http.createServer`를 사용하여 오버헤드를 최소화하고 싶을 때 사용합니다.
 
-한 번만 실행하는 zero-install 부트스트랩에는 아래 대안도 계속 지원됩니다:
+### 3. 현대적인 런타임
+Node.js 이외의 환경을 타겟팅하시나요? 어댑터만 교체하고 코드는 그대로 유지하세요.
 
-```sh
-pnpm dlx @konekti/cli new my-app
-```
+- **Bun (`@konekti/platform-bun`)**: Bun의 고속 네이티브 HTTP 서버를 사용합니다.
+- **Deno (`@konekti/platform-deno`)**: Deno의 표준 라이브러리 및 보안 모델과 완벽하게 호환됩니다.
 
-zero-install 경로는 여전히 지원되는 convenience이지만, 표준 공개 엔트리포인트는 아닙니다.
+### 4. 엣지 및 서버리스
+"콜드 스타트 제로(Zero cold-start)" 환경을 위해, Konekti는 엣지 런타임 특유의 fetch-event 라이프사이클을 처리하는 전용 어댑터를 제공합니다.
 
-현재 지원되는 계약에는 별도의 공개 `create-konekti` wrapper가 없습니다. 나중에 compatibility wrapper가 추가되더라도, 암묵적인 별칭이 아니라 추가적인 surface로 명시적으로 문서화되어야 합니다.
+- **Cloudflare Workers (`@konekti/platform-cloudflare-workers`)**: Workers 환경 및 KV/Durable Objects와 통합됩니다.
 
-## 다음 단계 명령어 형태
+### 런타임 선택 가이드
+| 어댑터 | 패키지 | 최적의 용도 |
+| :--- | :--- | :--- |
+| **Fastify** | `@konekti/platform-fastify` | 프로덕션급 Node.js 앱 (기본 선택). |
+| **Express** | `@konekti/platform-express` | 레거시 마이그레이션, 미들웨어 호환성 최대화. |
+| **Bun** | `@konekti/platform-bun` | 로컬 성능 및 개발 속도 극대화. |
+| **Deno** | `@konekti/platform-deno` | 기본 보안 강화, node_modules 없는 환경. |
+| **Cloudflare** | `@konekti/platform-cloudflare-workers` | 글로벌 엣지 배포, 콜드 스타트 제로. |
 
-스캐폴드는 패키지 매니저를 인식하는 다음 단계를 출력합니다. 예시:
-
-```text
-cd my-app
-pnpm dev
-```
-
-## 현재 입력 흐름
-
-`konekti new`는 현재 다음 순서로 입력을 결정합니다:
-
-1. 프로젝트 이름 (`--name` 또는 위치 인자)
-2. 패키지 매니저 (`--package-manager`로 재정의 가능, 미지정 시 자동 감지)
-3. 대상 디렉토리 (`--target-directory`로 재정의 가능, 미지정 시 `./<project-name>`)
-
-의도적으로 묻지 않는 사항들:
-
-- ORM이나 데이터베이스 선택 프롬프트 없음
-- 테스트 러너 선택 프롬프트 없음
-- 설치 건너뛰기 프롬프트 없음
-- 번들된 `g resource` 생성기 흐름 없음
-
-## 현재 scaffold 경계
-
-현재 공개 scaffold 계약은 의도적으로 좁게 유지됩니다:
-
-- 지원되는 패키지 매니저 전반에 걸쳐 하나의 안정적인 generated project shape 유지
-- package-manager-aware install 및 run 명령 제공
-- current-directory initialization 계약은 현재 제공하지 않음
-- package-manager별 scaffold/template divergence는 현재 제공하지 않음
-
-나중에 current-directory init이나 package-manager-specific output이 공식 지원이 되더라도, 암묵적 convenience가 아니라 명시적인 supported surface로 추가되어야 합니다.
-
-## 레포지토리 로컬 smoke 경로
-
-구현 레포지토리는 로컬 검증 명령어도 유지합니다:
-
-```sh
-pnpm --dir packages/cli run sandbox:test
-pnpm --dir packages/cli run sandbox:create
-pnpm --dir packages/cli run sandbox:verify
-```
-
-이것들은 구현 및 테스트 헬퍼이며, 공개 부트스트랩 계약이 아닙니다.
-
-## 관련 문서
-
-- `./quick-start.ko.md` - 표준 첫 실행 가이드로 돌아가기
-- `./generator-workflow.ko.md`
-- `../reference/toolchain-contract-matrix.ko.md`
+### 다음 단계
+- **CLI 마스터하기**: [제너레이터 워크플로우](./generator-workflow.ko.md)가 모든 런타임에서 어떻게 동작하는지 확인해 보세요.
+- **심화 탐구**: 사용 가능한 어댑터와 그 기능을 한눈에 보려면 [패키지 목록](../reference/package-surface.ko.md)을 참조하세요.

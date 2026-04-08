@@ -2,8 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+In-process event publishing and subscription for Konekti. It features decorator-based handler discovery and support for external transport adapters like Redis Pub/Sub for cross-process communication.
 
-In-process event publishing for Konekti applications with decorator-based handler discovery across singleton providers and controllers. Supports optional external transport adapters (e.g. Redis Pub/Sub) for cross-process fan-out.
+## Table of Contents
+
+- [Installation](#installation)
+- [When to use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API](#public-api)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -11,171 +20,101 @@ In-process event publishing for Konekti applications with decorator-based handle
 npm install @konekti/event-bus
 ```
 
+## When to Use
+
+- When you need to decouple components by communicating via events instead of direct service calls.
+- When multiple parts of the system need to react to a single action (e.g., sending an email and updating a dashboard when a user registers).
+- When you need a simple in-memory event bus with optional support for distributed systems.
+
 ## Quick Start
 
+### 1. Define an Event and Handler
+
+Create an event class and a handler method decorated with `@OnEvent`.
+
 ```typescript
-import { Inject, Module } from '@konekti/core';
-import { EventBusModule, EventBus, EventBusLifecycleService, OnEvent } from '@konekti/event-bus';
+import { OnEvent } from '@konekti/event-bus';
 
-class UserRegisteredEvent {
-  constructor(public readonly userId: string) {}
+export class UserSignedUpEvent {
+  constructor(public readonly email: string) {}
 }
 
-class WelcomeEmailService {
-  @OnEvent(UserRegisteredEvent)
-  async sendWelcomeEmail(event: UserRegisteredEvent) {
-    // send email
+export class NotificationService {
+  @OnEvent(UserSignedUpEvent)
+  async notify(event: UserSignedUpEvent) {
+    console.log(`Sending welcome email to: ${event.email}`);
   }
 }
+```
 
-@Inject([EventBusLifecycleService])
-class UserService {
-  constructor(private readonly eventBus: EventBus) {}
+### 2. Register and Publish
 
-  async registerUser(userId: string) {
-    await this.eventBus.publish(new UserRegisteredEvent(userId));
-  }
-}
+Import `EventBusModule` and inject `EventBusLifecycleService` to publish events.
+
+```typescript
+import { Module, Inject } from '@konekti/core';
+import { EventBusModule, EventBusLifecycleService } from '@konekti/event-bus';
 
 @Module({
   imports: [EventBusModule.forRoot()],
-  providers: [WelcomeEmailService, UserService],
+  providers: [NotificationService],
 })
 export class AppModule {}
-```
 
-Compatibility token alternative for existing codebases:
+export class UserService {
+  @Inject([EventBusLifecycleService])
+  private readonly eventBus: EventBusLifecycleService;
 
-```typescript
-import { Inject } from '@konekti/core';
-import { EVENT_BUS, type EventBus } from '@konekti/event-bus';
-
-@Inject([EVENT_BUS])
-class LegacyUserService {
-  constructor(private readonly eventBus: EventBus) {}
+  async signUp(email: string) {
+    // Logic to save user...
+    await this.eventBus.publish(new UserSignedUpEvent(email));
+  }
 }
 ```
 
-## API
+## Common Patterns
 
-- `EventBusModule.forRoot()` - registers global `EventBusLifecycleService` plus compatibility alias `EVENT_BUS`
-- `createEventBusProviders()` - returns raw providers for manual composition
-- `EventBusLifecycleService` - primary class-first DI entry point for the application event bus instance
-- `EVENT_BUS` - compatibility DI token for the application event bus instance
-- `EventBus` - interface with `publish(event, options?)`
-- `EventBusTransport` - interface for external transport adapters
-- `@OnEvent(EventClass)` - marks provider/controller methods as event handlers
-- `createEventBusPlatformStatusSnapshot(input)` - maps local/transport lifecycle and degraded transport diagnostics to shared platform snapshot fields
+### Distributed Fan-out (Redis)
 
-### Root barrel public surface governance (0.x)
-
-Runtime root-barrel governance tests cover runtime exports. Public TypeScript-only contracts documented below remain part of the package API, but they are not represented in `Object.keys(...)` snapshot assertions.
-
-- **supported**: `EventBusModule.forRoot`, `createEventBusProviders`, `EventBusLifecycleService`, compatibility token `EVENT_BUS`, `EventBus`, `EventBusTransport`, `@OnEvent`, and status snapshot helpers.
-- **internal**: metadata helpers/descriptors (`defineEventHandlerMetadata`, `getEventHandlerMetadata`, `getEventHandlerMetadataEntries`, `eventBusMetadataSymbol`, `EventHandlerMetadata`, `EventHandlerDescriptor`) plus `EVENT_BUS_OPTIONS` and undocumented lifecycle/runtime wiring details other than `EventBusLifecycleService` are non-contract internals and are not part of the root barrel public contract.
-
-### Class-first DI guidance
-
-- Prefer `@Inject([EventBusLifecycleService])` for application code.
-- Keep `EVENT_BUS` only as a compatibility alternative for existing explicit-token call sites.
-
-### migration notes (0.x)
-
-- The root barrel now exports only the documented event-bus runtime API plus public TypeScript option/transport contracts.
-- Move any root-barrel imports of metadata helpers or descriptor types to internal package files if you intentionally depend on framework internals.
-
-### Module options
-
-`EventBusModule.forRoot(options)` and `createEventBusProviders(options)` accept:
-
-- `publish.timeoutMs` - per-handler wait bound used when `publish()` waits for handlers (`waitForHandlers: true`)
-- `publish.waitForHandlers` - default waiting mode (`true` waits and applies timeout bounds, `false` dispatches fire-and-forget)
-- `transport` - optional `EventBusTransport` adapter for cross-process fan-out
-
-### Transport interface
+Extend the event bus to other processes by plugging in a transport adapter.
 
 ```typescript
-interface EventBusTransport {
-  publish(channel: string, payload: unknown): Promise<void>;
-  subscribe(channel: string, handler: (payload: unknown) => Promise<void>): Promise<void>;
-  close(): Promise<void>;
-}
+import { RedisEventBusTransport } from '@konekti/event-bus/redis';
+
+EventBusModule.forRoot({
+  transport: new RedisEventBusTransport({ 
+    publishClient: redis, 
+    subscribeClient: redisSubscriber 
+  }),
+})
 ```
 
-Implement this interface to connect any external pub/sub system.
+### Versioned Event Keys
 
-### Event key convention
-
-Transport channels are resolved from event classes by the following rule:
-
-1. If the event class defines `static eventKey = 'domain.event.v1'`, that string is used.
-2. Otherwise, the fallback is the class constructor name (for backward compatibility).
-
-For multi-process deployments, prefer explicit, versioned keys:
+Use static `eventKey` to ensure stable channel names regardless of class minification or renames.
 
 ```typescript
 class UserRegisteredEvent {
   static readonly eventKey = 'user.registered.v1';
-
-  constructor(public readonly userId: string) {}
 }
 ```
 
-This avoids coupling transport contracts to class renames/minification and makes schema evolution explicit.
+## Public API Overview
 
-### Redis Pub/Sub adapter
+### Core
+- `EventBusModule`: Main entry point for event bus registration.
+- `EventBusLifecycleService`: Primary service for publishing events (`publish(event)`).
+- `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
 
-```bash
-npm install ioredis
-```
+### Interfaces
+- `EventBusTransport`: Contract for implementing external transport adapters.
 
-```typescript
-import Redis from 'ioredis';
-import { EventBusModule } from '@konekti/event-bus';
-import { RedisEventBusTransport } from '@konekti/event-bus/redis';
+## Related Packages
 
-const publishClient = new Redis();
-const subscribeClient = new Redis();
+- `@konekti/cqrs`: Built on top of the event bus for more formal architectural patterns.
+- `@konekti/redis`: Provides the clients required for `RedisEventBusTransport`.
 
-@Module({
-  imports: [
-    EventBusModule.forRoot({
-      transport: new RedisEventBusTransport({ publishClient, subscribeClient }),
-    }),
-  ],
-})
-export class AppModule {}
-```
+## Example Sources
 
-Two separate Redis clients are required because a client in subscribe mode cannot issue other commands.
-
-`RedisEventBusTransport` does not own the lifecycle of injected Redis clients. On `close()`, it unsubscribes the channels it registered and detaches its message listener, but it does not call `quit()` or `disconnect()` on caller-provided clients.
-
-## Runtime behavior
-
-- Handler discovery runs during application bootstrap via `COMPILED_MODULES`.
-- Handler instances are pre-resolved from `RUNTIME_CONTAINER` during bootstrap and reused on publish.
-- Events are matched by class using `instanceof`, so base-class handlers receive derived events.
-- Publishing dispatches to every matching local handler. When a transport is configured, it fans out to transport channels for all matched handler event types in parallel.
-- When a transport is configured, the event bus subscribes to one channel per discovered event type on bootstrap. Incoming messages are deserialized with `JSON.parse` and dispatched to matching local handlers.
-- Incoming transport messages are dispatched only to handlers registered for that subscribed channel, keeping local/remote inheritance matching outcomes consistent.
-- The channel name for a given event type uses `eventType.eventKey` when present, otherwise falls back to the class constructor name.
-- Transport `close()` is called during `onApplicationShutdown`.
-- Timeout bounds apply only when waiting mode is enabled (`waitForHandlers: true`). Non-blocking mode (`false`) dispatches without waiting.
-- Handler failures are isolated and logged through `ApplicationLogger`.
-- Request/transient scoped classes with `@OnEvent()` are ignored with a warning.
-
-## Non-goals
-
-- No queueing, replay, wildcards, or ordering guarantees.
-- No imperative `subscribe()` or `unsubscribe()` API.
-- No durability or persistence (events are lost on crash).
-
-## Platform status snapshot semantics
-
-Use `createEventBusPlatformStatusSnapshot(...)` (or `EventBusLifecycleService#createPlatformStatusSnapshot()`) to expose event-bus lifecycle state in the shared platform snapshot shape.
-
-- `operationMode`: distinguishes local-only mode from transport-backed mode.
-- `readiness`: transport subscribe failures are surfaced as `degraded` (not silent).
-- `health`: publish/subscribe/close transport failures are aggregated as degraded health signals.
-- `details`: includes discovered handler count, subscribed transport channels, default wait mode, and transport failure counters.
+- `packages/event-bus/src/module.test.ts`: Handler discovery and publish/subscribe tests.
+- `packages/event-bus/src/public-surface.test.ts`: Public API contract verification.

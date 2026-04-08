@@ -2,26 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+The HTTP execution layer that turns route metadata into a request pipeline with binding, validation, guards, interceptors, and response writing.
 
-The HTTP execution layer that turns route metadata into a request processing chain.
+## Table of Contents
 
-## See also
-
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/error-responses.md`
-- `../../docs/concepts/security-middleware.md`
-
-## What this package does
-
-`@konekti/http` is not a router — it is the full request execution runtime. It owns:
-
-- `FrameworkRequest` / `FrameworkResponse` / `RequestContext` — the common language between adapters, middleware, guards, interceptors, and controllers
-- Route and DTO decorators (`@Controller`, `@Get`, `@Post`, `@Version`, `@FromBody`, `@FromPath`, etc.)
-- Mapped DTO helpers from the `@konekti/validation` package (`PickType`, `OmitType`, `IntersectionType`, `PartialType`)
-- Routing table construction (`createHandlerMapping`)
-- Request DTO binding and validation
-- The dispatcher that sequences middleware → guards → interceptors → bind → validate → handler invocation
-- HTTP exception classes and the canonical error envelope
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -29,350 +20,103 @@ The HTTP execution layer that turns route metadata into a request processing cha
 npm install @konekti/http
 ```
 
+## When to Use
+
+Use this package when you need to:
+
+- define REST-style controllers with decorators such as `@Controller`, `@Get`, and `@Post`
+- bind request data into DTOs with `@FromBody`, `@FromPath`, `@FromQuery`, and related decorators
+- run guards, interceptors, and middleware in a predictable request lifecycle
+- access the active request through `RequestContext` without passing it through every function
+
 ## Quick Start
 
-### Define a controller
-
-```typescript
-import { Controller, Get, Post, Version, FromBody, FromPath, RequestDto } from '@konekti/http';
+```ts
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@konekti/http';
 import { IsString, MinLength } from '@konekti/validation';
-import type { RequestContext } from '@konekti/http';
 
 class CreateUserDto {
   @FromBody()
   @IsString()
-  @MinLength(2)
+  @MinLength(3)
   name!: string;
 }
 
-class GetUserParams {
-  @FromPath()
-  @IsString()
-  id!: string;
-}
-
-@Version('1')
 @Controller('/users')
 export class UserController {
   @Post('/')
   @RequestDto(CreateUserDto)
-  async create(input: CreateUserDto, ctx: RequestContext) {
-    return { created: input.name };
+  create(input: CreateUserDto) {
+    return { id: '1', name: input.name };
   }
 
   @Get('/:id')
-  @RequestDto(GetUserParams)
-  async getById(input: GetUserParams, ctx: RequestContext) {
-    return { id: input.id };
+  getById(@FromPath('id') id: string) {
+    return { id, name: 'John Doe' };
   }
 }
 ```
 
-### Throw HTTP exceptions
+## Common Patterns
 
-```typescript
-import { NotFoundException, BadRequestException } from '@konekti/http';
+### Guards and interceptors
 
-throw new NotFoundException('User not found');
-throw new BadRequestException('Invalid input', { field: 'email', message: 'must be valid' });
-```
+```ts
+import { Controller, Get, UseGuards, UseInterceptors } from '@konekti/http';
 
-### Create a dispatcher (done by `@konekti/runtime` during bootstrap)
-
-```typescript
-import { createHandlerMapping, createDispatcher } from '@konekti/http';
-
-const handlerMapping = createHandlerMapping([{ controllerToken: UserController }]);
-const dispatcher = createDispatcher({ handlerMapping, rootContainer: container, appMiddleware: middleware });
-```
-
-## Key API
-
-### Types
-
-| Export | Location | Description |
-|---|---|---|
-| `FrameworkRequest` | `src/types.ts` | Adapter-agnostic request shape |
-| `FrameworkResponse` | `src/types.ts` | Adapter-agnostic response shape, including optional `stream` and adapter-owned `compression` capabilities for streamed or compressed responses |
-| `RequestContext` | `src/request-context.ts` | Runtime context: request, response, principal, requestId, container |
-
-### Route decorators
-
-| Decorator | Description |
-|---|---|
-| `@Controller(path)` | Marks a class as a controller with a base path |
-| `@Get(path)` / `@Post(path)` / `@Put(path)` / `@Patch(path)` / `@Delete(path)` | HTTP method route |
-| `@All(path)` | Matches all HTTP methods for a route |
-| `@Header(name, value)` | Sets a response header on the route |
-| `@Redirect(url, statusCode?)` | Redirects the response to the specified URL |
-| `@Version(value)` | Applies URI versioning such as `/v1/...`; handler-level version overrides controller-level version |
-
-### Versioning strategies
-
-`@Version()` on controllers and handlers stays the same. The active strategy is selected by `@konekti/runtime` bootstrap options.
-
-```typescript
-@Version('1')
-@Controller('/users')
-class UsersController {
+@Controller('/admin')
+@UseGuards(AdminGuard)
+@UseInterceptors(LoggingInterceptor)
+class AdminController {
   @Get('/')
-  listUsers() {
-    return [];
-  }
-
-  @Version('2')
-  @Post('/')
-  createUser() {
-    return {};
+  dashboard() {
+    return { data: 'secret' };
   }
 }
 ```
 
-- `VersioningType.URI` (default): `/v1/users`
-- `VersioningType.HEADER`: version from a configured request header such as `X-API-Version: 1`
-- `VersioningType.MEDIA_TYPE`: version extracted from `Accept` using a key such as `v=` (`Accept: application/json;v=1`)
-- `VersioningType.CUSTOM`: user-supplied extractor function
+### Async request context
 
-URI behavior remains the default when no runtime `versioning` option is provided.
+```ts
+import { getCurrentRequestContext } from '@konekti/http';
 
-### Mapped DTO helpers
-
-Konekti supports metadata-preserving mapped DTO helpers for common request-shape derivation.
-
-```typescript
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
-
-class CreateUserRequest {
-  @FromBody('name')
-  name = '';
-
-  @FromBody('email')
-  email = '';
-}
-
-class AddressRequest {
-  @FromBody('city')
-  city = '';
-}
-
-const UserNameOnlyRequest = PickType(CreateUserRequest, ['name']);
-const UserWithoutEmailRequest = OmitType(CreateUserRequest, ['email']);
-const CreateUserWithAddressRequest = IntersectionType(CreateUserRequest, AddressRequest);
-const UpdateUserRequest = PartialType(CreateUserRequest);
-```
-
-- `PickType()` keeps only the selected DTO fields and their metadata
-- `OmitType()` removes selected DTO fields while preserving the rest of the metadata
-- `IntersectionType()` composes metadata from multiple DTO bases into one derived DTO
-- `PartialType()` preserves the DTO shape while making inherited fields optional for request binding, validation, and non-path OpenAPI required semantics
-- derived DTOs continue to work with `RequestDto(...)`, runtime binding, validation, and OpenAPI generation
-
-`PartialType()` is intentionally separate from the other mapped helpers because it changes field optionality semantics instead of only composing metadata. Path parameters remain required in generated OpenAPI parameters because the spec requires path params to be required.
-
-### DTO binding decorators
-
-| Decorator | Description |
-|---|---|
-| `@FromBody()` | Bind field from request body (strict allowlist, blocks unknown fields) |
-| `@FromPath()` | Bind field from URL path parameter |
-| `@FromQuery()` | Bind field from query string |
-| `@FromHeader()` | Bind field from request header |
-| `@FromCookie()` | Bind field from cookie |
-| `@Optional()` | Mark binding as optional (binder-level) |
-| `@Convert()` | Apply a field-level converter after global converters and before validation |
-
-> Validation decorators (`@IsString`, `@IsEmail`, etc.) come from the `@konekti/validation` package, not this package.
-
-Binding keeps source value shape explicit. For example, repeated query/header values remain arrays (including single-element arrays) unless you provide an explicit converter that normalizes them.
-
-### Request converters
-
-`@konekti/http` now exposes two request-time conversion seams:
-
-1. **Global converters** — configured at app bootstrap
-2. **Field-level converters** — declared with `@Convert(...)`
-
-Field-level converters always run **after** global converters and **before** `@konekti/validation` validates the DTO.
-
-```typescript
-import { Controller, Convert, FromQuery, Get, RequestDto } from '@konekti/http';
-import { IsNumber } from '@konekti/validation';
-
-class ParseIntConverter {
-  convert(value: unknown) {
-    return typeof value === 'string' ? Number(value) : value;
-  }
-}
-
-class SearchRequest {
-  @FromQuery('id')
-  @Convert(ParseIntConverter)
-  @IsNumber()
-  id = 0;
-}
-
-@Controller('/search')
-class SearchController {
-  @Get('/')
-  @RequestDto(SearchRequest)
-  list(input: SearchRequest) {
-    return input;
-  }
+function someDeepHelper() {
+  const ctx = getCurrentRequestContext();
+  console.log(ctx?.requestId);
 }
 ```
 
-Use global converters for transport-wide normalization such as trimming strings or coercing query primitives. Use `@Convert(...)` when a specific DTO field needs a targeted conversion rule.
+### Server-sent events
 
-### Runtime helpers
+```ts
+import { Get, SseResponse, type RequestContext } from '@konekti/http';
 
-| Export | Location | Description |
-|---|---|---|
-| `createHandlerMapping(sources)` | `src/mapping.ts` | Builds the normalized routing table from handler sources such as `{ controllerToken }` |
-| `createDispatcher(options)` | `src/dispatcher.ts` | Creates the request dispatch function |
-| `SseResponse` | `src/sse.ts` | Helper for streaming Server-Sent Events from a `RequestContext` |
-| `createCorsMiddleware(options)` | `src/cors.ts` | Returns a CORS middleware function |
-| `createRequestContext()` | `src/request-context.ts` | ALS-backed context factory |
-
-Additional public exports include `All`, `Options`, `Head`, `RequestDto`, `HttpCode`, `UseGuards`, `UseInterceptors`, `Header`, `Redirect`, `Version`, `createCorrelationMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `encodeSseComment`, `encodeSseMessage`, `forRoutes`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, and `PayloadTooLargeException`.
-
-### Adapter realtime capability
-
-`HttpApplicationAdapter` now exposes an optional `getRealtimeCapability()` seam for platform-owned realtime behavior.
-
-- Server-backed adapters return `{ kind: 'server-backed', server }` when the selected platform owns a concrete realtime listener lifecycle.
-- Fetch-style runtimes that may grow raw websocket support later should return `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', version: 1, support, reason }` so the shared expansion seam stays explicit before runtime-specific support lands.
-- Adapters that are genuinely outside any realtime ownership model can still return `{ kind: 'unsupported', mode: 'no-op', reason }`.
-- Consumers should prefer this explicit capability over assuming `getServer()` implies websocket or Socket.IO support.
-
-### Server-Sent Events (SSE)
-
-Use `SseResponse` when a handler needs to keep the HTTP connection open and stream frames over time.
-
-```typescript
-import { Controller, Get, SseResponse, type RequestContext } from '@konekti/http';
-
-@Controller('/events')
-class EventsController {
-  @Get('/')
-  stream(_input: undefined, ctx: RequestContext) {
-    const stream = new SseResponse(ctx);
-
-    stream.comment('connected');
-    stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
-
-    return stream;
-  }
+@Get('/events')
+stream(_input: undefined, ctx: RequestContext) {
+  const sse = new SseResponse(ctx);
+  sse.send({ message: 'hello' });
+  return sse;
 }
 ```
 
-- `new SseResponse(ctx)` commits SSE headers immediately.
-- `send(data, { event, id, retry })` writes a canonical SSE message frame.
-- `comment(text)` writes a comment frame.
-- `close()` is idempotent and also runs when `ctx.request.signal` aborts.
-- `encodeSseMessage()` and `encodeSseComment()` are exported for tests and custom framing needs.
-- SSE now depends on the explicit adapter-facing `FrameworkResponse.stream` contract instead of duck-typing `FrameworkResponse.raw` as a Node writable response.
-- Response compression now follows the same adapter-facing model via optional `FrameworkResponse.compression`, so runtimes can compress, delegate to the platform, or opt out without assuming raw Node response objects.
-- Built-in Node, Express, and Fastify adapters expose `response.stream` for SSE and other response-streaming integrations.
-- Request observers still complete when the handler returns. They do not stay open for the full lifetime of the SSE socket.
+## Public API Overview
 
-#### 0.x migration note
+- **Routing decorators**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`
+- **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`
+- **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
+- **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
 
-- Custom adapters or tests that previously relied on `FrameworkResponse.raw.write()` / `end()` / `writableEnded` for SSE must now provide `FrameworkResponse.stream`.
+## Related Packages
 
-### Rate limiting caveat
+- `@konekti/core`: stores controller, route, and DTO metadata
+- `@konekti/validation`: validates DTOs after HTTP binding
+- `@konekti/runtime`: assembles the dispatcher during application bootstrap
+- `@konekti/passport`: plugs auth guards into the same HTTP guard chain
 
-`createRateLimitMiddleware()` uses an in-process memory store. This is suitable for local development, tests, and single-process deployments, but it is not a shared or global limiter across clustered Node workers or multiple app instances. For cross-instance enforcement, place the shared limit at a gateway/proxy layer or add an application-level shared store in front of Konekti.
+## Example Sources
 
-### Success status defaults
-
-- `GET`, `PUT`, `PATCH`, `HEAD` default to `200`.
-- `POST` defaults to `201`.
-- `DELETE` and `OPTIONS` default to `204` when the handler returns `undefined`, otherwise `200`.
-- `@HttpCode(code)` always overrides the method default.
-- The dispatcher decides the final success code after the interceptor chain resolves, so interceptor result shaping still affects the default status decision.
-
-### Exceptions
-
-| Export | Status Code |
-|---|---|
-| `BadRequestException` | 400 |
-| `UnauthorizedException` | 401 |
-| `ForbiddenException` | 403 |
-| `NotFoundException` | 404 |
-| `ConflictException` | 409 |
-| `PayloadTooLargeException` | 413 |
-| `InternalServerErrorException` | 500 |
-
-## Architecture
-
-### Dispatcher execution order
-
-```text
-incoming request
-  → RequestContext creation
-  → app middleware
-  → route match
-  → module middleware
-  → guard chain  (allow / deny)
-  → interceptor chain  (before/after wrapper)
-  → request DTO binding + conversion  (fromBody / fromPath / fromQuery / ...)
-→ DTO validation  (via the @konekti/validation package, after conversion)
-  → controller method(input, ctx)
-  → success status resolution (`@HttpCode` override or method default)
-  → success response write
-  → catch → canonical error response write
-```
-
-### Guard contract
-
-Guards have a deliberately small contract:
-
-- return `false` to deny the request with the default `ForbiddenException` / 403 path
-- return `true` or `undefined` to continue the request pipeline
-- throw an HTTP exception when the denial should use a more specific status or message
-- commit the response directly (for example redirect flows) when the guard fully handles the outcome itself
-
-### DTO binding security
-
-The binder is not a simple field copy. Two policies are enforced:
-
-1. **Strict allowlist on `@FromBody`** — any field in the request body that is not declared in the DTO is rejected with `BadRequestException`, preventing mass-assignment attacks.
-2. **Dangerous key blocking** — keys like `__proto__`, `constructor`, and `prototype` are rejected unconditionally.
-
-### Routing table construction
-
-`createHandlerMapping()` runs before any request. It:
-- Combines the controller base path with each route path
-- Normalises duplicate slashes
-- Extracts named path params (`:id` → param name)
-- Fails fast on duplicate route conflicts
-
-### Request context and ALS
-
-`RequestContext` is stored in `AsyncLocalStorage`. It carries the request, response, `requestId`, the authenticated `principal` (set by auth guards), and the request-scoped DI `container`. Any code that runs within a request can access the context without prop drilling.
-
-## File reading order for contributors
-
-1. `src/types.ts` — `FrameworkRequest`, `FrameworkResponse`, `RequestContext`
-2. `src/decorators.ts` — route and DTO binding metadata writers
-3. `src/mapping.ts` — routing table build + conflict detection
-4. `src/binding.ts` — DTO instantiation from request parts
-5. `src/dto-validation-adapter.ts` — DTO validation adapter
-6. `src/request-context.ts` — ALS-backed context
-7. `src/dispatcher.ts` — execution chain sequencing
-8. `src/exceptions.ts` — HTTP exception family + error envelope
-9. `src/binding.test.ts` — binding policies (allowlist, dangerous keys, 400 detail shape)
-10. `src/dispatcher.test.ts` — middleware/guard/interceptor ordering, canonical error codes
-
-## Related packages
-
-- `@konekti/core` — where route and DTO metadata is stored
-- `@konekti/validation` package — validation engine used by the DTO validation step
-- `@konekti/runtime` — assembles the routing table and dispatcher during bootstrap
-- `@konekti/passport` — auth guard that plugs into the guard chain
-
-## One-liner mental model
-
-```text
-@konekti/http = route metadata → DTO binding → middleware/guard/interceptor chain → handler invocation
-```
+- `examples/realworld-api/src/users/create-user.dto.ts`
+- `examples/auth-jwt-passport/src/auth/auth.controller.ts`
+- `packages/http/src/dispatch/dispatcher.test.ts`

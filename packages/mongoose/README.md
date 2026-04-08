@@ -2,218 +2,106 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Official Mongoose integration for Konekti — wraps a Mongoose connection with a session-aware transaction seam and an optional dispose hook.
+Mongoose integration for Konekti with session-aware transaction handling and lifecycle-friendly connection management.
 
-## See also
+## Table of Contents
 
-- `../../docs/concepts/transactions.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-
-## What this package does
-
-`@konekti/mongoose` connects a Mongoose connection to Konekti's module, DI, and lifecycle model. Unlike Prisma, Mongoose doesn't automatically inject sessions into model operations — so this integration provides a clean transaction context while keeping the `{ session }` propagation responsibility with application code.
-
-Key responsibilities:
-- Provide the `MongooseConnection` wrapper with `current()` / `currentSession()` / `transaction()` / `requestTransaction()`
-- Register `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, and `MONGOOSE_OPTIONS` tokens in the DI container
-- Wire the optional `dispose` hook into `onApplicationShutdown`
-- Expose `MongooseTransactionInterceptor` for opt-in automatic request-scoped transactions
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
 ```bash
-npm install @konekti/mongoose
+pnpm add @konekti/mongoose
+pnpm add mongoose
 ```
+
+## When to Use
+
+- when Mongoose should plug into the same DI and application lifecycle as the rest of the app
+- when MongoDB sessions and transactions need one shared wrapper instead of ad hoc session plumbing in every service
+- when request-scoped transactions should be opt-in through an interceptor
 
 ## Quick Start
 
-```typescript
+```ts
 import { Module } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
 import { MongooseModule } from '@konekti/mongoose';
 import mongoose from 'mongoose';
 
-@Module({
-  imports: [
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: async (config: ConfigService) => {
-        const connection = mongoose.createConnection(
-          config.getOrThrow<string>('MONGODB_URI'),
-        );
-
-        return {
-          connection,
-          dispose: async (conn) => {
-            await conn.close();
-          },
-        };
-      },
-    }),
-  ],
-})
-export class AppModule {}
-```
-
-> Config-first: Konekti resolves environment values at the application boundary and passes typed options/providers into package modules. See `../../docs/concepts/config-and-environments.md`.
-
-### Using the connection in a repository
-
-```typescript
-import { Inject } from '@konekti/core';
-import { MongooseConnection } from '@konekti/mongoose';
-import { Model } from 'mongoose';
-
-export class UserRepository {
-  constructor(private conn: MongooseConnection) {}
-
-  async findById(id: string) {
-    // current() returns the Mongoose connection
-    const connection = this.conn.current();
-    const User = connection.model('User');
-    return User.findById(id);
-  }
-}
-```
-
-### Explicit transaction
-
-```typescript
-await this.conn.transaction(async () => {
-  // currentSession() returns the active session inside this callback
-  const session = this.conn.currentSession();
-  
-  // You must pass { session } to Mongoose operations that should participate
-  const [user] = await User.create([{ email: 'ada@example.com' }], { session });
-  await AuditLog.create([{ userId: user.id }], { session });
-});
-```
-
-### Automatic request-scoped transaction (opt-in)
-
-```typescript
-import { UseInterceptors } from '@konekti/http';
-import { MongooseTransactionInterceptor } from '@konekti/mongoose';
-
-@UseInterceptors(MongooseTransactionInterceptor)
-class UsersController {}
-```
-
-### Async module creation
-
-```typescript
-import { Global, Module } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
-import { MongooseModule } from '@konekti/mongoose';
-import mongoose from 'mongoose';
-
-@Global()
-@Module({
-  providers: [ConfigService],
-  exports: [ConfigService],
-})
-class ConfigModule {}
+const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 
 @Module({
   imports: [
-    ConfigModule,
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: async (config: ConfigService) => ({
-        connection: mongoose.createConnection(config.get('MONGODB_URI')),
-      }),
+    MongooseModule.forRoot({
+      connection,
+      dispose: async (conn) => conn.close(),
     }),
   ],
 })
 class AppModule {}
 ```
 
-## Key API
+## Common Patterns
 
-| Export | Location | Description |
-|---|---|---|
-| `MongooseConnection` | `src/connection.ts` | Wrapper with `current()`, `currentSession()`, `transaction()`, `requestTransaction()`, `onApplicationShutdown()` |
-| `MongooseModule.forRoot(options)` | `src/module.ts` | Creates an importable Konekti module with all providers |
-| `MongooseModule.forRootAsync(options)` | `src/module.ts` | Resolves module options from injected dependencies or async factories |
-| `createMongooseProviders(options)` | `src/module.ts` | Returns the raw provider array for manual registration |
-| `createMongoosePlatformStatusSnapshot(input)` | `src/status.ts` | Maps ownership/readiness/health/details to the shared platform snapshot shape |
-| `MongooseTransactionInterceptor` | `src/transaction.ts` | Opt-in interceptor for automatic per-request transactions |
-| `MONGOOSE_CONNECTION` | `src/tokens.ts` | DI token for the raw Mongoose connection |
-| `MONGOOSE_DISPOSE` | `src/tokens.ts` | DI token for the optional cleanup hook |
-| `MONGOOSE_OPTIONS` | `src/tokens.ts` | DI token for normalized Mongoose module options |
-| `MongooseConnectionLike` | `src/types.ts` | Seam type — any object with optional `startSession()` |
-| `MongooseSessionLike` | `src/types.ts` | Session contract with `startTransaction()`, `commitTransaction()`, `abortTransaction()`, `endSession()` |
-| `MongooseModuleOptions` | `src/types.ts` | `{ connection, dispose?, strictTransactions? }` |
-| `MongooseHandleProvider` | `src/types.ts` | Public connection-aware handle contract |
+### Access the connection through `MongooseConnection`
 
-## Architecture
+```ts
+import { MongooseConnection } from '@konekti/mongoose';
 
-```
-MongooseModule.forRoot({ connection, dispose?, strictTransactions? })
-  → registers MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, and MONGOOSE_OPTIONS tokens
-  → registers MongooseConnection and MongooseTransactionInterceptor as exported providers
+export class UserRepository {
+  constructor(private readonly conn: MongooseConnection) {}
 
-service/repository code
-  → MongooseConnection.current()
-  → returns the Mongoose connection
-
-MongooseConnection.transaction(fn)
-  → calls connection.startSession() if available
-  → starts a transaction on the session
-  → AsyncLocalStorage stores the session
-  → currentSession() returns the session within the callback
-  → application code must pass { session: conn.currentSession() } to Mongoose operations
-
-app.close()
-  → onApplicationShutdown()
-  → aborts open request transactions
-  → calls dispose(connection) if provided
+  async findById(id: string) {
+    const User = this.conn.current().model('User');
+    return User.findById(id);
+  }
+}
 ```
 
-### Why MONGOOSE_DISPOSE is a separate token
+### Manual transactions still need explicit sessions
 
-Separating the cleanup hook from the connection value means:
-- The connection object stays clean
-- Shutdown cleanup can be selectively wired without touching the connection handle
-- Tests can verify dispose behavior independently
+```ts
+await this.conn.transaction(async () => {
+  const session = this.conn.currentSession();
+  const User = this.conn.current().model('User');
 
-### Transaction semantics
-
-`MongooseConnection` uses `AsyncLocalStorage` to track the active session context. Service and repository code calls `currentSession()` to obtain the session, then passes `{ session }` to Mongoose operations that should participate in the transaction.
-
-**Important**: Unlike Prisma, Mongoose operations do not automatically use the ambient session. Application code must explicitly pass `{ session: mongooseConnection.currentSession() }` to each operation.
-
-### Nested transaction behavior
-
-When `transaction()` or `requestTransaction()` is called inside an existing transaction, the ambient session is reused rather than starting a new nested transaction. This matches Mongoose's actual nested transaction semantics.
-
-## Platform status snapshot semantics
-
-Use `createMongoosePlatformStatusSnapshot(...)` (or `mongooseConnection.createPlatformStatusSnapshot()`) to emit ownership/readiness/health diagnostics aligned with the shared platform contract.
-
-- `ownership`: Mongoose connection ownership is externally supplied (`ownsResources: false`, `externallyManaged: true`).
-- `readiness`: strict transaction mode with missing `startSession()` is explicitly `not-ready`.
-- `health`: shutdown drain is `degraded`; stopped/disposed state is `unhealthy`.
-- `details`: includes session strategy (`explicit-session`), ALS context state, and active request transaction count.
-
-## File reading order for contributors
-
-1. `src/types.ts` — `MongooseConnectionLike`, `MongooseSessionLike`, `MongooseModuleOptions`, `MongooseHandleProvider`
-2. `src/tokens.ts` — `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
-3. `src/connection.ts` — `MongooseConnection` wrapper, ALS-based session context
-4. `src/module.ts` — `createMongooseProviders`, `MongooseModule.forRoot`, `MongooseModule.forRootAsync`
-5. `src/transaction.ts` — `MongooseTransactionInterceptor`
-6. `src/module.test.ts` — connection usage, session transactions, dispose hook
-
-## Related packages
-
-- `@konekti/runtime` — module import/export and shutdown lifecycle
-- `@konekti/drizzle` — the same problem solved for Drizzle; compare for perspective
-- `@konekti/prisma` — the same problem solved for Prisma; compare for perspective
-- `@konekti/cli` — scaffold includes this package when Mongoose is selected
-
-## One-liner mental model
-
-```text
-@konekti/mongoose = Mongoose connection → session-aware tx wrapper + optional cleanup hook → Konekti runtime
+  await User.create([{ name: 'Ada' }], { session });
+});
 ```
+
+### Request-scoped transactions
+
+```ts
+import { UseInterceptors } from '@konekti/http';
+import { MongooseTransactionInterceptor } from '@konekti/mongoose';
+
+@UseInterceptors(MongooseTransactionInterceptor)
+class UserController {}
+```
+
+## Public API Overview
+
+- `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
+- `MongooseConnection`
+- `MongooseTransactionInterceptor`
+- `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
+- `createMongooseProviders(options)`
+- `createMongoosePlatformStatusSnapshot(...)`
+
+## Related Packages
+
+- `@konekti/runtime`: manages startup and shutdown hooks
+- `@konekti/http`: provides the interceptor chain for request transactions
+- `@konekti/prisma` and `@konekti/drizzle`: alternate database integrations with different transaction models
+
+## Example Sources
+
+- `packages/mongoose/src/vertical-slice.test.ts`
+- `packages/mongoose/src/module.test.ts`
+- `packages/mongoose/src/public-api.test.ts`

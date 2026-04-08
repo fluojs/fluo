@@ -2,66 +2,55 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./config-and-environments.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the configuration management implemented across `@konekti/config`, the runtime bootstrap process, and package integrations.
+Konekti treats configuration as **validated runtime data** rather than a collection of ambient environment variables. By enforcing explicit loading, strict validation, and typed access, we ensure your application's behavior is predictable across every environment.
 
-### related documentation
+## why this matters
 
-- `../../packages/config/README.md`
-- `./lifecycle-and-shutdown.md`
-- `./dev-reload-architecture.md`
-- `../getting-started/bootstrap-paths.md`
+"Ambient" configuration—scattering `process.env.DB_URL` throughout your codebase—is a major source of production instability.
+- **Hidden Dependencies**: You don't know which environment variables your app actually needs until it crashes in production.
+- **Type Uncertainty**: `process.env` values are always strings. Forgetting to parse a `PORT` as a number or a `DEBUG` flag as a boolean leads to subtle, hard-to-trace bugs.
+- **Testing Friction**: Mocking global `process.env` in unit tests is messy and can lead to side effects between test suites.
 
-## responsibilities
+Konekti solves these issues by creating a **Config Boundary**. All configuration must pass through a validation gate before it ever reaches your application logic.
 
-- **`@konekti/config`**: Handles configuration loading, precedence, validation, and typed access from explicit bootstrap inputs.
-- **Bootstrap**: Consumes caller-supplied configuration inputs instead of re-reading environment variables implicitly.
-- **Integrations**: Should use typed configuration providers rather than direct environment access.
+## core ideas
 
-## core configuration principles
+### explicit loading (no magic env)
+Konekti does not automatically scan your system for environment variables. You must explicitly define your configuration sources during the bootstrap process. This might include:
+- A specific `.env` file path.
+- A static JSON or YAML configuration.
+- A filtered subset of `process.env`.
 
-- **Explicit File Selection**: Specify the env file path directly via `envFile` (or alias `envFilePath`), or use the `.env` default.
-- **Explicit Environment Source**: If system env should participate, pass `processEnv: process.env` at the application boundary.
-- **Deterministic Precedence**: One clear order for configuration resolution.
-- **Early Validation**: Configuration is validated at application startup.
-- **Typed Access**: Configurations are accessed via `ConfigService`.
+This explicitness makes your application "hermetic"—it only knows what you've told it to know, making it highly portable and easy to test.
 
-## environments and files
+### early validation gate
+The application will **refuse to start** if its configuration is invalid.
+- **Schema-Driven**: You define the "shape" of your config (e.g., using a validation library).
+- **Fail-Fast**: Missing keys, incorrect types, or out-of-range values are caught at the very first line of code execution. This prevents "half-booted" applications that fail only when a specific service is called.
 
-The env file path is controlled by the `envFile` option (or alias `envFilePath`) passed to `ConfigModule.forRoot()` or `loadConfig()`. It defaults to `.env` when omitted. There is no automatic file selection based on a mode name — callers decide which file to load at bootstrap time.
+### the `ConfigService` boundary
+Within your application, you never access external environment variables. Instead, you inject the `ConfigService`.
+- **Typed Access**: `config.get<number>('port')` ensures you're working with the correct data type.
+- **Safe Defaults**: You can define fallback values in code that are only used if the environment doesn't provide them.
+- **Secret Masking**: The `ConfigService` can be configured to mask sensitive values (like API keys) when logging the application state.
 
-## precedence and merging
+## loading precedence
 
-The configuration resolution order is deterministic:
+When multiple sources are provided, Konekti merges them in a deterministic order:
+1. **Bootstrap Overrides**: Values passed directly in the `Konekti.create()` call (highest priority).
+2. **Environment Variables**: Values mapped from the system environment.
+3. **Configuration Files**: Values read from `.env`, `config.json`, etc.
+4. **Code Defaults**: Hardcoded fallback values (lowest priority).
 
-1.  **Default Values**: Hardcoded fallback values.
-2.  **Env File**: Loaded from the path set by `envFile` / `envFilePath` (defaults to `.env`).
-3.  **Process Environment**: Only when the caller passes an explicit `processEnv` object.
-4.  **Runtime Overrides**: Passed directly during bootstrap.
+## boundaries
 
-### merge behavior
+- **Zero Global Dependency**: No package in the Konekti ecosystem is allowed to access `process.env` directly. Everything must go through the DI container.
+- **Validation Barrier**: A configuration snapshot is considered "corrupt" if even a single required field fails validation. No partial configuration is ever applied.
+- **Runtime Reloading**: In development, the `ConfigService` can apply new snapshots without restarting the process (see [Dev Reload Architecture](./dev-reload-architecture.md)).
 
-- **Objects**: Plain objects are deep-merged across all sources.
-- **Primitives and Arrays**: These follow the precedence order and replace existing values.
-- **Safety**: Nested overrides must not inadvertently remove neighboring keys.
+## related docs
 
-## validation and security
-
-- **Fail-fast**: Invalid configurations prevent the application from starting.
-- **Coercion**: Types are coerced once during the bootstrap phase.
-- **Secrets**: Follow the standard precedence model but are never included in logs or error messages.
-
-## usage recommendations
-
-Use `ConfigService` for general application configuration. Keep env-to-parameter translation at the application boundary, and prefer typed configuration providers for integrations rather than letting packages read env directly.
-
-## reload behavior
-
-`@konekti/config` keeps reload explicit.
-
-- `loadConfig()` still resolves one validated snapshot during bootstrap.
-- `createConfigReloader()` is the opt-in path for watching and reloading env-backed config.
-- Reload support is config-specific; it does not imply general code hot reload.
-
-When `@konekti/runtime` uses `watch: true`, it can subscribe to `createConfigReloader()` and apply validated snapshots to the existing `ConfigService` instance without rebuilding the whole application shell.
-
-Runtime only applies snapshots that have already passed config validation. If runtime-side reload handling fails, the previous snapshot remains active.
+- [Architecture Overview](./architecture-overview.md)
+- [Dev Reload Architecture](./dev-reload-architecture.md)
+- [Lifecycle and Shutdown](./lifecycle-and-shutdown.md)
+- [Config Package README](../../packages/config/README.md)

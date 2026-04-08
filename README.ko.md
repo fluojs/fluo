@@ -1,137 +1,91 @@
-# konekti
+# Konekti
 
-<p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p align="center">
+  <strong>표준 우선(Standard-First) TypeScript 백엔드 프레임워크</strong>
+</p>
 
-Konekti는 **TC39 표준 데코레이터**를 전면 사용하는 TypeScript 백엔드 프레임워크로, NestJS의 레거시 데코레이터 경로와 명확히 구분됩니다.
+<p align="center">
+  <a href="./README.md">English</a> | <strong>한국어</strong>
+</p>
 
-## 왜 표준 데코레이터인가?
+Konekti는 **TC39 표준 데코레이터**를 기반으로 처음부터 다시 설계된 현대적인 TypeScript 백엔드 프레임워크입니다. 레거시 데코레이터 기반 프레임워크에 대한 고성능, 명시적, 그리고 메타데이터가 필요 없는 대안을 제공합니다.
 
-Konekti는 TypeScript의 현재 표준 데코레이터 모델을 기준으로 동작하므로, 스타터 앱에서 레거시 컴파일러 동작을 요구하지 않습니다.
+## 왜 Konekti인가요?
 
-- `experimentalDecorators`: 레거시(표준 이전) 데코레이터 동작을 활성화하는 플래그입니다.
-- `emitDecoratorMetadata`: 리플렉션 기반 주입에 쓰이는 런타임 타입 메타데이터를 생성하는 플래그입니다.
-- NestJS: 암묵적 생성자 주입을 위해 레거시 데코레이터 + 메타데이터 생성이 필요합니다.
-- Konekti: 토큰 기반 명시적 주입을 사용하므로 메타데이터 생성에 의존하지 않습니다.
+NestJS와 같은 대부분의 TypeScript 프레임워크는 JavaScript 언어의 발전 방향과 동떨어진 `experimentalDecorators` 및 `emitDecoratorMetadata` 플래그에 의존하는 과거에 머물러 있습니다. Konekti는 기술 생태계를 미래로 이끕니다.
 
-즉, 프로젝트 `tsconfig.json`에서 표준 TypeScript 기본값을 유지하고 레거시 데코레이터 플래그를 피할 수 있습니다.
+- **🚀 마법 없는 고성능**: 무거운 리플렉션 라이브러리나 숨겨진 메타데이터 생성이 없습니다. Konekti는 가볍고 빠르며, 하드웨어에 가까운 성능을 유지합니다.
+- **🛡️ 암묵적 대신 명시적**: 의존성 주입(DI)이 투명하고 감사 가능합니다. 컴파일러가 생성한 불투명한 블롭이 아니라, 코드에서 직접 의존성 그래프를 확인할 수 있습니다.
+- **🌍 어디서나 실행**: 통합된 런타임 파사드(Facade)를 기반으로 구축되었습니다. 로직 변경 없이 Node.js의 Fastify에서 Bun, Deno, 또는 Cloudflare Workers로 전환하세요.
+- **✨ 미래 지향적**: 현대적인 TypeScript 시대를 위해 설계되었습니다. 레거시 컴파일러 동작과 싸우지 않고 가장 강력한 타입 안정성 기능을 활용하세요.
 
-## TypeScript-first, 검증 가능한 차이
+## 개발자 경험
 
-Konekti의 TypeScript-first는 마케팅 문구가 아니라, 레거시 데코레이터 플래그 불필요성과 명시적 DI라는 검증 가능한 동작 차이를 뜻합니다.
-
-### `tsconfig.json` 비교
-
-NestJS식 레거시 데코레이터 설정:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  }
-}
-```
-
-Konekti 표준 데코레이터 설정:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": false
-  }
-}
-```
-
-Konekti 앱에서는 `experimentalDecorators`를 아예 생략해도 됩니다.
-
-### DI 스타일 비교
-
-NestJS 암묵적 메타데이터 주입:
+조직화 능력은 NestJS처럼 강력하면서도, 명시성은 Go 언어처럼 느껴지는 프레임워크를 상상해 보세요.
 
 ```ts
-@Injectable()
+import { Module, Inject } from '@konekti/core';
+import { UsersRepository } from './users.repository';
+
+@Inject([UsersRepository])
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }
+
+@Module({
+  providers: [UsersService, UsersRepository],
+})
+export class UsersModule {}
 ```
 
-Konekti class-first 명시적 주입:
-
-```ts
-@Inject([UsersRepository])
-class UsersService {
-  constructor(private readonly repo: UsersRepository) {}
-}
-```
-
-구체 클래스가 있는 의존성은 클래스를 토큰으로 바로 사용합니다. 인터페이스 전용 바인딩이나 config/runtime seam에는 symbol도 계속 유효합니다:
-
-```ts
-const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
-
-@Inject([USERS_REPOSITORY])
-class UsersService {
-  constructor(private readonly repo: UsersRepository) {}
-}
-```
+*레거시 플래그가 필요 없습니다. 오직 표준 TypeScript만 사용합니다.*
 
 ## 빠른 시작
 
-처음 실행하는 표준 경로는 다음과 같습니다: CLI 설치 -> `konekti new` -> 새 앱 디렉터리로 이동 -> `pnpm dev`.
+CLI를 사용하는 것이 Konekti를 경험하는 가장 빠른 방법입니다.
 
-```sh
+```bash
+# CLI 설치
 pnpm add -g @konekti/cli
-konekti new starter-app
-cd starter-app
+
+# 프로젝트 생성
+konekti new my-backend
+cd my-backend
+
+# 엔진 가동
 pnpm dev
 ```
 
-생성 직후 바로 얻는 것:
+생성된 스타터 템플릿에는 바로 프로덕션에 투입 가능한 Fastify 설정, 내장된 헬스 체크, 그리고 확장이 용이한 디렉터리 구조가 포함되어 있습니다.
 
-- adapter-first Fastify 부트스트랩 (`src/main.ts`)
-- 기본 상태 확인 엔드포인트 (`/health`, `/ready`)
-- 스타터 예제 라우트 (`/health-info/`)
-- 즉시 실행 가능한 `dev`, `build`, `typecheck`, `test` 스크립트
+## 모듈형 생태계
 
-이 스타터 경로는 기본 Node.js + Fastify 온보딩 경로이며, 런타임 전체 이야기를 대표하지는 않습니다. 공식 런타임/패키지 매트릭스는 `docs/reference/package-surface.ko.md`를 기준으로 보고, 런타임별 시작 세부사항은 raw Node HTTP용 `@konekti/platform-nodejs`를 포함한 출판된 `@konekti/platform-*` 어댑터 README가 계속 소유합니다.
+Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 모듈들의 집합입니다.
 
-생성된 `dev` 스크립트는 코드 변경에 대해 watch 기반 프로세스 재시작을 사용합니다. Konekti의 제한된 in-process reload 경로는 일반 코드 HMR이 아니라, 검증된 config snapshot에만 적용됩니다.
+| 카테고리 | 패키지 |
+| :--- | :--- |
+| **런타임** | [Fastify](./packages/platform-fastify), [Node.js](./packages/platform-nodejs), [Bun](./packages/platform-bun), [Deno](./packages/platform-deno), [Workers](./packages/platform-cloudflare-workers) |
+| **데이터베이스** | [Prisma](./packages/prisma), [Drizzle](./packages/drizzle), [Mongoose](./packages/mongoose) |
+| **API/통신** | [HTTP](./packages/http), [GraphQL](./packages/graphql), [OpenAPI](./packages/openapi), [WebSockets](./packages/websockets), [Socket.IO](./packages/socket.io) |
+| **로직** | [DI](./packages/di), [CQRS](./packages/cqrs), [Validation](./packages/validation), [Serialization](./packages/serialization), [Config](./packages/config) |
+| **운영** | [Metrics](./packages/metrics), [Health (Terminus)](./packages/terminus), [Redis](./packages/redis), [Queue](./packages/queue) |
 
-## Konekti가 다른 이유
+## 이어서 읽기
 
-- **표준 데코레이터 중심**: `"experimentalDecorators": true`와 `emitDecoratorMetadata`에 의존하지 않음
-- **리플렉션 매직 없는 DI**: 토큰 기반으로 의존성을 명시해 읽기와 검증이 쉬움
-- **패키지 경계가 명확한 확장**: auth, OpenAPI, metrics, queue, microservices, Redis, Prisma, Drizzle 등을 필요한 만큼 조합
-- **CLI 우선 온보딩**: 생성 -> 개발 -> 검증 흐름이 일관됨
+- 📖 **[문서 포털](./docs/README.ko.md)**: 아키텍처, DI, 패턴에 대한 심층 문서.
+- 🚀 **[시작하기](./docs/getting-started/quick-start.ko.md)**: Konekti와 함께하는 첫 15분.
+- 💡 **[예제 앱](./examples/README.ko.md)**: 최소 설정부터 복잡한 RealWorld API까지.
+- 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `konekti` 명령어 마스터하기.
 
-## 시작 경로
+## 우리의 철학
 
-- `docs/getting-started/quick-start.ko.md` - install -> new -> dev 표준 경로
-- `docs/getting-started/first-feature-path.ko.md` - 스타터 앱에서 첫 기능까지 가는 공식 다음 단계
-- `docs/README.ko.md` - 첫 실행 후 이어서 읽는 문서 맵
-- `examples/README.ko.md` - 공식 runnable example과 권장 읽기 순서
-- `examples/minimal/` - 가장 작은 실행 가능 Konekti 앱
-- `examples/realworld-api/` - 검증과 CRUD를 포함하는 다중 모듈 앱
-- `examples/auth-jwt-passport/` - JWT 발급과 passport 기반 보호 라우트 예제
-- `examples/ops-metrics-terminus/` - metrics, health, readiness 예제
-- `docs/concepts/architecture-overview.ko.md` - 아키텍처/패키지 경계
-- `docs/concepts/dev-reload-architecture.ko.md` - 개발 중 재시작과 config reload 책임 경계
-- `docs/reference/package-surface.ko.md` - 현재 공개 패키지 표면과 표준 런타임/패키지 매트릭스
-- `docs/reference/package-chooser.ko.md` - 작업 기준 패키지 선택 가이드
-- `packages/platform-nodejs/README.ko.md` - 공식 raw Node.js 런타임 시작 경로
-- `packages/platform-bun/README.ko.md` - 공식 Bun 런타임 시작 경로
-- `packages/platform-deno/README.ko.md` - 공식 Deno 런타임 시작 경로
-- `packages/platform-cloudflare-workers/README.ko.md` - 공식 Cloudflare Workers 런타임 시작 경로
+우리는 **동작 계약(Behavioral Contracts)**의 힘을 믿습니다. 이 저장소의 모든 패키지는 엄격한 안정성 규칙을 따르며, 사용 중인 런타임에 관계없이 백엔드가 예상한 대로 정확하게 동작하도록 보장합니다.
 
-패키지별 API 상세는 `packages/*/README.ko.md`를 각 패키지의 단일 출처로 참고하세요.
+- [릴리스 거버넌스](./docs/operations/release-governance.ko.md)
+- [동작 계약 정책](./docs/operations/behavioral-contract-policy.ko.md)
+- [기여하기](./CONTRIBUTING.md)
 
-## 릴리스 히스토리
-
-- `CHANGELOG.md`
-- `https://github.com/konektijs/konekti/releases`
-
-## 기여 가이드
-
-- 패키지 간 계약이 바뀌면 `docs/`를 업데이트
-- 패키지 API가 바뀌면 해당 `packages/*/README*.md`를 업데이트
-- 향후 작업은 레포 내 상태 문서 대신 GitHub Issue로 관리
+---
+<p align="center">
+  TypeScript 커뮤니티를 위해 ❤️로 만들었습니다.
+</p>

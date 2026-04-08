@@ -4,294 +4,143 @@
 
 CQRS primitives for Konekti applications with bootstrap-time handler discovery, command/query dispatch, and event publishing delegation through `@konekti/event-bus`.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+  - [Saga Process Managers](#saga-process-managers)
+  - [Compatibility Tokens](#compatibility-tokens)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
+
 ## Installation
 
 ```bash
 npm install @konekti/cqrs
 ```
 
+## When to Use
+
+- When you want to decouple the "intent" (Commands/Queries) from the "execution" (Handlers).
+- When implementing complex business logic that requires clear separation between write models and read models.
+- When orchestrating multi-step processes (Sagas) triggered by domain events.
+- When you need a centralized bus for commands, queries, and events within a single application.
+
 ## Quick Start
+
+Register the `CqrsModule` and define your first command and handler.
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
 import {
-  CommandBus,
-  CommandHandler,
-  CommandBusLifecycleService,
-  CqrsEventBus,
-  CqrsEventBusService,
   CqrsModule,
-  EventHandler,
+  CommandHandler,
   ICommand,
   ICommandHandler,
-  IEvent,
-  IEventHandler,
-  IQuery,
-  IQueryHandler,
-  QueryBus,
-  QueryBusLifecycleService,
-  QueryHandler,
+  CommandBusLifecycleService,
 } from '@konekti/cqrs';
 
+// 1. Define a Command
 class CreateUserCommand implements ICommand {
   constructor(public readonly name: string) {}
 }
 
-class GetUserCountQuery implements IQuery<number> {
-  readonly __queryResultType__?: number;
-}
-
-class UserCreatedEvent implements IEvent {
-  constructor(public readonly name: string) {}
-}
-
-class UserStore {
-  count = 0;
-}
-
-@Inject([UserStore])
+// 2. Implement the Handler
 @CommandHandler(CreateUserCommand)
-class CreateUserHandler implements ICommandHandler<CreateUserCommand, number> {
-  constructor(private readonly store: UserStore) {}
-
-  execute(command: CreateUserCommand): number {
-    void command;
-    this.store.count += 1;
-    return this.store.count;
+class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+  async execute(command: CreateUserCommand): Promise<string> {
+    console.log(`Creating user: ${command.name}`);
+    return 'user-id-123';
   }
 }
 
-@Inject([UserStore])
-@QueryHandler(GetUserCountQuery)
-class GetUserCountHandler implements IQueryHandler<GetUserCountQuery, number> {
-  constructor(private readonly store: UserStore) {}
-
-  execute(_query: GetUserCountQuery): number {
-    return this.store.count;
-  }
-}
-
-@EventHandler(UserCreatedEvent)
-class AuditLogProjection implements IEventHandler<UserCreatedEvent> {
-  handle(event: UserCreatedEvent): void {
-    console.log('user created', event.name);
-  }
-}
-
-@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])
-class UserService {
-  constructor(
-    private readonly commandBus: CommandBus,
-    private readonly queryBus: QueryBus,
-    private readonly eventBus: CqrsEventBus,
-  ) {}
-
-  async create(name: string): Promise<number> {
-    const count = await this.commandBus.execute<CreateUserCommand, number>(new CreateUserCommand(name));
-    await this.eventBus.publish(new UserCreatedEvent(name));
-    return count;
-  }
-
-  async getCount(): Promise<number> {
-    return this.queryBus.execute<GetUserCountQuery, number>(new GetUserCountQuery());
-  }
-}
-
-@Module({
-  imports: [
-    CqrsModule.forRoot({
-      commandHandlers: [CreateUserHandler],
-      eventHandlers: [AuditLogProjection],
-      queryHandlers: [GetUserCountHandler],
-    }),
-  ],
-  providers: [UserStore, CreateUserHandler, GetUserCountHandler, AuditLogProjection, UserService],
-})
-export class AppModule {}
-```
-
-Compatibility token alternative for existing codebases:
-
-```typescript
-import { Inject } from '@konekti/core';
-import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from '@konekti/cqrs';
-
-@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
-class LegacyUserService {}
-```
-
-## API
-
-- `CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` - registers global `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, plus compatibility aliases `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS`, and imports `EventBusModule.forRoot()`.
-- `createCqrsProviders()` - returns raw providers for manual composition.
-- `CommandBusLifecycleService` - primary class-first DI entry point for `CommandBus`.
-- `QueryBusLifecycleService` - primary class-first DI entry point for `QueryBus`.
-- `CqrsEventBusService` - primary class-first DI entry point for `CqrsEventBus`.
-- `COMMAND_BUS` - compatibility DI token for `CommandBus` when an explicit token seam is still required.
-- `QUERY_BUS` - compatibility DI token for `QueryBus` when an explicit token seam is still required.
-- `EVENT_BUS` - compatibility CQRS event-bus token for `CqrsEventBus` when an explicit token seam is still required.
-- `ICommand`, `IQuery<TResult>`, `IEvent` - marker interfaces for CQRS message types.
-- `ICommandHandler<TCommand, TResult>`, `IQueryHandler<TQuery, TResult>`, `IEventHandler<TEvent>`, `ISaga<TEvent>` - handler contracts.
-- `@CommandHandler(CommandClass)` - marks a class as a command handler.
-- `@QueryHandler(QueryClass)` - marks a class as a query handler.
-- `@EventHandler(EventClass)` - marks a class with CQRS event-handler metadata.
-- `@Saga(EventClass | EventClass[])` - marks a class-level saga/process-manager for one or more event types.
-- `createCqrsPlatformStatusSnapshot(input)` - maps CQRS event/saga lifecycle dependency and drain visibility into shared platform snapshot fields
-
-### Root barrel public surface governance (0.x)
-
-- **supported**: `CqrsModule.forRoot`, `createCqrsProviders`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, compatibility tokens (`COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS`), CQRS decorators (`@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga`), CQRS marker/handler contracts, and status snapshot helpers.
-- **compatibility-only**: low-level metadata helpers/symbols (`define*Metadata`, `get*Metadata`, `*MetadataSymbol`) remain available for 0.x compatibility but are not recommended for new application code.
-- **internal**: `CQRS_EVENT_BUS` is not part of the public root barrel contract.
-
-### Class-first DI guidance
-
-- Prefer `@Inject([CommandBusLifecycleService, QueryBusLifecycleService, CqrsEventBusService])` for application code.
-- Keep `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS` only for compatibility with existing explicit-token call sites.
-
-### migration notes (0.x)
-
-- `CQRS_EVENT_BUS` has been removed from the public package surface.
-- Prefer `CqrsEventBusService` for new CQRS event-bus DI usage; `EVENT_BUS` remains supported for compatibility.
-- `CommandHandlerNotFoundError` has been removed from the root barrel. Use `CommandHandlerNotFoundException` instead.
-- `QueryHandlerNotFoundError` has been removed from the root barrel. Use `QueryHandlerNotFoundException` instead.
-
-### module option semantics
-
-- `commandHandlers`, `queryHandlers`, `eventHandlers`, and `sagas` are optional convenience arrays.
-- Each array item is added as a provider in the generated CQRS module.
-- Discovery still relies on decorators/compiled modules at bootstrap, so these arrays are an explicit registration path rather than a replacement for decorator metadata.
-- `eventBus` is passed through to `EventBusModule.forRoot(eventBus)`.
-
-## Saga process-manager example
-
-```typescript
-import { Inject, Module } from '@konekti/core';
-import {
-  CommandBus,
-  CommandHandler,
-  CommandBusLifecycleService,
-  CqrsEventBus,
-  CqrsEventBusService,
-  CqrsModule,
-  ICommand,
-  ICommandHandler,
-  IEvent,
-  ISaga,
-  Saga,
-} from '@konekti/cqrs';
-
-class OrderSubmittedEvent implements IEvent {
-  constructor(public readonly orderId: string) {}
-}
-
-class PaymentAuthorizedEvent implements IEvent {
-  constructor(public readonly orderId: string) {}
-}
-
-class InventoryReservedEvent implements IEvent {
-  constructor(public readonly orderId: string) {}
-}
-
-class StartPaymentCommand implements ICommand {
-  constructor(public readonly orderId: string) {}
-}
-
-class ReserveInventoryCommand implements ICommand {
-  constructor(public readonly orderId: string) {}
-}
-
-class CompleteOrderCommand implements ICommand {
-  constructor(public readonly orderId: string) {}
-}
-
-@Inject([CqrsEventBusService])
-@CommandHandler(StartPaymentCommand)
-class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
-  constructor(private readonly eventBus: CqrsEventBus) {}
-
-  async execute(command: StartPaymentCommand): Promise<void> {
-    await this.eventBus.publish(new PaymentAuthorizedEvent(command.orderId));
-  }
-}
-
-@Inject([CqrsEventBusService])
-@CommandHandler(ReserveInventoryCommand)
-class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
-  constructor(private readonly eventBus: CqrsEventBus) {}
-
-  async execute(command: ReserveInventoryCommand): Promise<void> {
-    await this.eventBus.publish(new InventoryReservedEvent(command.orderId));
-  }
-}
-
-@CommandHandler(CompleteOrderCommand)
-class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
-  execute(command: CompleteOrderCommand): void {
-    console.log(`order completed: ${command.orderId}`);
-  }
-}
-
+// 3. Use the Command Bus
 @Inject([CommandBusLifecycleService])
-@Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
-class OrderFulfillmentSaga implements ISaga<IEvent> {
-  constructor(private readonly commandBus: CommandBus) {}
+class UserService {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
 
-  async handle(event: IEvent): Promise<void> {
-    if (event instanceof OrderSubmittedEvent) {
-      await this.commandBus.execute(new StartPaymentCommand(event.orderId));
-      return;
-    }
-
-    if (event instanceof PaymentAuthorizedEvent) {
-      await this.commandBus.execute(new ReserveInventoryCommand(event.orderId));
-      return;
-    }
-
-    if (event instanceof InventoryReservedEvent) {
-      await this.commandBus.execute(new CompleteOrderCommand(event.orderId));
-    }
+  async create(name: string) {
+    return this.commandBus.execute(new CreateUserCommand(name));
   }
 }
 
 @Module({
   imports: [CqrsModule.forRoot()],
-  providers: [StartPaymentHandler, ReserveInventoryHandler, CompleteOrderHandler, OrderFulfillmentSaga],
+  providers: [CreateUserHandler, UserService],
 })
-export class AppModule {}
+class AppModule {}
 ```
 
-## Runtime behavior
+## Common Patterns
 
-- Command/query handler discovery runs during `onApplicationBootstrap()` via `COMPILED_MODULES`.
-- Handler instances are pre-resolved from `RUNTIME_CONTAINER` during bootstrap.
-- Exactly one handler must exist per command type and per query type.
-- Duplicate command/query handlers fail fast with typed framework errors.
-- Missing command/query handlers throw typed not-found framework errors on `execute(...)`.
-- `CqrsEventBus.publish()` delegates to the underlying `EVENT_BUS.publish()`.
-- `CqrsEventBus.publish()` also dispatches class-level `@EventHandler()` handlers discovered at bootstrap.
-- Saga discovery runs at bootstrap and only registers singleton `@Saga()` classes.
-- Different saga classes can observe the same event type; duplicate registration of the same saga class is deduplicated.
-- Saga dispatches run through per-saga execution chains, so concurrent `publish()` calls are applied in deterministic order for each saga instance.
-- Unexpected saga failures throw `SagaExecutionError` from `publish()`. Existing `KonektiError` failures are preserved.
-- In-flight saga executions are drained during application shutdown.
-- `CqrsEventBus.publishAll()` calls `publish()` sequentially for each event.
+### Saga Process Managers
 
-## Requirements and boundaries
+Sagas allow you to listen for events and trigger new commands, enabling complex long-running workflows.
 
-- Use standard TC39 decorators only (no legacy decorator mode).
-- Command/query handler classes must be singleton-scoped.
-- Command/query handler classes must implement `execute(...)`.
-- Event handler classes must implement `handle(...)`.
-- Saga classes must be singleton-scoped.
-- Saga classes must implement `handle(...)`.
-- `@EventHandler()` class handlers can coexist with `@konekti/event-bus` method-level `@OnEvent()` handlers.
+```typescript
+import { Inject } from '@konekti/core';
+import { Saga, ISaga, IEvent, CommandBusLifecycleService } from '@konekti/cqrs';
 
-## Platform status snapshot semantics
+class UserCreatedEvent implements IEvent {
+  constructor(public readonly userId: string) {}
+}
 
-Use `createCqrsPlatformStatusSnapshot(...)` (or `CqrsEventBusService#createPlatformStatusSnapshot()`) to expose CQRS event/saga lifecycle state in the shared platform snapshot shape.
+class SendWelcomeEmailCommand implements ICommand {
+  constructor(public readonly userId: string) {}
+}
 
-- `dependencies`: snapshots expose explicit `event-bus.default` dependency edges.
-- `readiness`: discovery/startup and shutdown drain states are surfaced explicitly.
-- `health`: unavailable event/saga pipeline states are reported as unhealthy rather than silent no-op behavior.
-- `details`: includes discovered CQRS event-handler/saga counts and in-flight saga execution count during drain windows.
+@Inject([CommandBusLifecycleService])
+@Saga(UserCreatedEvent)
+class UserSaga implements ISaga<UserCreatedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: UserCreatedEvent): Promise<void> {
+    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId));
+  }
+}
+```
+
+### Compatibility Tokens
+
+For codebases transitioning to class-first DI or requiring explicit symbol tokens, the following are available:
+
+```typescript
+import { Inject } from '@konekti/core';
+import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@konekti/cqrs';
+
+@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+class LegacyService {
+  constructor(commandBus, queryBus, eventBus) {}
+}
+```
+
+## Public API Overview
+
+### Modules & Providers
+- `CqrsModule.forRoot(options)`: Main entry point. Registers buses and starts discovery.
+- `CommandBusLifecycleService`: Primary service for executing commands.
+- `QueryBusLifecycleService`: Primary service for executing queries.
+- `CqrsEventBusService`: Primary service for publishing events.
+
+### Decorators
+- `@CommandHandler(Command)`: Associates a class with a Command.
+- `@QueryHandler(Query)`: Associates a class with a Query.
+- `@EventHandler(Event)`: Associates a class with an Event.
+- `@Saga(Event | Event[])`: Marks a class as a Saga listener.
+
+### Interfaces
+- `ICommand`, `IQuery<T>`, `IEvent`: Marker interfaces for messages.
+- `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: Handler contracts.
+
+## Related Packages
+
+- `@konekti/event-bus`: Underlying event distribution used by `CqrsEventBusService`.
+- `@konekti/core`: Required for `@Module` and `@Inject` decorators.
+
+## Example Sources
+
+- `packages/cqrs/src/module.test.ts`: Module registration and basic bus usage.
+- `packages/cqrs/src/buses/saga-bus.test.ts`: Complex saga workflow examples.

@@ -1,147 +1,41 @@
-# auth and jwt
+# Authentication and JWT
 
 <p><strong><kbd>English</kbd></strong> <a href="./auth-and-jwt.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide explains how authentication and JWT support are distributed across Konekti packages.
+Authentication in Konekti is built on a "strategy-agnostic" execution model. Instead of hardcoding auth logic into your routes, Konekti separates identity verification from route protection, allowing your application to scale across multiple authentication methods and runtimes (Node.js, Bun, Deno) without changing your business logic.
 
-## package boundaries
+## Why Konekti's Approach?
 
-- **`@konekti/jwt`**: Core JWT contracts, signing, verification, claim validation, and principal normalization.
-- **`@konekti/passport`**: Strategy registration, generic authentication guard wiring, and strategy adapter contracts.
-- **`@konekti/http`**: Guard orchestration, `RequestContext` management, and runtime execution.
-- **`@konekti/config`**: Management of key material, issuers, and audiences.
+- **Standard Decorators**: Use standard TC39 decorators like `@UseAuth()` and `@RequireScopes()` for a clean, metadata-driven security posture.
+- **Principal Normalization**: Whether you use JWT, Session Cookies, or API Keys, your application always interacts with a consistent `principal` object.
+- **Multi-Runtime Safety**: The auth core is transport-agnostic, making it safe for HTTP, WebSockets, and even CLI-driven execution.
+- **Explicit Scopes**: Built-in support for scope-based authorization (RBAC/Scopes) directly at the route level.
 
-## responsibility split
+## Responsibility Split
 
-- **Token extraction**: Strategy-specific adapter logic.
-- **Signature and claim verification**: Handled by `JwtVerifier`.
-- **Principal normalization**: Handled by `JwtVerifier`.
-- **Route-level auth requirements**: Managed via passport metadata and authentication guards.
-- **Context attachment**: Attaching the verified principal to the `RequestContext`.
-- **Error mapping**: Handled by the passport and HTTP exception layers.
+- **`@konekti/jwt` (The Core)**: Handles the "how" of tokens. It signs and verifies JWTs, manages claim normalization (e.g., merging `scope` and `scopes` claims), and handles refresh token rotation with replay detection.
+- **`@konekti/passport` (The Bridge)**: Handles the "who". It provides the `AuthStrategy` interface and a bridge to existing Passport.js strategies, routing them into the Konekti request context.
+- **`@konekti/http` (The Orchestrator)**: Handles the "when". It executes the `AuthGuard` during the HTTP lifecycle, extracts credentials (headers/cookies), and populates `RequestContext.principal`.
 
-## request flow
+## The Request Journey
 
-A typical authenticated request follows this path:
+1.  **Ingress**: A request hits a route decorated with `@UseAuth('jwt')`.
+2.  **Guard Trigger**: The `AuthGuard` identifies the 'jwt' strategy from the DI container.
+3.  **Extraction**: The strategy extracts the Bearer token from the `Authorization` header.
+4.  **Verification**: `@konekti/jwt` verifies the signature, issuer, and audience using keys managed by `@konekti/config`.
+5.  **Normalization**: Raw claims are mapped to a stable `JwtPrincipal` object.
+6.  **Authorization**: If `@RequireScopes('admin')` is present, the guard verifies the principal has the required scope.
+7.  **Injection**: The verified principal is attached to the context, accessible via `ctx.principal` in your controller.
 
-1.  **HTTP request** arrives.
-2.  **Auth guard** identifies the required strategy.
-3.  **Auth strategy** verifies the credentials (e.g., JWT).
-4.  **Principal** is extracted and normalized.
-5.  **`RequestContext.principal`** is populated.
-6.  **Controller/Service** executes with the authenticated principal.
+## Practical Framing: Refresh Token Rotation
 
-## core principles
+Konekti provides a built-in `RefreshTokenService` that implements **One-Time-Use Rotation**. When a user refreshes their session:
+- The old refresh token is invalidated.
+- A new access/refresh token pair is issued.
+- If an old refresh token is reused (Replay Attack), the entire token family can be revoked automatically, protecting your users from stolen credentials.
 
-- JWT is a specific strategy, not the entire authentication model.
-- `@konekti/passport` remains strategy-agnostic.
-- `@konekti/jwt` remains transport-agnostic.
-- Application code should interact with normalized principals instead of raw payloads.
+## Next Steps
 
-## jwt support scope
-
-### algorithms
-
-- **HMAC**: `HS256`, `HS384`, `HS512`.
-- **Asymmetric**: `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`.
-
-### key management
-
-For asymmetric algorithms, provide `privateKey` and `publicKey` (PEM strings or `KeyObject`) in `JwtVerifierOptions`. Key rotation is supported via the `keys` array, using the `kid` (Key ID) header.
-
-## standard auth pattern
-
-The recommended authentication patterns are:
-
-1. **Bearer token authentication** via the `Authorization: Bearer <token>` header
-2. **Cookie authentication** via HttpOnly secure cookies (official preset)
-
-### official cookie auth preset
-
-`@konekti/passport` now provides an official HttpOnly cookie auth preset for JWT-based authentication:
-
-```typescript
-import { Module } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
-import {
-  createPassportProviders,
-  createCookieAuthPreset,
-} from '@konekti/passport';
-import { JwtModule } from '@konekti/jwt';
-
-@Module({
-  imports: [
-    JwtModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        algorithms: ['HS256'],
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        issuer: config.getOrThrow<string>('JWT_ISSUER'),
-        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
-        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
-      }),
-    }),
-  ],
-  providers: [
-    ...createCookieAuthPreset({
-      cookieAuth: {
-        accessTokenCookieName: 'access_token',
-        refreshTokenCookieName: 'refresh_token',
-        requireAccessToken: true,
-      },
-      cookieManager: {
-        cookieOptions: {
-          secure: true,
-          sameSite: 'strict',
-          path: '/',
-        },
-      },
-    }).providers,
-    ...createPassportProviders(
-      { defaultStrategy: 'cookie' },
-      [createCookieAuthPreset().strategy],
-    ),
-  ],
-})
-export class AuthModule {}
-```
-
-> Config-first: resolve env-backed secrets at the application boundary and pass typed options/providers into auth modules. See `./config-and-environments.md`.
-
-The preset includes:
-- `CookieAuthStrategy`: Extracts JWT from HttpOnly cookies
-- `CookieManager`: Utilities for setting/clearing auth cookies
-- Secure defaults: `HttpOnly: true`, `Secure: true`, `SameSite: strict`
-
-See `@konekti/passport` documentation for full cookie auth lifecycle details.
-
-### application-level policies
-
-The following areas remain application-specific:
-
-- Login endpoint implementation (credential validation)
-- User session storage (if needed beyond JWT)
-- Cookie domain and path customization per route
-- Multi-tenant cookie isolation
-- Cookie consent compliance
-
-### framework-level refresh token lifecycle
-
-`@konekti/passport` provides framework-level primitives for refresh token operations via `RefreshTokenService`:
-
-- **Issue**: Create new refresh tokens for subjects.
-- **Rotate**: Exchange refresh tokens for new access + refresh tokens with replay detection.
-- **Revoke**: Invalidate specific tokens or all tokens for a subject (logout).
-
-The `RefreshTokenStrategy` extracts refresh tokens from request body (`refreshToken`), `Authorization: Bearer` header, or a custom `x-refresh-token` header. The framework handles header shape normalization (string or string array) internally.
-
-Refresh token rotation is configurable:
-
-- **`rotation: true`** — refresh exchanges are one-time-use and return a newly issued refresh token in the same family. Replay detection is active in this mode.
-- **`rotation: false`** — refresh exchanges return a new access token but keep the same refresh token string until it expires or is revoked. This mode trades stronger replay protection for reusable refresh tokens and should be chosen deliberately.
-
-## further reading
-
-- **`@konekti/jwt`**: `../../packages/jwt/README.md`
-- **`@konekti/passport`**: `../../packages/passport/README.md`
-- **`@konekti/http`**: `../../packages/http/README.md`
+- **Quick Start**: issuance and verification in the [Auth JWT Passport Example](../../examples/auth-jwt-passport/README.md).
+- **Real-World**: See a complete login flow in the [RealWorld API Example](../../examples/realworld-api/README.md).
+- **Deep Dive**: Explore the [JWT Package](../../packages/jwt/README.md) and [Passport Package](../../packages/passport/README.md).

@@ -2,8 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Konekti를 위한 Redis 기반 분산 작업 처리 패키지입니다. 데코레이터 기반의 워커 탐색, 자동 작업 직렬화, 그리고 수명 주기 관리 기능을 제공합니다.
 
-Konekti 애플리케이션을 위한 Redis 기반 백그라운드 작업 처리 패키지입니다. 데코레이터 기반으로 worker를 찾아서 lifecycle에 맞춰 시작하고 종료합니다.
+## 목차
+
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [일반적인 패턴](#일반적인-패턴)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -11,98 +20,96 @@ Konekti 애플리케이션을 위한 Redis 기반 백그라운드 작업 처리 
 npm install @konekti/queue @konekti/redis
 ```
 
+## 사용 시점
+
+- 실행 시간이 길거나 리소스를 많이 사용하는 작업을 백그라운드에서 처리해야 할 때.
+- 이메일 발송, 이미지 처리 등 비용이 큰 작업을 요청-응답 주기와 분리하고 싶을 때.
+- 재시도 로직, 백오프(Backoff), 데드 레터(Dead-letter) 처리가 포함된 분산 큐가 필요할 때.
+
 ## 빠른 시작
 
+### 1. 작업(Job) 및 워커(Worker) 정의
+
+작업 클래스를 만들고, 이를 처리할 클래스에 `@QueueWorker` 데코레이터를 붙입니다.
+
 ```typescript
-import { Inject, Module } from '@konekti/core';
-import { QueueModule, Queue, QueueLifecycleService, QueueWorker } from '@konekti/queue';
+import { QueueWorker } from '@konekti/queue';
+
+export class ProcessOrderJob {
+  constructor(public readonly orderId: string) {}
+}
+
+@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: 5000 })
+export class OrderWorker {
+  async handle(job: ProcessOrderJob) {
+    console.log(`주문 처리 중: ${job.orderId}`);
+    // 처리 로직 작성
+  }
+}
+```
+
+### 2. 모듈 등록 및 작업 추가
+
+`QueueModule`을 등록하고 `QueueLifecycleService`를 주입받아 작업을 큐에 추가합니다.
+
+```typescript
+import { Module, Inject } from '@konekti/core';
+import { QueueModule, QueueLifecycleService } from '@konekti/queue';
 import { RedisModule } from '@konekti/redis';
-
-class SendWelcomeEmailJob {
-  constructor(public readonly userId: string) {}
-}
-
-@QueueWorker(SendWelcomeEmailJob, { attempts: 3, concurrency: 5 })
-class SendWelcomeEmailWorker {
-  async handle(job: SendWelcomeEmailJob) {
-    // 작업 처리
-  }
-}
-
-@Inject([QueueLifecycleService])
-class UserService {
-  constructor(private readonly queue: Queue) {}
-
-  async registerUser(userId: string) {
-    await this.queue.enqueue(new SendWelcomeEmailJob(userId));
-  }
-}
 
 @Module({
   imports: [
-    RedisModule.forRoot({ host: '127.0.0.1', port: 6379 }),
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     QueueModule.forRoot(),
   ],
-  providers: [SendWelcomeEmailWorker, UserService],
+  providers: [OrderWorker],
 })
 export class AppModule {}
-```
 
-기존 코드베이스를 위한 호환 토큰 대안:
+export class OrderService {
+  @Inject([QueueLifecycleService])
+  private readonly queue: QueueLifecycleService;
 
-```typescript
-import { Inject } from '@konekti/core';
-import { QUEUE, type Queue } from '@konekti/queue';
-
-@Inject([QUEUE])
-class LegacyUserService {
-  constructor(private readonly queue: Queue) {}
+  async placeOrder(id: string) {
+    await this.queue.enqueue(new ProcessOrderJob(id));
+  }
 }
 ```
 
-## API
+## 일반적인 패턴
 
-- `QueueModule.forRoot(options?)` - 글로벌 `QueueLifecycleService`와 호환 alias `QUEUE`를 등록합니다
-- `createQueueProviders(options?)` - 수동 조합을 위한 raw provider 목록을 반환합니다
-- `QueueLifecycleService` - queue enqueue를 위한 기본 class-first DI 진입점입니다
-- `QUEUE` - queue enqueue를 위한 호환 DI 토큰입니다
-- `Queue` - `enqueue(job)`를 제공하는 인터페이스입니다
-- `@QueueWorker(JobClass, options?)` - 특정 job type을 처리할 singleton worker 클래스를 표시합니다
-- `createQueuePlatformStatusSnapshot(input)` - queue lifecycle/dependency/drain 신호를 공통 platform snapshot 필드로 매핑합니다
+### 분산 재시도 (Distributed Retries)
 
-### 루트 배럴 공개 표면 거버넌스 (0.x)
+워커 설정에서 최대 시도 횟수와 백오프 전략을 지정하여 일시적인 실패를 자동으로 처리할 수 있습니다.
 
-- **supported**: `QueueModule.forRoot`, `createQueueProviders`, `QueueLifecycleService`, 호환 토큰 `QUEUE`, `Queue`, `@QueueWorker`, queue option/worker 공개 타입, status snapshot helper를 지원합니다.
-- **compatibility-only**: 현재 루트 배럴에는 별도 항목이 없습니다. 향후 호환성 shim이 추가되면 릴리스 전에 이 섹션에 명시적으로 문서화되어야 합니다.
-- **internal**: `QUEUE_OPTIONS`는 내부 항목으로 유지되며 루트 배럴 공개 계약에서 의도적으로 제외됩니다.
+```typescript
+@QueueWorker(MyJob, { 
+  attempts: 5, 
+  backoff: { type: 'exponential', delay: 1000 } 
+})
+```
 
-### class-first DI 가이드
+### 데드 레터 처리 (Dead-Letter Handling)
 
-- 애플리케이션 코드에서는 `@Inject([QueueLifecycleService])`를 우선 사용하세요.
-- `QUEUE`는 기존 explicit-token 호출부 호환성을 위한 대안 경로로만 유지됩니다.
+모든 재시도에 실패한 작업은 Redis의 데드 레터 리스트(`konekti:queue:dead-letter:<jobName>`)로 자동 이동되어, 나중에 수동으로 확인하거나 복구할 수 있습니다.
 
-## 런타임 동작
+## 공개 API 개요
 
-- worker 탐색은 `onApplicationBootstrap()`에서 compiled module 전체를 대상으로 실행됩니다
-- singleton provider/controller만 등록되고, non-singleton은 경고 후 제외됩니다
-- job은 JSON payload로 직렬화된 뒤 `handle(job)` 호출 전에 원래 prototype으로 재구성됩니다
-- worker 클래스는 반드시 `handle(job)` 메서드를 구현해야 합니다
-- 각 job class마다 BullMQ queue/worker 쌍이 생성되며, queue 전용 duplicated Redis connection은 내부 구현 세부사항입니다
-- 최종 실패한 job은 `konekti:queue:dead-letter:<jobName>` Redis list key에 기록됩니다
-- shutdown은 idempotent하며 worker를 먼저 중지한 뒤 queue 전용 리소스를 정리합니다
+### 핵심 구성 요소
+- `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
+- `QueueLifecycleService`: 작업을 큐에 추가(`enqueue(job)`)하기 위한 기본 서비스입니다.
+- `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 
-## 요구 사항 및 경계
+### 타입
+- `QueueOptions`: 전역 큐 설정(동시성, 전송률 제한 등)을 위한 타입입니다.
+- `WorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 우선순위 등)을 위한 타입입니다.
 
-- `@konekti/queue`는 `@konekti/redis`가 필요하므로 `QueueModule.forRoot(...)`과 함께 `RedisModule.forRoot(...)`를 등록해야 합니다
-- job payload는 DTO처럼 JSON 직렬화 가능한 형태여야 합니다
-- queue worker는 singleton만 지원하며 `onApplicationBootstrap()` 단계에서 탐색됩니다
-- BullMQ는 내부 구현 세부사항이며, 공개 API는 Konekti 표면만 노출합니다
+## 관련 패키지
 
-## 플랫폼 상태 스냅샷 시맨틱
+- `@konekti/redis`: 작업 데이터 저장을 위한 필수 백엔드 패키지입니다.
+- `@konekti/cron`: 정해진 시간에 반복 실행되어야 하는 백그라운드 작업을 위한 패키지입니다.
 
-`createQueuePlatformStatusSnapshot(...)`(또는 `QueueLifecycleService#createPlatformStatusSnapshot()`)으로 queue 라이프사이클 상태를 공통 platform snapshot 형태로 노출할 수 있습니다.
+## 예제 소스
 
-- `ownership`: queue 리소스는 프레임워크 소유입니다 (`ownsResources: true`, `externallyManaged: false`).
-- `readiness`: worker가 시작된 경우만 `ready`; startup은 `degraded`; shutdown/idle/stopped는 `not-ready`로 표시됩니다.
-- `health`: 런타임/종료 중 dead-letter drain 대기는 `degraded`; 완전 중지는 `unhealthy`로 표시됩니다.
-- `details`: 명시적 의존성 엣지(`redis.default`), worker 탐색/준비 카운트, pending dead-letter drain 카운트를 포함합니다.
+- `packages/queue/src/module.test.ts`: 워커 탐색 및 작업 추가 테스트 예제.
+- `packages/queue/src/public-surface.test.ts`: 공개 API 계약 검증 예제.

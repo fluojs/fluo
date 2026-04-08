@@ -1,49 +1,60 @@
-# 보안 미들웨어 (security middleware)
+# 보안 및 미들웨어 (Security & Middleware)
 
-<p><strong><kbd>English</kbd></strong> <a href="./security-middleware.ko.md"><kbd>한국어</kbd></a></p>
+<p><a href="./security-middleware.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/http`에 구현된 트랜스포트 수준 보안 미들웨어를 설명합니다.
+안전한 백엔드는 겹겹이 쌓인 방어 계층으로 구축됩니다. Konekti는 전송 계층의 보안 미들웨어와 애플리케이션 레벨의 Throttler를 제공하여 일반적인 웹 취약점, 악성 봇, 그리고 자원 고갈로부터 시스템을 보호합니다.
 
-### 관련 문서
+## 왜 Konekti의 보안 미들웨어인가요?
 
-- `./http-runtime.ko.md`
-- `../../packages/http/README.md`
+- **심층 방어 (Defense in Depth)**: 비용이 많이 드는 비즈니스 로직이나 데이터베이스 쿼리가 실행되기 전, 요청의 가장 이른 단계에서 애플리케이션을 보호합니다.
+- **일관된 보호**: CORS, CSP, HSTS 등 보안 헤더를 단일 설정으로 모든 라우트에 전역 적용하여, 취약한 "그림자 엔드포인트(Shadow Endpoints)"가 남지 않도록 보장합니다.
+- **정교한 Throttling**: 광범위한 IP 기반 처리량 제한과 특정 사용자 중심의 제한(예: "시간당 비밀번호 재설정 최대 5회")을 데코레이터를 통해 조합할 수 있습니다.
+- **플랫폼 불가지론 (Platform Agnostic)**: Konekti의 보안 미들웨어는 Fastify, Node.js, Bun, Deno 등 어떤 런타임 환경에서도 동일한 수준의 보호를 제공합니다.
 
-## 미들웨어 제품군
+## 책임 분담
 
-### 속도 제한 (rate limiting)
+- **`@konekti/http` (인프라 보호)**: `createCorsMiddleware`, `RateLimitMiddleware`, 보안 헤더 주입기와 같은 핵심 미들웨어를 포함합니다. 애플리케이션 전체에 대한 기본적인 "방패" 역할을 합니다.
+- **`@konekti/throttler` (애플리케이션 보호)**: 로직 기반의 제한을 위한 정교한 시스템입니다. 데코레이터를 사용하여 특정 메서드를 보호하며, 공유 Redis 인스턴스에 히트 수를 저장할 수 있습니다.
+- **`@konekti/passport` (신원 보호)**: 인증 계층을 관리하여 보안 미들웨어가 익명 트래픽과 인증된 트래픽을 구분할 수 있도록 돕습니다.
 
-`RateLimitMiddleware`는 트랜스포트 수준 보호를 제공합니다:
+## 일반적인 워크플로우
 
-- **가용성**: `@konekti/http`에서 내보내집니다.
-- **인터페이스**: 표준 미들웨어 인터페이스를 구현합니다.
-- **식별**: 요청 식별을 위한 커스텀 리졸버를 지원합니다.
-- **응답**: 제한을 초과하면 `Retry-After` 헤더와 함께 `429 Too Many Requests`를 반환합니다.
-- **저장소**: 기본적으로 프로세스 내 저장소를 사용합니다. 공유 어댑터 없이는 클러스터 환경에서 안전하지 않습니다.
-- **사용법**: 단일 프로세스 보호에 권장됩니다. 분산 시스템의 경우, 에지 또는 인프라 수준에서 공유 제한기를 사용하세요.
+### 1. 전역 전송 계층 보호
+애플리케이션 부트스트랩 시점에 기본적인 보안 설정을 구성합니다.
 
-### 보안 헤더 (security headers)
+```typescript
+const app = await bootstrapNodeApplication(AppModule);
+app.use(createCorsMiddleware({ origin: '*' }));
+app.use(new RateLimitMiddleware({ max: 100, windowMs: 60000 }));
+```
 
-`SecurityHeadersMiddleware`는 보안 중심의 HTTP 헤더를 관리합니다:
+### 2. 메서드 레벨 Throttling
+전역 기준보다 더 엄격한 제한이 필요한 민감한 비즈니스 작업에 Throttler를 사용합니다.
 
-- **가용성**: `@konekti/http`에서 내보내집니다.
-- **동작**: 기본적인 보안 헤더 세트를 작성합니다.
-- **커스터마이징**: 특정 헤더를 덮어쓰거나 비활성화할 수 있습니다.
-- **안전성**: `X-Powered-By`를 절대 포함하지 않습니다.
+```typescript
+@Post('/reset-password')
+@Throttle({ default: { limit: 5, ttl: 3600000 } })
+async resetPassword(@FromBody() dto: ResetDto) {
+  // 로직...
+}
+```
 
-## 기본 보안 헤더
+### 3. 자동 보안 헤더
+Konekti는 모든 응답에 브라우저의 보안 정책을 지시하는 필수 메타데이터를 포함합니다.
+- **Strict-Transport-Security**: HTTPS 강제 사용.
+- **X-Content-Type-Options**: MIME 스니핑 방지.
+- **Content-Security-Policy**: 리소스 로딩 제어.
 
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: SAMEORIGIN`
-- `X-XSS-Protection: 0`
-- `Strict-Transport-Security: max-age=15552000; includeSubDomains`
-- `Content-Security-Policy: default-src 'self'`
-- `Referrer-Policy: strict-origin-when-cross-origin`
+## 주요 경계
 
-## 책임 범위
+- **전송 vs. 애플리케이션**: 
+  - **미들웨어**(전송)는 빠르고 DDoS 공격과 같은 악성 트래픽을 조기에 차단합니다.
+  - **인터셉터/데코레이터**(애플리케이션)는 스마트하며 사용자의 신원과 의도를 이해합니다.
+- **기본적으로 상태 없음 (Stateless)**: HTTP 패키지의 처리량 제한은 메모리 기반(인스턴스별 상태)입니다. 분산 환경에서는 **반드시** Redis 기반의 `@konekti/throttler`를 사용해야 합니다.
+- **"Fail-Fast" 규칙**: 보안 검사는 항상 유효성 검사나 비즈니스 로직보다 먼저 실행됩니다. 제한에 걸린 요청은 서비스 코드에 도달하지 못합니다.
 
-- **위치**: 이 미들웨어들은 HTTP 런타임 패키지 내에 위치합니다.
-- **명시적 활성화**: 보안 미들웨어는 애플리케이션에서 명시적으로 활성화해야 합니다.
-- **라이프사이클**:
-  - 속도 제한은 라우트 디스패치 전에 발생하며 핸들러 로직과는 독립적입니다.
-  - 보안 헤더는 핸들러 결과와 관계없이 모든 응답에 적용됩니다.
+## 다음 단계
+
+- **HTTP 보안**: [HTTP 패키지 README](../../packages/http/README.ko.md)에서 보안 헬퍼들을 살펴보세요.
+- **고급 Throttling**: [Throttler 패키지](../../packages/throttler/README.ko.md)에서 분산 환경의 제한 설정을 확인하세요.
+- **인증**: [인증 및 JWT 가이드](./auth-and-jwt.ko.md)를 통해 보안과 신원을 연결하는 방법을 알아보세요.

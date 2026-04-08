@@ -2,146 +2,74 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Konekti 애플리케이션 테스트를 위한 모듈 구성 및 프로바이더 오버라이드 유틸리티입니다.
 
-Konekti 애플리케이션 테스트를 위한 공식 모듈 구성 및 프로바이더 오버라이드 baseline입니다.
+`@konekti/testing`은 Konekti 애플리케이션 테스트를 위한 공식적인 기준(Baseline)을 제공합니다. 격리된 테스트 환경을 구축하고, 의존성을 가짜(Fake)나 목(Mock)으로 교체하며, 모듈 그래프에서 직접 컴포넌트를 resolve하거나 가상 HTTP 요청을 디스패치하여 통합 테스트를 수행할 수 있게 합니다.
 
-공개 계약은 의도적으로 집중된 범위를 유지합니다. 공식 CLI generated 템플릿은 이제 이 안정적인 표면 위에서 unit, slice/integration, starter e2e 스타일 흐름을 구성합니다.
+## 목차
 
-## 관련 문서
-
-- `../../docs/operations/testing-guide.ko.md`
-- `../../docs/concepts/architecture-overview.ko.md`
-
-## 이 패키지가 하는 일
-
-`@konekti/testing`은 Konekti 모듈 그래프 안에서 격리된 테스트 환경을 구성하는 최소한의 API를 제공합니다. 루트 모듈을 넘기고, 가짜 구현이나 스파이로 교체할 프로바이더를 오버라이드하고, 그래프를 컴파일한 다음, 토큰을 resolve해서 검증하고 싶은 인스턴스를 얻으면 됩니다.
-
-이 패키지는 프로덕션 런타임에 **참여하지 않습니다** — 테스트 모듈은 테스트 환경에서만 존재합니다. 의도적으로 baseline입니다: 완성된 픽스처 라이브러리가 아니라, 위에 무언가를 쌓을 수 있는 안정적인 기반입니다. 이제 루트 배럴은 모듈/app 테스트에 집중하고, 목/요청 헬퍼/portability harness/conformance harness는 책임별 subpath로 분리됩니다.
-
-## 책임별 공개 엔트리포인트
-
-- 루트 `@konekti/testing`: `createTestingModule(...)`, `createTestApp(...)`, `Test`, 모듈 메타데이터 유틸리티, 공용 testing 타입.
-- `@konekti/testing/mock`: `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)`.
-- `@konekti/testing/http`: `makeRequest(...)`, request-builder 타입, request-context middleware 헬퍼.
-- `@konekti/testing/platform-conformance`: `createPlatformConformanceHarness(...)`.
-- `@konekti/testing/http-adapter-portability`: `createHttpAdapterPortabilityHarness(...)`.
-- `@konekti/testing/web-runtime-adapter-portability`: `createWebRuntimeHttpAdapterPortabilityHarness(...)`.
-- `@konekti/testing/fetch-style-websocket-conformance`: `createFetchStyleWebSocketConformanceHarness(...)`.
-- `@konekti/testing/vitest`: `konektiBabelDecoratorsPlugin()`.
-
-## 마이그레이션 노트
-
-기존에 `@konekti/testing` 루트에서 목, 요청 헬퍼, portability/conformance harness를 가져왔다면, 위 책임별 subpath import로 옮기세요.
-
-### 목 헬퍼 빠른 예시
-
-```typescript
-import { asMock, createDeepMock, createMock, mockToken } from '@konekti/testing/mock';
-import { vi } from 'vitest';
-
-const repo = createMock<UserRepository>({ findById: vi.fn() });
-const mailer = createDeepMock(MailService);
-const typedFn = asMock(vi.fn<(id: string) => Promise<User | null>>());
-const repoProvider = mockToken(USER_REPOSITORY, { findById: vi.fn() });
-```
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 패턴](#주요-패턴)
+  - [오버라이드를 이용한 유닛 테스트](#오버라이드를-이용한-유닛-테스트)
+  - [HTTP 통합 테스트](#http-통합-테스트)
+  - [모킹(Mocking) 유틸리티](#모킹mocking-유틸리티)
+  - [플랫폼 적합성(Conformance)](#플랫폼-적합성conformance)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
 ```bash
-npm install --save-dev @konekti/testing
+pnpm add -D @konekti/testing
 ```
+
+## 사용 시점
+
+- 프로덕션 모듈 트리를 모방하는 테스트 컨테이너를 생성해야 할 때.
+- 실제 서비스(데이터베이스, 메일러, 외부 API 등)를 테스트 더블로 교체하고 싶을 때.
+- 특정 컨트롤러나 서비스를 격리하여 "슬라이스(Slice)" 테스트를 수행해야 할 때.
+- 실제 네트워크 서버를 띄우지 않고 엔드 투 엔드(E2E) 스타일의 HTTP 요청을 실행하고 싶을 때.
 
 ## 빠른 시작
 
-### 기본 테스트 설정
+가장 일반적인 진입점은 `createTestingModule`입니다. 컨테이너를 컴파일하기 전에 플루언트(Fluent) API를 사용하여 오버라이드를 구성합니다.
 
 ```typescript
 import { createTestingModule } from '@konekti/testing';
-import { vi } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { UserService } from '../src/user/user.service';
-import { USER_REPOSITORY } from '../src/user/tokens';
+import { AppModule } from './app.module';
+import { UserService } from './user.service';
 
-describe('UserService', () => {
-  it('사용자를 생성한다', async () => {
-    const fakeRepo = {
-      create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
-      findById: vi.fn(),
-    };
-
-    const module = await createTestingModule({ rootModule: AppModule })
-      .overrideProvider(USER_REPOSITORY, fakeRepo)
-      .compile();
-
-    const service = await module.resolve(UserService);
-
-    const result = await service.createUser({ name: 'Alice' });
-
-    expect(fakeRepo.create).toHaveBeenCalledWith({ name: 'Alice' });
-    expect(result.name).toBe('Alice');
-  });
-});
-```
-
-### 여러 프로바이더 오버라이드
-
-```typescript
 const module = await createTestingModule({ rootModule: AppModule })
-  .overrideProvider(USER_REPOSITORY, fakeUserRepo)
-  .overrideProvider(EMAIL_SERVICE, fakeEmailService)
-  .overrideProvider(CONFIG_TOKEN, { dbUrl: 'sqlite::memory:' })
-  .compile();
-```
-
-### 배치 오버라이드 (`overrideProviders`)
-
-```typescript
-const module = await createTestingModule({ rootModule: AppModule })
-  .overrideProviders([
-    [USER_REPOSITORY, fakeUserRepo],
-    [EMAIL_SERVICE, fakeEmailService],
-    [CONFIG_TOKEN, { dbUrl: 'sqlite::memory:' }],
-  ])
-  .compile();
-```
-
-### 토큰 직접 resolve
-
-```typescript
-// 클래스 참조로 resolve
-const service = await module.resolve(UserService);
-
-// DI 토큰(심볼 또는 문자열)으로 resolve
-const config = await module.resolve(CONFIG_TOKEN);
-```
-
-### 다중 토큰 resolve (`resolveAll`)
-
-```typescript
-const module = await createTestingModule({ rootModule: AppModule }).compile();
-
-const [userService, emailService, config] = await module.resolveAll([
-  UserService,
-  EmailService,
-  CONFIG_TOKEN,
-]);
-```
-
-### 가드/인터셉터/필터 테스트 레시피
-
-```typescript
-const module = await createTestingModule({ rootModule: AppModule })
-  .overrideGuard(AuthGuard)
-  .overrideInterceptor(LoggingInterceptor)
-  .overrideFilter(AppExceptionFilter, {
-    catch() {
-      throw new Error('mapped in test');
-    },
+  .overrideProvider(UserService, {
+    findAll: async () => [{ id: '1', name: 'Test User' }]
   })
   .compile();
+
+const userService = await module.resolve(UserService);
+const users = await userService.findAll();
+
+console.log(users[0].name); // "Test User"
 ```
 
-### `createTestApp()` 기반 HTTP 슬라이스 테스트
+## 주요 패턴
+
+### 오버라이드를 이용한 유닛 테스트
+
+모듈 그래프에 등록된 모든 프로바이더(클래스, 심볼, 또는 문자열 토큰)를 오버라이드할 수 있습니다.
+
+```typescript
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideProvider(DATABASE_CONNECTION, memoryDb)
+  .overrideProvider(ConfigService, testConfig)
+  .compile();
+```
+
+### HTTP 통합 테스트
+
+`createTestApp`을 사용하여 경량화된 애플리케이션 셸을 얻고, `request()` 빌더를 사용하여 가상 HTTP 요청을 디스패치합니다.
 
 ```typescript
 import { createTestApp } from '@konekti/testing';
@@ -149,393 +77,56 @@ import { createTestApp } from '@konekti/testing';
 const app = await createTestApp({ rootModule: AppModule });
 
 const response = await app
-  .request('GET', '/users/me')
-  .principal({ subject: 'user-1', roles: ['member'] })
+  .request('GET', '/users/1')
+  .header('Authorization', 'Bearer token')
   .send();
 
 expect(response.status).toBe(200);
+expect(response.body.id).toBe('1');
 
 await app.close();
 ```
 
-### GraphQL 요청 흐름 테스트 패턴
+### 모킹 유틸리티 (`@konekti/testing/mock`)
 
-GraphQL 모듈은 `/graphql` 요청 단위 검증을 권장합니다(`packages/graphql/src/module.test.ts` 참고).
-
-```typescript
-const app = await createTestApp({ rootModule: AppModule });
-
-const response = await app
-  .request('POST', '/graphql')
-  .header('content-type', 'application/json')
-  .body({ query: '{ echo(value: "hello") }' })
-  .send();
-
-expect(response.status).toBe(200);
-
-await app.close();
-```
-
-### Prisma / Drizzle / Redis 테스트 패턴
-
-영속성/캐시 모듈은 실제 외부 핸들만 오버라이드하고 모듈 그래프는 그대로 유지하는 방식을 권장합니다.
-
-- Prisma: `PRISMA_CLIENT` 오버라이드
-- Drizzle: `DRIZZLE_DATABASE`(필요 시 `DRIZZLE_DISPOSE`) 오버라이드
-- Redis: `REDIS_CLIENT` 또는 `RedisService` 오버라이드
-
-### OpenAPI 문서 검증 패턴
-
-`/openapi.json`은 스냅샷보다 안정적인 구조 단언을 우선 권장합니다(`packages/openapi/src/openapi-module.test.ts` 참고).
+Konekti는 타입 안전한 목(Mock) 및 딥 목(Deep Mock)을 생성할 수 있는 헬퍼를 제공합니다 (Vitest/Jest 호환).
 
 ```typescript
-const app = await createTestApp({ rootModule: AppModule });
-const response = await app.request('GET', '/openapi.json').send();
+import { createMock, createDeepMock } from '@konekti/testing/mock';
 
-expect(response.status).toBe(200);
-expect(response.body).toEqual(
-  expect.objectContaining({
-    openapi: '3.1.0',
-    paths: expect.any(Object),
-  }),
-);
-```
-
-### Vitest 데코레이터 플러그인 (`@konekti/testing/vitest`)
-
-스타터 프로젝트의 `vitest.config.ts`는 다음 subpath export를 사용합니다.
-
-```ts
-import { defineConfig } from 'vitest/config';
-import { konektiBabelDecoratorsPlugin } from '@konekti/testing/vitest';
-
-export default defineConfig({
-  plugins: [konektiBabelDecoratorsPlugin()],
-});
-```
-
-### 플랫폼 conformance test kit
-
-공식 플랫폼-지향 패키지를 작성할 때는 `createPlatformConformanceHarness(...)`로 공유 라이프사이클/진단/스냅샷 계약을 고정하세요.
-
-```ts
-import { createPlatformConformanceHarness } from '@konekti/testing/platform-conformance';
-
-const harness = createPlatformConformanceHarness({
-  createComponent: () => createQueuePlatformComponent(),
-  captureValidationSideEffects: (component) => ({
-    ownership: component.snapshot().ownership,
-  }),
-  diagnostics: {
-    expectedCodes: ['QUEUE_DEPENDENCY_NOT_READY'],
-  },
-  scenarios: {
-    degraded: {
-      name: 'degraded',
-      createComponent: () => createQueuePlatformComponent({ mode: 'degraded' }),
-      enterState: async () => undefined,
-      expectedState: 'degraded',
-    },
-    failed: {
-      name: 'failed',
-      createComponent: () => createQueuePlatformComponent({ mode: 'failed' }),
-      enterState: async () => undefined,
-      expectedState: 'failed',
-    },
-  },
+const mockSvc = createMock<AuthService>({
+  validate: vi.fn().mockResolvedValue(true)
 });
 
-await harness.assertAll();
+const deepMock = createDeepMock(DatabaseService);
 ```
 
-이 test kit는 다음 invariant를 강제합니다.
-
-- `validate()`가 `component.state()`를 전이시키지 않음
-- state 외의 숨은 장수명 side effect는 `captureValidationSideEffects`를 제공한 경우에만 검증됨
-- `start()`/`stop()`이 결정적/멱등임
-- `snapshot()`을 degraded/failed 상태에서도 호출 가능함
-- diagnostics가 안정적인 비어 있지 않은 `code`와 error 수준 `fixHint`를 유지함
-- snapshot에 비밀 키 경로가 남지 않도록 sanitize됨
-
-### HTTP 어댑터 portability harness
-
-Node 스타일 HTTP 어댑터가 내장 Node 런타임 어댑터와의 parity를 증명해야 할 때는 `createHttpAdapterPortabilityHarness(...)`를 사용하세요. 이 하니스는 요청 정규화, raw-body 처리, SSE 스트리밍, 시작 로그, HTTPS 시작, 종료 시그널 정리 동작을 함께 검증합니다.
-
-```ts
-import { createHttpAdapterPortabilityHarness } from '@konekti/testing/http-adapter-portability';
-import { bootstrapExpressApplication, runExpressApplication } from '@konekti/platform-express';
-
-const harness = createHttpAdapterPortabilityHarness({
-  bootstrap: bootstrapExpressApplication,
-  name: 'express',
-  run: runExpressApplication,
-});
-
-await harness.assertPreservesRawBodyForJsonAndText();
-await harness.assertExcludesRawBodyForMultipart();
-await harness.assertSupportsSseStreaming();
-```
-
-어댑터 portability harness는 다음 parity 기대값을 검증합니다.
-
-- 잘못된 쿠키 값이 요청 경로를 중단시키지 않고 그대로 관측 가능해야 함
-- `rawBody`는 JSON/text 요청에서만 opt-in으로 유지되고 multipart 파싱에서는 설정되지 않아야 함
-- SSE 응답이 `text/event-stream` 프레이밍을 유지해야 함
-- 시작 로그가 명시적 host/HTTPS listen 대상을 반영해야 함
-- 시그널 기반 시작 헬퍼가 close 시 등록한 종료 리스너를 제거해야 함
-
-### Web-runtime HTTP 어댑터 portability harness
-
-fetch 스타일 런타임 어댑터가 Node 전용 socket/HTTPS 헬퍼를 가져오지 않고도 공유 Web request/response 계약 parity를 증명해야 할 때는 `createWebRuntimeHttpAdapterPortabilityHarness(...)`를 사용하세요.
-
-```ts
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@konekti/testing/web-runtime-adapter-portability';
-import { bootstrapCloudflareWorkerApplication } from '@konekti/platform-cloudflare-workers';
-
-const harness = createWebRuntimeHttpAdapterPortabilityHarness({
-  async bootstrap(rootModule, options) {
-    const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
-
-    return {
-      close: () => worker.close(),
-      dispatch: (request) => worker.fetch(request, {}, { waitUntil() {} }),
-    };
-  },
-  name: 'cloudflare-workers',
-});
-
-await harness.assertPreservesMalformedCookieValues();
-await harness.assertPreservesRawBodyForJsonAndText();
-await harness.assertExcludesRawBodyForMultipart();
-await harness.assertSupportsSseStreaming();
-```
-
-Web-runtime portability harness는 다음 parity 기대값을 검증합니다.
-
-- 잘못된 쿠키 값이 요청 경로를 중단시키지 않고 그대로 관측 가능해야 함
-- `rawBody`는 JSON/text 요청에서만 opt-in으로 유지되고 multipart 파싱에서는 설정되지 않아야 함
-- SSE 응답이 `text/event-stream` 프레이밍을 유지해야 함
-- 어댑터가 Node listener ownership을 가정하지 않고도 직접 `Request` / `Response` dispatch로 검증 가능해야 함
-
-### Fetch-style websocket conformance harness
-
-fetch-style 런타임 어댑터가 공용 raw websocket 확장 계약과 정직한 지원 수준을 함께 고정해야 할 때는 `createFetchStyleWebSocketConformanceHarness(...)`를 사용하세요.
-
-```ts
-import { createFetchStyleWebSocketConformanceHarness } from '@konekti/testing/fetch-style-websocket-conformance';
-import { createBunAdapter } from '@konekti/platform-bun';
-
-const harness = createFetchStyleWebSocketConformanceHarness({
-  createAdapter: () => createBunAdapter(),
-  expectedSupport: 'supported',
-  expectedReason:
-    'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
-  name: 'bun',
-});
-
-harness.assertExposesRawWebSocketExpansionContract();
-```
-
-이 하니스는 다음 invariant를 고정합니다.
-
-- 어댑터가 `getRealtimeCapability()`를 노출해야 함
-- capability가 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade' }` 형태를 유지해야 함
-- 의도적인 계약 변경 전까지 공용 계약 버전이 `1`로 유지되어야 함
-- 문서화된 런타임 상태에 맞는 정직한 `support` 값(`'contract-only'` 또는 `'supported'`)을 유지해야 함
-- websocket 호스팅이 어떻게 지원되는지 또는 왜 아직 지원을 주장하지 않는지를 설명하는 안정적인 `reason` 문자열을 유지해야 함
-
-## 핵심 API
-
-### `createTestingModule(options)`
-
-진입점입니다. 빌더 객체를 반환합니다.
-
-```typescript
-interface TestingModuleOptions {
-  rootModule: ModuleType;
-}
-
-createTestingModule(options: TestingModuleOptions): TestingModuleBuilder
-```
-
-### `createPlatformConformanceHarness(options)`
-
-공식 플랫폼-지향 패키지를 위한 공유 conformance 테스트 하니스입니다.
-
-`captureValidationSideEffects`는 선택 사항입니다. 이 옵션이 없으면 validation side-effect 커버리지는 상태 전이 가드(`validate()`가 `component.state()`를 바꾸지 않아야 함)까지로 제한됩니다.
-
-### `createHttpAdapterPortabilityHarness(options)`
-
-내장/외부 전송 어댑터를 위한 공유 HTTP adapter portability 하니스입니다.
-
-### `createWebRuntimeHttpAdapterPortabilityHarness(options)`
-
-공식 Web 런타임 어댑터를 위한 공유 fetch-style portability 하니스입니다.
-
-### `createFetchStyleWebSocketConformanceHarness(options)`
-
-fetch-style 런타임 어댑터를 위한 공유 raw websocket 확장 계약 하니스입니다.
-
-### `TestingModuleBuilder`
-
-`createTestingModule`이 반환하는 플루언트 빌더입니다.
-
-| 메서드 | 설명 |
-|---|---|
-| `.overrideProvider(token, implementation)` | 그래프가 컴파일되기 전에 DI 토큰의 프로바이더를 `implementation`으로 교체합니다. 체이닝 가능합니다. |
-| `.overrideProviders(overrides)` | 여러 provider 오버라이드를 `[token, value]` 배열로 한 번에 적용합니다. |
-| `.overrideGuard(guard, fake?)` | 가드를 항상 통과하는 기본 fake(또는 사용자 fake)로 교체합니다. |
-| `.overrideInterceptor(interceptor, fake?)` | 인터셉터를 패스스루 기본 fake(또는 사용자 fake)로 교체합니다. |
-| `.overrideFilter(filter, fake?)` | 필터 토큰을 fake로 교체합니다. |
-| `.overrideModule(module, replacement)` | import된 모듈을 replacement 모듈로 교체합니다. |
-| `.compile()` | 모든 오버라이드가 적용된 모듈 그래프를 컴파일합니다. `Promise<TestingModuleRef>`을 반환합니다. |
-
-### `TestingModuleRef`
-
-컴파일된 테스트 컨테이너입니다.
-
-| 메서드 | 설명 |
-|---|---|
-| `.resolve(token)` | 컴파일된 모듈 그래프에서 프로바이더를 resolve합니다. 클래스 생성자 또는 DI 토큰을 받고 `Promise<T>`를 반환합니다. |
-| `.resolveAll(tokens)` | 여러 토큰을 순서대로 resolve합니다. 실패 시 집계 에러를 반환합니다. |
-| `.has(token)` | 컴파일된 그래프에 해당 provider 토큰이 있는지 확인합니다. |
-| `.dispatch(request)` | 컴파일된 모듈 디스패처를 통해 요청을 실행하고 `TestResponse`를 반환합니다. |
-
-`get()`은 **동기 전용 편의 API**입니다. async factory/provider가 섞인 경우에는 `resolve()`를 사용하세요.
-
-### 모듈 메타데이터 추출 유틸리티
-
-```typescript
-import {
-  extractModuleProviders,
-  extractModuleControllers,
-  extractModuleImports,
-} from '@konekti/testing';
-```
-
-커스텀 테스트 빌더 구성이나 모듈 단위 검증에서 메타데이터 심볼에 직접 접근하지 않고 사용할 수 있습니다.
-
-### `createTestApp(options)`
-
-요청-응답 스타일 테스트를 위해 사용합니다. `bootstrapApplication` 기반의 테스트 애플리케이션을 생성합니다.
-
-```typescript
-import { createTestApp } from '@konekti/testing';
-
-const app = await createTestApp({ rootModule: AppModule });
-
-const response = await app
-  .request('POST', '/users')
-  .body({ name: 'Alice' })
-  .header('x-request-id', 'req-1')
-  .query('scope', 'admin')
-  .send();
-
-expect(response.status).toBe(201);
-
-await app.close();
-```
-
-### `TestApp.dispatch(request)`
-
-빌더를 쓰지 않고 요청을 바로 실행하고 싶을 때 사용합니다.
-
-```typescript
-const response = await app.dispatch({
-  method: 'GET',
-  path: '/users/me',
-  principal: {
-    subject: 'user-1',
-    roles: ['admin'],
-    claims: { tenant: 'acme' },
-  },
-});
-
-expect(response.status).toBe(200);
-```
-
-`app.dispatch(request)`는 `app.request(...).send()`와 같은 테스트 파이프라인을 그대로 사용하며,
-`method`, `path`, `query`, `headers`, `body`, `principal`을 동일한 형태로 받습니다.
-
-`createTestApp()`는 내부적으로 `bootstrapApplication`을 호출하며, 실제 앱 파이프라인을 유지하면서도 테스트 실행에 맞춘 경량 클라이언트를 제공합니다.
-
-### `request()` 빌더
-
-`request()`는 체이닝 가능한 빌더를 반환해 테스트 요청을 구성합니다.
-
-```typescript
-const response = await app
-  .request('GET', '/me')
-  .principal({
-    subject: 'user-1',
-    roles: ['admin'],
-    claims: { tenant: 'acme' },
-  })
-  .send();
-
-expect(response.body).toEqual({
-  subject: 'user-1',
-  roles: ['admin'],
-  claims: { tenant: 'acme' },
-});
-
-const defaultResponse = await app
-  .request('GET', '/me')
-  .principal({ roles: ['anonymous'] })
-  .send();
-
-expect(defaultResponse.body).toEqual({
-  subject: 'test',
-  claims: {},
-  roles: ['anonymous'],
-});
-```
-
-`principal`은 `subject`(우선) 또는 `id`(호환성)를 통해 주체를 구성할 수 있으며, 둘 다 없으면 `subject: 'test'`로 기본 주입됩니다.
-
-## 구조
-
-```
-createTestingModule({ rootModule })
-    │
-    ▼
-TestingModuleBuilder
-    │  .overrideProvider(token, impl)  ← 오버라이드 누적
-    │  .overrideProvider(token, impl)
-    │
-    ▼
-.compile()
-    │  rootModule로부터 모듈 그래프 구성
-    │  모든 프로바이더 오버라이드 적용
-    ▼
-TestingModuleRef
-    │
-    ▼
-.resolve(token)  → 그래프에서 인스턴스 반환
-createTestApp({ rootModule })  → 테스트 앱 생성 후 request() 호출 가능
-```
-
-오버라이드는 모듈 그래프가 구성된 **이후** 적용되어, 실제 프로바이더를 공급한 가짜 구현으로 교체합니다. 그래프의 나머지 부분은 그대로 유지되므로, 명시적으로 오버라이드한 토큰만 대체됩니다.
-
-## 파일 읽기 순서 (기여자용)
-
-이 패키지는 의도적으로 작게 유지되어 있습니다. 전체 구현을 한 번에 읽을 수 있습니다:
-
-1. `src/types.ts` — `TestingModuleOptions`, `TestingModuleBuilder`, `TestingModuleRef` 인터페이스; 공개 계약(contract)
-2. `src/module.ts` — `createTestingModule()` 구현; 빌더 패턴과 `.compile()`이 동작하는 방식
-3. `src/index.ts` — 공개 표면; 무엇이 export되고 무엇이 아닌지
-4. `src/module.test.ts` — 테스트 스위트; 의도된 사용 패턴과 엣지 케이스 확인
+### 플랫폼 적합성(Conformance)
+
+라이브러리 저자를 위해, Konekti는 커스텀 어댑터나 컴포넌트가 프레임워크의 라이프사이클 및 동작 계약을 준수하는지 확인할 수 있는 하니스를 제공합니다.
+- `@konekti/testing/platform-conformance`
+- `@konekti/testing/http-adapter-portability`
+
+## 공개 API 개요
+
+### 메인 모듈 (`@konekti/testing`)
+- `createTestingModule({ rootModule })`: 테스트 컨테이너를 구성하고 컴파일합니다.
+- `createTestApp({ rootModule })`: 테스트 가능한 애플리케이션 인스턴스를 생성합니다.
+- `extractModuleProviders(Module)`: 모듈 메타데이터를 검사하는 유틸리티입니다.
+
+### 서브 경로 (Sub-paths)
+- `@konekti/testing/mock`: 목 및 딥 목 유틸리티.
+- `@konekti/testing/http`: 로우(Raw) HTTP 요청 헬퍼.
+- `@konekti/testing/vitest`: Konekti 표준 데코레이터를 위한 Vitest 플러그인.
 
 ## 관련 패키지
 
-| 패키지 | 관계 |
-|---|---|
-| `@konekti/di` | `TestingModuleRef`가 래핑하고 `.resolve()`가 위임하는 DI 컨테이너 |
-| `@konekti/runtime` | `compile()`이 사용하는 모듈 그래프 구성 로직 |
-| `@konekti/runtime` | 라이프사이클 인터페이스; 테스트 모드에서 `TestingModuleRef`는 라이프사이클 훅을 트리거하지 않음 |
-| `@konekti/prisma` | 일반적인 오버라이드 대상 — `PRISMA_CLIENT`를 가짜로 교체해 실제 DB 연결 방지 |
-| `@konekti/jwt` | 일반적인 오버라이드 대상 — JWT 검증기를 교체해 실제 토큰 없이 인증 흐름 테스트 |
+- `@konekti/di`: 테스트 컨테이너가 사용하는 기반 DI 시스템입니다.
+- `@konekti/runtime`: 테스트 빌더가 확장하는 모듈 그래프 로직을 제공합니다.
+- `@konekti/http`: `TestApp`에서 사용하는 가상 디스패치 시스템입니다.
 
-## 한 줄 mental model
+## 예제 소스
 
-> `@konekti/testing` = 실제 모듈 그래프를 그대로 구성하고, 가짜로 바꿀 것만 교체하고, 검증하고 싶은 것만 resolve한다 — 마법도 없고, 별도 테스트 프레임워크도 없다.
+- `packages/testing/src/module.test.ts`: 컨테이너 오버라이드에 대한 표준 예제.
+- `packages/testing/src/surface.test.ts`: 공개 API 표면에 대한 개요.
+

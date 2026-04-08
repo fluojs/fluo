@@ -4,60 +4,73 @@
 
 File-first shared platform snapshot viewer for Konekti runtime exports.
 
-## See also
+## Table of Contents
 
-- `../cli/README.md`
-- `../../docs/concepts/platform-consistency-design.md`
-- `../../docs/concepts/observability.md`
-- `../../docs/getting-started/first-feature-path.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
-## What it does
-
-- Loads JSON files exported by `konekti inspect --json`
-- Consumes the shared runtime `PlatformShellSnapshot` + `PlatformDiagnosticIssue` schema directly
-- Renders platform component dependency chains and Mermaid output from snapshot data
-- Shows component readiness/health/ownership/details with dependency links
-- Displays diagnostics issues with `fixHint` and `dependsOn` as first-class fields
-- Supports search + component readiness filter + diagnostics severity filter
-- Displays bootstrap timing when timing payload is present
-- Provides copy/download helpers for loaded JSON and Mermaid output
-
-## Inspect -> Studio workflow
-
-`@konekti/studio` does not crawl a running app directly. The canonical path is file-first:
-
-1. Export a runtime snapshot from the app you want to inspect.
-2. Open Studio locally.
-3. Load the exported JSON snapshot (and optional timing JSON) into the viewer.
-
-Example:
+## Installation
 
 ```bash
-konekti inspect ./src/app.module.mjs --json > ./tmp/platform-snapshot.json
-konekti inspect ./src/app.module.mjs --timing > ./tmp/platform-timing.json
-pnpm --dir packages/studio dev
+pnpm add @konekti/studio
 ```
 
-In Studio, load the JSON exported by `--json`. If you also exported `--timing`, load that file as the optional timing payload.
+## When to Use
 
-## What to inspect first
+- **Visualization**: To explore your application's module graph and dependency chains.
+- **Diagnostics**: To identify and fix platform-level configuration issues using guided hints.
+- **Performance**: To analyze bootstrap timing and identify initialization bottlenecks.
+- **Documentation**: To generate Mermaid diagrams of your application architecture.
 
-When you open a snapshot, start with these checks:
+## Quick Start
 
-- overall readiness and health
-- component dependency chains
-- diagnostics with `fixHint` and `dependsOn`
-- ownership details for external resources
-- Mermaid output when you need a copyable dependency graph
+Studio consumes JSON exports from the Konekti CLI.
 
-## Run
+1. **Export a snapshot**:
+   ```bash
+   konekti inspect ./src/app.module.ts --json > snapshot.json
+   ```
 
-```bash
-pnpm --dir packages/studio dev
-```
+2. **Open Studio**:
+   ```bash
+   pnpm --dir packages/studio dev
+   ```
 
-Build:
+3. **Load the file**: Drag and drop `snapshot.json` into the Studio web interface.
 
-```bash
-pnpm --dir packages/studio build
-```
+## Common Patterns
+
+### Troubleshooting Initialization
+Use the **Diagnostics** tab to see issues collected during the runtime bootstrap process.
+- Filter by severity (Error, Warning).
+- Use `fixHint` to get actionable advice on how to resolve the issue.
+- View `dependsOn` to see which components are blocking the failing one.
+
+### Exporting Architecture Diagrams
+1. Navigate to the **Graph** view.
+2. Select the modules or components you want to visualize.
+3. Use the **Export to Mermaid** button to get a text-based diagram for your documentation.
+
+## Public API Overview
+
+Studio is primarily a web application, but it defines contracts for consuming platform snapshots.
+
+| Contract | Description |
+|---|---|
+| `PlatformShellSnapshot` | The core data structure representing the application state. |
+| `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
+
+## Related Packages
+
+- **[@konekti/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
+- **[@konekti/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
+
+## Example Sources
+
+- [main.ts](./src/main.ts) - Application entry point.
+- [contracts.ts](./src/contracts.ts) - Type definitions for snapshot consumption.

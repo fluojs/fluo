@@ -2,28 +2,23 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 응답값 가공(Shaping) 및 직렬화(Serialization) 엔진입니다.
+Konekti를 위한 클래스 기반 응답 직렬화 및 출력 가공 엔진입니다.
 
-`@konekti/serialization`은 애플리케이션의 **출력** 경계를 담당합니다. 내부 클래스 인스턴스나 복잡한 객체 그래프를 깨끗하고 JSON 안전한 plain 객체로 변환하는 역할을 수행합니다. `@konekti/validation`이 들어오는 데이터의 안전성을 보장한다면, 이 패키지는 나가는 데이터의 형태를 가공하고 민감한 정보가 노출되지 않도록 보장합니다.
+`@konekti/serialization`은 애플리케이션의 **출력 경계(Output Boundary)**를 담당합니다. 내부 클래스 인스턴스나 복잡한 객체 그래프를 깨끗하고 JSON 안전한 일반 객체(Plain Object)로 변환하는 선언적인 방법을 제공합니다. 이를 통해 API 응답에 의도한 데이터만 노출되도록 보장합니다.
 
-## 핵심 개념 (The Mental Model)
+## 목차
 
-Konekti는 데이터 핸들링을 두 가지 뚜렷한 단계로 나눕니다:
-
-1. **검증 (Validation/Input)**: raw 데이터를 클래스 인스턴스로 실체화하고 규칙을 강제합니다.
-2. **직렬화 (Serialization/Output)**: 클래스 인스턴스를 다시 응답용 plain 데이터로 가공합니다.
-
-`@konekti/serialization`은 도메인 모델이나 비즈니스 로직을 수정하지 않고도 최종 응답 형태를 제어할 수 있도록 `@Exclude()`, `@Expose()`, `@Transform()` 등의 데코레이터를 제공합니다.
-
-## @konekti/http와의 관계
-
-이 패키지는 컨트롤러 핸들러의 반환값을 자동으로 가공하는 인터셉터를 제공합니다.
-
-Konekti 애플리케이션에서:
-1. 컨트롤러가 클래스 인스턴스(또는 그 배열)를 반환합니다.
-2. `SerializerInterceptor`가 설정되어 있다면 결과를 가로챕니다.
-3. `serialize()` 엔진을 실행하여 데코레이터 규칙을 적용합니다.
-4. 결과물인 plain 객체가 최종적으로 HTTP JSON Body로 전송됩니다.
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 패턴](#주요-패턴)
+  - [민감한 데이터 제외](#민감한-데이터-제외)
+  - [값 변환 (Transforming)](#값-변환-transforming)
+  - [순환 참조 처리](#순환-참조-처리)
+  - [HTTP 인터셉터와 함께 사용](#http-인터셉터와-함께-사용)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -31,106 +26,115 @@ Konekti 애플리케이션에서:
 pnpm add @konekti/serialization
 ```
 
+## 사용 시점
+
+- JSON 응답에 포함될 클래스 속성을 정밀하게 제어하고 싶을 때.
+- 비밀번호나 내부 ID와 같은 민감한 필드를 출력에서 숨겨야 할 때.
+- 직렬화 과정에서 속성 값을 변환해야 할 때 (예: 날짜 형식 지정, 내부 열거형 매핑).
+- 무한 루프를 유발할 수 있는 복잡한 객체 그래프를 안전하게 직렬화해야 할 때.
+
 ## 빠른 시작
 
-### 기본 사용법
+DTO나 엔티티 클래스에 데코레이터를 적용하고 `serialize` 함수 또는 `SerializerInterceptor`를 사용합니다.
+
+```typescript
+import { Expose, Exclude, Transform, serialize } from '@konekti/serialization';
+
+class UserEntity {
+  @Expose()
+  id: string = '';
+
+  @Expose()
+  @Transform((val) => val.toUpperCase())
+  username: string = '';
+
+  @Exclude()
+  passwordHash: string = '';
+
+  constructor(partial: Partial<UserEntity>) {
+    Object.assign(this, partial);
+  }
+}
+
+const user = new UserEntity({ id: '1', username: 'konekti', passwordHash: 'secret' });
+const result = serialize(user);
+
+console.log(result); 
+// 출력: { id: "1", username: "KONEKTI" }
+// passwordHash는 제외됩니다.
+```
+
+## 주요 패턴
+
+### 민감한 데이터 제외
+
+`@Exclude()`를 사용하여 특정 속성이 출력에 절대 나타나지 않도록 합니다. 클래스 레벨에서 `@Expose({ excludeExtraneous: true })`를 사용하면 명시적으로 허용된 필드만 포함하는 "화이트리스트" 전략을 구현할 수 있습니다.
+
+```typescript
+import { Expose, Exclude } from '@konekti/serialization';
+
+@Expose({ excludeExtraneous: true })
+class SecureDto {
+  @Expose()
+  publicData: string = 'visible';
+
+  internalData: string = 'hidden'; // excludeExtraneous가 true이므로 숨겨짐
+}
+```
+
+### 값 변환 (Transforming)
+
+`@Transform()`을 사용하여 직렬화 중에 값을 수정합니다. 변환 함수는 현재 값을 인자로 받아 새로운 값을 반환해야 합니다.
+
+```typescript
+import { Transform } from '@konekti/serialization';
+
+class ProductDto {
+  @Transform((price) => `$${price.toFixed(2)}`)
+  price: number = 0;
+}
+```
+
+### 순환 참조 처리
+
+Konekti의 직렬화 엔진은 순환 참조를 자동으로 감지하고, 반복되는 참조에 대해 `undefined`를 반환하여 절단함으로써 무한 루프와 스택 오버플로를 방지합니다.
+
+### HTTP 인터셉터와 함께 사용
+
+Konekti HTTP 애플리케이션에서는 `SerializerInterceptor`를 사용하여 컨트롤러에서 나가는 모든 응답을 자동으로 직렬화할 수 있습니다.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
-
-// @Expose({ excludeExtraneous: true })를 사용하여 명시된 필드만 포함합니다.
-@Expose({ excludeExtraneous: true })
-class UserView {
-  @Expose()
-  id: string;
-
-  @Expose()
-  email: string;
-
-  @Exclude() // excludeExtraneous가 false이더라도 명시적으로 제외됩니다.
-  passwordHash: string;
-
-  constructor(id: string, email: string, passwordHash: string) {
-    this.id = id;
-    this.email = email;
-    this.passwordHash = passwordHash;
-  }
-}
-
-@Controller('/users')
-class UsersController {
-  @Get('/')
-  @UseInterceptors(SerializerInterceptor)
-  async getUser() {
-    return new UserView('u-1', 'hello@example.com', 'shhhh');
-  }
-}
-```
-
-### 직렬화 전후 비교 (Before vs After)
-
-위 컨트롤러가 `UserView` 인스턴스를 반환할 때, 직렬화된 결과물은 다음과 같습니다:
-
-**직렬화 전 (Class Instance):**
-```typescript
-UserView {
-  id: 'u-1',
-  email: 'hello@example.com',
-  passwordHash: 'shhhh'
-}
-```
-
-**직렬화 후 (JSON Output):**
-```json
-{
-  "id": "u-1",
-  "email": "hello@example.com"
-}
-```
-
-## 주요 API
-
-### 데코레이터
-
-- `@Exclude()`: 직렬화 출력에서 해당 필드를 제거합니다.
-- `@Expose(options?)`: 포함할 필드를 표시합니다. 클래스 레벨에서 `{ excludeExtraneous: true }`를 사용하면 `@Expose()`가 붙은 필드만 남습니다.
-- `@Transform(({ value, obj }) => newValue)`: 직렬화 과정에서 값을 동적으로 변환합니다. 반드시 동기적으로 반환해야 합니다.
-
-### SerializerInterceptor
-
-Konekti 앱에서 이 패키지를 사용하는 권장 방법입니다. 컨트롤러, 라우트, 또는 전역으로 등록할 수 있습니다.
-
-**전역 등록:**
-```typescript
-import { bootstrapApplication } from '@konekti/runtime';
 import { SerializerInterceptor } from '@konekti/serialization';
 
-await bootstrapApplication({
-  rootModule: AppModule,
-  interceptors: [SerializerInterceptor],
-});
+@Controller('/users')
+@UseInterceptors(SerializerInterceptor)
+class UsersController {
+  @Get('/')
+  findAll() {
+    return [new UserEntity({ ... }), new UserEntity({ ... })];
+  }
+}
 ```
 
-### serialize()
+## 공개 API 개요
 
-인터셉터 내부에서 사용되는 수동 직렬화 헬퍼입니다.
+### 데코레이터
+- `@Expose(options?)`: 포함할 속성을 표시합니다. 클래스에 사용하여 기본 동작을 설정할 수도 있습니다.
+- `@Exclude()`: 직렬화 중에 무시할 속성을 표시합니다.
+- `@Transform(fn)`: 속성에 대한 변환 함수를 등록합니다.
 
-```typescript
-import { serialize } from '@konekti/serialization';
+### 엔진
+- `serialize(value)`: 객체/배열을 재귀적으로 순회하며 직렬화 규칙과 데코레이터를 적용합니다.
+- `SerializerInterceptor`: 핸들러의 반환 값에 대해 `serialize`를 호출하는 Konekti HTTP 인터셉터입니다.
 
-const plainObject = serialize(myClassInstance);
-```
+## 관련 패키지
 
-## 직렬화 규칙 (Contract)
+- `@konekti/http`: `SerializerInterceptor`를 통한 자동 출력 가공을 지원합니다.
+- `@konekti/validation`: **입력** 측면(일반 객체를 클래스 인스턴스로 변환)을 담당하는 대응 패키지입니다.
 
-1. **JSON 안전성**: 무한 루프를 방지하기 위해 순환 참조는 자동으로 `undefined`로 절단됩니다.
-2. **참조 보존**: 같은 객체가 그래프 내 여러 번 등장하더라도 일관되게 직렬화됩니다.
-3. **심볼**: 일반 객체의 열거 가능한 심볼 키(symbol-keyed) 속성도 포함됩니다.
-4. **클래스**: 클래스 인스턴스의 경우 문자열 키(string-keyed) 속성만 직렬화됩니다.
+## 예제 소스
 
-## 의도된 제한 사항 (Intentional Limitations)
+- `packages/serialization/src/serialize.test.ts`: 다양한 직렬화 시나리오에 대한 상세 예제.
+- `packages/serialization/src/serializer-interceptor.test.ts`: HTTP 컨텍스트 내에서의 사용법.
 
-- **심층 인스턴스화 없음**: 직렬화는 클래스를 plain 객체로 바꿉니다. 그 반대 과정(plain 객체를 클래스로 바꾸기)은 `@konekti/validation`의 역할입니다.
-- **스키마 검증 없음**: 이 패키지는 데이터를 가공할 뿐, 데이터의 옳고 그름을 검증하지 않습니다.
-- **동기 방식만 지원**: 직렬화 순회 중 비동기 작업은 지원되지 않습니다. 모든 트랜스포머는 동기적이어야 합니다.

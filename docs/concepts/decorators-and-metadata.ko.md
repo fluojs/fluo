@@ -1,61 +1,52 @@
-# decorators and metadata
+# 데코레이터와 메타데이터
 
 <p><a href="./decorators-and-metadata.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 `@konekti/core`, `@konekti/http`, `@konekti/validation`, 그리고 `@konekti/serialization`에서 사용되는 데코레이터와 메타데이터 모델을 설명합니다.
+Konekti는 **TC39 Standard Decorators**를 기반으로 처음부터 구축되었습니다. 우리는 레거시 `experimentalDecorators` 및 `emitDecoratorMetadata` 모델을 완전히 버리고, 깔끔하고 성능이 높으며 표준에 부합하는 metadata system을 채택했습니다.
 
-### 관련 문서
+## 이 개념이 중요한 이유
 
-- `./http-runtime.ko.md`
-- `./di-and-modules.ko.md`
-- `../../packages/core/README.ko.md`
+오랫동안 TypeScript 생태계는 표준이 되지 못한 “proposal” 버전의 decorators에 의존해 왔습니다. 이 레거시 시스템은 compiler가 타입을 “추측”하고 이를 숨겨진 metadata(`reflect-metadata`)로 내보내야 했기 때문에 다음과 같은 문제가 있었습니다:
+- **숨겨진 성능 비용**: 사용하지 않더라도 모든 class에 대해 많은 metadata가 생성됩니다.
+- **취약한 타입 추측**: 순환 의존성은 종종 “metadata emit”을 깨뜨려, 런타임의 `undefined` 오류로 이어졌습니다.
+- **종속성 고착**: 코드가 특정 TypeScript compiler flag에 의존하게 되어, 복잡한 plugin 없이는 `esbuild`, `swc`, native engine 등에서 실행하기 어려워졌습니다.
 
-## 데코레이터 구현
+Konekti가 **Standard Decorators**로 전환한 것은 백엔드를 이식 가능하고 명시적으로 만들며, JavaScript의 미래에 대비시키기 위함입니다.
 
-Konekti는 TC39 표준 데코레이터만을 기반으로 하는 데코레이터 우선(decorator-first) 방식을 사용합니다.
+## 핵심 아이디어
 
-### 핵심 데코레이터 제품군
+### 표준 데코레이터 (TC39)
+Konekti의 모든 decorator—`@Module`, `@Controller`, `@Inject`—는 표준 JavaScript decorator입니다. 잘 정의된 context를 받고, 자신이 장식하는 요소의 수정된 버전을 반환하는 함수입니다.
+- **Reflect Metadata 없음**: `reflect-metadata`를 사용하지 않습니다. metadata는 구조화된 프레임워크 소유 registry에 저장됩니다.
+- **네이티브 속도**: 무거운 reflection library에 의존하지 않기 때문에 애플리케이션 시작과 dependency resolution이 훨씬 빠릅니다.
 
-- **모듈 및 DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
-- **HTTP 라우팅**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
-- **입력 바인딩**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
-- **유효성 검사**: `@konekti/validation` 패키지에서 제공하는 입력 물질화(materialization) 및 유효성 검사 데코레이터
-- **직렬화(Serialization)**: `@konekti/serialization` 패키지에서 제공하는 출력 형태 조정 및 응답 직렬화 데코레이터
+### 명시적 방식이 암시적 방식보다 우선
+레거시 프레임워크는 constructor type을 보고 의존성을 “추측”하는 경우가 많았습니다. Konekti는 **명시성**을 중시합니다.
+- `@Inject([UsersService])`를 사용해 의존성을 명확히 선언합니다.
+- 이 방식은 코드를 검색 가능하고 감사 가능하게 만들며, 디버깅이 어려운 DI 문제를 만드는 “마법”을 제거합니다.
 
-## 입력 및 출력 전략
+### 프레임워크 소유 registry
+Konekti의 decorator는 중앙 **Framework Registry**를 채우는 “선언” 역할을 합니다. 이 registry는 다음의 단일 진실 공급원입니다:
+1. **Dependency Graph**: 어떤 class가 어떤 token에 의존하는지
+2. **Routing Table**: 어떤 method가 어떤 HTTP path를 처리하는지
+3. **Validation Schema**: 들어오는 JSON을 어떻게 파싱하고 검사해야 하는지
 
-- 입력 물질화(바인딩)는 명시적인 옵트인(opt-in) 방식입니다.
-- 파라미터 기반 주입 매직 대신 메서드 수준의 라우트 메타데이터와 입력 필드 데코레이터가 사용됩니다.
-- 유효성 검사는 입력 측의 프레임워크 소유 데코레이터 메타데이터에 의해 구동됩니다.
-- 직렬화(Serialization)는 응답 데이터를 조정하기 위한 별개의 출력 측 관심사로 처리됩니다.
-- 중첩된 유효성 검사와 직렬화는 주요 기능입니다.
+## 데코레이터 계열
 
-### 현재 제약 사항
+- **Structural (`@Module`)**: feature의 경계와 export된 provider를 정의합니다.
+- **Component (`@Controller`, `@Service`)**: class가 framework lifecycle의 참여자임을 표시합니다.
+- **Dependency (`@Inject`, `@Optional`)**: class와 그 의존성 사이의 계약을 명시적으로 선언합니다.
+- **Behavioral (`@Get`, `@Post`, `@UseMiddleware`)**: 특정 method나 class에 runtime logic을 연결합니다.
 
-- 데코레이터 기반 모델이 현재 지원되는 주요 규약입니다.
-- 직접적인 스키마 객체 유효성 검사나 직렬화는 현재 우선순위가 아닙니다.
-- 유효성 검사 및 직렬화 어댑터 규약은 당분간 일반적인 확장 API로 확장되지 않습니다.
+## 경계
 
-## 경계 보안
+- **Magic Discovery 없음**: Konekti는 파일 시스템을 “스캔”하지 않습니다. metadata는 class가 import되고 decorator가 실행될 때만 등록됩니다.
+- **Runtime에서 불변**: 애플리케이션이 bootstrap된 후에는 framework registry가 일반적으로 잠깁니다. 실행 중인 class에 decorator를 동적으로 추가할 수는 없습니다.
+- **Type Safety 우선**: decorator가 metadata를 추가하더라도 class의 type signature는 바꾸지 않습니다. IDE와 compiler는 여전히 원래의 깔끔한 TypeScript class를 봅니다.
 
-- 입력 모델, 출력 모델, 영속성(persistence) 모델은 분리되어 유지됩니다.
-- 각 입력 필드는 단일 요청 소스에 매핑됩니다.
-- 본문(Body) 물질화는 엄격한 허용 목록(allowlist)을 사용합니다.
-- 입력 처리 중 위험한 키(예: `__proto__`, `constructor`, `prototype`)는 차단됩니다.
-- 출력 직렬화는 의도된 필드만 클라이언트에 전송되도록 보장합니다.
+## 관련 문서
 
-## 메타데이터 관리
-
-- 저수준 메타데이터 읽기/쓰기 작업은 내부 헬퍼 API에 의해 처리됩니다.
-- 런타임 및 기타 패키지는 이러한 헬퍼를 통해 정규화된 메타데이터에 접근해야 합니다.
-- 커스텀 데코레이터는 내부 저장 형식에 의존해서는 안 됩니다.
-- 메타데이터 시스템에 대한 제3자 확장은 현재 공개 API의 일부가 아닙니다.
-- `Symbol.metadata`가 필요한 경우 호환성을 보장하기 위해 `ensureMetadataSymbol()` 및 기타 헬퍼를 사용하세요.
-
-## 개념 모델
-
-```text
-데코레이터는 프레임워크 소유의 메타데이터를 기록합니다
-런타임 패키지는 정규화된 메타데이터를 읽습니다
-내부 저장소는 비공개로 유지됩니다
-```
+- [Architecture Overview](./architecture-overview.ko.md)
+- [DI and Modules](./di-and-modules.ko.md)
+- [HTTP Runtime](./http-runtime.ko.md)
+- [Core README](../../packages/core/README.ko.md)

@@ -2,15 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Raw Node.js HTTP adapter package for Konekti runtime applications.
+Raw Node.js HTTP adapter package for the Konekti runtime.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/reference/package-chooser.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -18,11 +20,16 @@ Raw Node.js HTTP adapter package for Konekti runtime applications.
 npm install @konekti/platform-nodejs
 ```
 
+## When to Use
+
+Use this package when you want to run a Konekti application directly on the Node.js built-in `http` or `https` modules without the overhead of an intermediate framework like Express or Fastify. It is ideal for minimal footprints, custom low-level optimizations, or environments where standard Node APIs are preferred.
+
 ## Quick Start
 
 ```typescript
 import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
@@ -31,60 +38,50 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## Common Patterns
 
-- `createNodejsAdapter(options)` - create the raw Node.js `HttpApplicationAdapter`
-- `bootstrapNodejsApplication(rootModule, options)` - compatibility bootstrap helper without implicit listen
-- `runNodejsApplication(rootModule, options)` - compatibility helper for bootstrap + listen + startup logging + shutdown signal wiring
+### Customizing Server Options
+The adapter accepts standard Node.js server options including HTTPS configuration and body size limits.
 
-### Node helper ownership
+```typescript
+const adapter = createNodejsAdapter({
+  port: 443,
+  https: {
+    key: fs.readFileSync('key.pem'),
+    cert: fs.readFileSync('cert.pem'),
+  },
+  maxBodySize: '1mb',
+});
+```
 
-| concern | public home | role |
-| --- | --- | --- |
-| Primary raw Node startup | `@konekti/platform-nodejs` → `createNodejsAdapter()` | Canonical raw Node adapter-first path on the runtime facade. |
-| Node-scoped startup wrappers | `@konekti/platform-nodejs` → `bootstrapNodejsApplication()` / `runNodejsApplication()` | Compatibility wrappers that stay with the raw Node package instead of the transport-neutral runtime root. |
-| Shutdown signal wiring utilities | `@konekti/runtime/node` → `createNodeShutdownSignalRegistration()` / `registerShutdownSignals()` | Advanced process helpers for compatibility or custom Node bootstraps, not part of the primary startup model. |
-| Explicit Node compression helpers | `@konekti/runtime/node` → `createNodeResponseCompression()` / `compressNodeResponse()` | Advanced Node-only response-writer utilities, kept separate from the primary startup entrypoints. |
+### Direct Application Execution
+You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
 
-### Supported options
+```typescript
+import { runNodejsApplication } from '@konekti/platform-nodejs';
+import { AppModule } from './app.module';
 
-`createNodejsAdapter()`, `bootstrapNodejsApplication()`, and `runNodejsApplication()` preserve the current raw-Node option shape:
+await runNodejsApplication(AppModule, {
+  port: 3000,
+  globalPrefix: 'api',
+});
+```
 
-- `port`
-- `host`
-- `https`
-- `maxBodySize`
-- `rawBody`
-- `retryDelayMs`
-- `retryLimit`
-- `shutdownTimeoutMs`
+## Public API Overview
 
-`bootstrapNodejsApplication()` and `runNodejsApplication()` also continue to accept the runtime-owned HTTP options documented in `@konekti/runtime`, such as `cors`, `globalPrefix`, `filters`, `converters`, `middleware`, and versioning.
+- `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
+- `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
+- `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
+- `NodejsHttpAdapter`: The underlying adapter class implementing `HttpApplicationAdapter`.
 
-## supported operations
+## Related Packages
 
-- Selects the raw Node.js HTTP listener through the adapter-first runtime facade (`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`).
-- Preserves the current Node request/response bridge, startup logging, graceful shutdown, HTTPS, and retry semantics by owning the raw Node adapter entrypoints and composing the explicit `@konekti/runtime/internal-node` seam.
-- Exposes a `{ kind: 'server-backed', server }` realtime capability so Node-backed realtime binders can consume platform selection without assuming every runtime behaves like Node.
-- Supports the current raw `@konekti/websockets/node` binding on that realtime capability seam.
-- Supports the explicit root decorator opt-in `@WebSocketGateway({ serverBacked: { port } })`, which moves a gateway onto a dedicated websocket-owned listener while keeping the application HTTP listener unchanged.
-- Keeps compatibility bootstrap helpers available for users who still want the helper-wrapper path.
+- `@konekti/runtime`: The core runtime facade.
+- `@konekti/websockets`: Real-time gateway support.
+- `@konekti/http`: Shared HTTP abstractions and decorators.
 
-## runtime invariants
+## Example Sources
 
-- `rawBody` remains opt-in and is not populated for multipart requests.
-- Startup logs and bind-target reporting stay aligned with the current raw Node listener behavior.
-- The adapter keeps the same graceful shutdown drain window semantics and HTTPS binding behavior as the existing `@konekti/runtime/node` implementation.
+- `packages/platform-nodejs/src/index.test.ts`
+- `examples/minimal/src/main.ts` (Fastify-based, but structurally similar)
 
-## lifecycle guarantees
-
-- `listen(dispatcher)` starts exactly one Node HTTP/HTTPS server for the adapter lifecycle.
-- `close(signal?)` stops accepting new connections, drains existing requests for up to `shutdownTimeoutMs`, then clears remaining sockets.
-- `runNodejsApplication()` continues to register and remove shutdown signal listeners around the application lifecycle.
-
-## intentional limitations
-
-- This package owns the raw Node adapter boundary directly, but still relies on the explicit `@konekti/runtime/internal-node` seam for shared Node-only transport internals.
-- No new adapterless startup semantics are introduced here. If you omit an adapter entirely, use `createApplicationContext()` for DI/lifecycle-only bootstraps instead of expecting HTTP serving behavior.
-- Advanced Node-only internals such as compression helpers and shutdown-registration utilities stay on `@konekti/runtime/node`, so the primary `@konekti/platform-nodejs` startup surface remains focused on adapter selection and Node-scoped wrapper entrypoints.
-- The dedicated websocket listener opt-in belongs to `@konekti/websockets/node`, not this package's adapter options. Use the root gateway decorator metadata instead of expecting a new HTTP adapter flag here.

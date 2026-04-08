@@ -2,7 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Socket.IO v4 gateway adapter for Konekti applications.
+Socket.IO v4 gateway adapter for the Konekti runtime.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Supported Platforms](#supported-platforms)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -10,111 +20,74 @@ Socket.IO v4 gateway adapter for Konekti applications.
 npm install @konekti/socket.io @konekti/websockets socket.io
 ```
 
-### Migration note (semver-major)
+## When to Use
 
-- `@konekti/platform-socket.io` has been renamed to `@konekti/socket.io`.
-- Update package imports from `@konekti/platform-socket.io` to `@konekti/socket.io`.
-- Socket.IO gateway projects should also switch shared decorator imports to `@konekti/websockets`.
+Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into Konekti's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets.
 
 ## Quick Start
 
 ```typescript
-import { Inject, Module } from '@konekti/core';
 import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/socket.io';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websockets';
-import type { Socket } from 'socket.io';
+import { WebSocketGateway, OnMessage } from '@konekti/websockets';
+import { Inject, Module } from '@konekti/core';
 
 @Inject([SOCKETIO_ROOM_SERVICE])
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
   constructor(private readonly rooms: SocketIoRoomService) {}
 
-  @OnConnect()
-  handleConnect(socket: Socket) {
-    this.rooms.joinRoom(socket.id, 'chat:lobby');
-  }
-
   @OnMessage('ping')
   handlePing(payload: unknown) {
     this.rooms.broadcastToRoom('chat:lobby', 'pong', payload);
   }
-
-  @OnDisconnect()
-  handleDisconnect(socket: Socket, reason: string) {
-    this.rooms.leaveRoom(socket.id, 'chat:lobby');
-    console.log(reason);
-  }
 }
 
 @Module({
-  imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+  imports: [SocketIoModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
 ```
 
-## API
+## Common Patterns
 
-- `SocketIoModule.forRoot()` - registers lifecycle discovery and Socket.IO namespace wiring
-- `createSocketIoProviders()` - returns raw providers for custom module composition
-- `SOCKETIO_SERVER` - inject the underlying Socket.IO `Server` instance
-- `SOCKETIO_ROOM_SERVICE` - inject room helpers built on native Socket.IO room APIs
+### Room Management
+The `SocketIoRoomService` provides a high-level API for managing client rooms and broadcasting.
 
-The root package entrypoint intentionally keeps the public token surface focused on `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE`.
-`SOCKETIO_OPTIONS` remains an internal module-wiring token and is intentionally localized outside the root public token seam.
-It still uses a stable `Symbol.for(...)` key so package-internal DI identity remains consistent across module boundaries, while staying outside the public contract.
+```typescript
+this.rooms.joinRoom(socket.id, 'room:123');
+this.rooms.broadcastToRoom('room:123', 'event', data);
+```
 
-### Migration note (0.x)
+### Accessing the Raw Server
+You can inject the underlying Socket.IO `Server` instance for low-level control.
 
-`SOCKETIO_LIFECYCLE_SERVICE` is no longer part of the root public entrypoint and `SocketIoModule.forRoot()` exports.
-Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_SERVER` for raw Socket.IO server access.
+```typescript
+import { SOCKETIO_SERVER } from '@konekti/socket.io';
+import type { Server } from 'socket.io';
 
-### Module options
+@Inject([SOCKETIO_SERVER])
+class MyService {
+  constructor(private readonly io: Server) {}
+}
+```
 
-`SocketIoModule.forRoot(options)` and `createSocketIoProviders(options)` accept:
+## Public API Overview
 
-- `cors`
-- `transports`
-- `shutdown.timeoutMs` (default: `5000`)
+- `SocketIoModule.forRoot(options)`: Main module for Socket.IO integration.
+- `SOCKETIO_SERVER`: Token to inject the raw Socket.IO `Server`.
+- `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
+- `createSocketIoProviders(options)`: Helper for custom provider composition.
 
-## Supported adapter matrix
+## Supported Platforms
 
-`@konekti/socket.io` is currently documented and regression-tested on the server-backed adapters that expose a compatible Node HTTP/S host through the realtime capability seam:
+| Platform | Support | Note |
+| --- | --- | --- |
+| Node.js (Raw/Express/Fastify) | ✅ Full | Server-backed mode |
+| Bun | ✅ Full | Via `@socket.io/bun-engine` |
+| Deno | ❌ None | Not currently supported |
+| Workers | ❌ None | Not currently supported |
 
-- `@konekti/platform-nodejs`
-- `@konekti/platform-fastify`
-- `@konekti/platform-express`
+## Example Sources
 
-`@konekti/socket.io` is also documented and regression-tested on `@konekti/platform-bun` through Bun's supported fetch-style request-upgrade capability and the official `@socket.io/bun-engine` integration path.
-
-The following runtimes remain explicitly unsupported for Socket.IO in this package today:
-
-- `@konekti/platform-deno`
-- `@konekti/platform-cloudflare-workers`
-
-## Runtime behavior
-
-- Reuses `@konekti/websockets` decorators and metadata discovery
-- Consumes the platform-selected realtime capability and boots through `{ kind: 'server-backed', server }` on `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`, or through Bun's supported `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', ... }` capability on `@konekti/platform-bun`
-- Uses the official `@socket.io/bun-engine` host path for Bun instead of emulating the Node server-backed bootstrap model there
-- Maps `@WebSocketGateway({ path })` to Socket.IO namespaces (`/` uses the default namespace)
-- Binds `@OnConnect()`, `@OnMessage(event?)`, and `@OnDisconnect()` handlers for each connected namespace socket
-- Resolves gateway instances from the runtime DI container and skips non-singleton gateways with warnings
-- Exposes room helpers through the shared `SocketIoRoomService` abstraction
-- Keeps room helpers available until async `@OnDisconnect()` handlers settle, then removes the socket from the internal registry
-- Logs socket-level `error` events and removes errored sockets from the internal registry
-- Closes the Socket.IO server with timeout-aware shutdown handling
-
-## Intentional limitations
-
-- `@konekti/socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
-- Socket.IO support claims are currently limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express` through the server-backed path, plus `@konekti/platform-bun` through the official `@socket.io/bun-engine` path, where namespace, room, and shutdown behavior are regression-tested.
-- Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary. This package does not emulate Node listener lifecycle for Worker/fetch-style runtimes.
-- `@WebSocketGateway({ serverBacked })` remains a server-backed-only contract; this package rejects that opt-in when it is used together with `@konekti/platform-bun`.
-- Deno and Cloudflare Workers remain outside the Socket.IO support claim until this package gains a tested compatible implementation for those runtimes.
-
-## Difference from `@konekti/websockets`
-
-- `@konekti/websockets/node` targets raw `ws` upgrade handling on the shared Node server while `@konekti/websockets` root stays focused on shared gateway decorators and metadata
-- `@konekti/socket.io` targets Socket.IO v4 namespaces, rooms, acknowledgements, and transport fallback behavior
-- The decorators stay shared, but the transport-specific server and room implementation live in this package
+- `packages/socket.io/src/module.test.ts`

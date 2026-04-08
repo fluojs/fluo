@@ -1,141 +1,68 @@
-# cqrs
+# CQRS (Command Query Responsibility Segregation)
 
-This guide describes the CQRS package model in Konekti.
+<p><strong><kbd>English</kbd></strong> <a href="./cqrs.ko.md"><kbd>한국어</kbd></a></p>
 
-### related documentation
+Architecture is about managing complexity. Konekti provides a robust CQRS implementation that separates **state-changing operations (Commands)** from **data-retrieval operations (Queries)** into distinct buses, facilitating scalable and maintainable backend systems.
 
-- `./decorators-and-metadata.md`
-- `./di-and-modules.md`
-- `../../packages/cqrs/README.md`
+## Why CQRS in Konekti?
 
-## what `@konekti/cqrs` provides
+- **Decoupled Intent and Execution**: Application services only need to know the "Intent" (a Command or Query object), not the implementation details of how it's handled.
+- **Explicit Domain Modeling**: By treating state changes as first-class `Command` objects, your business logic becomes auditable and easier to reason about.
+- **Event-Driven Orchestration**: Built-in support for **Sagas** allows you to manage complex, multi-step workflows across different domains without tight coupling.
+- **Zero-Config Discovery**: Handlers are automatically discovered and registered at bootstrap time using standard decorators.
 
-`@konekti/cqrs` adds three runtime surfaces:
+## Responsibility Split
 
-- `CommandBus` (`COMMAND_BUS`) for command execution
-- `QueryBus` (`QUERY_BUS`) for query execution
-- `CqrsEventBus` (`EVENT_BUS`) for event publishing via `@konekti/event-bus`
+- **`@konekti/cqrs` (The Orchestrator)**: Provides the core `CommandBus`, `QueryBus`, and `CqrsEventBus`. It manages the discovery lifecycle and ensures each message reaches its designated handler.
+- **`@konekti/event-bus` (The Engine)**: The underlying infrastructure for event distribution. The CQRS package delegates event publishing to this package for high-performance delivery.
 
-It also publishes issue-aligned base contracts:
+## Typical Workflows
 
-- `ICommand`
-- `IQuery<TResult = unknown>`
-- `IEvent`
-- `ICommandHandler<TCommand extends ICommand, TResult = void>`
-- `IQueryHandler<TQuery extends IQuery<TResult>, TResult = unknown>`
-- `IEventHandler<TEvent extends IEvent>`
-- `ISaga<TEvent extends IEvent>` — saga/process-manager contract for event-driven orchestration
-
-`CqrsModule.forRoot({ commandHandlers?, queryHandlers?, eventHandlers?, sagas?, eventBus? })` registers those global tokens and imports `EventBusModule.forRoot()` automatically, so CQRS event publishing works without extra module wiring.
-
-- `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`: optional convenience arrays that are added as providers in the generated CQRS module.
-- `eventBus`: forwarded to `EventBusModule.forRoot(eventBus)`.
-
-## handler registration model
-
-Command and query handlers are class-based and discovered at bootstrap.
+### 1. The Command Flow (Write)
+A Command represents an intent to change the system state. It has exactly one handler and often results in one or more events.
 
 ```typescript
-import {
-  CommandHandler,
-  ICommand,
-  ICommandHandler,
-  IQuery,
-  IQueryHandler,
-  QueryHandler,
-} from '@konekti/cqrs';
+// 1. Dispatch the intent
+await commandBus.execute(new CreateUserCommand('John Doe'));
 
-class CreateUserCommand implements ICommand {
-  constructor(public readonly name: string) {}
-}
-
-class GetUserQuery implements IQuery<{ id: string }> {
-  readonly __queryResultType__?: { id: string };
-
-  constructor(public readonly id: string) {}
-}
-
+// 2. Handled by
 @CommandHandler(CreateUserCommand)
-class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
-  execute(command: CreateUserCommand) {
-    return command.name;
-  }
-}
-
-@QueryHandler(GetUserQuery)
-class GetUserHandler implements IQueryHandler<GetUserQuery, { id: string }> {
-  execute(query: GetUserQuery) {
-    return { id: query.id };
+class CreateUserHandler implements ICommandHandler<CreateUserCommand> {
+  async execute(command: CreateUserCommand) {
+    // Logic to save to database...
+    // Automatically publish UserCreatedEvent...
   }
 }
 ```
 
-- Decorators are implemented with **standard TC39 class decorators** and `ClassDecoratorContext.metadata`.
-- Metadata readers merge explicit metadata store values with standard decorator metadata safely.
-- Handler discovery runs in `onApplicationBootstrap()` using `COMPILED_MODULES` and `RUNTIME_CONTAINER`.
-
-## command/query invariants
-
-- Exactly one handler must exist per command type.
-- Exactly one handler must exist per query type.
-- Duplicate registrations fail bootstrap with typed framework errors.
-- Missing handlers fail at execute-time with typed framework errors.
-- Command/query handler classes must be singleton-scoped and implement `execute(...)`.
-
-## event publishing model
-
-`CqrsEventBus` is intentionally thin but not empty:
-
-- `publish(event)` delegates to `@konekti/event-bus` `EVENT_BUS.publish(event)`.
-- `publish(event)` also dispatches class-level `@EventHandler()` handlers discovered by `@konekti/cqrs`.
-- `publishAll(events)` calls `publish(event)` for each event in order.
-
-This means class-level `@EventHandler()` and method-level `@OnEvent(...)` handlers can coexist for the same event type.
-
-## saga / process-manager model
-
-`@Saga(EventClass | EventClass[])` marks a class as a saga/process-manager that reacts to one or more event types:
+### 2. The Query Flow (Read)
+A Query represents an intent to retrieve data. Like commands, queries are handled by a single dedicated handler to ensure predictable read models.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import {
-  CommandBus,
-  COMMAND_BUS,
-  IEvent,
-  ISaga,
-  Saga,
-} from '@konekti/cqrs';
+const user = await queryBus.execute(new GetUserQuery(userId));
+```
 
-class OrderSubmittedEvent implements IEvent {
-  constructor(public readonly orderId: string) {}
-}
+### 3. The Saga (Cross-Domain Orchestration)
+Sagas listen for events and dispatch new commands, acting as a "Process Manager" for complex workflows.
 
-class StartPaymentCommand {
-  constructor(public readonly orderId: string) {}
-}
-
-@Inject([COMMAND_BUS])
-@Saga(OrderSubmittedEvent)
-class OrderSaga implements ISaga<OrderSubmittedEvent> {
-  constructor(private readonly commandBus: CommandBus) {}
-
-  async handle(event: OrderSubmittedEvent): Promise<void> {
-    await this.commandBus.execute(new StartPaymentCommand(event.orderId));
+```typescript
+@Saga(UserCreatedEvent)
+class WelcomeSaga implements ISaga<UserCreatedEvent> {
+  async handle(event: UserCreatedEvent) {
+    // When a user is created, trigger the "Send Welcome Email" command
+    await this.commandBus.execute(new SendEmailCommand(event.userId));
   }
 }
 ```
 
-- `@Saga()` accepts a single event class or an array of event classes.
-- Saga classes must be singleton-scoped and implement `handle(event)`.
-- Different saga classes can observe the same event type; duplicate registration of the same saga class is deduplicated.
-- Saga dispatches run through per-saga execution chains, so concurrent `publish()` calls are applied in deterministic order for each saga instance.
-- Unexpected saga failures throw `SagaExecutionError` from `publish()`.
-- In-flight saga executions are drained during application shutdown.
-- Register sagas via the `sagas` option in `CqrsModule.forRoot({ sagas: [...] })` or rely on decorator discovery at bootstrap.
+## Core Boundaries
 
-## mental model
+- **The Single Handler Rule**: Commands and Queries are **Point-to-Point**. Each must have exactly one handler. If zero or multiple handlers are found, Konekti will throw an error at bootstrap or execution time.
+- **Event-to-Many**: Unlike commands, a single `Event` can be handled by multiple `EventHandlers` and `Sagas` simultaneously.
+- **Local vs. Distributed**: The default CQRS buses operate within a single process. For distributed architectures, you can bridge these buses to external brokers via custom adapters.
 
-```text
-@konekti/cqrs = command/query dispatch contracts + event publishing facade
-@konekti/event-bus = event handler discovery and dispatch runtime
-```
+## Next Steps
+
+- **Deep Dive**: Explore the [CQRS Package README](../../packages/cqrs/README.md).
+- **Underlying Infrastructure**: Learn about the [Event Bus Package](../../packages/event-bus/README.md).
+- **Examples**: See complex saga workflows in the [Example Apps](../../examples/README.md).

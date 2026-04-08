@@ -2,70 +2,54 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./lifecycle-and-shutdown.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide describes the application lifecycle, covering bootstrap, readiness, and shutdown processes.
+Konekti provides a rigorous, deterministic **Application Lifecycle** that governs how your service starts, signals health, and gracefully exits. This lifecycle ensures that your application is never in a "half-alive" state.
 
-### related documentation
+## why this matters
 
-- `./config-and-environments.md`
-- `./dev-reload-architecture.md`
-- `./transactions.md`
-- `../../packages/runtime/README.md`
+In modern cloud-native environments (Kubernetes, AWS, etc.), the way an application starts and stops is as important as how it handles requests.
+- **The Startup Race**: If your app starts accepting traffic before the database connection is ready, you'll see a spike of 500 errors.
+- **The "Dirty" Shutdown**: If you kill a process while it's still writing to a database, you risk data corruption.
+- **Zombie Resources**: Failing to close Redis clients or message broker connections can lead to resource exhaustion over time.
 
-## lifecycle phases
+Konekti eliminates these risks by providing a **Structured Lifecycle Contract**. Every module and provider in your application can participate in this contract, ensuring that dependencies are initialized and destroyed in the correct order.
 
-The application lifecycle consists of several distinct phases:
+## core ideas
 
-1.  **Configuration Loading**: Reading environment and configuration data.
-2.  **Module Graph Compilation**: Building the internal application structure.
-3.  **Provider and Container Creation**: Instantiating dependency injection containers.
-4.  **Initialization Hooks**: Executing provider and module initialization logic.
-5.  **Infrastructure Connection**: Establishing connections to external services (e.g., databases).
-6.  **Transport Binding**: Binding the HTTP adapter and starting listeners.
-7.  **Ready State**: The application is fully initialized and accepting requests.
+### atomic bootstrap
+Bootstrap is an "all-or-nothing" operation.
+1. **Config Validation**: If `.env` is wrong, we stop.
+2. **Module Compilation**: If the DI graph is broken, we stop.
+3. **Provider Initialization**: If a database connection fails during `onModuleInit`, we stop.
 
-## bootstrap guarantees
+Konekti ensures that a process only stays alive if it is **fully functional**.
 
-- **Validation**: Invalid configurations cause the application to fail before binding to a port.
-- **Graph Integrity**: Errors in the module or provider graph are caught at startup.
-- **Atomicity**: Infrastructure failures prevent the application from entering a partially started state.
-- **Readiness**: An "app ready" signal ensures the transport is fully prepared for incoming requests.
-- **Health Checks**: `/health` (liveness) and `/ready` (readiness) are managed as separate concerns.
+### readiness vs. liveness
+Konekti distinguishes between being "alive" (the process is running) and being "ready" (the process can handle traffic).
+- **Liveness**: Managed by the runtime engine.
+- **Readiness**: Only signaled after `onApplicationBootstrap` has successfully completed across all modules. This is the signal for load balancers to start routing traffic to the instance.
+
+### graceful shutdown sequence
+When a `SIGTERM` or `SIGINT` is received, Konekti begins a coordinated retreat:
+1. **Stop Ingestion**: The HTTP server stops accepting new connections immediately.
+2. **Request Draining**: Active requests are given a grace period (configurable) to finish.
+3. **Reverse-Order Teardown**: Shutdown hooks (`onModuleDestroy`, `beforeApplicationShutdown`) are executed in the **exact reverse order** of their initialization. If Module A depends on Module B, Module A is destroyed *first* to ensure Module B's resources are still available during A's cleanup.
 
 ## lifecycle hooks
 
-The runtime manages the following standard hook sequence:
+- **`onModuleInit`**: Logic that must run as soon as a module's providers are instantiated (e.g., establishing a socket connection).
+- **`onApplicationBootstrap`**: Logic that runs once the *entire* application graph is ready (e.g., starting a background cron job).
+- **`onModuleDestroy`**: Cleanup logic for a specific module.
+- **`beforeApplicationShutdown`**: The final chance to perform cleanup before the process exits.
 
-- `onModuleInit`
-- `onApplicationBootstrap`
-- `onModuleDestroy`
-- `onApplicationShutdown`
+## boundaries
 
-In dev mode with `watch: true`, runtime can also apply validated config reloads between bootstrap and shutdown. That path does not rebuild the module graph or replace the application shell. It updates the runtime-owned config snapshot and then notifies runtime-managed reload participants.
+- **Dependency-Aware**: You never have to worry about the order of cleanup. Konekti calculates the correct sequence based on your `@Inject()` metadata.
+- **Timeout Protection**: If a shutdown hook takes too long (e.g., a hanging database query), Konekti will eventually force-exit to prevent "zombie" processes from blocking deployments.
+- **Idempotency**: Lifecycle hooks are guaranteed to run exactly once per application instance.
 
-## shutdown sequence
+## related docs
 
-Konekti follows a structured shutdown process:
-
-1.  **Stop Ingestion**: Cease accepting new requests.
-2.  **Signal Capture**: Record the shutdown signal.
-3.  **Draining**: Wait for in-flight requests to complete.
-4.  **Hooks**: Execute destroy and shutdown hooks.
-5.  **Cleanup**: Disconnect infrastructure clients.
-6.  **Observability**: Flush logs and traces if necessary.
-7.  **Exit**: Terminate the process.
-
-## request draining policy
-
-- New requests are rejected during the shutdown phase.
-- In-flight requests are allowed a bounded period to finish.
-- Forced termination occurs if requests do not drain within the timeout window.
-- Request-scoped cleanup must be handled safely within a `finally` block.
-
-The default drain window in the Node adapter is 10 seconds. You can customize this using the `shutdownTimeoutMs` option in `@konekti/runtime/node`'s `bootstrapNodeApplication()` or `runNodeApplication()`.
-
-## integration notes
-
-- ORM clients should be integrated into the provider lifecycle.
-- Active transactions must be resolved or cleaned up before the database disconnects.
-- Runtime-owned adapters are responsible for mapping request abort or close signals to the internal framework model.
-- Lifecycle-managed schedulers (for example cron/interval/timeout tasks in `@konekti/cron`) stop accepting new ticks during shutdown, wait for in-flight executions, and then release owned distributed locks.
+- [Architecture Overview](./architecture-overview.md)
+- [Dev Reload Architecture](./dev-reload-architecture.md)
+- [Config and Environments](./config-and-environments.md)
+- [Runtime Package README](../../packages/runtime/README.md)

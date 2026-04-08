@@ -2,14 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-`@konekti/runtime/web`의 공용 fetch-style 어댑터 seam을 재사용하는 Bun 기반 Konekti HTTP 어댑터입니다.
+네이티브 `Bun.serve()`를 기반으로 구축된 Konekti 런타임용 Bun 기반 HTTP 어댑터 패키지입니다.
 
-## 관련 문서
+## 목차
 
-- `../runtime/README.ko.md`
-- `../../docs/concepts/http-runtime.ko.md`
-- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
-- `../../docs/reference/package-surface.ko.md`
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 패턴](#주요-패턴)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -17,11 +20,16 @@
 npm install @konekti/platform-bun
 ```
 
+## 사용 시점
+
+Konekti 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Bun의 고성능 `Request`/`Response` 브리지와 네이티브 `fetch` 방식의 아키텍처를 활용하여 Bun 사용자에게 원활하고 빠른 경험을 제공합니다.
+
 ## 빠른 시작
 
 ```typescript
 import { createBunAdapter } from '@konekti/platform-bun';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
@@ -30,57 +38,49 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## 주요 패턴
 
-- `createBunAdapter(options)` - Bun `HttpApplicationAdapter`를 생성합니다.
-- `createBunFetchHandler({ dispatcher, ...options })` - 공용 fetch-style 어댑터 seam 위에 Bun `fetch(request)` 핸들러를 생성합니다.
-- `bootstrapBunApplication(rootModule, options)` - 암시적 시작 로그 없이 애플리케이션을 부트스트랩하는 고급 헬퍼입니다.
-- `runBunApplication(rootModule, options)` - 부트스트랩 + listen + 시작 로그 + 종료 시그널 연결을 제공하는 호환 헬퍼입니다.
+### 수동 Fetch 처리
+Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 
-### 지원 옵션
+```typescript
+import { createBunFetchHandler } from '@konekti/platform-bun';
 
-`createBunAdapter()`, `bootstrapBunApplication()`, `runBunApplication()`은 다음 Bun 어댑터 옵션을 지원합니다.
+const handler = await createBunFetchHandler({ 
+  dispatcher: app.getHttpDispatcher(),
+  port: 3000 
+});
 
-- `port`
-- `hostname`
-- `tls`
-- `idleTimeout`
-- `development`
-- `maxBodySize`
-- `rawBody`
-- `multipart`
+Bun.serve({
+  fetch: handler,
+  port: 3000,
+});
+```
 
-`runBunApplication()`은 다음 옵션도 지원합니다.
+### 네이티브 WebSocket 업그레이드
+어댑터는 `@konekti/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다.
 
-- `shutdownSignals`
-- `forceExitTimeoutMs`
+```typescript
+// Bun 어댑터가 활성화된 경우 게이트웨이는 자동으로 Bun의 네이티브 업그레이드를 사용합니다.
+@WebSocketGateway({ path: '/ws' })
+export class MyGateway {}
+```
 
-## supported operations
+## 공개 API 개요
 
-- 공유 `@konekti/runtime/web` fetch-style 어댑터 seam을 재사용해 Bun의 native `Request` 처리를 Konekti `FrameworkRequest` / `FrameworkResponse`로 브리지합니다.
-- query string, cookie, JSON/text body parsing, multipart parsing, canonical error envelope 등 공용 fetch-style 요청 시맨틱을 유지합니다.
-- 공용 seam이 `FrameworkResponse.stream`을 노출하므로 SSE 및 스트리밍 응답은 raw Node writer가 아니라 어댑터 소유 스트림 계약을 따릅니다.
-- Bun의 `Bun.serve()` + `server.upgrade()` 요청 업그레이드 호스팅을 위해 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` capability를 노출합니다.
-- Bun 네이티브 realtime 통합을 위한 명시적 바인딩 seam을 제공하며, raw websocket은 `@konekti/websockets/bun`, 공식 Socket.IO 경로는 `@konekti/socket.io` + `@socket.io/bun-engine`이 이 seam을 소비합니다.
-- `KonektiFactory.create(..., { adapter: createBunAdapter(...) })` 형태의 adapter-first 시작과 `runBunApplication()` 호환 헬퍼를 모두 지원합니다.
+- `createBunAdapter(options)`: Bun 어댑터를 위한 권장 팩토리입니다.
+- `createBunFetchHandler(options)`: 커스텀 `Bun.serve()` 설정을 위한 네이티브 `fetch(request)` 핸들러를 생성합니다.
+- `bootstrapBunApplication(module, options)`: 암시적 시작 로그 없이 애플리케이션을 부트스트랩하는 고급 헬퍼입니다.
+- `runBunApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다.
 
-## runtime invariants
+## 관련 패키지
 
-- `rawBody`는 opt-in이며 multipart 요청에서는 비워 둡니다.
-- 디스패처가 응답을 커밋하지 않으면 공용 fetch-style 어댑터 seam이 빈 페이로드로 Bun 응답을 마무리합니다.
-- SSE 프레이밍과 스트리밍 응답 동작은 다른 fetch-style 런타임 어댑터가 공유하는 동일한 seam을 재사용합니다.
-- `globalThis.Bun.serve()`가 없으면 어댑터가 명시적인 오류와 함께 즉시 실패합니다.
+- `@konekti/runtime`: 핵심 런타임입니다.
+- `@konekti/websockets`: 전용 서브패스 `@konekti/websockets/bun`을 포함합니다.
+- `@konekti/socket.io`: 네이티브 Bun 엔진을 지원합니다.
 
-## lifecycle guarantees
+## 예제 소스
 
-- `listen(dispatcher)`는 어댑터 생명주기 동안 정확히 하나의 Bun server 인스턴스를 생성합니다.
-- `close(signal?)`는 활성 Bun server를 중지하고 어댑터가 보유한 server handle을 해제합니다.
-- `runBunApplication()`은 런타임 시작 로그 형식을 따르며, Node 호환 process signal을 노출하는 Bun 환경에서는 종료 시그널 정리까지 연결할 수 있습니다.
+- `packages/platform-bun/src/adapter.test.ts`
+- `packages/websockets/src/bun/bun.test.ts`
 
-## intentional limitations
-
-- 이 어댑터는 `@konekti/runtime`를 대체하지 않으며, 부트스트랩/DI/미들웨어/가드/종료 소유권은 런타임 패키지에 남습니다.
-- Bun의 native `fetch` + `Bun.serve()` 계약을 넘는 standalone app builder는 제공하지 않으며, 프레임워크 통합은 계속 Konekti 런타임 facade를 통해 흐릅니다.
-- Node 전용 writable response escape hatch는 제공하지 않으며, 스트리밍 응답은 `FrameworkResponse.stream`을 사용해야 합니다.
-- Deno, Cloudflare Workers 같은 다른 fetch-style 런타임은 별도 어댑터 범위로 유지됩니다.
-- Bun용 raw websocket 호스팅은 전용 `@konekti/websockets/bun` 바인딩을 통해 제공되며, Bun 전용 Socket.IO 호스팅은 이제 `@konekti/socket.io`와 공식 `@socket.io/bun-engine` 경로를 통해 제공됩니다. `@konekti/websockets/node`는 계속 Node upgrade-listener 전용 경계로 유지되며 Bun 지원을 주장하지 않습니다.

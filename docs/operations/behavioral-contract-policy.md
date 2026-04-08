@@ -1,69 +1,64 @@
-# behavioral contract policy
+# Behavioral Contract Policy
 
-<p><strong><kbd>English</kbd></strong> <a href="./behavioral-contract-policy.ko.md"><kbd>한국어</kbd></a></p>
+<p>
+  <strong>English</strong> | <a href="./behavioral-contract-policy.ko.md">한국어</a>
+</p>
 
-This policy codifies the rules for preserving behavioral contracts in the Konekti monorepo. It ensures that package modifications do not silently break documented runtime expectations.
+This policy defines the governance and rules for preserving behavioral contracts within the Konekti framework. It ensures that changes to the codebase do not silently break documented runtime expectations, side effects, or lifecycle guarantees.
 
-## what is a behavioral contract
+## When this document matters
 
-A behavioral contract is a documented promise regarding a package's runtime behavior, side effects, and lifecycle. While TypeScript types define the interface, the behavioral contract defines what happens when that interface is used.
+- **Core Refactoring**: When modifying existing `@konekti/*` packages or internal runtime logic.
+- **API Authoring**: When introducing new public decorators, providers, or platform adapters.
+- **Documentation**: When authoring or updating package-level `README.md` files and operational guides.
+- **Pull Request Review**: As a primary checklist for maintainers to verify that contract conformance is maintained.
 
-In Konekti, the behavioral contract is the authority on:
-- what a component does when invoked
-- what it deliberately ignores or excludes
-- how it handles state, resources, and errors
+---
 
-## required package documentation
+## Policy Definition
 
-Every `@konekti/*` package must maintain the following sections in its `README.md` to establish its behavioral contract:
+### 1. What is a Behavioral Contract?
+A behavioral contract is a documented promise regarding a package's runtime behavior. While TypeScript types define the **interface** (what goes in and out), the behavioral contract defines the **semantics** (how the implementation behaves).
 
-- **supported operations**: detailed semantics of public methods, functions, and decorators.
-- **intentional limitations**: explicit "non-goals" or features the package deliberately does not support.
-- **runtime invariants**: behavior that must remain consistent across refactors (e.g., "always throws X when Y is missing").
-- **lifecycle guarantees**: cleanup, connection management, or shutdown behavior where applicable.
+**Examples of Contracts:**
+- "This decorator always evaluates before the module is initialized."
+- "This provider throws a `ConfigurationError` if `API_KEY` is missing."
+- "This adapter closes all idle keep-alive connections within 5 seconds of receiving a shutdown signal."
 
-## contract preservation rules
+### 2. Documentation Requirements
+Every `@konekti/*` package MUST maintain the following in its `README.md` (and the Korean mirror):
+- **Supported Operations**: The detailed semantics of public methods and decorators.
+- **Runtime Invariants**: Behaviors that must remain consistent across different platforms (Node.js, Bun, Deno).
+- **Lifecycle Guarantees**: Explicit behavior for initialization, cleanup, and graceful shutdown.
+- **Intentional Limitations**: Explicitly documented "non-goals" to prevent accidental feature creep.
 
-- **existing behavior**: any behavior documented in a package README must be preserved during refactoring.
-- **adding behavior**: new documented behaviors require tests that validate the new contract.
-- **removing behavior**: removing documented intended behavior is a breaking change.
-  - `0.x`: requires a minor version bump and explicit migration notes.
-  - `1.0+`: requires a major version bump and a migration guide.
-- **changing semantics**: changing how an existing operation behaves (even if the type signature remains the same) is a breaking change.
-- **environment ownership**: ordinary package source must not read `process.env` directly. Environment values must enter through the application/bootstrap boundary and be passed as explicit parameters, typed config providers, or injected options.
+---
 
-Refer to `release-governance.md` for detailed versioning policy and `third-party-extension-contract.md` for extension stability rules.
+## Governance Rules
 
-## contract checklist for pull requests
+### Rule 1: Contract Preservation
+Any behavior documented in a package's README or operational docs is considered a binding contract. Modifying this behavior without following the **Breaking Change Policy** is a violation of this governance.
 
-PRs affecting package behavior must verify:
-- [ ] No documented behavioral contracts were removed without migration notes.
-- [ ] New behavioral contracts are documented in the affected package README.
-- [ ] Intentional limitations are explicitly stated rather than silently removed.
-- [ ] Runtime invariants are covered by regression tests.
-- [ ] Package internals do not read `process.env` directly unless the file is a documented boundary/template exception.
+### Rule 2: Breaking Change Policy
+- **0.x Phase**: Breaking changes are permitted in **Minor** releases (`0.X.0`) but MUST be accompanied by a migration note in the `CHANGELOG.md`.
+- **1.0+ Phase**: Breaking changes are strictly prohibited in minor/patch releases and MUST trigger a **Major** version bump with a comprehensive migration guide.
 
-## CI enforcement
+### Rule 3: Environment Isolation
+Packages must not access `process.env` directly. All environment-driven configurations must enter the system through the application boundary (typically via `@konekti/config`) and be passed as explicit parameters or injected options.
 
-Behavioral contract governance is enforced in CI via `pnpm verify:platform-consistency-governance`.
+---
 
-The governance check fails pull requests when:
+## Enforcement
 
-- SSOT English/Korean mirror docs drift structurally.
-- Contract-governing docs change without companion updates to docs index, CI/tooling enforcement, and regression-test evidence.
-- Package README alignment/conformance claims are not backed by conformance harness tests (`createPlatformConformanceHarness(...)`).
-- Ordinary `packages/*/src/**` source reads `process.env` directly outside repo-approved boundary/template exceptions.
+Konekti uses automated gates to ensure compliance:
+1.  **Structural Parity**: `pnpm verify:platform-consistency-governance` fails if English and Korean documentation structures drift.
+2.  **Access Control**: Static analysis tools block direct `process.env` access in core packages.
+3.  **Regression Testing**: All documented contracts must be backed by a corresponding test case in the package's test suite.
 
-## strong contract examples
+---
 
-The following packages serve as models for strong behavioral contracts:
-- `@konekti/http`: defines guard contracts, DTO binding rules, and routing invariants.
-- `@konekti/microservices`: includes transport notes with per-transport behavioral descriptions and explicit "unsupported" statements.
-- `@konekti/testing`: maintains a stable testing surface boundary with clear lifecycle expectations.
-
-## contract anti-patterns
-
-- **silent removal**: removing a method like `send()` from a transport because "it wasn't used in the core" despite being a documented part of the transport contract.
-- **undocumented limitations**: adding a new adapter that silently ignores half of the configuration options provided by the base interface.
-- **implicit side effects**: introducing new background processes or resource allocations that are not documented in the package lifecycle.
-- **implicit env ownership**: a library package reaching into `process.env` instead of requiring the application boundary to pass configuration explicitly.
+## Related Docs
+- [Release Governance](./release-governance.md)
+- [Third-Party Extension Contract](./third-party-extension-contract.md)
+- [Platform Conformance Authoring Checklist](./platform-conformance-authoring-checklist.md)
+- [Testing Guide](./testing-guide.md)

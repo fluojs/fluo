@@ -2,83 +2,55 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./http-runtime.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide explains the HTTP execution model used in `@konekti/http`, `@konekti/runtime`, authentication packages, and the generated starter application.
+Konekti provides a high-performance **HTTP Runtime Facade** that abstracts away the complexities of underlying web servers (like Fastify, Bun, or Cloudflare Workers) while providing a strict, phase-based request lifecycle.
 
-### related documentation
+## why this matters
 
-- `./architecture-overview.md`
-- `./auth-and-jwt.md`
-- `../../packages/http/README.md`
+In many frameworks, the "request journey" is a black box. Middleware, filters, guards, and interceptors often overlap in confusing ways, making it hard to answer simple questions:
+- "Where should I put my authentication logic?"
+- "Why isn't my validation error being caught by my global filter?"
+- "Is my response already serialized before it hits the logger?"
 
-## request lifecycle
+Konekti eliminates this ambiguity with an **Explicit Execution Sequence**. By defining a clear, one-way journey for every request, we ensure that security, validation, and observability are handled consistently across your entire API.
 
-The request execution path follows this sequence:
+## core ideas
 
-1.  **HTTP adapter** receives the request.
-2.  **RequestContext** creation.
-3.  **Application middleware** execution.
-4.  **Route matching**.
-5.  **Module middleware** execution.
-6.  **Guard chain** validation.
-7.  **Interceptor chain** execution.
-8.  **Input binding and materialization**.
-9.  **Input validation**.
-10. **Controller invocation**.
-11. **Response serialization** (if an interceptor applies).
-12. **Success status resolution**.
-13. **Response write**.
-14. **Exception mapping** (if an error occurs).
+### runtime abstraction (the facade)
+Your business logic should not depend on whether you're running on Node.js with Fastify or on a serverless Edge function.
+- **Unified Context**: Konekti wraps the raw request/response objects in a `KonektiContext`.
+- **Platform Agnostic**: You write your controllers and services once; the platform adapter (e.g., `@konekti/platform-fastify`) handles the translation to the specific server engine.
 
-## success status defaults
+### materialization gate
+Konekti treats incoming HTTP data (body, query, params) as **untrusted raw input**.
+- **The Gatekeeper**: Data is "materialized" into typed TypeScript classes using decorators like `@FromBody()`.
+- **Validation-First**: Before your controller handler is ever called, this materialized data is validated against your defined schemas. If validation fails, the request is rejected with a clear 400 error, saving your business logic from dealing with corrupt data.
 
-Unless overridden, the dispatcher uses method-based defaults:
+### the interceptor "onion"
+Konekti uses an "onion" model for request processing. Each phase (Middleware -> Guard -> Interceptor) wraps the next, allowing you to execute logic both **before** and **after** the handler. This is perfect for logging, performance timing, and response transformation.
 
-- `GET`, `PUT`, `PATCH`, `HEAD`: `200`
-- `POST`: `201`
-- `DELETE`, `OPTIONS`: `204` if the result is `undefined`, otherwise `200`.
+## execution sequence
 
-Use `@HttpCode(code)` to override these defaults. Note that status resolution happens after the interceptor chain, so interceptors can still influence the final status code.
+1. **Platform Adapter**: Receives the raw byte stream from the network.
+2. **Context Initialization**: Creates the `KonektiContext`.
+3. **Global Middleware**: Handles raw cross-cutting concerns (e.g., CORS, Compression).
+4. **Route Discovery**: Matches the URL path to a specific Controller method.
+5. **Guard Check**: The authorization boundary. If a guard returns `false`, the journey ends with a 403.
+6. **Interceptor (Pre-Handler)**: Executes logic right before the data is processed.
+7. **Input Materialization & Validation**: Raw JSON becomes a typed, validated class instance.
+8. **Controller Handler**: Your business logic executes.
+9. **Interceptor (Post-Handler)**: Transforms the result (e.g., wrapping it in a `{ data: ... }` object).
+10. **Response Serialization**: Converts the result back to JSON or the requested format.
+11. **Final Write**: The platform adapter sends the response back to the client.
 
-## input and output boundaries
+## boundaries
 
-- **Binding / Materialization**: `@konekti/http` extracts raw request values and coordinates input materialization.
-- **Source Decorators**: `@FromBody()` and `@FromPath()` are provided by `@konekti/http`.
-- **Validation**: `@IsString()` and `@MinLength()` are provided by the `@konekti/validation` package.
-- **Serialization**: Output shaping is a separate concern, typically handled by `@konekti/serialization` interceptors.
+- **No Raw Access**: You are discouraged from touching `req` or `res` directly. Use the `KonektiContext` to maintain platform portability.
+- **Contract-Based Responses**: Return values from controllers are automatically serialized based on the `@Produces()` or `@HttpCode()` metadata.
+- **Exception Boundary**: Uncaught errors in any phase are caught by the **Global Exception Filter**, which ensures the client receives a standardized error response instead of a raw stack trace.
 
-Konekti treats request models as an explicit input boundary between the transport layer and application logic. Output shaping is handled later as a distinct response-side phase.
+## related docs
 
-## starter app policies
-
-The generated starter application maintains several HTTP defaults:
-
-- Built-in `/health` and `/ready` endpoints.
-- Sample `/health-info/` endpoint via the `health/` module.
-- Default CORS policies managed by the runtime bootstrap configuration.
-
-## development boundaries
-
-The HTTP and runtime contracts are intentionally kept narrow to ensure stability and clarity.
-
-### current priorities
-
-- Keep the handler signature as `handler(input, ctx)`.
-- Use plain return values and `@HttpCode(...)` as the primary response model.
-- Restrict middleware to the application and module levels.
-- Maintain the current boolean (allow/deny) guard model.
-
-### deferred features
-
-The following items are deferred to future updates to maintain architectural clarity:
-
-- A transport-neutral `handler(requestObject)` API.
-- First-class response wrapper objects for success paths.
-- Route-level middleware support.
-- Complex guard results beyond boolean allow/deny.
-
-## further reading
-
-- **HTTP API details**: `../../packages/http/README.md`
-- **Runtime bootstrap**: `../../packages/runtime/README.md`
-- **Authentication flow**: `./auth-and-jwt.md`
-- **Starter defaults**: `../getting-started/quick-start.md`
+- [Architecture Overview](./architecture-overview.md)
+- [Decorators and Metadata](./decorators-and-metadata.md)
+- [DI and Modules](./di-and-modules.md)
+- [HTTP Package README](../../packages/http/README.md)

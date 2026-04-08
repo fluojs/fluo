@@ -1,142 +1,41 @@
-# auth and jwt
+# 인증 및 JWT
 
 <p><a href="./auth-and-jwt.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 인증과 JWT 지원이 Konekti 패키지에 어떻게 분산되어 있는지 설명합니다.
+Konekti의 인증은 "전략 독립적(strategy-agnostic)" 실행 모델을 기반으로 구축되었습니다. Konekti는 라우트에 인증 로직을 직접 코딩하는 대신, 신원 확인과 라우트 보호를 분리합니다. 이를 통해 비즈니스 로직을 변경하지 않고도 다양한 인증 방식과 런타임(Node.js, Bun, Deno)에 걸쳐 애플리케이션을 확장할 수 있습니다.
 
-## 패키지 경계
+## Konekti 방식의 장점
 
-- **`@konekti/jwt`**: 핵심 JWT 규약, 서명, 검증, 클레임(claim) 유효성 검사, principal 정규화.
-- **`@konekti/passport`**: 전략 등록, 범용 인증 가드 연결, 전략 어댑터 규약.
-- **`@konekti/http`**: 가드 오케스트레이션, `RequestContext` 관리, 런타임 실행.
-- **`@konekti/config`**: 키 자료(key material), 발행자(issuer), 대상(audience) 관리.
+- **표준 데코레이터**: `@UseAuth()` 및 `@RequireScopes()`와 같은 표준 TC39 데코레이터를 사용하여 깔끔하고 메타데이터 중심적인 보안 태세를 유지합니다.
+- **Principal 정규화**: JWT, 세션 쿠키, API 키 등 어떤 방식을 사용하든 애플리케이션은 항상 일관된 `principal` 객체와 상호작용합니다.
+- **멀티 런타임 안전성**: 인증 코어는 전송 방식에 구애받지 않으므로 HTTP, WebSockets, 심지어 CLI 기반 실행에서도 안전하게 사용할 수 있습니다.
+- **명시적 스코프**: 라우트 레벨에서 직접 작동하는 스코프 기반 인가(RBAC/Scopes) 기능을 기본으로 지원합니다.
 
 ## 책임 분담
 
-- **토큰 추출**: 전략별 어댑터 로직.
-- **서명 및 클레임 검증**: `JwtVerifier`가 처리합니다.
-- **principal 정규화**: `JwtVerifier`가 처리합니다.
-- **라우트 레벨 인증 요구사항**: passport 메타데이터 및 인증 가드를 통해 관리합니다.
-- **컨텍스트 첨부**: 검증된 principal을 `RequestContext`에 첨부합니다.
-- **에러 매핑**: passport 및 HTTP 예외 레이어에서 처리합니다.
+- **`@konekti/jwt` (코어)**: 토큰의 "방법"을 처리합니다. JWT의 서명 및 검증, 클레임 정규화(예: `scope`와 `scopes` 클레임 병합)를 수행하며, 재생 공격 감지(replay detection) 기능이 포함된 리프레시 토큰 로테이션을 관리합니다.
+- **`@konekti/passport` (브릿지)**: "누구"를 처리합니다. `AuthStrategy` 인터페이스와 기존 Passport.js 전략들을 Konekti 요청 컨텍스트로 연결하는 브릿지를 제공합니다.
+- **`@konekti/http` (오케스트레이터)**: "언제"를 처리합니다. HTTP 수명 주기 동안 `AuthGuard`를 실행하고, 자격 증명(헤더/쿠키)을 추출하며, `RequestContext.principal`에 데이터를 채웁니다.
 
-## 요청 흐름
+## 요청의 여정
 
-일반적인 인증된 요청은 다음 경로를 따릅니다:
+1.  **진입 (Ingress)**: `@UseAuth('jwt')`가 적용된 라우트에 요청이 도달합니다.
+2.  **가드 트리거**: `AuthGuard`가 DI 컨테이너에서 'jwt' 전략을 식별합니다.
+3.  **추출**: 전략이 `Authorization` 헤더에서 Bearer 토큰을 추출합니다.
+4.  **검증**: `@konekti/jwt`가 `@konekti/config`로 관리되는 키를 사용하여 서명, 발행자(issuer), 대상(audience)을 검증합니다.
+5.  **정규화**: 원시 클레임이 안정적인 `JwtPrincipal` 객체로 매핑됩니다.
+6.  **인가 (Authorization)**: `@RequireScopes('admin')`이 있는 경우, 가드는 principal이 필요한 스코프를 가지고 있는지 확인합니다.
+7.  **주입**: 검증된 principal이 컨텍스트에 첨부되어 컨트롤러에서 `ctx.principal`을 통해 접근할 수 있게 됩니다.
 
-1.  **HTTP 요청** 도착.
-2.  **인증 가드**가 필요한 전략을 식별.
-3.  **인증 전략**이 자격 증명(예: JWT)을 검증.
-4.  **Principal** 추출 및 정규화.
-5.  **`RequestContext.principal`** 데이터 채우기.
-6.  **Controller/Service**가 인증된 principal과 함께 실행.
+## 실무 사례: 리프레시 토큰 로테이션
 
-## 핵심 원칙
+Konekti는 **일회용 로테이션(One-Time-Use Rotation)**을 구현하는 `RefreshTokenService`를 내장하고 있습니다. 사용자가 세션을 갱신할 때:
+- 이전 리프레시 토큰은 무효화됩니다.
+- 새로운 액세스/리프레시 토큰 쌍이 발급됩니다.
+- 이전 리프레시 토큰이 재사용되면(재생 공격), 해당 토큰 가족 전체가 자동으로 취소될 수 있어 탈취된 자격 증명으로부터 사용자를 보호합니다.
 
-- JWT는 하나의 특정 전략일 뿐, 전체 인증 모델이 아닙니다.
-- `@konekti/passport`는 전략에 구애받지 않습니다(strategy-agnostic).
-- `@konekti/jwt`는 트랜스포트에 구애받지 않습니다(transport-agnostic).
-- 애플리케이션 코드는 원시 페이로드 대신 정규화된 principal과 상호작용해야 합니다.
+## 다음 단계
 
-## JWT 지원 범위
-
-### 알고리즘
-
-- **HMAC**: `HS256`, `HS384`, `HS512`.
-- **비대칭**: `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`.
-
-### 키 관리
-
-비대칭 알고리즘의 경우, `JwtVerifierOptions`에 `privateKey`와 `publicKey`(PEM 문자열 또는 `KeyObject`)를 제공하세요. `kid`(Key ID) 헤더를 사용하는 `keys` 배열을 통해 키 로테이션이 지원됩니다.
-
-## 표준 인증 패턴
-
-권장 인증 패턴은 두 가지입니다:
-
-1. **Bearer 토큰 인증** — `Authorization: Bearer <token>` 헤더를 통한 인증
-2. **Cookie 인증** — HttpOnly 보안 쿠키를 통한 인증 (공식 preset)
-
-### 공식 Cookie auth preset
-
-`@konekti/passport`는 JWT 기반 인증을 위한 공식 HttpOnly 쿠키 auth preset을 제공합니다:
-
-```typescript
-import { Module } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
-import {
-  createPassportProviders,
-  createCookieAuthPreset,
-} from '@konekti/passport';
-import { JwtModule } from '@konekti/jwt';
-
-@Module({
-  imports: [
-    JwtModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        algorithms: ['HS256'],
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        issuer: config.getOrThrow<string>('JWT_ISSUER'),
-        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
-        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
-      }),
-    }),
-  ],
-  providers: [
-    ...createCookieAuthPreset({
-      cookieAuth: {
-        accessTokenCookieName: 'access_token',
-        refreshTokenCookieName: 'refresh_token',
-        requireAccessToken: true,
-      },
-      cookieManager: {
-        cookieOptions: {
-          secure: true,
-          sameSite: 'strict',
-          path: '/',
-        },
-      },
-    }).providers,
-    ...createPassportProviders(
-      { defaultStrategy: 'cookie' },
-      [createCookieAuthPreset().strategy],
-    ),
-  ],
-})
-export class AuthModule {}
-```
-
-> Config-first 원칙: env 기반 비밀값은 애플리케이션 경계에서 해석하고, auth 모듈에는 타입이 지정된 옵션/프로바이더만 전달하세요. `./config-and-environments.ko.md`를 참고하세요.
-
-Preset에 포함된 것:
-- `CookieAuthStrategy`: HttpOnly 쿠키에서 JWT 추출
-- `CookieManager`: auth 쿠키 설정/삭제 유틸리티
-- 보안 기본값: `HttpOnly: true`, `Secure: true`, `SameSite: strict`
-
-전체 cookie auth lifecycle 세부 정보는 `@konekti/passport` 문서를 참조하세요.
-
-### 애플리케이션 레벨 정책
-
-다음 영역은 애플리케이션 특정 사항으로 남아 있습니다:
-
-- 로그인 엔드포인트 구현 (자격 증명 검증)
-- 사용자 세션 스토리지 (JWT 외에 필요한 경우)
-- 라우트별 쿠키 도메인 및 경로 커스터마이징
-- 멀티 테넌트 쿠키 격리
-- 쿠키 동의 준수
-
-### 프레임워크 레벨 Refresh Token Lifecycle
-
-`@konekti/passport`는 `RefreshTokenService`를 통해 refresh token 작업을 위한 프레임워크 레벨 기본 기능을 제공합니다:
-
-- **Issue**: subject에 대한 새 refresh token 생성.
-- **Rotate**: 재생 감지를 포함하여 refresh token을 새 access + refresh token으로 교환.
-- **Revoke**: 특정 token 또는 subject의 모든 token 무효화(로그아웃).
-
-`RefreshTokenStrategy`는 request body(`refreshToken`), `Authorization: Bearer` 헤더, 또는 커스텀 `x-refresh-token` 헤더에서 refresh token을 추출합니다. 프레임워크가 헤더 형태(문자열 또는 문자열 배열) 정규화를 내부적으로 처리합니다.
-
-## 추가 정보
-
-- **`@konekti/jwt`**: `../../packages/jwt/README.md`
-- **`@konekti/passport`**: `../../packages/passport/README.md`
-- **`@konekti/http`**: `../../packages/http/README.md`
+- **빠른 시작**: [Auth JWT Passport 예제](../../examples/auth-jwt-passport/README.ko.md)에서 토큰 발급 및 검증을 확인하세요.
+- **실무 적용**: [RealWorld API 예제](../../examples/realworld-api/README.ko.md)에서 완전한 로그인 흐름을 확인하세요.
+- **상세 탐색**: [JWT 패키지](../../packages/jwt/README.ko.md) 및 [Passport 패키지](../../packages/passport/README.ko.md)를 살펴보세요.

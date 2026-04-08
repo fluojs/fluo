@@ -2,15 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 런타임 애플리케이션을 위한 raw Node.js HTTP 어댑터 패키지입니다.
+Konekti 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 
-## 관련 문서
+## 목차
 
-- `../runtime/README.ko.md`
-- `../../docs/concepts/http-runtime.ko.md`
-- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
-- `../../docs/reference/package-chooser.ko.md`
-- `../../docs/reference/package-surface.ko.md`
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 패턴](#주요-패턴)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -18,11 +20,16 @@ Konekti 런타임 애플리케이션을 위한 raw Node.js HTTP 어댑터 패키
 npm install @konekti/platform-nodejs
 ```
 
+## 사용 시점
+
+Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.js 내장 `http` 또는 `https` 모듈에서 직접 Konekti 애플리케이션을 실행하려는 경우에 사용합니다. 최소한의 리소스 사용, 저수준 최적화 또는 표준 Node API가 선호되는 환경에 이상적입니다.
+
 ## 빠른 시작
 
 ```typescript
 import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { KonektiFactory } from '@konekti/runtime';
+import { AppModule } from './app.module';
 
 const app = await KonektiFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
@@ -31,60 +38,50 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-## API
+## 주요 패턴
 
-- `createNodejsAdapter(options)` - raw Node.js `HttpApplicationAdapter`를 생성합니다.
-- `bootstrapNodejsApplication(rootModule, options)` - 암묵적 listen 없이 부트스트랩만 수행하는 호환 헬퍼입니다.
-- `runNodejsApplication(rootModule, options)` - bootstrap + listen + startup logging + shutdown signal wiring을 제공하는 호환 헬퍼입니다.
+### 서버 옵션 커스텀
+어댑터는 HTTPS 설정 및 바디 크기 제한을 포함한 표준 Node.js 서버 옵션을 수용합니다.
 
-### Node 헬퍼 소유권
+```typescript
+const adapter = createNodejsAdapter({
+  port: 443,
+  https: {
+    key: fs.readFileSync('key.pem'),
+    cert: fs.readFileSync('cert.pem'),
+  },
+  maxBodySize: '1mb',
+});
+```
 
-| concern | public home | 역할 |
-| --- | --- | --- |
-| 기본 raw Node 시작 경로 | `@konekti/platform-nodejs` → `createNodejsAdapter()` | 런타임 facade 위에서 raw Node 어댑터를 선택하는 canonical adapter-first 경로입니다. |
-| Node 전용 startup wrapper | `@konekti/platform-nodejs` → `bootstrapNodejsApplication()` / `runNodejsApplication()` | transport-neutral runtime root가 아니라 raw Node 패키지에 남겨 두는 호환 wrapper입니다. |
-| shutdown signal wiring 유틸리티 | `@konekti/runtime/node` → `createNodeShutdownSignalRegistration()` / `registerShutdownSignals()` | 기본 시작 모델이 아닌, 호환 또는 커스텀 Node 부트스트랩을 위한 고급 프로세스 헬퍼입니다. |
-| 명시적 Node compression helper | `@konekti/runtime/node` → `createNodeResponseCompression()` / `compressNodeResponse()` | 기본 startup entrypoint와 분리해 두는 고급 Node 전용 응답 작성 유틸리티입니다. |
+### 직접 애플리케이션 실행
+`runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
 
-### 지원 옵션
+```typescript
+import { runNodejsApplication } from '@konekti/platform-nodejs';
+import { AppModule } from './app.module';
 
-`createNodejsAdapter()`, `bootstrapNodejsApplication()`, `runNodejsApplication()`은 현재 raw Node 옵션 형태를 그대로 유지합니다.
+await runNodejsApplication(AppModule, {
+  port: 3000,
+  globalPrefix: 'api',
+});
+```
 
-- `port`
-- `host`
-- `https`
-- `maxBodySize`
-- `rawBody`
-- `retryDelayMs`
-- `retryLimit`
-- `shutdownTimeoutMs`
+## 공개 API 개요
 
-`bootstrapNodejsApplication()`과 `runNodejsApplication()`은 여기에 더해 `@konekti/runtime`에 문서화된 `cors`, `globalPrefix`, `filters`, `converters`, `middleware`, `versioning` 같은 런타임 소유 HTTP 옵션도 계속 지원합니다.
+- `createNodejsAdapter(options)`: raw Node.js HTTP 어댑터를 위한 기본 팩토리입니다.
+- `bootstrapNodejsApplication(module, options)`: 리스너를 시작하지 않고 애플리케이션 인스턴스를 생성합니다.
+- `runNodejsApplication(module, options)`: 생명주기 관리를 포함하여 애플리케이션을 부트스트랩하고 시작합니다.
+- `NodejsHttpAdapter`: `HttpApplicationAdapter`를 구현하는 기본 어댑터 클래스입니다.
 
-## supported operations
+## 관련 패키지
 
-- adapter-first 런타임 facade(`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`)를 통해 raw Node.js HTTP 리스너를 명시적으로 선택합니다.
-- raw Node 어댑터 entrypoint를 이 패키지가 직접 소유하고, 명시적인 `@konekti/runtime/internal-node` seam을 조합하여 현재 Node request/response 브리지, startup logging, graceful shutdown, HTTPS, retry 시맨틱을 그대로 유지합니다.
-- `{ kind: 'server-backed', server }` 형태의 realtime capability를 노출하여, Node 기반 realtime binder가 모든 런타임을 Node처럼 가정하지 않고도 플랫폼 선택 결과를 소비할 수 있게 합니다.
-- 이 realtime capability seam 위에서 현재 raw `@konekti/websockets/node` 바인딩을 지원합니다.
-- 루트 데코레이터 opt-in인 `@WebSocketGateway({ serverBacked: { port } })`도 지원하며, 이 경우 게이트웨이는 애플리케이션 HTTP 리스너를 건드리지 않고 websocket 전용 리스너로 이동합니다.
-- 헬퍼 wrapper 경로가 필요한 사용자를 위해 호환 부트스트랩 헬퍼도 계속 제공합니다.
+- `@konekti/runtime`: 핵심 런타임 facade입니다.
+- `@konekti/websockets`: 실시간 게이트웨이 지원을 제공합니다.
+- `@konekti/http`: 공통 HTTP 추상화 및 데코레이터를 포함합니다.
 
-## runtime invariants
+## 예제 소스
 
-- `rawBody`는 계속 opt-in이며 multipart 요청에서는 채워지지 않습니다.
-- startup log와 bind-target 보고 형식은 현재 raw Node 리스너 동작과 동일하게 유지됩니다.
-- 어댑터는 기존 `@konekti/runtime/node` 구현과 동일한 graceful shutdown drain window 및 HTTPS 바인딩 동작을 유지합니다.
+- `packages/platform-nodejs/src/index.test.ts`
+- `examples/minimal/src/main.ts` (Fastify 기반이지만 구조적으로 유사함)
 
-## lifecycle guarantees
-
-- `listen(dispatcher)`는 어댑터 생명주기 동안 정확히 하나의 Node HTTP/HTTPS 서버를 시작합니다.
-- `close(signal?)`는 새 연결 수락을 중단하고, `shutdownTimeoutMs` 동안 기존 요청을 드레인한 뒤 남은 소켓을 정리합니다.
-- `runNodejsApplication()`은 애플리케이션 생명주기 전후로 shutdown signal listener를 계속 등록/해제합니다.
-
-## intentional limitations
-
-- 이 패키지는 raw Node 어댑터 경계를 직접 소유하지만, 공유되는 Node 전용 transport 내부 구현은 명시적인 `@konekti/runtime/internal-node` seam에 의존합니다.
-- 여기서는 새로운 adapterless startup 시맨틱을 도입하지 않습니다. 어댑터를 생략한 경우 HTTP 서빙을 기대하지 말고, DI/생명주기 전용 부트스트랩에는 `createApplicationContext()`를 사용하세요.
-- compression helper나 shutdown registration utility 같은 고급 Node 전용 내부 API는 `@konekti/runtime/node`에 남겨 두어, 기본 `@konekti/platform-nodejs` startup surface가 어댑터 선택과 Node 전용 wrapper entrypoint에 집중되도록 유지합니다.
-- 전용 websocket 리스너 opt-in의 소유권은 이 패키지의 HTTP 어댑터 옵션이 아니라 `@konekti/websockets/node`에 있습니다. 여기서 새 HTTP 어댑터 플래그를 기대하지 말고 루트 게이트웨이 데코레이터 메타데이터를 사용하세요.

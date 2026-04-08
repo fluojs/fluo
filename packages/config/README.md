@@ -2,32 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Configuration loading, merging, validation, and typed runtime access for Konekti applications.
 
-Reads, merges, validates, and exposes configuration as a typed runtime contract. Not just an `.env` reader.
+## Table of Contents
 
-## See also
-
-- `../../docs/concepts/config-and-environments.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-
-## What this package does
-
-`@konekti/config` normalises multiple configuration sources into a single validated dictionary at bootstrap time, then wraps it in a typed accessor (`ConfigService`) that the rest of the app uses.
-
-Sources, in merge order (lowest → highest precedence):
-
-1. `defaults` (inline object)
-2. env file (path set by `envFile` option, defaults to `.env`)
-3. explicit `processEnv` passed by the caller
-4. `runtimeOverrides` (inline object)
-
-Validation runs after merging. If validation fails, the app refuses to start.
-
-Merge policy:
-
-- plain object values are **deep merged** by key
-- non-object values (including arrays) use source precedence and replace earlier values
-- no silent nested subtree loss when only part of a nested object is overridden
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Key Capabilities](#key-capabilities)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -35,127 +20,83 @@ Merge policy:
 npm install @konekti/config
 ```
 
+## When to Use
+
+Use this package when you need to:
+- Load configuration from `.env` files and environment variables.
+- Merge multiple configuration sources with strict precedence rules.
+- Validate your application configuration at startup.
+- Access configuration values through a typed `ConfigService`.
+
 ## Quick Start
 
+The `ConfigModule` handles loading and validating your configuration during bootstrap.
+
 ```typescript
-import { loadConfig, ConfigService } from '@konekti/config';
+import { Module } from '@konekti/core';
+import { ConfigModule } from '@konekti/config';
 
-const config = loadConfig({
-  envFile: '.env',
-  processEnv: process.env,
-  defaults: { PORT: '3000' },
-  validate: (raw) => {
-    if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
-    return raw as { PORT: string; DATABASE_URL: string };
-  },
-});
-
-const service = new ConfigService(config);
-service.get('DATABASE_URL');          // returns string | undefined
-service.getOrThrow('DATABASE_URL');   // throws if missing
-service.snapshot();                   // returns a deep-cloned snapshot
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      defaults: { PORT: '3000' },
+      validate: (config) => {
+        if (!config.DATABASE_URL) throw new Error('DATABASE_URL is required');
+        return config;
+      },
+    }),
+  ],
+})
+class AppModule {}
 ```
 
-In practice you use `ConfigModule.forRoot()` from `@konekti/config` inside your root module, pass any system env explicitly at the app boundary, and let it register the resulting `ConfigService` as a provider.
-
-## 0.x migration note
-
-- `ConfigService#getOptional()` was removed. Use `get()` for optional reads and `getOrThrow()` for required reads.
-- `ConfigService` no longer exposes public snapshot-mutation methods. Runtime reload wiring updates snapshots internally through `ConfigReloadModule` / `ConfigReloadManager`.
-- `ConfigMode` is no longer part of the supported package surface. Use `envFile` / `envFilePath` instead.
-
-## Key API
-
-### `loadConfig(options)`
-
-| Option | Type | Description |
-|---|---|---|
-| `envFile` | `string` | Path to the env file to load (defaults to `.env`) |
-| `envFilePath` | `string` | Alias for `envFile` |
-| `defaults` | `ConfigDictionary` | Lowest-precedence values |
-| `cwd` | `string` | Resolve the env file from a custom working directory |
-| `processEnv` | `NodeJS.ProcessEnv` | Explicit process-environment source supplied by the caller |
-| `runtimeOverrides` | `ConfigDictionary` | Highest-precedence values |
-| `validate` | `(raw) => T` | Throws on invalid config, returns typed dictionary |
-| `watch` | `boolean` | Used by `createConfigReloader(options)` to enable env file watch reloads |
-| `isGlobal` | `boolean` | Controls `ConfigModule.forRoot()` global registration (default: `true`) |
-
-### `createConfigReloader(options)`
+Once registered, you can inject `ConfigService` to access your values:
 
 ```typescript
-type ConfigReloadReason = 'manual' | 'watch';
+import { Inject } from '@konekti/core';
+import { ConfigService } from '@konekti/config';
 
-type ConfigReloader = {
-  current(): ConfigDictionary;
-  reload(): ConfigDictionary;
-  subscribe(listener: (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void): { unsubscribe(): void };
-  subscribeError(listener: (error: unknown, reason: ConfigReloadReason) => void): { unsubscribe(): void };
-  close(): void;
-};
-```
-
-Use `createConfigReloader()` when you need explicit reload hooks. Reload notifications and errors are delivered via `subscribe(...)` and `subscribeError(...)`; no global process event side-effects are used.
-
-When used together with `@konekti/runtime` and `watch: true`, the runtime can apply those validated snapshots to its existing `ConfigService` instance without rebuilding the full application shell.
-
-### `ConfigService`
-
-```typescript
-class ConfigService {
-  get<T>(key: string): T | undefined
-  getOrThrow<T>(key: string): T       // throws if missing
-  snapshot(): ConfigDictionary        // returns deep-cloned normalized values
+class MyService {
+  constructor(@Inject([ConfigService]) private config: ConfigService) {
+    const port = this.config.get('PORT');
+    const dbUrl = this.config.getOrThrow('DATABASE_URL');
+  }
 }
 ```
 
-### `ConfigReloadModule`
+## Key Capabilities
 
-`ConfigReloadModule.forRoot()` exports the reloader token and the concrete `ConfigReloadManager` class. Inject `ConfigReloadManager` when you prefer class-based DI, or `CONFIG_RELOADER` when you need an explicit token.
+### Source Precedence
+Configuration is merged in the following order (highest precedence wins):
+1. **Runtime Overrides**: Values passed explicitly via `runtimeOverrides`.
+2. **Process Environment**: Values from `process.env`.
+3. **Environment File**: Values from the `.env` file (or custom path).
+4. **Defaults**: Values provided in the `defaults` option.
 
-### Types
+### Deep Merging
+Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
 
-- `ConfigDictionary`
-- `ConfigModuleOptions`
-- `ConfigLoadOptions`
+### Validation
+The `validate` function runs after all sources are merged but before the application starts. If it throws, the application bootstrap fails immediately.
 
-## Architecture
+## Public API Overview
 
-```
-bootstrapApplication(options)
-  → loadConfig(options)
-      → read defaults + env file + explicit processEnv + runtimeOverrides
-      → merge in precedence order
-      → validate(merged)
-      → ConfigDictionary
-  → new ConfigService(values)
-  → register as bootstrap-level provider
+| Class/Helper | Description |
+|---|---|
+| `ConfigModule` | Module for registering configuration globally or locally. |
+| `ConfigService` | Service for typed access to configuration values. |
+| `loadConfig(options)` | Functional entry point for loading configuration manually. |
+| `createConfigReloader(options)` | Creates a reloader for dynamic configuration updates. |
 
-createConfigReloader(options)
-  → load + validate snapshot
-  → subscribe(listener) / subscribeError(listener)
-  → reload() for manual refresh
-  → watch env file when `watch: true`
-  → close() to stop watching and clear subscriptions
-```
+## Related Packages
 
-`ConfigService` remains intentionally read-only after bootstrap. Dynamic reload is an explicit opt-in flow through `createConfigReloader()` / `ConfigReloadModule`, not through public mutation methods on `ConfigService`.
+- **`@konekti/runtime`**: Calls `loadConfig` internally during application bootstrap.
+- **`@konekti/validation`**: Can be used within the `validate` function for schema-based validation.
 
-That explicit reload path is still config-scoped. Konekti does not treat it as a general code hot reload or HMR mechanism.
+## Example Sources
 
-## File reading order (for contributors)
+- `packages/config/src/load.ts`
+- `packages/config/src/service.ts`
+- `packages/config/src/load.test.ts`
 
-1. `src/types.ts` — options and load contracts
-2. `src/load.ts` — merge + validate entrypoint
-3. `src/service.ts` — typed accessor
-4. `src/load.test.ts` — merge/override/validation baseline tests
-
-## Related packages
-
-- **`@konekti/runtime`** — calls `loadConfig()` and registers `ConfigService` as a provider
-- **`@konekti/cli`** — shows how generated apps lay out `.env` files
-
-## One-liner mental model
-
-```
-@konekti/config = not an env reader, but a bootstrap contract that turns multiple sources into a validated runtime dictionary
-```

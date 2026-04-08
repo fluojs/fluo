@@ -4,60 +4,74 @@
 
 Konekti 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 확인하는 뷰어입니다.
 
-## 관련 문서
+## 목차
 
-- `../cli/README.ko.md`
-- `../../docs/concepts/platform-consistency-design.ko.md`
-- `../../docs/concepts/observability.ko.md`
-- `../../docs/getting-started/first-feature-path.ko.md`
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 패턴](#주요-패턴)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
-## 제공 기능
-
-- `konekti inspect --json`으로 내보낸 JSON 파일 로드
-- 공유 런타임 `PlatformShellSnapshot` + `PlatformDiagnosticIssue` 스키마 직접 소비
-- snapshot 데이터 기반 플랫폼 컴포넌트 의존 체인/ Mermaid 출력 렌더링
-- 컴포넌트 readiness/health/ownership/details 및 의존 관계 표시
-- `fixHint`/`dependsOn`을 포함한 diagnostics 이슈를 1급 필드로 표시
-- 검색 + 컴포넌트 readiness 필터 + diagnostics severity 필터
-- timing 페이로드가 있을 때 부트스트랩 타이밍 표시
-- 로드한 JSON/ Mermaid 출력 복사·다운로드 헬퍼 제공
-
-## Inspect -> Studio 워크플로우
-
-`@konekti/studio`는 실행 중인 앱을 직접 크롤링하지 않습니다. 공식 경로는 file-first입니다.
-
-1. 확인하려는 앱에서 runtime snapshot을 export합니다.
-2. Studio를 로컬에서 실행합니다.
-3. export한 JSON snapshot(필요하면 timing JSON도 함께)을 Studio에 로드합니다.
-
-예시:
+## 설치
 
 ```bash
-konekti inspect ./src/app.module.mjs --json > ./tmp/platform-snapshot.json
-konekti inspect ./src/app.module.mjs --timing > ./tmp/platform-timing.json
-pnpm --dir packages/studio dev
+pnpm add @konekti/studio
 ```
 
-Studio에서는 `--json`으로 만든 파일을 기본 snapshot으로 불러오고, `--timing` 파일이 있다면 선택적으로 함께 로드합니다.
+## 사용 시점
 
-## 무엇부터 봐야 하나
+- **시각화**: 애플리케이션의 모듈 그래프와 의존성 체인을 탐색할 때.
+- **진단**: 가이드된 힌트를 사용하여 플랫폼 수준의 설정 문제를 식별하고 해결할 때.
+- **성능 분석**: 부트스트랩 타이밍을 분석하고 초기화 병목 지점을 찾을 때.
+- **문서화**: 애플리케이션 아키텍처의 Mermaid 다이어그램을 생성할 때.
 
-snapshot을 열었다면 먼저 아래를 확인하세요.
+## 빠른 시작
 
-- 전체 readiness / health
-- component dependency chain
-- `fixHint`와 `dependsOn`이 포함된 diagnostics
-- 외부 리소스 ownership details
-- 복사 가능한 dependency graph가 필요할 때 Mermaid 출력
+Studio는 Konekti CLI에서 내보낸 JSON 파일을 소비합니다.
 
-## 실행
+1. **Snapshot 내보내기**:
+   ```bash
+   konekti inspect ./src/app.module.ts --json > snapshot.json
+   ```
 
-```bash
-pnpm --dir packages/studio dev
-```
+2. **Studio 실행**:
+   ```bash
+   pnpm --dir packages/studio dev
+   ```
 
-빌드:
+3. **파일 로드**: Studio 웹 인터페이스에 `snapshot.json` 파일을 드래그 앤 드롭합니다.
 
-```bash
-pnpm --dir packages/studio build
-```
+## 주요 패턴
+
+### 초기화 문제 해결
+**Diagnostics** 탭을 사용하여 런타임 부트스트랩 과정에서 수집된 이슈들을 확인합니다.
+- 심각도(Error, Warning)별로 필터링합니다.
+- `fixHint`를 통해 문제를 해결하기 위한 구체적인 조치 방법을 확인합니다.
+- `dependsOn`을 통해 어떤 컴포넌트가 실패 지점을 차단하고 있는지 확인합니다.
+
+### 아키텍처 다이어그램 내보내기
+1. **Graph** 뷰로 이동합니다.
+2. 시각화하려는 모듈이나 컴포넌트를 선택합니다.
+3. **Export to Mermaid** 버튼을 사용하여 문서에 사용할 수 있는 텍스트 기반 다이어그램을 가져옵니다.
+
+## 공개 API 개요
+
+Studio는 주로 웹 애플리케이션이지만, 플랫폼 snapshot을 소비하기 위한 규격을 정의합니다.
+
+| 규격 | 설명 |
+|---|---|
+| `PlatformShellSnapshot` | 애플리케이션 상태를 나타내는 핵심 데이터 구조입니다. |
+| `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
+
+## 관련 패키지
+
+- **[@konekti/cli](../cli/README.ko.md)**: Studio 호환 데이터를 생성하기 위한 `inspect` 명령을 제공합니다.
+- **[@konekti/runtime](../runtime/README.ko.md)**: 진단 및 snapshot 데이터를 생성하는 엔진입니다.
+
+## 예제 소스
+
+- [main.ts](./src/main.ts) - 애플리케이션 진입점.
+- [contracts.ts](./src/contracts.ts) - snapshot 소비를 위한 타입 정의.
+

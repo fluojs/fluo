@@ -1,93 +1,68 @@
-# architecture overview
+# 아키텍처 개요
 
 <p><a href="./architecture-overview.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti는 공개되는 인터페이스를 좁게 유지하며, 대부분의 동작을 안정적인 데코레이터, 명시적인 패키지 경계, 그리고 CLI 우선의 부트스트랩 흐름 뒤로 이동시킵니다.
+Konekti는 명시적인 경계, 안정적인 메타데이터, 표준 데코레이터를 기반으로 구축되었습니다. 암시적인 리플렉션 기반 “마법”에서 벗어나, 예측 가능하고 타입 안전하며 감사 가능한 백엔드 프레임워크를 제공합니다.
 
-### 관련 문서
+## 이 개념이 중요한 이유
 
-- `./http-runtime.ko.md`
-- `./platform-consistency-design.ko.md`
-- `./dev-reload-architecture.ko.md`
-- `./auth-and-jwt.ko.md`
-- `../reference/package-surface.ko.md`
+현대적인 백엔드 개발은 종종 숨겨진 컴파일러 동작과 런타임 리플렉션에 의존해 의존성을 연결합니다. 처음에는 편리해 보일 수 있지만, 장기적으로는 다음과 같은 비용을 만듭니다:
+- **취약한 리팩터링**: 프레임워크가 암시적인 타입 메타데이터에 의존하면 매개변수 이름을 바꾸는 것만으로도 DI가 깨질 수 있습니다.
+- **컴파일러 종속성**: `experimentalDecorators` 같은 레거시 플래그에 의존하면 팀이 현대적인 TypeScript 표준으로 이동하기 어려워집니다.
+- **불투명한 실행**: 요청이 시스템을 통해 정확히 어떻게 흐르는지, 또는 왜 특정 provider가 선택되었는지 파악하기 어렵습니다.
 
-## 공개 패키지 제품군
+Konekti는 **명시적인 의존성 선언**과 **표준 데코레이터**를 강제하여 이 문제를 해결합니다. 코드에는 실제로 일어나는 일이 그대로 드러나며, 숨겨진 컴파일러 생성 메타데이터에 의존할 필요가 없습니다.
 
-### 프레임워크 코어
+## 핵심 아이디어
 
-- `@konekti/core`
-- `@konekti/config`
-- `@konekti/di`
-- `@konekti/http`
-- `@konekti/runtime`
-- `@konekti/testing`
+### 명시적 경계
+Konekti의 패키지는 명확하고 문서화된 책임을 가집니다. 런타임은 패키지의 이름이나 위치만 보고 기능을 추측하지 않습니다. 대신 패키지는 애플리케이션 쉘에 인식되기 위해 공식 **플랫폼 계약**(참고: [Platform Consistency Design](./platform-consistency-design.ko.md))에 참여합니다.
 
-### 검증, 직렬화, 인증 및 문서화
+### 안정적인 메타데이터
+많은 프레임워크에서 데코레이터는 접근하기 어렵거나 프레임워크 내부와 강하게 결합된 방식으로 메타데이터를 저장합니다. Konekti는 메타데이터를 1급 구성 요소로 취급합니다. 데코레이터가 이를 작성하지만, 안정적인 프레임워크 소유 헬퍼가 이를 관리합니다. 따라서 내부 저장 방식이 바뀌더라도 아키텍처 정의는 유효하게 유지됩니다.
 
-- `@konekti/validation`
-- `@konekti/serialization`
-- `@konekti/jwt`
-- `@konekti/passport`
-- `@konekti/openapi`
-- `@konekti/metrics`
-- `@konekti/cron`
+### 표준 데코레이터 (TC39)
+Konekti는 미래를 염두에 두고 설계되었습니다. 표준 데코레이터 모델을 사용하므로 `tsconfig.json`에서 `experimentalDecorators`를 끌 수 있습니다. 또한 `emitDecoratorMetadata` 의존을 제거해 빌드가 더 빨라지고 코드가 현대 JavaScript 표준에 엄격하게 부합합니다.
 
-### 데이터 통합
+## 프레임워크 구조
 
-- `@konekti/redis`
-- `@konekti/prisma`
-- `@konekti/drizzle`
+Konekti는 서로 협력하여 일관된 개발 경험을 제공하는 세 개의 분리된 계층으로 구성됩니다.
 
-### 툴링
+### 1. 코어와 Runtime (기둥)
+- `@konekti/core`: 데코레이터와 metadata helper의 단일 진실 공급원입니다.
+- `@konekti/di`: 가시성 규칙을 강제하는 고성능 토큰 기반 Dependency Injection 엔진입니다.
+- `@konekti/runtime`: module graph를 구성하고 애플리케이션 lifecycle을 관리하는 orchestrator입니다.
 
-- `@konekti/cli`
+### 2. Transport와 Protocol (가장자리)
+- `@konekti/http`: 요청 실행, routing, HTTP metadata를 위한 추상 계층입니다.
+- `@konekti/platform-*`: 특정 환경용으로 추상 HTTP 계층을 구현하는 concrete adapter(예: `platform-fastify`, `platform-bun`)입니다.
 
-## 패키지 연결 맵
+### 3. 기능 통합 (capability)
+- `@konekti/config`: 엄격한 우선순위를 가진 검증된 configuration loading입니다.
+- `@konekti/validation` & `@konekti/serialization`: 시스템으로 들어오고 나가는 데이터에 대한 명시적 경계입니다.
+- `@konekti/jwt` & `@konekti/passport`: authentication과 identity management에 대한 표준 접근 방식입니다.
 
-- `@konekti/core`: 공용 데코레이터, 메타데이터 헬퍼, 안정적인 프레임워크 프리미티브.
-- `@konekti/di`: 명시적인 토큰 기반 프로바이더 해결 및 스코프.
-- `@konekti/http`: 요청 실행, 유효성 검사/물질화(materialization) 진입점, 예외, 라우트 메타데이터.
-- `@konekti/runtime`: 설정 조립, DI, 핸들러 매핑, 상태 확인(health/readiness), 어댑터 부트스트랩, 개발 모드 설정 리로드 적용.
-- `@konekti/platform-*`: `PlatformAdapter`를 구현하고 추상 HTTP 레이어를 구체 런타임 또는 서버 라이브러리에 연결하는 런타임/프로토콜 어댑터 패키지입니다. 네이밍 이유와 선택 기준은 `../reference/package-surface.ko.md#platform--네이밍-규칙`을 참조하세요.
-- `@konekti/validation` 패키지: 입력 물질화(materialization) 및 유효성 검사 엔진.
-- `@konekti/serialization` 패키지: 출력 형태 조정 및 응답 직렬화 데코레이터와 인터셉터 지원.
-- `@konekti/jwt`: 토큰 핵심 로직.
-- `@konekti/passport`: 범용 인증 전략 등록 및 가드 연결.
-- `@konekti/openapi`: 라우트 및 스키마 메타데이터로부터 문서 생성.
-- `@konekti/metrics`: 런타임 소유의 HTTP 라우트를 통한 Prometheus 메트릭.
-- `@konekti/cron`: 데코레이터 기반 백그라운드 작업 스케줄링 및 선택적 분산 크론 락.
-- `@konekti/redis`: Redis 클라이언트 라이프사이클 및 DI 토큰 표면.
+## 요청 흐름
 
-## 요청 실행 경로
-
-런타임 실행 경로는 다음 순서를 따릅니다:
+Konekti의 실행 경로는 결정론적인 phase 순서입니다. 복잡하게 분기하는 내부 로직을 가진 프레임워크와 달리, Konekti는 “직선형” 철학을 따릅니다:
 
 ```text
-bootstrap -> handler mapping -> app middleware -> route match -> module middleware -> guard -> interceptor -> input binding/materialization -> input validation -> controller -> response serialization -> response write
+[HTTP Adapter] -> [RequestContext] -> [Middleware] -> [Route Match] -> [Guards] 
+-> [Interceptors (Pre)] -> [Materialization] -> [Validation] -> [Handler] 
+-> [Serialization] -> [Interceptors (Post)] -> [Response Write]
 ```
 
-상세 구현 위치:
+이 결정론적 흐름 덕분에 디버깅할 때 어디를 봐야 하는지 항상 알 수 있습니다. validation이 실패하면, 그것은 항상 materialization 이후이면서 handler 이전입니다.
 
-- `packages/http/src/dispatcher.ts`
-- `packages/http/src/mapping.ts`
-- `packages/runtime/src/application.test.ts`
+## 경계
 
-## 설계 원칙
+- **Transport 독립성**: Konekti는 현재 HTTP 우선이지만, 내부 아키텍처는 핵심 로직이 특정 transport protocol과 분리되도록 설계되었습니다.
+- **Module 캡슐화**: 가시성은 전역이 아닙니다. Module A의 provider는 명시적으로 export되고 Module B가 import하지 않는 한 Module B에서 보이지 않습니다.
+- **Environment 격리**: 패키지는 `process.env`를 직접 참조하지 않습니다. 모든 configuration은 bootstrap 동안 `ConfigService`를 통해 전달됩니다.
 
-- 암묵적인 마법보다 명시적인 DI와 안정적인 메타데이터를 선호합니다.
-- 단계별 이력보다 패키지 경계가 우선합니다.
-- 스타터 앱은 인프라를 복제하는 대신 런타임 소유의 부트스트랩 헬퍼를 사용해야 합니다.
-- 개발 시 소스 편집은 러너 수준의 프로세스 재시작을 사용하고, 선택적인 설정 리로드는 명시적인 런타임 경로로 유지합니다.
-- 패키지 README는 패키지별 상세 내용을 담고, `docs/`는 패키지 간 교차 정보를 담습니다.
+## 관련 문서
 
-## 트랜스포트 경계
-
-Konekti는 현재 HTTP 우선(HTTP-first)입니다.
-
-- 공식 런타임 및 스타터 경로는 HTTP 요청/응답 실행을 전제로 합니다.
-- `@konekti/platform-*`라는 이름은 범용 라이브러리 래퍼가 아니라 런타임/프로토콜 어댑터 경계를 의미합니다.
-- 어댑터에 구애받지 않는 프레임워크 타입이 존재하지만, 지원되는 비 HTTP 인터페이스를 의미하지는 않습니다.
-- 비 HTTP 트랜스포트(예: 웹소켓, 게이트웨이) 지원은 향후 업데이트로 유보되었습니다.
-
-이는 트랜스포트 확장이 내부 헬퍼의 우연한 부작용이 아니라 명시적인 결정으로 유지되도록 보장합니다.
+- [HTTP Runtime](./http-runtime.ko.md)
+- [DI and Modules](./di-and-modules.ko.md)
+- [Platform Consistency Design](./platform-consistency-design.ko.md)
+- [Package Surface](../reference/package-surface.ko.md)

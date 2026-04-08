@@ -1,138 +1,91 @@
-# konekti
+# Konekti
 
-<p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<p align="center">
+  <strong>Standard-First TypeScript Backend Framework</strong>
+</p>
 
-Konekti is a TypeScript backend framework built on **TC39 standard decorators**. It provides an explicit alternative to the legacy decorator mode used by NestJS.
+<p align="center">
+  <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a>
+</p>
 
-## why standard decorators?
+Konekti is a modern TypeScript backend framework built from the ground up on **TC39 standard decorators**. It provides a high-performance, explicit, and metadata-free alternative to legacy decorator-based frameworks. 
 
-Konekti uses the modern TypeScript standard decorator model, removing the need for legacy compiler behaviors in starter applications.
+## Why Konekti?
 
-- `experimentalDecorators`: enables legacy (pre-standard) decorator emit and type behavior.
-- `emitDecoratorMetadata`: emits runtime design-type metadata for reflection-based injection.
-- NestJS: depends on legacy decorators and emitted metadata for implicit constructor injection.
-- Konekti: uses explicit tokens for dependency declaration, so emitted metadata is not required.
+Most TypeScript frameworks (like NestJS) are stuck in the past, relying on `experimentalDecorators` and `emitDecoratorMetadata` flags that deviate from the JavaScript language path. Konekti moves the industry forward.
 
-By using Konekti, you can stick to standard TypeScript defaults and avoid legacy decorator flags in your project configuration.
+- **🚀 Performance Without Magic**: No heavy reflection libraries or hidden metadata emit. Konekti is lean, fast, and stays close to the metal.
+- **🛡️ Explicit Over Implicit**: Dependency injection is clear and auditable. You see your dependency graph in your code, not in compiler-generated blobs.
+- **🌍 Run Anywhere**: Built on a unified runtime facade. Move from Fastify on Node.js to Bun, Deno, or Cloudflare Workers with zero logic changes.
+- **✨ Future-Proof**: Designed for the modern TypeScript era. Use the strongest type-safety features without fighting legacy compiler behaviors.
 
-## typescript-first, with verifiable differences
+## The Developer Experience
 
-TypeScript-first in Konekti means zero legacy decorator compiler flags and no reliance on reflection-driven DI.
-
-### `tsconfig.json` comparison
-
-NestJS-style legacy decorator setup:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  }
-}
-```
-
-Konekti standard decorator setup:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": false
-  }
-}
-```
-
-You can omit `experimentalDecorators` entirely in Konekti projects.
-
-### DI style comparison
-
-NestJS implicit metadata injection:
+Imagine a framework that feels like NestJS in its organizational power, but like Go in its explicitness.
 
 ```ts
-@Injectable()
+import { Module, Inject } from '@konekti/core';
+import { UsersRepository } from './users.repository';
+
+@Inject([UsersRepository])
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }
+
+@Module({
+  providers: [UsersService, UsersRepository],
+})
+export class UsersModule {}
 ```
 
-Konekti class-first explicit injection:
+*No legacy flags required. Just standard TypeScript.*
 
-```ts
-@Inject([UsersRepository])
-class UsersService {
-  constructor(private readonly repo: UsersRepository) {}
-}
-```
+## Quick Start
 
-When a dependency has a concrete class, use the class itself as the token. Symbols remain valid for interface-only bindings and config/runtime seams:
+The fastest way to experience Konekti is through the official CLI.
 
-```ts
-const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
-
-@Inject([USERS_REPOSITORY])
-class UsersService {
-  constructor(private readonly repo: UsersRepository) {}
-}
-```
-
-## quick start
-
-The canonical first-run path is: install the CLI -> `konekti new` -> `cd` into the new app -> `pnpm dev`.
-
-```sh
+```bash
+# Get the CLI
 pnpm add -g @konekti/cli
-konekti new starter-app
-cd starter-app
+
+# Spin up a project
+konekti new my-backend
+cd my-backend
+
+# Start the engine
 pnpm dev
 ```
 
-The generated application includes:
+The starter template gives you a production-ready setup with Fastify, built-in health checks, and an organized directory structure designed to scale.
 
-- adapter-first Fastify bootstrap in `src/main.ts`
-- built-in `/health` and `/ready` endpoints
-- sample `health/` module at `/health-info/`
-- pre-configured `dev`, `build`, `typecheck`, and `test` scripts
+## A Modular Ecosystem
 
-That starter path is the default Node.js + Fastify onboarding path, not the entire runtime story. For the canonical runtime/package matrix, see `docs/reference/package-surface.md`; runtime-specific startup details stay in the published `@konekti/platform-*` adapter READMEs, including `@konekti/platform-nodejs` for raw Node HTTP.
+Konekti isn't a monolith. It's a collection of precision-engineered modules:
 
-The generated `dev` script uses a watch-driven process restart path for source changes. Konekti's targeted in-process reload path is reserved for validated config snapshots, not general code HMR.
+| Category | Packages |
+| :--- | :--- |
+| **Runtimes** | [Fastify](./packages/platform-fastify), [Node.js](./packages/platform-nodejs), [Bun](./packages/platform-bun), [Deno](./packages/platform-deno), [Workers](./packages/platform-cloudflare-workers) |
+| **Database** | [Prisma](./packages/prisma), [Drizzle](./packages/drizzle), [Mongoose](./packages/mongoose) |
+| **API/Comm** | [HTTP](./packages/http), [GraphQL](./packages/graphql), [OpenAPI](./packages/openapi), [WebSockets](./packages/websockets), [Socket.IO](./packages/socket.io) |
+| **Logic** | [DI](./packages/di), [CQRS](./packages/cqrs), [Validation](./packages/validation), [Serialization](./packages/serialization), [Config](./packages/config) |
+| **Ops** | [Metrics](./packages/metrics), [Health (Terminus)](./packages/terminus), [Redis](./packages/redis), [Queue](./packages/queue) |
 
-## why teams pick konekti
+## Where to Go Next?
 
-- **Standard decorators, not legacy flags**: avoid `"experimentalDecorators": true` and `emitDecoratorMetadata`.
-- **Explicit DI over reflection magic**: maintain readable and auditable dependencies via tokens.
-- **Composable package boundaries**: add auth, OpenAPI, metrics, queues, microservices, Redis, Prisma, Drizzle, and more as needed.
-- **CLI-first onboarding**: create, generate, run, and verify with a consistent workflow.
+- 📖 **[Documentation Hub](./docs/README.md)**: Deep dives into architecture, DI, and patterns.
+- 🚀 **[Getting Started](./docs/getting-started/quick-start.md)**: Your first 15 minutes with Konekti.
+- 💡 **[Example Apps](./examples/README.md)**: From minimal setups to complex RealWorld APIs.
+- 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `konekti` command for rapid development.
 
-## start here
+## Our Philosophy
 
-- `docs/getting-started/quick-start.md` - the canonical install -> new -> dev path
-- `docs/getting-started/first-feature-path.md` - the official next path from starter app to first feature
-- `docs/README.md` - documentation map after your first run succeeds
-- `examples/README.md` - official runnable examples and reading order
-- `examples/minimal/` - smallest runnable Konekti app
-- `examples/realworld-api/` - multi-module app with validation and CRUD
-- `examples/auth-jwt-passport/` - JWT issuance plus passport-backed protected routes
-- `examples/ops-metrics-terminus/` - metrics, health, and readiness example
-- `docs/concepts/architecture-overview.md` - package boundaries and runtime flow
-- `docs/concepts/dev-reload-architecture.md` - dev-time restart vs config reload ownership
-- `docs/reference/package-surface.md` - public package surface reference and canonical runtime/package matrix
-- `docs/reference/package-chooser.md` - pick packages by task
-- `packages/platform-nodejs/README.md` - official raw Node.js runtime startup path
-- `packages/platform-bun/README.md` - official Bun runtime startup path
-- `packages/platform-deno/README.md` - official Deno runtime startup path
-- `packages/platform-cloudflare-workers/README.md` - official Cloudflare Workers runtime startup path
+We believe in **Behavioral Contracts**. Every package in this repo follows strict reliability rules, ensuring that your backend behaves exactly how you expect it to, regardless of the runtime.
 
-For package-level API details, see `packages/*/README.md` in each package directory.
+- [Release Governance](./docs/operations/release-governance.md)
+- [Behavioral Contract Policy](./docs/operations/behavioral-contract-policy.md)
+- [Contributing](./CONTRIBUTING.md)
 
-## release history
-
-- `CHANGELOG.md`
-- [GitHub Releases](https://github.com/konektijs/konekti/releases)
-
-## contributing
-
-- See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup and maintainer workflows.
-- Update `docs/` when cross-package contracts change.
-- Update `packages/*/README*.md` when package API surfaces change.
-- Track future work in GitHub Issues rather than in-repo prose.
+---
+<p align="center">
+  Built with ❤️ for the TypeScript Community.
+</p>

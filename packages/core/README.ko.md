@@ -2,24 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+모든 Konekti 패키지가 공통으로 사용하는 표준 데코레이터, 공유 계약, 메타데이터 프리미티브를 제공하는 기반 패키지입니다.
 
-Konekti의 공유 기반 레이어 — 다른 모든 패키지가 사용하는 기본 타입, 공통 에러 클래스, 메타데이터 헬퍼.
+## 목차
 
-## 관련 문서
-
-- `../../docs/concepts/architecture-overview.ko.md`
-- `../../docs/concepts/decorators-and-metadata.ko.md`
-
-## 이 패키지가 하는 일
-
-`@konekti/core`는 기능을 직접 실행하지 않습니다. 다른 모든 패키지가 사용하는 공통 언어를 정의합니다:
-
-- **기본 타입** — `Constructor`, `Token`, `MaybePromise`, 메타데이터 프리미티브
-- **공통 에러** — 프레임워크 레벨 계약 위반을 위한 `KonektiError`, `InvariantError`
-- **데코레이터** — `@Module()`, `@Global()`, `@Inject()`, `@Scope()`
-- **메타데이터 헬퍼** — WeakMap 저장소를 기반으로 한 타입 write/read 헬퍼
-
-Konekti 모듈/DI/HTTP 시스템에 참여하는 패키지를 작성할 때, 공유 계약을 위해 의존해야 하는 유일한 패키지입니다.
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 기능](#주요-기능)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -27,128 +20,84 @@ Konekti 모듈/DI/HTTP 시스템에 참여하는 패키지를 작성할 때, 공
 npm install @konekti/core
 ```
 
+## 사용 시점
+
+- 표준 데코레이터로 모듈, 프로바이더, 컨트롤러를 선언할 때
+- Konekti 모듈 그래프에 참여하는 프레임워크 확장이나 내부 라이브러리를 만들 때
+- `Constructor<T>`, `Token<T>`, 프레임워크 공통 에러 같은 기본 타입과 계약을 직접 다뤄야 할 때
+
 ## 빠른 시작
 
-```typescript
-import {
-  Module,
-  Global,
-  Inject,
-  Scope,
-  KonektiError,
-  type Constructor,
-  type Token,
-} from '@konekti/core';
+모든 Konekti 애플리케이션은 `@konekti/core`가 기록하는 모듈 메타데이터에서 시작합니다.
 
-// 모듈 정의
-@Module({ providers: [MyService] })
-class AppModule {}
+```ts
+import { Global, Inject, Module, Scope } from '@konekti/core';
 
-// 전역으로 사용 가능하게 표시
 @Global()
-@Module({ providers: [ConfigService] })
+@Module({
+  providers: [DatabaseService],
+  exports: [DatabaseService],
+})
 class CoreModule {}
 
-// 명시적 주입 토큰
+@Module({
+  imports: [CoreModule],
+  providers: [UserService],
+})
+class AppModule {}
+
+@Inject([DatabaseService])
+@Scope('singleton')
+class UserService {
+  constructor(private readonly db: DatabaseService) {}
+}
+```
+
+## 주요 기능
+
+### 레거시 TypeScript 플래그 없이 쓰는 표준 데코레이터
+
+Konekti는 TC39 표준 데코레이터를 사용하므로 `experimentalDecorators: true`나 `emitDecoratorMetadata: true`에 의존하지 않습니다.
+
+### 명시적인 의존성 메타데이터
+
+`@Inject([...])`는 리플렉션 기반 추론 대신 코드 안에서 의존성 토큰을 직접 드러냅니다.
+
+```ts
+const CONFIG_TOKEN = Symbol('CONFIG_TOKEN');
+
 @Inject([CONFIG_TOKEN])
-class MyService {
-  constructor(private config: Config) {}
+class UsesConfigValue {
+  constructor(private readonly config: Config) {}
 }
-
-// 요청 스코프
-@Scope('request')
-class RequestScopedService {}
 ```
 
-## 핵심 API
+### 형제 패키지를 위한 공용 메타데이터 헬퍼
 
-### 기본 타입 (`src/types.ts`)
+내부 메타데이터 reader/writer는 `@konekti/core/internal` 아래에 있으며, `@konekti/di`, `@konekti/http`, `@konekti/runtime` 같은 패키지들이 같은 메타데이터 모델을 공유할 수 있게 합니다.
 
-| 타입 | 설명 |
-|---|---|
-| `Constructor<T>` | `new (...args: any[]) => T` — 클래스 생성자 |
-| `Token<T>` | `Constructor<T> \| string \| symbol` — DI 토큰 |
-| `MaybePromise<T>` | `T \| Promise<T>` |
-| `MetadataPropertyKey` | `string \| symbol` |
-| `MetadataSource` | 메타데이터 소스 위치 마커 |
+```ts
+import { getModuleMetadata } from '@konekti/core/internal';
 
-### 공통 에러 (`src/errors.ts`)
-
-```typescript
-class KonektiError extends Error {
-  constructor(message: string, options?: { code?: string; cause?: unknown; meta?: Record<string, unknown> })
-}
-
-class InvariantError extends KonektiError {}
+const metadata = getModuleMetadata(AppModule);
+console.log(metadata.providers);
 ```
 
-비즈니스 에러가 아닌 프레임워크 레벨 계약 위반을 알릴 때 사용합니다.
+## 공개 API 개요
 
-### 데코레이터 (`src/decorators.ts`)
-
-| 데코레이터 | 대상 | 설명 |
-|---|---|---|
-| `@Module(options)` | 클래스 | providers, controllers, imports, exports가 있는 모듈 선언 |
-| `@Global()` | 클래스 | 명시적 import 없이 모듈의 exports를 전역으로 노출 |
-| `@Inject(tokens)` | 클래스 | 명시적 주입 토큰 목록 선언 |
-| `@Scope(scope)` | 클래스 | lifetime을 `'singleton'`(기본값), `'request'`, `'transient'`로 설정 |
-
-### 메타데이터 헬퍼 (`src/metadata.ts`)
-
-이 헬퍼들은 `@konekti/di`, `@konekti/http`, `@konekti/runtime` 등에서 내부적으로 사용됩니다. 애플리케이션 코드는 계속 `@konekti/core`의 `@Module()`, `@Inject()`, `@Scope()` 같은 데코레이터를 사용해야 합니다.
-
-| 헬퍼 쌍 | 목적 |
-|---|---|
-| `defineModuleMetadata()` / `getModuleMetadata()` | 모듈 imports/exports/providers |
-| `defineClassDiMetadata()` / `getClassDiMetadata()` | 상속 fallback을 포함한 최종 DI 주입 토큰 및 스코프 |
-| `getOwnClassDiMetadata()` / `getInheritedClassDiMetadata()` | DI own-only 조회와 상속 포함 최종 조회를 명시적으로 구분 |
-| `defineControllerMetadata()` / `getControllerMetadata()` | HTTP 컨트롤러 기본 경로 |
-| `defineRouteMetadata()` / `getRouteMetadata()` | 라우트 method/path/guards |
-| `defineDtoFieldBindingMetadata()` / `getDtoBindingSchema()` | 요청 DTO 필드 바인딩 |
-| `defineInjectionMetadata()` / `getInjectionSchema()` | 주입 메타데이터 스키마 |
-
-모든 메타데이터는 class/prototype을 키로 하는 WeakMap에 저장되므로 객체의 lifetime에 맞게 스코프가 지정되고 전역 레지스트리를 오염시키지 않습니다.
-
-DI 메타데이터에서는 `getOwnClassDiMetadata()`가 현재 클래스에 직접 기록된 값만 반환하고, `getInheritedClassDiMetadata()`와 `getClassDiMetadata()`는 runtime/DI 정규화에서 사용하는 상속 포함 최종 뷰를 반환합니다.
-
-메타데이터 헬퍼 함수와 메타데이터 전용 헬퍼 타입은 이제 sibling package 조합을 위한 명시적 subpath인 `@konekti/core/internal` 아래에 위치합니다. 루트 `@konekti/core` 배럴은 애플리케이션용 데코레이터/에러/공유 타입 surface만 유지합니다.
-
-`ensureMetadataSymbol()`은 표준 데코레이터 메타데이터를 위한 idempotent 호환성 가드입니다. `@konekti/core`가 import될 때 자동으로 실행되므로 일반적인 앱 부트스트랩에서 직접 호출할 필요는 없지만, 커스텀 툴링이나 격리된 테스트에서 명시적으로 확인하고 싶다면 수동 호출도 무해합니다.
-
-## 0.x 마이그레이션 노트
-
-- `defineModuleMetadata()`, `getModuleMetadata()`, `getClassDiMetadata()`, `metadataSymbol` 같은 내부 메타데이터 헬퍼와 관련 메타데이터 전용 타입은 `@konekti/core`에서 `@konekti/core/internal`로 이동했습니다.
-- 애플리케이션 코드는 계속 데코레이터, 에러, 공유 프리미티브 타입을 `@konekti/core`에서 import하면 됩니다.
-
-## 구조
-
-```
-데코레이터 / 부트스트랩 코드
-  → core 메타데이터 헬퍼
-      → WeakMap 메타데이터 저장소
-          ← 나중에 di / http / runtime / passport가 읽음
-```
-
-WeakMap 방식은 메타데이터가 클래스별로 격리되고, 전역 레지스트리 충돌을 피하며, 테스트 격리에도 잘 맞습니다.
-
-## 파일 읽기 순서 (기여자용)
-
-1. `src/types.ts` — 공유 프리미티브 타입
-2. `src/errors.ts` — 기본 에러 클래스
-3. `src/metadata.ts` — 메타데이터 write/read 헬퍼
-4. `src/metadata.test.ts` — 메타데이터 round-trip 테스트
-5. `src/decorators.ts` — public 데코레이터 surface
-6. `src/decorators.test.ts` — 데코레이터 write 테스트
-7. `src/decorator-transform.test.ts` — 툴체인 데코레이터 문법 테스트
+- **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
+- **에러**: `KonektiError`, `InvariantError`, `KonektiCodeError`
+- **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
+- **내부 서브패스**: `@konekti/core/internal`을 통한 메타데이터 헬퍼
 
 ## 관련 패키지
 
-- **`@konekti/di`** — `Token`과 injection schema를 사용해 인스턴스 resolve
-- **`@konekti/runtime`** — module metadata를 사용해 모듈 그래프 컴파일
-- **`@konekti/http`** — route/DTO metadata를 사용해 요청 실행 체인 구성
+- `@konekti/di`: 여기서 선언된 토큰과 스코프를 실제 인스턴스로 해석합니다.
+- `@konekti/runtime`: `@Module` 메타데이터로 모듈 그래프를 컴파일합니다.
+- `@konekti/http`: 동일한 메타데이터 프리미티브 위에서 컨트롤러와 라우트 정보를 읽습니다.
 
-## 한 줄 mental model
+## 예제 소스
 
-```
-@konekti/core = 다른 모든 패키지가 공유하는 타입, base error, metadata schema를 고정하는 바닥층
-```
+- `packages/core/src/index.ts`
+- `packages/core/src/decorators.ts`
+- `packages/core/src/metadata.ts`

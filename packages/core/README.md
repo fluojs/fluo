@@ -2,24 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Shared contracts, standard decorators, and metadata primitives that every Konekti package builds on.
 
-The shared foundation layer of Konekti — base types, common error classes, and metadata helpers used by every other package.
+## Table of Contents
 
-## See also
-
-- `../../docs/concepts/architecture-overview.md`
-- `../../docs/concepts/decorators-and-metadata.md`
-
-## What this package does
-
-`@konekti/core` does not run any features itself. It defines the common language used by all other packages:
-
-- **Base types** — `Constructor`, `Token`, `MaybePromise`, and metadata primitives.
-- **Common errors** — `KonektiError` and `InvariantError` for framework-level contract violations.
-- **Decorators** — `@Module()`, `@Global()`, `@Inject()`, and `@Scope()`.
-- **Metadata helpers** — typed write/read helpers backed by a `WeakMap` store.
-
-If you are writing a package that participates in the Konekti module, DI, or HTTP system, this is the only package you need as a dependency for shared contracts.
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Key Capabilities](#key-capabilities)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -27,136 +20,86 @@ If you are writing a package that participates in the Konekti module, DI, or HTT
 npm install @konekti/core
 ```
 
+## When to Use
+
+Use this package when you are:
+
+- defining modules, providers, or controllers with Konekti's standard decorators
+- building framework extensions that need to participate in the module graph
+- working with shared framework errors, tokens, or constructor-based utility types
+
 ## Quick Start
 
-```typescript
-import {
-  Module,
-  Global,
-  Inject,
-  Scope,
-  KonektiError,
-  type Constructor,
-  type Token,
-} from '@konekti/core';
+Every Konekti application starts with module metadata declared through `@konekti/core`.
 
-// Define a module
-@Module({ providers: [MyService] })
-class AppModule {}
+```ts
+import { Global, Inject, Module, Scope } from '@konekti/core';
 
-// Mark a class as globally available
 @Global()
-@Module({ providers: [ConfigService] })
+@Module({
+  providers: [DatabaseService],
+  exports: [DatabaseService],
+})
 class CoreModule {}
 
-// Class-first injection for concrete services
-@Inject([ConfigService])
-class MyService {
-  constructor(private config: ConfigService) {}
-}
+@Module({
+  imports: [CoreModule],
+  providers: [UserService],
+})
+class AppModule {}
 
-// Symbols remain valid for config values and interface-only seams
+@Inject([DatabaseService])
+@Scope('singleton')
+class UserService {
+  constructor(private readonly db: DatabaseService) {}
+}
+```
+
+## Key Capabilities
+
+### Standard decorators without legacy TypeScript flags
+
+Konekti uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, `@Global`, or `@Scope`.
+
+### Explicit dependency metadata
+
+`@Inject([...])` keeps dependency wiring visible in code instead of relying on emitted reflection metadata.
+
+```ts
 const CONFIG_TOKEN = Symbol('CONFIG_TOKEN');
 
 @Inject([CONFIG_TOKEN])
 class UsesConfigValue {
-  constructor(private config: Config) {}
+  constructor(private readonly config: Config) {}
 }
-
-// Request scope
-@Scope('request')
-class RequestScopedService {}
 ```
 
-## Key API
+### Shared metadata helpers for sibling packages
 
-### Base Types (`src/types.ts`)
+Internal readers and writers live under `@konekti/core/internal`, which is how packages like `@konekti/di`, `@konekti/http`, and `@konekti/runtime` consume the same metadata model.
 
-| Type | Description |
-|---|---|
-| `Constructor<T>` | `new (...args: any[]) => T` — a class constructor |
-| `Token<T>` | `Constructor<T> \| string \| symbol` — a DI token |
-| `MaybePromise<T>` | `T \| Promise<T>` |
-| `MetadataPropertyKey` | `string \| symbol` |
-| `MetadataSource` | Source location marker for metadata |
+```ts
+import { getModuleMetadata } from '@konekti/core/internal';
 
-### Common Errors (`src/errors.ts`)
-
-```typescript
-class KonektiError extends Error {
-  constructor(message: string, options?: { code?: string; cause?: unknown; meta?: Record<string, unknown> })
-}
-
-class InvariantError extends KonektiError {}
+const metadata = getModuleMetadata(AppModule);
+console.log(metadata.providers);
 ```
 
-Use these when signalling framework-level contract violations — not business errors.
+## Public API Overview
 
-### Decorators (`src/decorators.ts`)
+- **Decorators**: `Module`, `Global`, `Inject`, `Scope`
+- **Errors**: `KonektiError`, `InvariantError`, `KonektiCodeError`
+- **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
+- **Internal subpath**: metadata helpers via `@konekti/core/internal`
 
-| Decorator | Target | Description |
-|---|---|---|
-| `@Module(options)` | Class | Declares a module with providers, controllers, imports, exports |
-| `@Global()` | Class | Makes a module's exports visible globally without explicit import |
-| `@Inject(tokens)` | Class | Declares explicit injection token list |
-| `@Scope(scope)` | Class | Sets lifetime to `'singleton'` (default), `'request'`, or `'transient'` |
+## Related Packages
 
-### Metadata Helpers (`src/metadata.ts`)
+- `@konekti/di`: resolves the tokens and scopes defined here into live instances
+- `@konekti/runtime`: compiles the module graph from `@Module` metadata
+- `@konekti/http`: consumes controller and route metadata built on the same primitives
 
-These helpers are used internally by `@konekti/di`, `@konekti/http`, `@konekti/runtime`, and other packages. Application code should continue using `@Module()`, `@Inject()`, `@Scope()`, and related decorators from `@konekti/core`.
+## Example Sources
 
-| Helper pair | Purpose |
-|---|---|
-| `defineModuleMetadata()` / `getModuleMetadata()` | Module imports/exports/providers |
-| `defineClassDiMetadata()` / `getClassDiMetadata()` | Effective DI injection tokens and scope, including inherited fallback |
-| `getOwnClassDiMetadata()` / `getInheritedClassDiMetadata()` | Explicit DI own-only vs inherited/effective reads |
-| `defineControllerMetadata()` / `getControllerMetadata()` | HTTP controller base path |
-| `defineRouteMetadata()` / `getRouteMetadata()` | Route method/path/guards |
-| `defineDtoFieldBindingMetadata()` / `getDtoBindingSchema()` | Request DTO field binding |
-| `defineInjectionMetadata()` / `getInjectionSchema()` | Injection metadata schema |
-
-All metadata is stored in a WeakMap keyed by class/prototype, so it's scoped to the object's lifetime and doesn't pollute a global registry.
-
-For DI metadata, `getOwnClassDiMetadata()` returns only metadata written on the current class, while `getInheritedClassDiMetadata()` and `getClassDiMetadata()` return the effective inherited view used by runtime and DI normalization.
-
-Metadata helper functions and metadata-only helper types now live behind the explicit `@konekti/core/internal` subpath for sibling-package composition. The root `@konekti/core` barrel keeps the application-facing decorator/error/type surface.
-
-`ensureMetadataSymbol()` is an idempotent compatibility guard for standard-decorator metadata. `@konekti/core` invokes it automatically on import, so explicit bootstrap calls are usually unnecessary, but calling it manually is harmless when you want an explicit compatibility check in custom tooling or isolated tests.
-
-## 0.x migration note
-
-- Internal metadata helpers such as `defineModuleMetadata()`, `getModuleMetadata()`, `getClassDiMetadata()`, `metadataSymbol`, and related metadata-only types moved from `@konekti/core` to `@konekti/core/internal`.
-- Application code should keep importing decorators, errors, and shared primitive types from `@konekti/core`.
-
-## Architecture
-
-```
-Decorator / bootstrap code
-  → core metadata helper
-      → WeakMap metadata store
-          ← later read by di / http / runtime / passport
-```
-
-The WeakMap approach means metadata is isolated per class, avoids global registry collisions, and plays well with test isolation.
-
-## File reading order (for contributors)
-
-1. `src/types.ts` — shared primitive types
-2. `src/errors.ts` — base error classes
-3. `src/metadata.ts` — metadata write/read helpers
-4. `src/metadata.test.ts` — metadata round-trip tests
-5. `src/decorators.ts` — public decorator surface
-6. `src/decorators.test.ts` — decorator write tests
-7. `src/decorator-transform.test.ts` — toolchain decorator syntax test
-
-## Related packages
-
-- **`@konekti/di`** — uses `Token` and injection schema to resolve instances
-- **`@konekti/runtime`** — uses module metadata to compile the module graph
-- **`@konekti/http`** — uses route/DTO metadata to build the request execution chain
-
-## One-liner mental model
-
-```
-@konekti/core = shared types + base errors + metadata schema that every other package builds on
-```
+- `packages/core/src/index.ts`
+- `packages/core/src/decorators.ts`
+- `packages/core/src/metadata.ts`

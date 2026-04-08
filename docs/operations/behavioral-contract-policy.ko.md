@@ -1,69 +1,64 @@
-# behavioral contract policy
+# 동작 계약 정책 (Behavioral Contract Policy)
 
-<p><a href="./behavioral-contract-policy.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p>
+  <strong>한국어</strong> | <a href="./behavioral-contract-policy.md">English</a>
+</p>
 
-이 정책은 Konekti 모노레포에서 behavioral contract를 보존하기 위한 규칙을 정의합니다. 패키지 변경이 문서화된 런타임 기대 동작을 조용히 깨뜨리지 않도록 보장하는 것이 목적입니다.
+이 정책은 Konekti 프레임워크 내에서 동작 계약을 보존하기 위한 거버넌스와 규칙을 정의합니다. 코드 변경이 문서화된 런타임 기대치, 부수 효과 또는 생명주기 보장을 암묵적으로 파괴하지 않도록 보장합니다.
 
-## behavioral contract란 무엇인가
+## 이 문서가 필요한 경우
 
-behavioral contract는 패키지의 런타임 동작, 사이드이펙트, 생명주기에 대한 문서화된 약속입니다. TypeScript 타입이 인터페이스를 정의한다면, behavioral contract는 그 인터페이스를 사용할 때 실제로 어떤 일이 일어나는지를 정의합니다.
+- **코어 리팩토링**: 기존 `@konekti/*` 패키지나 내부 런타임 로직을 수정할 때.
+- **API 작성**: 새로운 공개 데코레이터, 프로바이더 또는 플랫폼 어댑터를 도입할 때.
+- **문서화**: 패키지 수준의 `README.md` 파일이나 운영 가이드를 작성하거나 업데이트할 때.
+- **풀 리퀘스트(PR) 검토**: 관리자가 계약 준수 여부를 확인하기 위한 주요 체크리스트로 활용할 때.
 
-Konekti에서 behavioral contract는 다음에 대한 권한 있는 기준입니다.
-- 호출 시 컴포넌트가 무엇을 하는지
-- 의도적으로 무엇을 무시하거나 제외하는지
-- 상태, 리소스, 오류를 어떻게 다루는지
+---
 
-## 패키지 문서 필수 항목
+## 정책 정의 (Policy Definition)
 
-모든 `@konekti/*` 패키지는 behavioral contract를 명시하기 위해 `README.md`에 아래 섹션을 유지해야 합니다.
+### 1. 동작 계약이란 무엇인가?
+동작 계약은 패키지의 런타임 동작에 대해 문서화된 약속입니다. TypeScript 타입이 **인터페이스**(무엇이 들어가고 나가는지)를 정의한다면, 동작 계약은 **의미론(Semantics)**(구현이 어떻게 동작하는지)을 정의합니다.
 
-- **supported operations**: 공개 메서드, 함수, 데코레이터의 상세 시맨틱.
-- **intentional limitations**: 의도적으로 지원하지 않는 non-goal.
-- **runtime invariants**: 리팩터링 후에도 반드시 유지되어야 하는 동작 (예: "Y가 없으면 항상 X를 throw").
-- **lifecycle guarantees**: 해당되는 경우 정리(cleanup), 연결 관리, 종료 동작.
+**계약의 예시:**
+- "이 데코레이터는 항상 모듈이 초기화되기 전에 평가됩니다."
+- "이 프로바이더는 `API_KEY`가 누락된 경우 `ConfigurationError`를 던집니다."
+- "이 어댑터는 종료 신호를 받은 후 5초 이내에 모든 유휴 keep-alive 연결을 닫습니다."
 
-## contract 보존 규칙
+### 2. 문서화 요구사항
+모든 `@konekti/*` 패키지는 `README.md`(및 한국어 미러)에 다음 사항을 반드시 유지해야 합니다.
+- **지원되는 작업**: 공개 메서드 및 데코레이터의 상세한 의미론.
+- **런타임 불변성**: 플랫폼(Node.js, Bun, Deno) 간에 일관되게 유지되어야 하는 동작.
+- **생명주기 보장**: 초기화, 정리 및 정상 종료에 대한 명시적인 동작.
+- **의도적인 제한**: 실수로 기능이 비대해지는 것을 방지하기 위해 명시적으로 문서화된 "비목표(non-goals)".
 
-- **기존 동작**: 패키지 README에 문서화된 동작은 리팩터링 중에도 보존되어야 합니다.
-- **동작 추가**: 새로 문서화한 동작에는 해당 contract를 검증하는 테스트가 필요합니다.
-- **동작 제거**: 문서화된 의도 동작 제거는 breaking change입니다.
-  - `0.x`: minor 버전 증가 + 명시적 migration note 필요.
-  - `1.0+`: major 버전 증가 + migration guide 필요.
-- **시맨틱 변경**: 타입 시그니처가 같더라도 기존 동작 방식이 바뀌면 breaking change입니다.
-- **환경 소유권**: 일반 패키지 소스는 `process.env`를 직접 읽으면 안 됩니다. 환경 값은 애플리케이션/부트스트랩 경계에서 들어와 명시적 파라미터, 타입이 지정된 config provider, 또는 주입 옵션으로 전달되어야 합니다.
+---
 
-세부 버전 정책은 `release-governance.ko.md`를, 확장 안정성 규칙은 `third-party-extension-contract.ko.md`를 참고하세요.
+## 거버넌스 규칙 (Governance Rules)
 
-## pull request용 contract 체크리스트
+### 규칙 1: 계약 보존 (Contract Preservation)
+패키지의 README나 운영 문서에 명시된 모든 동작은 구속력 있는 계약으로 간주됩니다. **파괴적 변경 정책**을 따르지 않고 이 동작을 수정하는 것은 이 거버넌스를 위반하는 것입니다.
 
-패키지 동작에 영향을 주는 PR은 다음을 검증해야 합니다.
-- [ ] migration note 없이 문서화된 behavioral contract를 제거하지 않았다.
-- [ ] 새 behavioral contract를 영향 받은 패키지 README에 문서화했다.
-- [ ] intentional limitation을 조용히 제거하지 않고 명시했다.
-- [ ] runtime invariant를 regression test로 커버했다.
-- [ ] 문서화된 boundary/template 예외 파일이 아닌 한 패키지 내부가 `process.env`를 직접 읽지 않는다.
+### 규칙 2: 파괴적 변경 정책 (Breaking Change Policy)
+- **0.x 단계**: 파괴적 변경은 **마이너(Minor)** 릴리스(`0.X.0`)에서 허용되지만, 반드시 `CHANGELOG.md`에 마이그레이션 노트를 동반해야 합니다.
+- **1.0+ 단계**: 파괴적 변경은 마이너/패치 릴리스에서 엄격히 금지되며, 반드시 종합적인 마이그레이션 가이드와 함께 **메이저(Major)** 버전 업데이트를 트리거해야 합니다.
 
-## CI enforcement
+### 규칙 3: 환경 격리 (Environment Isolation)
+패키지는 `process.env`에 직접 액세스해서는 안 됩니다. 모든 환경 기반 구성은 애플리케이션 경계(일반적으로 `@konekti/config`)를 통해 시스템에 유입되어야 하며, 명시적인 매개변수나 주입된 옵션으로 전달되어야 합니다.
 
-behavioral contract 거버넌스는 CI에서 `pnpm verify:platform-consistency-governance`로 강제됩니다.
+---
 
-다음 경우 거버넌스 검증은 PR을 실패시킵니다.
+## 강제 사항 (Enforcement)
 
-- SSOT English/Korean mirror 문서 구조가 서로 드리프트한 경우.
-- contract-governing 문서 변경 시 docs index, CI/tooling enforcement, regression-test evidence 동반 업데이트가 없는 경우.
-- 패키지 README의 alignment/conformance claim에 대해 conformance harness 테스트(`createPlatformConformanceHarness(...)`) 근거가 없는 경우.
-- repo에서 승인한 boundary/template 예외 외에 일반 `packages/*/src/**` 소스가 `process.env`를 직접 읽는 경우.
+Konekti는 준수 여부를 보장하기 위해 자동화된 게이트를 사용합니다.
+1.  **구조적 동등성**: 영어와 한국어 문서 구조가 틀어질 경우 `pnpm verify:platform-consistency-governance`가 실패합니다.
+2.  **액세스 제어**: 정적 분석 도구가 코어 패키지 내에서의 직접적인 `process.env` 액세스를 차단합니다.
+3.  **회귀 테스트**: 문서화된 모든 계약은 패키지의 테스트 스위트에 대응하는 테스트 케이스로 뒷받침되어야 합니다.
 
-## 강한 contract 예시
+---
 
-아래 패키지들은 강한 behavioral contract 사례입니다.
-- `@konekti/http`: guard contract, DTO 바인딩 규칙, routing invariant를 명확히 정의.
-- `@konekti/microservices`: 트랜스포트별 동작 설명과 명시적 unsupported 항목을 포함.
-- `@konekti/testing`: 생명주기 기대치가 명확한 안정적인 testing surface boundary 유지.
-
-## contract 안티패턴
-
-- **silent removal**: transport contract에 문서화된 `send()`를 "core에서 안 쓰니까"라는 이유로 제거.
-- **undocumented limitations**: base interface 옵션 중 절반을 무시하는 새 adapter를 문서 없이 추가.
-- **implicit side effects**: 문서화되지 않은 신규 백그라운드 프로세스/리소스 할당 도입.
-- **암묵적 env 소유권**: 애플리케이션 경계에서 설정을 명시적으로 전달받지 않고 라이브러리 패키지가 `process.env`를 직접 읽는 경우.
+## 관련 문서
+- [릴리스 거버넌스 (Release Governance)](./release-governance.ko.md)
+- [제3자 확장 기능 계약 (Third-Party Extension Contract)](./third-party-extension-contract.ko.md)
+- [플랫폼 준수 작성 체크리스트 (Platform Conformance Authoring Checklist)](./platform-conformance-authoring-checklist.ko.md)
+- [테스트 가이드 (Testing Guide)](./testing-guide.ko.md)

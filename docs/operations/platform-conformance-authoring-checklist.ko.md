@@ -1,58 +1,46 @@
-# platform conformance authoring checklist
+# 플랫폼 준수 작성 체크리스트 (Platform Conformance Authoring Checklist)
 
-<p><a href="./platform-conformance-authoring-checklist.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p>
+  <strong>한국어</strong> | <a href="./platform-conformance-authoring-checklist.md">English</a>
+</p>
 
-이 체크리스트는 플랫폼 일관성 SSOT의 acceptance 기준을 공식 플랫폼-지향 패키지의 작성/검증 게이트로 변환합니다.
+이 체크리스트는 Konekti 생태계에서 공식적인 플랫폼 지향 패키지를 작성할 때 준수해야 할 기술적 및 동작적 요구사항을 정의합니다. Konekti 플랫폼 쉘에 참여하는 모든 패키지가 예측 가능하고, 이식 가능하며, 프레임워크의 핵심 표준과 일관성을 유지할 수 있도록 보장합니다.
 
-주요 권한 문서:
+## 이 문서가 필요한 경우
 
-- `../concepts/platform-consistency-design.ko.md`
-- `./behavioral-contract-policy.ko.md`
+- **컴포넌트 생성**: 새로운 `@konekti/platform-*` 또는 `@konekti/*-adapter` 패키지를 작성할 때.
+- **계약 수정**: 플랫폼 수준 컴포넌트의 공개된 동작이나 생명주기 훅을 업데이트할 때.
+- **이식성 감사**: 패키지가 크로스 런타임(Node.js, Bun, Deno 등) 지원을 위해 Konekti 플랫폼 준수 표준을 따르고 있는지 인증할 때.
 
-## 언제 이 체크리스트를 사용하나요?
+---
 
-패키지가 런타임 소유 플랫폼 셸(`platform.components`)에 새로 참여하거나, 기존 플랫폼 계약 동작을 변경할 때마다 사용합니다.
+## 작성 체크리스트 (Authoring Checklist)
 
-## 필수 conformance harness 게이트
+### 1. 준수 하네스 및 테스트 (Conformance Harness & Testing)
+모든 플랫폼 지향 패키지는 `@konekti/testing`의 공식 테스트 하네스를 사용하여 검증되어야 합니다.
+- [ ] **하네스 채택**: 일반적인 생명주기 검증을 위해 `createPlatformConformanceHarness(...)`를 구현합니다.
+- [ ] **전송 이식성**: (HTTP/메시지 어댑터의 경우) 크로스 런타임 동작을 확인하기 위해 `createHttpAdapterPortabilityHarness(...)`를 사용합니다.
+- [ ] **상태 격리**: `validate()` 메서드가 부수 효과가 없는 검사이며 컴포넌트 상태를 전이시키지 않는지 확인합니다.
+- [ ] **생명주기 무결성**: `start()`가 결정론적이고 `stop()`이 멱등성(동일한 결과 보장)을 유지하는지 확인합니다.
+- [ ] **성능 저하 상태의 관측성**: 컴포넌트가 실패하거나 성능이 저하된 상태에서도 `snapshot()`을 호출할 수 있는지 확인합니다.
 
-모든 공식 플랫폼-지향 패키지는 `@konekti/testing`의 공유 conformance harness를 실행하는 테스트를 포함해야 합니다.
+### 2. 구현 및 설계 (Implementation & Design)
+- [ ] **명시적 구성**: 명확하고 타입이 지정된 구성 인터페이스를 노출하고 부트스트랩 단계에서 입력을 검증합니다.
+- [ ] **상태 vs 준비성**: "Healthy"(프로세스 실행 중)와 "Ready"(컴포넌트가 완전히 작동 중)의 차이를 명시적으로 정의합니다.
+- [ ] **구조화된 진단**: 일반적인 실패 시나리오에 대해 조치 가능한 `fixHint` 메타데이터와 함께 안정적인 에러 코드를 제공합니다.
+- [ ] **새니타이징 (Sanitization)**: 내보낸 로그나 스냅샷에 API 키, 비밀번호 또는 자격 증명이 포함되지 않도록 보장합니다.
+- [ ] **리소스 소유권**: 소켓, 파일 핸들, DB 연결과 같이 소유한 리소스를 명확히 선언하고 `stop()` 단계에서 닫히도록 보장합니다.
 
-- `createPlatformConformanceHarness(...)`
-- HTTP 어댑터와 adapter-first 런타임 패키지에는 `createHttpAdapterPortabilityHarness(...)`
-- `assertAll()` **또는** 항목별 invariant 단언
+### 3. 풀 리퀘스트(PR) 요구사항
+플랫폼 패키지에 영향을 미치는 PR은 준수 여부에 대한 증거를 제공해야 합니다.
+- [ ] **하네스 증거**: 준수 하네스가 실행되는 테스트 파일에 대한 링크를 제공합니다.
+- [ ] **계약 변경**: 문서화된 런타임 불변성이나 동작 계약의 변경 사항을 명시적으로 언급합니다.
+- [ ] **문서 동기화**: 패키지 수준의 `README.md` 및 한국어 미러를 최신 계약 내용으로 업데이트합니다.
 
-하니스가 보장해야 하는 최소 invariant:
+---
 
-- `validate()`가 컴포넌트 상태를 전이시키지 않는다(항상 검증).
-- 상태 외의 숨은 장수명 side effect는 `captureValidationSideEffects`를 연결한 경우에 검증된다.
-- `start()`가 결정적이다(멱등 성공 또는 중복 호출 시 결정적 실패).
-- `stop()`이 멱등이다.
-- `snapshot()`을 degraded/failed 상태에서도 호출할 수 있다.
-- diagnostics가 비어 있지 않은 안정적인 코드와 error 수준 `fixHint`를 제공한다.
-- snapshot이 민감 정보 키를 포함하지 않도록 sanitize된다.
-
-리소스 소유/점유 semantics가 있는 플랫폼 패키지는 하니스 테스트에서 `captureValidationSideEffects`를 제공해 숨은 리소스 변화를 명시적으로 검증해야 합니다.
-
-HTTP 어댑터는 요청 정규화, `rawBody` opt-in 동작, SSE 프레이밍, 시작 로그, 종료 시그널 정리에 대해 내장 Node 어댑터와의 parity를 증명하는 portability 단언을 포함해야 합니다.
-
-## 패키지 작성 체크리스트
-
-platform consistency alignment를 주장하기 전에 변경셋이 아래 항목을 모두 만족해야 합니다.
-
-- [ ] 명시적 config 옵션을 노출하고 부트스트랩 시점에 검증한다.
-- [ ] 결정적 `start()`와 멱등 `stop()` 동작을 문서화한다.
-- [ ] readiness 의미를 health와 분리해 정의한다.
-- [ ] 안정적인 `code`와 실행 가능한 `fixHint`를 포함한 구조화 diagnostics를 제공한다.
-- [ ] sanitize된 snapshot을 내보낸다(비밀 정보 필드 없음).
-- [ ] 의존성 엣지와 리소스 소유 semantics를 명시한다.
-- [ ] 공용 telemetry namespace/tag 규칙을 따른다.
-- [ ] CLI/Studio가 패키지 전용 파싱 없이 소비할 수 있다.
-
-## PR 증거 요구사항
-
-플랫폼-지향 패키지 PR에는 다음이 포함되어야 합니다.
-
-1. harness 기반 테스트 파일 링크
-2. 문서화된 behavioral contract 변경 여부
-3. 동작/런타임 invariant 변경 시 README 업데이트
-4. 검증 출력(`pnpm test`, `pnpm typecheck`, `pnpm build`, 또는 `pnpm verify`)
+## 관련 문서
+- [동작 계약 정책 (Behavioral Contract Policy)](./behavioral-contract-policy.ko.md)
+- [아키텍처 개요 (Architecture Overview)](../concepts/architecture-overview.ko.md)
+- [테스트 가이드 (Testing Guide)](./testing-guide.ko.md)
+- [제3자 확장 기능 계약 (Third-Party Extension Contract)](./third-party-extension-contract.ko.md)

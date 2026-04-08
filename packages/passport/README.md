@@ -2,362 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-
-Strategy-agnostic auth execution layer for Konekti — routes any `AuthStrategy` through a generic `AuthGuard` into the request context.
-
-The package ships two official presets beyond bearer-token JWT:
-- **Cookie auth preset**: HttpOnly cookie JWT extraction with `CookieManager` utilities.
-- **Refresh token lifecycle**: Issue, rotate, and revoke refresh tokens with replay detection.
-
-`@konekti/passport` now defines an official account-linking extension contract (`AccountLinkPolicy`), while final identity policy decisions remain application-level concerns.
-
-## See also
-
-- `../../docs/concepts/auth-and-jwt.md`
-- `../../docs/concepts/http-runtime.md`
-
-## What this package does
-
-`@konekti/passport` does not implement any concrete auth provider (JWT parsing, Google OAuth, local credentials). Its job is to ensure that *whatever strategy you plug in*, auth runs consistently in the Konekti request lifecycle:
-
-1. `UseAuth('<strategy>')` and `RequireScopes(...)` decorators write auth metadata and attach `AuthGuard` to the route
-2. At request time, `AuthGuard` reads the requirement, looks up the strategy by name, calls `strategy.authenticate(context)`, gets a principal, checks scopes, and populates `requestContext.principal`
-3. Auth errors map to `UnauthorizedException` (401) or `ForbiddenException` (403)
-4. Passport.js strategies can be bridged in via `createPassportJsStrategyBridge()`
-
-`AuthGuard` follows the generic HTTP guard contract explicitly: it returns success to continue the pipeline, throws `UnauthorizedException` / `ForbiddenException` for auth failures, and allows committed-response flows such as redirects to short-circuit the handler.
-
-Scope note:
-
-- `@konekti/passport` owns strategy execution, the refresh token lifecycle (issue / rotate / revoke), the HttpOnly cookie auth preset, and the account-linking policy contract
-- the broader account/session lifecycle (login credential validation, session storage, consent, account upsert ownership) remains application-level
-
-## Refresh Token Lifecycle
-
-`@konekti/passport` now provides framework-level primitives for refresh token operations:
-
-- **Issue**: Create new refresh tokens for subjects
-- **Rotate**: Exchange refresh tokens for new access + refresh tokens with replay detection
-- **Revoke**: Invalidate specific tokens or all tokens for a subject (logout)
-
-When the underlying `@konekti/jwt` refresh-token configuration uses `rotation: false`, the refresh operation still returns a new access token but reuses the same refresh token string until expiry or revocation. Replay-detection semantics described in this section apply to rotation mode (`rotation: true`).
-
-### Use the refresh token strategy
-
-```typescript
-import { Controller, Post } from '@konekti/http';
-import { UseAuth, RefreshTokenStrategy } from '@konekti/passport';
-import type { RequestContext } from '@konekti/http';
-
-@Controller('/auth')
-export class AuthController {
-  @Post('/refresh')
-  @UseAuth('refresh-token')
-  async refresh(_: never, ctx: RequestContext) {
-    return ctx.principal;
-  }
-}
-```
-
-### Register the refresh token adapter
-
-```typescript
-import { Module } from '@konekti/core';
-import {
-  createPassportProviders,
-  createRefreshTokenProviders,
-  JwtRefreshTokenAdapter,
-  RefreshTokenStrategy,
-} from '@konekti/passport';
-
-@Module({
-  providers: [
-    JwtRefreshTokenAdapter,
-    RefreshTokenStrategy,
-    ...createRefreshTokenProviders(JwtRefreshTokenAdapter),
-    ...createPassportProviders(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'refresh-token', token: RefreshTokenStrategy }],
-    ),
-  ],
-})
-export class AuthModule {}
-```
-
-### Implement a custom refresh token service
-
-```typescript
-import type { RefreshTokenService } from '@konekti/passport';
-
-export class MyRefreshTokenService implements RefreshTokenService {
-  async issueRefreshToken(subject: string): Promise<string> {
-    // Your implementation
-  }
-
-  async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    // Your implementation with rotation and replay detection
-  }
-
-  async revokeRefreshToken(tokenId: string): Promise<void> {
-    // Your implementation
-  }
-
-  async revokeAllForSubject(subject: string): Promise<void> {
-    // Logout: revoke all tokens for subject
-  }
-}
-```
-
-## Cookie Auth Preset
-
-`@konekti/passport` provides an official HttpOnly cookie auth preset for JWT-based authentication. This preset extracts JWT tokens from secure HttpOnly cookies instead of bearer headers.
-
-### Use the cookie auth strategy
-
-```typescript
-import { Controller, Post, Get } from '@konekti/http';
-import { UseAuth, CookieAuthStrategy, CookieManager } from '@konekti/passport';
-import type { RequestContext } from '@konekti/http';
-import { Inject } from '@konekti/core';
-import { DefaultJwtSigner } from '@konekti/jwt';
-
-@Controller('/auth')
-export class AuthController {
-  @Inject([DefaultJwtSigner, CookieManager])
-  constructor(
-    private readonly signer: DefaultJwtSigner,
-    private readonly cookieManager: CookieManager,
-  ) {}
-
-  @Post('/login')
-  async login(input: { username: string }, ctx: RequestContext) {
-    const accessToken = await this.signer.signAccessToken({
-      sub: input.username,
-      roles: ['user'],
-    });
-
-    this.cookieManager.setAccessTokenCookie(ctx.response, accessToken, 3600);
-
-    return { success: true };
-  }
-
-  @Get('/profile')
-  @UseAuth('cookie')
-  async getProfile(_input: never, ctx: RequestContext) {
-    return { user: ctx.principal };
-  }
-
-  @Post('/logout')
-  async logout(_input: never, ctx: RequestContext) {
-    this.cookieManager.clearAllCookies(ctx.response);
-    return { success: true };
-  }
-}
-```
-
-### Register the cookie auth preset
-
-```typescript
-import { Module } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
-import {
-  createPassportProviders,
-  createCookieAuthPreset,
-} from '@konekti/passport';
-import { JwtModule } from '@konekti/jwt';
-
-@Module({
-  imports: [
-    JwtModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        algorithms: ['HS256'],
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        issuer: config.getOrThrow<string>('JWT_ISSUER'),
-        audience: config.getOrThrow<string>('JWT_AUDIENCE'),
-        accessTokenTtlSeconds: config.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 3600,
-      }),
-    }),
-  ],
-  providers: [
-    ...createCookieAuthPreset({
-      cookieAuth: {
-        accessTokenCookieName: 'access_token',
-        refreshTokenCookieName: 'refresh_token',
-        requireAccessToken: true,
-      },
-      cookieManager: {
-        cookieOptions: {
-          secure: true,
-          sameSite: 'strict',
-          path: '/',
-        },
-      },
-    }).providers,
-    ...createPassportProviders(
-      { defaultStrategy: 'cookie' },
-      [createCookieAuthPreset().strategy],
-    ),
-  ],
-})
-export class AuthModule {}
-```
-
-> Config-first: Konekti resolves environment values at the application boundary and passes typed options/providers into auth modules. See `../../docs/concepts/config-and-environments.md`.
-
-### Cookie manager utilities
-
-The `CookieManager` class provides utilities for managing auth cookies:
-
-```typescript
-import { CookieManager } from '@konekti/passport';
-import type { FrameworkResponse } from '@konekti/http';
-
-// Set access token cookie
-cookieManager.setAccessTokenCookie(response, accessToken, 3600);
-
-// Set refresh token cookie
-cookieManager.setRefreshTokenCookie(response, refreshToken, 604800);
-
-// Set both tokens at once
-cookieManager.setAuthCookies(response, accessToken, 3600, refreshToken, 604800);
-
-// Clear access token cookie
-cookieManager.clearAccessTokenCookie(response);
-
-// Clear refresh token cookie
-cookieManager.clearRefreshTokenCookie(response);
-
-// Clear all auth cookies (logout)
-cookieManager.clearAllCookies(response);
-```
-
-### Security defaults
-
-The cookie auth preset uses secure defaults:
-
-- **HttpOnly**: `true` (prevents JavaScript access)
-- **Secure**: `true` (HTTPS only in production)
-- **SameSite**: `strict` (prevents CSRF)
-- **Path**: `/` (available across the application)
-
-These defaults can be overridden via `CookieManagerConfig`.
-
-### What the preset owns vs application policy
-
-**The preset owns:**
-- JWT extraction from HttpOnly cookies
-- Cookie header construction with security flags
-- Integration with `@konekti/jwt` verifier
-
-**Application policy (not owned by preset):**
-- Login endpoint implementation (credential validation)
-- User session storage (if needed beyond JWT)
-- Cookie domain and path customization per route
-- Multi-tenant cookie isolation
-- Cookie consent compliance
-
-## Account Linking Policy Contract
-
-`@konekti/passport` exposes a minimal account-linking policy surface so applications can implement linking consistently without pushing account ownership into the framework:
-
-- `AccountLinkPolicy.evaluate(context)` defines your linking decision logic.
-- `resolveAccountLinking(context, policy, options)` normalizes outcomes and enforces typed conflict/rejection semantics.
-- `createConservativeAccountLinkPolicy()` is an official baseline policy that requires explicit confirmation before linking ambiguous candidates.
-
-### Framework behavior vs application policy boundary
-
-**Framework-owned behavior:**
-- account-linking contract types and DI token (`ACCOUNT_LINKING_POLICY`)
-- decision normalization (`linked`, `create-account`, `skipped`)
-- explicit typed failures (`AccountLinkConflictError`, `AccountLinkRejectedError`)
-
-**Application-owned behavior:**
-- account candidate discovery (queries by email/provider/user metadata)
-- consent UI and explicit link confirmation UX
-- account upsert/merge transactions and audit logging
-
-### Common flow mapping
-
-| Flow | Typical input context | Expected policy decision |
-|---|---|---|
-| First external login | `candidates: []` | `create-account` |
-| Existing-account match | `candidates: [account]`, no confirmation yet | `conflict` (require explicit confirmation) |
-| Explicit link confirmation | `linkAttempt.confirmedByUser === true` and target in candidates | `link` |
-| Rejected link attempt | user denies confirmation or target is invalid | `reject` |
-
-### Example: local credential flow (no external linking)
-
-```typescript
-import { AuthenticationFailedError } from '@konekti/passport';
-
-export async function loginWithPassword(email: string, password: string) {
-  const account = await accountRepository.findByEmail(email);
-  if (!account || !(await passwordHasher.verify(password, account.passwordHash))) {
-    throw new AuthenticationFailedError('Invalid credentials.');
-  }
-
-  return account;
-}
-```
-
-### Example: external provider flow with explicit confirmation
-
-```typescript
-import {
-  AccountLinkConflictError,
-  AccountLinkRejectedError,
-  createConservativeAccountLinkPolicy,
-  resolveAccountLinking,
-} from '@konekti/passport';
-
-const policy = createConservativeAccountLinkPolicy();
-
-export async function handleGoogleCallback(identity: {
-  email?: string;
-  providerSubject: string;
-}) {
-  const candidates = await accountRepository.findCandidatesForExternalIdentity(identity);
-
-  try {
-    const resolution = await resolveAccountLinking(
-      {
-        candidates,
-        identity: {
-          email: identity.email,
-          emailVerified: true,
-          provider: 'google',
-          providerSubject: identity.providerSubject,
-        },
-      },
-      policy,
-    );
-
-    if (resolution.status === 'linked') {
-      return accountRepository.attachExternalIdentity(resolution.accountId, 'google', identity.providerSubject);
-    }
-
-    if (resolution.status === 'create-account') {
-      return accountRepository.createFromExternalIdentity('google', identity.providerSubject, identity.email);
-    }
-
-    return { next: 'manual-review' };
-  } catch (error) {
-    if (error instanceof AccountLinkConflictError) {
-      return {
-        candidateAccountIds: error.candidateAccountIds,
-        next: 'ask-link-confirmation',
-      };
-    }
-
-    if (error instanceof AccountLinkRejectedError) {
-      return { next: 'link-rejected' };
-    }
-
-    throw error;
-  }
-}
-```
+Strategy-agnostic auth execution layer for Konekti. It routes any `AuthStrategy` through a generic `AuthGuard` into the request context, populating `requestContext.principal`.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [When to use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API](#public-api)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -365,208 +20,101 @@ export async function handleGoogleCallback(identity: {
 npm install @konekti/passport
 ```
 
+## When to Use
+
+- When you need to protect routes with authentication and authorization (RBAC/Scopes).
+- When using multiple auth strategies (e.g., JWT, Cookies, API Keys) in the same application.
+- When you need a bridge to existing Passport.js strategies.
+- When implementing refresh token rotation or account-linking policies.
+
 ## Quick Start
 
-### Declare auth requirements on a route
+### 1. Register Providers
+
+Define your strategies and register them using `createPassportProviders`.
 
 ```typescript
-import { UseAuth, RequireScopes } from '@konekti/passport';
+import { Module } from '@konekti/core';
+import { createPassportProviders } from '@konekti/passport';
+import { MyJwtStrategy } from './jwt.strategy';
+
+@Module({
+  providers: [
+    MyJwtStrategy,
+    ...createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: MyJwtStrategy }]
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+### 2. Protect Routes
+
+Use `@UseAuth()` and `@RequireScopes()` to enforce authentication.
+
+```typescript
 import { Controller, Get } from '@konekti/http';
-import type { RequestContext } from '@konekti/http';
+import { UseAuth, RequireScopes } from '@konekti/passport';
 
 @Controller('/profile')
 export class ProfileController {
   @Get('/')
-  @UseAuth('jwt')           // strategy name registered in the app
-  @RequireScopes('read:profile')
-  async getProfile(_: never, ctx: RequestContext) {
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  async getProfile(input: never, ctx: RequestContext) {
     return { user: ctx.principal };
   }
 }
 ```
 
-### Register providers (done once in your auth module)
+## Common Patterns
+
+### Passport.js Bridge
+
+Easily adapt any standard Passport.js strategy (like `passport-google-oauth20`) to work with Konekti's DI and async lifecycle.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { createPassportProviders } from '@konekti/passport';
-
-class BearerAuthStrategy {
-  async authenticate() {
-    return { claims: {}, subject: 'user-1' };
-  }
-}
-
-@Module({
-  providers: [
-    BearerAuthStrategy,
-    ...createPassportProviders({ defaultStrategy: 'jwt' }, [{ name: 'jwt', token: BearerAuthStrategy }]),
-  ],
-})
-export class AuthModule {}
-```
-
-### Implement an AuthStrategy
-
-```typescript
-import type { AuthStrategy, GuardContext } from '@konekti/passport';
-import { AuthenticationRequiredError } from '@konekti/passport';
-
-export class ApiKeyStrategy implements AuthStrategy {
-  async authenticate(context: GuardContext) {
-    const apiKey = context.requestContext.request.headers['x-api-key'];
-    if (!apiKey) {
-      throw new AuthenticationRequiredError();
-    }
-
-    return {
-      claims: { apiKey },
-      scopes: ['read:profile'],
-      subject: 'api-key-user',
-    };
-  }
-}
-```
-
-### Bridge a Passport.js strategy
-
-```typescript
-import { Module } from '@konekti/core';
-import { createPassportJsStrategyBridge, createPassportProviders } from '@konekti/passport';
-import { LocalStrategyAdapter } from './local.strategy';
-
-const localBridge = createPassportJsStrategyBridge('local', LocalStrategyAdapter, {
-  authenticateOptions: { session: false },
-  mapPrincipal: ({ user }) => ({
-    subject: String((user as { id: string }).id),
-    claims: user as Record<string, unknown>,
-  }),
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => ({ subject: user.id, claims: user }),
 });
-
-@Module({
-  providers: [
-    LocalStrategyAdapter,
-    ...localBridge.providers,
-    ...createPassportProviders({ defaultStrategy: 'local' }, [localBridge.strategy]),
-  ],
-})
-export class AuthModule {}
 ```
 
-## Key API
+### Refresh Token Lifecycle
 
-| Export | Location | Description |
-|---|---|---|
-| `AuthStrategy` | `src/types.ts` | Interface: `authenticate(context) → principal | handled result` |
-| `AuthStrategyResult` | `src/types.ts` | `Principal` or `{ handled: true, principal? }` |
-| `AuthGuard` | `src/guard.ts` | Generic guard that reads auth requirements and calls the strategy |
-| `UseAuth(strategyName)` | `src/decorators.ts` | Sets the strategy + attaches `AuthGuard` to the route |
-| `RequireScopes(...scopes)` | `src/decorators.ts` | Declares required scopes + attaches `AuthGuard` |
-| `createPassportProviders(opts)` | `src/module.ts` | Registers strategy registry and default strategy wiring |
-| `createPassportJsStrategyBridge(...)` | `src/passport-js.ts` | Wraps a Passport.js strategy as a Konekti `AuthStrategy` |
-| `AuthRequirement` | `src/types.ts` | `{ strategy?, scopes? }` — merged from class + method level |
-| `AccountLinkPolicy` | `src/account-linking.ts` | Extension contract: evaluate identity-linking decisions from app-provided candidate data |
-| `resolveAccountLinking(...)` | `src/account-linking.ts` | Normalizes policy outcomes (`linked`, `create-account`, `skipped`) and throws typed conflict/reject errors |
-| `createConservativeAccountLinkPolicy()` | `src/account-linking.ts` | Built-in baseline policy requiring explicit confirmation before linking non-explicit matches |
-| `ACCOUNT_LINKING_POLICY` | `src/account-linking.ts` | DI token for wiring a policy implementation |
-| `AccountLinkConflictError` | `src/account-linking.ts` | Thrown when one or more candidate matches require explicit link confirmation |
-| `AccountLinkRejectedError` | `src/account-linking.ts` | Thrown when linking is denied by policy |
-| `RefreshTokenService` | `src/refresh-token.ts` | Interface for refresh token lifecycle operations |
-| `RefreshTokenStrategy` | `src/refresh-token.ts` | Auth strategy for refresh token authentication |
-| `JwtRefreshTokenAdapter` | `src/jwt-refresh-token-adapter.ts` | Adapts `@konekti/jwt`'s `RefreshTokenService` to passport interface |
-| `createRefreshTokenProviders(service)` | `src/refresh-token.ts` | Registers refresh token service in DI |
-| `CookieAuthStrategy` | `src/cookie-auth.ts` | Auth strategy that extracts JWT from HttpOnly cookies |
-| `CookieManager` | `src/cookie-manager.ts` | Utilities for setting/clearing auth cookies |
-| `createCookieAuthPreset(config)` | `src/cookie-auth-module.ts` | Creates cookie auth providers and strategy registration |
-| `createPassportPlatformStatusSnapshot(input)` | `src/status.ts` | Maps strategy/preset/dependency readiness and policy boundary into shared platform snapshot shape |
-| `createPassportPlatformDiagnosticIssues(input)` | `src/status.ts` | Emits stable `AUTH_PASSPORT_*` diagnostics with fix hints and dependency edges |
+The package provides a built-in `RefreshTokenStrategy` and `RefreshTokenService` to handle secure token rotation and revocation.
 
-## Platform status snapshot semantics
-
-Use `createPassportPlatformStatusSnapshot(...)` to report auth package readiness in the shared platform model:
-
-- `details.strategyRegistry` shows registered strategy names and default-strategy alignment.
-- `details.presets.cookieAuth` exposes cookie preset enablement/readiness.
-- `details.presets.refreshToken.backingStore` exposes refresh-token dependency readiness and dependency ID.
-- `details.policyBoundary` separates framework-owned auth primitives from application-owned login/session policy.
-- `details.telemetry.labels` follows shared labels (`component_id`, `component_kind`, `operation`, `result`).
-
-Use `createPassportPlatformDiagnosticIssues(...)` to emit stable `AUTH_PASSPORT_*` diagnostics for registry/preset/dependency misconfiguration without implying the framework now owns application login/session policy.
-
-## Architecture
-
-### Guard execution flow
-
-```text
-request arrives at route with @UseAuth / @RequireScopes
-  → AuthGuard.canActivate(context)
-  → read merged auth requirement (class + method)
-  → determine strategy name (explicit or default)
-  → resolve strategy from request-scoped container
-  → strategy.authenticate(context)
-  → if the strategy throws auth errors → map to UnauthorizedException (401)
-  → if authenticated → scope check
-  → if scopes missing → throw ForbiddenException (403)
-  → requestContext.principal = principal
+```typescript
+@Post('/refresh')
+@UseAuth('refresh-token')
+async refresh(input: never, ctx: RequestContext) {
+  return ctx.principal; // Contains new token pair
+}
 ```
 
-### Why auth metadata uses merge semantics
+## Public API Overview
 
-`@UseAuth` and `@RequireScopes` can be applied at both the class level and the method level. The guard reads merged requirements: a class-level strategy with per-method scopes is a common pattern. The metadata layer in `src/metadata.ts` owns this merge logic.
+### Decorators
+- `@UseAuth(strategyName)`: Attaches `AuthGuard` and sets the active strategy.
+- `@RequireScopes(...scopes)`: Enforces specific scope requirements.
 
-### AuthGuard is provider-agnostic by design
+### Core Classes
+- `AuthGuard`: The HTTP guard that executes the strategy chain.
+- `CookieManager`: Utility for managing HttpOnly auth cookies.
+- `JwtRefreshTokenAdapter`: Bridges `@konekti/jwt` refresh logic to the passport interface.
 
-`AuthGuard` never references JWT, Google, or any concrete provider. It only:
-- Knows the strategy *name*
-- Looks up the strategy *instance* from the DI container
-- Calls `authenticate`
-- Maps the result to `principal` or exception
+### Interfaces
+- `AuthStrategy`: The contract for implementing custom authentication logic.
+- `AccountLinkPolicy`: Extension point for identity-linking decisions.
 
-This means adding a new auth strategy requires only implementing `AuthStrategy` and registering it — the guard does not change.
+## Related Packages
 
-### Passport.js bridge
+- `@konekti/jwt`: The underlying token core for JWT-based strategies.
+- `@konekti/http`: Provides the routing and guard infrastructure.
 
-`createPassportJsStrategyBridge()` adapts Passport.js's `success`/`fail`/`redirect`/`error` callback protocol to Konekti's `AuthStrategyResult`. The `mapPrincipal` argument normalizes the passport user object to a Konekti `Principal` shape. The bridge does not own account upsert or JWT issuance — those remain in app service code. For identity linking, use `AccountLinkPolicy` + `resolveAccountLinking` as the framework contract boundary.
+## Example Sources
 
-The public package exports auth error classes, bridge types, metadata helpers, and strategy/decorator contracts from `src/index.ts`. Registry and options tokens are internal wiring details used by `createPassportProviders` and `AuthGuard`.
-
-### 0.x migration note
-
-In `0.x`, `AUTH_STRATEGY_REGISTRY` and `PASSPORT_OPTIONS` were removed from the public `@konekti/passport` package surface and are now internal wiring details. If your application imported these tokens directly, migrate to `createPassportProviders(...)`, `UseAuth(...)`, `RequireScopes(...)`, and `AuthStrategy`-based registration as the supported public contract.
-
-## File reading order for contributors
-
-1. `src/types.ts` — `AuthStrategy`, `AuthStrategyResult`, `AuthRequirement`, `GuardContext`
-2. `src/account-linking.ts` — account-linking contract, conservative policy baseline, conflict/reject semantics
-3. `src/metadata.ts` — class + method requirement storage and merge
-4. `src/decorators.ts` — `UseAuth`, `RequireScopes` — metadata write + `AuthGuard` attachment
-5. `src/errors.ts` — auth-specific error types
-6. `src/guard.ts` — `AuthGuard` — strategy lookup, authenticate, scope check, principal population
-7. `src/refresh-token.ts` — `RefreshTokenService`, `RefreshTokenStrategy` — refresh token lifecycle primitives
-8. `src/jwt-refresh-token-adapter.ts` — `JwtRefreshTokenAdapter` — bridges `@konekti/jwt` to passport interface
-9. `src/cookie-auth.ts` — `CookieAuthStrategy` — JWT extraction from HttpOnly cookies
-10. `src/cookie-manager.ts` — `CookieManager` — cookie setting/clearing utilities
-11. `src/cookie-auth-module.ts` — `createCookieAuthPreset` — cookie auth providers and strategy registration
-12. `src/module.ts` — `createPassportProviders`
-13. `src/passport-js.ts` — `createPassportJsStrategyBridge`
-14. `src/account-linking.test.ts` — happy-path linking, conflict handling, non-linking fallback, explicit rejection flows
-15. `src/guard.test.ts` — non-JWT strategy flow, 401/403 mapping, principal population, scope enforcement, Passport.js bridge paths
-16. `src/refresh-token.test.ts` — refresh token lifecycle, rotation, replay detection, revocation
-17. `src/cookie-auth.test.ts` — cookie auth strategy and cookie manager tests
-18. `src/status.ts` — platform snapshot/diagnostic adapter for strategy/preset/dependency readiness and policy boundary visibility
-19. `src/status.test.ts` — platform snapshot/diagnostic regression coverage
-
-## Related packages
-
-- `@konekti/jwt` — token-core signer/verifier implementation
-- `@konekti/http` — `AuthGuard` is a guard in the `@konekti/http` dispatcher's guard chain
-
-## One-liner mental model
-
-```text
-@konekti/passport = strategy-agnostic auth execution: any AuthStrategy → AuthGuard → principal in RequestContext
-                 + refresh token lifecycle: issue → rotate → revoke with replay detection        (framework-owned)
-                 + cookie auth preset: HttpOnly cookie JWT extraction + cookie management        (framework-owned)
-                 + account-linking policy contract: evaluate → resolve → conflict/reject semantics (framework-owned boundary)
-                 + login flow, session store, consent, account upsert/merge implementation        (application-owned)
-```
+- `packages/passport/src/guard.test.ts`: Guard execution and scope enforcement patterns.
+- `packages/passport/src/passport-js.ts`: Implementation of the Passport.js bridge.
+- `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: Canonical JWT strategy implementation.

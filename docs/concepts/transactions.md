@@ -1,61 +1,63 @@
-# transactions
+# Transaction Management
 
 <p><strong><kbd>English</kbd></strong> <a href="./transactions.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the transaction semantics used across the runtime and official ORM integrations, especially `@konekti/prisma` and `@konekti/drizzle`.
+Data integrity is the foundation of any reliable backend. Konekti provides standardized transaction management for official ORM integrations (Prisma, Drizzle, Mongoose), ensuring **atomicity** across complex business operations without the "prop-drilling" of transaction objects.
 
-### related documentation
+## Why Transactions in Konekti?
 
-- `../../packages/prisma/README.md`
-- `../../packages/drizzle/README.md`
-- `./http-runtime.md`
+- **ALS-Backed Context**: Using `AsyncLocalStorage`, Konekti tracks active transactions automatically. You don't need to pass a `tx` or `session` object through every function call.
+- **Unified `current()` Pattern**: Every ORM integration provides a `Service.current()` method that resolves to either the active transaction client or the root client, maintaining full type safety and IDE autocomplete.
+- **Request-Scoped Transactions**: Wrap an entire HTTP request in a single transaction with a simple interceptor, ensuring that any error in any service results in a full rollback.
+- **Explicit Propagation**: While Konekti simplifies the *access* to transactions, the *boundaries* remain explicit. You control exactly when a transaction starts and ends.
 
-## standard principles
+## Responsibility Split
 
-- **Service Layer Ownership**: The service layer is the recommended location for defining transaction boundaries.
-- **Opt-in Transactions**: Automatic request-level transactions are available only via interceptor integration.
-- **Explicit over Implicit**: Global, implicit transactions are not enabled by default.
+- **Service Layer (The Owner)**: Decides when an operation needs to be atomic. Services use `transaction()` blocks or interceptors to define boundaries.
+- **ORM Integration Packages (The Runner)**: Packages like `@konekti/prisma` or `@konekti/drizzle` provide the underlying transaction drivers and manage connection lifecycles (e.g., auto-disconnect on shutdown).
+- **Repository Layer (The Consumer)**: Passive participants. They use `Service.current()` to perform operations, remaining agnostic of whether they are part of a transaction or not.
 
-## repository and service boundaries
+## Typical Workflows
 
-- **Services**: Responsible for opening and managing transactions.
-- **Repositories**: Should not initiate transactions. They resolve transaction-aware handles provided by the integration package.
-- **Generated Code**: Follows these same boundary rules.
+### 1. Manual Transaction Block
+Perfect for specific logic within a service where only a subset of operations must be atomic.
 
-## transaction propagation
+```typescript
+@Inject([PrismaService])
+class OrderService {
+  async checkout(cartId: string) {
+    return this.prisma.transaction(async () => {
+      // Inside this block, current() uses the transaction client
+      const order = await this.orderRepo.create(cartId);
+      await this.inventoryRepo.decreaseStock(order.items);
+      return order;
+    });
+  }
+}
+```
 
-The default behavior follows a "REQUIRED" propagation model:
+### 2. Request-Level Transactions
+Ideal for "Vertical Slice" architectures where an entire POST/PUT/DELETE operation should be one atomic unit.
 
-- Start a new transaction if one does not already exist.
-- Join the active transaction if one is already present.
+```typescript
+@Post('/')
+@UseInterceptors(PrismaTransactionInterceptor)
+async createAccount(@FromBody() dto: CreateAccountDto) {
+  // All downstream calls via PrismaService.current() share this tx
+  await this.userService.create(dto);
+  await this.profileService.init(dto);
+}
+```
 
-The following propagation types are currently not supported as standard defaults:
-- `REQUIRES_NEW`
-- Savepoints
-- Distributed transactions
+## Core Boundaries
 
-## request-scoped transactions
+- **The `current()` Rule**: Always use `Service.current()` instead of the root client instance in your repositories. This ensures your code is "transaction-aware" by default.
+- **No Implicit Globals**: Transactions are opt-in. Konekti avoids implicit, global transactions to prevent accidental performance bottlenecks and database locking issues.
+- **Error-Driven Rollback**: Transactions automatically roll back if an exception is thrown within the boundary. Ensure your error handling logic doesn't silently catch and swallow errors you want to trigger a rollback.
 
-- Managed via interceptors.
-- Begins at the interceptor boundary, after successful guard execution.
-- Transaction handles are resolved in a package-specific manner.
-- Authentication failures prevent the transaction from starting, avoiding unnecessary rollback logic.
-- Prisma integration (`requestTransaction`) is abort-aware and retries once without transaction `signal` options when a driver rejects them.
-- Drizzle integration (`requestTransaction`) is abort-aware and falls back to direct abort-aware execution when the wrapped handle lacks a `transaction` runner (unless strict mode is enabled).
+## Next Steps
 
-## commit and rollback
-
-- **Commit**: Occurs after the wrapped request path finishes successfully.
-- **Rollback**: Triggered by controller or interceptor failures, validation errors, or request abortions before completion.
-- **Clean-up**: Aborted requests must not leave orphaned transactions.
-- **Shutdown safety**: Prisma and Drizzle integrations abort active request transactions and wait for settlement during application shutdown before disconnect/dispose cleanup proceeds.
-
-## streaming and long-lived requests
-
-- Automatic request-level transactions are not recommended for streaming or long-lived responses.
-- Use explicit, non-transactional handling for these scenarios to avoid resource exhaustion.
-
-## testing
-
-- **Unit Tests**: Should be designed to run without transaction interceptors.
-- **Integration Tests**: Must explicitly verify propagation, joining, and rollback behavior.
+- **Prisma**: Deep dive into [Prisma Integration](../../packages/prisma/README.md).
+- **Drizzle**: Explore [Drizzle Integration](../../packages/drizzle/README.md).
+- **Mongoose**: Learn about [Mongoose Transactions](../../packages/mongoose/README.md).
+- **Examples**: See a canonical [Vertical Slice Example](../../packages/prisma/src/vertical-slice.test.ts).

@@ -2,41 +2,47 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 애플리케이션을 위한 헬스 인디케이터 조합 및 런타임 헬스 응답 집계 툴킷. `@konekti/terminus`는 런타임 health/readiness 엔드포인트 위에 의존성 인식 검사를 추가합니다.
+Konekti 애플리케이션을 위한 헬스 인디케이터(Health Indicator) 툴킷입니다. `@konekti/terminus`는 런타임의 기본 health/readiness 엔드포인트 위에 의존성 인식 상태 보고 기능을 추가합니다.
 
-## 이 패키지가 하는 일
+## 목차
 
-- `createHealthModule()`을 통해 런타임 소유 `/health` + `/ready` 배선을 보존
-- 조합 가능한 헬스 인디케이터 계약(`HealthIndicator`, `HealthIndicatorResult`) 추가
-- 인디케이터 결과를 구조화된 보고서(`status`, `info`, `error`, `details`)로 집계
-- 인디케이터 실패 시 `/health`를 HTTP `503`으로 설정
-- 인디케이터 기반 readiness 검사를 등록하여 의존성 실패 시 `/ready`가 `503` 반환
-- `/health`와 `/ready` 시맨틱을 런타임 소유 platform shell readiness/health 의미와 정렬
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [공통 패턴](#공통-패턴)
+  - [내장 인디케이터](#내장-인디케이터)
+  - [DI 기반 인디케이터](#di-기반-인디케이터)
+  - [실패 시맨틱](#실패-시맨틱)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
 ```bash
-npm install @konekti/terminus
+pnpm add @konekti/terminus
 ```
 
-선택적 피어 통합(`@konekti/prisma`, `@konekti/drizzle`, `@konekti/redis`)은 모듈 로드 시점에 import되지 않습니다. 해당 피어가 설치되지 않아도 안전하게 사용할 수 있습니다.
+## 사용 시점
+
+- 외부 의존성(데이터베이스, Redis, API 등)의 상태를 애플리케이션 헬스 체크 결과에 포함해야 할 때.
+- 표준 모니터링 패턴에 맞는 구조화된 JSON 헬스 보고서가 필요할 때.
+- 핵심 하위 서비스에 접속할 수 없는 경우 `/ready` 체크가 실패하도록 설정해야 할 때.
 
 ## 빠른 시작
 
+`TerminusModule.forRoot()`를 통해 헬스 인디케이터를 등록합니다.
+
 ```typescript
 import { Module } from '@konekti/core';
-import {
-  HttpHealthIndicator,
-  MemoryHealthIndicator,
-  TerminusModule,
-} from '@konekti/terminus';
+import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@konekti/terminus';
 
 @Module({
   imports: [
-     TerminusModule.forRoot({
-       indicators: [
-          new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-          new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    TerminusModule.forRoot({
+      indicators: [
+        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -44,78 +50,62 @@ import {
 class AppModule {}
 ```
 
-## 내장 인디케이터
+## 공통 패턴
 
-- `PrismaHealthIndicator`
-- `DrizzleHealthIndicator`
+### 내장 인디케이터
+
+패키지에서 기본으로 제공하는 인디케이터들은 다음과 같습니다.
+
+- `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator`
 - `HttpHealthIndicator`
 - `MemoryHealthIndicator`
 - `DiskHealthIndicator`
 
-편의 팩토리(`createPrismaHealthIndicator()` 등)도 내보내며, 클래스 인스턴스를 반환합니다.
-피어 기반 통합은 `createPrismaHealthIndicatorProvider()`, `createDrizzleHealthIndicatorProvider()`, `createRedisHealthIndicatorProvider()` 같은 DI 등록 헬퍼도 노출하여, 선택적 피어를 모듈 로드 시점에 import하지 않고도 해당 Konekti 클라이언트 토큰에서 인디케이터 인스턴스를 생성할 수 있습니다.
+### DI 기반 인디케이터
 
-DI 기반 인디케이터를 `/health`와 `/ready`에 참여시키려면 `indicatorProviders`로 전달하세요:
+Redis나 DB 클라이언트와 같이 DI 컨테이너의 의존성이 필요한 인디케이터를 사용할 때는, 모듈 로드 시점에 피어 의존성을 import하지 않도록 제공되는 provider 팩토리를 사용하세요.
 
 ```typescript
-import { REDIS_CLIENT } from '@konekti/redis';
 import { createRedisHealthIndicatorProvider, TerminusModule } from '@konekti/terminus';
 
 TerminusModule.forRoot({
-  indicatorProviders: [createRedisHealthIndicatorProvider({ key: 'redis' })],
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' })
+  ],
 });
 ```
 
-Drizzle의 경우, 기본 경로는 `select 1`을 사용하는 **execute 가능한 handle**(`database.execute(...)`)을 사용합니다. Drizzle 설정이 범용 execute seam을 노출하지 않는 경우, 명시적 `ping` 콜백을 전달하세요.
+### 실패 시맨틱
 
-확장용 공개 DI seam은 `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`, `TerminusHealthService`입니다. 모듈 options 토큰 배선은 내부 구현이며 공개 계약에 포함되지 않습니다.
+인디케이터가 실패하면 `HealthCheckError`를 던집니다. `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
 
-## 마이그레이션 노트 (0.x)
+- 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
+- 준비 상태(readiness)와 관련된 인디케이터가 실패하면 `/ready`는 HTTP `503`을 반환합니다.
+- 응답 본문은 `status`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 
-- `TERMINUS_OPTIONS`는 `0.x`에서 공개 패키지 표면에서 제거되었고, 이제 내부 배선으로만 사용됩니다.
-- 기존에 `@konekti/terminus`에서 `TERMINUS_OPTIONS`를 import하거나 주입했다면, 지원되는 확장 seam으로 마이그레이션하세요: `TERMINUS_HEALTH_INDICATORS`, 인디케이터 provider 계약(`indicatorProviders`, `create*HealthIndicatorProvider()`), `TerminusHealthService`.
+## 공개 API 개요
 
-## 주요 API
+### `TerminusModule`
 
-- `TerminusModule.forRoot(options)`
-- `createTerminusProviders(options)`
-- `runHealthCheck(indicators)`
-- `assertHealthCheck(report)`
-- `TerminusHealthService`
-- `HealthCheckError`
+- `static forRoot(options: TerminusModuleOptions): ModuleType`
+  - 인디케이터 및 provider 등록을 위한 메인 엔트리 포인트입니다.
 
-## 실패 시맨틱
+### `TerminusHealthService`
 
-- `indicator.check(key)`는 성공 시 `{ [key]: { status: 'up', ...details } }`를 반환합니다.
-- `indicator.check(key)`는 실패 시 `{ [key]: { status: 'down', ...details } }` 형태의 `causes`를 가진 `HealthCheckError`를 throw합니다.
-- `runHealthCheck(indicators)`는 해당 실패를 catch하고 구조화된 causes를 보존하여 `/health` 보고서에 집계합니다.
-- 헬스 보고서의 `contributors`는 현재 `up`/`down` 상태에 기여하는 인디케이터 키를 명시합니다.
-- `/health`는 runtime `PLATFORM_SHELL`의 `platform.readiness`와 `platform.health`를 포함하여 inspect/snapshot 시맨틱과 불일치하지 않도록 합니다.
+- `runHealthCheck(indicators: HealthIndicator[]): Promise<HealthCheckReport>`
+  - 수동으로 헬스 체크 집계를 실행합니다.
 
-## 헬스 보고서 형식
+### `HealthCheckError`
 
-```json
-{
-  "status": "error",
-  "checkedAt": "2026-03-24T00:00:00.000Z",
-  "contributors": {
-    "up": ["memory"],
-    "down": ["redis"]
-  },
-  "info": {
-    "memory": { "status": "up", "rss": 123456 }
-  },
-  "error": {
-    "redis": { "status": "down", "message": "ECONNREFUSED" }
-  },
-  "details": {
-    "memory": { "status": "up", "rss": 123456 },
-    "redis": { "status": "down", "message": "ECONNREFUSED" }
-  },
-  "platform": {
-    "readiness": { "status": "ready", "critical": false },
-    "health": { "status": "healthy" }
-  }
-}
-```
+- 커스텀 인디케이터 내부에서 "down" 상태를 알리기 위해 이 에러를 발생시킵니다.
+
+## 관련 패키지
+
+- `@konekti/metrics`: 가시성(Observability) 확보를 위해 자주 함께 사용됩니다.
+- `@konekti/prisma` / `@konekti/drizzle` / `@konekti/redis`: 특정 인디케이터를 위한 피어 의존성입니다.
+
+## 예제 소스
+
+- `examples/ops-metrics-terminus/src/app.ts`: 헬스 체크와 메트릭의 엔드투엔드 통합 예제.
+- `packages/terminus/src/health-check.test.ts`: 집계 및 단언(assertion) 흐름 예제.

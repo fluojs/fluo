@@ -1,67 +1,69 @@
-# 관측 가능성 (observability)
+# 관측 가능성 및 운영 (Observability & Operations)
 
-<p><strong><kbd>English</kbd></strong> <a href="./observability.md"><kbd>한국어</kbd></a></p>
+<p><a href="./observability.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드는 로깅, 상관관계 ID, 헬스 체크, 메트릭에 사용되는 관측 가능성 모델을 설명합니다.
+측정할 수 없는 것은 관리할 수 없습니다. Konekti는 **로깅**, **Prometheus 메트릭**, **헬스 체크**, **요청 상관관계(Correlation)**를 하나의 응집된 운영 전략으로 통합한 관측 가능성 모델을 제공합니다.
 
-### 관련 문서
+## 왜 Konekti의 관측 가능성인가요?
 
-- `./http-runtime.ko.md`
-- `../../packages/runtime/README.md`
-- `../../packages/metrics/README.md`
+- **통합된 문맥 (Unified Context)**: 모든 로그 항목, 메트릭, 트레이스(Trace)는 비동기 경계를 넘어 유지되는 일관된 `X-Request-Id`로 연결됩니다.
+- **기본으로 제공되는 운영 준비**: 몇 줄의 코드만으로 Kubernetes, Prometheus, Grafana와 같은 업계 표준 도구와 호환되는 `/health`, `/ready`, `/metrics` 엔드포인트를 노출할 수 있습니다.
+- **안전한 카디널리티 (Cardinality)**: 자동 경로 정규화(예: `/users/123` -> `/users/:id`)를 통해 메트릭 레이블의 폭발적인 증가를 방지하며, 높은 부하에서도 시스템의 안정성을 유지합니다.
+- **우아한 수명 주기 (Graceful Lifecycle)**: **Terminus**와의 통합을 통해 애플리케이션이 종료될 때 실행 중인 요청을 안전하게 처리하고 데이터베이스 연결을 명확히 닫은 후 종료되도록 보장합니다.
 
-## 로깅
+## 책임 분담
 
-애플리케이션 로거는 애플리케이션 이벤트를 관리하기 위해 일관된 인터페이스를 사용합니다:
+- **`@konekti/metrics` (텔레메트리)**: Prometheus 호환 메트릭을 수집하고 노출합니다. HTTP 지연 시간 및 요청 수와 같은 저수준 계측(Instrumentation)을 담당합니다.
+- **`@konekti/terminus` (헬스 및 수명 주기)**: 데이터베이스, Redis, 커스텀 로직 등 복잡한 헬스 체크를 오케스트레이션하고 우아한 종료 시퀀스를 관리합니다.
+- **`@konekti/http` (상관관계)**: 요청의 여정 동안 `requestId`를 전달하는 `AsyncLocalStorage` 문맥을 관리합니다.
+- **`@konekti/runtime` (상태)**: 헬스 시스템에서 사용하는 기본적인 "is-alive" 및 "is-ready" 플래그를 제공합니다.
 
-```ts
-interface ApplicationLogger {
-  log(message: string, context?: Record<string, unknown>): void;
-  warn(message: string, context?: Record<string, unknown>): void;
-  error(message: string, context?: Record<string, unknown>): void;
-  debug(message: string, context?: Record<string, unknown>): void;
-}
+## 일반적인 워크플로우
+
+### 1. 요청 상관관계 (Correlation)
+Konekti는 들어오는 모든 요청에 고유 ID를 자동으로 할당합니다. 이 ID는 파라미터를 전달하지 않고도 코드 어디에서나 접근할 수 있습니다.
+
+```typescript
+// 서비스 로직 어디에서나
+const reqId = RequestContext.current().requestId;
+this.logger.info(`주문 처리 중...`, { reqId });
 ```
 
-- **콘솔 로거**: 로컬 개발을 위한 기본 구현체입니다.
-- **JSON 로거**: 프로덕션 환경을 위해 권장되는 구현체입니다.
-- **DI 토큰**: `APPLICATION_LOGGER`를 사용하여 로거를 주입하거나 재정의할 수 있습니다.
+### 2. 표준화된 메트릭
+단일 모듈 임포트만으로 프레임워크 전반의 텔레메트리를 활성화할 수 있습니다.
 
-## 상관관계 ID (Correlation IDs)
+```typescript
+@Module({
+  imports: [MetricsModule.forRoot({
+    http: { pathLabelMode: 'template' }
+  })],
+})
+class AppModule {}
+```
+*`GET /metrics` 엔드포인트가 Prometheus 스크래핑을 위해 노출됩니다.*
 
-- **저장소**: 상관관계 데이터는 요청 컨텍스트와 함께 `AsyncLocalStorage`에 저장됩니다.
-- **추출**: 미들웨어는 들어오는 헤더에서 `X-Request-Id`(또는 `X-Correlation-Id`)를 읽거나 새 ID를 생성합니다.
-- **전파**: ID는 `X-Request-Id` 응답 헤더로 반환됩니다.
-- **보강**: 로거 구현체는 수동 전달 없이도 활성화된 요청 ID를 자동으로 포함할 수 있습니다.
+### 3. 스마트 헬스 체크
+"프로세스가 실행 중인지"(Liveness)와 "시스템이 트래픽을 받을 준비가 되었는지"(Readiness)를 구분하여 관리합니다.
 
-## 헬스 및 준비 상태 (Health and Readiness)
+```typescript
+TerminusModule.forRoot({
+  endpoints: {
+    '/health': [() => db.ping()], // Liveness (활성 상태)
+    '/ready': [() => redis.isReady()], // Readiness (준비 상태)
+  }
+})
+```
 
-- **활성 상태 (Liveness, `GET /health`)**: 프로세스가 실행 중임을 나타내는 `200 { status: 'ok' }`를 반환합니다.
-- **준비 상태 (Readiness, `GET /ready`)**: 
-  - 부트스트랩 단계 중에는 `503 { status: 'starting' }`을 반환합니다.
-  - 초기화가 완료되면 `200 { status: 'ready' }`를 반환합니다.
-  - 등록된 준비 상태 체크가 실패하면 `503 { status: 'unavailable' }`를 반환합니다.
+## 주요 경계
 
-활성 상태와 준비 상태는 별개의 관심사입니다. 실패한 준비 상태 체크는 `/ready`에 영향을 주지만, `/health`의 활성 상태 신호에는 영향을 주지 않습니다.
+- **Liveness vs. Readiness**: 
+  - `/health` (활성): 이 체크에 실패하면 Kubernetes가 컨테이너를 재시작합니다.
+  - `/ready` (준비): 이 체크에 실패하면 로드 밸런서가 해당 인스턴스로 트래픽을 보내는 것을 중단합니다.
+- **레이블 위생 (Label Hygiene)**: 메트릭 레이블에 사용자 ID나 고유 토큰과 같은 고유한 값을 직접 사용하지 마세요. 항상 템플릿이나 정규화된 카테고리를 사용하여 메트릭 저장소의 효율성을 유지하세요.
+- **비동기 안전성**: 상관관계 ID는 `AsyncLocalStorage`에 의존합니다. 비동기 체인을 끊는 방식(예: 래핑 없이 `setTimeout` 사용)을 피해야 ID가 유실되지 않습니다.
 
-## 메트릭 (Metrics)
+## 다음 단계
 
-- **엔드포인트**: `@konekti/metrics`는 `GET /metrics` 엔드포인트를 제공합니다.
-- **수집**: `prom-client`를 사용하며, 기본적으로 호출 단위 격리 registry에 기본 메트릭을 수집합니다.
-- **공유 registry 옵션**: `MetricsModule.forRoot({ registry })`로 외부 `Registry`를 전달하면 프레임워크 메트릭과 애플리케이션 메트릭을 하나의 스크레이프 타겟에서 노출할 수 있습니다.
-- **HTTP 메트릭 라벨**: `HttpMetricsMiddleware`는 low-cardinality path 정규화를 사용합니다(기본 `template`, opt-in `raw`). 기록 라벨은 `method`, `path`, `status`입니다.
-- **격리**: 메트릭 노출은 헬스 체크와 독립적이며 미들웨어로 보호할 수 있습니다.
-
-## 책임 범위
-
-- **상관관계 미들웨어**: 상관관계 ID 라이프사이클을 관리합니다.
-- **로거**: 로그 엔트리에 요청 관련 데이터를 보강합니다.
-- **런타임**: 핵심 헬스 및 준비 상태 인프라를 관리합니다.
-- **메트릭 패키지**: 메트릭 수집 및 노출을 담당합니다.
-- **요청 옵저버 (Request Observers)**: 요청 라이프사이클(시작, 매칭, 성공, 에러, 종료)을 모니터링하기 위한 권장 메커니즘입니다.
-
-## 확장 지점
-
-- **준비 상태 체크**: 헬스 모듈 API를 통해 커스텀 체크를 추가할 수 있습니다.
-- **로거 교체**: 애플리케이션 로거 구현체를 래핑하거나 교체할 수 있습니다.
-- **관측 가능성 훅**: 미들웨어, 인터셉터 또는 옵저버를 사용하여 추가 동작을 연결할 수 있습니다.
+- **전체 예제**: [Ops Metrics Terminus 예제](../../examples/ops-metrics-terminus/README.ko.md)에서 모든 구성 요소가 함께 작동하는 모습을 확인하세요.
+- **레퍼런스**: [Metrics 패키지](../../packages/metrics/README.ko.md) 및 [Terminus 패키지](../../packages/terminus/README.ko.md)를 더 깊이 있게 살펴보세요.
+- **트레이싱**: [Metrics 패키지 README](../../packages/metrics/README.ko.md)에서 OpenTelemetry 통합에 대해 알아보세요.

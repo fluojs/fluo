@@ -1,75 +1,49 @@
-# 생성기 워크플로우 (generator workflow)
+# 제너레이터 워크플로우
 
-<p><a href="./generator-workflow.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p><strong><kbd>한국어</kbd></strong> <a href="./generator-workflow.md"><kbd>English</kbd></a></p>
 
-이 가이드는 Konekti의 CLI 생성기 시스템과 사용 가능한 스키매틱(schematics)에 대해 설명합니다.
+Konekti CLI를 사용하여 반복적인 코드를 줄이고 일관된 프로젝트 구조를 유지하세요. 제너레이터는 Konekti의 module-first 규약에 맞는 실제 구성 요소를 빠르게 만들어 줍니다.
 
-## 명령어 구문
+### 대상 독자
+아키텍처의 일관성을 유지하면서 모듈, 컨트롤러, 서비스 생성을 자동화하여 생산성을 높이고 싶은 개발자.
+
+### 1. 전체 기능 모듈 생성
+**모듈(Module)**은 Konekti에서 조직화의 기본 단위입니다. 한 번의 명령으로 모듈 진입점을 만들고, 필요한 구성 요소를 뒤이어 세분화해 추가할 수 있습니다.
 
 ```sh
-konekti generate <schematic> <name>
-konekti g <schematic> <name>
+konekti g module catalog
 ```
 
-## 사용 가능한 스키매틱
+**어떤 일이 일어나나요?**
+CLI는 `src/catalog/` 디렉토리를 만들고 `catalog.module.ts` 진입점을 생성합니다. 여기에 필요한 컨트롤러, 서비스, DTO를 이어서 붙일 수 있습니다.
 
-| 스키매틱 | 별칭 (Alias) | 와이어링 |
-| --- | --- | --- |
-| `controller` | `co` | auto |
-| `guard` | `gu` | auto |
-| `interceptor` | `in` | auto |
-| `middleware` | `mi` | auto |
-| `module` | `mo` | manual |
-| `repository` | `repo` | auto |
-| `request-dto` | `req` | manual |
-| `response-dto` | `res` | manual |
-| `service` | `s` | auto |
+### 2. 정밀한 컴포넌트 생성
+기존 기능에 단일 구성 요소를 추가해야 하나요? 세분화된 제너레이터를 사용하세요.
 
-### 와이어링 동작 (wiring behavior)
+- **`konekti g controller name`**: HTTP 컨트롤러를 스캐폴딩합니다.
+- **`konekti g service name`**: 비즈니스 로직 서비스를 스캐폴딩합니다.
+- **`konekti g repo name`**: 데이터 레포지토리 패턴을 스캐폴딩합니다.
+- **`konekti g module name`**: 깨끗한 모듈 정의를 스캐폴딩합니다.
 
-생성기는 두 가지 와이어링 동작 중 하나를 따릅니다:
+### 3. 유연한 출력 경로
+기본적으로 CLI는 `src/`를 타겟으로 합니다. 프로젝트의 디렉토리 구조에 맞게 `--target-directory` (또는 `-o`) 플래그를 사용할 수 있습니다.
 
-- **auto** — 생성된 클래스가 도메인 모듈에 자동 등록됩니다. 모듈 파일이 아직 없으면 CLI가 새로 생성합니다. 모듈의 `controllers`, `providers`, 또는 `middleware` 배열이 자동으로 업데이트됩니다.
-- **manual** — 파일만 생성됩니다. 생성된 클래스는 어디에도 자동 등록되지 않습니다. 모듈이나 컨트롤러에 직접 연결해야 합니다. CLI는 생성 후 구체적인 다음 단계 힌트를 출력합니다.
+```sh
+konekti g module auth --target-directory src/shared
+```
 
-생성기를 실행하면 CLI 출력에 다음이 포함됩니다:
-1. 생성된 각 파일에 대한 `CREATE` 라인.
-2. 클래스가 자동 등록되었는지 수동 와이어링이 필요한지를 나타내는 **Wiring** 상태 라인.
-3. 권장 후속 작업(예: `pnpm typecheck` 실행, DTO import 등)이 포함된 **Next steps** 힌트.
+### 4. 드라이 런을 통한 안전한 실행
+변경 사항을 실제로 적용하기 전에 어떤 파일이 수정되거나 생성될지 미리 확인해 보세요.
 
-## 생성 규칙
+```sh
+konekti g module shop --dry-run
+```
 
-- **언어**: 모든 파일은 TypeScript로 생성됩니다.
-- **명명**: 파일명은 kebab-case를, 클래스명은 PascalCase를 사용합니다.
-- **위치**: 스타터 애플리케이션에서 파일은 기본적으로 `src/` 디렉토리에 작성됩니다.
-- **모듈 업데이트**: `auto` 와이어링을 가진 생성기는 새 컴포넌트를 적절한 모듈에 자동 등록합니다. `manual` 와이어링을 가진 생성기는 파일만 생성하며, 직접 연결해야 합니다.
+### 왜 CLI를 사용해야 하나요?
+- **반복 코드 감소**: 디렉토리 생성, 파일 이름 규칙, 기본 import 구성을 손으로 맞출 필요가 줄어듭니다.
+- **일관된 구조**: 생성된 파일은 Konekti 레퍼런스 문서가 설명하는 배치 규칙을 따릅니다.
+- **조합 가능한 워크플로우**: 모듈로 시작한 뒤 기능이 커질수록 컨트롤러, 서비스, DTO, 이벤트, 레포지토리를 차례대로 추가할 수 있습니다.
 
-### 예시 출력
-
-- `user.controller.ts`
-- `user.service.ts`
-- `user.repo.ts`
-- `user.request.dto.ts`
-- `user.response.dto.ts`
-
-## 구현 철학
-
-- **세분화된 생성**: 개별 생성기를 사용하여 애플리케이션 컴포넌트를 구축합니다.
-- **DTO 분리**: 명확한 API 계약을 위해 요청(request) 및 응답(response) DTO를 별개로 유지합니다.
-- **단일 리소스 지양**: 단순함을 유지하기 위해 현재 CLI는 복잡한 "resource" 생성기(예: `g resource`)를 피하고 있습니다.
-- **중립성**: 스캐폴딩은 패키지 매니저 전용 락파일과 명령어를 제외하고는 패키지 매니저 중립적(neutral)으로 유지됩니다.
-
-## 모듈 엔트리포인트 네이밍 거버넌스
-
-생성된 스니펫과 마이그레이션 힌트는 저장소 전역 공개 모듈 문법 계약을 따릅니다.
-
-- 런타임 모듈 엔트리포인트: `forRoot(...)`, 필요 시 `forRootAsync(...)`, `register(...)`, `forFeature(...)`
-- helper/builder 전용: `create*`
-
-CLI 사용자 노출 네이밍 가이드를 추가/수정할 때는 `../reference/package-surface.ko.md`를 단일 기준(source-of-truth)으로 사용하세요.
-
-## 추가 정보
-
-- `./quick-start.ko.md`
-- `./bootstrap-paths.ko.md`
-- `../reference/toolchain-contract-matrix.ko.md`
+### 다음 단계
+- **로직 구현하기**: 파일이 준비되었다면 [첫 번째 기능 구현 경로](./first-feature-path.ko.md)를 따라 로직을 추가해 보세요.
+- **검증**: 생성된 컴포넌트를 테스트하는 방법은 [테스트 가이드](../operations/testing-guide.ko.md)에서 확인할 수 있습니다.

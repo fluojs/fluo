@@ -2,13 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Prometheus metrics exposure for Konekti applications, including framework-aware HTTP metrics and platform telemetry.
 
-Prometheus metrics endpoint for Konekti applications. Mount `MetricsModule` to expose a `/metrics` scrape target with Node.js default metrics collected out of the box.
+## Table of Contents
 
-## See also
-
-- `../../docs/concepts/observability.md`
-- `../../docs/concepts/http-runtime.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -16,260 +20,75 @@ Prometheus metrics endpoint for Konekti applications. Mount `MetricsModule` to e
 pnpm add @konekti/metrics
 ```
 
+## When to Use
+
+- when your app should expose a `/metrics` endpoint for Prometheus-compatible scraping
+- when HTTP latency and request counts should be instrumented without hand-written middleware
+- when application telemetry should stay aligned with Konekti readiness and health state
+
 ## Quick Start
 
-```typescript
-import { Module } from '@konekti/core';
-import { bootstrapApplication } from '@konekti/runtime';
+```ts
 import { MetricsModule } from '@konekti/metrics';
+import { Module } from '@konekti/core';
 
 @Module({
-  imports: [
-    MetricsModule.forRoot(),
-  ],
+  imports: [MetricsModule.forRoot()],
 })
 class AppModule {}
-
-await bootstrapApplication({ rootModule: AppModule });
-// GET /metrics → Prometheus text format
 ```
 
-## Core API
+## Common Patterns
 
-### `MetricsModule.forRoot(options?)`
+### Normalize HTTP path labels
 
-Registers a Prometheus metrics endpoint and returns a `ModuleType` to import into any module.
-
-```typescript
-interface MetricsModuleOptions {
-  http?: boolean | {
-    pathLabelMode?: 'raw' | 'template';
-    pathLabelNormalizer?: (context: {
-      method: string;
-      path: string;
-      params: Readonly<Record<string, string>>;
-      request: FrameworkRequest;
-    }) => string;
-    unknownPathLabel?: string;
-  };
-  path?: string;              // scrape path (default: '/metrics')
-  provider?: 'prometheus';    // only supported provider at this time
-  defaultMetrics?: boolean;   // collect Node.js default metrics (default: true)
-  middleware?: MiddlewareLike[];
-  platformTelemetry?: {
-    env?: string;             // defaults to 'unknown'
-    instance?: string;        // defaults to 'local'
-  };
-  registry?: Registry;        // external Prometheus registry to share with custom metrics
-}
-
-class MetricsModule {
-  static forRoot(options?: MetricsModuleOptions): ModuleType;
-}
-```
-
-**Endpoint served:**
-
-| Route | Description |
-|-------|-------------|
-| `GET /metrics` (default) | Prometheus text format. `Content-Type` is set automatically. |
-
----
-
-## Configuration
-
-### Custom scrape path
-
-```typescript
-MetricsModule.forRoot({ path: '/internal/metrics' })
-// → GET /internal/metrics
-```
-
-### Disable default metrics
-
-By default, `prom-client`'s `collectDefaultMetrics()` is called, which registers standard Node.js process and GC metrics. In `prom-client` v15 these values are collected on scrape rather than by a background interval. Disable default metrics if you want the built-in endpoint to expose only metrics registered by the module itself:
-
-Default metrics are guarded per registry, so repeated `forRoot()` calls with the same registry do not double-register default collectors.
-
-```typescript
-MetricsModule.forRoot({ defaultMetrics: false })
-```
-
-### Middleware
-
-Add middleware (e.g. auth guards) to the metrics route:
-
-```typescript
-MetricsModule.forRoot({
-  middleware: [ipAllowlistMiddleware],
-})
-```
-
-### HTTP label normalization
-
-When `http` metrics are enabled, `HttpMetricsMiddleware` normalizes path labels to template style by default using request params (for example `/users/123` -> `/users/:id`) to reduce cardinality drift.
-
-```typescript
+```ts
 MetricsModule.forRoot({
   http: {
     pathLabelMode: 'template',
+    unknownPathLabel: 'UNKNOWN',
   },
-})
+});
 ```
 
-You can override `HttpMetricsMiddleware` label strategy with a custom normalizer:
+### Share one registry for framework and app metrics
 
-```typescript
-MetricsModule.forRoot({
-  http: {
-    pathLabelNormalizer: ({ path }) => (path.startsWith('/internal/') ? '/internal/:resource' : path),
-  },
-})
-```
-
-Use `pathLabelMode: 'raw'` only when you intentionally accept higher cardinality labels.
-
-`unknownPathLabel` defaults to `UNKNOWN`. If a custom normalizer returns a blank string, `HttpMetricsMiddleware` falls back to that label.
-
-### Runtime platform telemetry alignment
-
-`MetricsModule` exports runtime-shared readiness/health semantics from `PLATFORM_SHELL` on every scrape so `/metrics` stays aligned with runtime inspect/snapshot output.
-
-- `konekti_component_ready{component_id,component_kind,operation="readiness",result,env,instance}`
-- `konekti_component_health{component_id,component_kind,operation="health",result,env,instance}`
-- `konekti_metrics_registry_mode{mode="isolated|shared"}`
-
-`runtime.shell` is exported as a synthetic component identity so aggregate shell readiness/health can be correlated with component-level series.
-
-`MetricsModule` does not read `process.env` implicitly for those labels. If you want system env values to appear there, pass them explicitly at the application boundary:
-
-```typescript
-MetricsModule.forRoot({
-  platformTelemetry: {
-    env: process.env.NODE_ENV,
-    instance: process.env.HOSTNAME,
-  },
-})
-```
-
-### Provider contract
-
-`MetricsModule` currently supports only the Prometheus meter provider. Passing any non-prometheus provider value throws at runtime.
-
-### MetricsService vs MeterProvider
-
-- `MetricsService` is the Prometheus-native API and returns `prom-client` metric instances.
-- `METER_PROVIDER` exposes the portable meter abstraction API.
-- Both use the same module registry, so duplicate metric-name behavior is equivalent across both creation paths.
-
----
-
-## Custom Metrics
-
-`MetricsModule` creates a dedicated `prom-client` `Registry` instance per `forRoot()` call by default. You can either use the isolated default or provide a shared registry to emit both framework and application metrics from a single scrape endpoint.
-
-### Shared Registry (Recommended)
-
-Pass an external `Registry` to `forRoot()` so custom metrics and framework metrics share the same endpoint:
-
-```typescript
+```ts
 import { Counter, Registry } from 'prom-client';
 import { MetricsModule } from '@konekti/metrics';
 
-const sharedRegistry = new Registry();
-
-// Register custom metrics on the shared registry
-const httpRequests = new Counter({
-  name: 'http_requests_total',
-  help: 'Total number of HTTP requests',
-  labelNames: ['method', 'status'],
-  registers: [sharedRegistry],
-});
-
-httpRequests.inc({ method: 'GET', status: '200' });
-
-@Module({
-  imports: [
-    MetricsModule.forRoot({ registry: sharedRegistry }),
-  ],
-})
-class AppModule {}
-// GET /metrics → framework metrics + http_requests_total from same registry
-```
-
-### Using MetricsService with Shared Registry
-
-After providing a shared registry, `MetricsService` and `METER_PROVIDER` both use it:
-
-```typescript
-import { MetricsService } from '@konekti/metrics';
-
-@Inject([MetricsService])
-class OrderService {
-  constructor(private readonly metrics: MetricsService) {
-    this.orderCounter = this.metrics.counter({
-      name: 'orders_created_total',
-      help: 'Total orders created',
-      labelNames: ['status'],
-    });
-  }
-}
-// All metrics appear on /metrics endpoint
-```
-
-### Accessing the Registry
-
-`MetricsService.getRegistry()` returns the underlying `prom-client` `Registry`:
-
-```typescript
-const metricsService = await app.container.resolve(MetricsService);
-const registry = metricsService.getRegistry();
-// Use registry directly with prom-client APIs
-```
-
-### Isolated Registry (Default)
-
-Without a `registry` option, each `forRoot()` call creates a separate registry:
-
-```typescript
-import { Counter } from 'prom-client';
-
-// Using the global registry (separate from MetricsModule's internal registry)
-const httpRequests = new Counter({
-  name: 'http_requests_total',
-  help: 'Total number of HTTP requests',
-  labelNames: ['method', 'status'],
-});
-
-httpRequests.inc({ method: 'GET', status: '200' });
-```
-
-> **Note:** When using isolated registries, custom metrics registered outside the module won't appear on the built-in `/metrics` endpoint. Use a shared registry for unified scraping.
-
-### Duplicate Metric Names
-
-Prometheus requires unique metric names. When using a shared registry, registering the same name twice throws:
-
-```typescript
-import { Counter } from 'prom-client';
-
 const registry = new Registry();
 
-new Counter({ name: 'my_counter', help: 'help', registers: [registry] });
+new Counter({
+  name: 'orders_total',
+  help: 'Total orders processed',
+  registers: [registry],
+});
 
-// This throws: 'A metric with the name my_counter has already been registered.'
-MetricsModule.forRoot({ registry }).container.resolve(MetricsService)
-  .counter({ name: 'my_counter', help: 'duplicate' });
+@Module({
+  imports: [MetricsModule.forRoot({ registry })],
+})
+class AppModule {}
 ```
 
-This behavior matches `prom-client` and prevents silent metric collisions.
+### Duplicate metric names still fail fast
 
----
+Prometheus metric names must stay unique inside a registry. Shared-registry mode keeps that behavior intact instead of silently shadowing metrics.
 
-## Dependencies
+## Public API Overview
 
-| Package | Role |
-|---------|------|
-| `@konekti/http` | `Controller`, `Get`, `RequestContext`, `MiddlewareLike` |
-| `@konekti/runtime` | `bootstrapApplication`, `ModuleType` |
-| `prom-client` | Prometheus metrics collection and formatting |
+- `MetricsModule.forRoot(options)`
+- `MetricsService`
+- `METER_PROVIDER`
+- Prometheus-backed helpers for counters, gauges, histograms, and registry access
+
+## Related Packages
+
+- `@konekti/http`: contributes the request lifecycle that HTTP metrics observe
+- `@konekti/runtime`: provides platform state used by runtime telemetry gauges
+- `@konekti/terminus`: commonly paired with metrics for ops visibility
+
+## Example Sources
+
+- `examples/ops-metrics-terminus/src/app.ts`
+- `packages/metrics/src/metrics-module.test.ts`

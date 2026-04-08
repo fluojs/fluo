@@ -2,92 +2,68 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./architecture-overview.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti maintains a narrow public surface, moving most behavior behind stable decorators, explicit package boundaries, and a CLI-first bootstrap flow.
+Konekti is built on explicit boundaries, stable metadata, and standard decorators. It moves away from implicit reflection-based "magic" to provide a predictable, type-safe backend framework that prioritizes auditability and long-term maintainability.
 
-### related documentation
+## why this matters
 
-- `./http-runtime.md`
-- `./platform-consistency-design.md`
-- `./dev-reload-architecture.md`
-- `./auth-and-jwt.md`
-- `../reference/package-surface.md`
+Modern backend development often relies on hidden compiler behaviors and runtime reflection to wire dependencies. While this seems convenient initially, it creates several long-term costs:
+- **Fragile refactoring**: Renaming a parameter might break DI if the framework relies on implicit type metadata.
+- **Compiler lock-in**: Dependency on legacy flags like `experimentalDecorators` prevents teams from adopting modern TypeScript standards.
+- **Opaque execution**: It's often hard to see exactly how a request flows through the system or why a specific provider was chosen.
 
-## public package families
+Konekti solves this by enforcing **explicit dependency declaration** and **standard decorators**. Your code reflects exactly what is happening, with no hidden compiler-emitted metadata required.
 
-### framework core
+## core ideas
 
-- `@konekti/core`
-- `@konekti/config`
-- `@konekti/di`
-- `@konekti/http`
-- `@konekti/runtime`
-- `@konekti/testing`
+### explicit boundaries
+Packages in Konekti have clear, documented responsibilities. The runtime does not guess what a package does based on its name or location. Instead, packages participate in a formal **platform contract** (see [Platform Consistency Design](./platform-consistency-design.md)) to be recognized by the application shell.
 
-### validation, serialization, auth, and docs
+### stable metadata
+In many frameworks, decorators store metadata in a way that is hard to access or highly coupled to the framework's internals. Konekti treats metadata as a first-class citizen, authored by decorators but managed by stable, framework-owned helpers. This ensures that even if internal storage details change, your architectural definitions remain valid.
 
-- `@konekti/validation`
-- `@konekti/serialization`
-- `@konekti/jwt`
-- `@konekti/passport`
-- `@konekti/openapi`
-- `@konekti/metrics`
-- `@konekti/cron`
+### standard decorators (TC39)
+Konekti is built for the future. By using the standard decorator model, you can turn off `experimentalDecorators` in your `tsconfig.json`. This removes the reliance on `emitDecoratorMetadata`, making your builds faster and your code strictly compliant with modern JavaScript standards.
 
-### data integrations
+## framework structure
 
-- `@konekti/redis`
-- `@konekti/prisma`
-- `@konekti/drizzle`
+Konekti is composed of three distinct layers that work together to provide a cohesive development experience:
 
-### tooling
+### 1. core and runtime (the spine)
+- `@konekti/core`: The source of truth for decorators and metadata helpers.
+- `@konekti/di`: A high-performance, token-based injection engine that enforces visibility rules.
+- `@konekti/runtime`: The orchestrator that assembles the module graph and manages the application lifecycle.
 
-- `@konekti/cli`
+### 2. transport and protocol (the edges)
+- `@konekti/http`: An abstract layer for request execution, routing, and HTTP metadata.
+- `@konekti/platform-*`: Concrete adapters (e.g., `platform-fastify`, `platform-bun`) that implement the abstract HTTP layer for specific environments.
 
-## package connection map
+### 3. feature integrations (the capabilities)
+- `@konekti/config`: Validated configuration loading with strict precedence.
+- `@konekti/validation` & `@konekti/serialization`: Explicit boundaries for data entering and leaving your system.
+- `@konekti/jwt` & `@konekti/passport`: A standard approach to authentication and identity management.
 
-- `@konekti/core`: shared decorators, metadata helpers, and stable framework primitives.
-- `@konekti/di`: explicit token-based provider resolution and scopes.
-- `@konekti/http`: request execution, validation/materialization entrypoints, exceptions, and route metadata.
-- `@konekti/runtime`: config assembly, DI, handler mapping, health/readiness, adapter bootstrapping, and dev-mode config reload application.
-- `@konekti/platform-*`: runtime/protocol adapter packages that implement `PlatformAdapter` and bridge the abstract HTTP layer to concrete runtimes or server libraries; see `../reference/package-surface.md#platform--naming-convention` for naming rationale and package-selection guidance.
-- `@konekti/validation` package: input materialization and validation engine.
-- `@konekti/serialization` package: output shaping and response serialization decorators plus interceptor support.
-- `@konekti/jwt`: token-core concerns.
-- `@konekti/passport`: generic auth strategy registration and guard wiring.
-- `@konekti/openapi`: document production from route and schema metadata.
-- `@konekti/metrics`: Prometheus metrics via runtime-owned HTTP routes.
-- `@konekti/cron`: decorator-based background task scheduling and optional distributed cron locks.
-- `@konekti/redis`: Redis client lifecycle and DI token surface.
+## request flow
 
-## request execution path
-
-The runtime execution path follows this sequence:
+The execution path in Konekti is a deterministic sequence of phases. Unlike frameworks with complex, branching internal logic, Konekti follows a "straight-line" philosophy:
 
 ```text
-bootstrap -> handler mapping -> app middleware -> route match -> module middleware -> guard -> interceptor -> input binding/materialization -> input validation -> controller -> response serialization -> response write
+[HTTP Adapter] -> [RequestContext] -> [Middleware] -> [Route Match] -> [Guards] 
+-> [Interceptors (Pre)] -> [Materialization] -> [Validation] -> [Handler] 
+-> [Serialization] -> [Interceptors (Post)] -> [Response Write]
 ```
 
-Implementation details are located in:
+This deterministic flow means that you always know where to look when debugging. If validation fails, it's always after materialization and before the handler.
 
-- `packages/http/src/dispatcher.ts`
-- `packages/http/src/mapping.ts`
-- `packages/runtime/src/application.test.ts`
+## boundaries
 
-## design stance
+- **Transport Independence**: While Konekti is currently HTTP-first, the internal architecture is designed so that the core logic is isolated from the specific transport protocol.
+- **Module Encapsulation**: Visibility is not global. A provider in Module A is invisible to Module B unless explicitly exported and imported.
+- **Environment Isolation**: Packages never reach for `process.env` directly. All configuration is funneled through the `ConfigService` during bootstrap.
 
-- Explicit DI and stable metadata are preferred over implicit magic.
-- Package boundaries take precedence over phase history.
-- Starter apps should use runtime-owned bootstrap helpers instead of duplicating infrastructure.
-- Development-time source edits use runner-level process restart, while targeted config reload remains an explicit runtime path.
-- Package READMEs contain package-specific details; `docs/` contains cross-package information.
+## related docs
 
-## transport boundary
+- [HTTP Runtime](./http-runtime.md)
+- [DI and Modules](./di-and-modules.md)
+- [Platform Consistency Design](./platform-consistency-design.md)
+- [Package Surface](../reference/package-surface.md)
 
-Konekti is currently HTTP-first.
-
-- The official runtime and starter paths assume HTTP request/response execution.
-- Packages named `@konekti/platform-*` mark the runtime/protocol adapter boundary rather than generic library wrappers.
-- Adapter-agnostic framework types exist but do not imply supported non-HTTP surfaces.
-- Support for non-HTTP transports (e.g., websockets, gateways) is deferred to future updates.
-
-This ensures transport expansion remains an explicit decision rather than an accidental side effect of internal helpers.

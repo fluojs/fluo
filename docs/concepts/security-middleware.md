@@ -1,49 +1,60 @@
-# security middleware
+# Security & Middleware
 
 <p><strong><kbd>English</kbd></strong> <a href="./security-middleware.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the transport-level security middleware implemented in `@konekti/http`.
+A secure backend is built in layers. Konekti provides transport-level security middleware and application-level throttlers to protect your system from common web vulnerabilities, malicious bots, and resource exhaustion.
 
-### related documentation
+## Why Security Middleware in Konekti?
 
-- `./http-runtime.md`
-- `../../packages/http/README.md`
+- **Defense in Depth**: Protect your application at the earliest stage of the request journey, before any expensive business logic or database queries are executed.
+- **Consistent Protection**: Apply security headers (CORS, CSP, HSTS, etc.) globally across all routes with a single configuration, ensuring no "shadow endpoints" are left vulnerable.
+- **Granular Throttling**: Combine broad IP-based rate limiting with specific, user-driven limits (e.g., "Max 5 password resets per hour") using decorators.
+- **Platform Agnostic**: Our security middleware works across Fastify, Node.js, Bun, and Deno, providing the same protection regardless of your deployment target.
 
-## middleware families
+## Responsibility Split
 
-### rate limiting
+- **`@konekti/http` (Infrastructure Protection)**: Contains core middleware like `createCorsMiddleware`, `RateLimitMiddleware`, and security header injectors. These provide a baseline "shield" for the entire application.
+- **`@konekti/throttler` (Application Protection)**: A more refined system for logic-driven limits. It uses decorators to protect specific methods and can store hit counts in shared Redis instances.
+- **`@konekti/passport` (Identity Protection)**: Manages the authentication layer, ensuring that security middleware can differentiate between anonymous and authenticated traffic.
 
-The `RateLimitMiddleware` provides transport-level protection:
+## Typical Workflows
 
-- **Availability**: Exported from `@konekti/http`.
-- **Interface**: Implements the standard middleware interface.
-- **Identification**: Supports custom resolvers for request identification.
-- **Response**: Returns `429 Too Many Requests` with a `Retry-After` header when limits are exceeded.
-- **Storage**: Uses an in-process store by default. It is not cluster-safe without a shared adapter.
-- **Usage**: Recommended for single-process protection. For distributed systems, use shared limiters at the edge or infrastructure level.
+### 1. Global Transport Protection
+Configure baseline security during application bootstrap.
 
-### security headers
+```typescript
+const app = await bootstrapNodeApplication(AppModule);
+app.use(createCorsMiddleware({ origin: '*' }));
+app.use(new RateLimitMiddleware({ max: 100, windowMs: 60000 }));
+```
 
-The `SecurityHeadersMiddleware` manages security-focused HTTP headers:
+### 2. Method-Level Throttling
+Use the throttler for sensitive business actions that require stricter limits than the global baseline.
 
-- **Availability**: Exported from `@konekti/http`.
-- **Behavior**: Writes a baseline set of security headers.
-- **Customization**: Supports overriding or disabling specific headers.
-- **Safety**: Never includes `X-Powered-By`.
+```typescript
+@Post('/reset-password')
+@Throttle({ default: { limit: 5, ttl: 3600000 } })
+async resetPassword(@FromBody() dto: ResetDto) {
+  // Logic...
+}
+```
 
-## default security headers
+### 3. Automated Security Headers
+Konekti ensures every response carries the necessary metadata to instruct the browser on security policies.
+- **Strict-Transport-Security**: Force HTTPS.
+- **X-Content-Type-Options**: Prevent MIME sniffing.
+- **Content-Security-Policy**: Control resource loading.
 
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: SAMEORIGIN`
-- `X-XSS-Protection: 0`
-- `Strict-Transport-Security: max-age=15552000; includeSubDomains`
-- `Content-Security-Policy: default-src 'self'`
-- `Referrer-Policy: strict-origin-when-cross-origin`
+## Core Boundaries
 
-## responsibilities
+- **Transport vs. Application**: 
+  - **Middleware** (Transport) is fast and stops malicious traffic early (e.g., DDoS protection).
+  - **Interceptors/Decorators** (Application) are smart and understand the user's identity and intent.
+- **Stateless by Default**: Rate limiting in the HTTP package is memory-based (stateless per instance). For distributed environments, you **must** use the Redis-backed `@konekti/throttler`.
+- **The "Fail-Fast" Rule**: Security checks always run before validation and business logic. A throttled request never hits your service code.
 
-- **Location**: These middleware reside within the HTTP runtime package.
-- **Opt-in**: Security middleware must be explicitly enabled by the application.
-- **Lifecycle**:
-  - Rate limiting occurs before route dispatch and is independent of handler logic.
-  - Security headers are applied to all responses, regardless of the handler's outcome.
+## Next Steps
+
+- **HTTP Security**: Explore the security helpers in the [HTTP Package README](../../packages/http/README.md).
+- **Advanced Throttling**: Configure distributed limits with the [Throttler Package](../../packages/throttler/README.md).
+- **Authentication**: Connect security with identity via the [Auth & JWT Guide](./auth-and-jwt.md).

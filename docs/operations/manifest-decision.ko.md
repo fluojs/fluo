@@ -1,53 +1,62 @@
-# manifest strategy decision
+# 매니페스트 전략 결정 (Manifest Strategy Decision)
 
-<p><strong><kbd>한국어</kbd></strong> <a href="./manifest-decision.md"><kbd>English</kbd></a></p>
+<p>
+  <strong>한국어</strong> | <a href="./manifest-decision.md">English</a>
+</p>
 
-컴파일 타임 매니페스트 생성은 기본 아키텍처가 아닌, 여전히 최적화 결정을 위한 선택 사항으로 취급됩니다.
+이 문서는 런타임 최적화를 위한 컴파일 타임 매니페스트(Compile-time manifest) 생성에 대한 프레임워크의 입장을 정의합니다. 특정 성능 지향적 아키텍처 전환이 보류되거나 채택된 이유에 대한 공식적인 기록 역할을 합니다.
 
-## current decision
+## 이 문서가 필요한 경우
 
-현재 상태: `defer`
+- **성능 감사**: 모듈 등록 또는 DI 해석 시의 런타임 병목 현상을 평가할 때.
+- **아키텍처 제안**: Konekti가 라우트, 프로바이더 또는 메타데이터를 검색하는 방식을 변경하려고 제안할 때.
+- **툴체인 업데이트**: 빌드 프로세스(예: 메타데이터 추출을 위한 사전 컴파일 단계 추가)를 수정할 때.
 
-이유:
+---
 
-- 런타임에 이미 측정 가능한 부트스트랩 기준선이 존재합니다.
-- 컴파일 타임 매니페스트 경로는 도구, 문서 및 생성기 복잡성을 증가시킵니다.
-- 이러한 복잡성을 감수할 만큼 초기 구동이나 등록 성능이 유의미하게 개선된다는 벤치마크 증거가 있을 때 도입해야 합니다.
+## 현재 전략적 결정 (Strategic Decision)
 
-## benchmark artifact
+**상태**: `보류 (DEFERRED)`  
+**최근 검토**: 2026-04-08
 
-아래 벤치마크 하네스를 사용하여 현재 런타임 기준선을 측정하세요:
+### 결정 요약
+Konekti는 현재 표준 TC39 데코레이터를 통한 **런타임 리플렉션(Runtime Reflection)**에 의존합니다. 우리는 다음과 같은 이유로 **컴파일 타임 매니페스트**(정적 메타데이터 추출)의 구현을 명시적으로 보류했습니다.
 
-```sh
+1.  **복잡성 오버헤드**: 필수적인 사전 컴파일 단계를 도입하면 개발자 경험(DX)과 CLI 툴체인의 복잡성이 크게 증가합니다.
+2.  **성능 임계값**: 현재 부트스트랩 벤치마크에 따르면 대부분의 모듈 형태에서 런타임 등록이 수용 가능한 범위(밀리초 미만) 내에 있습니다.
+3.  **표준 정렬**: 우리는 가능한 한 TC39 데코레이터 표준에 가깝게 유지하는 것을 우선시하며, 엄격하게 필요하지 않은 한 "마법 같은" 빌드 타임 코드 생성을 피합니다.
+
+---
+
+## 벤치마킹 및 채택 기준 (Adoption Criteria)
+
+매니페스트 기반 전략의 채택은 대규모 애플리케이션(100개 이상의 모듈)에서 시작 시간이 **20% 이상 개선**됨을 벤치마크가 증명할 때만 재고될 것입니다.
+
+### 벤치마크 기준선 (2026-03-12)
+| 애플리케이션 형태 | 시작 시간 (평균) | 메타데이터 메모리 |
+| :--- | :--- | :--- |
+| **Hello World** (1개 모듈) | 0.35ms | < 1MB |
+| **Medium REST** (15개 모듈) | 0.48ms | ~2.5MB |
+| **Module Heavy** (50개 모듈) | 0.47ms | ~4.1MB |
+
+**벤치마크 실행:**
+```bash
 pnpm exec tsx tooling/benchmarks/manifest-decision.ts
 ```
 
-이 하네스는 다음 항목을 포함합니다:
+---
 
-- `hello-world`
-- `medium-rest`
-- `module-heavy`
+## 동작 동등성 요구사항 (Behavioral Parity)
 
-`pnpm exec tsx tooling/benchmarks/manifest-decision.ts` 실행 결과 현재 2026-03-12 기준선:
+매니페스트 전략이 채택되더라도 현재의 런타임 동작과 100% 일치해야 합니다. 모든 최적화는 사용자에게 투명해야 하며 다음 게이트를 통과해야 합니다.
 
-- `hello-world`: 평균 부트스트랩 `0.35ms`
-- `medium-rest`: 평균 부트스트랩 `0.48ms`
-- `module-heavy`: 평균 부트스트랩 `0.47ms`
+- **라우트 발견**: 메타데이터 기반 라우트 등록은 기존과 동일한 OpenAPI 및 내부 디스패처 맵을 생성해야 합니다.
+- **DI 해석**: 순환 의존성 감지를 포함한 모듈 그래프 구조는 변경되지 않아야 합니다.
+- **오류 일관성**: 진단 메시지와 유효성 검사 실패는 동일한 생명주기 단계에서 트리거되어야 합니다.
 
-해당 실행의 스냅샷은 `tooling/benchmarks/manifest-decision.latest.json`에 저장되어 있습니다.
+---
 
-## adoption bar
-
-약 `~20%` 정도의 개선이 있을 경우 도입을 검토하되, 이를 자동적인 규칙으로 삼지는 않습니다. 도입 여부는 다음 사항들을 종합적으로 고려해야 합니다:
-
-- 부트스트랩/초기 구동 시간
-- 라우트 및 모듈 등록 시간
-- 메모리 비용
-- 빌드/툴체인 비용
-- 생성기 및 문서 유지 관리 부담
-
-## parity rule
-
-- runtime helper reads는 semantic source of truth로 유지됩니다.
-- 어떠한 매니페스트 기반 최적화도 라우트 메타데이터, 모듈 그래프 동작, 프로바이더 등록, DTO 바인딩 메타데이터, 진단에 대한 parity를 보존해야 합니다.
-- 단순히 벤치마크 수치만으로는 충분하지 않으며, parity 근거가 더 중요합니다.
+## 관련 문서
+- [동작 계약 정책 (Behavioral Contract Policy)](./behavioral-contract-policy.ko.md)
+- [플랫폼 준수 작성 체크리스트 (Platform Conformance Authoring Checklist)](./platform-conformance-authoring-checklist.ko.md)
+- [아키텍처 개요 (Architecture Overview)](../concepts/architecture-overview.ko.md)

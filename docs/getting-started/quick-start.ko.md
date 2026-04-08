@@ -1,100 +1,55 @@
-# 빠른 시작
+# 퀵 스타트
 
-<p><a href="./quick-start.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<p><strong><kbd>한국어</kbd></strong> <a href="./quick-start.md"><kbd>English</kbd></a></p>
 
-이 가이드는 Konekti의 표준 부트스트랩 프로세스를 설명합니다.
+1분 안에 **표준 데코레이터**와 **명시적 의존성 주입**의 강력함을 경험해 보세요. 레거시 컴파일러 플래그나 마법 같은 리플렉션 없이, 깨끗하고 검증 가능한 TypeScript를 만나보실 수 있습니다.
 
-> [!IMPORTANT]
-> Konekti는 TC39 표준 데코레이터(TypeScript 5.0+)를 사용합니다. `tsconfig.json`에서 레거시 데코레이터 플래그를 활성화하지 마세요:
-> - `"experimentalDecorators": true` 설정을 피하세요.
-> - `"emitDecoratorMetadata": true` 설정을 피하세요.
->
-> NestJS와 달리, Konekti는 레거시 데코레이터나 메타데이터 생성에 의존하지 않습니다. 표준 TypeScript 설정으로 충분합니다.
+### 대상 독자
+기존의 레거시 데코레이터에서 벗어나 현대적이고 고성능인 TypeScript 프레임워크를 즉시 경험해보고 싶은 개발자.
 
-## 표준 부트스트랩 경로
-
-새 프로젝트를 시작하는 권장 방법은 Konekti CLI를 사용하는 것입니다:
+### 1. CLI 설치
+Konekti CLI는 프로젝트 스캐폴딩과 컴포넌트 생성을 위한 핵심 도구입니다.
 
 ```sh
 pnpm add -g @konekti/cli
-konekti new starter-app
-cd starter-app
+```
+
+### 2. 첫 번째 프로젝트 생성
+새로운 애플리케이션을 초기화합니다. 기본적으로 Node.js 환경에서 고성능 **Fastify** 어댑터가 구성됩니다.
+
+```sh
+konekti new my-konekti-app
+cd my-konekti-app
+```
+
+### 3. 개발 시작
+Konekti 스타터 앱에는 TypeScript 컴파일과 파일 변경 시 자동 재시작을 처리하는 최적화된 개발 환경이 포함되어 있습니다.
+
+```sh
 pnpm dev
 ```
 
-위 명령은 canonical public bootstrap flow이자 공개 온보딩의 기본 경로입니다. 특별히 전역 설치 없이 한 번만 실행하려는 경우에만 아래 보조 경로를 사용하세요.
+### 4. 확인 및 탐색
+서버가 시작되면(기본 3000번 포트), 내장된 관측성 엔드포인트와 샘플 API를 확인해 보세요.
 
-생성되는 스캐폴드는 의도적으로 기본 Node.js + Fastify 경로를 사용합니다. 이제 공식 런타임 지원은 출판된 `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` 패키지를 통해 Bun, Deno, Cloudflare Workers까지 확장됩니다.
+- **헬스 체크**: `curl http://localhost:3000/health`  
+  *기대 결과: `{"status":"ok"}`*
+- **샘플 모듈**: `curl http://localhost:3000/health-info/`  
+  *표준 데코레이터 패턴이 실제로 어떻게 작동하는지 확인하세요.*
 
-전역 설치 없이 `dlx`를 사용한 일회성 실행도 계속 지원됩니다:
-
-```sh
-pnpm dlx @konekti/cli new starter-app
+### 왜 Konekti인가요?
+생성된 프로젝트의 `tsconfig.json`을 열어보세요. 무언가 다른 점을 발견하셨나요?
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  }
+}
 ```
+Konekti는 **TypeScript의 표준 기본 설정**만으로 동작합니다. 지난 10년간의 "실험적(experimental)" 기능이라는 짐 없이, 완벽한 IDE 지원과 타입 안정성을 누릴 수 있습니다.
 
-### 관련 문서
-
-- `./bootstrap-paths.ko.md` - 부트스트랩 규칙과 보조 경로 참고
-- `./generator-workflow.ko.md`
-- `../operations/testing-guide.ko.md`
-- `../reference/package-surface.ko.md`
-
-## 생성된 스타터 앱 구조
-
-새로 생성된 애플리케이션에는 다음이 포함됩니다:
-
-- `src/main.ts`: 런타임 facade 위의 adapter-first Fastify 부트스트랩을 포함한 애플리케이션 엔트리 포인트.
-- `src/app.ts`: 메인 모듈 설정.
-- 기본 제공되는 `/health` 및 `/ready` 엔드포인트.
-- `/health-info/`에 위치한 예제 `health/` 모듈.
-- 애플리케이션 시작 및 디스패칭을 검증하는 기본 테스트 스위트.
-
-스타터 테스트 템플릿 설명은 `../operations/testing-guide.ko.md`를 참고하세요(unit 템플릿, 런타임 integration 템플릿, `createTestApp` 기반 e2e 스타일 템플릿, repo slice 템플릿 포함).
-
-## 프로젝트 명령어
-
-프로젝트 루트에서 다음 명령어를 실행하세요:
-
-```sh
-pnpm dev        # 개발 서버 시작
-pnpm typecheck  # TypeScript 타입 체크 실행
-pnpm build      # 프로덕션 빌드
-pnpm test       # 테스트 실행
-```
-
-스캐폴드는 `pnpm`, `npm`, `yarn`, `bun`과 호환되는 일관된 레이아웃을 생성합니다.
-
-생성된 스타터는 Node.js 기준 기본값으로 `@konekti/platform-fastify`를 사용합니다. 의도적으로 Node 호환 헬퍼 계층이 필요할 때만 `@konekti/runtime/node`를 선택하고, Bun/Deno/Cloudflare 대상이라면 스타터 기본값 대신 해당 공식 어댑터 패키지 README를 참고하세요.
-
-## 개발 모드 동작
-
-`pnpm dev`는 생성된 Node watch 러너를 사용하므로, 소스 코드 변경은 인프로세스 HMR이 아니라 **프로세스 재시작**으로 반영됩니다.
-
-반면 설정 파일 변경은 애플리케이션이 `watch: true`로 부트스트랩된 경우 더 좁은 범위의 **인프로세스 설정 reload** 경로를 사용할 수 있습니다.
-
-소유권 분리와 현재 보장 범위는 `../concepts/dev-reload-architecture.ko.md`를 참고하세요.
-
-## 컴포넌트 생성
-
-새 리포지토리를 생성하려면:
-
-```sh
-konekti g repo User
-```
-
-CLI는 생성된 파일을 기본적으로 `src/` 디렉토리에 작성합니다.
-
-## DTO 검증
-
-DTO 바인딩과 검증은 별도의 패키지에서 처리됨에 유의하세요:
-
-```ts
-import { FromBody } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/validation';
-```
-
-## 업그레이드 정책
-
-- 마이너 릴리스는 안정적인 명령어 세트와 파일 구조를 유지합니다.
-- 메이저 릴리스에는 공개 계약에 대한 하위 호환되지 않는 변경 사항이 포함될 수 있으며, 수동 업데이트나 코드모드(codemod)가 필요할 수 있습니다.
-- 레포지토리 내의 유틸리티 명령어는 내부 개발용이며 공개 API의 일부가 아닙니다.
+### 다음 단계
+- **진짜 서비스 만들기**: [첫 번째 기능 구현 경로](./first-feature-path.ko.md)를 따라 나만의 로직을 추가해 보세요.
+- **CLI 마스터하기**: [제너레이터 워크플로우](./generator-workflow.ko.md)를 통해 기능 슬라이스 전체를 자동으로 생성하는 방법을 배워보세요.
+- **Node.js 그 너머로**: Bun, Deno, Edge 런타임을 위한 [부트스트랩 경로](./bootstrap-paths.ko.md)를 확인해 보세요.

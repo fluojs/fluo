@@ -2,68 +2,46 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./toolchain-contract-matrix.md"><kbd>English</kbd></a></p>
 
-이 매트릭스는 생성된 앱 및 릴리스 준비도 예시를 위한 공개 툴체인 계약을 고정합니다.
+이 매트릭스는 Konekti CLI로 생성된 애플리케이션 및 공식 예제를 위한 공개 툴체인 계약을 정의합니다. 버전 고정 및 빌드 구성의 참조로 활용하세요.
 
-| Surface | Status | Contract |
+## 생성 앱 기준선
+
+| 항목 | 계약 | 버전 / 비고 |
 | --- | --- | --- |
-| 생성된 앱의 `tsconfig.json` | `generated (stable)` | 번들러 모듈 해석, `strict: true`, 선언 파일 활성, `rootDir: src`, Node 타입만 사용 |
-| 생성된 앱의 `tsconfig.build.json` | `generated (stable)` | 메인 설정을 확장하며, `dist`로 선언 파일 및 JS를 출력하고 `src/**/*.test.ts` 제외 |
-| 생성된 앱의 `babel.config.cjs` | `generated (stable)` | `@babel/preset-typescript`와 `{ version: '2023-11' }` 설정의 데코레이터 플러그인 포함 |
-| 생성된 앱의 `vitest.config.ts` | `generated (stable)` | Node 테스트 환경, `src/**/*.test.ts`, Konekti 데코레이터 플러그인 사용 |
-| Generated dev dependencies | `public contract` | `@babel/cli ^7.26.4`, `@babel/core ^7.26.10`, `@babel/plugin-proposal-decorators ^7.28.0`, `@babel/preset-typescript ^7.27.1`, `@types/babel__core ^7.20.5`, `@types/node ^22.13.10`, `tsx ^4.20.4`, `typescript ^5.8.2`, `vite ^6.2.1`, `vitest ^3.0.8` |
-| Generated package scripts | `public contract` | `dev`, `build`, `typecheck`, `test`, `test:watch` 등 현재의 단일 앱 명령 형태 유지 |
-| Generated starter bootstrap entry (`src/main.ts`) | `public contract` | adapter-first Fastify runtime-facade startup (`createFastifyAdapter({ port })` + `await app.listen()`) |
-| Generated starter route ownership | `public contract` | 런타임 소유 `/health` + `/ready`와 스타터 소유 `/health-info/` |
-| Generated starter testing templates | `public contract` | `src/health/*.test.ts`, `src/app.test.ts`, `src/app.e2e.test.ts` |
-| `@konekti/cli` prompt flow | `public contract` | 정식 경로는 `pnpm add -g @konekti/cli` 후 `konekti new` |
-| Workspace root TypeScript / Vite / Vitest wiring | `internal-only` | 패키지 개발을 위한 루트 레포 설정 파일이며 생성된 앱으로 복사되지 않음 |
-| Packed tarball local-bootstrap path | `internal-only` | `.konekti/packages/*`는 릴리스 준비도 검증만을 위한 테스트 지원용임 |
+| **TypeScript** | `v5.8+` | `strict: true`, `experimentalDecorators: false`, `module: esnext` |
+| **Babel** | `v7.26+` | `@babel/plugin-proposal-decorators` (`{ version: '2023-11' }`) |
+| **Vite** | `v6.2+` | 개발 번들링 및 빌드 오케스트레이션에 사용. |
+| **Vitest** | `v3.0+` | 유닛 및 E2E 테스트용 표준 테스트 러너. |
+| **Node.js** | `v22+` | Node 기반 어댑터의 대상 런타임. |
 
-## unsupported or narrower-guarantee combinations
+## CLI 및 스캐폴딩 계약
 
-- 생성 앱에 Babel 대신 `esbuild` 사용 — 현재 데코레이터 변환 및 생성된 빌드 계약이 Babel에서만 검증되었으므로 지원하지 않음
-- 생성 앱에 Vitest 대신 `Jest` 사용 — 스타터 테스트 하네스 및 릴리스 준비도 게이트가 Vitest 기반으로 구축되었으므로 지원하지 않음
+| 목표 | 명령어 | 출력 계약 |
+| --- | --- | --- |
+| **프로젝트 생성** | `konekti new` | Fastify 및 Node.js 기반의 표준 폴더 구조 생성. |
+| **리소스 생성** | `konekti g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. |
+| **진단** | `konekti inspect` | 런타임 그래프 및 타이밍 데이터를 JSON 형식으로 내보내기. |
 
-## official-example contract
+## 명명 규칙 (CLI 출력)
 
-- 생성된 스타터 및 릴리스 준비도 스캐폴드 테스트는 위에 나열된 것과 동일한 TypeScript/Babel/Vite/Vitest 버전을 고정함
-- 공식 예시는 가이드에서 특정 파일을 `internal-only`로 명시하지 않는 한, 생성된 앱과 동일한 설정 형태를 사용해야 함
+| 타입 | 접미사 | 예시 |
+| --- | --- | --- |
+| **Controller** | `.controller.ts` | `users.controller.ts` |
+| **Service** | `.service.ts` | `users.service.ts` |
+| **Repository** | `.repo.ts` | `users.repo.ts` |
+| **DTO (Input)** | `.request.dto.ts` | `create-user.request.dto.ts` |
+| **DTO (Output)** | `.response.dto.ts` | `user.response.dto.ts` |
 
-## runtime and manifest parity notes
+## 빌드 구성
 
-- 공개 런타임/패키지 매트릭스의 단일 기준은 `./package-surface.ko.md`이며, 이 페이지는 런타임 지원 표를 중복해서 싣지 않습니다.
-- 런타임 지원 티어와 부트스트랩 정책 변경 사항은 `../operations/release-governance.ko.md`에서 문서화합니다.
-- 공유 Babel decorators transform 계약은 제품 계약입니다.
-- runtime helper reads는 semantic source of truth로 유지됩니다.
-- compile-time manifest generation은 이후 최적화가 될 수 있지만, observable framework semantics를 바꾸면 안 됩니다.
-- semantic parity 없는 benchmark 이득만으로는 manifest adoption을 정당화할 수 없습니다.
+Konekti 생성 애플리케이션은 TC39 표준 데코레이터를 올바르게 처리하기 위해 특수한 빌드 파이프라인을 사용합니다.
 
-## current public packaging stance
+1.  **변환**: Babel이 Stage 3 데코레이터 변환을 적용합니다.
+2.  **번들링**: Vite가 대상 런타임에 맞게 애플리케이션을 번들링합니다.
+3.  **검증**: Vitest가 동일한 데코레이터 설정으로 적합성 테스트를 실행합니다.
 
-- `tooling/*` 워크스페이스는 internal-only support package로 유지됩니다.
-- 현재 공개 bootstrap 계약은 `@konekti/cli`를 통한 package-first 경로를 유지합니다.
-- 추가 public toolchain package surface는 현재 약속하지 않습니다.
+이 도구를 대체하는 것(예: `esbuild` 직접 사용)은 필수 데코레이터 변환을 우회할 수 있으므로 현재 지원되지 않습니다.
 
-## 명명 및 생성 규칙 (naming and generation conventions)
+---
 
-Konekti CLI는 일관된 접미사 규칙과 세분화된 생성 철학을 따릅니다.
-
-### 명명 규칙 (naming conventions)
-
-생성된 파일은 다음 접미사 패턴을 따릅니다:
-
-- **Controllers**: `user.controller.ts`
-- **Services**: `user.service.ts`
-- **Repositories**: `user.repo.ts`
-- **Request DTOs**: `user.request.dto.ts`
-- **Response DTOs**: `user.response.dto.ts`
-
-### 생성기 철학 (generator philosophy)
-
-- **세분성 (Granularity)**: 개별 생성기를 사용하여 컴포넌트를 빌드합니다.
-- **명시적 DTO**: 요청 및 응답 DTO는 별도의 스키마틱을 통해 관리됩니다.
-- **단순성**: 복잡한 모놀리식 생성기보다는 명시적인 구성을 지향합니다.
-
-### 패키지 매니저 선택
-
-스캐폴드는 기본적으로 활성 패키지 매니저를 자동 감지합니다. 이 동작은 `konekti new` 실행 시 `--package-manager` 플래그를 사용하여 명시적으로 선택할 수 있습니다.
+런타임 지원 세부 사항은 [package-surface.ko.md](./package-surface.ko.md)를 참조하세요.

@@ -2,28 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Output-side response shaping and serialization for Konekti.
+Class-based response serialization and output shaping for Konekti.
 
-`@konekti/serialization` focuses on the **output** boundary. It handles turning internal class instances or complex object graphs back into clean, JSON-safe plain objects. While `@konekti/validation` ensures incoming data is safe, this package ensures outgoing data is correctly shaped and sensitive information is hidden.
+## Table of Contents
 
-## The Mental Model
-
-Konekti splits data handling into two distinct phases:
-
-1. **Validation (Input)**: Materializing raw payloads into class instances and enforcing rules.
-2. **Serialization (Output)**: Shaping class instances back into plain data for the response.
-
-`@konekti/serialization` provides decorators like `@Exclude()`, `@Expose()`, and `@Transform()` to control the final response shape without modifying your domain models or business logic.
-
-## Relationship with @konekti/http
-
-This package provides an interceptor that automatically shapes your handler's return values.
-
-In a Konekti application:
-1. Your controller returns a class instance (or an array of them).
-2. The `SerializerInterceptor` (if registered) catches the result.
-3. It runs the `serialize()` engine, which applies your decorators.
-4. The resulting plain object is what actually gets sent as the HTTP JSON body.
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -31,106 +20,98 @@ In a Konekti application:
 pnpm add @konekti/serialization
 ```
 
+## When to Use
+
+- when you need output DTOs to expose only a controlled subset of fields
+- when sensitive values such as password hashes or internal identifiers must never leave the response boundary
+- when response data needs lightweight synchronous transforms during serialization
+- when you want an HTTP interceptor to apply the same serialization rules automatically
+
 ## Quick Start
 
-### Basic Usage
+```ts
+import { Exclude, Expose, Transform, serialize } from '@konekti/serialization';
 
-```typescript
-import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
+class UserEntity {
+  @Expose()
+  id = '';
 
-// Use @Expose({ excludeExtraneous: true }) to only include marked fields.
+  @Expose()
+  @Transform((value) => value.toUpperCase())
+  username = '';
+
+  @Exclude()
+  passwordHash = '';
+}
+
+const user = Object.assign(new UserEntity(), {
+  id: '1',
+  username: 'konekti',
+  passwordHash: 'secret',
+});
+
+console.log(serialize(user));
+```
+
+## Common Patterns
+
+### Expose-only output DTOs
+
+```ts
+import { Expose } from '@konekti/serialization';
+
 @Expose({ excludeExtraneous: true })
-class UserView {
+class SecureDto {
   @Expose()
-  id: string;
+  publicData = 'visible';
 
-  @Expose()
-  email: string;
-
-  @Exclude() // Explicitly hidden, even if excludeExtraneous is false.
-  passwordHash: string;
-
-  constructor(id: string, email: string, passwordHash: string) {
-    this.id = id;
-    this.email = email;
-    this.passwordHash = passwordHash;
-  }
-}
-
-@Controller('/users')
-class UsersController {
-  @Get('/')
-  @UseInterceptors(SerializerInterceptor)
-  async getUser() {
-    return new UserView('u-1', 'hello@example.com', 'shhhh');
-  }
+  internalData = 'hidden';
 }
 ```
 
-### Before vs After Serialization
+### Value transforms
 
-When the controller above returns the `UserView` instance, the serialized output looks like this:
+```ts
+import { Transform } from '@konekti/serialization';
 
-**Before (Class Instance):**
-```typescript
-UserView {
-  id: 'u-1',
-  email: 'hello@example.com',
-  passwordHash: 'shhhh'
+class ProductDto {
+  @Transform((price) => `$${price.toFixed(2)}`)
+  price = 0;
 }
 ```
 
-**After (JSON Output):**
-```json
-{
-  "id": "u-1",
-  "email": "hello@example.com"
-}
-```
+### HTTP response shaping with an interceptor
 
-## Core API
-
-### Decorators
-
-- `@Exclude()`: Removes the field from the serialized output.
-- `@Expose(options?)`: Marks a field to be included. If used on a class with `{ excludeExtraneous: true }`, only fields with `@Expose()` are kept.
-- `@Transform(({ value, obj }) => newValue)`: Dynamically transforms a value during serialization. Must return synchronously.
-
-### SerializerInterceptor
-
-The recommended way to use this package in a Konekti app. You can register it per-controller, per-route, or globally.
-
-**Global Registration:**
-```typescript
-import { bootstrapApplication } from '@konekti/runtime';
+```ts
+import { Controller, Get, UseInterceptors } from '@konekti/http';
 import { SerializerInterceptor } from '@konekti/serialization';
 
-await bootstrapApplication({
-  rootModule: AppModule,
-  interceptors: [SerializerInterceptor],
-});
+@Controller('/users')
+@UseInterceptors(SerializerInterceptor)
+class UsersController {
+  @Get('/')
+  findAll() {
+    return [new UserEntity()];
+  }
+}
 ```
 
-### serialize()
+### Cycle-safe serialization
 
-The manual serialization helper used by the interceptor.
+The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into JSON-safe plain objects.
 
-```typescript
-import { serialize } from '@konekti/serialization';
+## Public API Overview
 
-const plainObject = serialize(myClassInstance);
-```
+- **Decorators**: `Expose`, `Exclude`, `Transform`
+- **Engine**: `serialize(value)`
+- **HTTP integration**: `SerializerInterceptor`
 
-## Serialization Rules
+## Related Packages
 
-1. **JSON Safety**: Cycles are automatically cut to `undefined` to prevent infinite loops.
-2. **Reference Preservation**: If the same object appears multiple times in a graph, it is serialized consistently.
-3. **Symbols**: Enumerable symbol-keyed properties on plain objects are included.
-4. **Classes**: Only string-keyed properties on class instances are serialized.
+- `@konekti/http`: applies `SerializerInterceptor` to HTTP handlers
+- `@konekti/validation`: handles input-side DTO materialization and validation
 
-## Intentional Limitations
+## Example Sources
 
-- **No Deep Instantiation**: Serialization converts classes to plain objects. It does **not** do the reverse. For that, use `@konekti/validation`.
-- **No Schema Validation**: This package shapes data; it does not validate that the data is "correct" or "valid".
-- **Sync Only**: Transformations must be synchronous. Async operations are not supported during the serialization walk.
+- `packages/serialization/src/serialize.test.ts`
+- `packages/serialization/src/serializer-interceptor.test.ts`

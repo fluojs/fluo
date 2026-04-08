@@ -2,30 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-
 The assembly layer that compiles a module graph and wires DI and HTTP into a runnable application shell.
 
-## See also
+## Table of Contents
 
-- `../../docs/concepts/architecture-overview.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/concepts/observability.md`
-
-## What this package does
-
-`@konekti/runtime` is the orchestration layer. It is not a feature package. It turns your modules into a running app by performing the following:
-
-1. Compiles the module graph: validates `imports`/`exports` visibility, detects circular imports, and ensures every resolved token is accessible.
-2. Creates the root DI container and registers all providers and controllers.
-3. Resolves singleton providers and runs lifecycle hooks (`onModuleInit` → `onApplicationBootstrap`).
-4. Calls `createHandlerMapping()` and `createDispatcher()` from `@konekti/http`.
-5. Returns a `KonektiApplication` shell with `dispatch()`, `listen()`, `ready()`, and `close()`.
-
-`KonektiFactory` is the canonical public startup facade. For HTTP apps, select a transport explicitly through `options.adapter` and keep the runtime focused on assembly/orchestration.
-
-If you intentionally omit an adapter, `KonektiFactory.create(...)` still assembles the application shell, but it does not select an HTTP serving target for you. That adapterless path is intentional: `ready()`, `dispatch()`, and `close()` stay available on the assembled shell, while `listen()` throws until you provide `options.adapter`.
-
-Runtime-managed adapters may also expose `FrameworkResponse.stream` when the transport supports SSE or other streamed HTTP response bodies.
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -33,38 +20,40 @@ Runtime-managed adapters may also expose `FrameworkResponse.stream` when the tra
 npm install @konekti/runtime
 ```
 
-### 0.x migration note
+## When to Use
 
-- Raw Node adapter-first startup now lives at `@konekti/platform-nodejs`. Keep `@konekti/runtime/node` as the compatibility entrypoint, while the implementation now lives behind the explicit `@konekti/runtime/internal-node` seam that platform-owned Node packages compose directly.
-- Node-scoped startup wrappers now belong conceptually to `@konekti/platform-nodejs`, while explicit shutdown-signal wiring and compression helpers stay on `@konekti/runtime/node` as advanced Node-only utilities.
-- Transport-facing multipart parsing no longer exports from the `@konekti/runtime` root barrel. Shared Web/fetch-style parsing helpers now live under `@konekti/runtime/web`.
-- Shared adapter bootstrap no longer imports Node-global shutdown registration implicitly. Runtimes that compose the shared adapter helper must supply any shutdown-signal wiring explicitly; `@konekti/runtime/node` keeps the previous `SIGTERM` / `SIGINT` behavior for Node apps.
-- `@konekti/runtime/internal` is now limited to framework-internal wiring tokens. Shared adapter bootstrap helpers moved to `@konekti/runtime/internal/http-adapter`, and request/response factory helpers moved to `@konekti/runtime/internal/request-response-factory`.
-- Node-only response compression no longer exports from the `@konekti/runtime` root barrel. Transport-owned response writers should use the adapter-facing `FrameworkResponse.compression` seam, and Node runtimes that still need explicit zlib compression can import `createNodeResponseCompression` / `compressNodeResponse` from `@konekti/runtime/node`.
-- Fetch-style runtimes can now import `createWebRequestResponseFactory`, `createWebFrameworkRequest`, and `dispatchWebRequest` from `@konekti/runtime/web`, the dedicated fetch-style adapter seam that keeps native Web `Request` / `Response` bridging shared across Bun, Deno, and Cloudflare Worker adapters without widening the runtime root barrel.
+Use this package when you need to:
+- **Bootstrap a Konekti application**: Convert your modules into a running HTTP server or microservice.
+- **Orchestrate DI and Lifecycle**: Manage module-graph compilation, provider wiring, and application hooks (`onModuleInit`, `onApplicationBootstrap`).
+- **Create Standalone Contexts**: Run CLI tasks, migrations, or workers that need DI but not an HTTP server.
+- **Diagnostic Inspection**: Export machine-readable or Mermaid-based module graph topology.
 
 ## Quick Start
 
-### Minimal raw Node.js app
+### Minimal HTTP Application
+
+The `KonektiFactory` is the primary entrypoint for creating applications.
 
 ```typescript
-import { Module, Global } from '@konekti/core';
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
+import { Module } from '@konekti/core';
 import { Controller, Get } from '@konekti/http';
 import { KonektiFactory } from '@konekti/runtime';
-import type { RequestContext } from '@konekti/http';
+import { createNodejsAdapter } from '@konekti/platform-nodejs';
 
-@Controller('/health')
-class HealthController {
-  @Get('/')
-  check(_: never, ctx: RequestContext) {
-    return { status: 'ok' };
+@Controller('/')
+class AppController {
+  @Get()
+  index() {
+    return { hello: 'world' };
   }
 }
 
-@Module({ controllers: [HealthController] })
+@Module({
+  controllers: [AppController],
+})
 class AppModule {}
 
+// Create and start the application
 const app = await KonektiFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
@@ -72,525 +61,91 @@ const app = await KonektiFactory.create(AppModule, {
 await app.listen();
 ```
 
-### Adapter-first startup (Express example)
+## Common Patterns
 
-```typescript
-import { createExpressAdapter } from '@konekti/platform-express';
-import { KonektiFactory } from '@konekti/runtime';
+### Application Context (No HTTP)
 
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
-});
-
-await app.listen();
-```
-
-Use this adapter-first form for every HTTP runtime target (`@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`, etc.). Keep `KonektiFactory.create(...)` as the canonical startup path; transport-specific `run*Application()` helpers remain compatibility/advanced wrappers.
-
-Platform-selected HTTP adapters may also expose `getRealtimeCapability()` for realtime packages. Server-backed adapters report `{ kind: 'server-backed', server }`, while fetch-style runtimes expose `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', version: 1, support, reason }` with an honest support level for the documented runtime state (`'supported'` for Bun's official `@konekti/websockets/bun` path, Deno's official `@konekti/websockets/deno` path, and Cloudflare Workers' official `@konekti/websockets/cloudflare-workers` path, `'contract-only'` where runtime-specific websocket hosting has not landed yet). Packages such as `@konekti/websockets/node`, `@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers`, and `@konekti/socket.io` consume that seam rather than reaching directly for raw Node server assumptions.
-
-### Adapterless bootstrap semantics
-
-```typescript
-import { KonektiFactory } from '@konekti/runtime';
-
-const app = await KonektiFactory.create(AppModule);
-
-await app.ready();
-await app.close();
-```
-
-Omitting `options.adapter` is an intentional shell-only bootstrap mode. Use it when you need the compiled module graph, lifecycle hooks, dispatcher, or manual orchestration without letting `@konekti/runtime` pick an HTTP listener.
-
-- `ready()` still validates runtime-owned platform readiness.
-- `dispatch()` remains available for tests or transport-owned request bridging.
-- `close()` still runs shutdown hooks and resource cleanup.
-- `listen()` throws until you pass an explicit HTTP adapter.
-
-If you only need DI + lifecycle access and not the HTTP dispatcher, prefer `KonektiFactory.createApplicationContext(...)` instead.
-
-### Global request converters
-
-For HTTP apps, register transport-wide request converters through the runtime entrypoints users already call.
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { KonektiFactory } from '@konekti/runtime';
-
-class TrimStringConverter {
-  convert(value: unknown) {
-    return typeof value === 'string' ? value.trim() : value;
-  }
-}
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
-  converters: [TrimStringConverter],
-});
-
-await app.listen();
-```
-
-These converters are HTTP binding concerns. They run before DTO validation and apply per bound field.
-
-### Advanced bootstrap with manual listen
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { bootstrapApplication } from '@konekti/runtime';
-
-const app = await bootstrapApplication({
-  adapter: createNodejsAdapter({ port: 3000 }),
-  rootModule: AppModule,
-});
-
-await app.listen();
-console.log('Listening');
-
-// Dispatch a request manually (e.g. in tests)
-await app.dispatch(req, res);
-
-// Graceful shutdown
-await app.close();
-```
-
-### Standalone application context (no HTTP adapter)
+For background workers or scripts, use `createApplicationContext` to skip HTTP setup.
 
 ```typescript
 import { KonektiFactory } from '@konekti/runtime';
 
 const context = await KonektiFactory.createApplicationContext(AppModule);
 
-const service = await context.get(UserService);
-
-// ...run CLI task, migration, seed, or worker logic
-
-await context.close();
-```
-
-`createApplicationContext()` bootstraps the module graph and lifecycle hooks without creating the HTTP dispatcher/adapter. Use it for CLI scripts, background workers, migrations, and tests that only need DI.
-
-### Runtime diagnostics graph + bootstrap timing
-
-```typescript
-import {
-  KonektiFactory,
-  createRuntimeDiagnosticsGraph,
-  renderRuntimeDiagnosticsMermaid,
-} from '@konekti/runtime';
-
-const context = await KonektiFactory.createApplicationContext(AppModule, {
-  diagnostics: { timing: true },
-});
-
-const graph = createRuntimeDiagnosticsGraph(context.modules, context.rootModule);
-console.log(JSON.stringify(graph, null, 2));
-console.log(renderRuntimeDiagnosticsMermaid(graph));
-console.log(context.bootstrapTiming); // undefined unless diagnostics.timing is true
+// Resolve a service directly from the container
+const userService = await context.get(UserService);
+await userService.doWork();
 
 await context.close();
 ```
 
-`createRuntimeDiagnosticsGraph()` produces a versioned (`version: 1`) machine-readable module graph derived from `CompiledModule[]`, including module imports, module exports, provider membership, provider scope/type annotations, and controller membership. `renderRuntimeDiagnosticsMermaid()` emits a module-level Mermaid graph intended for quick topology inspection.
+### Global Exception Filters
 
-### Microservice factory (non-HTTP transport)
+Handle cross-cutting errors by registering filters during bootstrap.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { KonektiFactory } from '@konekti/runtime';
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@konekti/microservices';
+import { KonektiFactory, type ExceptionFilterHandler } from '@konekti/runtime';
 
-class MathHandler {
-  @MessagePattern('math.sum')
-  sum(input: { a: number; b: number }) {
-    return input.a + input.b;
+class GlobalErrorFilter implements ExceptionFilterHandler {
+  async catch(error, { response }) {
+    console.error('Caught error:', error);
+    response.setStatus(500);
+    void response.send({ error: 'Internal Server Error' });
+    return true; // Mark as handled
   }
 }
+
+const app = await KonektiFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+  filters: [new GlobalErrorFilter()],
+});
+```
+
+### Module Composition
+
+Konekti uses a strict module graph. Modules must explicitly `export` providers to make them available to `importing` modules.
+
+```typescript
+@Module({
+  providers: [DatabaseService],
+  exports: [DatabaseService], // Make it available outside
+})
+class DatabaseModule {}
 
 @Module({
-  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4001 }) })],
-  providers: [MathHandler],
+  imports: [DatabaseModule],
+  providers: [UsersService], // Can now inject DatabaseService
 })
-class AppModule {}
-
-const microservice = await KonektiFactory.createMicroservice(AppModule);
-await microservice.listen();
+class UsersModule {}
 ```
 
-`createMicroservice()` bootstraps the module graph without the HTTP adapter, resolves the configured microservice runtime token, and exposes `listen()` + `close()` for transport lifecycle control.
+## Public API Overview
 
-### Hybrid composition (HTTP + microservice in one process)
+### `KonektiFactory`
+The static facade for application lifecycle management.
+- `create(rootModule, options)`: Returns `Application` (HTTP shell).
+- `createApplicationContext(rootModule, options)`: Returns `ApplicationContext` (DI shell).
+- `createMicroservice(rootModule, options)`: Returns `MicroserviceApplication`.
 
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { KonektiFactory } from '@konekti/runtime';
+### Interfaces
+- `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
+- `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container` and `modules`.
+- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`.
 
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
-});
+### Utilities
+- `defineModule(cls, metadata)`: Programmatic module definition helper.
+- `bootstrapApplication(options)`: Lower-level async bootstrap function.
 
-await app.connectMicroservice();
-await app.startAllMicroservices();
-await app.listen();
-```
+## Related Packages
 
-### Raw webhook body (opt-in)
+- [@konekti/core](../core): Core decorators and metadata system.
+- [@konekti/di](../di): Dependency injection container implementation.
+- [@konekti/http](../http): HTTP routing, controllers, and dispatcher.
+- [@konekti/platform-nodejs](../platform-nodejs): Official Node.js HTTP adapter.
 
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { Controller, Post, type RequestContext } from '@konekti/http';
-import { KonektiFactory } from '@konekti/runtime';
+## Example Sources
 
-@Controller('/webhooks')
-class WebhookController {
-  @Post('/stripe')
-  verify(_input: undefined, context: RequestContext) {
-    const rawBody = context.request.rawBody;
+- [examples/minimal](../../examples/minimal): Smallest possible bootstrap.
+- [examples/realworld-api](../../examples/realworld-api): Full application with complex module wiring.
+- [packages/runtime/src/bootstrap.test.ts](./src/bootstrap.test.ts): Behavioral tests for bootstrap phases.
 
-    if (!rawBody) {
-      throw new Error('rawBody must be enabled for signature verification.');
-    }
-
-    const signature = context.request.headers['stripe-signature'];
-    return verifyStripeSignature(rawBody, signature);
-  }
-}
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000, rawBody: true }),
-});
-
-await app.listen();
-```
-
-`rawBody` is opt-in and preserves the original request bytes alongside the parsed `request.body`. The built-in Node adapter and the Fastify/Express platform adapters apply this to non-multipart bodies such as JSON and text, and leave `request.rawBody` unset when the option is disabled or the request uses multipart parsing.
-
-### Host binding and HTTPS
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { readFileSync } from 'node:fs';
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({
-    host: '127.0.0.1',
-    https: {
-      cert: readFileSync('./certs/dev.crt'),
-      key: readFileSync('./certs/dev.key'),
-    },
-    port: 8443,
-  }),
-});
-
-await app.listen();
-```
-
-When `host` is set, the Node adapter binds explicitly to that host instead of the default all-interfaces behavior. When `https` is provided, the adapter starts an HTTPS server and the startup log reports an `https://...` URL. If the public URL differs from the actual bind target, the startup log includes both. The `https` object is passed through to Node's `node:https.createServer`, so callers must supply valid TLS material such as `key` and `cert`.
-
-### Global prefix for application routes
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
-  globalPrefix: '/api',
-  globalPrefixExclude: ['/internal/*'],
-});
-
-await app.listen();
-```
-
-`globalPrefix` applies to all routes by default, so a controller route like `/app/info` becomes `/api/app/info` and runtime-owned endpoints such as `/health` become `/api/health`. Use `globalPrefixExclude` when specific paths should stay unprefixed.
-
-`globalPrefixExclude` supports exact paths such as `/internal/ping` and trailing `/*` patterns such as `/internal/*`. The runtime normalizes duplicate slashes and trailing slashes before matching, and treats `globalPrefix: '/'` as a no-op. To preserve the previous operational-endpoint behavior, pass `globalPrefixExclude: ['/health', '/ready', '/openapi.json', '/docs', '/metrics']` explicitly.
-
-### Global exception filters
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { NotFoundException } from '@konekti/http';
-import type { ExceptionFilterHandler } from '@konekti/runtime';
-
-class DomainExceptionFilter implements ExceptionFilterHandler {
-  catch(error, context) {
-    if (error instanceof UserNotFoundError) {
-      context.response.setStatus(404);
-      void context.response.send({ message: error.message });
-      return true;
-    }
-
-    return undefined;
-  }
-}
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
-  filters: [new DomainExceptionFilter()],
-});
-
-await app.listen();
-```
-
-`filters` registers global exception filters that run in order when a handler, guard, interceptor, or middleware throws. Return `true` after writing the response to stop the chain; return `undefined` to fall through to the next filter and eventually the built-in HTTP exception serializer.
-
-### Duplicate provider diagnostics
-
-```typescript
-await bootstrapApplication({
-  duplicateProviderPolicy: 'throw',
-  rootModule: AppModule,
-});
-```
-
-`duplicateProviderPolicy` controls what happens when multiple modules register the same provider token during bootstrap. Use `'warn'` to log and continue, `'throw'` to fail fast with `DuplicateProviderError`, or `'ignore'` to preserve the existing last-registration-wins behavior.
-
-### Versioning strategies
-
-```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { Controller, Get, Version, VersioningType } from '@konekti/http';
-import { KonektiFactory } from '@konekti/runtime';
-
-@Version('1')
-@Controller('/users')
-class UsersController {
-  @Get('/')
-  listUsers() {
-    return [];
-  }
-}
-
-const app = await KonektiFactory.create(AppModule, {
-  adapter: createNodejsAdapter({ port: 3000 }),
-  versioning: {
-    header: 'X-API-Version',
-    type: VersioningType.HEADER,
-  },
-});
-
-await app.listen();
-```
-
-Runtime supports four versioning strategies:
-
-- `VersioningType.URI` (default): `/v1/users`
-- `VersioningType.HEADER`: read from a configured header
-- `VersioningType.MEDIA_TYPE`: parse `Accept` using a key such as `v=`
-- `VersioningType.CUSTOM`: use a custom extractor function
-
-`@Version()` decorator usage does not change across strategies. If `versioning` is omitted, URI versioning remains the default (no breaking change).
-
-### Module with imports and exports
-
-```typescript
-import { Module } from '@konekti/core';
-import { PrismaModule } from '@konekti/prisma';
-
-@Module({
-  imports: [PrismaModule.forRoot({ client: prismaClient })],
-  providers: [UserService, UserRepository],
-  controllers: [UserController],
-  exports: [UserService],
-})
-export class UsersModule {}
-
-@Module({
-  imports: [UsersModule],
-  // Can inject UserService because UsersModule exports it
-})
-export class AppModule {}
-```
-
-### Runtime-owned platform shell registration
-
-```typescript
-import type { PlatformComponent } from '@konekti/runtime';
-
-const redisComponent: PlatformComponent = createRedisPlatformComponent();
-const queueComponent: PlatformComponent = createQueuePlatformComponent();
-
-const app = await KonektiFactory.create(AppModule, {
-  platform: {
-    components: [
-      { component: redisComponent, dependencies: [] },
-      { component: queueComponent, dependencies: ['redis.default'] },
-    ],
-  },
-});
-
-await app.listen();
-```
-
-Runtime validates component identity/dependency edges, starts components in dependency order during bootstrap, and stops them in reverse order during shutdown. `listen()` now enforces critical platform readiness from this runtime-owned shell.
-
-## Key API
-
-| Export | Location | Description |
-|---|---|---|
-| `KonektiFactory.create(rootModule, options)` | `src/bootstrap.ts` | Canonical HTTP application entrypoint — returns `Application` |
-| `@konekti/runtime/node` → `runNodeApplication(rootModule, options)` | `src/node.ts` | Compatibility wrapper for Node bootstrap + listen + shutdown wiring |
-| `@konekti/runtime/node` → `bootstrapNodeApplication(rootModule, options)` | `src/node.ts` | Bootstrap only (no listen) with Node defaults |
-| `@konekti/runtime/web` → `dispatchWebRequest({ request, dispatcher, ... })` | `src/web.ts` | Shared fetch-style adapter entrypoint that translates a native Web `Request` into framework contracts and returns a native Web `Response` |
-| `@konekti/runtime/web` → `createWebRequestResponseFactory(options)` | `src/web.ts` | Shared request/response factory seam for Bun, Deno, and Cloudflare Worker-style adapters |
-| `bootstrapApplication(options)` | `src/bootstrap.ts` | Generic bootstrap — returns `Application` |
-| `PlatformOptionsBase`, `PlatformComponent`, `PlatformComponentRegistration`, `PlatformState`, `PlatformValidationResult`, `PlatformReadinessReport`, `PlatformHealthReport`, `PersistencePlatformStatusSnapshot`, `PlatformDiagnosticIssue`, `PlatformSnapshot`, `PlatformShellSnapshot`, `PlatformShell` | `src/platform-contract.ts` | Shared platform contract spine types for runtime, CLI, and Studio-aligned tooling. |
-| `PLATFORM_SHELL` | `src/tokens.ts` | Runtime token exposing the current platform shell orchestrator and snapshot/report API. |
-| `createRuntimeDiagnosticsGraph(modules, rootModule)` | `src/diagnostics.ts` | Export versioned runtime diagnostics graph from compiled modules |
-| `renderRuntimeDiagnosticsMermaid(graph)` | `src/diagnostics.ts` | Emit module-level Mermaid graph text from diagnostics payload |
-| `KonektiFactory.createApplicationContext(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context without HTTP runtime |
-| `KonektiFactory.createMicroservice(rootModule, options)` | `src/bootstrap.ts` | Bootstrap DI/lifecycle context and attach a transport-backed microservice runtime |
-| `bootstrapModule(rootModule, options)` | `src/bootstrap.ts` | Lower-level bootstrap baseline: compile the module graph and initialize the root container with runtime/module providers |
-| `defineModule(cls, metadata)` | `src/bootstrap.ts` | Low-level helper to attach module metadata without decorator |
-| `Application` | `src/types.ts` | Interface: `container`, `modules`, `rootModule`, `state`, `dispatcher`, `dispatch()`, `ready()`, `listen()`, `close()` |
-| `@Module(metadata)` | `@konekti/core` | Declares module providers, controllers, imports, exports |
-| `@Global()` | `@konekti/core` | Marks a module as globally visible |
-
-`@konekti/runtime` root barrel intentionally stays transport-neutral. Import Node bootstrap and shutdown helpers from `@konekti/runtime/node`, and shared fetch-style request/response helpers such as `dispatchWebRequest()` / `parseMultipart()` from `@konekti/runtime/web`. `@konekti/runtime/internal` is now reserved for framework-internal wiring tokens (`RUNTIME_CONTAINER`, `COMPILED_MODULES`, `HTTP_APPLICATION_ADAPTER`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`), while transport helper seams live on explicit internal subpaths.
-
-## Behavioral contract
-
-### Supported operations
-
-- `KonektiFactory.create(rootModule, { adapter })` assembles the runtime shell and enables `listen()` for the selected HTTP transport.
-- `KonektiFactory.create(rootModule)` assembles the same shell without selecting an HTTP listener.
-- `KonektiFactory.createApplicationContext(rootModule)` assembles DI + lifecycle only, without the HTTP dispatcher/adapter seam.
-
-### Intentional limitations
-
-- `@konekti/runtime` does not guess a default HTTP adapter when none is provided.
-- Adapterless `KonektiFactory.create(...)` does not silently open a port or bind a transport.
-
-### Runtime invariants
-
-- `listen()` always requires an explicit HTTP adapter.
-- Adapterless bootstrap keeps the application in the `bootstrapped` state until it is closed.
-
-### Lifecycle guarantees
-
-- Adapterless bootstrap still runs module/application bootstrap hooks.
-- `close()` still executes runtime cleanup and shutdown hooks even when no HTTP adapter was provided.
-
-### Operational surface ownership audit (#824)
-
-The remaining runtime-owned operational surfaces stay intentionally narrow and bootstrap-scoped:
-
-| surface | ownership decision | why it stays or moves |
-| --- | --- | --- |
-| `createHealthModule()` (`/health`, `/ready`) | **Stay in `@konekti/runtime`** | These endpoints reflect the assembled application shell's bootstrap state and the runtime-managed platform readiness gate. They provide the minimal liveness/readiness baseline for the orchestrator itself, not a richer health-indicator composition layer. |
-| `APPLICATION_LOGGER`, `createConsoleApplicationLogger()`, `createJsonApplicationLogger()` | **Stay in `@konekti/runtime`** | Bootstrap and shell lifecycle code need a default logger before optional observability packages are installed. This remains a thin application-shell logging seam, not a full logging backend or telemetry product. |
-| `PLATFORM_SHELL` and the platform readiness/health snapshot contracts | **Stay in `@konekti/runtime`** | The runtime owns `platform.components` orchestration, dependency-ordered start/stop, and aggregate readiness/health evaluation for the assembled shell. Packages contribute component reports, but the orchestration envelope belongs to runtime. |
-| Metrics exposure (`/metrics`) | **Do not move into `@konekti/runtime`** | Metrics collection and scrape exposure belong to `@konekti/metrics`, which owns Prometheus-specific behavior and registry policy. |
-| Enriched operational health indicators | **Do not move into `@konekti/runtime`** | Indicator composition and expanded health semantics belong to `@konekti/terminus`, leaving runtime with only the baseline shell liveness/readiness contract. |
-| Transport- or app-specific logging integrations | **Do not move into `@konekti/runtime`** | Adapters and applications can replace `APPLICATION_LOGGER` or add observers/middleware, but runtime should only provide the bootstrap-safe default seam. |
-
-This audit does not extract additional code. The result is an explicit ownership boundary: runtime keeps only the operational surfaces required to assemble, report on, and safely bootstrap the application shell.
-
-## Architecture
-
-### Bootstrap flow
-
-```text
-KonektiFactory.create(options)  [or bootstrapApplication]
-  → compileModuleGraph()
-      → validate imports/exports visibility
-      → detect circular imports
-      → collect all providers + controllers
-  → create root Container      (@konekti/di)
-  → register bootstrap-level providers
-  → register module providers + controllers
-  → resolve singleton instances
-  → onModuleInit hooks
-  → onApplicationBootstrap hooks
-  → createHandlerMapping()     (@konekti/http)
-  → createDispatcher()         (@konekti/http)
-  → return KonektiApplication
-```
-
-### Module graph compilation is proof, not traversal
-
-`compileModuleGraph()` does more than visit nodes. It verifies that:
-- Every provider token a controller or service needs is accessible (local, imported from an exported module, or global)
-- No module tries to export a token it doesn't own or can't re-export
-- No circular `imports` chains exist
-
-If any of these fail, bootstrap throws before any provider is instantiated. This is a deliberate design choice — broken apps fail loudly at startup, not silently at the first request.
-
-### Recovery-oriented error output
-
-Every bootstrap and module-graph error includes structured context fields so that failures explain what went wrong, where it happened, and what to do next. The error message appends:
-
-- **Module** — the module where the failure was detected
-- **Token** — the token involved (if applicable)
-- **Phase** — the bootstrap phase (e.g. `module graph compilation`, `provider visibility validation`, `export validation`, `provider registration`)
-- **Hint** — a plain-language recovery action
-
-Errors also carry a machine-readable `meta` object with the same fields, suitable for structured logging or monitoring. Example:
-
-```text
-ModuleVisibilityError: Provider BillingService in module BillingModule cannot access token UserRepository...
-  Module: BillingModule
-  Token: UserRepository
-  Phase: provider visibility validation
-  Hint: Add UserRepository to the exports array of the module that owns it, then import that module into BillingModule. Alternatively, mark the owning module with @Global().
-```
-
-### Lifecycle hook ordering
-
-```text
-Startup:  onModuleInit → onApplicationBootstrap
-Shutdown: onModuleDestroy (reverse order) → onApplicationShutdown (reverse order)
-```
-
-Request-scoped and transient providers are excluded from lifecycle hooks — only singleton-scoped providers participate.
-
-### KonektiApplication is a thin shell
-
-`KonektiApplication` does not re-implement any runtime piece. It holds references to the assembled config, container, and dispatcher, and manages state transitions: `bootstrapped` → `ready` → `closed`.
-
-Additional public root exports also include helpers such as `KonektiFactory`, `createHealthModule`, `createConsoleApplicationLogger`, `createJsonApplicationLogger`, `APPLICATION_LOGGER`, `PLATFORM_SHELL`, `raceWithAbort`, and `createAbortError`. Shared multipart and fetch-style request/response helpers live under `@konekti/runtime/web`, while Node-specific helpers live under `@konekti/runtime/node`.
-
-The `@konekti/runtime/web` subpath is the long-term home for fetch-style bridge ownership: it is shared by environment-specific adapter packages, but it stays outside the transport-neutral runtime root barrel so the runtime package remains focused on orchestration rather than choosing a concrete execution target. That subpath translates native Web `Request` objects into `FrameworkRequest`, preserves the existing raw-body/multipart/error-envelope contracts, exposes `FrameworkResponse.stream` as a Web-stream-backed capability, and finalizes framework writes back into a native Web `Response`.
-
-`createHealthModule()` exposes the runtime-owned liveness/readiness pair: `/health` is a liveness endpoint that returns `200 { status: 'ok' }`, while `/ready` reflects startup state and registered readiness checks with `starting`, `ready`, and `unavailable` statuses.
-
-### Node startup concerns isolated to the explicit Node-only seam
-
-The explicit `@konekti/runtime/internal-node` seam now owns the raw Node transport implementation, while `@konekti/runtime/node` remains a compatibility wrapper for existing imports. This keeps transport-specific startup details out of the transport-agnostic runtime root while preserving the established public startup path:
-- HTTP adapter creation and binding
-- Optional Node-owned response compression helpers (`createNodeResponseCompression`, `compressNodeResponse`)
-- Default CORS middleware
-- Port resolution from runtime options (`port`, default `3000`)
-- Startup log
-- Explicit `SIGTERM`/`SIGINT` → `app.close()` registration for Node-owned startup paths
-- Request abort signal → `FrameworkRequest.signal` bridge
-
-| concern | public home | guidance |
-| --- | --- | --- |
-| Canonical raw Node startup | `@konekti/platform-nodejs` | Prefer `KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })` for the primary Node startup model. |
-| Compatibility startup wrappers | `@konekti/platform-nodejs` | `bootstrapNodejsApplication()` / `runNodejsApplication()` stay Node-scoped, but remain secondary to the adapter-first path. |
-| Shutdown signal wiring | `@konekti/runtime/node` | `createNodeShutdownSignalRegistration()` and `registerShutdownSignals()` are advanced Node process utilities, not part of the primary startup surface. |
-| Explicit compression helpers | `@konekti/runtime/node` | `createNodeResponseCompression()` and `compressNodeResponse()` stay available for Node-only response writing without widening the runtime root barrel. |
-
-The Node adapter stops accepting new connections on shutdown, drains started requests for a bounded window, closes idle keep-alive connections, and force-closes remaining connections once the shutdown timeout expires. Use `shutdownTimeoutMs` in `@konekti/runtime/node` bootstrap options to override the default 10-second drain window.
-
-## File reading order for contributors
-
-1. `packages/core/src/decorators.ts` — `@Module()`, `@Global()` metadata writers
-2. `src/types.ts` — `Application` interface, module metadata shapes
-3. `src/errors.ts` — bootstrap error types
-4. `src/bootstrap.ts` — `compileModuleGraph`, `bootstrapModule`, `bootstrapApplication`
-5. `src/node.ts` — `bootstrapNodeApplication`, `runNodeApplication`
-6. `src/bootstrap.test.ts` — module graph compile, visibility/export rules
-7. `src/application.test.ts` — lifecycle hooks, close path, bootstrap failure unwind
-
-## Related packages
-
-- `@konekti/di` — `Container` that `bootstrapModule` registers providers into
-- `@konekti/http` — `createHandlerMapping` and `createDispatcher` called by `bootstrapApplication`
-
-## One-liner mental model
-
-```text
-@konekti/runtime = metadata-validated module graph → assembled DI/HTTP application shell
-```

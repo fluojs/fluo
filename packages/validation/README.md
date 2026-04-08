@@ -2,27 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Input-side validation and materialization engine for Konekti.
+Input-side validation decorators, mapped DTO helpers, and the materialization engine for Konekti.
 
-`@konekti/validation` focuses on the **input** boundary. It handles turning raw, untyped payloads into validated, typed DTO instances. While `@konekti/serialization` shapes the outgoing response, this package ensures incoming data is safe and correctly materialized.
+## Table of Contents
 
-## The Mental Model
-
-Konekti splits data handling into two distinct phases:
-
-1. **Validation (Input)**: Materializing raw payloads into class instances and enforcing rules.
-2. **Serialization (Output)**: Shaping class instances back into plain data for the response.
-
-`@konekti/validation` owns the validation rules, the materialization engine, Standard Schema compatibility (Zod/Valibot), and mapped DTO helpers.
-
-## Relationship with @konekti/http
-
-This package is transport-agnostic. It does not know about HTTP bodies or query strings.
-
-In a Konekti application, `@konekti/http` uses this package to:
-1. Extract raw data from the request (body, query, params).
-2. Use `DefaultValidator.materialize()` to create and validate a DTO instance.
-3. Pass the resulting typed instance to your controller handler.
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -30,19 +20,17 @@ In a Konekti application, `@konekti/http` uses this package to:
 pnpm add @konekti/validation
 ```
 
-## Core Features
+## When to Use
 
-- **Field-level decorators**: `@IsString()`, `@MinLength()`, `@ValidateNested()`, etc.
-- **Class-level invariants**: `@ValidateClass(...)` for complex rules or Standard Schema hooks.
-- **Materialization**: `materialize()` hydrates plain objects into typed class instances recursively.
-- **Validation**: `validate()` checks existing instances against their decorators.
-- **Standard Schema**: Direct support for Zod, Valibot, and ArkType via `@ValidateClass`.
-- **Mapped Types**: `PickType`, `OmitType`, `PartialType`, and `IntersectionType` that preserve metadata.
+- when raw request payloads need to become validated DTO instances before reaching business logic
+- when you want class-based validation rules instead of ad hoc parsing in controllers and services
+- when you need metadata-preserving mapped DTO helpers such as `PickType`, `PartialType`, and `IntersectionType`
+- when you want to attach Standard Schema validators such as Zod or Valibot through `@ValidateClass(...)`
 
 ## Quick Start
 
-```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator, DtoValidationError } from '@konekti/validation';
+```ts
+import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@konekti/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -55,116 +43,74 @@ class CreateUserDto {
 
 const validator = new DefaultValidator();
 
-// 1. Materialize: Plain object -> Typed Instance + Validation
 try {
   const dto = await validator.materialize(
     { email: 'hello@example.com', name: 'Konekti' },
     CreateUserDto,
   );
-  console.log(dto instanceof CreateUserDto); // true
-} catch (err) {
-  if (err instanceof DtoValidationError) {
-    console.log(err.issues);
+
+  console.log(dto instanceof CreateUserDto);
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    console.log(error.issues);
   }
 }
 ```
 
-### Important: No Implicit Coercion
+## Common Patterns
 
-`materialize()` enforces the schema strictly. It does **not** perform implicit scalar coercion (e.g., turning the string `"42"` into the number `42`).
+### `materialize()` vs `validate()`
 
-```typescript
-import { DefaultValidator, IsNumber } from '@konekti/validation';
+- `materialize(value, Target)` builds a typed instance and validates it recursively
+- `validate(instance, Target)` only validates an already-created value
 
-class GetUserDto {
-  @IsNumber()
-  id = 0;
-}
+### Mapped DTO helpers
 
-const validator = new DefaultValidator();
+```ts
+import { IsEmail, IsString, PartialType, PickType } from '@konekti/validation';
 
-// This throws DtoValidationError because '42' is a string.
-await validator.materialize({ id: '42' }, GetUserDto);
-```
-
-If your transport layer (like HTTP query params) provides strings that should be numbers, convert them explicitly before calling the validator. In a Konekti HTTP app, that conversion belongs in the binding/transport layer, not in `@konekti/validation`.
-
-## API Reference
-
-### DefaultValidator
-
-The primary engine for both materialization and validation.
-
-```typescript
-class DefaultValidator implements Validator {
-  // Validates an existing instance. Does not hydrate nested objects.
-  async validate(value: unknown, target: Constructor): Promise<void>;
-
-  // Hydrates a plain object into a class instance and then validates it.
-  async materialize<T>(value: unknown, target: Constructor<T>): Promise<T>;
-}
-```
-
-### validate vs materialize
-
-| Feature | `validate` | `materialize` |
-|---|---|---|
-| **Primary Goal** | Check existing objects | Create + Check new objects |
-| **Input** | DTO-like instance | Raw plain object |
-| **Output** | `Promise<void>` | `Promise<T>` (the instance) |
-| **Recursion** | No | Yes (hydrates nested DTOs) |
-
-### DtoValidationError & ValidationIssue
-
-When validation fails, a `DtoValidationError` is thrown containing an array of `ValidationIssue`.
-
-```typescript
-interface ValidationIssue {
-  code: string;       // e.g. 'EMAIL', 'MIN_LENGTH'
-  field?: string;     // path: 'address.city', 'tags[0]'
-  message: string;    // Human-readable error
-}
-```
-
-## Decorators
-
-### Type Checks
-`@IsString()`, `@IsNumber()`, `@IsBoolean()`, `@IsDate()`, `@IsArray()`, `@IsObject()`, `@IsInt()`, `@IsEnum(entity)`
-
-### Presence
-`@IsDefined()`, `@IsOptional()`, `@IsEmpty()`, `@IsNotEmpty()`
-
-### Strings
-`@Length(min, max?)`, `@MinLength(n)`, `@MaxLength(n)`, `@Contains(seed)`, `@Matches(regex)`, `@IsEmail()`, `@IsUrl()`, `@IsUUID()`, and many more via `validator.js`.
-
-### Numbers
-`@IsPositive()`, `@IsNegative()`, `@Min(n)`, `@Max(n)`, `@IsDivisibleBy(n)`
-
-### Collections & Nesting
-- `@ValidateNested(() => Class)`: Recursively validates a nested object.
-- `@ArrayUnique()`: Enforces uniqueness in an array.
-- `{ each: true }`: Applies a validator to every element in an array, Set, or Map.
-
-## Mapped DTO Helpers
-
-Derive new DTOs from existing ones while preserving all validation and binding metadata.
-
-```typescript
-import { PickType, PartialType } from '@konekti/validation';
-
-class User {
+class UserDto {
   @IsString() name = '';
   @IsEmail() email = '';
 }
 
-// Only 'name' is kept, with its @IsString() rule.
-class NameOnlyDto extends PickType(User, ['name']) {}
-
-// All fields become optional for both validation and HTTP binding.
-class UpdateUserDto extends PartialType(User) {}
+class EmailOnlyDto extends PickType(UserDto, ['email']) {}
+class UpdateUserDto extends PartialType(UserDto) {}
 ```
 
-## Dependencies
+### Standard Schema support
 
-- `@konekti/core`: Internal metadata management.
-- `validator`: Powers the string format decorators.
+```ts
+import { ValidateClass } from '@konekti/validation';
+import { z } from 'zod';
+
+const UserSchema = z.object({ age: z.number().min(18) });
+
+@ValidateClass(UserSchema)
+class RestrictedUserDto {
+  age = 0;
+}
+```
+
+### No implicit scalar coercion
+
+`materialize()` is intentionally strict. If a transport gives you `'42'` and your DTO expects `number`, the transport or binding layer must convert it first.
+
+## Public API Overview
+
+- **Validator engine**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`
+- **Core decorators**: `IsString`, `IsNumber`, `IsBoolean`, `IsEmail`, `IsUrl`, `ValidateNested`, `ValidateIf`, `IsOptional`, `ValidateClass`
+- **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
+- **Validation flow**: `materialize()` for hydration + validation, `validate()` for validation-only checks
+
+## Related Packages
+
+- `@konekti/http`: binds request data, then uses this package to validate it
+- `@konekti/serialization`: shapes output DTOs on the response side
+- `@konekti/core`: provides the metadata primitives used by validation decorators
+
+## Example Sources
+
+- `packages/validation/src/validation.test.ts`
+- `examples/realworld-api/src/users/create-user.dto.ts`
+- `examples/auth-jwt-passport/src/auth/login.dto.ts`

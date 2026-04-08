@@ -2,149 +2,67 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./di-and-modules.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide explains the dependency injection (DI) and module system implemented across `@konekti/core`, `@konekti/di`, and `@konekti/runtime`.
+Konekti manages application complexity through an **explicit, token-based Dependency Injection (DI) system** and a hierarchical **Module Graph**. Unlike frameworks that rely on "magic" reflection, Konekti requires clear contracts between every provider and its consumer.
 
-### related documentation
+## why this matters
 
-- `./architecture-overview.md`
-- `./http-runtime.md`
-- `../../packages/di/README.md`
-- `../../packages/runtime/README.md`
+In large-scale applications, "implicit" dependency injection—where the framework "guesses" what you need based on constructor types—is a recipe for disaster. It leads to:
+- **Invisible coupling**: You don't realize how deep your dependency tree goes until it breaks.
+- **Difficult testing**: Mocking becomes a chore when you're not 100% sure what's being injected.
+- **Runtime surprises**: Circular dependencies or missing providers often result in cryptic `undefined` errors at runtime.
 
-## di principles
+Konekti eliminates these pains by making the dependency graph **auditable and explicit**. You can look at any class and see exactly what it requires, where those requirements come from, and how they are scoped.
 
-- **Class-first public services**: Concrete classes (services, guards, interceptors) serve as their own injection tokens by default.
-- **Explicit token DI**: Dependencies are identified by explicit tokens (classes, symbols, or constants) rather than inferred types.
-- **No reflection-based autowiring**: Konekti does not rely on runtime type reflection for dependency resolution.
-- **Constructor-first injection**: Constructor injection is the default and recommended pattern.
-- **`@Inject([...])`**: Stores constructor dependency metadata.
-- **`@Scope(...)`**: Defines the lifecycle scope of a provider.
+## core ideas
 
-## public service guidance
+### token-based di
+In Konekti, every dependency is identified by a **Token**. A token can be:
+- **A Class**: The most common case. The class constructor itself acts as the unique identifier.
+- **A Symbol or String**: Used for abstract interfaces (e.g., `ILogger`) where you want to swap implementations without changing the consumer.
+- **A Configuration Key**: For injecting specific settings directly into a service.
 
-Konekti follows a **class-first** rule for public package surfaces:
+By using explicit tokens, we bypass the need for `emitDecoratorMetadata` and ensure that your code is compatible with any modern JavaScript build tool.
 
-1. **Concrete Services/Guards/Interceptors**: Use the class itself as the token. This removes the need for redundant exported `PROVIDER_TOKEN` constants for stable service implementations.
-2. **Abstract Interfaces/Handles**: Use explicit `Symbol` or `const` tokens when the implementation is intended to be swapped or when multiple implementations co-exist.
-3. **Options/Config/Runtime Seams**: Use explicit tokens for configuration objects or runtime-specific handles that do not have a natural class representation.
+### the module as a "boundary"
+A **Module** in Konekti is more than just a organization tool; it is a **security and encapsulation boundary**.
+- **Private by Default**: A service defined in `UserModule` is invisible to `AuthModule` unless it is explicitly listed in the `exports` array of `UserModule` and `UserModule` is in the `imports` of `AuthModule`.
+- **Encapsulated Implementation**: This allows you to have internal "helper" services that cannot be accidentally used (and coupled to) by other parts of the system.
 
-This guidance aligns with the `behavioral-contract-policy.md` by ensuring that the public DI surface matches the documented runtime responsibilities.
-
-## provider forms
-
-- `useClass`
-- `useFactory`
-- `useValue`
-
-Each token must use a single registration mode: either as a single provider or as part of a multi-provider collection.
-
-## scopes
-
-- `singleton`: One instance per application lifecycle.
-- `request`: One instance per incoming request.
-- `transient`: A new instance for every injection.
-
-## provider overrides
-
-- Calling `override()` invalidates any cached singleton or request-scoped instances for the replaced token.
-- Evicted instances that implement `onDestroy()` are disposed of immediately.
-- Instances are not retained after being overridden.
-
-## injection strategy
-
-Konekti uses decorator-authored metadata for dependency declaration.
+### constructor injection pattern
+We mandate **Constructor Injection** as the primary pattern. This aligns with standard class-based programming and makes unit testing trivial: you simply pass mock objects to the constructor.
 
 ```ts
-@Inject([USER_REPOSITORY, LOGGER])
-@Scope('singleton')
-class UserService {
+@Inject([UsersRepository, 'APP_CONFIG'])
+export class UsersService {
   constructor(
-    private readonly userRepository: UserRepository,
-    private readonly logger: Logger,
+    private readonly repo: UsersRepository,
+    private readonly config: any
   ) {}
 }
 ```
 
-## explicit tokens vs reflection
+## provider types
 
-Konekti resolves dependencies using explicit token metadata (classes, symbols, or constants) instead of runtime type reflection.
+- **Class Providers**: Standard services instantiated by the framework.
+- **Value Providers**: Injected constants, configurations, or external library instances.
+- **Factory Providers**: Logic-driven providers that are created dynamically based on other services or environment state.
+- **Alias Providers**: Mapping one token to another (e.g., mapping `ILogger` to `PinoLogger`).
 
-- **Injection tokens** (`@Inject([...])`) serve as the source of truth.
-- **Class-as-token**: Concrete classes (services, guards, interceptors) are treated as explicit tokens.
-- **`"emitDecoratorMetadata": true` is not required**.
-- **Reflection-based constructor autowiring is not supported**.
+## injection scopes
 
-This ensures that dependency resolution is predictable and based entirely on declared metadata.
+- **Singleton (Default)**: One instance shared across the whole app. Best for stateless services and connection pools.
+- **Request**: A fresh instance per incoming HTTP request. Useful for storing request-specific state like the current user.
+- **Transient**: A fresh instance for every single injection point.
 
-## token ownership
+## boundaries
 
-- **Class tokens** (services/guards/interceptors) are part of the public package contract.
-- **Explicit symbol/const tokens** are used for interfaces, handles, and configuration.
-- Tokens crossing module or package boundaries are part of the public contract.
-- Exported non-class tokens should be defined as stable constants or symbols, not string literals.
-- Token ownership belongs to the package that provides the underlying resource.
-- Generated code and examples follow the same token-authoring conventions as the framework.
+- **No Global Scope**: There is no "global" provider unless explicitly marked. We prefer the safety of the import/export chain.
+- **Circular Dependency Detection**: Konekti's DI container detects circular dependencies at bootstrap time and throws a clear error, preventing stack overflows.
+- **Strict Validation**: If a required dependency is missing from the module graph, the application will **fail to start**. We prefer a crash at boot over a crash in production.
 
-## module responsibilities
+## related docs
 
-Modules serve several critical functions:
-
-- **Visibility boundaries**: Defining which providers are accessible.
-- **Feature grouping**: Organizing related logic.
-- **Bootstrap ordering**: Ensuring deterministic application startup.
-- **Encapsulation**: Providing explicit import/export points.
-
-## module entrypoint naming semantics
-
-When documenting or authoring public runtime module APIs, use the repository-wide syntax contract in `docs/reference/package-surface.md`:
-
-- `forRoot(...)`: canonical runtime module initialization.
-- `forRootAsync(...)`: async variant for deferred configuration materialization.
-- `register(...)`: scoped/repeatable registration where root ownership is not implied.
-- `forFeature(...)`: feature-slice registration layered under an existing root.
-- `create*`: reserved for non-runtime-module helpers/builders only.
-
-## visibility rules
-
-- Providers are private to their defining module by default.
-- Cross-module access requires the provider to be in the `exports` list of its module and the consumer module to include that module in its `imports`.
-- If a token is neither local nor explicitly imported/exported, resolution will fail during bootstrap.
-
-Summary:
-- **Intra-module**: Access is granted to all local providers.
-- **Inter-module**: Requires both `exports` and `imports`.
-
-## diagnostics and errors
-
-- Constructor dependency metadata must match the constructor's arity.
-- Bootstrap errors distinguish between missing local providers, missing exports, missing imports, and malformed metadata.
-- Rapid failure (fail-fast) is a core framework feature.
-- Registering both single and multi-providers for the same token results in a bootstrap error.
-
-## testing
-
-- Use direct construction for unit tests where possible.
-- Use testing modules and provider overrides for integration tests.
-- `@Inject([...])` provides metadata and does not interfere with manual instantiation in test environments.
-
-## runtime behavior
-
-`@konekti/runtime` processes module and DI metadata to:
-
-- Construct the module graph.
-- Enforce visibility rules (imports/exports).
-- Register providers and controllers.
-- Instantiate singleton-scoped providers.
-- Assemble the application shell.
-
-While low-level APIs are available, the recommended development experience is decorator-based.
-
-## diagnostics graph and bootstrap timing
-
-`@konekti/runtime` now exposes a versioned diagnostics export (`version: 1`) derived from the compiled module graph (`CompiledModule[]`).
-
-- `createRuntimeDiagnosticsGraph(modules, rootModule)` exports machine-readable module relationships, provider/token membership, export relationships, and provider scope/type annotations.
-- `renderRuntimeDiagnosticsMermaid(graph)` emits a module-level Mermaid graph (module nodes + module import edges).
-- Bootstrap timing is opt-in through `KonektiFactory.createApplicationContext(..., { diagnostics: { timing: true } })` or `KonektiFactory.create(..., { diagnostics: { timing: true } })`; default bootstrap paths do not collect timing data.
-
-The CLI `konekti inspect` command is a thin wrapper over this runtime diagnostics surface.
+- [Architecture Overview](./architecture-overview.md)
+- [Decorators and Metadata](./decorators-and-metadata.md)
+- [HTTP Runtime](./http-runtime.md)
+- [DI Package README](../../packages/di/README.md)

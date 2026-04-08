@@ -2,238 +2,130 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Prisma lifecycle and ALS-backed transaction context for Konekti applications. Connects a `PrismaClient` to the module system with automatic connection management and request-scoped transactions.
 
-Connect Prisma to the Konekti lifecycle and transaction model — without hiding Prisma itself.
+## Table of Contents
 
-## See also
-
-- `../../docs/concepts/transactions.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-
-## What this package does
-
-`@konekti/prisma` is a thin integration layer that wires a Prisma client into Konekti's module system. It handles connection lifecycle (`$connect` / `$disconnect`) automatically, provides a request-scoped ALS-based transaction context, and exposes a `PrismaService` whose `current()` method always returns either the active transaction client or the root client — so your repositories never need to care which they're talking to.
-
-The package does **not** abstract Prisma away. It makes Prisma a first-class Konekti citizen.
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+  - [PrismaService and current()](#prismaservice-and-current)
+  - [Manual Transactions](#manual-transactions)
+  - [Automatic Request Transactions](#automatic-request-transactions)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
 ```bash
-npm install @konekti/prisma
-# install your generated Prisma client alongside this package
-npm install @prisma/client
+pnpm add @konekti/prisma
+# Ensure @prisma/client is also installed
+pnpm add @prisma/client
 ```
+
+## When to Use
+
+- When using Prisma as your ORM and you want it integrated with Konekti's dependency injection and lifecycle hooks.
+- When you need a reliable way to share a transaction context across multiple services and repositories without passing a `tx` object everywhere.
+- When you want automatic `$connect` on startup and `$disconnect` on shutdown.
 
 ## Quick Start
 
-### 1. Register the module
+Register the `PrismaModule` in your root module by providing a `PrismaClient` instance.
 
 ```typescript
+import { Module } from '@konekti/core';
 import { PrismaModule } from '@konekti/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// In your root module definition:
-const AppModule = PrismaModule.forRoot({ client: prisma });
+@Module({
+  imports: [
+    PrismaModule.forRoot({ client: prisma }),
+  ],
+})
+class AppModule {}
 ```
 
-### 1-a. Register asynchronously when dependencies are needed
+## Common Patterns
+
+### PrismaService and current()
+
+The `PrismaService` is the primary way to interact with Prisma. Its `current()` method automatically returns the active transaction client if inside a transaction scope, or the root client otherwise.
 
 ```typescript
-import { PrismaModule } from '@konekti/prisma';
-
-const AppModule = PrismaModule.forRootAsync({
-  inject: [ConfigService],
-  useFactory: async (config: ConfigService) => ({
-    client: new PrismaClient({
-      datasourceUrl: config.get('DATABASE_URL'),
-    }),
-    strictTransactions: true,
-  }),
-});
-```
-
-### 2. Use `PrismaService` in a repository
-
-```typescript
-import { PrismaClient } from '@prisma/client';
-import { Inject } from '@konekti/core';
 import { PrismaService } from '@konekti/prisma';
+import { PrismaClient } from '@prisma/client';
 
 @Inject([PrismaService])
 export class UserRepository {
-  constructor(
-    private readonly prisma: PrismaService<PrismaClient>
-  ) {}
+  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
 
   async findById(id: string) {
-    // current() returns the active tx client if inside a transaction,
-    // otherwise returns the root PrismaClient
+    // current() preserves your generated Prisma types and autocomplete
     return this.prisma.current().user.findUnique({ where: { id } });
   }
 }
 ```
 
-`PrismaService<PrismaClient>` now infers the generated transaction client type directly from `PrismaClient['$transaction']`, so `current()` preserves real Prisma model autocomplete inside and outside transaction scopes without requiring a separate `PrismaTransactionClient` annotation.
+### Manual Transactions
 
-### 3. Wrap a service method in a transaction
+Use `prisma.transaction()` to create an interactive transaction block. Any calls to `current()` inside the block will use the transaction-scoped client.
 
 ```typescript
-import { PrismaClient } from '@prisma/client';
-import { PrismaService } from '@konekti/prisma';
-
-export class UserService {
-  constructor(private readonly prisma: PrismaService<PrismaClient>) {}
-
-  async createWithProfile(data: CreateUserDto) {
-    return this.prisma.transaction(async () => {
-      const user = await this.prisma.current().user.create({ data });
-      await this.prisma.current().profile.create({
-        data: { userId: user.id },
-      });
-      return user;
-    });
-  }
-}
+await this.prisma.transaction(async () => {
+  const user = await this.prisma.current().user.create({ data });
+  await this.prisma.current().profile.create({ data: { userId: user.id } });
+});
 ```
 
-### 4. Apply the interceptor for automatic request-level transactions
+### Automatic Request Transactions
+
+Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
 
 ```typescript
 import { UseInterceptors } from '@konekti/http';
 import { PrismaTransactionInterceptor } from '@konekti/prisma';
 
 @UseInterceptors(PrismaTransactionInterceptor)
-class UserController {}
+class UserController {
+  @Post()
+  async create() {
+    // All downstream repository calls via PrismaService.current() share this tx
+  }
+}
 ```
 
-## Key API
+## Public API Overview
+
+### `PrismaModule`
+
+- `static forRoot(options: PrismaModuleOptions): ModuleType`
+- `static forRootAsync(options: PrismaModuleAsyncOptions): ModuleType`
+  - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ### `PrismaService<TClient>`
 
-| Method | Signature | Description |
-|---|---|---|
-| `current()` | `() => TClient \| TTransactionClient` | Returns the active transaction client (from ALS), or the root client if no transaction is open |
-| `transaction()` | `(fn: () => Promise<T>, options?: TTransactionOptions) => Promise<T>` | Runs `fn` inside a Prisma interactive transaction (or reuses active context/direct fallback as needed), stores the tx client in ALS, and rejects nested option overrides in an already-active transaction context |
-| `requestTransaction()` | `(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions) => Promise<T>` | Request-boundary variant of `transaction()` with abort-aware execution; retries once without `signal` when a Prisma driver rejects abort-signal transaction options |
+- `current(): TClient`
+  - Returns the ambient transaction client or the root client.
+- `transaction(fn, options?): Promise<T>`
+  - Runs a function within an interactive transaction.
+- `requestTransaction(fn, signal?, options?): Promise<T>`
+  - Specialized transaction boundary for HTTP request lifecycles.
 
-### `PRISMA_CLIENT`
+### `PRISMA_CLIENT` (Token)
 
-DI token (`src/tokens.ts`) used to inject the raw `PrismaClient` instance when you need it directly.
+Injectable token for the raw `PrismaClient` instance.
 
-```typescript
-import { Inject } from '@konekti/core';
-import { PRISMA_CLIENT } from '@konekti/prisma';
+## Related Packages
 
-@Inject([PRISMA_CLIENT])
-class RawClientConsumer {
-  constructor(private readonly client: PrismaClient) {}
-}
-```
+- `@konekti/runtime`: Manages the application lifecycle hooks.
+- `@konekti/http`: Provides the interceptor system.
+- `@konekti/terminus`: Provides a health indicator for Prisma.
 
-### `createPrismaProviders(options)`
+## Example Sources
 
-Returns DI provider array. Use this when composing providers manually instead of using `PrismaModule.forRoot(...)`.
-
-```typescript
-import { createPrismaProviders } from '@konekti/prisma';
-
-const providers = createPrismaProviders({ client: prisma });
-```
-
-### `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
-
-Convenience wrappers that call `createPrismaProviders` (sync) or resolve the same options through an async factory (async) and wrap the result in a Konekti module definition.
-
-`PrismaModule.forRootAsync(...)` memoizes the async factory result once per module instance.
-
-`PrismaModuleOptions` supports `strictTransactions?: boolean`:
-
-- `false` (default): if `$transaction` is missing, `transaction()` / `requestTransaction()` fall back to direct execution.
-- `true`: missing `$transaction` throws immediately.
-
-Nested transaction option overrides are rejected while already inside an active transaction context.
-
-The public package also exports `PRISMA_OPTIONS`, `PrismaTransactionClient<TClient>`, `PrismaModuleOptions`, and `PrismaHandleProvider`.
-
-### `PrismaTransactionInterceptor`
-
-HTTP interceptor (`src/transaction.ts`) that wraps each request in `prismaService.requestTransaction()`. Every handler and repository called within the request shares the same Prisma transaction client automatically.
-
-### `PrismaClientLike`
-
-Seam interface that `PrismaService` is generic over. `$connect`, `$disconnect`, and `$transaction` are optional — allowing lightweight test seams and fallback behavior when lifecycle/transaction capabilities are absent.
-
-```typescript
-interface PrismaClientLike<TTransactionClient = unknown, TTransactionOptions = unknown> {
-  $connect?(): Promise<void>;
-  $disconnect?(): Promise<void>;
-  $transaction?<T>(fn: (tx: TTransactionClient) => Promise<T>, options?: TTransactionOptions): Promise<T>;
-}
-```
-
-`PrismaTransactionClient<TClient>` is a helper alias that extracts the transaction-scoped client type from a concrete Prisma client type when you need that type directly.
-
-### `createPrismaPlatformStatusSnapshot(input)`
-
-Status adapter (`src/status.ts`) that maps Prisma ownership, lifecycle readiness, health, and transaction diagnostics into the shared platform snapshot shape used by runtime/CLI/Studio surfaces.
-
-## Architecture
-
-```
-HTTP Request
-    │
-    ▼
-PrismaTransactionInterceptor
-    │  opens requestTransaction()
-    ▼
-AsyncLocalStorage (ALS)
-    │  stores tx client for request scope
-    ▼
-PrismaService.current()
-    │  reads ALS → returns tx client (or root client)
-    ▼
-Repository / Handler
-    │  calls prisma.current().model.operation()
-    ▼
-Prisma Client
-```
-
-**Lifecycle hooks:**
-- `OnModuleInit` → `$connect()` (if implemented)
-- `OnApplicationShutdown` → aborts in-flight request transactions, waits for settlement, then calls `$disconnect()` (if implemented)
-
-## Platform status snapshot semantics
-
-Use `createPrismaPlatformStatusSnapshot(...)` (or `prismaService.createPlatformStatusSnapshot()`) to produce ownership/readiness/health output aligned with the shared platform contract.
-
-- `ownership`: Prisma client ownership is externally supplied (`ownsResources: false`, `externallyManaged: true`).
-- `readiness`: distinguishes lifecycle readiness from transaction readiness; strict mode + missing `$transaction` is explicitly `not-ready`.
-- `health`: distinguishes shutdown drain (`degraded`) from fully stopped/disconnected (`unhealthy`).
-- `details`: includes ALS transaction context mode, strict/fallback transaction mode signals, and active request transaction count.
-
-## File Reading Order (for contributors)
-
-Start here to understand the full package in ~15 minutes:
-
-1. `src/tokens.ts` — single `PRISMA_CLIENT` token; understand how DI injection is keyed
-2. `src/types.ts` — `PrismaClientLike` seam; shows the minimum contract required
-3. `src/service.ts` — `PrismaService`: `current()`, `transaction()`, `requestTransaction()`, ALS usage
-4. `src/transaction.ts` — `PrismaTransactionInterceptor`: the request boundary that opens transactions
-5. `src/module.ts` — `createPrismaProviders()`, `PrismaModule.forRoot()`, and `PrismaModule.forRootAsync()`: how everything wires together
-6. `src/vertical-slice.test.ts` — integration test: DTO → validation → service → repository → Prisma path; the canonical 201 / 400 / 404 contract
-
-## Related packages
-
-| Package | Relationship |
-|---|---|
-| `@konekti/runtime` | Lifecycle hooks (`OnModuleInit`, `OnApplicationShutdown`) that `PrismaService` implements |
-| `@konekti/di` | DI container that resolves `PrismaService` and `PRISMA_CLIENT` |
-| `@konekti/http` | Interceptor system that `PrismaTransactionInterceptor` hooks into |
-| `@konekti/testing` | Use `overrideProvider(PRISMA_CLIENT, fakePrisma)` to inject a test double |
-| `@konekti/validation` package | Validates request DTOs before they reach the service layer in the vertical slice |
-
-## One-liner mental model
-
-> `@konekti/prisma` plugs Prisma into Konekti's lifecycle and ALS-based transaction model — `current()` always gives you the right client, whether you're inside a request transaction or not.
+- `packages/prisma/src/vertical-slice.test.ts`: Canonical DTO → Service → Repository → Prisma flow.

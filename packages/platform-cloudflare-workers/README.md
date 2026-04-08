@@ -2,14 +2,17 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Cloudflare Workers HTTP adapter for Konekti runtime applications, built on the shared `@konekti/runtime/web` fetch-style adapter seam.
+Cloudflare Workers HTTP adapter for the Konekti runtime, optimized for the edge.
 
-## See also
+## Table of Contents
 
-- `../runtime/README.md`
-- `../../docs/concepts/http-runtime.md`
-- `../../docs/concepts/lifecycle-and-shutdown.md`
-- `../../docs/reference/package-surface.md`
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
@@ -17,88 +20,79 @@ Cloudflare Workers HTTP adapter for Konekti runtime applications, built on the s
 npm install @konekti/platform-cloudflare-workers
 ```
 
+## When to Use
+
+Use this package when deploying Konekti applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
+
 ## Quick Start
 
-### Canonical adapter-first bootstrap
+### Standard Adapter Usage
+Bootstrap your application and export a standard Cloudflare Worker `fetch` handler.
 
 ```typescript
 import { KonektiFactory } from '@konekti/runtime';
 import { createCloudflareWorkerAdapter } from '@konekti/platform-cloudflare-workers';
+import { AppModule } from './app.module';
 
-const adapter = createCloudflareWorkerAdapter({ rawBody: true });
-const app = await KonektiFactory.create(AppModule, {
-  adapter,
-});
+const adapter = createCloudflareWorkerAdapter();
+const app = await KonektiFactory.create(AppModule, { adapter });
 
 await app.listen();
 
 export default {
-  fetch(request: Request, env: unknown, ctx: ExecutionContext) {
-    return adapter.fetch(request, env, ctx);
-  },
+  fetch: (req, env, ctx) => adapter.fetch(req, env, ctx),
 };
 ```
 
-### Lazy Worker entrypoint
+### Lazy Entrypoint (Zero-Config)
+Use the entrypoint helper for an even simpler setup that bootstraps on the first request.
 
 ```typescript
 import { createCloudflareWorkerEntrypoint } from '@konekti/platform-cloudflare-workers';
+import { AppModule } from './app.module';
 
-const worker = createCloudflareWorkerEntrypoint(AppModule, {
-  rawBody: true,
-});
+const worker = createCloudflareWorkerEntrypoint(AppModule);
 
 export default {
   fetch: worker.fetch,
 };
 ```
 
-## API
+## Common Patterns
 
-- `createCloudflareWorkerAdapter(options)` - creates a Cloudflare Workers `HttpApplicationAdapter` with an adapter-owned `fetch()` entrypoint.
-- `bootstrapCloudflareWorkerApplication(rootModule, options)` - bootstraps a ready-to-serve Worker application and returns `{ app, adapter, fetch, close }`.
-- `createCloudflareWorkerEntrypoint(rootModule, options)` - lazily bootstraps the application on first request and reuses the same runtime instance for subsequent fetches in the same Worker isolate.
+### Working with WebSocketPairs
+The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@konekti/websockets/cloudflare-workers` binding.
 
-### Supported options
+```typescript
+@WebSocketGateway({ path: '/ws' })
+export class MyGateway {}
+```
 
-Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime options from `@konekti/runtime/internal/http-adapter` plus the shared Web bridge options:
+### Edge-Native Middleware
+Standard Konekti middleware (CORS, Global Prefix, etc.) is fully supported and optimized for the Cloudflare environment.
 
-- `cors` (`false | string | string[] | CorsOptions`)
-- `globalPrefix`
-- `globalPrefixExclude`
-- `middleware`
-- `securityHeaders`
-- `rawBody`
-- `multipart`
-- `maxBodySize`
+```typescript
+const adapter = createCloudflareWorkerAdapter({
+  globalPrefix: 'api/v1',
+  cors: true,
+});
+```
 
-## supported operations
+## Public API Overview
 
-- Reuses `dispatchWebRequest(...)` from the shared `@konekti/runtime/web` fetch-style adapter seam instead of forking Request/Response translation logic.
-- Bridges native Worker `Request` objects into Konekti `FrameworkRequest` / `FrameworkResponse` contracts.
-- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Worker-native isolate-local request-upgrade hosting through `WebSocketPair`.
-- Preserves `rawBody` opt-in behavior for non-multipart requests.
-- Supports multipart parsing and `request.files` exposure through the shared Web core.
-- Supports SSE and other streamed responses through the shared Web `FrameworkResponse.stream` implementation.
-- Applies shared runtime HTTP middleware (`cors`, `globalPrefix`, `securityHeaders`) during Worker bootstrap helpers.
+- `createCloudflareWorkerAdapter(options)`: Factory for the Worker HTTP adapter.
+- `createCloudflareWorkerEntrypoint(module, options)`: Creates a lazy-bootstrapping Worker entrypoint.
+- `bootstrapCloudflareWorkerApplication(module, options)`: Synchronous bootstrap helper.
+- `CloudflareWorkerHttpAdapter`: The core adapter implementation.
 
-## runtime invariants
+## Related Packages
 
-- Response serialization, error envelopes, malformed-cookie handling, multipart parsing, and SSE framing follow the shared `@konekti/runtime/web` contract.
-- `fetch()` never opens a socket or owns a process listener; it only dispatches the incoming Worker request through the already-bootstrapped runtime dispatcher.
-- `app.listen()` in Worker setups binds the dispatcher to the adapter and marks the application ready, but it does not create a network listener.
-- `close()` clears the bound dispatcher and runs normal runtime shutdown hooks when you call it manually (typically in tests or custom isolate teardown paths).
+- `@konekti/runtime`: Core framework runtime.
+- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/cloudflare-workers`.
+- `@konekti/http`: Shared HTTP decorators.
 
-## lifecycle guarantees
+## Example Sources
 
-- `createCloudflareWorkerAdapter().listen(dispatcher)` is deterministic and idempotently replaces the current dispatcher binding.
-- `createCloudflareWorkerEntrypoint()` caches the bootstrapped application per Worker isolate and reuses it across requests until `close()` is called.
-- `bootstrapCloudflareWorkerApplication()` returns an already-listening Worker application so the exported `fetch()` handler can serve requests immediately.
+- `packages/platform-cloudflare-workers/src/adapter.test.ts`
+- `packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts`
 
-## intentional limitations
-
-- This package does not emulate Node listener lifecycle, startup logs, or shutdown-signal wiring. Cloudflare Workers has no process-owned `listen()`/`SIGTERM` contract to mirror.
-- Worker `env` and `ExecutionContext` values are accepted at the `fetch()` boundary but are not injected into Konekti `RequestContext` automatically.
-- No Node-only options such as `port`, `host`, `https`, `shutdownSignals`, or `forceExitTimeoutMs` are supported.
-- This package does not add Bun- or Deno-specific behavior; it stays focused on Cloudflare Workers over the shared Web core.
-- Raw websocket hosting for Cloudflare Workers is provided through the dedicated `@konekti/websockets/cloudflare-workers` binding. The supported scope is intentionally isolate-local and stateless: in-memory room membership is limited to the active Worker instance, while Durable Objects and cross-isolate coordination remain out of scope.

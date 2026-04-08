@@ -1,74 +1,70 @@
-# openapi
+# OpenAPI Documentation
 
 <p><strong><kbd>English</kbd></strong> <a href="./openapi.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the OpenAPI generation model used in `@konekti/openapi`, `@konekti/http`, and the input validation metadata system.
+Documentation should never be an afterthought. Konekti provides automated **OpenAPI 3.1.0** document generation by aggregating metadata from your HTTP routes, validation rules, and security configurations—keeping your API spec and implementation in perfect sync.
 
-### related documentation
+## Why OpenAPI in Konekti?
 
-- `./http-runtime.md`
-- `../../packages/openapi/README.md`
-- `../../packages/http/README.md`
+- **Zero-Manual Sync**: Your code *is* the documentation. Changes to routes or DTOs are automatically reflected in the generated specification.
+- **Interactive UI**: Built-in support for **Swagger UI** allows developers to test endpoints directly from the browser.
+- **Machine Readable**: Generate client libraries, run contract tests, or integrate with API gateways using the standard `openapi.json` output.
+- **DTO Integration**: Automatically translates `@konekti/validation` decorators into rich JSON Schema components.
 
-## registration and serving
+## Responsibility Split
 
-Use `OpenApiModule.forRoot(...)` to enable OpenAPI support. By default, it provides:
+- **`@konekti/openapi` (The Generator)**: The core engine that orchestrates metadata collection and produces the final specification. It also provides the optional Swagger UI middleware.
+- **`@konekti/http` (The Source)**: Supplies route-level metadata such as paths, methods, HTTP status codes, and URI versioning info.
+- **`@konekti/validation` (The Schema)**: Translates class-based DTOs and validation rules (e.g., `@IsEmail()`, `@Min(1)`) into OpenAPI schema components.
 
-- **JSON Document**: `GET /openapi.json`
-- **Swagger UI** (optional): `GET /docs`
+## Typical Workflow
 
-The OpenAPI document is constructed during application startup from handler descriptors. `OpenApiModule.forRoot(...)` accepts prebuilt descriptors, the `HandlerSource[]` model used by `createHandlerMapping()`, or both together for composed input.
+### 1. Zero-Config Discovery
+By simply importing `OpenApiModule.forRoot()`, Konekti begins scanning your controllers. Most basic information (paths, methods) is captured automatically.
 
-In Konekti terminology, **OpenAPI** is the canonical contract artifact and package identity. **Swagger UI** is only the optional viewer mounted at `/docs`.
+### 2. Enhancing with Decorators
+Use dedicated documentation decorators to add human-readable context without polluting your business logic.
 
-## documentation decorators
-
-Konekti provides several decorators specifically for OpenAPI metadata:
-
-- `@ApiTag(tag)`: Groups operations.
-- `@ApiOperation({ summary, description, deprecated })`: Describes an endpoint's purpose and deprecation state.
-- `@ApiResponse(status, { description, schema, type })`: Documents possible response codes and structures.
-- `@ApiBearerAuth()`: Declares Bearer authentication for an operation.
-- `@ApiSecurity(name, scopes?)`: Declares generic OpenAPI security requirements (for example API key/OAuth2/OpenID Connect scheme names).
-- `@ApiExcludeEndpoint()`: Omits a handler from the generated `paths` map.
-
-These decorators only affect documentation and do not change runtime behavior.
-
-## schema extraction from route and validation metadata
-
-The OpenAPI generator extracts schema information from route metadata and input validation metadata:
-
-- **Metadata Reading**: Request binding and input validation metadata are accessed via normalized helper APIs.
-- **Component Schemas**: Validator metadata (e.g., `@IsString()`) is used to populate `components.schemas`.
-- **Request Bodies**: Linked via `requestBody`.
-- **Parameters**: Bound input fields are mapped into parameter definitions.
-- **Responses**: Response models can be documented using `@ApiResponse(..., { type: ... })`.
-- **Explicit composition schemas**: Explicit decorator schemas can use composition keywords such as `allOf`, `oneOf`, `anyOf`, `not`, and `discriminator`.
-- **Nesting**: Nested models and arrays are represented as schema references.
-- **Extra models**: `extraModels` option can register schema components that are not discovered from request/response metadata.
-
-## generation process
-
-- **Route Metadata**: Extracted from handler descriptors.
-- **Versioning**: Versioning defined via `@Version(...)` is reflected in URI paths (e.g., `/v1/users`).
-- **Composition**: Tags, operations, responses, schema metadata, and explicit OpenAPI composition keywords are combined into a single OpenAPI 3.1 document.
-- **Lifecycle**: The document is generated once at startup and served statically.
-
-## architectural boundaries
-
-- **`@konekti/openapi`**: Handles schema generation and the serving layer.
-- **`@konekti/http`**: Manages the writing of route and request metadata.
-- **`@konekti/validation`**: Supplies input validation metadata that OpenAPI can read as schema hints.
-- **Output shaping**: Runtime response serialization is separate from documentation generation.
-- **Decoupling**: `@konekti/openapi` interacts only with normalized metadata and does not access internal package storage.
-- **Auth Schemes**: Authentication schemes are declared at the application level using OpenAPI decorators.
-- **Security scheme breadth**: OpenAPI security schemes can be registered in module/document options (`securitySchemes`) for API key, HTTP, OAuth2, and OpenID Connect.
-- **Document post-processing**: `documentTransform` can post-process the generated document once at build time after document generation; when absent, it is a no-op.
-
-## conceptual flow
-
-```text
-@konekti/http writes route and binding metadata
-@konekti/validation writes input validation metadata
-@konekti/openapi reads both plus explicit response schema declarations to assemble the documentation
+```typescript
+@ApiTag('Users')
+@Controller('/users')
+class UsersController {
+  @ApiOperation({ summary: 'Create a new user profile' })
+  @ApiResponse(201, { description: 'User successfully created' })
+  @Post('/')
+  create(@FromBody() dto: CreateUserDto) {
+    // ...
+  }
+}
 ```
+
+### 3. Automatic Schema Generation
+Your DTOs become OpenAPI "Components" automatically.
+
+```typescript
+export class CreateUserDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  name: string;
+}
+```
+
+### 4. Serving the Documentation
+The generated document is exposed at runtime:
+- **JSON Spec**: `GET /openapi.json`
+- **Swagger UI**: `GET /docs` (optional)
+
+## Core Boundaries
+
+- **Startup-Only Overhead**: Document generation happens once during the application bootstrap. It has zero impact on request-time performance.
+- **Standard Decorators**: Like the rest of Konekti, the OpenAPI system uses TC39 standard decorators, avoiding legacy compiler flags.
+- **Security-First**: Documenting auth requirements (JWT, API Keys) is handled via explicit `@ApiBearerAuth()` decorators to ensure your security posture is clearly communicated.
+
+## Next Steps
+
+- **Configuration**: See all available options in the [OpenAPI Package README](../../packages/openapi/README.md).
+- **Validation**: Learn how DTOs work in the [Validation Package](../../packages/validation/README.md).
+- **Live Example**: Check out the [Examples Directory](../../examples/README.md).

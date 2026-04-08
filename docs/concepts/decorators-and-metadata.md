@@ -2,60 +2,51 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./decorators-and-metadata.ko.md"><kbd>한국어</kbd></a></p>
 
-This guide outlines the decorator and metadata model used in `@konekti/core`, `@konekti/http`, `@konekti/validation`, and `@konekti/serialization`.
+Konekti is built from the ground up on **TC39 Standard Decorators**. We have completely abandoned the legacy `experimentalDecorators` and `emitDecoratorMetadata` model in favor of a clean, performant, and standard-aligned metadata system.
 
-### related documentation
+## why this matters
 
-- `./http-runtime.md`
-- `./di-and-modules.md`
-- `../../packages/core/README.md`
+For years, the TypeScript ecosystem relied on a "proposal" version of decorators that never became standard. This legacy system required the compiler to "guess" types and emit them as hidden metadata (`reflect-metadata`), leading to:
+- **Hidden performance costs**: Large amounts of metadata emitted for every class, even if unused.
+- **Fragile type-guessing**: Circular dependencies often broke the "metadata emit," leading to runtime `undefined` errors.
+- **Lock-in**: Your code became dependent on specific TypeScript compiler flags, making it harder to run on tools like `esbuild`, `swc`, or native engines without complex plugins.
 
-## decorator implementation
+Konekti's move to **Standard Decorators** ensures your backend is portable, explicit, and ready for the future of JavaScript.
 
-Konekti uses a decorator-first approach based exclusively on TC39 standard decorators.
+## core ideas
 
-### core decorator families
+### standard decorators (TC39)
+Every decorator in Konekti—`@Module`, `@Controller`, `@Inject`—is a standard JavaScript decorator. They are functions that receive a well-defined context and return a modified version of the element they decorate.
+- **No Reflect Metadata**: We do not use `reflect-metadata`. Metadata is stored in a structured, framework-owned registry.
+- **Native Speed**: Because we don't rely on heavy reflection libraries, application startup and dependency resolution are significantly faster.
 
-- **Module and DI**: `@Module()`, `@Inject()`, `@Scope()`, `@Global()`
-- **HTTP Routing**: `@Controller()`, `@Get()`, `@Post()`, `@UseGuards()`, `@UseInterceptors()`
-- **Input Binding**: `@FromBody()`, `@FromPath()`, `@FromQuery()`, `@FromHeader()`, `@FromCookie()`
-- **Validation**: Input materialization and validation decorators provided by the `@konekti/validation` package
-- **Serialization**: Output shaping and response serialization decorators provided by the `@konekti/serialization` package
+### explicit over implicit
+Legacy frameworks often "guessed" your dependencies by looking at constructor types. In Konekti, we value **explicitness**.
+- You use `@Inject([UsersService])` to clearly state your dependencies.
+- This makes your code searchable, auditable, and eliminates the "magic" that leads to difficult-to-debug DI issues.
 
-## input and output strategy
+### framework-owned registry
+Decorators in Konekti serve as "declarations" that populate a central **Framework Registry**. This registry acts as the source of truth for:
+1. **The Dependency Graph**: Which classes depend on which tokens.
+2. **Routing Tables**: Which methods handle which HTTP paths.
+3. **Validation Schemas**: How incoming JSON should be parsed and checked.
 
-- Input materialization (binding) is an explicit opt-in.
-- Method-level route metadata and input field decorators are used instead of parameter-based injection magic.
-- Validation is driven by framework-owned decorator metadata on the input-side.
-- Serialization is handled as a separate output-side concern to shape response data.
-- Nested validation and serialization are first-class features.
+## decorator families
 
-### current constraints
+- **Structural (`@Module`)**: Defines the boundaries of a feature and its exported providers.
+- **Component (`@Controller`, `@Service`)**: Marks a class as a participant in the framework's lifecycle.
+- **Dependency (`@Inject`, `@Optional`)**: Explicitly declares the contract between a class and its dependencies.
+- **Behavioral (`@Get`, `@Post`, `@UseMiddleware`)**: Attaches runtime logic to specific methods or classes.
 
-- The decorator-driven model is the primary supported contract.
-- Direct schema-object validation or serialization is not a priority at this time.
-- Validation and serialization adapter contracts will not be expanded into a general extension API for now.
+## boundaries
 
-## boundary security
+- **No Magic Discovery**: Konekti does not "scan" your filesystem. Metadata is registered only when a class is imported and its decorators are executed.
+- **Immutable at Runtime**: Once the application is bootstrapped, the framework registry is typically locked. You cannot dynamically add decorators to a running class.
+- **Type Safety First**: While decorators add metadata, they do not change the type signature of your classes. Your IDE and compiler still see the original, clean TypeScript class.
 
-- Input models, output models, and persistence models remain separate.
-- Each input field maps to a single request source.
-- Body materialization uses a strict allowlist.
-- Sensitive or dangerous keys (e.g., `__proto__`, `constructor`, `prototype`) are blocked during input processing.
-- Output serialization ensures only intended fields are sent to the client.
+## related docs
 
-## metadata management
-
-- Low-level metadata read/write operations are handled by internal helper APIs.
-- The runtime and other packages must access normalized metadata through these helpers.
-- Custom decorators should not rely on the internal storage format.
-- Third-party extensions to the metadata system are not currently part of the public API.
-- Use `ensureMetadataSymbol()` and other exported helpers to ensure compatibility when `Symbol.metadata` is required.
-
-## conceptual model
-
-```text
-decorators write framework-owned metadata
-runtime packages read normalized metadata
-internal storage remains private
-```
+- [Architecture Overview](./architecture-overview.md)
+- [DI and Modules](./di-and-modules.md)
+- [HTTP Runtime](./http-runtime.md)
+- [Core README](../../packages/core/README.md)

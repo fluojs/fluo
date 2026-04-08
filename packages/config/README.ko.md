@@ -2,32 +2,17 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Konekti 애플리케이션을 위한 설정 로드, 병합, 검증, 타입 안전한 런타임 접근을 제공하는 패키지입니다.
 
-여러 설정 소스를 읽고, 병합하고, 검증해 타입이 있는 런타임 계약으로 만듭니다. 단순한 `.env` 리더가 아닙니다.
+## 목차
 
-## 관련 문서
-
-- `../../docs/concepts/config-and-environments.ko.md`
-- `../../docs/concepts/lifecycle-and-shutdown.ko.md`
-
-## 이 패키지가 하는 일
-
-`@konekti/config`는 부트스트랩 시점에 여러 설정 소스를 하나의 검증된 딕셔너리로 정규화하고, 앱의 나머지 부분이 사용하는 타입 accessor(`ConfigService`)로 감쌉니다.
-
-소스 목록 (낮은 우선순위 → 높은 우선순위):
-
-1. `defaults` (인라인 객체)
-2. env 파일 (`envFile` 옵션으로 지정, 기본값 `.env`)
-3. 호출자가 명시적으로 전달한 `processEnv`
-4. `runtimeOverrides` (인라인 객체)
-
-병합 후 validation이 실행됩니다. validation에 실패하면 앱이 시작을 거부합니다.
-
-병합 규칙:
-
-- 일반 객체 값은 키 기준으로 **deep merge** 됩니다.
-- 일반 객체가 아닌 값(배열 포함)은 우선순위가 높은 소스가 이전 값을 치환합니다.
-- 중첩 객체의 일부 키만 override해도 하위 트리가 조용히 유실되지 않습니다.
+- [설치](#설치)
+- [사용 시점](#사용-시점)
+- [빠른 시작](#빠른-시작)
+- [주요 기능](#주요-기능)
+- [공개 API 개요](#공개-api-개요)
+- [관련 패키지](#관련-패키지)
+- [예제 소스](#예제-소스)
 
 ## 설치
 
@@ -35,123 +20,75 @@
 npm install @konekti/config
 ```
 
+## 사용 시점
+
+- `.env`와 환경 변수, 런타임 오버라이드를 하나의 설정 스냅샷으로 합쳐야 할 때
+- 여러 소스의 우선순위를 명확하게 유지한 채 설정을 병합해야 할 때
+- 애플리케이션 시작 전에 설정을 검증해서 잘못된 상태로 부팅되는 일을 막고 싶을 때
+- `ConfigService`를 통해 설정 값을 타입 안전하게 읽고 싶을 때
+
 ## 빠른 시작
 
-```typescript
-import { loadConfig, ConfigService } from '@konekti/config';
+```ts
+import { ConfigModule } from '@konekti/config';
+import { Module } from '@konekti/core';
 
-const config = loadConfig({
-  envFile: '.env',
-  processEnv: process.env,
-  defaults: { PORT: '3000' },
-  validate: (raw) => {
-    if (!raw.DATABASE_URL) throw new Error('DATABASE_URL is required');
-    return raw as { PORT: string; DATABASE_URL: string };
-  },
-});
-
-const service = new ConfigService(config);
-service.get('DATABASE_URL');          // string | undefined 반환
-service.getOrThrow('DATABASE_URL');   // 없으면 throw
-service.snapshot();                   // 현재 값 deep clone 스냅샷 반환
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      defaults: { PORT: '3000' },
+      validate: (config) => {
+        if (!config.DATABASE_URL) throw new Error('DATABASE_URL이 필요합니다');
+        return config;
+      },
+    }),
+  ],
+})
+class AppModule {}
 ```
 
-실제로는 루트 모듈에서 `@konekti/config`의 `ConfigModule.forRoot()`를 사용하고, 앱 경계에서 시스템 env가 필요하면 `processEnv`로 명시적으로 전달한 뒤 결과 `ConfigService`를 provider로 등록합니다.
+등록 후에는 `ConfigService`를 주입해서 값을 읽습니다.
 
-## 0.x 마이그레이션 노트
+```ts
+import { ConfigService } from '@konekti/config';
 
-- `ConfigService#getOptional()`은 제거되었습니다. 선택적 조회는 `get()`, 필수 조회는 `getOrThrow()`를 사용하세요.
-- `ConfigService`는 더 이상 공개 스냅샷 변경 메서드를 노출하지 않습니다. 런타임 리로드는 `ConfigReloadModule` / `ConfigReloadManager`가 내부적으로 처리합니다.
-- `ConfigMode`는 더 이상 지원되는 패키지 surface가 아닙니다. 대신 `envFile` / `envFilePath`를 사용하세요.
-
-## 핵심 API
-
-### `loadConfig(options)`
-
-| 옵션 | 타입 | 설명 |
-|---|---|---|
-| `envFile` | `string` | 로드할 env 파일 경로 (기본값 `.env`) |
-| `envFilePath` | `string` | `envFile`의 별칭 |
-| `defaults` | `ConfigDictionary` | 가장 낮은 우선순위 값 |
-| `cwd` | `string` | env 파일을 해석할 작업 디렉터리 지정 |
-| `processEnv` | `NodeJS.ProcessEnv` | 호출자가 명시적으로 전달하는 프로세스 환경 소스 |
-| `runtimeOverrides` | `ConfigDictionary` | 가장 높은 우선순위 값 |
-| `validate` | `(raw) => T` | 유효하지 않으면 throw, 타입 딕셔너리 반환 |
-| `watch` | `boolean` | `createConfigReloader(options)`에서 env 파일 watch 리로드를 활성화할 때 사용 |
-| `isGlobal` | `boolean` | `ConfigModule.forRoot()`의 글로벌 등록 여부 (기본값 `true`) |
-
-### `createConfigReloader(options)`
-
-```typescript
-type ConfigReloadReason = 'manual' | 'watch';
-
-type ConfigReloader = {
-  current(): ConfigDictionary;
-  reload(): ConfigDictionary;
-  subscribe(listener: (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void): { unsubscribe(): void };
-  subscribeError(listener: (error: unknown, reason: ConfigReloadReason) => void): { unsubscribe(): void };
-  close(): void;
-};
-```
-
-리로드 알림과 에러는 `subscribe(...)`, `subscribeError(...)`를 통해 명시적으로 전달됩니다. 전역 process 이벤트 사이드이펙트는 사용하지 않습니다.
-
-### `ConfigService`
-
-```typescript
-class ConfigService {
-  get<T>(key: string): T | undefined
-  getOrThrow<T>(key: string): T       // 없으면 throw
-  snapshot(): ConfigDictionary        // 현재 정규화된 값을 deep clone으로 반환
+class MyService {
+  constructor(private readonly config: ConfigService) {
+    const port = this.config.get('PORT');
+    const dbUrl = this.config.getOrThrow('DATABASE_URL');
+  }
 }
 ```
 
-### `ConfigReloadModule`
+## 주요 기능
 
-`ConfigReloadModule.forRoot()`는 reloader 토큰과 구체 클래스 `ConfigReloadManager`를 함께 export합니다. 클래스 기반 DI를 선호하면 `ConfigReloadManager`를, 명시적 토큰이 필요하면 `CONFIG_RELOADER`를 주입하세요.
+### 명확한 소스 우선순위
 
-### 타입
+설정은 `runtimeOverrides` → `process.env` → env 파일 → `defaults` 순서로 병합됩니다.
 
-- `ConfigDictionary`
-- `ConfigModuleOptions`
-- `ConfigLoadOptions`
+### 객체 단위 딥 머지
 
-## 구조
+일반 객체는 키 기준으로 깊게 병합되고, 배열과 원시값은 더 높은 우선순위 소스가 전체를 덮어씁니다.
 
-```
-bootstrapApplication(options)
-  → loadConfig(options)
-      → defaults + env 파일 + 명시적 processEnv + runtimeOverrides 읽기
-      → 우선순위 순서로 병합
-      → validate(merged)
-      → ConfigDictionary
-  → new ConfigService(values)
-  → bootstrap-level provider로 등록
+### 부트스트랩 전 검증
 
-createConfigReloader(options)
-  → 스냅샷 로드 + 검증
-  → subscribe(listener) / subscribeError(listener)
-  → reload()로 수동 리로드
-  → `watch: true`면 env 파일 감시
-  → close()로 감시 중단 + 구독 정리
-```
+`validate` 함수는 모든 소스가 합쳐진 뒤 실행되며, 에러를 던지면 부트스트랩이 즉시 중단됩니다.
 
-`ConfigService`는 부트스트랩 이후 의도적으로 읽기 전용입니다. 동적 리로드가 필요하면 `ConfigService` 공개 변경 메서드가 아니라 `createConfigReloader()` / `ConfigReloadModule`을 명시적으로 사용합니다.
+## 공개 API 개요
 
-## 파일 읽기 순서 (기여자용)
-
-1. `src/types.ts` — options, load 계약
-2. `src/load.ts` — 병합 + 검증 엔트리포인트
-3. `src/service.ts` — 타입 accessor
-4. `src/load.test.ts` — 병합/오버라이드/검증 baseline 테스트
+- `ConfigModule`
+- `ConfigService`
+- `loadConfig(options)`
+- `createConfigReloader(options)`
 
 ## 관련 패키지
 
-- **`@konekti/runtime`** — `loadConfig()`를 호출하고 `ConfigService`를 provider로 등록
-- **`@konekti/cli`** — 생성된 앱의 `.env` 파일 배치 방식
+- `@konekti/runtime`: 부트스트랩 중 `loadConfig()`를 호출합니다.
+- `@konekti/validation`: `validate` 함수 안에서 스키마 기반 검증을 조합할 수 있습니다.
 
-## 한 줄 mental model
+## 예제 소스
 
-```
-@konekti/config = 설정을 읽는 패키지가 아니라, 설정을 validated runtime contract로 바꾸는 패키지
-```
+- `packages/config/src/load.ts`
+- `packages/config/src/service.ts`
+- `packages/config/src/load.test.ts`

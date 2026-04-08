@@ -2,41 +2,47 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on top of runtime health/readiness endpoints and adds dependency-aware checks for `/health`.
+Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on top of runtime health/readiness endpoints to provide dependency-aware status reporting.
 
-## What this package does
+## Table of Contents
 
-- preserves runtime-owned `/health` + `/ready` wiring through `createHealthModule()`
-- adds composable health indicator contracts (`HealthIndicator`, `HealthIndicatorResult`)
-- aggregates indicator outcomes into a structured report (`status`, `info`, `error`, `details`)
-- sets `/health` to HTTP `503` when any indicator fails
-- registers indicator-backed readiness checks so `/ready` returns `503` on dependency failures
-- aligns `/health` and `/ready` with runtime-owned platform shell readiness/health semantics
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+- [Common Patterns](#common-patterns)
+  - [Built-in Indicators](#built-in-indicators)
+  - [DI-Backed Indicators](#di-backed-indicators)
+  - [Failure Semantics](#failure-semantics)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
 
 ## Installation
 
 ```bash
-npm install @konekti/terminus
+pnpm add @konekti/terminus
 ```
 
-Optional peer integrations (`@konekti/prisma`, `@konekti/drizzle`, `@konekti/redis`) are not imported at module load time. You can use the package safely even when those peers are not installed.
+## When to Use
 
-## Quick start
+- When you need to monitor external dependencies (databases, Redis, APIs) as part of your application's health status.
+- When you want a structured JSON health report that aligns with standard monitoring patterns.
+- When you need your `/ready` check to fail if critical downstream services are unreachable.
+
+## Quick Start
+
+Import `TerminusModule.forRoot()` to register health indicators.
 
 ```typescript
 import { Module } from '@konekti/core';
-import {
-  HttpHealthIndicator,
-  MemoryHealthIndicator,
-  TerminusModule,
-} from '@konekti/terminus';
+import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@konekti/terminus';
 
 @Module({
   imports: [
-     TerminusModule.forRoot({
-       indicators: [
-         new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-         new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    TerminusModule.forRoot({
+      indicators: [
+        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -44,78 +50,62 @@ import {
 class AppModule {}
 ```
 
-## Built-in indicators
+## Common Patterns
 
-- `PrismaHealthIndicator`
-- `DrizzleHealthIndicator`
+### Built-in Indicators
+
+The package provides several indicators out of the box:
+
+- `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator`
 - `HttpHealthIndicator`
 - `MemoryHealthIndicator`
 - `DiskHealthIndicator`
 
-Convenience factories (`createPrismaHealthIndicator()`, etc.) are also exported and return class instances.
-Peer-backed integrations also expose DI registration helpers such as `createPrismaHealthIndicatorProvider()`, `createDrizzleHealthIndicatorProvider()`, and `createRedisHealthIndicatorProvider()` so the indicator instances can be created from the corresponding Konekti client tokens without importing optional peers at module load time.
+### DI-Backed Indicators
 
-When you want DI-backed indicators to participate in `/health` and `/ready`, pass them through `indicatorProviders`:
+To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the provider factories.
 
 ```typescript
-import { REDIS_CLIENT } from '@konekti/redis';
 import { createRedisHealthIndicatorProvider, TerminusModule } from '@konekti/terminus';
 
 TerminusModule.forRoot({
-  indicatorProviders: [createRedisHealthIndicatorProvider({ key: 'redis' })],
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' })
+  ],
 });
 ```
 
-For Drizzle specifically, the default path uses an **execute-capable handle** (`database.execute(...)`) with `select 1`. If your Drizzle setup does not expose a universal execute seam, pass an explicit `ping` callback.
+### Failure Semantics
 
-The public DI seams for extension are `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`, and `TerminusHealthService`. The module-options token wiring is internal and intentionally not part of the public contract.
+When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
 
-## Migration notes (0.x)
+- `/health` returns HTTP `503` if any indicator fails.
+- `/ready` returns HTTP `503` if any indicator associated with readiness fails.
+- The response body contains a structured JSON object with `status`, `info`, `error`, and `details`.
 
-- `TERMINUS_OPTIONS` was removed from the public package surface in `0.x` and is now internal wiring.
-- If you previously imported or injected `TERMINUS_OPTIONS` from `@konekti/terminus`, migrate to the supported extension seams instead: `TERMINUS_HEALTH_INDICATORS`, indicator provider contracts (`indicatorProviders`, `create*HealthIndicatorProvider()`), and `TerminusHealthService`.
+## Public API Overview
 
-## Key API
+### `TerminusModule`
 
-- `TerminusModule.forRoot(options)`
-- `createTerminusProviders(options)`
-- `runHealthCheck(indicators)`
-- `assertHealthCheck(report)`
-- `TerminusHealthService`
-- `HealthCheckError`
+- `static forRoot(options: TerminusModuleOptions): ModuleType`
+  - Main entry point for registering indicators and providers.
 
-## Failure semantics
+### `TerminusHealthService`
 
-- `indicator.check(key)` returns `{ [key]: { status: 'up', ...details } }` on success.
-- `indicator.check(key)` throws `HealthCheckError` on failure with `causes` shaped as `{ [key]: { status: 'down', ...details } }`.
-- `runHealthCheck(indicators)` catches those failures, preserves their structured causes, and aggregates them into the `/health` report.
-- `contributors` in the health report declares which indicator keys currently contribute `up` and `down` states.
-- `/health` includes `platform.readiness` and `platform.health` from the runtime `PLATFORM_SHELL` so the endpoint does not diverge from inspect/snapshot semantics.
+- `runHealthCheck(indicators: HealthIndicator[]): Promise<HealthCheckReport>`
+  - Manually trigger a health check aggregation.
 
-## Health report shape
+### `HealthCheckError`
 
-```json
-{
-  "status": "error",
-  "checkedAt": "2026-03-24T00:00:00.000Z",
-  "contributors": {
-    "up": ["memory"],
-    "down": ["redis"]
-  },
-  "info": {
-    "memory": { "status": "up", "rss": 123456 }
-  },
-  "error": {
-    "redis": { "status": "down", "message": "ECONNREFUSED" }
-  },
-  "details": {
-    "memory": { "status": "up", "rss": 123456 },
-    "redis": { "status": "down", "message": "ECONNREFUSED" }
-  },
-  "platform": {
-    "readiness": { "status": "ready", "critical": false },
-    "health": { "status": "healthy" }
-  }
-}
-```
+- Throw this error within custom indicators to signal a "down" state.
+
+## Related Packages
+
+- `@konekti/metrics`: Often used together for observability.
+- `@konekti/prisma` / `@konekti/drizzle` / `@konekti/redis`: Peer dependencies for specific indicators.
+
+## Example Sources
+
+- `examples/ops-metrics-terminus/src/app.ts`: End-to-end integration of health and metrics.
+- `packages/terminus/src/health-check.test.ts`: Demonstrates aggregation and assertion flow.

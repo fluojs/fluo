@@ -4,6 +4,20 @@
 
 General-purpose cache manager for Konekti with pluggable memory and Redis stores. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [When to Use](#when-to-use)
+- [Quick Start](#quick-start)
+  - [HTTP Response Caching](#http-response-caching)
+  - [Application-Level Caching](#application-level-caching)
+- [Common Patterns](#common-patterns)
+  - [Redis Storage](#redis-storage)
+  - [Query-Sensitive Caching](#query-sensitive-caching)
+- [Public API Overview](#public-api-overview)
+- [Related Packages](#related-packages)
+- [Example Sources](#example-sources)
+
 ## Installation
 
 ```bash
@@ -16,27 +30,31 @@ For Redis-backed caching:
 npm install @konekti/cache-manager @konekti/redis ioredis
 ```
 
-## Quick Start — HTTP Response Caching
+## When to Use
 
-```ts
+- When you want to cache expensive database queries or external API responses.
+- When you need to improve HTTP performance by caching GET responses.
+- When you need to share cache state across multiple instances (using Redis).
+- When you need a simple "remember" pattern (fetch if missing, then cache).
+
+## Quick Start
+
+### HTTP Response Caching
+
+Register the `CacheModule` and use the `CacheInterceptor` on your controllers.
+
+```typescript
 import { Module } from '@konekti/core';
-import { Controller, Get, Post, UseInterceptors } from '@konekti/http';
-import { CacheEvict, CacheInterceptor, CacheModule, CacheTTL } from '@konekti/cache-manager';
+import { Controller, Get, UseInterceptors } from '@konekti/http';
+import { CacheModule, CacheInterceptor, CacheTTL } from '@konekti/cache-manager';
 
 @Controller('/products')
 class ProductController {
   @Get('/')
   @UseInterceptors(CacheInterceptor)
-  @CacheTTL(30)
+  @CacheTTL(60) // Cache for 60 seconds
   list() {
-    return { ok: true };
-  }
-
-  @Post('/refresh')
-  @UseInterceptors(CacheInterceptor)
-  @CacheEvict('/products')
-  refresh() {
-    return { refreshed: true };
+    return [{ id: 1, name: 'Product A' }];
   }
 }
 
@@ -47,256 +65,73 @@ class ProductController {
 class AppModule {}
 ```
 
-## Quick Start — Application-Level Caching
+### Application-Level Caching
 
-Use `CacheService` directly for non-HTTP caching needs such as external API responses, computed results, or session data.
+Inject `CacheService` to manage cache programmatically.
 
-```ts
+```typescript
 import { Inject } from '@konekti/core';
-import { Module } from '@konekti/runtime';
-import { CacheModule, CacheService } from '@konekti/cache-manager';
+import { CacheService } from '@konekti/cache-manager';
 
-const EXTERNAL_API = Symbol.for('EXTERNAL_API');
-
-interface UserProfile {
-  id: string;
-  name: string;
-  email: string;
-}
-
-@Inject([CacheService])
 class UserService {
-  constructor(private readonly cache: CacheService) {}
+  constructor(@Inject([CacheService]) private readonly cache: CacheService) {}
 
-  async getUserProfile(userId: string): Promise<UserProfile> {
-    const cacheKey = `user:profile:${userId}`;
-
-    return this.cache.remember(cacheKey, async () => {
-      const response = await fetch(`https://api.example.com/users/${userId}`);
-      return response.json() as Promise<UserProfile>;
-    }, 300); // 5-minute TTL
-  }
-
-  async invalidateUser(userId: string): Promise<void> {
-    await this.cache.del(`user:profile:${userId}`);
-  }
-
-  async clearAllCache(): Promise<void> {
-    await this.cache.reset();
-  }
-}
-
-@Module({
-  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
-  providers: [UserService],
-})
-class AppModule {}
-```
-
-## API
-
-### Core Cache Contract
-
-- `CacheStore` — low-level store interface with `get`, `set`, `del`, `reset`.
-- `CacheService` — application-level cache API wrapping a store:
-  - `get<T>(key)` — retrieve a cached value.
-  - `set<T>(key, value, ttlSeconds?)` — store a value with optional TTL override.
-  - `remember<T>(key, loader, ttlSeconds?)` — read-through cache: returns cached value or loads, caches, and returns.
-  - `del(key)` — remove a single cache entry.
-  - `reset()` — clear all entries managed by the store.
-- `MemoryStore` — in-process cache with lazy TTL expiration.
-- `RedisStore` — Redis-backed cache with JSON codec and scoped `SCAN` + `DEL` reset.
-
-### HTTP Interceptor API
-
-- `CacheInterceptor` — HTTP interceptor for GET response caching with decorator-driven configuration.
-- `@CacheKey(value)` — custom cache key (string or resolver function).
-- `@CacheTTL(seconds)` — method-level TTL override.
-- `@CacheEvict(value)` — evict key(s) after successful non-GET handlers.
-
-### Module Setup
-
-- `CacheModule.forRoot(options)` — registers cache providers (default `isGlobal: false`).
-- `createCacheProviders(options)` — returns providers for manual composition.
-- `createCacheManagerPlatformStatusSnapshot(input)` — maps cache store kind/ownership/readiness into shared platform snapshot shape.
-- `createCacheManagerPlatformDiagnosticIssues(input)` — emits shared `PlatformDiagnosticIssue` entries for cache store readiness failures.
-- `CacheService` — primary DI class for application-level caching.
-- `CacheInterceptor` — primary DI class for HTTP read-through/eviction behavior.
-- `CACHE_OPTIONS` / `CACHE_STORE` — token-based module/store seams used for internal wiring and custom store composition.
-
-`CacheModuleOptions` primary fields are `store`, `ttl`, `isGlobal`, `httpKeyStrategy`, and `principalScopeResolver`.
-
-### 0.x Compatibility Notes
-
-- `CACHE_MANAGER` / `CACHE_INTERCEPTOR` compatibility aliases are removed from the public package surface.
-- Use class-first DI: `CacheService` and `CacheInterceptor`.
-- Canonical module setup is `CacheModule.forRoot(options)`.
-- Internal token seams remain token-based and unchanged: `CACHE_OPTIONS`, `CACHE_STORE`.
-
-### Root barrel public-surface categories
-
-- **supported (`src/index.ts`)**: `CacheModule`, `createCacheProviders`, `CacheService`, `CacheInterceptor`, `MemoryStore`, `RedisStore`, decorators (`CacheKey`, `CacheTTL`, `CacheEvict`), status adapters, and module/store token seams (`CACHE_OPTIONS`, `CACHE_STORE`).
-- **compatibility-only**: none.
-- **internal (non-public)**: none beyond implementation-private module wiring.
-
-## Behavior
-
-### HTTP Interceptor Behavior (CacheInterceptor)
-
-- Cache reads are **GET-only** by default.
-- Default cache key depends on `httpKeyStrategy`:
-  - `'route'` (default) — matched route path only for unauthenticated requests; authenticated requests append `principal.issuer` + `principal.subject`.
-  - `'route+query'` — route path + sorted query string, plus authenticated principal scope when present.
-  - `'full'` — route path + sorted query string, plus authenticated principal scope when present; currently equivalent to `'route+query'`.
-  - `function` — custom resolver `(context) => string`.
-- `principalScopeResolver` — optional function `(context) => string | undefined` that overrides the default `issuer:subject` principal scope segment. When provided, the returned string is appended verbatim as `|principal:<scope>`. Returning `undefined` skips the principal scope entirely for that request.
-- `@CacheKey(...)` decorator overrides the module-level strategy for individual handlers.
-- `@CacheEvict(...)` runs after the response write of successful non-GET handlers.
-
-> Built-in string strategies are principal-aware by default. If you override the key with `@CacheKey(...)` or a custom function, you are responsible for including any auth, tenant, locale, or header variance required by the route.
-
-#### Query-Sensitive Caching Example
-
-For endpoints where query parameters change the response, use `httpKeyStrategy: 'route+query'`:
-
-```ts
-@Module({
-  imports: [
-    CacheModule.forRoot({
-      store: 'memory',
-      ttl: 30,
-      httpKeyStrategy: 'route+query', // cache key includes sorted query params
-    }),
-  ],
-  controllers: [ProductController],
-})
-class AppModule {}
-
-@Controller('/products')
-class ProductController {
-  @Get('/')
-  @UseInterceptors(CacheInterceptor)
-  @CacheTTL(60)
-  list() {
-    // GET /products?page=1  => cache key: '/products?page=1'
-    // GET /products?page=2  => cache key: '/products?page=2'
-    // GET /products?page=1&sort=asc  => cache key: '/products?page=1&sort=asc'
-    return { ok: true };
+  async getProfile(userId: string) {
+    return this.cache.remember(`user:${userId}`, async () => {
+      // This runs only if the key is missing from cache
+      return fetchUserProfile(userId);
+    }, 300); // 5 minutes
   }
 }
 ```
 
-#### Migration Note
+## Common Patterns
 
-The default `httpKeyStrategy` is `'route'`. This means:
-- Existing applications continue to work without changes.
-- Query parameters are ignored in cache keys by default.
-- Authenticated requests are isolated by `principal.issuer` + `principal.subject` when `RequestContext.principal` is present.
-- For new projects or query-sensitive endpoints, set `httpKeyStrategy: 'route+query'`.
+### Redis Storage
 
-To opt in to query-aware caching globally:
+To use Redis, ensure `@konekti/redis` is configured and set the store to `'redis'`.
 
-```ts
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+})
+```
+
+### Query-Sensitive Caching
+
+By default, the cache key ignores query parameters. Enable `httpKeyStrategy: 'route+query'` to cache different responses for different search parameters.
+
+```typescript
 CacheModule.forRoot({
   store: 'memory',
   httpKeyStrategy: 'route+query',
 })
 ```
 
-To opt in per-handler while keeping the default globally:
+## Public API Overview
 
-```ts
-@CacheKey((context) => {
-  const path = context.handler.metadata.effectivePath;
-  const query = new URLSearchParams(
-    Object.entries(context.requestContext.request.query)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
-  ).toString();
-  return query ? `${path}?${query}` : path;
-})
-```
+### Modules
+- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis), default TTL, and key strategies.
 
-#### Multi-Tenant and Role-Varied Caching
+### Services
+- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`).
 
-When responses differ by tenant ID, subscription plan, or any other dimension beyond `issuer:subject`, use `principalScopeResolver` to control exactly what gets appended to the cache key.
+### Decorators
+- `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
+- `@CacheKey(key)`: Sets a custom cache key for a specific handler.
+- `@CacheEvict(key)`: Clears specific cache keys after a successful mutation (POST/PUT/DELETE).
 
-Scope responses by tenant only (ignores individual user):
+### Interceptors
+- `CacheInterceptor`: Handles automatic GET response caching and eviction logic.
 
-```ts
-CacheModule.forRoot({
-  store: 'redis',
-  ttl: 60,
-  principalScopeResolver: (context) => {
-    // context.requestContext.principal is available when the request is authenticated
-    const tenantId = context.requestContext.metadata['tenantId'] as string | undefined;
-    return tenantId; // undefined = skip principal scope entirely for anonymous requests
-  },
-})
-```
+## Related Packages
 
-Scope responses by subscription plan:
+- `@konekti/redis`: Required for Redis storage.
+- `@konekti/http`: Required for HTTP interceptors and decorators.
 
-```ts
-CacheModule.forRoot({
-  store: 'memory',
-  ttl: 120,
-  principalScopeResolver: (context) => {
-    const plan = context.requestContext.metadata['subscriptionPlan'] as string | undefined;
-    return plan ?? 'free';
-  },
-})
-```
+## Example Sources
 
-When `principalScopeResolver` returns `undefined`, no `|principal:…` segment is appended. When it returns a string, the cache key becomes `<base-key>|principal:<scope>`.
-
-> `principalScopeResolver` affects only the default key built by built-in string strategies (`'route'`, `'route+query'`, `'full'`). Handlers that use `@CacheKey(...)` or a custom `httpKeyStrategy` function are unaffected — those handlers own their own key construction and must include scope information themselves.
-
-### General Cache Behavior (CacheService / CacheStore)
-
-- `CacheService` is independent of HTTP context — use it anywhere via DI.
-- TTL semantics are consistent across stores: `0` or omitted means no expiry; positive values set expiration.
-- `MemoryStore` uses lazy TTL expiration (expired entries cleaned on next read or sweep).
-- `RedisStore` stores JSON-encoded entries with application-level expiry tracking.
-- `remember()` provides read-through caching pattern for computed or fetched values.
-- Store implementations are interchangeable — both `MemoryStore` and `RedisStore` satisfy the `CacheStore` contract.
-- Default module TTL is `0` (no expiry).
-
-## Redis bootstrap behavior
-
-- `CacheModule.forRoot({ store: 'memory' })` works without `@konekti/redis`/`ioredis` installed.
-- `CacheModule.forRoot({ store: 'redis' })` requires either:
-  - `RedisModule.forRoot(...)` imported in the app (providing `REDIS_CLIENT`), or
-  - `options.redis.client` with a raw ioredis-style client.
-
-If Redis mode is selected and no client is available, bootstrap fails with an explicit error.
-
-## Platform status snapshot semantics
-
-Use `createCacheManagerPlatformStatusSnapshot(...)` to export cache ownership/readiness/health details aligned with the shared platform contract.
-
-- `storeKind` exposes `memory` / `redis` / `custom` operation.
-- `storeOwnershipMode` controls snapshot ownership mapping (`framework` vs `external`).
-- `cacheCriticalPath` controls readiness behavior when backing store is unavailable:
-  - `false` (default): readiness is `degraded` because request handling can continue with cache misses.
-  - `true`: readiness is `not-ready` because cache is declared part of the critical path.
-- `details.telemetry.labels` follows shared label keys (`component_id`, `component_kind`, `operation`, `result`).
-
-Use `createCacheManagerPlatformDiagnosticIssues(...)` to emit package-prefixed diagnostics (`CACHE_MANAGER_*`) with actionable `fixHint` text and dependency links.
-
-## Cross-store consistency
-
-Both `MemoryStore` and `RedisStore` implement the `CacheStore` interface with identical semantics:
-
-- `get(key)` returns `undefined` for missing or expired entries.
-- `set(key, value, ttl?)` stores the value; `ttl=0` means no expiry.
-- `del(key)` removes a single entry.
-- `reset()` clears all managed entries.
-
-This allows swapping stores without changing application code — use `MemoryStore` for development/testing and `RedisStore` for production.
-
-## Related packages
-
-- `@konekti/http` — interceptor contracts and route execution
-- `@konekti/runtime` — module bootstrap
-- `@konekti/redis` — optional Redis client module for DI wiring
+- `packages/cache-manager/src/module.test.ts`: Module configuration and provider tests.
+- `packages/cache-manager/src/interceptor.test.ts`: HTTP caching and eviction tests.
+- `packages/cache-manager/src/service.ts`: Core `CacheService` implementation.

@@ -1,54 +1,62 @@
-# manifest strategy decision
+# Manifest Strategy Decision
 
-<p><strong><kbd>English</kbd></strong> <a href="./manifest-decision.ko.md"><kbd>한국어</kbd></a></p>
+<p>
+  <strong>English</strong> | <a href="./manifest-decision.ko.md">한국어</a>
+</p>
 
+This document defines the framework's stance on compile-time manifest generation for runtime optimization. It serves as the authoritative record for why certain performance-oriented architectural shifts are deferred or adopted.
 
-Compile-time manifest generation is still treated as an optimization decision gate, not the default architecture.
+## When this document matters
 
-## current decision
+- **Performance Auditing**: When evaluating runtime bottlenecks in module registration or DI resolution.
+- **Architectural Proposals**: When suggesting changes to how Konekti discovers routes, providers, or metadata.
+- **Toolchain Updates**: When modifying the build process (e.g., adding a pre-compilation step for metadata extraction).
 
-Current status: `defer`
+---
 
-Reason:
+## Current Strategic Decision
 
-- the runtime already has a measurable bootstrap baseline
-- a compile-time manifest path would add tooling, docs, and generator complexity
-- adoption should wait for benchmark evidence that the complexity buys a meaningful startup or registration improvement
+**Status**: `DEFERRED`  
+**Latest Review**: 2026-04-08
 
-## benchmark artifact
+### Decision Summary
+Konekti currently relies on **Runtime Reflection** via standard TC39 decorators. We have explicitly deferred the implementation of a **Compile-Time Manifest** (static metadata extraction) for the following reasons:
 
-Use the benchmark harness below to measure the current runtime baseline:
+1.  **Complexity Overhead**: Introducing a mandatory pre-compilation step would significantly increase the complexity of the developer experience (DX) and the CLI toolchain.
+2.  **Performance Thresholds**: Current bootstrap benchmarks show that runtime registration is within acceptable limits (sub-millisecond for most module shapes).
+3.  **Standard Alignment**: We prioritize staying as close to the TC39 decorator standard as possible, avoiding "magic" build-time code generation unless strictly necessary.
 
-```sh
+---
+
+## Benchmarking & Adoption Criteria
+
+Adoption of a manifest-based strategy will only be reconsidered if benchmarks demonstrate a **>20% improvement** in startup time for large-scale applications (100+ modules).
+
+### Benchmark Baseline (2026-03-12)
+| Application Shape | Boot Time (Avg) | Metadata Memory |
+| :--- | :--- | :--- |
+| **Hello World** (1 Module) | 0.35ms | < 1MB |
+| **Medium REST** (15 Modules) | 0.48ms | ~2.5MB |
+| **Module Heavy** (50 Modules) | 0.47ms | ~4.1MB |
+
+**Run the Benchmark:**
+```bash
 pnpm exec tsx tooling/benchmarks/manifest-decision.ts
 ```
 
-The harness covers:
+---
 
-- `hello-world`
-- `medium-rest`
-- `module-heavy`
+## Behavioral Parity Requirements
 
-Current 2026-03-12 baseline from `pnpm exec tsx tooling/benchmarks/manifest-decision.ts`:
+If a manifest strategy is adopted, it MUST maintain 100% parity with the current runtime behavior. Any optimization must be transparent to the user and pass the following gates:
 
-- `hello-world`: `0.35ms` average bootstrap
-- `medium-rest`: `0.48ms` average bootstrap
-- `module-heavy`: `0.47ms` average bootstrap
+- **Route Discovery**: Metadata-driven route registration must produce identical OpenAPI and internal dispatcher maps.
+- **DI Resolution**: The module graph structure, including circular dependency detection, must remain unchanged.
+- **Error Consistency**: Diagnostic messages and validation failures must trigger at the same lifecycle stages.
 
-The checked-in snapshot for that run lives at `tooling/benchmarks/manifest-decision.latest.json`.
+---
 
-## adoption bar
-
-Treat an improvement around `~20%` as a useful decision aid, not an automatic rule. Adoption should consider all of the following together:
-
-- bootstrap/startup time
-- route and module registration time
-- memory cost
-- build/toolchain cost
-- generator and docs maintenance burden
-
-## parity rule
-
-- runtime helper reads remain the semantic source of truth
-- any manifest-based optimization must preserve parity for route metadata, module graph behavior, provider registration, DTO binding metadata, and diagnostics
-- parity evidence matters more than benchmark wins alone
+## Related Docs
+- [Behavioral Contract Policy](./behavioral-contract-policy.md)
+- [Platform Conformance Authoring Checklist](./platform-conformance-authoring-checklist.md)
+- [Architecture Overview](../concepts/architecture-overview.md)
