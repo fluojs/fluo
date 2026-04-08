@@ -85,7 +85,7 @@ function resolveSupportedFetchStyleRealtimeCapability(
 ): FetchStyleRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Deno WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-deno together with @konekti/websocket/deno.',
+      'Deno WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-deno together with @konekti/websockets/deno.',
     );
   }
 
@@ -138,7 +138,7 @@ export class DenoWebSocketGatewayLifecycleService
 
     if (!hasDenoWebSocketBindingHost(this.adapter)) {
       throw new Error(
-        'Deno WebSocket gateway bootstrap requires the selected adapter to expose Deno websocket binding configuration. Use @konekti/platform-deno with @konekti/websocket/deno.',
+        'Deno WebSocket gateway bootstrap requires the selected adapter to expose Deno websocket binding configuration. Use @konekti/platform-deno with @konekti/websockets/deno.',
       );
     }
 

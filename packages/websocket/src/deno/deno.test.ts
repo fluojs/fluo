@@ -179,7 +179,7 @@ class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHos
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -202,7 +202,7 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('@konekti/websocket/deno', () => {
+describe('@konekti/websockets/deno', () => {
   it('exposes the explicit Deno websocket seam', () => {
     expect(denoPublicApi).toHaveProperty('DenoWebSocketModule');
     expect(denoPublicApi).toHaveProperty('DenoWebSocketGatewayLifecycleService');
