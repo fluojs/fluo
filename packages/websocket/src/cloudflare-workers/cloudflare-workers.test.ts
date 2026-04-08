@@ -176,7 +176,7 @@ class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSo
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websocket/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -199,7 +199,7 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('@konekti/websocket/cloudflare-workers', () => {
+describe('@konekti/websockets/cloudflare-workers', () => {
   it('exposes the explicit Cloudflare Workers websocket seam', () => {
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketModule');
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');
