@@ -50,8 +50,8 @@ For the canonical runtime/package matrix, start with `reference/package-surface.
 - `../packages/platform-fastify/README.md` - `@konekti/platform-fastify` contract for the default Node.js starter path.
 - `../packages/platform-nodejs/README.md` - `@konekti/platform-nodejs` contract for raw Node.js HTTP startup on the runtime facade.
 - `../packages/platform-express/README.md` - `@konekti/platform-express` contract for Node.js compatibility-focused apps.
-- `../packages/websocket/README.md` - `@konekti/websockets` gateway authoring contracts plus the runtime-specific raw websocket binding boundaries on `@konekti/websockets/node`, `@konekti/websockets/bun`, `@konekti/websockets/deno`, and `@konekti/websockets/cloudflare-workers`.
-- `../packages/platform-socket.io/README.md` - `@konekti/socket.io` contract for Socket.IO gateway behavior on the platform-selected realtime capability seam.
+- `../packages/websockets/README.md` - `@konekti/websockets` gateway authoring contracts plus the runtime-specific raw websocket binding boundaries on `@konekti/websockets/node`, `@konekti/websockets/bun`, `@konekti/websockets/deno`, and `@konekti/websockets/cloudflare-workers`.
+- `../packages/socket.io/README.md` - `@konekti/socket.io` contract for Socket.IO gateway behavior on the platform-selected realtime capability seam.
 - `../packages/platform-bun/README.md` - `@konekti/platform-bun` contract and startup path.
 - `../packages/platform-deno/README.md` - `@konekti/platform-deno` contract and startup path.
 - `../packages/platform-cloudflare-workers/README.md` - `@konekti/platform-cloudflare-workers` contract and startup path.

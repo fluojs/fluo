@@ -1,13 +1,13 @@
 {
-  "name": "@konekti/websockets",
-  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node, Bun, Deno, and Cloudflare Workers raw websocket bindings on dedicated subpaths.",
+  "name": "@konekti/socket.io",
+  "description": "Socket.IO v4 gateway adapter for Konekti applications, built on the shared runtime and websocket decorators.",
   "keywords": [
     "konekti",
+    "socket.io",
     "websocket",
-    "ws",
     "gateway",
     "realtime",
-    "upgrade"
+    "platform"
   ],
   "version": "0.0.0",
   "private": false,
@@ -15,7 +15,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/konektijs/konekti.git",
-    "directory": "packages/websocket"
+    "directory": "packages/socket.io"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -28,42 +28,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./bun": {
-      "types": "./dist/bun.d.ts",
-      "import": "./dist/bun.js"
-    },
-    "./deno": {
-      "types": "./dist/deno.d.ts",
-      "import": "./dist/deno.js"
-    },
-    "./cloudflare-workers": {
-      "types": "./dist/cloudflare-workers.d.ts",
-      "import": "./dist/cloudflare-workers.js"
-    },
-    "./node": {
-      "types": "./dist/node.d.ts",
-      "import": "./dist/node.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "bun": [
-        "./dist/bun.d.ts"
-      ],
-      "deno": [
-        "./dist/deno.d.ts"
-      ],
-      "cloudflare-workers": [
-        "./dist/cloudflare-workers.d.ts"
-      ],
-      "node": [
-        "./dist/node.d.ts"
-      ]
-    }
-  },
   "files": [
     "dist"
   ],
@@ -73,16 +41,21 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@socket.io/bun-engine": "^0.1.0",
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/runtime": "workspace:*",
-    "ws": "^8.18.3"
+    "@konekti/websockets": "workspace:*"
+  },
+  "peerDependencies": {
+    "socket.io": "^4.0.0"
   },
   "devDependencies": {
-    "@konekti/platform-bun": "workspace:*",
     "@konekti/platform-express": "workspace:*",
     "@konekti/platform-fastify": "workspace:*",
-    "@types/ws": "^8.18.1"
+    "@konekti/platform-nodejs": "workspace:*",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   }
 }

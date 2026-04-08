@@ -487,43 +487,6 @@ importers:
         specifier: workspace:*
         version: link:../runtime
 
-  packages/platform-socket.io:
-    dependencies:
-      '@konekti/core':
-        specifier: workspace:*
-        version: link:../core
-      '@konekti/di':
-        specifier: workspace:*
-        version: link:../di
-      '@konekti/http':
-        specifier: workspace:*
-        version: link:../http
-      '@konekti/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      '@konekti/websockets':
-        specifier: workspace:*
-        version: link:../websocket
-      '@socket.io/bun-engine':
-        specifier: ^0.1.0
-        version: 0.1.0(typescript@5.9.3)
-    devDependencies:
-      '@konekti/platform-express':
-        specifier: workspace:*
-        version: link:../platform-express
-      '@konekti/platform-fastify':
-        specifier: workspace:*
-        version: link:../platform-fastify
-      '@konekti/platform-nodejs':
-        specifier: workspace:*
-        version: link:../platform-nodejs
-      socket.io:
-        specifier: ^4.8.1
-        version: 4.8.3
-      socket.io-client:
-        specifier: ^4.8.1
-        version: 4.8.3
-
   packages/prisma:
     dependencies:
       '@konekti/core':
@@ -605,6 +568,43 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
+
+  packages/socket.io:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/http':
+        specifier: workspace:*
+        version: link:../http
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@konekti/websockets':
+        specifier: workspace:*
+        version: link:../websockets
+      '@socket.io/bun-engine':
+        specifier: ^0.1.0
+        version: 0.1.0(typescript@5.9.3)
+    devDependencies:
+      '@konekti/platform-express':
+        specifier: workspace:*
+        version: link:../platform-express
+      '@konekti/platform-fastify':
+        specifier: workspace:*
+        version: link:../platform-fastify
+      '@konekti/platform-nodejs':
+        specifier: workspace:*
+        version: link:../platform-nodejs
+      socket.io:
+        specifier: ^4.8.1
+        version: 4.8.3
+      socket.io-client:
+        specifier: ^4.8.1
+        version: 4.8.3
 
   packages/studio:
     dependencies:
@@ -718,7 +718,7 @@ importers:
         specifier: ^4.1.11
         version: 4.3.6
 
-  packages/websocket:
+  packages/websockets:
     dependencies:
       '@konekti/core':
         specifier: workspace:*
