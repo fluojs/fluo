@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/platform-socket.io",
+  "name": "@konekti/socket.io",
   "description": "Socket.IO v4 gateway adapter for Konekti applications, built on the shared runtime and websocket decorators.",
   "keywords": [
     "konekti",
@@ -45,7 +45,7 @@
     "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",
     "@konekti/runtime": "workspace:*",
-    "@konekti/websocket": "workspace:*"
+    "@konekti/websockets": "workspace:*"
   },
   "peerDependencies": {
     "socket.io": "^4.0.0"
