@@ -1,6 +1,6 @@
 import type { ServerOptions } from 'socket.io';
 
-import type { WebSocketRoomService } from '@konekti/websocket';
+import type { WebSocketRoomService } from '@konekti/websockets';
 
 export interface SocketIoRoomService extends WebSocketRoomService {
   broadcastToRoom(room: string, event: string, data: unknown, namespacePath?: string): void;
