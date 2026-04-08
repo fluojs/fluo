@@ -66,7 +66,7 @@ await runDenoApplication(AppModule, {
 - Exposes `handle(request)` for direct request dispatch in tests and custom `Deno.serve(...)` composition.
 - Supports `rawBody` opt-in for non-multipart requests.
 - Supports multipart form-data parsing and exposes uploaded files as `UploadedFile[]`.
-- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` so future runtime-specific websocket work starts from an explicit contract.
+- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Deno-native request-upgrade hosting through `Deno.upgradeWebSocket(request)`.
 - Logs runtime-style listen messages through `runDenoApplication()`.
 
 ## runtime invariants
@@ -88,4 +88,4 @@ await runDenoApplication(AppModule, {
 - No Bun-, Cloudflare-, or Deno Deploy-specific bootstrap helpers are provided here.
 - No Deno-native HTTPS/TLS passthrough is exposed yet; add that in a dedicated issue when the public contract is defined.
 - The adapter targets native Web `Request` / `Response` semantics and does not provide a Node compatibility layer.
-- The fetch-style websocket capability exposed here is contract-only. Deno uses `Deno.upgradeWebSocket()` for websocket handling, which is incompatible with the Node `upgrade`-listener model (`ws` + `handleUpgrade`) required by `@konekti/websocket/node`. A dedicated `@konekti/websocket/deno` binding subpath with Deno-native websocket hosting and end-to-end tests is needed before raw websocket support can be claimed.
+- Raw websocket hosting for Deno is provided through the dedicated `@konekti/websocket/deno` binding. `@konekti/websocket/node` still remains Node-upgrade-listener-specific and is not claimed for Deno.
