@@ -66,7 +66,7 @@ await app.listen();
 - adapter-first 런타임 facade(`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`)를 통해 raw Node.js HTTP 리스너를 명시적으로 선택합니다.
 - raw Node 어댑터 entrypoint를 이 패키지가 직접 소유하고, 명시적인 `@konekti/runtime/internal-node` seam을 조합하여 현재 Node request/response 브리지, startup logging, graceful shutdown, HTTPS, retry 시맨틱을 그대로 유지합니다.
 - `{ kind: 'server-backed', server }` 형태의 realtime capability를 노출하여, Node 기반 realtime binder가 모든 런타임을 Node처럼 가정하지 않고도 플랫폼 선택 결과를 소비할 수 있게 합니다.
-- 이 realtime capability seam 위에서 현재 raw `@konekti/websocket/node` 바인딩을 지원합니다.
+- 이 realtime capability seam 위에서 현재 raw `@konekti/websockets/node` 바인딩을 지원합니다.
 - 헬퍼 wrapper 경로가 필요한 사용자를 위해 호환 부트스트랩 헬퍼도 계속 제공합니다.
 
 ## runtime invariants

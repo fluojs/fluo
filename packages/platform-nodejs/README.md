@@ -66,7 +66,7 @@ await app.listen();
 - Selects the raw Node.js HTTP listener through the adapter-first runtime facade (`KonektiFactory.create(..., { adapter: createNodejsAdapter(...) })`).
 - Preserves the current Node request/response bridge, startup logging, graceful shutdown, HTTPS, and retry semantics by owning the raw Node adapter entrypoints and composing the explicit `@konekti/runtime/internal-node` seam.
 - Exposes a `{ kind: 'server-backed', server }` realtime capability so Node-backed realtime binders can consume platform selection without assuming every runtime behaves like Node.
-- Supports the current raw `@konekti/websocket/node` binding on that realtime capability seam.
+- Supports the current raw `@konekti/websockets/node` binding on that realtime capability seam.
 - Keeps compatibility bootstrap helpers available for users who still want the helper-wrapper path.
 
 ## runtime invariants
