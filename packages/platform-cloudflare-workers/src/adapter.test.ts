@@ -133,7 +133,7 @@ describe('@konekti/platform-cloudflare-workers', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websocket/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
       support: 'supported',
       version: 1,
     });

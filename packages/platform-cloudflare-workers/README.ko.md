@@ -101,4 +101,4 @@ Worker 부트스트랩 헬퍼는 `@konekti/runtime/internal/http-adapter`의 공
 - Worker `env`와 `ExecutionContext`는 `fetch()` 경계에서 받지만, Konekti `RequestContext`로 자동 주입되지는 않습니다.
 - `port`, `host`, `https`, `shutdownSignals`, `forceExitTimeoutMs` 같은 Node 전용 옵션은 지원하지 않습니다.
 - 이 패키지는 Bun/Deno 전용 동작을 추가하지 않으며, 공유 Web 코어 위의 Cloudflare Workers 범위에만 집중합니다.
-- Cloudflare Workers용 raw websocket 호스팅은 전용 `@konekti/websocket/cloudflare-workers` 바인딩을 통해 제공됩니다. 지원 범위는 의도적으로 isolate-local/stateless에 한정되며, in-memory room membership은 현재 Worker 인스턴스 안에서만 유효합니다. Durable Objects와 cross-isolate coordination은 범위 밖입니다.
+- Cloudflare Workers용 raw websocket 호스팅은 전용 `@konekti/websockets/cloudflare-workers` 바인딩을 통해 제공됩니다. 지원 범위는 의도적으로 isolate-local/stateless에 한정되며, in-memory room membership은 현재 Worker 인스턴스 안에서만 유효합니다. Durable Objects와 cross-isolate coordination은 범위 밖입니다.
