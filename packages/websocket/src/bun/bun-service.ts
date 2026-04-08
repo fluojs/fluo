@@ -233,10 +233,6 @@ export class BunWebSocketGatewayLifecycleService
     server: BunServerLike,
     descriptorsByPath: ReadonlyMap<string, readonly WebSocketGatewayDescriptor[]>,
   ): Promise<Response | undefined> {
-    if (!isWebSocketUpgradeRequest(request)) {
-      return new Response(null, { status: 426 });
-    }
-
     let targetPath: string;
 
     try {
@@ -248,7 +244,11 @@ export class BunWebSocketGatewayLifecycleService
     const descriptors = descriptorsByPath.get(targetPath);
 
     if (!descriptors) {
-      return new Response(null, { status: 404 });
+      return undefined;
+    }
+
+    if (!isWebSocketUpgradeRequest(request)) {
+      return new Response(null, { status: 426 });
     }
 
     const state = this.createConnectionHandlerState(request, [...descriptors]);

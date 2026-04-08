@@ -184,15 +184,16 @@ When you need a gateway-owned dedicated listener on those adapters, use the root
 
 | package | role |
 |---------|------|
-| `@konekti/socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime, booting only when the selected platform reports a server-backed realtime capability |
+| `@konekti/socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime, booting through the server-backed path on Node/Fastify/Express and through the official `@socket.io/bun-engine` path on `@konekti/platform-bun` |
 
-Current honest support for `@konekti/socket.io` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
+Current honest support for `@konekti/socket.io` is limited to the documented and tested server-backed adapters in this branch — `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express` — plus `@konekti/platform-bun` through the official `@socket.io/bun-engine` integration path.
 
 **When not to use:**
 - If your real-time needs are limited to server-sent events (SSE), a standard HTTP streaming response from `@konekti/http` may be enough.
 - If your selected runtime reports realtime as `{ kind: 'unsupported', mode: 'no-op' }`, stop at that explicit boundary instead of expecting Node listener emulation.
 - If your selected runtime reports `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`, treat that as a future-work contract only — not as current raw websocket support.
-- Do not assume Bun, Deno, or Cloudflare Workers support for `@konekti/socket.io` unless a branch explicitly adds and tests a compatible implementation there.
+- Do not assume Deno or Cloudflare Workers support for `@konekti/socket.io` unless a branch explicitly adds and tests a compatible implementation there.
+- Do not use `@WebSocketGateway({ serverBacked })` together with `@konekti/socket.io` on `@konekti/platform-bun`; that opt-in remains server-backed-only and the Bun path rejects it explicitly.
 - Do not assume Bun, Deno, or Cloudflare Workers support for raw `@konekti/websockets/node` unless a branch explicitly adds and tests a compatible runtime-specific implementation there.
 - Do not use `@WebSocketGateway({ serverBacked })` on Bun, Deno, or Cloudflare Workers websocket bindings; the current branch rejects that server-backed-only metadata there.
 
@@ -385,7 +386,7 @@ The table below summarizes frequently combined packages beyond the starter scaff
 | REST API + Prisma + auth | `prisma` + `jwt` + `passport` | most common full-stack web API setup |
 | REST API + Drizzle + auth | `drizzle` + `jwt` + `passport` | same pattern with Drizzle instead of Prisma |
 | microservice + Redis queue | `microservices` + `queue` + `redis` | message-driven processing with persistent job retry |
-| real-time + caching | `platform-socket.io` or `websocket` + `cache-manager` + `redis` | cached data with live push updates |
+| real-time + caching | `@konekti/socket.io` or `@konekti/websockets` + `@konekti/cache-manager` + `@konekti/redis` | cached data with live push updates |
 | CQRS + event sourcing | `cqrs` + `event-bus` + `prisma` or `drizzle` | command/query separation with persistent event store |
 | ops-ready API | `metrics` + `terminus` + `openapi` | production observability, health checks, and API docs |
 | scheduled workers | `cron` + `redis` + `queue` | time-triggered jobs with distributed locking and persistent queue fallback |
