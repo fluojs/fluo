@@ -1,4 +1,5 @@
-import { createServer } from 'node:net';
+import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 import { Inject, Scope } from '@konekti/core';
@@ -6,6 +7,7 @@ import { getModuleMetadata } from '@konekti/core/internal';
 import {
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
+  type HttpApplicationAdapter,
 } from '@konekti/http';
 import { createExpressAdapter } from '@konekti/platform-express';
 import { createFastifyAdapter } from '@konekti/platform-fastify';
@@ -52,7 +54,7 @@ function createLogger(events: string[]): ApplicationLogger {
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
+    const server = createNetServer();
 
     server.once('error', reject);
     server.listen(0, () => {
@@ -73,6 +75,163 @@ async function findAvailablePort(): Promise<number> {
       });
     });
   });
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<string | undefined> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+
+  if (chunks.length === 0) {
+    return undefined;
+  }
+
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function toWebRequest(request: IncomingMessage, port: number): Promise<Request> {
+  const body = await readRequestBody(request);
+  const headers = new Headers();
+
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(name, item);
+      }
+      continue;
+    }
+
+    headers.set(name, value);
+  }
+
+  return new Request(new URL(request.url ?? '/', `http://127.0.0.1:${String(port)}`), {
+    body,
+    headers,
+    method: request.method,
+  });
+}
+
+async function writeWebResponse(response: Response, target: ServerResponse): Promise<void> {
+  target.statusCode = response.status;
+
+  response.headers.forEach((value, name) => {
+    target.setHeader(name, value);
+  });
+
+  target.end(Buffer.from(await response.arrayBuffer()));
+}
+
+interface BunRealtimeBinding {
+  fetch(request: Request, server: TestBunServer): Response | Promise<Response> | undefined | Promise<Response | undefined>;
+  idleTimeout?: number;
+  maxRequestBodySize?: number;
+  websocket?: unknown;
+}
+
+class TestBunServer {
+  readonly hostname = '127.0.0.1';
+  readonly url: URL;
+
+  constructor(
+    private readonly server: NodeHttpServer,
+    readonly port: number,
+  ) {
+    this.url = new URL(`http://127.0.0.1:${String(port)}`);
+  }
+
+  stop(): void {
+    void this.server.close();
+  }
+
+  upgrade(): boolean {
+    return false;
+  }
+}
+
+class TestBunSocketIoAdapter implements HttpApplicationAdapter {
+  private binding: BunRealtimeBinding | undefined;
+  private bunServer: TestBunServer | undefined;
+  private server: NodeHttpServer | undefined;
+
+  constructor(private readonly port: number) {}
+
+  configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void {
+    if (this.server && binding !== undefined) {
+      throw new Error('Test Bun Socket.IO binding must be configured before listen().');
+    }
+
+    this.binding = binding;
+  }
+
+  getRealtimeCapability() {
+    return {
+      contract: 'raw-websocket-expansion' as const,
+      kind: 'fetch-style' as const,
+      mode: 'request-upgrade' as const,
+      reason:
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/socket.io for the official Bun engine binding.',
+      support: 'supported' as const,
+      version: 1 as const,
+    };
+  }
+
+  async listen(): Promise<void> {
+    const server = createHttpServer(async (request, response) => {
+      const bunServer = this.bunServer;
+
+      if (!bunServer || !this.binding) {
+        response.statusCode = 500;
+        response.end('Socket.IO Bun binding was not configured before listen().');
+        return;
+      }
+
+      const handled = await this.binding.fetch(await toWebRequest(request, this.port), bunServer);
+
+      if (handled === undefined) {
+        response.statusCode = 404;
+        response.end();
+        return;
+      }
+
+      await writeWebResponse(handled, response);
+    });
+
+    this.server = server;
+    this.bunServer = new TestBunServer(server, this.port);
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(this.port, '127.0.0.1', () => resolve());
+    });
+  }
+
+  async close(): Promise<void> {
+    const server = this.server;
+
+    this.server = undefined;
+    this.bunServer = undefined;
+
+    if (!server) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
 }
 
 function onceConnected(socket: ClientSocket): Promise<void> {
@@ -156,10 +315,10 @@ describe('@konekti/socket.io', () => {
     const firstProviders = getModuleMetadata(firstModule)?.providers;
     const secondProviders = getModuleMetadata(secondModule)?.providers;
     const firstOptionsProvider = firstProviders?.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
     const secondOptionsProvider = secondProviders?.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     ) as { useValue?: { shutdown?: { timeoutMs?: number } } } | undefined;
 
     expect(firstModule).not.toBe(secondModule);
@@ -209,6 +368,106 @@ describe('@konekti/socket.io', () => {
         rootModule: AppModule,
       }),
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
+  });
+
+  it('rejects serverBacked gateway opt-in on the Bun Socket.IO engine path', async () => {
+    const adapter = new TestBunSocketIoAdapter(await findAvailablePort());
+
+    @WebSocketGateway({ path: '/chat', serverBacked: { port: 4101 } })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter,
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/socket.io when using @konekti/platform-bun');
+  });
+
+  it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {
+    const port = await findAvailablePort();
+    const adapter = new TestBunSocketIoAdapter(port);
+
+    class GatewayState {
+      connectCount = 0;
+      disconnectCount = 0;
+      disconnectReason: string | undefined;
+      messages: unknown[] = [];
+    }
+
+    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @WebSocketGateway({ path: '/chat' })
+    class ChatGateway {
+      constructor(
+        private readonly state: GatewayState,
+        private readonly rooms: SocketIoRoomService,
+      ) {}
+
+      @OnConnect()
+      onConnect(socket: Socket) {
+        this.state.connectCount += 1;
+        this.rooms.joinRoom(socket.id, 'room:chat');
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+        this.rooms.broadcastToRoom('room:chat', 'room:pong', payload);
+      }
+
+      @OnDisconnect()
+      onDisconnect(_socket: Socket, reason: string) {
+        this.state.disconnectCount += 1;
+        this.state.disconnectReason = reason;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['polling'] })],
+      providers: [GatewayState, ChatGateway],
+    });
+
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/chat`, {
+      reconnection: false,
+      transports: ['polling'],
+    });
+    await onceConnected(socket);
+
+    socket.emit('ping', { value: 'hello' });
+    const broadcast = await onceEvent<{ value: string }>(socket, 'room:pong');
+
+    expect(broadcast).toEqual({ value: 'hello' });
+    expect(state.messages).toEqual([{ value: 'hello' }]);
+    expect(state.connectCount).toBe(1);
+
+    const disconnected = onceDisconnected(socket);
+    socket.disconnect();
+
+    expect(await disconnected).toBe('io client disconnect');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.disconnectCount).toBe(1);
+    expect(state.disconnectReason).toBe('client namespace disconnect');
+
+    await app.close();
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {
