@@ -501,7 +501,7 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@konekti/websocket':
+      '@konekti/websockets':
         specifier: workspace:*
         version: link:../websocket
     devDependencies:
