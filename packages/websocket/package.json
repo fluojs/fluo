@@ -1,6 +1,6 @@
 {
   "name": "@konekti/websocket",
-  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node, Bun, and Deno raw websocket bindings on dedicated subpaths.",
+  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node, Bun, Deno, and Cloudflare Workers raw websocket bindings on dedicated subpaths.",
   "keywords": [
     "konekti",
     "websocket",
@@ -37,6 +37,10 @@
       "types": "./dist/deno.d.ts",
       "import": "./dist/deno.js"
     },
+    "./cloudflare-workers": {
+      "types": "./dist/cloudflare-workers.d.ts",
+      "import": "./dist/cloudflare-workers.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
@@ -51,6 +55,9 @@
       ],
       "deno": [
         "./dist/deno.d.ts"
+      ],
+      "cloudflare-workers": [
+        "./dist/cloudflare-workers.d.ts"
       ],
       "node": [
         "./dist/node.d.ts"
