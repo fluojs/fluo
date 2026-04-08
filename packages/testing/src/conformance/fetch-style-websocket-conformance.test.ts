@@ -56,11 +56,12 @@ describe('official fetch-style runtime websocket contract', () => {
     expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
-  it('keeps Cloudflare Workers on the shared contract-only websocket expansion seam', () => {
+  it('keeps Cloudflare Workers on the shared supported websocket expansion seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
       createAdapter: () => createCloudflareWorkerAdapter(),
+      expectedSupport: 'supported',
       expectedReason:
-        'Cloudflare Workers uses WebSocketPair (often paired with Durable Objects) for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/cloudflare-workers binding is needed before raw websocket support can be claimed.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websocket/cloudflare-workers for the official raw websocket binding.',
       name: 'cloudflare-workers',
     });
 
