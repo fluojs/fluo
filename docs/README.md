@@ -40,7 +40,7 @@ Practical guides for day-to-day development once your application is running.
 
 Konekti is highly composable. Use these links to discover and select the right tools for your task.
 
-For the canonical runtime/package matrix, start with `reference/package-surface.md`. This hub keeps the starter/default-path framing short, still points readers to the default `@konekti/platform-fastify` starter path, the raw Node `@konekti/platform-nodejs` path, the `@konekti/platform-express` Node.js alternative, and links to the published adapter READMEs for runtime-specific startup or hosting details. Raw `@konekti/websocket/node` and `@konekti/platform-socket.io` support are intentionally documented as limited to the currently tested server-backed adapters (`platform-nodejs`, `platform-fastify`, and `platform-express`), while Bun, Deno, and Cloudflare Workers remain outside those support claims until a tested compatible implementation exists.
+For the canonical runtime/package matrix, start with `reference/package-surface.md`. This hub keeps the starter/default-path framing short, still points readers to the default `@konekti/platform-fastify` starter path, the raw Node `@konekti/platform-nodejs` path, the `@konekti/platform-express` Node.js alternative, and links to the published adapter READMEs for runtime-specific startup or hosting details. Raw `@konekti/websocket/node` and `@konekti/platform-socket.io` support remain intentionally limited to the currently tested server-backed adapters (`platform-nodejs`, `platform-fastify`, and `platform-express`), while Bun-native, Deno-native, and Cloudflare Workers isolate-local raw websocket hosting now live on the dedicated `@konekti/websocket/bun`, `@konekti/websocket/deno`, and `@konekti/websocket/cloudflare-workers` bindings.
 
 - `reference/package-chooser.md` - **Start here**: Pick the right packages for your specific use case.
 - `reference/package-surface.md` - Overview of the public API surface across the framework.
@@ -50,7 +50,7 @@ For the canonical runtime/package matrix, start with `reference/package-surface.
 - `../packages/platform-fastify/README.md` - `@konekti/platform-fastify` contract for the default Node.js starter path.
 - `../packages/platform-nodejs/README.md` - `@konekti/platform-nodejs` contract for raw Node.js HTTP startup on the runtime facade.
 - `../packages/platform-express/README.md` - `@konekti/platform-express` contract for Node.js compatibility-focused apps.
-- `../packages/websocket/README.md` - `@konekti/websocket` gateway authoring contracts plus the raw `ws` Node binding boundary on `@konekti/websocket/node`.
+- `../packages/websocket/README.md` - `@konekti/websocket` gateway authoring contracts plus the runtime-specific raw websocket binding boundaries on `@konekti/websocket/node`, `@konekti/websocket/bun`, `@konekti/websocket/deno`, and `@konekti/websocket/cloudflare-workers`.
 - `../packages/platform-socket.io/README.md` - `@konekti/platform-socket.io` contract for Socket.IO gateway behavior on the platform-selected realtime capability seam.
 - `../packages/platform-bun/README.md` - `@konekti/platform-bun` contract and startup path.
 - `../packages/platform-deno/README.md` - `@konekti/platform-deno` contract and startup path.
