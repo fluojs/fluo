@@ -57,11 +57,11 @@ This section is the canonical source of truth for public runtime/package guidanc
 
 Package-level runtime behavior, startup APIs, and intentional limitations stay documented in the corresponding adapter README.
 
-## `platform-*` naming convention
+## runtime/protocol adapter naming convention
 
-The `platform-*` prefix is reserved for packages that implement the `PlatformAdapter` interface and bridge Konekti's abstract HTTP layer to a specific runtime, server library, or protocol surface.
+The `platform-*` prefix is reserved for packages that implement the `PlatformAdapter` interface and bridge Konekti's abstract HTTP layer to a specific runtime, server library, or protocol surface. `@konekti/socket.io` is the explicit exception: it stays an adapter package, but its public name now mirrors the upstream transport brand instead of preserving the `platform-*` prefix.
 
-Current `platform-*` packages:
+Current adapter packages in this family:
 
 - `@konekti/platform-bun`
 - `@konekti/platform-cloudflare-workers`
@@ -71,17 +71,20 @@ Current `platform-*` packages:
 - `@konekti/platform-nodejs`
 - `@konekti/socket.io`
 
-Rationale for the prefix:
+Rationale for the naming:
 
-- **NestJS migration familiarity**: NestJS uses the same `platform-*` convention, so the naming stays recognizable for teams moving from NestJS.
+- **NestJS migration familiarity**: `platform-*` remains the default convention for runtime adapters, so the naming stays recognizable for teams moving from NestJS.
 - **Collision prevention**: names like `@konekti/express` or `@konekti/bun` could be confused with the underlying library or runtime itself.
-- **Adapter signal**: the prefix tells readers that the package is an adapter layer for `@konekti/runtime`, not the upstream runtime or library.
+- **Adapter signal**: the convention tells readers that the package is an adapter layer for `@konekti/runtime`, not the upstream runtime or library.
+- **Transport-brand exception**: `@konekti/socket.io` is named after the upstream transport brand because the package acts as the dedicated Socket.IO adapter rather than an HTTP `PlatformAdapter`.
 
-Use `platform-*` when a package:
+Use `platform-*` by default when a package:
 
 - implements `PlatformAdapter`
 - acts as a runtime or protocol bridge into the Konekti runtime
 - owns runtime-specific request/response or gateway integration semantics
+
+Use an explicit non-`platform-*` adapter name only when the package is intentionally centered on a branded transport surface and the exception is documented here.
 
 Do not use `platform-*` when a package:
 
