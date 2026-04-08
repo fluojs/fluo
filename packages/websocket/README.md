@@ -3,7 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 
-Decorator-based WebSocket gateway authoring core for Konekti applications, with runtime-specific raw websocket bindings isolated on explicit subpaths such as `@konekti/websocket/node` and `@konekti/websocket/bun`.
+Decorator-based WebSocket gateway authoring core for Konekti applications, with runtime-specific raw websocket bindings isolated on explicit subpaths such as `@konekti/websocket/node`, `@konekti/websocket/bun`, and `@konekti/websocket/deno`.
 
 ## See also
 
@@ -18,7 +18,7 @@ Decorator-based WebSocket gateway authoring core for Konekti applications, with 
 npm install @konekti/websocket ws
 ```
 
-Import decorators and shared gateway contracts from `@konekti/websocket`, then add the runtime-specific binding subpath that matches your HTTP adapter (`@konekti/websocket/node` for Node upgrade-listener hosts or `@konekti/websocket/bun` for `@konekti/platform-bun`).
+Import decorators and shared gateway contracts from `@konekti/websocket`, then add the runtime-specific binding subpath that matches your HTTP adapter (`@konekti/websocket/node` for Node upgrade-listener hosts, `@konekti/websocket/bun` for `@konekti/platform-bun`, or `@konekti/websocket/deno` for `@konekti/platform-deno`).
 
 ## Quick Start
 
@@ -97,6 +97,13 @@ Those fetch-style runtimes use the shared `{ kind: 'fetch-style', contract: 'raw
 
 `@konekti/websocket/bun` consumes Bun's shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` realtime capability and hosts gateways through `Bun.serve()` + `server.upgrade()`.
 
+## Deno binding subpath
+
+- `DenoWebSocketModule.forRoot()` from `@konekti/websocket/deno` - registers the Deno-native raw websocket binding for `@konekti/platform-deno`
+- `createDenoWebSocketProviders()` from `@konekti/websocket/deno` - returns raw providers for custom Deno websocket module composition
+
+`@konekti/websocket/deno` consumes Deno's shared `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` realtime capability and hosts gateways through `Deno.upgradeWebSocket(request)`.
+
 ## Runtime behavior
 
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
@@ -115,7 +122,7 @@ Those fetch-style runtimes use the shared `{ kind: 'fetch-style', contract: 'raw
 - `@konekti/websocket` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websocket/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` or a fetch-style `raw-websocket-expansion` capability stop at that explicit boundary until a runtime-specific websocket host is implemented; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
-- Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; Bun raw websocket hosting is claimed only through `@konekti/websocket/bun`, while other runtimes still require their own dedicated bindings.
+- Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websocket/node`; Bun and Deno raw websocket hosting are claimed only through their dedicated subpaths, while other runtimes still require their own dedicated bindings.
 
 ## Provider registration constraints
 

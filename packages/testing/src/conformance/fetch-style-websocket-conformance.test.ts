@@ -44,11 +44,12 @@ describe('official fetch-style runtime websocket contract', () => {
     expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
-  it('keeps Deno on the shared contract-only websocket expansion seam', () => {
+  it('keeps Deno on the shared supported websocket expansion seam', () => {
     const harness = createFetchStyleWebSocketConformanceHarness({
       createAdapter: () => createDenoAdapter(),
+      expectedSupport: 'supported',
       expectedReason:
-        'Deno uses Deno.upgradeWebSocket() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/deno binding is needed before raw websocket support can be claimed.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
       name: 'deno',
     });
 
