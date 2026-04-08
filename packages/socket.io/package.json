@@ -15,7 +15,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/konektijs/konekti.git",
-    "directory": "packages/platform-socket.io"
+    "directory": "packages/socket.io"
   },
   "engines": {
     "node": ">=20.0.0"
