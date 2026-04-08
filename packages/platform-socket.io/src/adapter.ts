@@ -18,7 +18,7 @@ import {
   getWebSocketHandlerMetadataEntries,
   type WebSocketGatewayDescriptor,
   type WebSocketGatewayHandlerDescriptor,
-} from '@konekti/websocket';
+} from '@konekti/websockets';
 import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';

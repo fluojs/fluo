@@ -12,7 +12,7 @@ import { createFastifyAdapter } from '@konekti/platform-fastify';
 import { createNodejsAdapter } from '@konekti/platform-nodejs';
 import { bootstrapApplication, defineModule, KonektiFactory, type Application, type ApplicationLogger, type ModuleType } from '@konekti/runtime';
 import { bootstrapNodeApplication } from '@konekti/runtime/node';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websockets';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
@@ -124,7 +124,7 @@ async function createSocketIoAdapterFirstApplication(
   });
 }
 
-describe('@konekti/platform-socket.io', () => {
+describe('@konekti/socket.io', () => {
   it('keeps lifecycle and options tokens out of the root public entrypoint', () => {
     expect(publicApi.SOCKETIO_ROOM_SERVICE).toBeDefined();
     expect(publicApi.SOCKETIO_SERVER).toBeDefined();
