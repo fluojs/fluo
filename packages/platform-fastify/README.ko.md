@@ -63,6 +63,7 @@ await app.listen();
 - 이제 어댑터가 `FrameworkResponse.stream`을 노출하므로 SSE 및 기타 스트리밍 응답은 raw Node response 덕타이핑에 의존하지 않습니다.
 - 선택된 플랫폼의 Node 소유 realtime listener 경계가 필요한 통합을 위해 어댑터는 `{ kind: 'server-backed', server }` realtime capability를 노출합니다.
 - 그 realtime capability seam을 통해 raw `@konekti/websockets/node` 게이트웨이 호스팅을 지원합니다.
+- server-backed 전용 루트 데코레이터 opt-in인 `@WebSocketGateway({ serverBacked: { port } })`도 같은 seam을 통해 지원하며, 해당 게이트웨이에 websocket 전용 리스너를 만듭니다.
 - 시작 로그는 런타임 컨벤션을 따르며 와일드카드 호스트에 대한 바인딩 대상 상세 정보를 포함합니다.
 - 시그널 기반 종료는 `@konekti/runtime/node`에 문서화된 Node 호환 종료 경로를 따르며, `forceExitTimeoutMs`로 강제 종료 watchdog을 둘 수 있습니다.
 - `forceExitTimeoutMs`가 `shutdownTimeoutMs`보다 짧으면 전체 drain window가 끝나기 전에 watchdog이 의도적으로 프로세스를 종료할 수 있습니다.
@@ -91,6 +92,7 @@ wrk -t16 -c128 -d30s http://127.0.0.1:3000/health
 - `rawBody`는 opt-in이며 multipart 요청에서는 제외됩니다. 이 동작은 Node 어댑터와 동일합니다.
 - standalone Fastify 모드는 지원하지 않습니다. 이 어댑터는 Konekti 런타임 부트스트랩 경로가 필요하며 단독 Fastify 서버로 사용할 수 없습니다.
 - 이 패키지는 Fastify 전용 WebSocket 게이트웨이 API를 추가하지 않으며, realtime 통합은 노출된 server-backed capability seam을 통해 붙어야 합니다.
+- 전용 websocket 리스너 소유권은 Fastify 어댑터 옵션이 아니라 websocket 패키지 계약입니다. Fastify 전용 새 플래그를 기대하지 말고 `@konekti/websockets/node`의 `@WebSocketGateway({ serverBacked: { port } })`를 사용하세요.
 
 #### 0.x 마이그레이션 노트
 
