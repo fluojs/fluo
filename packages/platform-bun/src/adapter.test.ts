@@ -305,7 +305,7 @@ describe('@konekti/platform-bun', () => {
         return upgraded ? undefined : new Response(null, { status: 400 });
       }
 
-      return new Response('not-upgraded', { status: 202 });
+      return undefined;
     });
 
     adapter.configureWebSocketBinding({
@@ -324,7 +324,7 @@ describe('@konekti/platform-bun', () => {
     expect(upgradeResponse).toBeUndefined();
     expect(mockBun.lastServer?.upgrade).toHaveBeenCalledTimes(1);
     expect(httpResponse?.status).toBe(200);
-    expect(bindingFetch).toHaveBeenCalledTimes(1);
+    expect(bindingFetch).toHaveBeenCalledTimes(2);
     expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
   });
 });

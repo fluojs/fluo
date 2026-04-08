@@ -40,7 +40,7 @@ Konekti를 처음 접하신다면 다음 경로를 따라 첫 애플리케이션
 
 Konekti는 높은 조합성을 제공합니다. 목적에 맞는 도구를 찾고 선택해 보세요.
 
-공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로, raw Node `@konekti/platform-nodejs` 경로, `@konekti/platform-express` Node.js 대안을 함께 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다. Raw `@konekti/websockets/node`와 `@konekti/socket.io` 지원은 현재 테스트된 server-backed 어댑터(`platform-nodejs`, `platform-fastify`, `platform-express`)로 계속 한정되며, Bun 네이티브·Deno 네이티브·Cloudflare Workers isolate-local raw websocket 호스팅은 전용 `@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers` 바인딩으로 이동했습니다.
+공식 런타임/패키지 매트릭스는 `reference/package-surface.ko.md`를 기준으로 확인하세요. 이 허브는 스타터/기본 경로 안내만 짧게 유지하되 기본 `@konekti/platform-fastify` 스타터 경로, raw Node `@konekti/platform-nodejs` 경로, `@konekti/platform-express` Node.js 대안을 함께 가리키고, 런타임별 시작·호스팅 세부사항은 각 어댑터 README로 연결합니다. Raw `@konekti/websockets/node` 지원은 현재 테스트된 server-backed 어댑터(`platform-nodejs`, `platform-fastify`, `platform-express`)로 계속 한정되고, `@konekti/socket.io`는 기존 Node/Fastify/Express server-backed 경로를 유지한 채 공식 Bun 전용 `@konekti/platform-bun` + `@socket.io/bun-engine` 경로를 추가하며, Bun·Deno·Cloudflare Workers raw websocket 호스팅은 계속 전용 `@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers` 바인딩에 머뭅니다.
 
 - `reference/package-chooser.ko.md` - **여기서 시작하세요**: 특정 유스케이스에 맞는 패키지 선택하기.
 - `reference/package-surface.ko.md` - 프레임워크 전반의 공개 API 요약.

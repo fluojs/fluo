@@ -85,16 +85,18 @@ export class AppModule {}
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
 
+`@konekti/socket.io`는 이제 Bun의 supported fetch-style request-upgrade capability와 공식 `@socket.io/bun-engine` 통합 경로를 통해 `@konekti/platform-bun`에서도 문서화·회귀 테스트됩니다.
+
 현재 이 패키지에서 Socket.IO 미지원 상태를 명시적으로 유지하는 런타임은 다음과 같습니다.
 
-- `@konekti/platform-bun`
 - `@konekti/platform-deno`
 - `@konekti/platform-cloudflare-workers`
 
 ## Runtime behavior
 
 - `@konekti/websockets` 데코레이터와 메타데이터 디스커버리를 재사용합니다
-- 플랫폼이 선택한 realtime capability를 소비하며, 선택된 HTTP 어댑터가 `{ kind: 'server-backed', server }`를 보고할 때만 부팅합니다
+- 플랫폼이 선택한 realtime capability를 소비하며, `@konekti/platform-nodejs`·`@konekti/platform-fastify`·`@konekti/platform-express`에서는 `{ kind: 'server-backed', server }` 경로로, `@konekti/platform-bun`에서는 Bun의 supported `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', ... }` capability 경로로 부팅합니다
+- Bun에서는 Node server-backed 부트스트랩을 흉내 내지 않고 공식 `@socket.io/bun-engine` 호스트 경로를 사용합니다
 - `@WebSocketGateway({ path })`를 Socket.IO 네임스페이스로 매핑합니다 (`/`는 기본 네임스페이스 사용)
 - 연결된 네임스페이스 소켓마다 `@OnConnect()`, `@OnMessage(event?)`, `@OnDisconnect()` 핸들러를 바인딩합니다
 - 런타임 DI 컨테이너에서 게이트웨이 인스턴스를 resolve하며, singleton이 아닌 게이트웨이는 경고 후 건너뜁니다
@@ -106,9 +108,10 @@ export class AppModule {}
 ## 의도된 제한 사항
 
 - `@konekti/socket.io`는 `getServer()` 존재만으로 유효한 realtime 런타임이라고 가정하지 않습니다. 선택된 플랫폼 어댑터가 보고하는 명시적 realtime capability만 따릅니다.
-- 현재 Socket.IO 지원 주장은 namespace, room, shutdown 동작이 회귀 테스트된 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
+- 현재 Socket.IO 지원 주장은 server-backed 경로의 `@konekti/platform-nodejs`·`@konekti/platform-fastify`·`@konekti/platform-express`와, 공식 `@socket.io/bun-engine` 경로의 `@konekti/platform-bun`으로 제한되며 namespace, room, shutdown 동작이 회귀 테스트됩니다.
 - `{ kind: 'unsupported', mode: 'no-op' }`를 보고하는 런타임은 그 명시적 경계에서 중단됩니다. 이 패키지는 Worker/fetch-style 런타임을 위해 Node listener lifecycle을 에뮬레이션하지 않습니다.
-- Bun, Deno, Cloudflare Workers는 이 패키지에 테스트된 호환 구현이 추가되기 전까지 Socket.IO 지원 주장 범위에 포함되지 않습니다.
+- `@WebSocketGateway({ serverBacked })`는 계속 server-backed 전용 계약이며, 이 패키지는 `@konekti/platform-bun`과 함께 사용될 때 그 opt-in을 명시적으로 거부합니다.
+- Deno와 Cloudflare Workers는 이 패키지에 테스트된 호환 구현이 추가되기 전까지 Socket.IO 지원 주장 범위에 포함되지 않습니다.
 
 ## `@konekti/websockets`과의 차이
 

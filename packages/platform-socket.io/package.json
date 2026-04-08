@@ -41,6 +41,7 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@socket.io/bun-engine": "^0.1.0",
     "@konekti/core": "workspace:*",
     "@konekti/di": "workspace:*",
     "@konekti/http": "workspace:*",

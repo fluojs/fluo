@@ -85,16 +85,18 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 - `@konekti/platform-fastify`
 - `@konekti/platform-express`
 
+`@konekti/socket.io` is also documented and regression-tested on `@konekti/platform-bun` through Bun's supported fetch-style request-upgrade capability and the official `@socket.io/bun-engine` integration path.
+
 The following runtimes remain explicitly unsupported for Socket.IO in this package today:
 
-- `@konekti/platform-bun`
 - `@konekti/platform-deno`
 - `@konekti/platform-cloudflare-workers`
 
 ## Runtime behavior
 
 - Reuses `@konekti/websockets` decorators and metadata discovery
-- Consumes the platform-selected realtime capability and only boots when the chosen HTTP adapter reports `{ kind: 'server-backed', server }`
+- Consumes the platform-selected realtime capability and boots through `{ kind: 'server-backed', server }` on `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`, or through Bun's supported `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', ... }` capability on `@konekti/platform-bun`
+- Uses the official `@socket.io/bun-engine` host path for Bun instead of emulating the Node server-backed bootstrap model there
 - Maps `@WebSocketGateway({ path })` to Socket.IO namespaces (`/` uses the default namespace)
 - Binds `@OnConnect()`, `@OnMessage(event?)`, and `@OnDisconnect()` handlers for each connected namespace socket
 - Resolves gateway instances from the runtime DI container and skips non-singleton gateways with warnings
@@ -106,9 +108,10 @@ The following runtimes remain explicitly unsupported for Socket.IO in this packa
 ## Intentional limitations
 
 - `@konekti/socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
-- Socket.IO support claims are currently limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`, where namespace, room, and shutdown behavior are regression-tested.
+- Socket.IO support claims are currently limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express` through the server-backed path, plus `@konekti/platform-bun` through the official `@socket.io/bun-engine` path, where namespace, room, and shutdown behavior are regression-tested.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary. This package does not emulate Node listener lifecycle for Worker/fetch-style runtimes.
-- Bun, Deno, and Cloudflare Workers remain outside the Socket.IO support claim until this package gains a tested compatible implementation for those runtimes.
+- `@WebSocketGateway({ serverBacked })` remains a server-backed-only contract; this package rejects that opt-in when it is used together with `@konekti/platform-bun`.
+- Deno and Cloudflare Workers remain outside the Socket.IO support claim until this package gains a tested compatible implementation for those runtimes.
 
 ## Difference from `@konekti/websockets`
 

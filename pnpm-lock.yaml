@@ -504,6 +504,9 @@ importers:
       '@konekti/websockets':
         specifier: workspace:*
         version: link:../websocket
+      '@socket.io/bun-engine':
+        specifier: ^0.1.0
+        version: 0.1.0(typescript@5.9.3)
     devDependencies:
       '@konekti/platform-express':
         specifier: workspace:*
@@ -1614,6 +1617,11 @@ packages:
     resolution: {integrity: sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA==}
     cpu: [x64]
     os: [win32]
+
+  '@socket.io/bun-engine@0.1.0':
+    resolution: {integrity: sha512-B1z6GuAxZlfvjgaa3BHZBOfqHJNfnpebTw15p+Un1HuBL4YM7wUxO9sJa7K4NDTe7XbUBeqLIwTDA5tOOjffog==}
+    peerDependencies:
+      typescript: ^5
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
@@ -3837,6 +3845,10 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
+
+  '@socket.io/bun-engine@0.1.0(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
 
   '@socket.io/component-emitter@3.1.2': {}
 

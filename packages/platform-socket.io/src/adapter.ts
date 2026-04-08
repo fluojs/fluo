@@ -5,6 +5,7 @@ import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
 import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
+import { Server as BunEngineServer } from '@socket.io/bun-engine';
 import {
   type ApplicationLogger,
   type CompiledModule,
@@ -63,8 +64,54 @@ interface ClassProviderLike {
 interface NodeHttpServerLike {
 }
 
+interface FetchStyleRealtimeCapability {
+  contract: 'raw-websocket-expansion';
+  kind: 'fetch-style';
+  mode: 'request-upgrade';
+  reason: string;
+  support: 'contract-only' | 'supported';
+  version: 1;
+}
+
+interface BunRealtimeBinding {
+  fetch(request: Request, server: unknown): Response | Promise<Response> | undefined | Promise<Response | undefined>;
+  idleTimeout?: number;
+  maxRequestBodySize?: number;
+  websocket: {
+    close?: (socket: unknown, code: number, reason: string) => void | Promise<void>;
+    maxPayloadLength?: number;
+    message?: (socket: unknown, message: unknown) => void | Promise<void>;
+    open?: (socket: unknown) => void | Promise<void>;
+  };
+}
+
+interface BunEngineCorsOptions {
+  allowedHeaders?: string | string[];
+  credentials?: boolean;
+  exposedHeaders?: string | string[];
+  maxAge?: number;
+  methods?: string | string[];
+  origin?: boolean | RegExp | string | Array<RegExp | string>;
+}
+
+interface BunRealtimeBindingHost {
+  configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void;
+}
+
+type SocketIoBootstrapRuntime =
+  | {
+      capability: Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }>;
+      kind: 'server-backed';
+    }
+  | {
+      bindingHost: BunRealtimeBindingHost;
+      capability: FetchStyleRealtimeCapability;
+      kind: 'bun';
+    };
+
 const DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 128;
+const DEFAULT_SOCKETIO_ENGINE_PATH = '/socket.io/';
 
 function isFinitePositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0;
@@ -104,24 +151,95 @@ function isNodeHttpServerLike(value: unknown): value is NodeHttpServerLike {
   return typeof value === 'object' && value !== null;
 }
 
-function resolveServerBackedRealtimeCapability(
+function normalizeCorsForBunEngine(cors: SocketIoModuleOptions['cors']): BunEngineCorsOptions | undefined {
+  if (cors === undefined) {
+    return undefined;
+  }
+
+  if (typeof cors === 'function') {
+    throw new Error(
+      'Socket.IO Bun bootstrap does not support CORS delegate functions. Use static CORS options with @konekti/platform-bun.',
+    );
+  }
+
+  const origin = cors.origin;
+
+  if (typeof origin === 'function') {
+    throw new Error(
+      'Socket.IO Bun bootstrap does not support function-based cors.origin handlers. Use static origin values with @konekti/platform-bun.',
+    );
+  }
+
+  if (Array.isArray(origin) && origin.some((value) => typeof value === 'boolean')) {
+    throw new Error(
+      'Socket.IO Bun bootstrap does not support boolean entries inside cors.origin arrays. Use string or RegExp origins with @konekti/platform-bun.',
+    );
+  }
+
+  return {
+    allowedHeaders: cors.allowedHeaders,
+    credentials: cors.credentials,
+    exposedHeaders: cors.exposedHeaders,
+    maxAge: cors.maxAge,
+    methods: cors.methods,
+    origin:
+      Array.isArray(origin)
+        ? origin.filter((value): value is RegExp | string => typeof value === 'string' || value instanceof RegExp)
+        : origin,
+  };
+}
+
+function hasBunRealtimeBindingHost(adapter: HttpApplicationAdapter): adapter is HttpApplicationAdapter & BunRealtimeBindingHost {
+  return 'configureRealtimeBinding' in adapter && typeof adapter.configureRealtimeBinding === 'function';
+}
+
+function isFetchStyleRealtimeCapability(
+  capability: HttpAdapterRealtimeCapability,
+): capability is FetchStyleRealtimeCapability {
+  return capability.kind === 'fetch-style' && capability.contract === 'raw-websocket-expansion';
+}
+
+function resolveSocketIoBootstrapRuntime(
   adapter: HttpApplicationAdapter,
-): Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }> {
+): SocketIoBootstrapRuntime {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Socket.IO bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability.',
+      'Socket.IO bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability or @konekti/platform-bun for the official Bun engine path.',
     );
   }
 
   const capability = adapter.getRealtimeCapability();
 
-  if (capability.kind !== 'server-backed') {
+  if (capability.kind === 'server-backed') {
+    return {
+      capability,
+      kind: 'server-backed',
+    };
+  }
+
+  if (!isFetchStyleRealtimeCapability(capability)) {
     throw new Error(
       `Socket.IO bootstrap requires a server-backed realtime capability. ${capability.reason}`,
     );
   }
 
-  return capability;
+  if (capability.support !== 'supported') {
+    throw new Error(
+      `Socket.IO Bun bootstrap requires supported fetch-style websocket hosting. ${capability.reason}`,
+    );
+  }
+
+  if (!hasBunRealtimeBindingHost(adapter)) {
+    throw new Error(
+      'Socket.IO Bun bootstrap requires the selected adapter to expose Bun realtime binding configuration. Use @konekti/platform-bun for the official Bun engine path.',
+    );
+  }
+
+  return {
+    bindingHost: adapter,
+    capability,
+    kind: 'bun',
+  };
 }
 
 function extractPayload(args: unknown[]): unknown {
@@ -143,6 +261,7 @@ export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
 {
   private attachments: NamespaceAttachment[] = [];
+  private bunEngine: BunEngineServer | undefined;
   private io: Server | undefined;
   private readonly namespaceContext = new AsyncLocalStorage<string>();
   private readonly socketRegistry = new Map<string, Socket>();
@@ -162,16 +281,23 @@ export class SocketIoLifecycleService
       return this.io;
     }
 
-    const capability = resolveServerBackedRealtimeCapability(this.adapter);
-    const httpServer = capability.server;
+    const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
 
-    if (!isNodeHttpServerLike(httpServer)) {
-      throw new Error(
-        'Socket.IO bootstrap requires the selected realtime capability to expose a Node HTTP/S server instance.',
-      );
+    if (runtime.kind === 'server-backed') {
+      const httpServer = runtime.capability.server;
+
+      if (!isNodeHttpServerLike(httpServer)) {
+        throw new Error(
+          'Socket.IO bootstrap requires the selected realtime capability to expose a Node HTTP/S server instance.',
+        );
+      }
+
+      this.io = new Server(httpServer as never, this.createServerOptions());
+      return this.io;
     }
 
-    this.io = new Server(httpServer as never, this.createServerOptions());
+    this.io = new Server(this.createServerOptions());
+    this.installBunSocketIoBinding(runtime, this.io);
     return this.io;
   }
 
@@ -185,6 +311,8 @@ export class SocketIoLifecycleService
     if (descriptors.length === 0) {
       return;
     }
+
+    this.assertNoServerBackedGatewayOptIn(descriptors);
 
     const io = this.getServer();
     const attachments = this.prepareNamespaceAttachments(io, descriptors);
@@ -253,6 +381,86 @@ export class SocketIoLifecycleService
     }
 
     return options;
+  }
+
+  private createBunEngineOptions() {
+    const options: {
+      cors?: BunEngineCorsOptions;
+      path: string;
+    } = {
+      path: DEFAULT_SOCKETIO_ENGINE_PATH,
+    };
+
+    if (this.moduleOptions.cors !== undefined) {
+      options.cors = normalizeCorsForBunEngine(this.moduleOptions.cors);
+    }
+
+    return options;
+  }
+
+  private installBunSocketIoBinding(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'bun' }>, io: Server): void {
+    if (this.bunEngine) {
+      return;
+    }
+
+    const engine = new BunEngineServer(this.createBunEngineOptions());
+    io.bind(engine);
+    runtime.bindingHost.configureRealtimeBinding(this.createBunSocketIoBinding(engine));
+    this.bunEngine = engine;
+  }
+
+  private createBunSocketIoBinding(engine: BunEngineServer): BunRealtimeBinding {
+    const handler = engine.handler();
+
+    return {
+      fetch: async (request, server) => {
+        const pathname = this.tryResolvePathname(request.url);
+
+        if (!this.matchesSocketIoEnginePath(pathname)) {
+          return undefined;
+        }
+
+        return await engine.handleRequest(request, server as never);
+      },
+      idleTimeout: handler.idleTimeout,
+      maxRequestBodySize: handler.maxRequestBodySize,
+      websocket: {
+        close: handler.websocket.close as BunRealtimeBinding['websocket']['close'],
+        maxPayloadLength: handler.websocket.maxPayloadLength,
+        message: handler.websocket.message as BunRealtimeBinding['websocket']['message'],
+        open: handler.websocket.open as BunRealtimeBinding['websocket']['open'],
+      },
+    };
+  }
+
+  private tryResolvePathname(url: string): string | undefined {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private matchesSocketIoEnginePath(pathname: string | undefined): boolean {
+    return pathname === '/socket.io' || pathname === DEFAULT_SOCKETIO_ENGINE_PATH;
+  }
+
+  private assertNoServerBackedGatewayOptIn(descriptors: readonly WebSocketGatewayDescriptor[]): void {
+    const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
+
+    if (runtime.kind !== 'bun') {
+      return;
+    }
+
+    const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
+
+    if (!descriptor) {
+      return;
+    }
+
+    throw new Error(
+      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/socket.io when using @konekti/platform-bun. Gateway path ${descriptor.path} must use the official Bun engine host instead.`,
+    );
   }
 
   private prepareNamespaceAttachments(io: Server, descriptors: WebSocketGatewayDescriptor[]): NamespaceAttachment[] {
@@ -493,7 +701,8 @@ export class SocketIoLifecycleService
     event: string,
   ): WebSocketGatewayHandlerDescriptor[] {
     return descriptor.handlers.filter(
-      (handler) => handler.type === 'message' && (handler.event === undefined || handler.event === event),
+      (handler: WebSocketGatewayHandlerDescriptor) =>
+        handler.type === 'message' && (handler.event === undefined || handler.event === event),
     );
   }
 
@@ -514,7 +723,7 @@ export class SocketIoLifecycleService
     type: WebSocketGatewayHandlerDescriptor['type'],
     ...args: unknown[]
   ): Promise<void> {
-    const handlers = descriptor.handlers.filter((handler) => handler.type === type);
+    const handlers = descriptor.handlers.filter((handler: WebSocketGatewayHandlerDescriptor) => handler.type === type);
 
     for (const handler of handlers) {
       await this.invokeGatewayMethod(instance, descriptor, handler, args);
@@ -599,8 +808,11 @@ export class SocketIoLifecycleService
   }
 
   private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
+    const metadata = getWebSocketGatewayMetadata(candidate.targetType);
+    const entries = getWebSocketHandlerMetadataEntries(candidate.targetType.prototype);
+
     return {
-      handlers: getWebSocketHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => ({
+      handlers: entries.map((entry: (typeof entries)[number]) => ({
         event: entry.metadata.event,
         methodKey: entry.propertyKey,
         methodName: methodKeyToName(entry.propertyKey),
@@ -608,6 +820,7 @@ export class SocketIoLifecycleService
       })),
       moduleName: candidate.moduleName,
       path: normalizeGatewayPath(path),
+      serverBacked: metadata?.serverBacked,
       targetName: candidate.targetType.name,
       token: candidate.token,
     };
@@ -692,6 +905,10 @@ export class SocketIoLifecycleService
       );
     } finally {
       this.io = undefined;
+      this.bunEngine = undefined;
+      if (hasBunRealtimeBindingHost(this.adapter)) {
+        this.adapter.configureRealtimeBinding(undefined);
+      }
       this.socketRegistry.clear();
     }
   }

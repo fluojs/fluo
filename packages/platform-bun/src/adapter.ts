@@ -79,10 +79,16 @@ export interface BunWebSocketHandler<TData = unknown> {
 
 export interface BunWebSocketBinding<TData = unknown> {
   fetch(request: Request, server: BunServerLike): Response | Promise<Response> | undefined | Promise<Response | undefined>;
+  idleTimeout?: number;
+  maxRequestBodySize?: number;
   websocket: BunWebSocketHandler<TData>;
 }
 
-export interface BunWebSocketBindingHost {
+export interface BunRealtimeBindingHost {
+  configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
+}
+
+export interface BunWebSocketBindingHost extends BunRealtimeBindingHost {
   configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
 }
 
@@ -163,7 +169,7 @@ const BUN_WEBSOCKET_SUPPORT_REASON =
 
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private server?: BunServerLike;
-  private websocketBinding?: BunWebSocketBinding<unknown>;
+  private realtimeBinding?: BunWebSocketBinding<unknown>;
 
   constructor(private readonly options: BunAdapterOptions = {}) {}
 
@@ -191,17 +197,21 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     );
   }
 
-  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
-    if (this.server) {
+  configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
+    if (this.server && binding !== undefined) {
       throw new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.');
     }
 
-    this.websocketBinding = binding;
+    this.realtimeBinding = binding;
+  }
+
+  configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
+    this.configureRealtimeBinding(binding);
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     const bun = requireBunGlobal();
-    const websocketBinding = this.websocketBinding;
+    const realtimeBinding = this.realtimeBinding;
 
     const fetch = createBunFetchHandler({
       dispatcher,
@@ -217,8 +227,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
           this.server = server;
         }
 
-        if (websocketBinding && isWebSocketUpgradeRequest(request)) {
-          return await websocketBinding.fetch(request, server);
+        if (realtimeBinding) {
+          const handled = await realtimeBinding.fetch(request, server);
+
+          if (handled !== undefined || isWebSocketUpgradeRequest(request)) {
+            return handled;
+          }
         }
 
         const response = await fetch(request);
@@ -226,11 +240,11 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
         return response;
       },
       hostname: this.options.hostname,
-      idleTimeout: this.options.idleTimeout,
-      maxRequestBodySize: this.options.maxBodySize,
+      idleTimeout: realtimeBinding?.idleTimeout ?? this.options.idleTimeout,
+      maxRequestBodySize: realtimeBinding?.maxRequestBodySize ?? this.options.maxBodySize,
       port: resolvePort(this.options.port),
       tls: this.options.tls,
-      websocket: websocketBinding?.websocket,
+      websocket: realtimeBinding?.websocket,
     });
   }
 

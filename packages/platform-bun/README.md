@@ -61,6 +61,7 @@ await app.listen();
 - Preserves shared fetch-style request semantics for query strings, cookies, JSON/text body parsing, multipart parsing, and canonical error envelopes.
 - Exposes `FrameworkResponse.stream` through that shared seam so SSE and streamed responses stay transport-owned instead of depending on raw Node writers.
 - Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Bun-native request-upgrade hosting through `Bun.serve()` + `server.upgrade()`.
+- Hosts Bun-native realtime integrations through an explicit binding seam consumed by `@konekti/websockets/bun` for raw websockets and `@konekti/socket.io` for the official `@socket.io/bun-engine` path.
 - Supports adapter-first startup via `KonektiFactory.create(..., { adapter: createBunAdapter(...) })` and Bun-oriented compatibility helpers via `runBunApplication()`.
 
 ## runtime invariants
@@ -82,4 +83,4 @@ await app.listen();
 - No standalone Bun app builder is provided beyond Bun's native `fetch` + `Bun.serve()` contract; framework integration still flows through the Konekti runtime facade.
 - No Node-specific writable response escape hatch is exposed; streamed responses must use `FrameworkResponse.stream`.
 - Other fetch-style runtimes such as Deno and Cloudflare Workers remain separate adapter concerns.
-- Raw websocket hosting for Bun is provided through the dedicated `@konekti/websockets/bun` binding. `@konekti/websockets/node` still remains Node-upgrade-listener-specific and is not claimed for Bun.
+- Raw websocket hosting for Bun is provided through the dedicated `@konekti/websockets/bun` binding, while Bun-specific Socket.IO hosting now flows through `@konekti/socket.io` and the official `@socket.io/bun-engine` path. `@konekti/websockets/node` still remains Node-upgrade-listener-specific and is not claimed for Bun.
