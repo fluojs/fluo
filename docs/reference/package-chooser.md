@@ -170,10 +170,13 @@ Import the transport-specific entrypoint you need: `@konekti/microservices/kafka
 | package | role |
 |---------|------|
 | `@konekti/websocket` + `@konekti/websocket/node` | shared gateway decorators/contracts plus the explicit `ws` binding that consumes a platform-selected server-backed realtime capability |
+| `@konekti/websocket` + `@konekti/websocket/bun` | shared gateway decorators/contracts plus the Bun-native raw websocket binding that consumes `@konekti/platform-bun`'s supported fetch-style request-upgrade capability |
+| `@konekti/websocket` + `@konekti/websocket/deno` | shared gateway decorators/contracts plus the Deno-native raw websocket binding that consumes `@konekti/platform-deno`'s supported fetch-style request-upgrade capability |
+| `@konekti/websocket` + `@konekti/websocket/cloudflare-workers` | shared gateway decorators/contracts plus the Worker-native raw websocket binding that consumes `@konekti/platform-cloudflare-workers`' supported fetch-style request-upgrade capability in an isolate-local scope |
 
 Current honest support for raw `@konekti/websocket/node` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 
-Fetch-style adapters such as `@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` may expose the shared `raw-websocket-expansion` contract-only capability for future work, but that contract does **not** claim raw websocket runtime support by itself.
+`@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` now pair with the dedicated `@konekti/websocket/bun`, `@konekti/websocket/deno`, and `@konekti/websocket/cloudflare-workers` bindings for official raw websocket hosting. The Cloudflare Workers path stays isolate-local/stateless; Durable Object and cross-isolate coordination remain out of scope.
 
 ### option B — Socket.IO
 
