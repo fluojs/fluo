@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, mergeConfig, type UserConfig } from 'vitest/config';
@@ -9,14 +9,17 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
   const packagesRoot = join(repoRoot, 'packages');
   const aliases: Record<string, string> = {};
 
-  for (const packageName of readdirSync(packagesRoot)) {
-    const packageRoot = join(packagesRoot, packageName);
+  for (const packageDirectoryName of readdirSync(packagesRoot)) {
+    const packageRoot = join(packagesRoot, packageDirectoryName);
     const sourceRoot = join(packageRoot, 'src');
-    const scopeName = `@konekti/${packageName}`;
+    const manifestPath = join(packageRoot, 'package.json');
 
-    if (!existsSync(sourceRoot)) {
+    if (!existsSync(sourceRoot) || !existsSync(manifestPath)) {
       continue;
     }
+
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string };
+    const scopeName = manifest.name ?? `@konekti/${packageDirectoryName}`;
 
     for (const sourceEntry of readdirSync(sourceRoot)) {
       if (extname(sourceEntry) !== '.ts' || sourceEntry.endsWith('.test.ts') || sourceEntry === 'index.ts') {
