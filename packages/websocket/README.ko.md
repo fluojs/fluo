@@ -58,9 +58,27 @@ export class AppModule {}
 ## API
 
 - `@WebSocketGateway({ path? })`
+- `@WebSocketGateway({ path?, serverBacked? })` — `serverBacked: { port }`는 `@konekti/websockets/node`가 소유하는 전용 server-backed 리스너로 게이트웨이를 opt-in 시킵니다
 - `@OnMessage(event?)`
 - `@OnConnect()`
 - `@OnDisconnect()`
+
+### server-backed gateway opt-in
+
+이제 루트 데코레이터는 명시적인 server-backed 전용 메타데이터 블록을 지원합니다.
+
+```typescript
+@WebSocketGateway({
+  path: '/chat',
+  serverBacked: { port: 3101 },
+})
+class ChatGateway {}
+```
+
+- `serverBacked.port`는 유한한 양의 정수여야 합니다.
+- 이 opt-in은 `@konekti/websockets/node`에서만 소비됩니다.
+- 해당 게이트웨이는 애플리케이션 HTTP 리스너 대신, 설정한 포트의 websocket 전용 리스너로 이동합니다.
+- fetch-style 바인딩(`@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers`)은 이 메타데이터를 명시적으로 거부합니다.
 
 ## Node 바인딩 서브패스
 
@@ -122,6 +140,7 @@ export class AppModule {}
 - `onApplicationBootstrap()`에서 `COMPILED_MODULES`를 기준으로 게이트웨이 탐색
 - 게이트웨이 인스턴스는 `RUNTIME_CONTAINER`에서 해석
 - 명시적 Node seam은 플랫폼이 선택한 realtime capability를 소비하며, 그 capability가 `server-backed`일 때 `ws`의 `noServer` 모드와 단일 Node 서버 `upgrade` 리스너를 사용합니다
+- `serverBacked: { port }`에 opt-in한 게이트웨이는 애플리케이션의 공용 리스너에 붙지 않고, 해당 포트의 전용 Node 리스너를 사용합니다
 - 게이트웨이 경로는 정규화 후 정확히 일치해야 연결 처리
 - `request`/`transient` 스코프 게이트웨이는 경고 후 제외
 - Node 바인딩 종료 시 업그레이드 리스너 제거 및 활성 소켓 정리
@@ -133,7 +152,9 @@ export class AppModule {}
 
 - `@konekti/websockets` 루트는 게이트웨이 작성용 데코레이터, 메타데이터, 디스크립터, 공용 room 계약에 집중하며, 현재 raw `ws` Node 런타임 배선은 의도적으로 `@konekti/websockets/node`로 격리합니다.
 - 이제 명시적 realtime capability seam의 소유권은 플랫폼 선택 경계에 있습니다. 이 패키지 자체가 런타임/플랫폼 결정을 내리지는 않으며, 현재 raw `ws` 바인딩은 계속 Node 기반 server capability를 전제로 합니다.
+- `serverBacked: { port }`는 `@konekti/websockets/node` 전용의 명시적 server-backed 계약이며, 현재 문서화·테스트된 지원 범위는 계속 `@konekti/platform-nodejs`, `@konekti/platform-fastify`, `@konekti/platform-express`로 제한됩니다.
 - `{ kind: 'unsupported', mode: 'no-op' }` 또는 fetch-style `raw-websocket-expansion` capability를 보고하는 런타임은 런타임별 websocket host가 구현되기 전까지 그 명시적 경계에서 중단되며, 이 패키지는 Worker/fetch-style 런타임을 위해 Node upgrade listener 라이프사이클을 에뮬레이션하지 않습니다.
+- Bun, Deno, Cloudflare Workers는 공식 raw websocket 지원이 각 fetch-style 전용 바인딩에 있으므로 `@WebSocketGateway({ serverBacked })`를 명시적으로 거부합니다.
 - 그 seam을 통해 호환 가능한 Node upgrade-listener host를 노출하지 않는 fetch-style 런타임은 `@konekti/websockets/node`에서 계속 unsupported 상태이며, Bun/Deno/Cloudflare Workers raw websocket 호스팅은 각 전용 서브패스를 통해서만 주장합니다. Cloudflare Workers 지원은 의도적으로 isolate-local/stateless 범위에 머무르며 Durable Objects나 cross-isolate coordination을 포함하지 않습니다.
 
 ## 프로바이더 등록 제약

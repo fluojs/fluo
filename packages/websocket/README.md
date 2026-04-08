@@ -58,9 +58,27 @@ export class AppModule {}
 ## API
 
 - `@WebSocketGateway({ path? })` - marks a singleton provider/controller class as a WebSocket gateway
+- `@WebSocketGateway({ path?, serverBacked? })` - `serverBacked: { port }` opts a gateway into a dedicated server-backed listener owned by `@konekti/websockets/node`
 - `@OnMessage(event?)` - handles inbound messages, optionally filtered by event name
 - `@OnConnect()` - handles accepted socket connections
 - `@OnDisconnect()` - handles socket close events
+
+### Server-backed gateway opt-in
+
+The root decorator surface now supports an explicit server-backed-only metadata block:
+
+```typescript
+@WebSocketGateway({
+  path: '/chat',
+  serverBacked: { port: 3101 },
+})
+class ChatGateway {}
+```
+
+- `serverBacked.port` must be a finite positive integer.
+- This opt-in is consumed only by `@konekti/websockets/node`.
+- The gateway moves off the application HTTP listener and onto a dedicated websocket-owned listener on the configured port.
+- Fetch-style bindings (`@konekti/websockets/bun`, `@konekti/websockets/deno`, `@konekti/websockets/cloudflare-workers`) reject this metadata explicitly.
 
 ## Node binding subpath
 
@@ -122,6 +140,7 @@ Those fetch-style runtimes use the shared `{ kind: 'fetch-style', contract: 'raw
 - Discovery runs on `onApplicationBootstrap()` using `COMPILED_MODULES`
 - Gateway instances resolve from `RUNTIME_CONTAINER`
 - The explicit Node seam consumes the platform-selected realtime capability and, when that capability is `server-backed`, uses `ws` in `noServer` mode with one shared Node server `upgrade` listener
+- Gateways that opt into `serverBacked: { port }` get a dedicated Node-owned listener on that port instead of attaching to the application's shared listener
 - Gateway path matching is exact and normalized (`/chat` != `/notifications`)
 - Non-singleton gateways are skipped with warnings
 - Handlers for gateways sharing the same socket/path execute in discovery order, not `Promise.all` parallel fan-out
@@ -134,7 +153,9 @@ Those fetch-style runtimes use the shared `{ kind: 'fetch-style', contract: 'raw
 
 - `@konekti/websockets` root stays focused on gateway authoring decorators, metadata, descriptors, and shared room contracts; the current raw `ws` Node runtime wiring is intentionally isolated to `@konekti/websockets/node`.
 - Platform selection now owns the explicit realtime capability seam. This package still does not make runtime/platform decisions itself, and the current raw `ws` binding continues to require a Node-backed server capability.
+- `serverBacked: { port }` is an explicit server-backed-only contract for `@konekti/websockets/node`, and the currently documented/tested support remains limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` or a fetch-style `raw-websocket-expansion` capability stop at that explicit boundary until a runtime-specific websocket host is implemented; this package does not emulate Node upgrade listeners for Worker/fetch-style runtimes.
+- Bun, Deno, and Cloudflare Workers reject `@WebSocketGateway({ serverBacked })` explicitly because their official raw websocket support lives on the fetch-style runtime-specific bindings instead.
 - Fetch-style runtimes that do not expose a compatible Node upgrade-listener host through that seam remain unsupported for `@konekti/websockets/node`; Bun, Deno, and Cloudflare Workers raw websocket hosting are claimed only through their dedicated subpaths. Cloudflare Workers support remains intentionally isolate-local/stateless and does not imply Durable Object or cross-isolate coordination.
 
 ## Provider registration constraints
