@@ -305,7 +305,7 @@ The Web-runtime portability harness covers these parity expectations:
 
 ### Fetch-style websocket conformance harness
 
-Use `createFetchStyleWebSocketConformanceHarness(...)` when a fetch-style runtime adapter needs to lock the shared raw websocket expansion contract without claiming runtime support yet.
+Use `createFetchStyleWebSocketConformanceHarness(...)` when a fetch-style runtime adapter needs to lock the shared raw websocket expansion contract and its honest support level.
 
 ```ts
 import { createFetchStyleWebSocketConformanceHarness } from '@konekti/testing/fetch-style-websocket-conformance';
@@ -313,8 +313,9 @@ import { createBunAdapter } from '@konekti/platform-bun';
 
 const harness = createFetchStyleWebSocketConformanceHarness({
   createAdapter: () => createBunAdapter(),
+  expectedSupport: 'supported',
   expectedReason:
-    'Bun exposes a fetch-style raw websocket expansion contract only. Add a runtime-specific raw websocket host before claiming support.',
+    'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websocket/bun for the official raw websocket binding.',
   name: 'bun',
 });
 
@@ -326,8 +327,8 @@ The fetch-style websocket conformance harness locks these invariants:
 - the adapter exposes `getRealtimeCapability()`.
 - the capability stays on `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade' }`.
 - the shared contract version remains `1` until a deliberate contract change lands.
-- `support: 'contract-only'` remains explicit until a runtime-specific raw websocket host ships with tests.
-- the adapter keeps a stable reason string explaining why support is not claimed yet.
+- the adapter keeps an honest `support` value (`'contract-only'` or `'supported'`) for the documented runtime state.
+- the adapter keeps a stable reason string explaining how websocket hosting is supported or why it is not claimed yet.
 
 ### Resolving tokens directly
 

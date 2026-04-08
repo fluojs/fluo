@@ -1,6 +1,6 @@
 {
   "name": "@konekti/websocket",
-  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node ws binding on the node subpath.",
+  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node and Bun raw websocket bindings on dedicated subpaths.",
   "keywords": [
     "konekti",
     "websocket",
@@ -29,6 +29,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
@@ -38,6 +42,9 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
+      "bun": [
+        "./dist/bun.d.ts"
+      ],
       "node": [
         "./dist/node.d.ts"
       ]
@@ -59,6 +66,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@konekti/platform-bun": "workspace:*",
     "@konekti/platform-express": "workspace:*",
     "@konekti/platform-fastify": "workspace:*",
     "@types/ws": "^8.18.1"

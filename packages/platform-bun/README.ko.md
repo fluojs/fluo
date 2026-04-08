@@ -60,7 +60,7 @@ await app.listen();
 - 공유 `@konekti/runtime/web` fetch-style 어댑터 seam을 재사용해 Bun의 native `Request` 처리를 Konekti `FrameworkRequest` / `FrameworkResponse`로 브리지합니다.
 - query string, cookie, JSON/text body parsing, multipart parsing, canonical error envelope 등 공용 fetch-style 요청 시맨틱을 유지합니다.
 - 공용 seam이 `FrameworkResponse.stream`을 노출하므로 SSE 및 스트리밍 응답은 raw Node writer가 아니라 어댑터 소유 스트림 계약을 따릅니다.
-- 이후 런타임별 websocket 작업이 명시적 계약에서 시작되도록 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` capability를 노출합니다.
+- Bun의 `Bun.serve()` + `server.upgrade()` 요청 업그레이드 호스팅을 위해 `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` capability를 노출합니다.
 - `KonektiFactory.create(..., { adapter: createBunAdapter(...) })` 형태의 adapter-first 시작과 `runBunApplication()` 호환 헬퍼를 모두 지원합니다.
 
 ## runtime invariants
@@ -82,4 +82,4 @@ await app.listen();
 - Bun의 native `fetch` + `Bun.serve()` 계약을 넘는 standalone app builder는 제공하지 않으며, 프레임워크 통합은 계속 Konekti 런타임 facade를 통해 흐릅니다.
 - Node 전용 writable response escape hatch는 제공하지 않으며, 스트리밍 응답은 `FrameworkResponse.stream`을 사용해야 합니다.
 - Deno, Cloudflare Workers 같은 다른 fetch-style 런타임은 별도 어댑터 범위로 유지됩니다.
-- 여기서 노출하는 fetch-style websocket capability는 contract-only입니다. Bun은 websocket 처리에 `Bun.serve()` + `server.upgrade()`를 사용하며, 이는 `@konekti/websocket/node`가 요구하는 Node `upgrade` 리스너 모델(`ws` + `handleUpgrade`)과 호환되지 않습니다. raw websocket 지원을 주장하려면 Bun 네이티브 websocket 호스팅과 end-to-end 테스트를 갖춘 전용 `@konekti/websocket/bun` 바인딩 서브패스가 필요합니다.
+- Bun용 raw websocket 호스팅은 전용 `@konekti/websocket/bun` 바인딩을 통해 제공됩니다. `@konekti/websocket/node`는 계속 Node upgrade-listener 전용 경계로 유지되며 Bun 지원을 주장하지 않습니다.
