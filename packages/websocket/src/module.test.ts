@@ -197,7 +197,7 @@ function createMockSocket(): {
   };
 }
 
-describe('@konekti/websocket', () => {
+describe('@konekti/websockets', () => {
   it('keeps lifecycle DI tokens internal to module wiring', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_GATEWAY_SERVICE');
     expect(publicApi).not.toHaveProperty('WEBSOCKET_SERVICE');

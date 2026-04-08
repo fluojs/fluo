@@ -75,7 +75,7 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
-describe('@konekti/websocket/node', () => {
+describe('@konekti/websockets/node', () => {
   it('exposes the explicit Node-only websocket seam', () => {
     expect(nodePublicApi).toHaveProperty('NodeWebSocketModule');
     expect(nodePublicApi).toHaveProperty('NodeWebSocketGatewayLifecycleService');
