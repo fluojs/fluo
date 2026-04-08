@@ -26,6 +26,33 @@ export interface DenoServeController {
   shutdown(): Promise<void> | void;
 }
 
+export type DenoWebSocketMessage = Blob | string;
+
+export interface DenoServerWebSocket extends Pick<WebSocket, 'addEventListener' | 'close' | 'removeEventListener' | 'send'> {
+  readonly readyState: number;
+}
+
+export interface DenoWebSocketUpgradeResult<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
+  response: Response;
+  socket: TSocket;
+}
+
+export type DenoUpgradeWebSocketFunction<TSocket extends DenoServerWebSocket = DenoServerWebSocket> = (
+  request: Request,
+) => DenoWebSocketUpgradeResult<TSocket>;
+
+export interface DenoWebSocketUpgradeHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
+  upgrade(request: Request): DenoWebSocketUpgradeResult<TSocket>;
+}
+
+export interface DenoWebSocketBinding<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
+  fetch(request: Request, host: DenoWebSocketUpgradeHost<TSocket>): Response | Promise<Response>;
+}
+
+export interface DenoWebSocketBindingHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
+  configureWebSocketBinding(binding: DenoWebSocketBinding<TSocket> | undefined): void;
+}
+
 export type DenoServeHandler = (request: Request) => Response | Promise<Response>;
 export type DenoServeFunction = (
   options: DenoServeOptions,
@@ -34,6 +61,7 @@ export type DenoServeFunction = (
 
 type DenoGlobalLike = {
   serve: DenoServeFunction;
+  upgradeWebSocket: DenoUpgradeWebSocketFunction;
 };
 
 export interface DenoAdapterOptions {
@@ -44,6 +72,7 @@ export interface DenoAdapterOptions {
   port?: number;
   rawBody?: boolean;
   serve?: DenoServeFunction;
+  upgradeWebSocket?: DenoUpgradeWebSocketFunction;
 }
 
 export interface BootstrapDenoApplicationOptions extends BootstrapHttpAdapterApplicationOptions, DenoAdapterOptions {
@@ -66,6 +95,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private server?: DenoServeController;
+  private websocketBinding?: DenoWebSocketBinding<DenoServerWebSocket>;
 
   constructor(private readonly options: Required<Pick<DenoAdapterOptions, 'hostname' | 'port'>> & DenoAdapterOptions) {}
 
@@ -79,11 +109,30 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Deno uses Deno.upgradeWebSocket() for websocket handling, which is incompatible with the Node upgrade-listener model required by @konekti/websocket/node. A dedicated @konekti/websocket/deno binding is needed before raw websocket support can be claimed.',
+      'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
+      { support: 'supported' },
     );
   }
 
+  configureWebSocketBinding<TSocket extends DenoServerWebSocket>(
+    binding: DenoWebSocketBinding<TSocket> | undefined,
+  ): void {
+    if (this.server) {
+      throw new Error('Deno websocket binding must be configured before Deno adapter listen() starts the server.');
+    }
+
+    this.websocketBinding = binding;
+  }
+
   async handle(request: Request): Promise<Response> {
+    if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
+      const upgradeWebSocket = resolveUpgradeWebSocket(this.options.upgradeWebSocket);
+
+      return await this.websocketBinding.fetch(request, {
+        upgrade: (upgradeRequest) => upgradeWebSocket(upgradeRequest),
+      });
+    }
+
     return await dispatchWebRequest({
       dispatcher: this.dispatcher,
       dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
@@ -191,4 +240,24 @@ function resolveServe(serve: DenoServeFunction | undefined): DenoServeFunction {
   }
 
   throw new Error('Deno.serve is not available. Pass options.serve when running outside Deno.');
+}
+
+function resolveUpgradeWebSocket(
+  upgradeWebSocket: DenoUpgradeWebSocketFunction | undefined,
+): DenoUpgradeWebSocketFunction {
+  if (upgradeWebSocket) {
+    return upgradeWebSocket;
+  }
+
+  const denoGlobal = (globalThis as typeof globalThis & { Deno?: DenoGlobalLike }).Deno;
+
+  if (denoGlobal?.upgradeWebSocket) {
+    return denoGlobal.upgradeWebSocket.bind(denoGlobal);
+  }
+
+  throw new Error('Deno.upgradeWebSocket is not available. Pass options.upgradeWebSocket when running outside Deno.');
+}
+
+function isWebSocketUpgradeRequest(request: Request): boolean {
+  return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }

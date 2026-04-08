@@ -11,11 +11,16 @@ import { defineModule, type ApplicationLogger } from '@konekti/runtime';
 
 import {
   bootstrapDenoApplication,
+  DenoHttpApplicationAdapter,
   createDenoAdapter,
   runDenoApplication,
   type DenoServeController,
   type DenoServeHandler,
+  type DenoServerWebSocket,
   type DenoServeOptions,
+  type DenoWebSocketBinding,
+  type DenoWebSocketMessage,
+  type DenoUpgradeWebSocketFunction,
 } from './adapter.js';
 
 function createDeferred<T>() {
@@ -54,6 +59,69 @@ function createServeStub() {
       };
     }),
     shutdown,
+  };
+}
+
+function createUpgradeWebSocketStub() {
+  const socket = createMockDenoSocket();
+  const upgrade = vi.fn<DenoUpgradeWebSocketFunction>(() => ({
+    response: new Response(null, { status: 200 }),
+    socket,
+  }));
+
+  return {
+    socket,
+    upgrade,
+  };
+}
+
+function createMockDenoSocket(): DenoServerWebSocket {
+  const listeners = {
+    close: [] as Array<(event: Event) => void>,
+    error: [] as Array<(event: Event) => void>,
+    message: [] as Array<(event: MessageEvent<DenoWebSocketMessage>) => void>,
+  };
+  let readyState = 1;
+
+  return {
+    addEventListener(type: 'close' | 'error' | 'message', listener: EventListenerOrEventListenerObject | null) {
+      if (!listener) {
+        return;
+      }
+
+      const callback: (event: Event) => void = typeof listener === 'function'
+        ? (event: Event) => listener(event)
+        : (event: Event) => listener.handleEvent(event);
+
+      if (type === 'close') {
+        listeners.close.push(callback);
+        return;
+      }
+
+      if (type === 'error') {
+        listeners.error.push(callback);
+        return;
+      }
+
+      listeners.message.push(callback as (event: MessageEvent<DenoWebSocketMessage>) => void);
+    },
+    close(code?: number, reason?: string) {
+      readyState = 3;
+      const event = new Event('close') as Event & { code: number; reason: string };
+      Object.defineProperties(event, {
+        code: { value: code ?? 1000 },
+        reason: { value: reason ?? '' },
+      });
+
+      for (const listener of listeners.close) {
+        listener(event);
+      }
+    },
+    get readyState() {
+      return readyState;
+    },
+    removeEventListener() {},
+    send() {},
   };
 }
 
@@ -201,5 +269,54 @@ describe('@konekti/platform-deno', () => {
         status: 500,
       },
     });
+  });
+
+  it('reports supported fetch-style websocket hosting for the official Deno binding seam', () => {
+    const adapter = createDenoAdapter();
+
+    expect(adapter.getRealtimeCapability()).toEqual({
+      contract: 'raw-websocket-expansion',
+      kind: 'fetch-style',
+      mode: 'request-upgrade',
+      reason:
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
+      support: 'supported',
+      version: 1,
+    });
+  });
+
+  it('delegates websocket upgrade requests through a configured Deno websocket binding before HTTP dispatch', async () => {
+    const server = createServeStub();
+    const upgraded = createUpgradeWebSocketStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: server.serve,
+      upgradeWebSocket: upgraded.upgrade,
+    });
+    const dispatcher = {
+      dispatch: vi.fn(async () => undefined),
+    };
+    const bindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => {
+      const result = host.upgrade(request);
+      expect(result.socket).toBe(upgraded.socket);
+      return result.response;
+    });
+
+    adapter.configureWebSocketBinding({
+      fetch: bindingFetch,
+    });
+
+    await adapter.listen(dispatcher);
+
+    const upgradeResponse = await server.handler?.(new Request('https://runtime.test/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+    const httpResponse = await server.handler?.(new Request('https://runtime.test/http'));
+
+    expect(upgradeResponse?.status).toBe(200);
+    expect(bindingFetch).toHaveBeenCalledTimes(1);
+    expect(upgraded.upgrade).toHaveBeenCalledTimes(1);
+    expect(httpResponse?.status).toBe(200);
   });
 });
