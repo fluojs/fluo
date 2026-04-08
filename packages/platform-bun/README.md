@@ -82,4 +82,4 @@ await app.listen();
 - No standalone Bun app builder is provided beyond Bun's native `fetch` + `Bun.serve()` contract; framework integration still flows through the Konekti runtime facade.
 - No Node-specific writable response escape hatch is exposed; streamed responses must use `FrameworkResponse.stream`.
 - Other fetch-style runtimes such as Deno and Cloudflare Workers remain separate adapter concerns.
-- Raw websocket hosting for Bun is provided through the dedicated `@konekti/websocket/bun` binding. `@konekti/websocket/node` still remains Node-upgrade-listener-specific and is not claimed for Bun.
+- Raw websocket hosting for Bun is provided through the dedicated `@konekti/websockets/bun` binding. `@konekti/websockets/node` still remains Node-upgrade-listener-specific and is not claimed for Bun.
