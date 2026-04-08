@@ -219,6 +219,29 @@ describe('@konekti/websockets/cloudflare-workers', () => {
     expect(optionsProvider).toHaveProperty('useValue', options);
   });
 
+  it('rejects serverBacked gateway opt-in on the Cloudflare Workers fetch-style binding', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    @WebSocketGateway({ path: '/chat', serverBacked: { port: 4103 } })
+    class ChatGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter,
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/cloudflare-workers');
+  });
+
   it('preserves Worker-backed websocket behavior through the explicit cloudflare-workers seam', async () => {
     const adapter = new TestWorkerAdapter();
 
