@@ -169,29 +169,29 @@ Import the transport-specific entrypoint you need: `@konekti/microservices/kafka
 
 | package | role |
 |---------|------|
-| `@konekti/websocket` + `@konekti/websocket/node` | shared gateway decorators/contracts plus the explicit `ws` binding that consumes a platform-selected server-backed realtime capability |
-| `@konekti/websocket` + `@konekti/websocket/bun` | shared gateway decorators/contracts plus the Bun-native raw websocket binding that consumes `@konekti/platform-bun`'s supported fetch-style request-upgrade capability |
-| `@konekti/websocket` + `@konekti/websocket/deno` | shared gateway decorators/contracts plus the Deno-native raw websocket binding that consumes `@konekti/platform-deno`'s supported fetch-style request-upgrade capability |
-| `@konekti/websocket` + `@konekti/websocket/cloudflare-workers` | shared gateway decorators/contracts plus the Worker-native raw websocket binding that consumes `@konekti/platform-cloudflare-workers`' supported fetch-style request-upgrade capability in an isolate-local scope |
+| `@konekti/websockets` + `@konekti/websockets/node` | shared gateway decorators/contracts plus the explicit `ws` binding that consumes a platform-selected server-backed realtime capability |
+| `@konekti/websockets` + `@konekti/websockets/bun` | shared gateway decorators/contracts plus the Bun-native raw websocket binding that consumes `@konekti/platform-bun`'s supported fetch-style request-upgrade capability |
+| `@konekti/websockets` + `@konekti/websockets/deno` | shared gateway decorators/contracts plus the Deno-native raw websocket binding that consumes `@konekti/platform-deno`'s supported fetch-style request-upgrade capability |
+| `@konekti/websockets` + `@konekti/websockets/cloudflare-workers` | shared gateway decorators/contracts plus the Worker-native raw websocket binding that consumes `@konekti/platform-cloudflare-workers`' supported fetch-style request-upgrade capability in an isolate-local scope |
 
-Current honest support for raw `@konekti/websocket/node` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
+Current honest support for raw `@konekti/websockets/node` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 
-`@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` now pair with the dedicated `@konekti/websocket/bun`, `@konekti/websocket/deno`, and `@konekti/websocket/cloudflare-workers` bindings for official raw websocket hosting. The Cloudflare Workers path stays isolate-local/stateless; Durable Object and cross-isolate coordination remain out of scope.
+`@konekti/platform-bun`, `@konekti/platform-deno`, and `@konekti/platform-cloudflare-workers` now pair with the dedicated `@konekti/websockets/bun`, `@konekti/websockets/deno`, and `@konekti/websockets/cloudflare-workers` bindings for official raw websocket hosting. The Cloudflare Workers path stays isolate-local/stateless; Durable Object and cross-isolate coordination remain out of scope.
 
 ### option B — Socket.IO
 
 | package | role |
 |---------|------|
-| `@konekti/platform-socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime, booting only when the selected platform reports a server-backed realtime capability |
+| `@konekti/socket.io` | Socket.IO v4 gateway adapter on the shared Konekti runtime, booting only when the selected platform reports a server-backed realtime capability |
 
-Current honest support for `@konekti/platform-socket.io` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
+Current honest support for `@konekti/socket.io` is limited to the server-backed adapters documented and tested in this branch: `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`.
 
 **When not to use:**
 - If your real-time needs are limited to server-sent events (SSE), a standard HTTP streaming response from `@konekti/http` may be enough.
 - If your selected runtime reports realtime as `{ kind: 'unsupported', mode: 'no-op' }`, stop at that explicit boundary instead of expecting Node listener emulation.
 - If your selected runtime reports `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', support: 'contract-only', ... }`, treat that as a future-work contract only — not as current raw websocket support.
-- Do not assume Bun, Deno, or Cloudflare Workers support for `@konekti/platform-socket.io` unless a branch explicitly adds and tests a compatible implementation there.
-- Do not assume Bun, Deno, or Cloudflare Workers support for raw `@konekti/websocket/node` unless a branch explicitly adds and tests a compatible runtime-specific implementation there.
+- Do not assume Bun, Deno, or Cloudflare Workers support for `@konekti/socket.io` unless a branch explicitly adds and tests a compatible implementation there.
+- Do not assume Bun, Deno, or Cloudflare Workers support for raw `@konekti/websockets/node` unless a branch explicitly adds and tests a compatible runtime-specific implementation there.
 
 ---
 
