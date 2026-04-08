@@ -1,4 +1,4 @@
-# @konekti/platform-socket.io
+# @konekti/socket.io
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
@@ -7,15 +7,21 @@ Socket.IO v4 gateway adapter for Konekti applications.
 ## Installation
 
 ```bash
-npm install @konekti/platform-socket.io @konekti/websocket socket.io
+npm install @konekti/socket.io @konekti/websockets socket.io
 ```
+
+### Migration note (semver-major)
+
+- `@konekti/platform-socket.io` has been renamed to `@konekti/socket.io`.
+- Update package imports from `@konekti/platform-socket.io` to `@konekti/socket.io`.
+- Socket.IO gateway projects should also switch shared decorator imports to `@konekti/websockets`.
 
 ## Quick Start
 
 ```typescript
 import { Inject, Module } from '@konekti/core';
-import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/platform-socket.io';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websocket';
+import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/socket.io';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websockets';
 import type { Socket } from 'socket.io';
 
 @Inject([SOCKETIO_ROOM_SERVICE])
@@ -73,7 +79,7 @@ Consumers should inject `SOCKETIO_ROOM_SERVICE` for room helpers and `SOCKETIO_S
 
 ## Supported adapter matrix
 
-`@konekti/platform-socket.io` is currently documented and regression-tested on the server-backed adapters that expose a compatible Node HTTP/S host through the realtime capability seam:
+`@konekti/socket.io` is currently documented and regression-tested on the server-backed adapters that expose a compatible Node HTTP/S host through the realtime capability seam:
 
 - `@konekti/platform-nodejs`
 - `@konekti/platform-fastify`
@@ -87,7 +93,7 @@ The following runtimes remain explicitly unsupported for Socket.IO in this packa
 
 ## Runtime behavior
 
-- Reuses `@konekti/websocket` decorators and metadata discovery
+- Reuses `@konekti/websockets` decorators and metadata discovery
 - Consumes the platform-selected realtime capability and only boots when the chosen HTTP adapter reports `{ kind: 'server-backed', server }`
 - Maps `@WebSocketGateway({ path })` to Socket.IO namespaces (`/` uses the default namespace)
 - Binds `@OnConnect()`, `@OnMessage(event?)`, and `@OnDisconnect()` handlers for each connected namespace socket
@@ -99,13 +105,13 @@ The following runtimes remain explicitly unsupported for Socket.IO in this packa
 
 ## Intentional limitations
 
-- `@konekti/platform-socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
+- `@konekti/socket.io` does not assume that `getServer()` implies a valid realtime runtime. It follows the explicit realtime capability reported by the selected platform adapter.
 - Socket.IO support claims are currently limited to `@konekti/platform-nodejs`, `@konekti/platform-fastify`, and `@konekti/platform-express`, where namespace, room, and shutdown behavior are regression-tested.
 - Runtimes that report `{ kind: 'unsupported', mode: 'no-op' }` stop at that explicit boundary. This package does not emulate Node listener lifecycle for Worker/fetch-style runtimes.
 - Bun, Deno, and Cloudflare Workers remain outside the Socket.IO support claim until this package gains a tested compatible implementation for those runtimes.
 
-## Difference from `@konekti/websocket`
+## Difference from `@konekti/websockets`
 
-- `@konekti/websocket/node` targets raw `ws` upgrade handling on the shared Node server while `@konekti/websocket` root stays focused on shared gateway decorators and metadata
-- `@konekti/platform-socket.io` targets Socket.IO v4 namespaces, rooms, acknowledgements, and transport fallback behavior
+- `@konekti/websockets/node` targets raw `ws` upgrade handling on the shared Node server while `@konekti/websockets` root stays focused on shared gateway decorators and metadata
+- `@konekti/socket.io` targets Socket.IO v4 namespaces, rooms, acknowledgements, and transport fallback behavior
 - The decorators stay shared, but the transport-specific server and room implementation live in this package
