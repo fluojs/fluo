@@ -134,6 +134,8 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       return;
     }
 
+    this.assertNoServerBackedGatewayOptIn(descriptors);
+
     resolveSupportedFetchStyleRealtimeCapability(this.adapter);
 
     if (!hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
@@ -143,6 +145,20 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
     }
 
     this.adapter.configureWebSocketBinding(this.createBinding(descriptors));
+  }
+
+  private assertNoServerBackedGatewayOptIn(
+    descriptors: readonly WebSocketGatewayDescriptor[],
+  ): void {
+    const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
+
+    if (!descriptor) {
+      return;
+    }
+
+    throw new Error(
+      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/cloudflare-workers. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
+    );
   }
 
   async onApplicationShutdown(): Promise<void> {
