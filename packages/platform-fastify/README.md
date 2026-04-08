@@ -62,7 +62,7 @@ await app.listen();
 - Multipart requests expose `request.body` fields and `request.files` (`UploadedFile[]`).
 - The adapter exposes `FrameworkResponse.stream` so SSE and other streamed responses do not depend on raw Node response duck-typing.
 - The adapter exposes a `{ kind: 'server-backed', server }` realtime capability for integrations that need the selected platform's Node-owned realtime listener boundary.
-- Raw `@konekti/websocket/node` gateway hosting is supported through that realtime capability seam.
+- Raw `@konekti/websockets/node` gateway hosting is supported through that realtime capability seam.
 - Startup logs mirror runtime conventions and include bind-target details for wildcard hosts.
 - Signal-driven shutdown follows the same Node compatibility shutdown path documented at `@konekti/runtime/node`, including an optional force-exit watchdog via `forceExitTimeoutMs`.
 - If `forceExitTimeoutMs` is shorter than `shutdownTimeoutMs`, the watchdog can intentionally terminate the process before the full drain window completes.
