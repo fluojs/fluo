@@ -76,7 +76,7 @@ Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime optio
 
 - Reuses `dispatchWebRequest(...)` from the shared `@konekti/runtime/web` fetch-style adapter seam instead of forking Request/Response translation logic.
 - Bridges native Worker `Request` objects into Konekti `FrameworkRequest` / `FrameworkResponse` contracts.
-- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'contract-only', version: 1, reason }` so Worker platforms do not imply Node-style listener ownership while still documenting the future expansion seam honestly.
+- Exposes the shared fetch-style raw websocket expansion capability as `{ kind: 'fetch-style', contract: 'raw-websocket-expansion', mode: 'request-upgrade', support: 'supported', version: 1, reason }` for Worker-native isolate-local request-upgrade hosting through `WebSocketPair`.
 - Preserves `rawBody` opt-in behavior for non-multipart requests.
 - Supports multipart parsing and `request.files` exposure through the shared Web core.
 - Supports SSE and other streamed responses through the shared Web `FrameworkResponse.stream` implementation.
@@ -101,4 +101,4 @@ Worker bootstrap helpers accept the shared HTTP adapter middleware/runtime optio
 - Worker `env` and `ExecutionContext` values are accepted at the `fetch()` boundary but are not injected into Konekti `RequestContext` automatically.
 - No Node-only options such as `port`, `host`, `https`, `shutdownSignals`, or `forceExitTimeoutMs` are supported.
 - This package does not add Bun- or Deno-specific behavior; it stays focused on Cloudflare Workers over the shared Web core.
-- The fetch-style websocket capability exposed here is contract-only. Cloudflare Workers uses `WebSocketPair` (often paired with Durable Objects) for websocket handling, which is incompatible with the Node upgrade-listener model required by `@konekti/websocket/node`. Raw websocket support remains out of scope until a dedicated `@konekti/websocket/cloudflare-workers` binding and tests land.
+- Raw websocket hosting for Cloudflare Workers is provided through the dedicated `@konekti/websocket/cloudflare-workers` binding. The supported scope is intentionally isolate-local and stateless: in-memory room membership is limited to the active Worker instance, while Durable Objects and cross-isolate coordination remain out of scope.
