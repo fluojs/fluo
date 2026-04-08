@@ -109,7 +109,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websocket/deno for the official raw websocket binding.',
+      'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
       { support: 'supported' },
     );
   }
