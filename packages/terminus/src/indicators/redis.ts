@@ -9,6 +9,7 @@ interface RedisClientLike {
   ping?: () => Promise<unknown>;
 }
 
+/** Options for probing Redis connectivity. */
 export interface RedisHealthIndicatorOptions {
   client?: RedisClientLike;
   key?: string;
@@ -33,10 +34,22 @@ async function runRedisPing(options: RedisHealthIndicatorOptions): Promise<void>
   await client.ping();
 }
 
+/**
+ * Create a Redis health indicator.
+ *
+ * @param options Optional Redis client, ping callback, timeout, and key override.
+ * @returns A health indicator that checks Redis with `PING` semantics.
+ */
 export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions = {}): HealthIndicator {
   return new RedisHealthIndicator(options);
 }
 
+/**
+ * Create a provider that resolves a Redis client from DI and wraps it as an indicator.
+ *
+ * @param options Optional timeout, key override, or custom ping callback.
+ * @returns A factory provider that exposes `RedisHealthIndicator` from the DI container.
+ */
 export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndicatorOptions, 'client'> = {}): Provider {
   return {
     inject: [REDIS_CLIENT],
@@ -45,6 +58,7 @@ export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndi
   };
 }
 
+/** Health indicator that checks Redis reachability with a ping-like operation. */
 export class RedisHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
 

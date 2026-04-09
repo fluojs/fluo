@@ -12,6 +12,7 @@ interface PrismaClientLike {
   $queryRawUnsafe?: (query: string) => Promise<unknown>;
 }
 
+/** Options for probing Prisma-backed database connectivity. */
 export interface PrismaHealthIndicatorOptions {
   client?: PrismaClientLike;
   key?: string;
@@ -56,10 +57,22 @@ async function runPrismaPing(options: PrismaHealthIndicatorOptions): Promise<voi
   throw new Error('Prisma indicator requires a client with query/execute capabilities or a ping callback.');
 }
 
+/**
+ * Create a Prisma health indicator.
+ *
+ * @param options Optional Prisma client, ping callback, timeout, and key override.
+ * @returns A health indicator that executes a lightweight Prisma round trip.
+ */
 export function createPrismaHealthIndicator(options: PrismaHealthIndicatorOptions = {}): HealthIndicator {
   return new PrismaHealthIndicator(options);
 }
 
+/**
+ * Create a provider that resolves a Prisma client from DI and wraps it as an indicator.
+ *
+ * @param options Optional timeout, key override, or custom ping callback.
+ * @returns A factory provider that exposes `PrismaHealthIndicator` from the DI container.
+ */
 export function createPrismaHealthIndicatorProvider(options: Omit<PrismaHealthIndicatorOptions, 'client'> = {}): Provider {
   return {
     inject: [PRISMA_CLIENT],
@@ -68,6 +81,7 @@ export function createPrismaHealthIndicatorProvider(options: Omit<PrismaHealthIn
   };
 }
 
+/** Health indicator that probes Prisma connectivity with a trivial query. */
 export class PrismaHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
 
