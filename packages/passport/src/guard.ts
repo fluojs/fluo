@@ -11,13 +11,13 @@ import {
 } from './errors.js';
 import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
 import { getAuthRequirement } from './metadata.js';
-import {
-  type AuthGuardContract,
-  type AuthHandledResult,
-  type AuthStrategy,
-  type AuthStrategyResult,
-  type AuthStrategyRegistry,
-  type PassportModuleOptions,
+import type {
+  AuthGuardContract,
+  AuthHandledResult,
+  AuthStrategy,
+  AuthStrategyResult,
+  AuthStrategyRegistry,
+  PassportModuleOptions,
 } from './types.js';
 
 function isAuthHandledResult(result: AuthStrategyResult): result is AuthHandledResult {
@@ -48,6 +48,20 @@ function hasRegisteredStrategy(registry: AuthStrategyRegistry, strategyName: str
   return  Object.hasOwn(registry, strategyName);
 }
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * HTTP guard that resolves the active auth strategy, authenticates the request,
+ * and writes the resulting principal back to `requestContext.principal`.
+ *
+ * @remarks
+ * `AuthGuard` preserves the public contract documented in `@konekti/passport`:
+ * authentication failures become canonical `401 Unauthorized` responses, scope
+ * mismatches become `403 Forbidden`, and strategies may short-circuit the
+ * response by returning `{ handled: true }` after committing the response.
+ */
 @Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])
 export class AuthGuard implements AuthGuardContract {
   constructor(
@@ -55,6 +69,26 @@ export class AuthGuard implements AuthGuardContract {
     private readonly options: PassportModuleOptions = {},
   ) {}
 
+  /**
+   * Executes the configured auth strategy for the current route and enforces any declared scopes.
+   *
+   * @example
+   * ```ts
+   * @Controller('/profile')
+   * class ProfileController {
+   *   @Get('/')
+   *   @UseAuth('jwt')
+   *   @RequireScopes('profile:read')
+   *   getProfile() {}
+   * }
+   * ```
+   *
+   * @param context HTTP guard context for the active handler invocation.
+   * @returns `true` when the request may continue through the HTTP pipeline.
+   * @throws {AuthStrategyResolutionError} When no active strategy can be determined or resolved.
+   * @throws {UnauthorizedException} When the strategy reports missing, expired, or invalid authentication.
+   * @throws {ForbiddenException} When the authenticated principal is missing required scopes.
+   */
   async canActivate(context: GuardContext): Promise<true> {
     const requirement = getAuthRequirement(context.handler.controllerToken, context.handler.methodName);
     const strategyName = requirement?.strategy ?? this.options.defaultStrategy;
@@ -75,7 +109,7 @@ export class AuthGuard implements AuthGuardContract {
 
     const strategy = await context.requestContext.container.resolve(strategyToken as Token<AuthStrategy>).catch((error: unknown) => {
       if (error instanceof ContainerResolutionError) {
-        throw new AuthStrategyResolutionError(`Failed to resolve auth strategy "${strategyName}": ${error.message}`);
+        throw new AuthStrategyResolutionError(`Failed to resolve auth strategy "${strategyName}": ${toErrorMessage(error)}`);
       }
 
       throw error;
