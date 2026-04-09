@@ -41,6 +41,10 @@ type DrizzleRuntimeOptions = {
 
 /**
  * Transaction-aware Drizzle wrapper that integrates request scoping and shutdown handling with the Konekti runtime.
+ *
+ * @typeParam TDatabase Root Drizzle database handle registered in the module.
+ * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside `database.transaction(...)` callbacks.
+ * @typeParam TTransactionOptions Options forwarded to the underlying Drizzle transaction runner.
  */
 @Inject([DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS])
 export class DrizzleDatabase<
@@ -59,7 +63,16 @@ export class DrizzleDatabase<
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
   ) {}
 
-  /** Returns the active transaction handle when present, otherwise the root Drizzle database handle. */
+  /**
+   * Returns the active transaction handle when present, otherwise the root Drizzle database handle.
+   *
+   * @example
+   * ```ts
+   * return db.current().select().from(users);
+   * ```
+   *
+   * @returns The transaction-scoped database inside an active boundary, or the root database outside one.
+   */
   current(): TDatabase | TTransactionDatabase {
     return this.transactions.getStore() ?? this.database;
   }
@@ -91,12 +104,37 @@ export class DrizzleDatabase<
     });
   }
 
-  /** Opens a Drizzle transaction boundary or reuses the current one when already inside a transaction. */
+  /**
+   * Opens a Drizzle transaction boundary or reuses the current one when already inside a transaction.
+   *
+   * @example
+   * ```ts
+   * await db.transaction(async () => {
+   *   await db.current().insert(users).values(user);
+   * });
+   * ```
+   *
+   * @param fn Callback executed inside the transaction scope.
+   * @param options Optional transaction options forwarded to `database.transaction(...)`.
+   * @returns The callback result after the transaction finishes or the direct-execution fallback completes.
+   */
   async transaction<T>(fn: () => Promise<T>, options?: TTransactionOptions): Promise<T> {
     return this.executeTransaction(fn, options, false);
   }
 
-  /** Opens an abort-aware request transaction boundary for the current HTTP request. */
+  /**
+   * Opens an abort-aware request transaction boundary for the current HTTP request.
+   *
+   * @example
+   * ```ts
+   * await db.requestTransaction(async () => next.handle(), request.signal);
+   * ```
+   *
+   * @param fn Callback executed inside the request transaction scope.
+   * @param signal Optional abort signal linked to the request lifecycle.
+   * @param options Optional transaction options forwarded to `database.transaction(...)`.
+   * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
+   */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal, options?: TTransactionOptions): Promise<T> {
     return this.executeTransaction(fn, options, true, signal);
   }
