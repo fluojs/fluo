@@ -1,3 +1,4 @@
+// @ts-expect-error vitest is resolved by the workspace test runner in this repo.
 import { describe, expect, it } from 'vitest';
 
 import { Inject, type Constructor, type Token } from '@konekti/core';
@@ -77,6 +78,10 @@ function providerToken(provider: Provider): Token {
   }
 
   return provider.provide;
+}
+
+function moduleExports(moduleType: Constructor): Token[] {
+  return (getModuleMetadata(moduleType)?.exports as Token[] | undefined) ?? [];
 }
 
 async function resolveSingletonProviders(container: Container, providers: Provider[]): Promise<void> {
@@ -218,6 +223,18 @@ describe('JwtModule', () => {
     await expect(container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
   });
 
+  it('does not export refresh token service from async registration when refreshToken is omitted', () => {
+    const moduleType = JwtModule.forRootAsync({
+      useFactory: async () => ({
+        algorithms: ['HS256'],
+        issuer: 'jwt-module-tests',
+        secret: 'async-secret-without-refresh',
+      }),
+    });
+
+    expect(moduleExports(moduleType)).not.toContain(RefreshTokenService);
+  });
+
   it('fails singleton provider resolution when refreshToken is configured without any HMAC algorithms', async () => {
     const container = new Container();
     const moduleType = JwtModule.forRootAsync({
@@ -257,5 +274,20 @@ describe('JwtModule', () => {
 
     container.register(...moduleProviders(moduleType));
     await expect(container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
+  });
+
+  it('exports refresh token service from synchronous registration when refresh options are provided', () => {
+    const moduleType = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 60,
+        rotation: true,
+        secret: 'refresh-secret',
+        store: new NoopRefreshTokenStore(),
+      },
+      secret: 'jwt-secret',
+    });
+
+    expect(moduleExports(moduleType)).toContain(RefreshTokenService);
   });
 });

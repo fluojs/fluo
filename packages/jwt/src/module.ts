@@ -74,7 +74,7 @@ export class JwtModule {
       provide: JWT_OPTIONS,
       scope: 'singleton',
       useValue: options,
-    }, Boolean(options.refreshToken), 'singleton');
+    }, Boolean(options.refreshToken), Boolean(options.refreshToken), 'singleton');
   }
 
   static forRootAsync(options: AsyncModuleOptions<JwtVerifierOptions>): ModuleType {
@@ -83,19 +83,20 @@ export class JwtModule {
       provide: JWT_OPTIONS,
       scope: 'singleton',
       useFactory: options.useFactory,
-    }, true, 'transient');
+    }, true, false, 'transient');
   }
 
   private static createModule(
     optionsProvider: JwtOptionsProvider,
-    includeRefreshTokenService: boolean,
+    includeRefreshTokenProvider: boolean,
+    includeRefreshTokenExport: boolean,
     refreshTokenServiceScope: 'singleton' | 'transient',
   ): ModuleType {
     class JwtRuntimeModule {}
 
     defineModuleMetadata(JwtRuntimeModule, {
-      exports: [JwtService, DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenService ? [RefreshTokenService] : [])],
-      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenService, refreshTokenServiceScope),
+      exports: [JwtService, DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenExport ? [RefreshTokenService] : [])],
+      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenProvider, refreshTokenServiceScope),
     });
 
     return JwtRuntimeModule;
