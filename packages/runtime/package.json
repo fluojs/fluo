@@ -80,6 +80,7 @@
     "@konekti/http": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/serialization": "workspace:*"
+    "@konekti/serialization": "workspace:*",
+    "vitest": "^3.2.4"
   }
 }

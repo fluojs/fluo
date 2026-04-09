@@ -82,11 +82,6 @@
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
-  "devDependencies": {
-    "@konekti/platform-nodejs": "workspace:*",
-    "@konekti/platform-express": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*"
-  },
   "dependencies": {
     "@konekti/config": "workspace:*",
     "@konekti/core": "workspace:*",
@@ -102,5 +97,11 @@
     "@babel/core": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@konekti/platform-nodejs": "workspace:*",
+    "@konekti/platform-express": "workspace:*",
+    "@konekti/platform-fastify": "workspace:*",
+    "vitest": "^3.2.4"
   }
 }
