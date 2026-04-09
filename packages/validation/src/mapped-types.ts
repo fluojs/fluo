@@ -76,6 +76,29 @@ function copyDtoMetadata(
   }
 }
 
+/**
+ * Derive a DTO class that keeps only the selected properties from a base DTO.
+ *
+ * Validation and binding metadata are copied only for the requested keys, which
+ * keeps request materialization aligned with the subset contract documented in
+ * the base DTO.
+ *
+ * @typeParam TBase Base DTO constructor to derive from.
+ * @typeParam TKey String keys preserved on the derived DTO.
+ * @param BaseDto Source DTO that already declares binding and validation metadata.
+ * @param keys Property names to keep on the derived DTO.
+ * @returns A derived DTO constructor that materializes and validates only the selected fields.
+ *
+ * @example
+ * ```ts
+ * class UserDto {
+ *   email = '';
+ *   name = '';
+ * }
+ *
+ * class UserEmailDto extends PickType(UserDto, ['email']) {}
+ * ```
+ */
 export function PickType<TBase extends DtoConstructor, TKey extends Extract<keyof InstanceType<TBase>, string>>(
   BaseDto: TBase,
   keys: readonly TKey[],
@@ -95,6 +118,29 @@ export function PickType<TBase extends DtoConstructor, TKey extends Extract<keyo
   return PickedDto as DtoConstructor<Pick<InstanceType<TBase>, TKey>>;
 }
 
+/**
+ * Derive a DTO class that removes specific properties from a base DTO.
+ *
+ * Binding and validation metadata for omitted properties are intentionally not
+ * copied, so downstream transports cannot bind or validate those fields on the
+ * derived contract.
+ *
+ * @typeParam TBase Base DTO constructor to derive from.
+ * @typeParam TKey String keys removed from the derived DTO.
+ * @param BaseDto Source DTO that already declares binding and validation metadata.
+ * @param keys Property names to exclude from the derived DTO.
+ * @returns A derived DTO constructor that preserves every base field except the omitted keys.
+ *
+ * @example
+ * ```ts
+ * class UserDto {
+ *   id = '';
+ *   passwordHash = '';
+ * }
+ *
+ * class PublicUserDto extends OmitType(UserDto, ['passwordHash']) {}
+ * ```
+ */
 export function OmitType<TBase extends DtoConstructor, TKey extends Extract<keyof InstanceType<TBase>, string>>(
   BaseDto: TBase,
   keys: readonly TKey[],
@@ -120,6 +166,29 @@ type UnionToIntersection<T> = (
 
 type IntersectionInstance<TBaseDtos extends readonly DtoConstructor[]> = UnionToIntersection<InstanceType<TBaseDtos[number]>>;
 
+/**
+ * Combine multiple DTO classes into one intersection DTO.
+ *
+ * The derived constructor initializes every property discovered across the
+ * source DTOs and copies each source DTO's binding and validation metadata.
+ *
+ * @typeParam TBaseDtos Tuple of DTO constructors to merge.
+ * @param baseDtos DTO constructors whose fields and rules should be combined.
+ * @returns A DTO constructor whose instance type is the intersection of every input DTO.
+ *
+ * @example
+ * ```ts
+ * class PaginationDto {
+ *   page = 1;
+ * }
+ *
+ * class SearchDto {
+ *   query = '';
+ * }
+ *
+ * class SearchPageDto extends IntersectionType(PaginationDto, SearchDto) {}
+ * ```
+ */
 export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, DtoConstructor, ...DtoConstructor[]]>(
   ...baseDtos: TBaseDtos
 ): DtoConstructor<IntersectionInstance<TBaseDtos>> {
@@ -142,6 +211,26 @@ export function IntersectionType<TBaseDtos extends readonly [DtoConstructor, Dto
   return IntersectionDto as DtoConstructor<IntersectionInstance<TBaseDtos>>;
 }
 
+/**
+ * Derive a DTO class where every bound field from the base DTO becomes optional.
+ *
+ * Existing validators are preserved, and an `optional` validation rule is added
+ * when the base field did not already declare one.
+ *
+ * @typeParam TBase Base DTO constructor to derive from.
+ * @param BaseDto Source DTO that defines the original field contract.
+ * @returns A derived DTO constructor suited for patch/update style payloads.
+ *
+ * @example
+ * ```ts
+ * class CreateUserDto {
+ *   email = '';
+ *   name = '';
+ * }
+ *
+ * class UpdateUserDto extends PartialType(CreateUserDto) {}
+ * ```
+ */
 export function PartialType<TBase extends DtoConstructor>(BaseDto: TBase): DtoConstructor<Partial<InstanceType<TBase>>> {
   const baseKeys = collectDtoKeys(BaseDto);
   const PartialDto = createDerivedDto(`${BaseDto.name}PartialType`, (instance) => {
