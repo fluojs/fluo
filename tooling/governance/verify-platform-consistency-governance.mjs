@@ -147,6 +147,31 @@ function parsePackageListFromSection(markdown, sectionTitle) {
   return packages.sort((left, right) => left.localeCompare(right));
 }
 
+export function parsePackageNamesFromFamilyTable(markdown, sectionTitle) {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+
+  if (start < 0) {
+    return [];
+  }
+
+  const packages = new Set();
+
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+
+    if (line.startsWith('## ')) {
+      break;
+    }
+
+    for (const match of line.matchAll(/`(@konekti\/[^`]+)`/g)) {
+      packages.add(match[1]);
+    }
+  }
+
+  return [...packages].sort((left, right) => left.localeCompare(right));
+}
+
 function areSameStringArrays(left, right) {
   if (left.length !== right.length) {
     return false;
@@ -481,6 +506,28 @@ function enforceReleaseGovernancePublishSurfaceSync() {
   );
 }
 
+function enforceCanonicalPackageSurfaceSync() {
+  const releaseGovernance = readFileSync(join(repoRoot, 'docs/operations/release-governance.md'), 'utf8');
+  const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+
+  const intendedPublishSurface = parsePackageListFromSection(releaseGovernance, 'intended publish surface');
+  const englishPackageSurface = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
+  const koreanPackageSurface = parsePackageNamesFromFamilyTable(packageSurfaceKo, '공개 패키지 패밀리');
+
+  assert(intendedPublishSurface.length > 0, 'release-governance.md must define an intended publish surface list.');
+  assert(englishPackageSurface.length > 0, 'package-surface.md must enumerate public @konekti packages in its family table.');
+  assert(koreanPackageSurface.length > 0, 'package-surface.ko.md must enumerate public @konekti packages in its family table.');
+  assert(
+    areSameStringArrays(intendedPublishSurface, englishPackageSurface),
+    'docs/reference/package-surface.md must stay synchronized with docs/operations/release-governance.md intended publish surface.',
+  );
+  assert(
+    areSameStringArrays(englishPackageSurface, koreanPackageSurface),
+    'docs/reference/package-surface.md and docs/reference/package-surface.ko.md must declare the same public package family inventory.',
+  );
+}
+
 function enforceDocsHubOfficialTransportLinks() {
   const docsReadme = readFileSync(join(repoRoot, 'docs/README.md'), 'utf8');
   const docsReadmeKo = readFileSync(join(repoRoot, 'docs/README.ko.md'), 'utf8');
@@ -595,6 +642,7 @@ export function main() {
   enforceSsotMirrorStructure();
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
+  enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();

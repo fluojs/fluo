@@ -4,6 +4,7 @@ import {
   collectDirectProcessEnvViolations,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   isGovernedPackageSourcePath,
+  parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
 describe('isGovernedPackageSourcePath', () => {
@@ -90,5 +91,27 @@ describe('officialTransportDocsPackages', () => {
     };
 
     expect(governanceModule.getOfficialTransportDocsPackages()).toContain('@konekti/socket.io');
+  });
+});
+
+describe('parsePackageNamesFromFamilyTable', () => {
+  it('collects all public package names from the family table', () => {
+    const markdown = [
+      '## public package families',
+      '',
+      '| family | description | packages |',
+      '| --- | --- | --- |',
+      '| **HTTP** | Web API execution and routing. | `@konekti/http`, `@konekti/graphql` |',
+      '| **Auth** | Authentication and authorization. | `@konekti/jwt`, `@konekti/passport` |',
+      '',
+      '## next section',
+    ].join('\n');
+
+    expect(parsePackageNamesFromFamilyTable(markdown, 'public package families')).toEqual([
+      '@konekti/graphql',
+      '@konekti/http',
+      '@konekti/jwt',
+      '@konekti/passport',
+    ]);
   });
 });

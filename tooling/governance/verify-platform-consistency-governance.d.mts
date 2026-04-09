@@ -9,6 +9,7 @@ export function collectDirectProcessEnvViolations(
   relativePaths: readonly string[],
   readSource: (relativePath: string) => string,
 ): DirectProcessEnvViolation[];
+export function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string): string[];
 export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
