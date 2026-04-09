@@ -12,6 +12,7 @@
 | --- | --- |
 | **기반** | `@konekti/core`, `@konekti/di`, `@konekti/runtime` |
 | **HTTP 라우팅** | `@konekti/http` |
+| **GraphQL API** | `@konekti/graphql` |
 | **Fastify (권장)** | `@konekti/platform-fastify` |
 | **Express 호환** | `@konekti/platform-express` |
 | **입력 유효성 검사** | `@konekti/validation` |
