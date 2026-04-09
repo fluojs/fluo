@@ -10,23 +10,25 @@ Transport-agnostic email delivery core for Konekti. It provides a Nest-like modu
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Node-only SMTP with `@konekti/email/node`](#node-only-smtp-with-konektiemailnode)
   - [Standalone delivery with `EmailService`](#standalone-delivery-with-emailservice)
   - [Integration with `@konekti/notifications`](#integration-with-konektinotifications)
   - [Queue-backed bulk delivery](#queue-backed-bulk-delivery)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
+- [Runtime-Specific Subpaths](#runtime-specific-subpaths)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
 ## Installation
 
 ```bash
-npm install @konekti/email @konekti/notifications @konekti/queue
+npm install @konekti/email nodemailer
 ```
 
-Install `@konekti/queue` only when you want the built-in notifications queue adapter and worker.
+Install `@konekti/notifications` and `@konekti/queue` only when you want the built-in notifications channel and queue worker integration.
 
-If you need Node-specific SMTP/Nodemailer delivery, keep that concern outside the shared package boundary. The dedicated adapter work is tracked separately in [#918](https://github.com/konektijs/konekti/issues/918).
+Node-specific SMTP delivery now lives behind the explicit `@konekti/email/node` subpath. The root `@konekti/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only behavior.
 
 ## When to Use
 
@@ -88,6 +90,44 @@ export class WelcomeService {
 ```
 
 ## Common Patterns
+
+### Node-only SMTP with `@konekti/email/node`
+
+Use the dedicated Node subpath when you want first-party Nodemailer/SMTP delivery without weakening the runtime-portable root package contract.
+
+```typescript
+import { Module } from '@konekti/core';
+import { EmailModule } from '@konekti/email';
+import { createNodemailerEmailTransportFactory } from '@konekti/email/node';
+
+@Module({
+  imports: [
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: {
+            pass: 'smtp-password',
+            user: 'smtp-user',
+          },
+          host: 'smtp.example.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+      verifyOnModuleInit: true,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Behavioral contract notes:
+
+- `createNodemailerEmailTransportFactory(...)` is Node-only and is exported exclusively from `@konekti/email/node`.
+- The factory owns the Nodemailer transporter it creates, so `EmailService` can verify it on bootstrap and close it during shutdown.
+- `createNodemailerEmailTransport(...)` wraps an existing Nodemailer transporter without transferring resource ownership.
+- SMTP credentials still enter through explicit options or DI. Neither the root package nor the Node subpath reads `process.env` directly.
 
 ### Standalone delivery with `EmailService`
 
@@ -236,15 +276,28 @@ These limitations are part of the package contract so transport selection, templ
 - `EmailConfigurationError`
 - `EmailMessageValidationError`
 
+### Node-only subpath
+
+- `createNodemailerEmailTransport(...)`
+- `createNodemailerEmailTransportFactory(...)`
+- `NodemailerEmailTransport`
+
+## Runtime-Specific Subpaths
+
+| Runtime | Subpath | Exports |
+| --- | --- | --- |
+| Node.js | `@konekti/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+
 ## Related Packages
 
 - `@konekti/notifications`: Shared orchestration layer that consumes `EMAIL_CHANNEL`.
 - `@konekti/queue`: Recommended when bulk email delivery should run in the background.
 - `@konekti/config`: Recommended for resolving transport credentials and sender defaults without direct environment access.
-- `#918`: Tracks the future Node-specific `@konekti/email/node` adapter for Nodemailer/SMTP delivery.
+- `nodemailer`: The Node-only SMTP implementation consumed by `@konekti/email/node`.
 
 ## Example Sources
 
 - `packages/email/src/module.test.ts`: Module registration, async wiring, lifecycle, and queue-backed notifications examples.
 - `packages/email/src/public-surface.test.ts`: Public export and TypeScript contract verification.
+- `packages/email/src/node/node.test.ts`: Node-only Nodemailer adapter mapping and lifecycle examples.
 - `packages/email/src/status.test.ts`: Health/readiness contract examples.

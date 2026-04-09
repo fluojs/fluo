@@ -26,10 +26,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "node": [
+        "./dist/node.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
@@ -43,6 +54,10 @@
     "@konekti/di": "workspace:*",
     "@konekti/notifications": "workspace:*",
     "@konekti/queue": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@konekti/runtime": "workspace:*",
+    "nodemailer": "^6.10.1"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.0"
   }
 }

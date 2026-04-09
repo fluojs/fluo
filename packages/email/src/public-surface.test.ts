@@ -51,5 +51,8 @@ describe('@konekti/email public API surface', () => {
     expect(emailPublicApi).not.toHaveProperty('EMAIL_OPTIONS');
     expect(emailPublicApi).not.toHaveProperty('NormalizedEmailModuleOptions');
     expect(emailPublicApi).not.toHaveProperty('EmailNotificationQueueJob');
+    expect(emailPublicApi).not.toHaveProperty('NodemailerEmailTransport');
+    expect(emailPublicApi).not.toHaveProperty('createNodemailerEmailTransport');
+    expect(emailPublicApi).not.toHaveProperty('createNodemailerEmailTransportFactory');
   });
 });
