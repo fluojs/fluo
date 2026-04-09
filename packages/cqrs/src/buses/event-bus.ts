@@ -18,6 +18,12 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
   return typeof (value as { handle?: unknown }).handle === 'function';
 }
 
+/**
+ * CQRS-facing event bus that dispatches local event handlers, sagas, and the shared event transport.
+ *
+ * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
+ * and delegates the final publication step to `@konekti/event-bus`.
+ */
 @Inject([KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -52,6 +58,11 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.lifecycleState = 'stopped';
   }
 
+  /**
+   * Creates a CQRS runtime status snapshot that includes local handler and saga state.
+   *
+   * @returns A structured snapshot describing CQRS event-handler discovery and saga lifecycle state.
+   */
   createPlatformStatusSnapshot() {
     const sagaSnapshot = this.sagaService.getRuntimeSnapshot();
 
@@ -64,6 +75,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     });
   }
 
+  /**
+   * Publishes one event to matching CQRS handlers, sagas, and the shared event bus.
+   *
+   * @param event Event instance to publish.
+   * @returns A promise that resolves once all local CQRS side effects and delegated publication complete.
+   *
+   * @throws {InvariantError} When a discovered provider does not implement `handle(event)`.
+   */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
     await this.ensureDiscovered();
 
@@ -81,6 +100,12 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     await this.eventBus.publish(event);
   }
 
+  /**
+   * Publishes a batch of events sequentially through the CQRS event pipeline.
+   *
+   * @param events Event instances to publish in order.
+   * @returns A promise that resolves once all events are published.
+   */
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[]): Promise<void> {
     for (const event of events) {
       await this.publish(event);

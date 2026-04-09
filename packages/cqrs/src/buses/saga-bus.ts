@@ -26,6 +26,12 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Runtime saga coordinator that discovers `@Saga()` providers and serializes execution per saga token.
+ *
+ * The service prevents re-entrant dispatch loops within the same async context and waits for
+ * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
@@ -65,6 +71,11 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     this.lifecycleState = 'stopped';
   }
 
+  /**
+   * Returns an internal runtime snapshot used by the CQRS event bus and diagnostics.
+   *
+   * @returns Current discovery state, in-flight execution count, lifecycle state, and discovered saga count.
+   */
   getRuntimeSnapshot(): {
     discovered: boolean;
     inFlightSagaExecutions: number;
@@ -79,6 +90,12 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     };
   }
 
+  /**
+   * Dispatches one event to every matching saga descriptor.
+   *
+   * @param event Event instance that may trigger one or more sagas.
+   * @returns A promise that resolves once all matching saga chains for the event complete.
+   */
   async dispatch<TEvent extends IEvent>(event: TEvent): Promise<void> {
     await this.ensureDiscovered();
 
