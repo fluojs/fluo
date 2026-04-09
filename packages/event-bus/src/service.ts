@@ -89,6 +89,12 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
+/**
+ * Lifecycle-managed in-process event bus with optional external transport fan-out.
+ *
+ * The service discovers `@OnEvent()` handlers, clones payloads before dispatch,
+ * and can publish the same events to an external transport such as Redis Pub/Sub.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS])
 export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -142,6 +148,11 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     }
   }
 
+  /**
+   * Creates a platform status snapshot for health checks and diagnostics.
+   *
+   * @returns A structured snapshot describing discovery state, transport wiring, and failure counters.
+   */
   createPlatformStatusSnapshot() {
     return createEventBusPlatformStatusSnapshot({
       handlersDiscovered: this.descriptors.length,
@@ -155,6 +166,13 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     });
   }
 
+  /**
+   * Publishes one event to matching local handlers and, when configured, to the external transport.
+   *
+   * @param event Event instance to publish.
+   * @param options Optional timeout, abort signal, and wait-for-handler controls.
+   * @returns A promise that resolves once the configured local/transport publication completes.
+   */
   async publish(event: object, options?: EventPublishOptions): Promise<void> {
     await this.ensureDiscovered();
     const matchingDescriptors = this.matchEventDescriptors(event);
