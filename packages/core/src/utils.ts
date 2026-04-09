@@ -98,6 +98,20 @@ function cloneFallbackValue<T>(value: T, seen: WeakMap<object, unknown>): T {
 }
 
 /**
+ * Clones a value through `structuredClone()` and falls back to the hardened internal clone path when needed.
+ *
+ * @param value Value to clone.
+ * @returns A cloned value produced by `structuredClone()` when available, or `fallbackClone()` when the runtime clone fails.
+ */
+export function cloneWithFallback<T>(value: T): T {
+  try {
+    return structuredClone(value);
+  } catch {
+    return fallbackClone(value);
+  }
+}
+
+/**
  * Creates a best-effort deep clone for runtimes where `structuredClone()` is not available or throws.
  *
  * Supported fallback shapes include arrays, dates, regular expressions, maps, sets, typed arrays,

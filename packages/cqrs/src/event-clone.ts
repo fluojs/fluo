@@ -1,13 +1,5 @@
-import { fallbackClone } from '@konekti/core/internal';
+import { cloneWithFallback } from '@konekti/core/internal';
 import type { CqrsEventType, IEvent } from './types.js';
-
-function cloneValue<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return fallbackClone(value) as T;
-  }
-}
 
 /**
  * Creates an isolated event instance by cloning the source payload before rehydrating the event prototype.
@@ -17,7 +9,7 @@ function cloneValue<T>(value: T): T {
  * @returns A detached event instance with the requested event prototype.
  */
 export function createIsolatedEvent<TEvent extends IEvent>(eventType: CqrsEventType<TEvent>, source: unknown): TEvent {
-  const clonedPayload = cloneValue(source);
+  const clonedPayload = cloneWithFallback(source);
 
   if (typeof clonedPayload !== 'object' || clonedPayload === null) {
     return clonedPayload as TEvent;

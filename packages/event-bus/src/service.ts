@@ -1,5 +1,5 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { fallbackClone, getClassDiMetadata } from '@konekti/core/internal';
+import { cloneWithFallback, getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import {
   type ApplicationLogger,
@@ -39,16 +39,8 @@ interface InvocationBound {
   promise: Promise<never>;
 }
 
-function cloneValue<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return fallbackClone(value) as T;
-  }
-}
-
 function createIsolatedEvent<TEvent extends object>(eventType: EventType<TEvent>, source: unknown): TEvent {
-  const clonedPayload = cloneValue(source);
+  const clonedPayload = cloneWithFallback(source);
 
   if (typeof clonedPayload !== 'object' || clonedPayload === null) {
     return clonedPayload as TEvent;

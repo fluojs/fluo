@@ -81,13 +81,25 @@ await microservice.listen();
 
 ## 공개 API 개요
 
-- `MicroservicesModule`
-- `MessagePattern`, `EventPattern`
-- `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`
-- `TcpMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport` 등 트랜스포트 어댑터
-- `MicroserviceLifecycleService`
-- `MICROSERVICE`
-- `createMicroservicePlatformStatusSnapshot(...)`
+### 루트 배럴 (`@konekti/microservices`)
+
+- `MicroservicesModule`, `createMicroservicesProviders`: 모듈 등록 진입점입니다.
+- `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: 라우팅/스트리밍 데코레이터입니다.
+- `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: 루트 배럴에서 제공하는 트랜스포트 어댑터입니다.
+- `MicroserviceLifecycleService`, `MICROSERVICE`: 런타임 접근용 서비스와 호환 토큰입니다.
+- `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: 상태 스냅샷/TypeScript 계약 헬퍼입니다.
+
+### 지원되는 트랜스포트 서브패스
+
+- `@konekti/microservices/tcp`
+- `@konekti/microservices/redis` (Redis Pub/Sub 트랜스포트)
+- `@konekti/microservices/nats`
+- `@konekti/microservices/kafka`
+- `@konekti/microservices/rabbitmq`
+- `@konekti/microservices/grpc`
+- `@konekti/microservices/mqtt`
+
+`RedisStreamsMicroserviceTransport`는 현재 루트 배럴에서만 지원하며, `@konekti/microservices/redis-streams` 전용 export는 없습니다.
 
 ## 관련 패키지
 
@@ -98,4 +110,6 @@ await microservice.listen();
 ## 예제 소스
 
 - `packages/microservices/src/module.test.ts`
+- `packages/microservices/src/public-api.test.ts`
+- `packages/microservices/src/public-subpaths.test.ts`
 - `packages/microservices/src/public-surface.test.ts`

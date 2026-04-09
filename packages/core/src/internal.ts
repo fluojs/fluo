@@ -1,2 +1,2 @@
 export * from './metadata.js';
-export { fallbackClone } from './utils.js';
+export { cloneWithFallback, fallbackClone } from './utils.js';

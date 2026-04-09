@@ -1,5 +1,5 @@
 import { Inject } from '@konekti/core';
-import { fallbackClone } from '@konekti/core/internal';
+import { cloneWithFallback } from '@konekti/core/internal';
 import type { Container } from '@konekti/di';
 import { REDIS_CLIENT } from '@konekti/redis';
 import {
@@ -94,16 +94,8 @@ function serializeJobPayload(job: object): QueuePayload {
   return serialized;
 }
 
-function cloneQueuePayload(payload: QueuePayload): QueuePayload {
-  try {
-    return structuredClone(payload);
-  } catch {
-    return fallbackClone(payload) as QueuePayload;
-  }
-}
-
 function rehydrateJobPayload<TJob extends object>(jobType: QueueJobType<TJob>, payload: QueuePayload): TJob {
-  return Object.assign(Object.create(jobType.prototype), cloneQueuePayload(payload)) as TJob;
+  return Object.assign(Object.create(jobType.prototype), cloneWithFallback(payload)) as TJob;
 }
 
 function toBullBackoff(backoff: QueueBackoffOptions | undefined): JobsOptions['backoff'] {
@@ -564,7 +556,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         failedAt: new Date(job.finishedOn ?? Date.now()).toISOString(),
         jobId: job.id ?? '',
         jobName: descriptor.jobName,
-        payload: isQueuePayload(job.data) ? cloneQueuePayload(job.data) : job.data,
+        payload: isQueuePayload(job.data) ? cloneWithFallback(job.data) : job.data,
       };
 
       await this.getRedisClient().rpush(deadLetterKey(descriptor.jobName), JSON.stringify(deadLetter));
