@@ -6,12 +6,12 @@ import { getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
 import { Server as BunEngineServer } from '@socket.io/bun-engine';
-import {
-  type ApplicationLogger,
-  type CompiledModule,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-  type OnModuleDestroy,
+import type {
+  ApplicationLogger,
+  CompiledModule,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+  OnModuleDestroy,
 } from '@konekti/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
 import {
@@ -256,6 +256,13 @@ function extractPayload(args: unknown[]): unknown {
   return effectiveArgs.length === 1 ? effectiveArgs[0] : effectiveArgs;
 }
 
+/**
+ * Lifecycle service that boots Socket.IO gateways, exposes the raw server, and implements room helpers.
+ *
+ * @remarks
+ * This service preserves the README-level gateway contracts for namespace discovery, buffered pre-ready events,
+ * Bun engine hosting, and graceful shutdown behavior.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS_INTERNAL])
 export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
@@ -276,6 +283,12 @@ export class SocketIoLifecycleService
     private readonly moduleOptions: SocketIoModuleOptions,
   ) {}
 
+  /**
+   * Returns the managed Socket.IO server instance, creating and binding it on first access.
+   *
+   * @returns The shared Socket.IO `Server` used by this adapter instance.
+   * @throws {Error} When the selected realtime capability cannot expose the server contract Socket.IO requires.
+   */
   getServer(): Server {
     if (this.io) {
       return this.io;
@@ -301,6 +314,9 @@ export class SocketIoLifecycleService
     return this.io;
   }
 
+  /**
+   * Discovers gateway classes and binds their handlers to the resolved namespaces once per application lifecycle.
+   */
   async onApplicationBootstrap(): Promise<void> {
     if (this.wired) {
       return;
@@ -325,14 +341,27 @@ export class SocketIoLifecycleService
     this.wired = true;
   }
 
+  /**
+   * Shuts down Socket.IO resources during application shutdown.
+   */
   async onApplicationShutdown(): Promise<void> {
     await this.shutdown();
   }
 
+  /**
+   * Shuts down Socket.IO resources when the containing module is destroyed.
+   */
   async onModuleDestroy(): Promise<void> {
     await this.shutdown();
   }
 
+  /**
+   * Adds a socket to one room, using the current gateway namespace or an explicit namespace override.
+   *
+   * @param socketId Socket identifier to move into the room.
+   * @param room Room identifier to join.
+   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   */
   joinRoom(socketId: string, room: string, namespacePath?: string): void {
     const socket = this.resolveSocket(socketId);
 
@@ -344,6 +373,13 @@ export class SocketIoLifecycleService
     this.resolveRequiredNamespace(namespacePath).in(socketId).socketsJoin(room);
   }
 
+  /**
+   * Removes a socket from one room, using the current gateway namespace or an explicit namespace override.
+   *
+   * @param socketId Socket identifier to remove from the room.
+   * @param room Room identifier to leave.
+   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   */
   leaveRoom(socketId: string, room: string, namespacePath?: string): void {
     const socket = this.resolveSocket(socketId);
 
@@ -355,10 +391,24 @@ export class SocketIoLifecycleService
     this.resolveRequiredNamespace(namespacePath).in(socketId).socketsLeave(room);
   }
 
+  /**
+   * Emits one event payload to every socket currently joined to a room.
+   *
+   * @param room Room identifier that should receive the event.
+   * @param event Socket.IO event name emitted to the room.
+   * @param data Payload delivered with the event.
+   * @param namespacePath Optional namespace path required when the helper runs outside gateway handler context.
+   */
   broadcastToRoom(room: string, event: string, data: unknown, namespacePath?: string): void {
     this.resolveRequiredNamespace(namespacePath).to(room).emit(event, data);
   }
 
+  /**
+   * Returns the current room set tracked for one connected socket.
+   *
+   * @param socketId Socket identifier to inspect.
+   * @returns A snapshot of the rooms currently joined by that socket.
+   */
   getRooms(socketId: string): ReadonlySet<string> {
     const socket = this.socketRegistry.get(socketId);
 

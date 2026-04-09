@@ -157,6 +157,13 @@ function rejectBadUpgradeRequest(socket: Duplex): void {
   socket.destroy();
 }
 
+/**
+ * Lifecycle service that discovers WebSocket gateways, attaches upgrade listeners, and manages room state.
+ *
+ * @remarks
+ * This service preserves the documented runtime behavior for shared-path discovery order, optional server-backed
+ * listeners, buffered pre-ready events, heartbeat handling, and graceful shutdown.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL])
 export class NodeWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
@@ -181,6 +188,9 @@ export class NodeWebSocketGatewayLifecycleService
     private readonly moduleOptions: WebSocketModuleOptions,
   ) {}
 
+  /**
+   * Discovers gateway classes and attaches their WebSocket servers once per application lifecycle.
+   */
   async onApplicationBootstrap(): Promise<void> {
     if (this.upgradeListener || this.ownedUpgradeServers.length > 0 || this.attachments.length > 0) {
       return;
@@ -194,6 +204,20 @@ export class NodeWebSocketGatewayLifecycleService
 
     await this.prepareGatewayAttachments(descriptors);
     this.startHeartbeatIfEnabled();
+  }
+
+  /**
+   * Shuts down websocket listeners and connection tracking during application shutdown.
+   */
+  async onApplicationShutdown(): Promise<void> {
+    await this.shutdown();
+  }
+
+  /**
+   * Shuts down websocket listeners and connection tracking when the containing module is destroyed.
+   */
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdown();
   }
 
   private async prepareGatewayAttachments(
@@ -360,14 +384,6 @@ export class NodeWebSocketGatewayLifecycleService
         attachment.server.emit('connection', websocket, request);
       });
     };
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.shutdown();
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.shutdown();
   }
 
   private resolveUpgradeServer(): NodeUpgradeServer {
@@ -946,6 +962,12 @@ export class NodeWebSocketGatewayLifecycleService
     this.pingSentAt.clear();
   }
 
+  /**
+   * Adds one socket to an in-memory room membership set.
+   *
+   * @param socketId Socket identifier to add.
+   * @param room Room identifier to join.
+   */
   joinRoom(socketId: string, room: string): void {
     let rooms = this.socketRooms.get(socketId);
 
@@ -965,6 +987,12 @@ export class NodeWebSocketGatewayLifecycleService
     sockets.add(socketId);
   }
 
+  /**
+   * Removes one socket from an in-memory room membership set.
+   *
+   * @param socketId Socket identifier to remove.
+   * @param room Room identifier to leave.
+   */
   leaveRoom(socketId: string, room: string): void {
     const rooms = this.socketRooms.get(socketId);
     rooms?.delete(room);
@@ -979,6 +1007,13 @@ export class NodeWebSocketGatewayLifecycleService
     }
   }
 
+  /**
+   * Broadcasts one JSON-encoded event frame to every open socket currently joined to a room.
+   *
+   * @param room Room identifier that should receive the event.
+   * @param event Event name delivered to room members.
+   * @param data Payload delivered with the event.
+   */
   broadcastToRoom(room: string, event: string, data: unknown): void {
     const socketIds = this.roomSockets.get(room);
 
@@ -1018,6 +1053,12 @@ export class NodeWebSocketGatewayLifecycleService
     }
   }
 
+  /**
+   * Returns the current in-memory room snapshot for one socket.
+   *
+   * @param socketId Socket identifier to inspect.
+   * @returns The room set currently tracked for that socket.
+   */
   getRooms(socketId: string): ReadonlySet<string> {
     const rooms = this.socketRooms.get(socketId);
 
