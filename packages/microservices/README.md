@@ -78,11 +78,25 @@ Microservice handlers fully support Konekti's DI scopes. Request-scoped provider
 
 ## Public API Overview
 
-- `MicroservicesModule`: Main entry point for microservice integration.
-- `MessagePattern`, `EventPattern`: Routing decorators.
-- `TcpMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, etc.: Transport adapters.
-- `MicroserviceLifecycleService`: Concrete runtime service for programmatic control.
-- `ServerStreamWriter`: Interface for server-side streaming responses.
+### Root barrel (`@konekti/microservices`)
+
+- `MicroservicesModule`, `createMicroservicesProviders`: module registration helpers.
+- `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: routing and streaming decorators.
+- `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: transport adapters exported from the root barrel.
+- `MicroserviceLifecycleService`, `MICROSERVICE`: programmatic runtime access and compatibility token.
+- `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: status and TypeScript contract helpers.
+
+### Supported transport subpaths
+
+- `@konekti/microservices/tcp`
+- `@konekti/microservices/redis` (Redis Pub/Sub transport)
+- `@konekti/microservices/nats`
+- `@konekti/microservices/kafka`
+- `@konekti/microservices/rabbitmq`
+- `@konekti/microservices/grpc`
+- `@konekti/microservices/mqtt`
+
+`RedisStreamsMicroserviceTransport` is currently supported from the root barrel only; there is no dedicated `@konekti/microservices/redis-streams` export.
 
 ## Related Packages
 
@@ -93,5 +107,7 @@ Microservice handlers fully support Konekti's DI scopes. Request-scoped provider
 ## Example Sources
 
 - `packages/microservices/src/module.test.ts`: Integration tests for all transports.
+- `packages/microservices/src/public-api.test.ts`: Root-barrel contract coverage.
+- `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
 - `examples/microservices-tcp`: Basic TCP microservice example.
 - `examples/microservices-kafka`: Distributed Kafka-based architecture example.
