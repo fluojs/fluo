@@ -1,5 +1,8 @@
 import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
 
+/**
+ * Snapshot shape produced by the throttler platform status helpers.
+ */
 export interface ThrottlerPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -7,10 +10,24 @@ export interface ThrottlerPlatformStatusSnapshot {
   details: Record<string, unknown>;
 }
 
+/**
+ * Backing store categories recognized by the throttler status adapter.
+ */
 export type ThrottlerStoreKind = 'memory' | 'redis' | 'custom';
+
+/**
+ * Ownership modes used to describe who is responsible for the throttler store lifecycle.
+ */
 export type ThrottlerStoreOwnershipMode = 'framework' | 'external';
+
+/**
+ * Deployment modes used to describe whether throttling is local or distributed.
+ */
 export type ThrottlerOperationMode = 'local-only' | 'distributed' | 'local-fallback' | 'custom';
 
+/**
+ * Input consumed by throttler status and diagnostic helpers.
+ */
 export interface ThrottlerStatusAdapterInput {
   componentId?: string;
   storeKind: ThrottlerStoreKind;
@@ -84,6 +101,12 @@ function createHealth(input: ThrottlerStatusAdapterInput): PlatformHealthReport 
   };
 }
 
+/**
+ * Create a platform status snapshot for throttler readiness, health, and telemetry.
+ *
+ * @param input Store metadata and readiness hints collected during bootstrap.
+ * @returns A throttler status snapshot suitable for platform diagnostics.
+ */
 export function createThrottlerPlatformStatusSnapshot(input: ThrottlerStatusAdapterInput): ThrottlerPlatformStatusSnapshot {
   const storeOwnershipMode = resolveStoreOwnershipMode(input);
   const operationMode = resolveOperationMode(input);
@@ -119,6 +142,12 @@ export function createThrottlerPlatformStatusSnapshot(input: ThrottlerStatusAdap
   };
 }
 
+/**
+ * Translate throttler readiness input into platform diagnostic issues.
+ *
+ * @param input Store metadata and readiness hints collected during bootstrap.
+ * @returns Zero or more diagnostic issues describing degraded or unavailable throttler backing stores.
+ */
 export function createThrottlerPlatformDiagnosticIssues(input: ThrottlerStatusAdapterInput): PlatformDiagnosticIssue[] {
   if (isBackingStoreReady(input)) {
     return [];

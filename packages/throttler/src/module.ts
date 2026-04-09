@@ -11,6 +11,14 @@ import { validateThrottlerModuleOptions } from './validation.js';
  *
  * @param options Module-wide throttling policy.
  * @returns Providers for validated options and `ThrottlerGuard`.
+ *
+ * @example
+ * ```ts
+ * const providers = createThrottlerProviders({
+ *   ttl: 60,
+ *   limit: 10,
+ * });
+ * ```
  */
 export function createThrottlerProviders(options: ThrottlerModuleOptions): Provider[] {
   const validatedOptions = validateThrottlerModuleOptions(options);
@@ -29,6 +37,10 @@ export function createThrottlerProviders(options: ThrottlerModuleOptions): Provi
 
 /**
  * Runtime module entrypoint for global throttling.
+ *
+ * @remarks
+ * The module wires one global `ThrottlerGuard`; route-level overrides still come
+ * from `@Throttle(...)` and `@SkipThrottle()` metadata.
  */
 export class ThrottlerModule {
   /**
@@ -36,6 +48,14 @@ export class ThrottlerModule {
    *
    * @param options Module-wide throttling policy.
    * @returns A runtime module exporting `ThrottlerGuard`.
+   *
+   * @example
+   * ```ts
+   * ThrottlerModule.forRoot({
+   *   ttl: 60,
+   *   limit: 10,
+   * });
+   * ```
    */
   static forRoot(options: ThrottlerModuleOptions): ModuleType {
     class ThrottlerRootModule extends ThrottlerModule {}

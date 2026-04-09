@@ -34,6 +34,20 @@ function sweepExpiredEntries(map: Map<string, ThrottlerStoreEntry>, now: number)
   return Number.isFinite(nextSweepAt) ? nextSweepAt : 0;
 }
 
+/**
+ * Create the default in-memory throttler store used by `ThrottlerModule`.
+ *
+ * @returns A store that keeps throttle counters isolated to the current process.
+ *
+ * @remarks
+ * This store is intentionally local-only. Use `RedisThrottlerStore` when rate
+ * limits must be shared across multiple application instances.
+ *
+ * @example
+ * ```ts
+ * const store = createMemoryThrottlerStore();
+ * ```
+ */
 export function createMemoryThrottlerStore(): ThrottlerStore {
   const map = new Map<string, ThrottlerStoreEntry>();
   let nextSweepAt = 0;

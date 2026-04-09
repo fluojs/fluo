@@ -46,9 +46,23 @@ function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
   return { count, resetAt };
 }
 
+/**
+ * Redis-backed throttler store for distributed rate limits.
+ *
+ * @remarks
+ * This store uses one atomic Lua script per consume operation so concurrent
+ * requests across instances observe the same counter and reset window.
+ */
 export class RedisThrottlerStore implements ThrottlerStore {
   constructor(private readonly client: Redis) {}
 
+  /**
+   * Consume one throttle slot for the provided key.
+   *
+   * @param key Stable throttle key derived from the current request.
+   * @param input Current timestamp and TTL window in seconds.
+   * @returns The updated counter value and reset timestamp for the current window.
+   */
   async consume(key: string, input: ThrottlerConsumeInput): Promise<ThrottlerStoreEntry> {
     const result = await this.client.eval(
       CONSUME_LUA,
