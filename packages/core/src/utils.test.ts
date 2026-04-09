@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { cloneMutableValue } from './metadata/shared.js'
 import { fallbackClone } from './utils.js'

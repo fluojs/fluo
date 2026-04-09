@@ -22,6 +22,7 @@ describe('@konekti/core public API surface', () => {
     expect(corePublicApi).not.toHaveProperty('getClassDiMetadata');
     expect(corePublicApi).not.toHaveProperty('metadataSymbol');
     expect(corePublicApi).not.toHaveProperty('ensureSymbolMetadataPolyfill');
+    expect(corePublicApi).not.toHaveProperty('cloneWithFallback');
     expect(corePublicApi).not.toHaveProperty('fallbackClone');
   });
 
@@ -33,6 +34,7 @@ describe('@konekti/core public API surface', () => {
     expect(coreInternalApi).toHaveProperty('getClassDiMetadata');
     expect(coreInternalApi).toHaveProperty('metadataSymbol');
     expect(coreInternalApi).toHaveProperty('ensureSymbolMetadataPolyfill');
+    expect(coreInternalApi).toHaveProperty('cloneWithFallback');
     expect(coreInternalApi).toHaveProperty('fallbackClone');
   });
 });
