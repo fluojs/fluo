@@ -66,6 +66,56 @@ export { greet as createGreeting };
 
     expect(violations).toEqual([]);
   });
+
+  it('requires @param and @returns on exported arrow-function constants', () => {
+    const violations = collectPublicExportTSDocViolations(['packages/validation/src/example.ts'], () => `
+/**
+ * Format a greeting.
+ */
+export const greet = (name: string): string => name;
+`);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatchObject({
+      kind: 'const',
+      name: 'greet',
+      path: 'packages/validation/src/example.ts',
+      reason: '@param name, @returns',
+    });
+  });
+
+  it('requires @param and @returns on exported function-expression constants', () => {
+    const violations = collectPublicExportTSDocViolations(['packages/validation/src/example.ts'], () => `
+/**
+ * Format a greeting.
+ */
+export const greet = function (name: string): string {
+  return name;
+};
+`);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatchObject({
+      kind: 'const',
+      name: 'greet',
+      path: 'packages/validation/src/example.ts',
+      reason: '@param name, @returns',
+    });
+  });
+
+  it('accepts exported arrow-function constants when required tags are present', () => {
+    const violations = collectPublicExportTSDocViolations(['packages/validation/src/example.ts'], () => `
+/**
+ * Format a greeting.
+ *
+ * @param name Name to echo back.
+ * @returns The formatted greeting value.
+ */
+export const greet = (name: string): string => name;
+`);
+
+    expect(violations).toEqual([]);
+  });
 });
 
 describe('enforcePublicExportTSDocBaseline', () => {

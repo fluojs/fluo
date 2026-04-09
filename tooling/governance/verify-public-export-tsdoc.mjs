@@ -26,25 +26,35 @@ function run(command, args, options = {}) {
 function changedFilesFromGit() {
   const preferredBase = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
   const mergeBaseResult = run('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+  const changedFiles = new Set();
+
+  function addDiffFiles(args) {
+    const diffResult = run('git', args, { allowFailure: true });
+    if (diffResult.status !== 0) {
+      return;
+    }
+
+    for (const line of diffResult.stdout.split('\n')) {
+      const path = line.trim();
+      if (path.length > 0) {
+        changedFiles.add(path);
+      }
+    }
+  }
 
   if (mergeBaseResult.status === 0 && mergeBaseResult.stdout.trim().length > 0) {
     const mergeBase = mergeBaseResult.stdout.trim();
-    const diffResult = run('git', ['diff', '--name-only', `${mergeBase}...HEAD`]);
-    return diffResult.stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+    addDiffFiles(['diff', '--name-only', `${mergeBase}...HEAD`]);
   }
 
-  const fallbackDiff = run('git', ['diff', '--name-only', 'HEAD~1...HEAD'], { allowFailure: true });
-  if (fallbackDiff.status === 0) {
-    return fallbackDiff.stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+  if (changedFiles.size === 0) {
+    addDiffFiles(['diff', '--name-only', 'HEAD~1...HEAD']);
   }
 
-  return [];
+  addDiffFiles(['diff', '--name-only']);
+  addDiffFiles(['diff', '--name-only', '--cached']);
+
+  return [...changedFiles].sort((left, right) => left.localeCompare(right));
 }
 
 function read(relativePath) {
@@ -171,29 +181,54 @@ function requiresReturnsTag(node) {
   return typeText !== 'void' && typeText !== 'never';
 }
 
+function getCallableExportNode(node) {
+  if (ts.isFunctionDeclaration(node)) {
+    return node;
+  }
+
+  if (!ts.isVariableDeclaration(node)) {
+    return null;
+  }
+
+  const initializer = node.initializer;
+  if (!initializer) {
+    return null;
+  }
+
+  if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
+    return initializer;
+  }
+
+  return null;
+}
+
 function collectDeclarationViolations(sourceFile, node, jsDocNode = node) {
   const missing = [];
   const summary = getJSDocSummary(jsDocNode);
   const tags = ts.getJSDocTags(jsDocNode);
+  const callableNode = getCallableExportNode(node);
 
   if (summary.length === 0) {
     missing.push('summary');
   }
 
-  if (ts.isFunctionDeclaration(node)) {
+  if (callableNode) {
     const paramTags = new Set(
       tags
         .filter((tag) => tag.tagName.text === 'param' && 'name' in tag && tag.name && ts.isIdentifier(tag.name))
         .map((tag) => tag.name.text),
     );
 
-    for (const parameterName of getParameterNames(node)) {
+    for (const parameterName of getParameterNames(callableNode)) {
       if (!paramTags.has(parameterName)) {
         missing.push(`@param ${parameterName}`);
       }
     }
 
-    if (requiresReturnsTag(node) && !tags.some((tag) => tag.tagName.text === 'returns' || tag.tagName.text === 'return')) {
+    if (
+      requiresReturnsTag(callableNode) &&
+      !tags.some((tag) => tag.tagName.text === 'returns' || tag.tagName.text === 'return')
+    ) {
       missing.push('@returns');
     }
   }
