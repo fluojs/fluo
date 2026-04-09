@@ -1,5 +1,8 @@
 import { KonektiCodeError, formatTokenName } from '@konekti/core';
 
+/**
+ * Structured context attached to DI errors so logs and tests can inspect the failing contract.
+ */
 export interface DiErrorContext {
   readonly token?: unknown;
   readonly scope?: string;
@@ -38,6 +41,13 @@ function formatDiContext(ctx?: DiErrorContext): string {
   return '\n  ' + parts.join('\n  ');
 }
 
+/**
+ * Raised when a provider declaration or inject token cannot be normalized into a valid DI registration.
+ *
+ * @remarks
+ * This usually points to malformed provider objects, missing `@Inject([...])` tokens, or `null`/
+ * `undefined` references that were evaluated before a `forwardRef()` indirection could be applied.
+ */
 export class InvalidProviderError extends KonektiCodeError {
   constructor(message: string, context?: DiErrorContext) {
     super(
@@ -48,6 +58,12 @@ export class InvalidProviderError extends KonektiCodeError {
   }
 }
 
+/**
+ * Raised when the container cannot complete a lifecycle operation such as registration, resolution, or disposal.
+ *
+ * @remarks
+ * Use the attached context to inspect the token, module, scope, or dependency chain involved in the failed operation.
+ */
 export class ContainerResolutionError extends KonektiCodeError {
   constructor(message: string, context?: DiErrorContext) {
     super(
@@ -58,6 +74,12 @@ export class ContainerResolutionError extends KonektiCodeError {
   }
 }
 
+/**
+ * Raised when a request-scoped provider is resolved outside a request container.
+ *
+ * @remarks
+ * This protects the documented lifecycle guarantee that request-scoped providers are isolated per child scope.
+ */
 export class RequestScopeResolutionError extends KonektiCodeError {
   constructor(message: string, context?: DiErrorContext) {
     super(
@@ -68,6 +90,9 @@ export class RequestScopeResolutionError extends KonektiCodeError {
   }
 }
 
+/**
+ * Raised when a provider scope is registered or consumed from an incompatible container scope.
+ */
 export class ScopeMismatchError extends KonektiCodeError {
   constructor(message: string, context?: DiErrorContext) {
     super(
@@ -78,6 +103,13 @@ export class ScopeMismatchError extends KonektiCodeError {
   }
 }
 
+/**
+ * Raised when the container detects a circular dependency chain while resolving providers.
+ *
+ * @remarks
+ * The formatted message includes the full dependency path plus a first-party hint that points callers toward
+ * extracting shared logic or using `forwardRef()` for intentional cycle deferral.
+ */
 export class CircularDependencyError extends KonektiCodeError {
   constructor(chain: readonly unknown[], detail?: string) {
     const path = chain.map((token) => formatTokenName(token)).join(' -> ');
@@ -92,6 +124,9 @@ export class CircularDependencyError extends KonektiCodeError {
   }
 }
 
+/**
+ * Raised when the same token is registered twice without going through `container.override(...)`.
+ */
 export class DuplicateProviderError extends KonektiCodeError {
   constructor(token: unknown) {
     const name = formatTokenName(token);
