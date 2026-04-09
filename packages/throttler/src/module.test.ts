@@ -8,7 +8,12 @@ import { ThrottlerGuard } from './guard.js';
 import { ThrottlerModule, createThrottlerProviders } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
-import type { ThrottlerModuleOptions, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+import type {
+  ThrottlerConsumeInput,
+  ThrottlerModuleOptions,
+  ThrottlerStore,
+  ThrottlerStoreEntry,
+} from './types.js';
 
 function createRequestContext(remoteAddress = '127.0.0.1'): RequestContext {
   const headers: Record<string, string | string[]> = {};
@@ -433,7 +438,7 @@ describe('ThrottlerGuard — Redis store mock', () => {
   it('delegates atomic consume calls to the provided store', async () => {
     const entries = new Map<string, ThrottlerStoreEntry>();
     const store: ThrottlerStore = {
-      consume: vi.fn((key: string, input) => {
+      consume: vi.fn((key: string, input: ThrottlerConsumeInput) => {
         const now = input.now;
         const ttlMs = input.ttlSeconds * 1000;
         const entry = entries.get(key);
@@ -468,7 +473,7 @@ describe('ThrottlerGuard — Redis store mock', () => {
 
   it('builds store keys from route and token identity context', async () => {
     const store: ThrottlerStore = {
-      consume: vi.fn(async (_key: string, input) => ({
+      consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({
         count: 1,
         resetAt: input.now + input.ttlSeconds * 1000,
       })),
@@ -515,7 +520,7 @@ describe('ThrottlerGuard — Redis store mock', () => {
 
   it('builds the same store key even when handler discovery order differs across module instances', async () => {
     const buildStore = (): ThrottlerStore => ({
-      consume: vi.fn(async (_key: string, input) => ({
+      consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({
         count: 1,
         resetAt: input.now + input.ttlSeconds * 1000,
       })),
