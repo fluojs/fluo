@@ -114,4 +114,22 @@ describe('parsePackageNamesFromFamilyTable', () => {
       '@konekti/passport',
     ]);
   });
+
+  it('stops collecting once the next section begins', () => {
+    const markdown = [
+      '## public package families',
+      '',
+      '| family | description | packages |',
+      '| --- | --- | --- |',
+      '| **Patterns** | Messaging and architecture. | `@konekti/notifications`, `@konekti/email` |',
+      '',
+      '## package responsibilities',
+      '- `@konekti/email/node`: Node-only subpath',
+    ].join('\n');
+
+    expect(parsePackageNamesFromFamilyTable(markdown, 'public package families')).toEqual([
+      '@konekti/email',
+      '@konekti/notifications',
+    ]);
+  });
 });
