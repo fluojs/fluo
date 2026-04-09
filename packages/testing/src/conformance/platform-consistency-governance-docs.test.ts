@@ -10,6 +10,7 @@ const repoRoot = resolve(packageDirectory, '..', '..', '..', '..');
 const ssotPairs: Array<[englishPath: string, koreanPath: string]> = [
   ['docs/concepts/platform-consistency-design.md', 'docs/concepts/platform-consistency-design.ko.md'],
   ['docs/operations/behavioral-contract-policy.md', 'docs/operations/behavioral-contract-policy.ko.md'],
+  ['docs/operations/public-export-tsdoc-baseline.md', 'docs/operations/public-export-tsdoc-baseline.ko.md'],
   ['docs/operations/release-governance.md', 'docs/operations/release-governance.ko.md'],
   ['docs/operations/platform-conformance-authoring-checklist.md', 'docs/operations/platform-conformance-authoring-checklist.ko.md'],
 ];
@@ -100,6 +101,8 @@ describe('platform consistency governance docs', () => {
     expect(docsReadmeKo).toContain('operations/behavioral-contract-policy.ko.md');
     expect(docsReadme).toContain('operations/release-governance.md');
     expect(docsReadmeKo).toContain('operations/release-governance.ko.md');
+    expect(docsReadme).toContain('operations/public-export-tsdoc-baseline.md');
+    expect(docsReadmeKo).toContain('operations/public-export-tsdoc-baseline.ko.md');
   });
 
   it('keeps intended publish surface synchronized between English and Korean release-governance docs', () => {
