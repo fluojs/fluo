@@ -97,6 +97,13 @@ function prepareModuleUpdate(
   };
 }
 
+/**
+ * Structured result returned by {@link runGenerateCommand} for tooling-friendly automation.
+ *
+ * `generatedFiles` only includes files whose on-disk content changed during the command.
+ * `moduleRegistered` reports whether the target schematic participates in automatic module wiring,
+ * even when the target module file was already up to date.
+ */
 export type GenerateResult = {
   generatedFiles: string[];
   moduleRegistered: boolean;
@@ -105,6 +112,28 @@ export type GenerateResult = {
   wiringBehavior: GeneratorManifestEntry['wiringBehavior'];
 };
 
+/**
+ * Generates one CLI schematic into a source directory and returns structured wiring metadata.
+ *
+ * The command keeps generation idempotent where possible: unchanged files are not rewritten, and
+ * auto-registered schematics reuse an existing module file when it already contains the required import
+ * and registration entry.
+ *
+ * @example
+ * ```ts
+ * const result = runGenerateCommand('service', 'Post', './src');
+ *
+ * console.log(result.wiringBehavior);
+ * console.log(result.nextStepHint);
+ * ```
+ *
+ * @param kind Generator kind to execute.
+ * @param name Resource name supplied by the caller before normalization.
+ * @param baseDirectory Source directory that should receive the generated domain folder.
+ * @param options Optional generation flags that control overwrites and sibling-aware templates.
+ * @returns Structured file and wiring metadata for the completed generation run.
+ * @throws {Error} When the resource name is invalid, the generator kind is unknown, or the target module source cannot be updated safely.
+ */
 export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirectory: string, options: GenerateOptions = {}): GenerateResult {
   const normalizedName = name.trim();
   const kebab = assertValidResourceName(normalizedName);
