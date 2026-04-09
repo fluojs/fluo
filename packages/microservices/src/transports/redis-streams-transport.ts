@@ -5,6 +5,7 @@ interface StreamReadGroupResult {
   readonly fields: Readonly<Record<string, string>>;
 }
 
+/** Minimal Redis Streams client contract required by {@link RedisStreamsMicroserviceTransport}. */
 export interface RedisStreamClientLike {
   xadd(stream: string, fields: Record<string, string>): Promise<string>;
   xreadgroup(
@@ -18,6 +19,7 @@ export interface RedisStreamClientLike {
   xgroupDestroy(stream: string, group: string): Promise<void>;
 }
 
+/** Options for configuring the Redis Streams microservice transport. */
 export interface RedisStreamsMicroserviceTransportOptions {
   readerClient: RedisStreamClientLike;
   writerClient: RedisStreamClientLike;
@@ -47,6 +49,12 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+/**
+ * Redis Streams transport for durable request-response messages and event fan-out.
+ *
+ * The adapter uses consumer groups and a per-consumer response stream so callers can combine
+ * at-least-once delivery with request timeouts while preserving Konekti's transport abstraction.
+ */
 export class RedisStreamsMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private readonly consumerId: string;
@@ -61,6 +69,11 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private readonly requestTimeoutMs: number;
   private readonly pollBlockMs: number;
 
+  /**
+   * Creates a Redis Streams transport with dedicated reader and writer clients.
+   *
+   * @param options Namespace, consumer-group, polling, and timeout settings.
+   */
   constructor(private readonly options: RedisStreamsMicroserviceTransportOptions) {
     this.consumerId = crypto.randomUUID();
     this.namespace = options.namespace ?? 'konekti:streams';
@@ -69,6 +82,12 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     this.pollBlockMs = options.pollBlockMs ?? 500;
   }
 
+  /**
+   * Creates consumer groups and starts polling the request, event, and response streams.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once all stream consumers are initialized.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.closing = false;
     this.handler = handler;
@@ -103,6 +122,14 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     }
   }
 
+  /**
+   * Sends one request-response message through Redis Streams.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the request.
+   * @returns The remote handler response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.closing) {
       throw new Error('RedisStreamsMicroserviceTransport is closing. Wait for close() to complete before send().');
@@ -187,6 +214,13 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     });
   }
 
+  /**
+   * Emits one fire-and-forget event through Redis Streams.
+   *
+   * @param pattern Pattern identifying the remote event handlers.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the event frame is appended to the stream.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     const frame = {
       kind: 'event',
@@ -201,6 +235,11 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     });
   }
 
+  /**
+   * Stops polling and tears down the event/response consumer groups.
+   *
+   * @returns A promise that resolves once shutdown cleanup finishes.
+   */
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;

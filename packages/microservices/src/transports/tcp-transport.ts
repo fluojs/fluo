@@ -14,6 +14,12 @@ interface TcpMicroserviceTransportOptions {
   requestTimeoutMs?: number;
 }
 
+/**
+ * Lightweight TCP transport for request-response messages and fire-and-forget events.
+ *
+ * This adapter uses newline-delimited JSON frames over raw sockets and is intended for
+ * simple first-party microservice setups where both sides can share the same framing contract.
+ */
 export class TcpMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listenPromise: Promise<void> | undefined;
@@ -26,11 +32,22 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
     socket.once('close', () => this.sockets.delete(socket));
   });
 
+  /**
+   * Creates a TCP transport bound to one host/port pair.
+   *
+   * @param options TCP host, port, and request-timeout settings.
+   */
   constructor(private readonly options: TcpMicroserviceTransportOptions) {
     this.host = options.host ?? '127.0.0.1';
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
+  /**
+   * Starts the TCP server and registers the runtime packet handler.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once the TCP server is listening.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.handler = handler;
 
@@ -58,15 +75,35 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
     }
   }
 
+  /**
+   * Emits one fire-and-forget event over the TCP transport.
+   *
+   * @param pattern Pattern identifying the remote event handler.
+   * @param payload Serializable payload sent to the remote runtime.
+   * @returns A promise that resolves after the event frame is written.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     await this.sendWirePacket({ kind: 'event', pattern, payload });
   }
 
+  /**
+   * Sends one request-response message over the TCP transport.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the request.
+   * @returns The remote handler response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     const requestId = randomRequestId();
     return await this.sendWirePacket({ kind: 'message', pattern, payload, requestId }, signal);
   }
 
+  /**
+   * Closes the TCP server and destroys any active sockets.
+   *
+   * @returns A promise that resolves once the server is fully closed.
+   */
   async close(): Promise<void> {
     if (this.listenPromise) {
       await this.listenPromise;
