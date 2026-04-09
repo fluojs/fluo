@@ -37,6 +37,25 @@ pnpm lint          # Biome — see biome.json
 pnpm test
 ```
 
+## documenting public exports
+
+Changed public exports under `packages/*/src` must follow the repo-wide TSDoc minimum baseline.
+
+- Add a source-level summary to every changed exported symbol.
+- Add `@param` for each named exported function parameter.
+- Add `@returns` for exported functions with a non-`void` return type.
+- Use `@throws`, `@example`, and `@remarks` when they clarify caller-visible behavior, entry-point usage, or lifecycle caveats.
+- Keep README examples scenario-driven; keep source `@example` blocks short and hover-friendly.
+
+Use the following repo-local references before inventing a new style:
+
+- `packages/graphql/src/dataloader/dataloader.ts`
+- `packages/cache-manager/src/decorators.ts`
+- `packages/di/src/container.ts`
+- [docs/operations/public-export-tsdoc-baseline.md](docs/operations/public-export-tsdoc-baseline.md)
+
+`pnpm lint` now includes `pnpm verify:public-export-tsdoc`, which checks changed package source files for this minimum baseline.
+
 ## maintainer workflows
 
 ### CLI sandbox verification
