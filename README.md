@@ -68,6 +68,7 @@ Konekti isn't a monolith. It's a collection of precision-engineered modules:
 | **Database** | [Prisma](./packages/prisma), [Drizzle](./packages/drizzle), [Mongoose](./packages/mongoose) |
 | **API/Comm** | [HTTP](./packages/http), [GraphQL](./packages/graphql), [OpenAPI](./packages/openapi), [WebSockets](./packages/websockets), [Socket.IO](./packages/socket.io) |
 | **Logic** | [DI](./packages/di), [CQRS](./packages/cqrs), [Validation](./packages/validation), [Serialization](./packages/serialization), [Config](./packages/config) |
+| **Messaging** | [Notifications](./packages/notifications), [Email](./packages/email), [Slack](./packages/slack), [Discord](./packages/discord) |
 | **Ops** | [Metrics](./packages/metrics), [Health (Terminus)](./packages/terminus), [Redis](./packages/redis), [Queue](./packages/queue) |
 
 ## Where to Go Next?
