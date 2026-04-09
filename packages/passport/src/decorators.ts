@@ -79,10 +79,45 @@ function createAuthRequirementDecorator(patch: RequirementPatch): ClassOrMethodD
   return decorator as ClassOrMethodDecoratorLike;
 }
 
+/**
+ * Declares which registered auth strategy should protect a controller or route handler.
+ *
+ * @remarks
+ * This decorator also applies {@link AuthGuard}, so callers do not need to add a
+ * separate `@UseGuards(AuthGuard)` in the common passport flow.
+ *
+ * @example
+ * ```ts
+ * @UseAuth('jwt')
+ * @Get('/profile')
+ * getProfile() {}
+ * ```
+ *
+ * @param strategy Strategy name previously registered through `createPassportProviders(...)`.
+ * @returns A class-or-method decorator that stores the auth requirement metadata.
+ */
 export function UseAuth(strategy: string): ClassOrMethodDecoratorLike {
   return createAuthRequirementDecorator({ strategy });
 }
 
+/**
+ * Declares scope requirements that `AuthGuard` must enforce after authentication succeeds.
+ *
+ * @remarks
+ * Scope requirements merge with any controller-level auth metadata, so method
+ * decorators can narrow access without redefining the base strategy.
+ *
+ * @example
+ * ```ts
+ * @UseAuth('jwt')
+ * @RequireScopes('profile:read')
+ * @Get('/profile')
+ * getProfile() {}
+ * ```
+ *
+ * @param scopes Scope values that must all be present on the resolved principal.
+ * @returns A class-or-method decorator that appends scope requirements to auth metadata.
+ */
 export function RequireScopes(...scopes: string[]): ClassOrMethodDecoratorLike {
   return createAuthRequirementDecorator({ scopes });
 }
