@@ -14,7 +14,9 @@ type CliStream = {
   write(message: string): unknown;
 };
 
-/** Runtime dependency overrides for embedding the CLI in tests/tools. */
+/**
+ * Runtime dependency overrides for embedding the CLI in tests or higher-level tooling.
+ */
 export interface CliRuntimeOptions {
   cwd?: string;
   stderr?: CliStream;
@@ -263,7 +265,26 @@ function parseCommand(argv: string[]): ParsedCommand {
 }
 
 /**
- * Runs the CLI command dispatcher.
+ * Runs the top-level CLI command dispatcher and returns a process-style exit code.
+ *
+ * This programmatic entry point mirrors the published `konekti` binary while allowing callers to swap
+ * standard streams or the working directory for tests, sandboxes, and editor integrations.
+ *
+ * @example
+ * ```ts
+ * import { runCli } from '@konekti/cli';
+ *
+ * const output: string[] = [];
+ * const exitCode = await runCli(['generate', 'service', 'Post'], {
+ *   cwd: '/workspace/app',
+ *   stdout: { write: (chunk) => output.push(String(chunk)) },
+ *   stderr: { write: (chunk) => output.push(String(chunk)) },
+ * });
+ * ```
+ *
+ * @param argv Argument vector to execute. Defaults to the current process arguments without the node/bin prefix.
+ * @param runtime Optional runtime overrides shared by the top-level dispatcher and the `new` command.
+ * @returns `0` when the command completes successfully, otherwise `1` after writing the error message to `stderr`.
  */
 export async function runCli(
   argv = process.argv.slice(2),

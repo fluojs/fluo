@@ -13,7 +13,9 @@ function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
 }
 
-/** Runtime dependency overrides for the `konekti new` command. */
+/**
+ * Runtime dependency overrides for the programmatic `konekti new` entry point.
+ */
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
   stderr?: CliStream;
@@ -128,7 +130,11 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
   return parsed;
 }
 
-/** Renders CLI help text for `konekti new`. */
+/**
+ * Renders CLI help text for `konekti new`.
+ *
+ * @returns Stable help output for the scaffolding command.
+ */
 export function newUsage(): string {
   return [
     'Usage: konekti new|create [project-name] [options]',
@@ -159,6 +165,20 @@ export function newUsage(): string {
 
 /**
  * Executes `konekti new` with parsed arguments and scaffold options.
+ *
+ * @example
+ * ```ts
+ * import { runNewCommand } from '@konekti/cli';
+ *
+ * const exitCode = await runNewCommand(['starter-app', '--package-manager', 'pnpm'], {
+ *   cwd: '/workspace',
+ *   skipInstall: true,
+ * });
+ * ```
+ *
+ * @param argv Command arguments after the `new` or `create` token.
+ * @param runtime Optional runtime overrides for prompt resolution, stream output, and scaffold execution.
+ * @returns `0` when scaffolding succeeds, otherwise `1` after reporting the failure to `stderr`.
  */
 export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOptions = {}): Promise<number> {
   const stdout = runtime.stdout ?? process.stdout;
