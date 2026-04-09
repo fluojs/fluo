@@ -23,11 +23,8 @@ const CONSUME_LUA = [
   '    count = count + 1',
   '  end',
   'end',
-  'local ttlMsLeft = resetAt - now',
-  "if ttlMsLeft > 0 then",
-  '  local ttlSeconds = math.floor((ttlMsLeft + 999) / 1000)',
-  "  redis.call('SET', key, cjson.encode({ count = count, resetAt = resetAt }), 'EX', ttlSeconds)",
-  'end',
+  'local ttlMsLeft = math.max(resetAt - now, 1)',
+  "redis.call('SET', key, cjson.encode({ count = count, resetAt = resetAt }), 'PX', ttlMsLeft)",
   'return {count, resetAt}',
 ].join('\n');
 
