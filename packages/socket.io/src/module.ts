@@ -9,6 +9,21 @@ import {
 } from './tokens.js';
 import type { SocketIoModuleOptions } from './types.js';
 
+/**
+ * Creates the provider set that wires Socket.IO lifecycle, server access, and room helpers.
+ *
+ * @param options Socket.IO adapter options that should be shared by the lifecycle service.
+ * @returns Providers that register the lifecycle service plus the public Socket.IO tokens.
+ *
+ * @example
+ * ```ts
+ * import { createSocketIoProviders } from '@konekti/socket.io';
+ *
+ * const providers = createSocketIoProviders({
+ *   shutdown: { timeoutMs: 5_000 },
+ * });
+ * ```
+ */
 export function createSocketIoProviders(options: SocketIoModuleOptions = {}): Provider[] {
   return [
     {
@@ -31,7 +46,27 @@ export function createSocketIoProviders(options: SocketIoModuleOptions = {}): Pr
   ];
 }
 
+/**
+ * Root module entry point for registering the Socket.IO gateway adapter.
+ */
 export class SocketIoModule {
+  /**
+   * Creates a global module that exposes the raw Socket.IO server and room service tokens.
+   *
+   * @param options Socket.IO adapter options applied to the lifecycle service for this module instance.
+   * @returns A runtime module definition that can be imported into an application module.
+   *
+   * @example
+   * ```ts
+   * import { Module } from '@konekti/core';
+   * import { SocketIoModule } from '@konekti/socket.io';
+   *
+   * @Module({
+   *   imports: [SocketIoModule.forRoot()],
+   * })
+   * export class AppModule {}
+   * ```
+   */
   static forRoot(options: SocketIoModuleOptions = {}): ModuleType {
     class SocketIoRuntimeModule extends SocketIoModule {}
 
