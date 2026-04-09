@@ -7,6 +7,16 @@ type FieldDecoratorLike = StandardFieldDecoratorFn;
 
 /**
  * Excludes the decorated field from serialized output.
+ *
+ * @returns A field decorator that marks the property as omitted during serialization.
+ *
+ * @example
+ * ```ts
+ * class UserEntity {
+ *   @Exclude()
+ *   passwordHash = '';
+ * }
+ * ```
  */
 export function Exclude(): FieldDecoratorLike {
   const decorator = <This, Value>(_value: undefined, context: ClassFieldDecoratorContext<This, Value>) => {
