@@ -62,6 +62,7 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 - `@konekti/metrics`
 - `@konekti/microservices`
 - `@konekti/mongoose`
+- `@konekti/notifications`
 - `@konekti/openapi`
 - `@konekti/passport`
 - `@konekti/platform-bun`

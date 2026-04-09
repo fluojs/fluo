@@ -62,6 +62,7 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 - `@konekti/metrics`
 - `@konekti/microservices`
 - `@konekti/mongoose`
+- `@konekti/notifications`
 - `@konekti/openapi`
 - `@konekti/passport`
 - `@konekti/platform-bun`
