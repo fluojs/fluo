@@ -11,6 +11,7 @@ import type {
   NotificationsEventPublisher,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
+  NotificationsStatusAdapterInput,
 } from './index.js';
 
 describe('@konekti/notifications public API surface', () => {
@@ -59,11 +60,16 @@ describe('@konekti/notifications public API surface', () => {
       queued: number;
       succeeded: number;
     }>();
+    expectTypeOf<NotificationsStatusAdapterInput>().toMatchTypeOf<{
+      bulkQueueThreshold: number;
+      channelsRegistered: number;
+      eventPublisherConfigured: boolean;
+      queueConfigured: boolean;
+    }>();
   });
 
   it('hides internal normalized options token from the root barrel', () => {
     expect(notificationsPublicApi).not.toHaveProperty('NOTIFICATIONS_OPTIONS');
-    expect(notificationsPublicApi).not.toHaveProperty('NotificationsStatusAdapterInput');
     expect(notificationsPublicApi).not.toHaveProperty('NotificationsOperationMode');
   });
 });
