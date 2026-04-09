@@ -82,8 +82,8 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `createCloudflareWorkerAdapter(options)`: Factory for the Worker HTTP adapter.
 - `createCloudflareWorkerEntrypoint(module, options)`: Creates a lazy-bootstrapping Worker entrypoint.
-- `bootstrapCloudflareWorkerApplication(module, options)`: Synchronous bootstrap helper.
-- `CloudflareWorkerHttpAdapter`: The core adapter implementation.
+- `bootstrapCloudflareWorkerApplication(module, options)`: Async bootstrap helper for Workers.
+- `CloudflareWorkerHttpApplicationAdapter`: The core adapter implementation.
 
 ## Related Packages
 

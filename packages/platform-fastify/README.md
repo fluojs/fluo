@@ -76,7 +76,7 @@ Konekti's Fastify adapter significantly outperforms the raw Node.js adapter in h
 - `createFastifyAdapter(options)`: Recommended factory for the Fastify adapter.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening.
 - `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management.
-- `FastifyHttpAdapter`: The core adapter implementation.
+- `FastifyHttpApplicationAdapter`: The core adapter implementation.
 
 ## Related Packages
 

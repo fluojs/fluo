@@ -72,7 +72,7 @@ await runNodejsApplication(AppModule, {
 - `createNodejsAdapter(options)`: raw Node.js HTTP 어댑터를 위한 기본 팩토리입니다.
 - `bootstrapNodejsApplication(module, options)`: 리스너를 시작하지 않고 애플리케이션 인스턴스를 생성합니다.
 - `runNodejsApplication(module, options)`: 생명주기 관리를 포함하여 애플리케이션을 부트스트랩하고 시작합니다.
-- `NodejsHttpAdapter`: `HttpApplicationAdapter`를 구현하는 기본 어댑터 클래스입니다.
+- `NodejsHttpApplicationAdapter`: `HttpApplicationAdapter`를 구현하는 기본 어댑터 클래스입니다.
 
 ## 관련 패키지
 

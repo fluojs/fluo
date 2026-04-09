@@ -121,20 +121,20 @@ class UsersModule {}
 
 ## Public API Overview
 
-### `KonektiFactory`
-The static facade for application lifecycle management.
-- `create(rootModule, options)`: Returns `Application` (HTTP shell).
-- `createApplicationContext(rootModule, options)`: Returns `ApplicationContext` (DI shell).
-- `createMicroservice(rootModule, options)`: Returns `MicroserviceApplication`.
-
-### Interfaces
+- `KonektiFactory`: Static facade for application lifecycle management.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container` and `modules`.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`.
-
-### Utilities
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
+
+## Platform-Specific Subpaths
+
+| Subpath | Purpose |
+| :--- | :--- |
+| `@konekti/runtime/node` | Node.js-specific logger factories (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) and shutdown signal registration. |
+| `@konekti/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers. |
+| `@konekti/runtime/internal` | Low-level orchestration helpers and HTTP adapter base logic. |
 
 ### Node-Specific Subpath (`@konekti/runtime/node`)
 

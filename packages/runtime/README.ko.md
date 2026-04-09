@@ -121,20 +121,20 @@ class UsersModule {}
 
 ## 공개 API 개요
 
-### `KonektiFactory`
-애플리케이션 라이프사이클 관리를 위한 정적 파사드입니다.
-- `create(rootModule, options)`: `Application`(HTTP 셸)을 반환합니다.
-- `createApplicationContext(rootModule, options)`: `ApplicationContext`(DI 셸)를 반환합니다.
-- `createMicroservice(rootModule, options)`: `MicroserviceApplication`을 반환합니다.
-
-### 인터페이스
+- `KonektiFactory`: 애플리케이션 라이프사이클 관리를 위한 정적 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`와 `modules`에 접근할 수 있습니다.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`.
-
-### 유틸리티
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
+
+## 플랫폼 전용 서브경로
+
+| 서브경로 | 용도 |
+| :--- | :--- |
+| `@konekti/runtime/node` | Node.js 전용 로거 팩토리 (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) 및 종료 시그널 등록. |
+| `@konekti/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 웹 표준 요청/응답 유틸리티. |
+| `@konekti/runtime/internal` | 저수준 오케스트레이션 헬퍼 및 HTTP 어댑터 기본 로직. |
 
 ### Node 전용 서브경로 (`@konekti/runtime/node`)
 

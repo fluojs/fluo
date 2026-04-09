@@ -72,7 +72,7 @@ await runNodejsApplication(AppModule, {
 - `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
 - `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
 - `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
-- `NodejsHttpAdapter`: The underlying adapter class implementing `HttpApplicationAdapter`.
+- `NodejsHttpApplicationAdapter`: The underlying adapter class implementing `HttpApplicationAdapter`.
 
 ## Related Packages
 
