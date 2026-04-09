@@ -49,6 +49,9 @@ declare module '@konekti/http' {
   }
 }
 
+/**
+ * Transport-level knobs for the standalone Fastify HTTP adapter factory.
+ */
 export interface FastifyAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
@@ -60,13 +63,19 @@ export interface FastifyAdapterOptions {
   shutdownTimeoutMs?: number;
 }
 
+/** Node.js shutdown signals supported by `runFastifyApplication(...)`. */
 export type FastifyApplicationSignal = 'SIGINT' | 'SIGTERM';
+/** CORS shorthand accepted by the Fastify runtime bootstrap helpers. */
 export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
+/**
+ * Bootstrap options for creating a Fastify-backed application without
+ * implicitly registering process shutdown listeners.
+ */
 export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
   cors?: CorsInput;
   globalPrefix?: string;
@@ -85,6 +94,9 @@ export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicati
   shutdownTimeoutMs?: number;
 }
 
+/**
+ * Bootstrap options for `runFastifyApplication(...)`, including shutdown hooks.
+ */
 export interface RunFastifyApplicationOptions extends BootstrapFastifyApplicationOptions {
   forceExitTimeoutMs?: number;
   shutdownSignals?: false | readonly FastifyApplicationSignal[];
@@ -105,6 +117,12 @@ type FastifyMultipartLikeError = Error & {
   statusCode?: unknown;
 };
 
+/**
+ * Fastify-backed `HttpApplicationAdapter` implementation used by the runtime.
+ *
+ * It preserves the shared Konekti dispatcher contract while exposing Fastify's
+ * server-backed realtime capability and multipart/raw-body integrations.
+ */
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -254,6 +272,20 @@ function createFastifyRequestResponseFactory(
   };
 }
 
+/**
+ * Create the recommended Fastify adapter for `KonektiFactory.create(...)`.
+ *
+ * @example
+ * ```ts
+ * const app = await KonektiFactory.create(AppModule, {
+ *   adapter: createFastifyAdapter({ port: 3000 }),
+ * });
+ * ```
+ *
+ * @param options Transport-level Fastify settings such as host, port, retries, and raw-body preservation.
+ * @param multipartOptions Optional multipart parsing limits exposed through `FrameworkRequest.files`.
+ * @returns A runtime `HttpApplicationAdapter` backed by Fastify.
+ */
 export function createFastifyAdapter(
   options: FastifyAdapterOptions = {},
   multipartOptions?: MultipartOptions,
@@ -271,6 +303,13 @@ export function createFastifyAdapter(
   );
 }
 
+/**
+ * Bootstrap a Fastify-backed application without implicitly calling `listen()`.
+ *
+ * @param rootModule Root application module compiled by the Konekti runtime.
+ * @param options Runtime, middleware, and Fastify adapter settings.
+ * @returns An initialized application shell that can be listened to later.
+ */
 export async function bootstrapFastifyApplication(
   rootModule: ModuleType,
   options: BootstrapFastifyApplicationOptions,
@@ -282,6 +321,16 @@ export async function bootstrapFastifyApplication(
   );
 }
 
+/**
+ * Bootstrap and prepare a Fastify-backed application with shutdown registration.
+ *
+ * This helper mirrors the README quick-start path: create the adapter, wire the
+ * runtime, and attach signal handling so callers only need to invoke `listen()`.
+ *
+ * @param rootModule Root application module compiled by the Konekti runtime.
+ * @param options Runtime, adapter, and shutdown registration settings.
+ * @returns A bootstrapped application shell ready to listen.
+ */
 export async function runFastifyApplication(
   rootModule: ModuleType,
   options: RunFastifyApplicationOptions,
@@ -498,6 +547,12 @@ async function parseMultipartRequest(
   return { fields, files };
 }
 
+/**
+ * Detect whether a thrown Fastify multipart error maps to payload-too-large semantics.
+ *
+ * @param error Unknown Fastify or plugin error thrown while parsing multipart input.
+ * @returns `true` when the error should surface as `PayloadTooLargeException`.
+ */
 export function isFastifyMultipartTooLargeError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
