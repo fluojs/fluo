@@ -156,6 +156,10 @@ importers:
       ioredis:
         specifier: ^5.0.0
         version: 5.10.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/cli:
     dependencies:
@@ -175,6 +179,9 @@ importers:
       '@types/ejs':
         specifier: ^3.1.5
         version: 3.1.5
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/config:
     dependencies:
@@ -187,8 +194,16 @@ importers:
       dotenv-expand:
         specifier: ^11.0.0
         version: 11.0.7
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/cqrs:
     dependencies:
@@ -204,6 +219,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/cron:
     dependencies:
@@ -222,12 +241,20 @@ importers:
       croner:
         specifier: ^8.1.2
         version: 8.1.2
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/di:
     dependencies:
       '@konekti/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/discord:
     dependencies:
@@ -243,6 +270,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/drizzle:
     dependencies:
@@ -261,6 +292,10 @@ importers:
       drizzle-orm:
         specifier: '>=0.30.0'
         version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@5.9.3))
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/email:
     dependencies:
@@ -286,6 +321,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/event-bus:
     dependencies:
@@ -301,6 +339,10 @@ importers:
       ioredis:
         specifier: ^5.0.0
         version: 5.10.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/graphql:
     dependencies:
@@ -338,6 +380,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/http:
     dependencies:
@@ -350,6 +395,10 @@ importers:
       '@konekti/validation':
         specifier: workspace:*
         version: link:../validation
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/jwt:
     dependencies:
@@ -362,6 +411,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/metrics:
     dependencies:
@@ -381,6 +434,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/microservices:
     dependencies:
@@ -405,6 +461,10 @@ importers:
       mqtt:
         specifier: ^5.0.0
         version: 5.15.1
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/mongoose:
     dependencies:
@@ -423,6 +483,10 @@ importers:
       mongoose:
         specifier: '>=7.0.0'
         version: 9.3.2(socks@2.8.7)
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/notifications:
     dependencies:
@@ -435,6 +499,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/openapi:
     dependencies:
@@ -450,6 +518,10 @@ importers:
       '@konekti/validation':
         specifier: workspace:*
         version: link:../validation
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/passport:
     dependencies:
@@ -468,6 +540,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-bun:
     dependencies:
@@ -477,6 +553,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-cloudflare-workers:
     dependencies:
@@ -486,6 +566,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-deno:
     dependencies:
@@ -495,6 +579,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-express:
     dependencies:
@@ -511,6 +599,9 @@ importers:
       '@types/express':
         specifier: ^5.0.3
         version: 5.0.6
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-fastify:
     dependencies:
@@ -529,6 +620,10 @@ importers:
       fastify-raw-body:
         specifier: ^5.0.0
         version: 5.0.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/platform-nodejs:
     dependencies:
@@ -538,6 +633,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/prisma:
     dependencies:
@@ -559,6 +658,10 @@ importers:
       '@prisma/client':
         specifier: '>=5.0.0'
         version: 7.5.0(typescript@5.9.3)
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/queue:
     dependencies:
@@ -577,6 +680,10 @@ importers:
       bullmq:
         specifier: ^5.58.0
         version: 5.71.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/redis:
     dependencies:
@@ -592,6 +699,10 @@ importers:
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/runtime:
     dependencies:
@@ -611,6 +722,9 @@ importers:
       '@konekti/serialization':
         specifier: workspace:*
         version: link:../serialization
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/serialization:
     dependencies:
@@ -620,6 +734,10 @@ importers:
       '@konekti/http':
         specifier: workspace:*
         version: link:../http
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/slack:
     dependencies:
@@ -635,6 +753,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/socket.io:
     dependencies:
@@ -672,6 +794,9 @@ importers:
       socket.io-client:
         specifier: ^4.8.1
         version: 4.8.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/studio:
     dependencies:
@@ -682,6 +807,9 @@ importers:
       '@konekti-internal/tooling-vite':
         specifier: workspace:*
         version: link:../../tooling/vite
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/terminus:
     dependencies:
@@ -706,6 +834,10 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/testing:
     dependencies:
@@ -727,9 +859,6 @@ importers:
       '@konekti/runtime':
         specifier: workspace:*
         version: link:../runtime
-      vitest:
-        specifier: ^3.0.8
-        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
     devDependencies:
       '@konekti/platform-express':
         specifier: workspace:*
@@ -740,6 +869,9 @@ importers:
       '@konekti/platform-nodejs':
         specifier: workspace:*
         version: link:../platform-nodejs
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/throttler:
     dependencies:
@@ -762,6 +894,9 @@ importers:
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   packages/validation:
     dependencies:
@@ -821,6 +956,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
 
   tooling/babel: {}
 

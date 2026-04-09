@@ -45,5 +45,8 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }

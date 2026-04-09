@@ -45,5 +45,8 @@
   "dependencies": {
     "@konekti/core": "workspace:*",
     "@konekti/http": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }

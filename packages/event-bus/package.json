@@ -41,7 +41,9 @@
   "scripts": {
     "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
     "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec vitest run -c vitest.config.ts",
+    "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
     "@konekti/core": "workspace:*",
@@ -55,5 +57,8 @@
     "ioredis": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
   }
 }
