@@ -24,22 +24,35 @@ function getClassMetadataLineage(target: Function): Function[] {
   return lineage;
 }
 
+/**
+ * Defines class-level DI metadata while preserving previously written fields for split decorator passes.
+ *
+ * @param target Class receiving DI metadata.
+ * @param metadata Partial or complete DI metadata payload.
+ */
 export function defineClassDiMetadata(target: Function, metadata: ClassDiMetadata): void {
-  const existing = classDiMetadataStore.read(target);
-
-  classDiMetadataStore.write(
-    target,
-    {
-      inject: metadata.inject !== undefined ? metadata.inject : existing?.inject,
-      scope: metadata.scope ?? existing?.scope,
-    },
-  );
+  classDiMetadataStore.update(target, (existing) => ({
+    inject: metadata.inject !== undefined ? metadata.inject : existing?.inject,
+    scope: metadata.scope ?? existing?.scope,
+  }));
 }
 
+/**
+ * Reads only the DI metadata defined directly on a class.
+ *
+ * @param target Class being inspected.
+ * @returns A defensive clone of the class's own DI metadata, or `undefined` when absent.
+ */
 export function getOwnClassDiMetadata(target: Function): ClassDiMetadata | undefined {
   return classDiMetadataStore.read(target);
 }
 
+/**
+ * Resolves inherited DI metadata by walking the constructor lineage from base to leaf.
+ *
+ * @param target Class being inspected.
+ * @returns The effective inherited DI metadata, or `undefined` when no lineage metadata exists.
+ */
 export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
   let effective: ClassDiMetadata | undefined;
 
@@ -59,6 +72,12 @@ export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata |
   return effective ? cloneClassDiMetadata(effective) : undefined;
 }
 
+/**
+ * Reads the effective DI metadata visible to a class, including inherited fallback values.
+ *
+ * @param target Class being inspected.
+ * @returns The effective DI metadata for the class, or `undefined` when none exists.
+ */
 export function getClassDiMetadata(target: Function): ClassDiMetadata | undefined {
   return getInheritedClassDiMetadata(target);
 }

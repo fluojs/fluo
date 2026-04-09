@@ -355,6 +355,25 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('does not retain caller-owned inject arrays across partial class DI writes', () => {
+    class ExampleService {}
+
+    const inject = ['LOGGER'];
+
+    defineClassDiMetadata(ExampleService, {
+      inject,
+    });
+    inject.push('MUTATED');
+    defineClassDiMetadata(ExampleService, {
+      scope: 'request',
+    });
+
+    expect(getOwnClassDiMetadata(ExampleService)).toEqual({
+      inject: ['LOGGER'],
+      scope: 'request',
+    });
+  });
+
   it('falls back to inherited DI metadata while keeping own lookups explicit', () => {
     class BaseService {}
 
@@ -439,5 +458,28 @@ describe('metadata helpers', () => {
 
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
+  });
+
+  it('does not retain caller-owned module metadata arrays across partial writes', () => {
+    class ExampleModule {}
+
+    const imports = ['SharedModule'];
+
+    defineModuleMetadata(ExampleModule, {
+      imports,
+    });
+    imports.push('MutatedModule');
+    defineModuleMetadata(ExampleModule, {
+      providers: ['LoggerProvider'],
+    });
+
+    expect(getModuleMetadata(ExampleModule)).toEqual({
+      controllers: undefined,
+      exports: undefined,
+      global: undefined,
+      imports: ['SharedModule'],
+      middleware: undefined,
+      providers: ['LoggerProvider'],
+    });
   });
 });

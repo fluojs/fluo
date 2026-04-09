@@ -34,22 +34,29 @@ function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
   };
 }
 
+/**
+ * Defines module metadata while preserving previously written fields for partial decorator passes.
+ *
+ * @param target Module class receiving metadata.
+ * @param metadata Partial or complete module metadata payload.
+ */
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
-  const existing = moduleMetadataStore.read(target);
-
-  moduleMetadataStore.write(
-    target,
-    {
-      controllers: metadata.controllers ?? existing?.controllers,
-      exports: metadata.exports ?? existing?.exports,
-      global: metadata.global ?? existing?.global,
-      imports: metadata.imports ?? existing?.imports,
-      middleware: metadata.middleware ?? existing?.middleware,
-      providers: metadata.providers ?? existing?.providers,
-    },
-  );
+  moduleMetadataStore.update(target, (existing) => ({
+    controllers: metadata.controllers ?? existing?.controllers,
+    exports: metadata.exports ?? existing?.exports,
+    global: metadata.global ?? existing?.global,
+    imports: metadata.imports ?? existing?.imports,
+    middleware: metadata.middleware ?? existing?.middleware,
+    providers: metadata.providers ?? existing?.providers,
+  }));
 }
 
+/**
+ * Reads cloned module metadata for the provided module class.
+ *
+ * @param target Module class being inspected.
+ * @returns A defensive clone of module metadata, or `undefined` when none was defined.
+ */
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
   return moduleMetadataStore.read(target);
 }

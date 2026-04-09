@@ -563,10 +563,15 @@ export class Container {
     activeTokens: Set<Token>,
     run: (chain: Token[], activeTokens: Set<Token>) => Promise<T>,
   ): Promise<T> {
-    const nextChain = [...chain, token];
-    const nextActiveTokens = new Set([...activeTokens, token]);
+    chain.push(token);
+    activeTokens.add(token);
 
-    return await run(nextChain, nextActiveTokens);
+    try {
+      return await run(chain, activeTokens);
+    } finally {
+      activeTokens.delete(token);
+      chain.pop();
+    }
   }
 
   private root(): Container {
@@ -822,23 +827,28 @@ export class Container {
     visited = new Set<Token>(),
     chain: Token[] = [],
   ): NormalizedProvider | undefined {
-    if (visited.has(token)) {
-      throw new CircularDependencyError([...chain, token]);
+    let currentToken = token;
+
+    while (true) {
+      if (visited.has(currentToken)) {
+        throw new CircularDependencyError([...chain, currentToken]);
+      }
+
+      visited.add(currentToken);
+
+      const provider = this.lookupProvider(currentToken);
+
+      if (!provider) {
+        return undefined;
+      }
+
+      if (provider.type !== 'existing' || provider.useExisting === undefined) {
+        return provider;
+      }
+
+      chain.push(currentToken);
+      currentToken = provider.useExisting;
     }
-
-    visited.add(token);
-
-    const provider = this.lookupProvider(token);
-
-    if (!provider) {
-      return undefined;
-    }
-
-    if (provider.type === 'existing' && provider.useExisting !== undefined) {
-      return this.resolveEffectiveProvider(provider.useExisting, visited, [...chain, token]);
-    }
-
-    return provider;
   }
 
   private resolveProviderDependencyToken(depEntry: Token | ForwardRefFn | OptionalToken): Token {
@@ -854,10 +864,10 @@ export class Container {
   }
 
   private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[], activeTokens: Set<Token>): Promise<unknown[]> {
-    const deps: unknown[] = [];
+    const deps = new Array<unknown>(provider.inject.length);
 
-    for (const entry of provider.inject) {
-      deps.push(await this.resolveDepToken(entry, chain, activeTokens));
+    for (const [index, entry] of provider.inject.entries()) {
+      deps[index] = await this.resolveDepToken(entry, chain, activeTokens);
     }
 
     return deps;

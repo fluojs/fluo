@@ -577,6 +577,35 @@ describe('Container', () => {
 
       await expect(container.resolve(MyService)).rejects.toThrow(ScopeMismatchError);
     });
+
+    it('checks each singleton alias dependency independently when aliases converge on one request-scoped provider', async () => {
+      const REQUEST_LOGGER = Symbol('RequestLogger');
+      const LOGGER_ALIAS_A = Symbol('LoggerAliasA');
+      const LOGGER_ALIAS_B = Symbol('LoggerAliasB');
+      const LOGGER_ALIAS_C = Symbol('LoggerAliasC');
+
+      class RequestLogger {}
+
+      class MyService {
+        constructor(
+          readonly loggerA: RequestLogger,
+          readonly loggerB: RequestLogger,
+        ) {}
+      }
+
+      const container = new Container().register(
+        { provide: REQUEST_LOGGER, useClass: RequestLogger, scope: Scope.REQUEST },
+        { provide: LOGGER_ALIAS_A, useExisting: REQUEST_LOGGER },
+        { provide: LOGGER_ALIAS_B, useExisting: LOGGER_ALIAS_A },
+        { provide: LOGGER_ALIAS_C, useExisting: REQUEST_LOGGER },
+        { provide: MyService, useClass: MyService, inject: [LOGGER_ALIAS_B, LOGGER_ALIAS_C] },
+      );
+
+      const error = await container.resolve(MyService).catch((value: unknown) => value);
+
+      expect(error).toBeInstanceOf(ScopeMismatchError);
+      expect(error).not.toBeInstanceOf(CircularDependencyError);
+    });
   });
 
   describe('multi-provider', () => {
