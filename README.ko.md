@@ -74,6 +74,7 @@ Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된
 
 - 📖 **[문서 포털](./docs/README.ko.md)**: 아키텍처, DI, 패턴에 대한 심층 문서.
 - 🚀 **[시작하기](./docs/getting-started/quick-start.ko.md)**: Konekti와 함께하는 첫 15분.
+- 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 범위를 보여주는 기준 문서.
 - 💡 **[예제 앱](./examples/README.ko.md)**: 최소 설정부터 복잡한 RealWorld API까지.
 - 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `konekti` 명령어 마스터하기.
 

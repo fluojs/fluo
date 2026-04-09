@@ -34,6 +34,9 @@ Understand the "Why" and "How" behind Konekti's design choices.
 Practical, task-oriented documentation for day-to-day development.
 
 - **[Testing Strategies](./operations/testing-guide.md)**: From unit tests to full integration suites.
+- **[Behavioral Contract Policy](./operations/behavioral-contract-policy.md)**: The binding rules for documented runtime behavior.
+- **[Release Governance](./operations/release-governance.md)**: Release standards, versioning policy, and automated gates.
+- **[Public Export TSDoc Baseline](./operations/public-export-tsdoc-baseline.md)**: Repo-wide minimum authoring rules for changed public exports.
 - **[CLI Workflow](./getting-started/generator-workflow.md)**: Using generators to maintain consistency.
 - **[Security Middleware](./concepts/security-middleware.md)**: Best practices for protecting your API.
 - **[Production Deployment](./operations/deployment.md)**: Moving from `pnpm dev` to a production environment.
