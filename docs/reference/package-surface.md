@@ -9,7 +9,8 @@ This page is the source of truth for the Konekti public package families and the
 | family | description | packages |
 | --- | --- | --- |
 | **Core** | Shared contracts and DI. | `@konekti/core`, `@konekti/di`, `@konekti/config`, `@konekti/runtime` |
-| **HTTP** | Web API execution and routing. | `@konekti/http`, `@konekti/validation`, `@konekti/serialization`, `@konekti/openapi` |
+| **HTTP** | Web API execution and routing. | `@konekti/http`, `@konekti/graphql`, `@konekti/validation`, `@konekti/serialization`, `@konekti/openapi` |
+| **Auth** | Authentication and authorization. | `@konekti/jwt`, `@konekti/passport` |
 | **Platform** | Runtime adapters. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket and Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | Database and cache. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
@@ -44,7 +45,10 @@ Konekti uses a transport-neutral runtime. Adapters bridge this runtime to specif
 
 ### features
 - **`@konekti/http`**: Routing, guards, interceptors, and exception handling.
-- **`@konekti/microservices`**: Pattern-matching transport abstraction for Kafka, RabbitMQ, gRPC, etc.
+- **`@konekti/graphql`**: GraphQL schema exposure, resolver execution, and subscriptions on top of the HTTP abstraction.
+- **`@konekti/jwt`**: HTTP-agnostic JWT signing, verification, and principal normalization.
+- **`@konekti/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
+- **`@konekti/microservices`**: Pattern-matching transport abstraction for TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@konekti/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
 - **`@konekti/websockets`**: Transport-neutral WebSocket gateway authoring.
 - **`@konekti/validation`**: Class-validator based input materialization and safety.

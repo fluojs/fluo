@@ -9,7 +9,8 @@
 | 패밀리 | 설명 | 패키지 |
 | --- | --- | --- |
 | **Core** | 공유 계약 및 DI. | `@konekti/core`, `@konekti/di`, `@konekti/config`, `@konekti/runtime` |
-| **HTTP** | 웹 API 실행 및 라우팅. | `@konekti/http`, `@konekti/validation`, `@konekti/serialization`, `@konekti/openapi` |
+| **HTTP** | 웹 API 실행 및 라우팅. | `@konekti/http`, `@konekti/graphql`, `@konekti/validation`, `@konekti/serialization`, `@konekti/openapi` |
+| **Auth** | 인증 및 인가. | `@konekti/jwt`, `@konekti/passport` |
 | **Platform** | 런타임 어댑터. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket 및 Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | 데이터베이스 및 캐시. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
@@ -44,7 +45,10 @@ Konekti는 전송 중립(transport-neutral) 런타임을 사용합니다. 어댑
 
 ### features
 - **`@konekti/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
-- **`@konekti/microservices`**: Kafka, RabbitMQ, gRPC 등을 위한 패턴 매칭 전송 추상화.
+- **`@konekti/graphql`**: HTTP 추상화 위에서 동작하는 GraphQL 스키마 노출, 리졸버 실행, 구독 지원.
+- **`@konekti/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화.
+- **`@konekti/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
+- **`@konekti/microservices`**: TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
 - **`@konekti/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
 - **`@konekti/websockets`**: 전송 중립 WebSocket 게이트웨이 작성.
 - **`@konekti/validation`**: class-validator 기반 입력 구체화(materialization) 및 안전성.
