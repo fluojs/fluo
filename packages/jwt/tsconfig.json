@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node", "vitest"]
   },
   "include": ["src/**/*.ts"]
 }
