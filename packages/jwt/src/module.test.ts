@@ -1,9 +1,9 @@
-// @ts-expect-error vitest is resolved by the workspace test runner in this repo.
 import { describe, expect, it } from 'vitest';
 
-import { Inject, type Constructor, type Token } from '@konekti/core';
-import { getClassDiMetadata, getModuleMetadata } from '@konekti/core/internal';
+import { Inject, Module, type Constructor, type Token } from '@konekti/core';
+import { getModuleMetadata } from '@konekti/core/internal';
 import { Container, type Provider } from '@konekti/di';
+import { KonektiFactory } from '@konekti/runtime';
 
 import { JwtModule } from './module.js';
 import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh/refresh-token.js';
@@ -52,26 +52,6 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   return metadata.providers as Provider[];
 }
 
-function providerScope(provider: Provider): 'singleton' | 'request' | 'transient' {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useValue' in provider) {
-    return 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  if ('useFactory' in provider) {
-    return provider.scope ?? 'singleton';
-  }
-
-  return 'singleton';
-}
-
 function providerToken(provider: Provider): Token {
   if (typeof provider === 'function') {
     return provider;
@@ -84,14 +64,11 @@ function moduleExports(moduleType: Constructor): Token[] {
   return (getModuleMetadata(moduleType)?.exports as Token[] | undefined) ?? [];
 }
 
-async function resolveSingletonProviders(container: Container, providers: Provider[]): Promise<void> {
-  for (const provider of providers) {
-    if (providerScope(provider) !== 'singleton') {
-      continue;
-    }
+async function createJwtApplicationContext(jwtModule: Constructor) {
+  @Module({ imports: [jwtModule] })
+  class AppModule {}
 
-    await container.resolve(providerToken(provider));
-  }
+  return KonektiFactory.createApplicationContext(AppModule);
 }
 
 describe('JwtModule', () => {
@@ -186,26 +163,24 @@ describe('JwtModule', () => {
     await expect(container.resolve(DefaultJwtSigner)).rejects.toThrow('jwt async options failed');
   });
 
-  it('does not fail singleton provider resolution when async options omit refreshToken', async () => {
-    const container = new Container();
-    const moduleType = JwtModule.forRootAsync({
+  it('does not register refresh token service when async options omit refreshToken', async () => {
+    const app = await createJwtApplicationContext(JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['HS256'],
         issuer: 'jwt-module-tests',
         secret: 'async-secret-without-refresh',
       }),
-    });
+    }));
 
-    const providers = moduleProviders(moduleType);
-
-    container.register(...providers);
-
-    await expect(resolveSingletonProviders(container, providers)).resolves.toBeUndefined();
+    try {
+      expect(app.container.has(RefreshTokenService)).toBe(false);
+    } finally {
+      await app.close();
+    }
   });
 
-  it('resolves refresh token service for async options when refreshToken is configured', async () => {
-    const container = new Container();
-    const moduleType = JwtModule.forRootAsync({
+  it('registers refresh token service for async options when refreshToken is configured', async () => {
+    const app = await createJwtApplicationContext(JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['HS256'],
         refreshToken: {
@@ -216,14 +191,17 @@ describe('JwtModule', () => {
         },
         secret: 'jwt-secret',
       }),
-    });
+    }));
 
-    container.register(...moduleProviders(moduleType));
-
-    await expect(container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
+    try {
+      expect(app.container.has(RefreshTokenService)).toBe(true);
+      await expect(app.container.resolve(RefreshTokenService)).resolves.toBeInstanceOf(RefreshTokenService);
+    } finally {
+      await app.close();
+    }
   });
 
-  it('does not export refresh token service from async registration when refreshToken is omitted', () => {
+  it('does not statically register refresh token service from async registration metadata', () => {
     const moduleType = JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['HS256'],
@@ -233,11 +211,11 @@ describe('JwtModule', () => {
     });
 
     expect(moduleExports(moduleType)).not.toContain(RefreshTokenService);
+    expect(moduleProviders(moduleType).map((provider) => providerToken(provider))).not.toContain(RefreshTokenService);
   });
 
-  it('fails singleton provider resolution when refreshToken is configured without any HMAC algorithms', async () => {
-    const container = new Container();
-    const moduleType = JwtModule.forRootAsync({
+  it('fails async bootstrap when refreshToken is configured without any HMAC algorithms', async () => {
+    await expect(createJwtApplicationContext(JwtModule.forRootAsync({
       useFactory: async () => ({
         algorithms: ['RS256'],
         publicKey: '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApseudo\n-----END PUBLIC KEY-----',
@@ -248,13 +226,7 @@ describe('JwtModule', () => {
           store: new NoopRefreshTokenStore(),
         },
       }),
-    });
-
-    const providers = moduleProviders(moduleType);
-
-    container.register(...providers);
-
-    await expect(resolveSingletonProviders(container, providers)).rejects.toThrow(
+    }))).rejects.toThrow(
       'JWT refresh token verifier requires at least one HMAC algorithm (HS256/HS384/HS512) in the allowed algorithms list.',
     );
   });
