@@ -21,6 +21,7 @@ interface NatsLike {
   subscribe(subject: string, handler: (message: NatsMessageLike) => void): NatsSubscriptionLike;
 }
 
+/** Options for configuring the NATS microservice transport. */
 export interface NatsMicroserviceTransportOptions {
   client: NatsLike;
   codec: NatsCodecLike;
@@ -45,6 +46,12 @@ interface PendingRequest {
   resolve(value: unknown): void;
 }
 
+/**
+ * NATS transport for request-response messages and fire-and-forget event delivery.
+ *
+ * The adapter maps Konekti message traffic onto separate event and request subjects while
+ * preserving JSON framing and NATS request timeout behavior.
+ */
 export class NatsMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
@@ -65,12 +72,23 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Creates a NATS transport using a client and codec supplied by the application.
+   *
+   * @param options Subject names, codec, client, and request-timeout settings.
+   */
   constructor(private readonly options: NatsMicroserviceTransportOptions) {
     this.eventSubject = options.eventSubject ?? 'konekti.microservices.events';
     this.messageSubject = options.messageSubject ?? 'konekti.microservices.messages';
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
+  /**
+   * Subscribes to the configured NATS event and message subjects.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once subscriptions are active.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.closing = false;
     this.handler = handler;
@@ -90,6 +108,13 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     this.listening = true;
   }
 
+  /**
+   * Sends one request-response message through NATS request/reply.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @returns The decoded remote handler response payload.
+   */
   async send(pattern: string, payload: unknown): Promise<unknown> {
     if (this.closing) {
       throw new Error('NATS microservice transport is closing. Wait for close() to complete before send().');
@@ -157,6 +182,13 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Emits one fire-and-forget event through the configured NATS event subject.
+   *
+   * @param pattern Pattern identifying the remote event handler.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the event is published.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     const event: NatsTransportMessage = {
       kind: 'event',
@@ -167,6 +199,11 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     this.options.client.publish(this.eventSubject, this.encode(event));
   }
 
+  /**
+   * Unsubscribes from NATS subjects and closes the client when supported.
+   *
+   * @returns A promise that resolves once shutdown cleanup completes.
+   */
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;

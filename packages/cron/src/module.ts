@@ -37,6 +37,12 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
   };
 }
 
+/**
+ * Normalizes module options so the runtime can rely on concrete scheduler and lock settings.
+ *
+ * @param options Raw cron module options supplied by the application.
+ * @returns A normalized options object with concrete distributed defaults and scheduler implementation.
+ */
 export function normalizeCronModuleOptions(options: CronModuleOptions = {}): NormalizedCronModuleOptions {
   return {
     distributed: normalizeDistributedOptions(options.distributed),
@@ -44,6 +50,12 @@ export function normalizeCronModuleOptions(options: CronModuleOptions = {}): Nor
   };
 }
 
+/**
+ * Creates the providers required for scheduler lifecycle management.
+ *
+ * @param options Raw cron module options used to configure the scheduling registry.
+ * @returns Providers for normalized options and the shared scheduling registry token.
+ */
 export function createCronProviders(options: CronModuleOptions = {}): Provider[] {
   return [
     {
@@ -57,7 +69,25 @@ export function createCronProviders(options: CronModuleOptions = {}): Provider[]
   ];
 }
 
+/** Runtime module entrypoint for decorator-driven scheduling. */
 export class CronModule {
+  /**
+   * Registers the scheduling registry and optional distributed locking defaults.
+   *
+   * @param options Scheduler and distributed-lock options for discovered and dynamic tasks.
+   * @returns A module definition that exports the {@link SCHEDULING_REGISTRY} token.
+   *
+   * @example
+   * ```ts
+   * import { Module } from '@konekti/core';
+   * import { CronModule } from '@konekti/cron';
+   *
+   * @Module({
+   *   imports: [CronModule.forRoot({ distributed: true })],
+   * })
+   * export class AppModule {}
+   * ```
+   */
   static forRoot(options: CronModuleOptions = {}): ModuleType {
     class CronModuleDefinition {}
 

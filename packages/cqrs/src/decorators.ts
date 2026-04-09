@@ -74,6 +74,28 @@ function normalizeSagaEventTypes(eventTypeOrTypes: CqrsEventType | readonly Cqrs
   return uniqueEventTypes;
 }
 
+/**
+ * Associates a singleton provider class with one command type.
+ *
+ * @param commandType Command constructor handled by the decorated class.
+ * @returns A class decorator that stores command-handler metadata for discovery.
+ *
+ * @example
+ * ```ts
+ * import { CommandHandler, type ICommandHandler } from '@konekti/cqrs';
+ *
+ * class CreateUserCommand {
+ *   constructor(public readonly name: string) {}
+ * }
+ *
+ * @CommandHandler(CreateUserCommand)
+ * export class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+ *   async execute(command: CreateUserCommand) {
+ *     return command.name;
+ *   }
+ * }
+ * ```
+ */
 export function CommandHandler(commandType: CommandType): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext): void => {
     const metadata: CommandHandlerMetadata = {
@@ -86,6 +108,12 @@ export function CommandHandler(commandType: CommandType): ClassDecoratorLike {
   return decorator;
 }
 
+/**
+ * Associates a singleton provider class with one query type.
+ *
+ * @param queryType Query constructor handled by the decorated class.
+ * @returns A class decorator that stores query-handler metadata for discovery.
+ */
 export function QueryHandler(queryType: QueryType): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext): void => {
     const metadata: QueryHandlerMetadata = {
@@ -98,6 +126,12 @@ export function QueryHandler(queryType: QueryType): ClassDecoratorLike {
   return decorator;
 }
 
+/**
+ * Associates a singleton provider class with one event type.
+ *
+ * @param eventType Event constructor handled by the decorated class.
+ * @returns A class decorator that stores event-handler metadata for discovery.
+ */
 export function EventHandler(eventType: CqrsEventType): ClassDecoratorLike {
   const decorator = (_value: Function, context: ClassDecoratorContext): void => {
     const metadata: EventHandlerMetadata = {
@@ -110,6 +144,12 @@ export function EventHandler(eventType: CqrsEventType): ClassDecoratorLike {
   return decorator;
 }
 
+/**
+ * Marks a singleton provider class as a saga listener for one or more event types.
+ *
+ * @param eventTypeOrTypes One event constructor or a list of constructors that should trigger the saga.
+ * @returns A class decorator that stores saga metadata for discovery.
+ */
 export function Saga(eventTypeOrTypes: CqrsEventType | readonly CqrsEventType[]): ClassDecoratorLike {
   const eventTypes = normalizeSagaEventTypes(eventTypeOrTypes);
 

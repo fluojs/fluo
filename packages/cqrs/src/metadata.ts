@@ -120,10 +120,22 @@ function getStandardSagaMetadata(target: Function): SagaMetadata | undefined {
   };
 }
 
+/**
+ * Stores command-handler metadata on a class for compatibility with manual metadata registration.
+ *
+ * @param target Handler class constructor receiving the metadata.
+ * @param metadata Command-handler metadata to store.
+ */
 export function defineCommandHandlerMetadata(target: Function, metadata: CommandHandlerMetadata): void {
   commandHandlerMetadataStore.set(target, cloneCommandHandlerMetadata(metadata));
 }
 
+/**
+ * Reads command-handler metadata from either the compatibility store or standard decorator metadata.
+ *
+ * @param target Handler class constructor to inspect.
+ * @returns The resolved command-handler metadata, if present.
+ */
 export function getCommandHandlerMetadata(target: Function): CommandHandlerMetadata | undefined {
   const stored = commandHandlerMetadataStore.get(target);
   const standard = getStandardCommandHandlerMetadata(target);
@@ -135,10 +147,22 @@ export function getCommandHandlerMetadata(target: Function): CommandHandlerMetad
   return cloneCommandHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Stores query-handler metadata on a class for compatibility with manual metadata registration.
+ *
+ * @param target Handler class constructor receiving the metadata.
+ * @param metadata Query-handler metadata to store.
+ */
 export function defineQueryHandlerMetadata(target: Function, metadata: QueryHandlerMetadata): void {
   queryHandlerMetadataStore.set(target, cloneQueryHandlerMetadata(metadata));
 }
 
+/**
+ * Reads query-handler metadata from either the compatibility store or standard decorator metadata.
+ *
+ * @param target Handler class constructor to inspect.
+ * @returns The resolved query-handler metadata, if present.
+ */
 export function getQueryHandlerMetadata(target: Function): QueryHandlerMetadata | undefined {
   const stored = queryHandlerMetadataStore.get(target);
   const standard = getStandardQueryHandlerMetadata(target);
@@ -150,10 +174,22 @@ export function getQueryHandlerMetadata(target: Function): QueryHandlerMetadata 
   return cloneQueryHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Stores event-handler metadata on a class for compatibility with manual metadata registration.
+ *
+ * @param target Handler class constructor receiving the metadata.
+ * @param metadata Event-handler metadata to store.
+ */
 export function defineEventHandlerMetadata(target: Function, metadata: EventHandlerMetadata): void {
   eventHandlerMetadataStore.set(target, cloneEventHandlerMetadata(metadata));
 }
 
+/**
+ * Reads event-handler metadata from either the compatibility store or standard decorator metadata.
+ *
+ * @param target Handler class constructor to inspect.
+ * @returns The resolved event-handler metadata, if present.
+ */
 export function getEventHandlerMetadata(target: Function): EventHandlerMetadata | undefined {
   const stored = eventHandlerMetadataStore.get(target);
   const standard = getStandardEventHandlerMetadata(target);
@@ -165,10 +201,22 @@ export function getEventHandlerMetadata(target: Function): EventHandlerMetadata 
   return cloneEventHandlerMetadata(stored ?? standard!);
 }
 
+/**
+ * Stores saga metadata on a class for compatibility with manual metadata registration.
+ *
+ * @param target Saga class constructor receiving the metadata.
+ * @param metadata Saga metadata to store.
+ */
 export function defineSagaMetadata(target: Function, metadata: SagaMetadata): void {
   sagaMetadataStore.set(target, cloneSagaMetadata(metadata));
 }
 
+/**
+ * Reads saga metadata from either the compatibility store or standard decorator metadata.
+ *
+ * @param target Saga class constructor to inspect.
+ * @returns The resolved saga metadata, if present.
+ */
 export function getSagaMetadata(target: Function): SagaMetadata | undefined {
   const stored = sagaMetadataStore.get(target);
   const standard = getStandardSagaMetadata(target);
@@ -180,6 +228,12 @@ export function getSagaMetadata(target: Function): SagaMetadata | undefined {
   return cloneSagaMetadata(stored ?? standard!);
 }
 
+/**
+ * Returns the normalized command-handler metadata entry used by public-surface tests and tooling.
+ *
+ * @param target Handler instance or prototype whose constructor should be inspected.
+ * @returns The command-handler metadata entry for the canonical `execute` method, if present.
+ */
 export function getCommandHandlerMetadataEntry(
   target: object,
 ): { metadata: CommandHandlerMetadata; propertyKey: MetadataPropertyKey } | undefined {
@@ -201,6 +255,12 @@ export function getCommandHandlerMetadataEntry(
   };
 }
 
+/**
+ * Returns the normalized query-handler metadata entry used by public-surface tests and tooling.
+ *
+ * @param target Handler instance or prototype whose constructor should be inspected.
+ * @returns The query-handler metadata entry for the canonical `execute` method, if present.
+ */
 export function getQueryHandlerMetadataEntry(
   target: object,
 ): { metadata: QueryHandlerMetadata; propertyKey: MetadataPropertyKey } | undefined {
@@ -222,7 +282,11 @@ export function getQueryHandlerMetadataEntry(
   };
 }
 
+/** Standard decorator metadata key used to store command-handler metadata. */
 export const commandHandlerMetadataSymbol = standardCommandHandlerMetadataKey;
+/** Standard decorator metadata key used to store query-handler metadata. */
 export const queryHandlerMetadataSymbol = standardQueryHandlerMetadataKey;
+/** Standard decorator metadata key used to store event-handler metadata. */
 export const eventHandlerMetadataSymbol = standardEventHandlerMetadataKey;
+/** Standard decorator metadata key used to store saga metadata. */
 export const sagaMetadataSymbol = standardSagaMetadataKey;

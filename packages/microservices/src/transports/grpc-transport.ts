@@ -102,6 +102,7 @@ const grpcKinds = {
 
 type GrpcTransportKind = typeof grpcKinds[keyof typeof grpcKinds];
 
+/** Options for configuring the gRPC microservice transport. */
 export interface GrpcMicroserviceTransportOptions {
   protoPath: string;
   packageName: string;
@@ -120,6 +121,12 @@ export interface GrpcMicroserviceTransportOptions {
   server?: GrpcServerLike;
 }
 
+/**
+ * gRPC transport for unary, event-style unary, and all streaming microservice patterns.
+ *
+ * The adapter loads protobuf definitions at runtime, registers service implementations on a gRPC server,
+ * and exposes matching unary/server-stream/client-stream/bidi-stream client calls through one transport surface.
+ */
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private bidiStreamHandler: TransportBidiStreamHandler | undefined;
   private clientStreamHandler: TransportClientStreamHandler | undefined;
@@ -136,11 +143,22 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private resolvedServer: GrpcServerLike | undefined;
   private serverStreamHandler: TransportServerStreamHandler | undefined;
 
+  /**
+   * Creates a gRPC transport bound to one protobuf package and server endpoint.
+   *
+   * @param options Protobuf loading, server binding, and client-call settings for the transport.
+   */
   constructor(private readonly options: GrpcMicroserviceTransportOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.server = options.server;
   }
 
+  /**
+   * Loads protobuf services, registers handlers, and binds the gRPC server.
+   *
+   * @param handler Runtime callback invoked for inbound unary message and event packets.
+   * @returns A promise that resolves once the gRPC server is bound and ready.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.closing = false;
     this.handler = handler;
@@ -199,6 +217,14 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     }
   }
 
+  /**
+   * Sends one unary request-response message through gRPC.
+   *
+   * @param pattern `<Service>.<Method>` pattern identifying the remote unary RPC.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the call.
+   * @returns The decoded unary RPC response.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before send().');
@@ -213,6 +239,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     return await this.callUnary(parsed, payload, grpcKinds.message, signal);
   }
 
+  /**
+   * Emits one event-style unary call through gRPC.
+   *
+   * @param pattern `<Service>.<Method>` pattern identifying the remote RPC.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the remote RPC acknowledges the call.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before emit().');
@@ -227,18 +260,41 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     await this.callUnary(parsed, payload, grpcKinds.event, undefined);
   }
 
+  /**
+   * Registers the runtime callback used for inbound server-streaming RPCs.
+   *
+   * @param handler Runtime callback invoked for inbound server-stream requests.
+   */
   listenServerStreaming(handler: TransportServerStreamHandler): void {
     this.serverStreamHandler = handler;
   }
 
+  /**
+   * Registers the runtime callback used for inbound client-streaming RPCs.
+   *
+   * @param handler Runtime callback invoked for inbound client-stream requests.
+   */
   listenClientStreaming(handler: TransportClientStreamHandler): void {
     this.clientStreamHandler = handler;
   }
 
+  /**
+   * Registers the runtime callback used for inbound bidirectional-streaming RPCs.
+   *
+   * @param handler Runtime callback invoked for inbound bidi-stream requests.
+   */
   listenBidiStreaming(handler: TransportBidiStreamHandler): void {
     this.bidiStreamHandler = handler;
   }
 
+  /**
+   * Opens an outbound server-streaming call.
+   *
+   * @param pattern `<Service>.<Method>` pattern identifying the remote server-stream RPC.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the stream.
+   * @returns An async iterable of streamed response messages.
+   */
   serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before serverStream().');
@@ -253,6 +309,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     return this.callServerStream(parsed, payload, signal);
   }
 
+  /**
+   * Opens an outbound client-streaming call.
+   *
+   * @param pattern `<Service>.<Method>` pattern identifying the remote client-stream RPC.
+   * @param signal Optional abort signal used to cancel the stream.
+   * @returns A writer for request messages and a promise for the final response payload.
+   */
   clientStream(pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before clientStream().');
@@ -267,6 +330,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     return this.callClientStream(parsed, signal);
   }
 
+  /**
+   * Opens an outbound bidirectional-streaming call.
+   *
+   * @param pattern `<Service>.<Method>` pattern identifying the remote bidi-stream RPC.
+   * @param signal Optional abort signal used to cancel the stream.
+   * @returns A response reader paired with a request writer.
+   */
   bidiStream(pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
     if (this.closing) {
       throw new Error('GrpcMicroserviceTransport is closing. Wait for close() to complete before bidiStream().');
@@ -281,6 +351,11 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     return this.callBidiStream(parsed, signal);
   }
 
+  /**
+   * Shuts down the gRPC server and closes any cached service clients.
+   *
+   * @returns A promise that resolves once shutdown cleanup completes.
+   */
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;

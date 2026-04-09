@@ -23,6 +23,12 @@ function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>,
   return typeof (value as { execute?: unknown }).execute === 'function';
 }
 
+/**
+ * Discovers and executes query handlers during bootstrap and runtime dispatch.
+ *
+ * The query bus resolves singleton handlers only, warns on unsupported scopes,
+ * and preserves the one-query-to-one-handler contract used by the CQRS surface.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap {
   private descriptors = new Map<QueryType, QueryHandlerDescriptor>();
@@ -33,6 +39,15 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
     await this.ensureDiscovered();
   }
 
+  /**
+   * Executes one query by dispatching it to the discovered handler for its constructor.
+   *
+   * @param query Query instance to execute.
+   * @returns The resolved handler result.
+   *
+   * @throws {QueryHandlerNotFoundException} When no handler is registered for the query type.
+   * @throws {InvariantError} When the resolved provider does not implement `execute(query)`.
+   */
   async execute<TQuery extends IQuery<TResult>, TResult = unknown>(query: TQuery): Promise<TResult> {
     await this.ensureDiscovered();
 

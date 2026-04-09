@@ -21,6 +21,12 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
   return typeof (value as { execute?: unknown }).execute === 'function';
 }
 
+/**
+ * Discovers and executes command handlers during application bootstrap and runtime dispatch.
+ *
+ * The command bus resolves singleton handlers only, warns on unsupported scopes,
+ * and throws explicit contract errors when no handler or multiple handlers exist.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();
@@ -31,6 +37,15 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
     await this.ensureDiscovered();
   }
 
+  /**
+   * Executes one command by dispatching it to the discovered handler for its constructor.
+   *
+   * @param command Command instance to execute.
+   * @returns The resolved handler result.
+   *
+   * @throws {CommandHandlerNotFoundException} When no handler is registered for the command type.
+   * @throws {InvariantError} When the resolved provider does not implement `execute(command)`.
+   */
   async execute<TCommand extends ICommand, TResult = void>(command: TCommand): Promise<TResult> {
     await this.ensureDiscovered();
 

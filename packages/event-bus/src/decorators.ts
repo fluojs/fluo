@@ -26,6 +26,28 @@ function defineStandardEventHandlerMetadata(
   bag[eventBusMetadataSymbol] = map;
 }
 
+/**
+ * Marks a public instance method as the handler for one event type.
+ *
+ * @param eventType Event constructor that should trigger the decorated method.
+ * @returns A method decorator that stores handler metadata for bootstrap discovery.
+ *
+ * @example
+ * ```ts
+ * import { OnEvent } from '@konekti/event-bus';
+ *
+ * class UserRegisteredEvent {
+ *   constructor(public readonly email: string) {}
+ * }
+ *
+ * export class NotificationService {
+ *   @OnEvent(UserRegisteredEvent)
+ *   async notify(event: UserRegisteredEvent) {
+ *     await mailer.send(event.email);
+ *   }
+ * }
+ * ```
+ */
 export function OnEvent(eventType: EventType): MethodDecoratorLike {
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
     if (context.private) {

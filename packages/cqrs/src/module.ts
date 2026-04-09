@@ -17,6 +17,7 @@ import type {
   SagaClass,
 } from './types.js';
 
+/** Module options for registering first-party handler classes and event-bus integration. */
 export interface CqrsModuleOptions {
   commandHandlers?: readonly CommandHandlerClass[];
   eventBus?: EventBusModuleOptions;
@@ -47,6 +48,12 @@ function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
   return providers;
 }
 
+/**
+ * Creates the providers required for CQRS buses, compatibility aliases, and optional handler registration.
+ *
+ * @param options CQRS module options including eager handler classes and event-bus configuration.
+ * @returns Providers for the command, query, event, and saga runtimes plus compatibility tokens.
+ */
 export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[] {
   return [
     CommandBusLifecycleService,
@@ -79,7 +86,14 @@ export function createCqrsProviders(options: CqrsModuleOptions = {}): Provider[]
   ];
 }
 
+/** Runtime module entrypoint for CQRS bus registration and handler discovery. */
 export class CqrsModule {
+  /**
+   * Registers the CQRS buses globally and wires them to the event-bus integration.
+   *
+   * @param options CQRS module options including explicit handler classes and event-bus settings.
+   * @returns A module definition that exports the lifecycle services and compatibility tokens.
+   */
   static forRoot(options: CqrsModuleOptions = {}): ModuleType {
     class CqrsModuleDefinition {}
 

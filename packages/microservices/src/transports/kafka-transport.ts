@@ -23,6 +23,7 @@ interface PendingRequest {
   resolve(value: unknown): void;
 }
 
+/** Options for configuring the Kafka microservice transport. */
 export interface KafkaMicroserviceTransportOptions {
   consumer: KafkaConsumerLike;
   eventTopic?: string;
@@ -32,6 +33,12 @@ export interface KafkaMicroserviceTransportOptions {
   responseTopic?: string;
 }
 
+/**
+ * Kafka transport for durable request-response messages and event delivery.
+ *
+ * The adapter uses one response topic per client instance so concurrent callers can await
+ * replies without leaking cross-request state through the shared producer/consumer pair.
+ */
 export class KafkaMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
@@ -43,6 +50,11 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
   private readonly requestTimeoutMs: number;
   private readonly responseTopic: string;
 
+  /**
+   * Creates a Kafka transport with explicit producer and consumer collaborators.
+   *
+   * @param options Topic names, producer/consumer handles, and request-timeout settings.
+   */
   constructor(private readonly options: KafkaMicroserviceTransportOptions) {
     this.eventTopic = options.eventTopic ?? 'konekti.microservices.events';
     this.messageTopic = options.messageTopic ?? 'konekti.microservices.messages';
@@ -50,6 +62,12 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
+  /**
+   * Subscribes to the configured Kafka event, message, and response topics.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once all subscriptions are active.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.closing = false;
     this.handler = handler;
@@ -99,6 +117,14 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
     }
   }
 
+  /**
+   * Sends one request-response message through Kafka.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the request.
+   * @returns The remote handler response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.closing) {
       throw new Error('KafkaMicroserviceTransport is closing. Wait for close() to complete before send().');
@@ -176,6 +202,13 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Emits one fire-and-forget event through Kafka.
+   *
+   * @param pattern Pattern identifying the remote event handler.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the event is published.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     const message: KafkaTransportMessage = {
       kind: 'event',
@@ -186,6 +219,11 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
     await this.options.producer.publish(this.eventTopic, JSON.stringify(message));
   }
 
+  /**
+   * Unsubscribes from Kafka topics and rejects any in-flight requests.
+   *
+   * @returns A promise that resolves once shutdown cleanup completes.
+   */
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;

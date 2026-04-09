@@ -137,6 +137,12 @@ async function closeConnection(connection: QueueOwnedConnection): Promise<void> 
   }
 }
 
+/**
+ * Lifecycle-managed queue runtime for worker discovery and job dispatch.
+ *
+ * The service discovers `@QueueWorker()` providers during bootstrap, creates the
+ * BullMQ queues/workers they require, and shuts them down with the application.
+ */
 @Inject([QUEUE_OPTIONS, REDIS_CLIENT, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
@@ -168,6 +174,14 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     await this.shutdown();
   }
 
+  /**
+   * Enqueues one job instance using the worker metadata registered for its class.
+   *
+   * @param job Job instance whose constructor matches a discovered `@QueueWorker()` provider.
+   * @returns The queue-assigned job id, or an empty string when BullMQ does not provide one.
+   *
+   * @throws {Error} When no worker is registered for the job type or the queue is not initialized.
+   */
   async enqueue<TJob extends object>(job: TJob): Promise<string> {
     await this.ensureStarted();
 
@@ -191,6 +205,11 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     return queuedJob.id ?? '';
   }
 
+  /**
+   * Creates a platform status snapshot for health checks and diagnostics.
+   *
+   * @returns A structured snapshot describing lifecycle state, discovered workers, and pending dead-letter writes.
+   */
   createPlatformStatusSnapshot() {
     return createQueuePlatformStatusSnapshot({
       lifecycleState: this.lifecycleState,
