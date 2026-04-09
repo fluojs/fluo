@@ -108,6 +108,14 @@ stream(_input: undefined, ctx: RequestContext) {
 - **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
 
+## Internal Subpath (`@konekti/http/internal`)
+
+The `./internal` subpath exports low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
+
+- `createErrorResponse(error, requestId)`: Standardized JSON error response factory.
+- `HttpException`: Base class for all framework-level HTTP errors.
+- `PLATFORM_SHELL`: DI token for the active platform adapter.
+
 ## Related Packages
 
 - `@konekti/core`: stores controller, route, and DTO metadata

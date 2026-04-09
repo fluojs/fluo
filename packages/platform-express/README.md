@@ -68,7 +68,7 @@ const adapter = createExpressAdapter({
 - `createExpressAdapter(options)`: Factory for the Express HTTP adapter.
 - `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
 - `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
-- `ExpressHttpAdapter`: The core adapter implementation class.
+- `ExpressHttpApplicationAdapter`: The core adapter implementation class.
 
 ## Related Packages
 

@@ -82,8 +82,8 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `createCloudflareWorkerAdapter(options)`: Worker HTTP 어댑터를 위한 팩토리입니다.
 - `createCloudflareWorkerEntrypoint(module, options)`: 지연 부트스트랩 방식의 Worker 엔트리포인트를 생성합니다.
-- `bootstrapCloudflareWorkerApplication(module, options)`: 동기 방식의 부트스트랩 헬퍼입니다.
-- `CloudflareWorkerHttpAdapter`: 핵심 어댑터 구현 클래스입니다.
+- `bootstrapCloudflareWorkerApplication(module, options)`: Worker를 위한 비동기 부트스트랩 헬퍼입니다.
+- `CloudflareWorkerHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 
 ## 관련 패키지
 

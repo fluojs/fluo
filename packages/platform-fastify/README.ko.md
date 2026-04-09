@@ -76,7 +76,7 @@ Konekti의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 
 - `createFastifyAdapter(options)`: Fastify 어댑터를 위한 권장 팩토리입니다.
 - `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다.
 - `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼입니다.
-- `FastifyHttpAdapter`: 핵심 어댑터 구현 클래스입니다.
+- `FastifyHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 
 ## 관련 패키지
 
