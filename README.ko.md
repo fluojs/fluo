@@ -68,6 +68,7 @@ Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된
 | **데이터베이스** | [Prisma](./packages/prisma), [Drizzle](./packages/drizzle), [Mongoose](./packages/mongoose) |
 | **API/통신** | [HTTP](./packages/http), [GraphQL](./packages/graphql), [OpenAPI](./packages/openapi), [WebSockets](./packages/websockets), [Socket.IO](./packages/socket.io) |
 | **로직** | [DI](./packages/di), [CQRS](./packages/cqrs), [Validation](./packages/validation), [Serialization](./packages/serialization), [Config](./packages/config) |
+| **메시징** | [Notifications](./packages/notifications), [Email](./packages/email), [Slack](./packages/slack), [Discord](./packages/discord) |
 | **운영** | [Metrics](./packages/metrics), [Health (Terminus)](./packages/terminus), [Redis](./packages/redis), [Queue](./packages/queue) |
 
 ## 이어서 읽기
