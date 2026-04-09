@@ -18,6 +18,7 @@ interface RabbitMqTransportMessage {
   readonly requestId?: string;
 }
 
+/** Options for configuring the RabbitMQ microservice transport. */
 export interface RabbitMqMicroserviceTransportOptions {
   consumer: RabbitMqConsumerLike;
   eventQueue?: string;
@@ -27,6 +28,12 @@ export interface RabbitMqMicroserviceTransportOptions {
   responseQueue?: string;
 }
 
+/**
+ * RabbitMQ transport for queue-backed request-response and event delivery.
+ *
+ * The adapter uses dedicated event, message, and response queues so applications can keep
+ * a queue-oriented topology while still consuming the generic Konekti transport API.
+ */
 export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listening = false;
@@ -42,6 +49,11 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   private readonly responseQueue: string;
   private readonly subscribedQueues = new Set<string>();
 
+  /**
+   * Creates a RabbitMQ transport with explicit consumer and publisher collaborators.
+   *
+   * @param options Queue names and timeout settings for request-response traffic.
+   */
   constructor(private readonly options: RabbitMqMicroserviceTransportOptions) {
     this.eventQueue = options.eventQueue ?? 'konekti.microservices.events';
     this.messageQueue = options.messageQueue ?? 'konekti.microservices.messages';
@@ -49,6 +61,12 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
+  /**
+   * Starts consuming the configured event, message, and response queues.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once queue consumers are registered.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.handler = handler;
 
@@ -92,6 +110,14 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     }
   }
 
+  /**
+   * Sends one request-response message through RabbitMQ.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the request.
+   * @returns The remote handler response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.listenPromise) {
       await this.listenPromise;
@@ -160,6 +186,13 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Emits one fire-and-forget event through RabbitMQ.
+   *
+   * @param pattern Pattern identifying the remote event handler.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the event is published.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     const message: RabbitMqTransportMessage = {
       kind: 'event',
@@ -170,6 +203,11 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
     await this.options.publisher.publish(this.eventQueue, JSON.stringify(message));
   }
 
+  /**
+   * Cancels queue consumers and rejects any in-flight requests.
+   *
+   * @returns A promise that resolves once shutdown cleanup completes.
+   */
   async close(): Promise<void> {
     let closeError: unknown;
 
