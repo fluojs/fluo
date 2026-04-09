@@ -62,6 +62,7 @@ const mqttKinds = {
   response: 'response',
 } as const;
 
+/** Options for configuring the MQTT microservice transport. */
 export interface MqttMicroserviceTransportOptions {
   client?: MqttClientLike;
   url?: string;
@@ -81,6 +82,12 @@ export interface MqttMicroserviceTransportOptions {
   moduleLoader?: DynamicImport;
 }
 
+/**
+ * MQTT transport for topic-based request-response messages and event delivery.
+ *
+ * The adapter can either own its MQTT client or reuse one supplied by the application while
+ * keeping Konekti's message, event, and response channels isolated by topic.
+ */
 export class MqttMicroserviceTransport implements MicroserviceTransport {
   private client: MqttClientLike | undefined;
   private closing = false;
@@ -104,6 +111,11 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
   private readonly responseQos: number;
   private readonly responseRetain: boolean;
 
+  /**
+   * Creates an MQTT transport with topic, QoS, retain, and timeout settings.
+   *
+   * @param options MQTT client/module wiring and topic behavior for the transport.
+   */
   constructor(private readonly options: MqttMicroserviceTransportOptions) {
     const namespace = options.namespace ?? 'konekti.microservices';
 
@@ -121,6 +133,12 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     this.internallyOwnedClient = !options.client;
   }
 
+  /**
+   * Subscribes to the configured MQTT event, message, and reply topics.
+   *
+   * @param handler Runtime callback invoked for inbound event and message packets.
+   * @returns A promise that resolves once all subscriptions are active.
+   */
   async listen(handler: TransportHandler): Promise<void> {
     this.closing = false;
     this.handler = handler;
@@ -169,6 +187,14 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     }
   }
 
+  /**
+   * Sends one request-response message through MQTT.
+   *
+   * @param pattern Pattern identifying the remote message handler.
+   * @param payload Serializable request payload.
+   * @param signal Optional abort signal used to cancel the request.
+   * @returns The remote handler response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     if (this.closing) {
       throw new Error('MqttMicroserviceTransport is closing. Wait for close() to complete before send().');
@@ -261,6 +287,13 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Emits one fire-and-forget event through MQTT.
+   *
+   * @param pattern Pattern identifying the remote event handler.
+   * @param payload Serializable event payload.
+   * @returns A promise that resolves once the event is published.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     if (this.closing) {
       throw new Error('MqttMicroserviceTransport is closing. Wait for close() to complete before emit().');
@@ -279,6 +312,11 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  /**
+   * Unsubscribes from MQTT topics and closes the owned client when applicable.
+   *
+   * @returns A promise that resolves once shutdown cleanup completes.
+   */
   async close(): Promise<void> {
     this.closing = true;
     let closeError: unknown;
