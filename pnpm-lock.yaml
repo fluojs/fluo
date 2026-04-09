@@ -247,6 +247,30 @@ importers:
         specifier: '>=0.30.0'
         version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@5.9.3))
 
+  packages/email:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@konekti/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@konekti/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      nodemailer:
+        specifier: ^6.10.1
+        version: 6.10.1
+
   packages/event-bus:
     dependencies:
       '@konekti/core':
@@ -2594,6 +2618,10 @@ packages:
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
 
+  nodemailer@6.10.1:
+    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
+    engines: {node: '>=6.0.0'}
+
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
     engines: {node: '>=0.10.0'}
@@ -4893,6 +4921,8 @@ snapshots:
     optional: true
 
   node-releases@2.0.36: {}
+
+  nodemailer@6.10.1: {}
 
   normalize-path@3.0.0:
     optional: true
