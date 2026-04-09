@@ -6,6 +6,7 @@ export class DtoValidationError extends Error {
     readonly issues: readonly ValidationIssue[],
   ) {
     super(message);
+    Object.setPrototypeOf(this, new.target.prototype);
     this.name = 'DtoValidationError';
   }
 }

@@ -273,6 +273,14 @@ describe('DefaultValidator', () => {
     await expect(validator.materialize({ email: 'not-an-email' }, CreateUserDto)).rejects.toBeInstanceOf(DtoValidationError);
   });
 
+  it('preserves DtoValidationError prototype identity', () => {
+    const error = new DtoValidationError('Validation failed.', []);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(DtoValidationError);
+    expect(Object.getPrototypeOf(error)).toBe(DtoValidationError.prototype);
+  });
+
   it('resolves lazy circular nested references at validation time', async () => {
     class ParentDto {
       @MinLength(1)
@@ -675,6 +683,46 @@ describe('DefaultValidator', () => {
       validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
     ).rejects.toMatchObject({
       issues: expect.arrayContaining([expect.objectContaining({ field: 'email' })]),
+    });
+  });
+
+  it('treats empty Standard Schema issues as a successful validation result', async () => {
+    @ValidateClass({
+      '~standard': {
+        validate: async () => ({ issues: [] }),
+        vendor: 'test',
+        version: 1,
+      },
+    })
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'hello@konekti.dev' }), CreateUserDto),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects malformed Standard Schema issues payloads explicitly', async () => {
+    @ValidateClass({
+      '~standard': {
+        validate: async () => ({ issues: 'bad-result' }) as never,
+        vendor: 'test',
+        version: 1,
+      },
+    })
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'hello@konekti.dev' }), CreateUserDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_SCHEMA_RESULT', message: 'Standard Schema validator returned malformed issues.' }],
     });
   });
 });

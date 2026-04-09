@@ -101,16 +101,26 @@ function toStandardValidationIssue(issue: StandardSchemaIssueLike): ValidationIs
   };
 }
 
+function isStandardSchemaFailureResult(
+  result: unknown,
+): result is { readonly issues?: readonly StandardSchemaIssueLike[] | unknown } {
+  return typeof result === 'object' && result !== null && 'issues' in result;
+}
+
 export function createClassValidatorFromStandardSchema(schema: StandardSchemaV1Like): CustomClassValidator {
-  return async (value) => {
+  return async (value: unknown) => {
     const result = await schema['~standard'].validate(value);
 
-    if (Array.isArray(result.issues)) {
-      return result.issues.length > 0
-        ? result.issues.map((issue) => toStandardValidationIssue(issue))
-        : [{ code: 'INVALID_FIELD', message: 'Invalid value.' }];
+    if (!isStandardSchemaFailureResult(result) || result.issues === undefined) {
+      return true;
     }
 
-    return true;
+    if (!Array.isArray(result.issues)) {
+      return [{ code: 'INVALID_SCHEMA_RESULT', message: 'Standard Schema validator returned malformed issues.' }];
+    }
+
+    return result.issues.length > 0
+      ? result.issues.map((issue) => toStandardValidationIssue(issue))
+      : true;
   };
 }

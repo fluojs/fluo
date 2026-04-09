@@ -80,6 +80,8 @@ class UpdateUserDto extends PartialType(UserDto) {}
 
 ### Standard Schema support
 
+Standard Schema adapters are expected to report invalid input through explicit issues. Validation results without issues are treated as successful.
+
 ```ts
 import { ValidateClass } from '@konekti/validation';
 import { z } from 'zod';

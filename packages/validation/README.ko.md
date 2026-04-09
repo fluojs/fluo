@@ -88,6 +88,7 @@ class UpdateUserDto extends PartialType(UserDto) {}
 ### Standard Schema 지원 (Zod, Valibot)
 
 `@ValidateClass`를 통해 클래스 레벨에서 선호하는 스키마 라이브러리를 사용할 수 있습니다. Konekti는 [Standard Schema](https://github.com/standard-schema/spec) 규격을 구현하는 모든 라이브러리를 지원합니다.
+유효하지 않은 입력은 명시적인 `issues`로 보고되어야 하며, 이슈가 없는 검증 결과는 성공으로 처리합니다.
 
 ```typescript
 import { ValidateClass } from '@konekti/validation';
@@ -146,4 +147,3 @@ class UserDto {
 
 - `packages/validation/src/validation.test.ts`: 모든 데코레이터와 엔진에 대한 종합 테스트.
 - `examples/realworld-api`: 실제 프로덕션과 유사한 환경에서의 DTO 사용 예시.
-
