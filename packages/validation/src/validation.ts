@@ -472,10 +472,6 @@ function materializeNestedDtoValue<T>(target: Constructor<T>, rawValue: unknown,
     return rawValue;
   }
 
-  if (context?.active.has(rawValue)) {
-    return rawValue;
-  }
-
   return createNestedDtoInstance(target, rawValue, context);
 }
 

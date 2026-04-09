@@ -1,6 +1,7 @@
 import type Redis from 'ioredis';
 
 import type { ThrottlerConsumeInput, ThrottlerStore, ThrottlerStoreEntry } from './types.js';
+import { validateThrottlerStoreEntry } from './validation.js';
 
 const CONSUME_LUA = [
   "local key = KEYS[1]",
@@ -40,7 +41,7 @@ function parseConsumeResult(result: unknown): ThrottlerStoreEntry {
     throw new Error('Redis throttler consume script returned non-numeric counters.');
   }
 
-  return { count, resetAt };
+  return validateThrottlerStoreEntry({ count, resetAt });
 }
 
 /**

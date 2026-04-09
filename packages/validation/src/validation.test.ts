@@ -420,6 +420,30 @@ describe('DefaultValidator', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('allows shared nested payload objects across collection entries', async () => {
+    class ChildDto {
+      @MinLength(1)
+      name = '';
+    }
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto, { each: true })
+      children: ChildDto[] = [];
+    }
+
+    const shared = { name: 'ok' };
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(
+        Object.assign(new ParentDto(), {
+          children: [shared, shared],
+        }),
+        ParentDto,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('reports stable field paths for deeply nested DTO validation failures', async () => {
     class Level3Dto {
       @MinLength(2, { message: 'leaf must have length at least 2' })

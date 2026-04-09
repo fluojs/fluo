@@ -105,16 +105,33 @@ function markSerializationComplete(value: object, context: SerializationContext)
   cached.active = false;
 }
 
+function serializeWithTrackedReference<TSerialized>(
+  value: object,
+  context: SerializationContext,
+  create: () => TSerialized,
+  fill: (serialized: TSerialized) => void,
+): TSerialized {
+  const cachedValue = getCircularOrSharedValue(value, context);
+
+  if (context.references.has(value)) {
+    return cachedValue as TSerialized;
+  }
+
+  const serialized = create();
+  markSerializationStart(value, serialized, context);
+
+  try {
+    fill(serialized);
+    return serialized;
+  } finally {
+    markSerializationComplete(value, context);
+  }
+}
+
 function serializeClassInstance(
   value: Record<string | symbol, unknown>,
   context: SerializationContext,
 ): Record<string | symbol, unknown> {
-  const cachedValue = getCircularOrSharedValue(value, context);
-
-  if (context.references.has(value)) {
-    return cachedValue as Record<string | symbol, unknown>;
-  }
-
   const constructor = value.constructor as Function;
   const { classOptions, fieldMetadata } = getCachedMetadata(constructor, context);
   const hasMetadata = fieldMetadata.size > 0 || classOptions.excludeExtraneous === true;
@@ -123,56 +140,41 @@ function serializeClassInstance(
     return serializeRecord(value, context);
   }
 
-  const serialized: Record<string | symbol, unknown> = {};
-  markSerializationStart(value, serialized, context);
-  const candidateKeys = resolveCandidateKeys(value, fieldMetadata, classOptions.excludeExtraneous === true);
+  return serializeWithTrackedReference<Record<string | symbol, unknown>>(value, context, () => ({}), (serialized) => {
+    const candidateKeys = resolveCandidateKeys(value, fieldMetadata, classOptions.excludeExtraneous === true);
 
-  for (const propertyKey of candidateKeys) {
-    const metadata = fieldMetadata.get(propertyKey);
+    for (const propertyKey of candidateKeys) {
+      const metadata = fieldMetadata.get(propertyKey);
 
-    if (metadata?.excluded) {
-      continue;
+      if (metadata?.excluded) {
+        continue;
+      }
+
+      const raw = value[propertyKey as keyof typeof value];
+
+      if (raw === undefined && classOptions.excludeExtraneous === true && metadata?.exposed !== true) {
+        continue;
+      }
+
+      const transformed = metadata ? applyTransforms(raw, metadata) : raw;
+      serialized[propertyKey] = serializeInternal(transformed, context);
     }
-
-    const raw = value[propertyKey as keyof typeof value];
-
-    if (raw === undefined && classOptions.excludeExtraneous === true && metadata?.exposed !== true) {
-      continue;
-    }
-
-    const transformed = metadata ? applyTransforms(raw, metadata) : raw;
-    serialized[propertyKey] = serializeInternal(transformed, context);
-  }
-
-  markSerializationComplete(value, context);
-
-  return serialized;
+  });
 }
 
 function serializeRecord(
   value: Record<string | symbol, unknown>,
   context: SerializationContext,
 ): Record<string | symbol, unknown> {
-  const cachedValue = getCircularOrSharedValue(value, context);
-
-  if (context.references.has(value)) {
-    return cachedValue as Record<string | symbol, unknown>;
-  }
-
-  const serialized: Record<string | symbol, unknown> = {};
-  markSerializationStart(value, serialized, context);
-
   const symbolKeys = Object.getOwnPropertySymbols(value).filter((key) => Object.prototype.propertyIsEnumerable.call(value, key));
   const keys: Array<string | symbol> = [...Object.keys(value), ...symbolKeys];
 
-  for (const propertyKey of keys) {
-    const propertyValue = value[propertyKey];
-    serialized[propertyKey] = serializeInternal(propertyValue, context);
-  }
-
-  markSerializationComplete(value, context);
-
-  return serialized;
+  return serializeWithTrackedReference<Record<string | symbol, unknown>>(value, context, () => ({}), (serialized) => {
+    for (const propertyKey of keys) {
+      const propertyValue = value[propertyKey];
+      serialized[propertyKey] = serializeInternal(propertyValue, context);
+    }
+  });
 }
 
 function serializeInternal<T = unknown>(value: T, context: SerializationContext): unknown {
@@ -181,22 +183,11 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
   }
 
   if (Array.isArray(value)) {
-    const cachedValue = getCircularOrSharedValue(value, context);
-
-    if (context.references.has(value)) {
-      return cachedValue;
-    }
-
-    const serialized: unknown[] = [];
-    markSerializationStart(value, serialized, context);
-
-    for (const item of value) {
-      serialized.push(serializeInternal(item, context));
-    }
-
-    markSerializationComplete(value, context);
-
-    return serialized;
+    return serializeWithTrackedReference<unknown[]>(value, context, () => [], (serialized) => {
+      for (const item of value) {
+        serialized.push(serializeInternal(item, context));
+      }
+    });
   }
 
   if (value instanceof Date) {

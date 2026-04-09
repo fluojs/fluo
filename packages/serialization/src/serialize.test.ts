@@ -170,6 +170,36 @@ describe('serialize', () => {
     expect(serialized.second).toBe(serialized.first);
   });
 
+  it('preserves shared decorated class-instance references across sibling fields', () => {
+    class ProfileView {
+      @Expose()
+      id: string;
+
+      @Exclude()
+      secret: string;
+
+      constructor(id: string, secret: string) {
+        this.id = id;
+        this.secret = secret;
+      }
+    }
+
+    const shared = new ProfileView('shared-profile', 'hidden');
+    const input = {
+      first: shared,
+      second: shared,
+    };
+
+    const serialized = serialize(input) as {
+      first?: { id: string };
+      second?: { id: string };
+    };
+
+    expect(serialized.first).toEqual({ id: 'shared-profile' });
+    expect(serialized.second).toEqual({ id: 'shared-profile' });
+    expect(serialized.second).toBe(serialized.first);
+  });
+
   it('serializes enumerable symbol-keyed properties in plain objects', () => {
     const token = Symbol('token');
     const input: Record<string | symbol, unknown> = {
