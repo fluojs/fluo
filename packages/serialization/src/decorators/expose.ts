@@ -8,6 +8,9 @@ type ClassDecoratorLike = StandardClassDecoratorFn;
 type FieldDecoratorLike = StandardFieldDecoratorFn;
 type ClassOrFieldDecoratorLike = StandardClassDecoratorFn & StandardFieldDecoratorFn;
 
+/**
+ * Class-level options accepted by `@Expose(...)`.
+ */
 export interface ExposeClassOptions {
   /**
    * When enabled on a class, only fields marked with `@Expose()` are emitted.
@@ -20,6 +23,18 @@ export interface ExposeClassOptions {
  *
  * - On classes, configures class-level serialization behavior.
  * - On fields, marks the field as explicitly exposed.
+ *
+ * @param options Optional class-level serialization settings.
+ * @returns A decorator that updates serialization metadata on the class or field.
+ *
+ * @example
+ * ```ts
+ * @Expose({ excludeExtraneous: true })
+ * class UserDto {
+ *   @Expose()
+ *   id = '';
+ * }
+ * ```
  */
 export function Expose(options?: ExposeClassOptions): ClassOrFieldDecoratorLike {
   const decorator = (

@@ -214,6 +214,20 @@ function serializeInternal<T = unknown>(value: T, context: SerializationContext)
  * Serializes class instances and object graphs into JSON-safe plain values.
  *
  * Serialization honors `@Expose()`, `@Exclude()`, and `@Transform()` metadata.
+ * Cycles and repeated references are handled without unbounded recursion.
+ *
+ * @typeParam T Input value type.
+ * @param value Value or object graph to serialize.
+ * @returns A plain JSON-safe structure ready for HTTP response writing.
+ *
+ * @example
+ * ```ts
+ * class UserEntity {
+ *   id = '1';
+ * }
+ *
+ * serialize(new UserEntity());
+ * ```
  */
 export function serialize<T = unknown>(value: T): unknown {
   const context: SerializationContext = {
