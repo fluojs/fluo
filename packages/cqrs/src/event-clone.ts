@@ -1,23 +1,5 @@
+import { fallbackClone } from '@konekti/core/internal';
 import type { CqrsEventType, IEvent } from './types.js';
-
-function fallbackClone(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => fallbackClone(item));
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    const source = value as Record<string, unknown>;
-    const cloned: Record<string, unknown> = {};
-
-    for (const [key, item] of Object.entries(source)) {
-      cloned[key] = fallbackClone(item);
-    }
-
-    return cloned;
-  }
-
-  return value;
-}
 
 function cloneValue<T>(value: T): T {
   try {
@@ -27,6 +9,13 @@ function cloneValue<T>(value: T): T {
   }
 }
 
+/**
+ * Creates an isolated event instance by cloning the source payload before rehydrating the event prototype.
+ *
+ * @param eventType Event class whose prototype should back the isolated event.
+ * @param source Source payload to clone and assign onto the event instance.
+ * @returns A detached event instance with the requested event prototype.
+ */
 export function createIsolatedEvent<TEvent extends IEvent>(eventType: CqrsEventType<TEvent>, source: unknown): TEvent {
   const clonedPayload = cloneValue(source);
 
