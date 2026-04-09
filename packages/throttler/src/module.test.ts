@@ -471,6 +471,26 @@ describe('ThrottlerGuard — Redis store mock', () => {
     expect(store.consume).toHaveBeenCalledTimes(2);
   });
 
+  it('rejects invalid custom-store entries before enforcing limits', async () => {
+    const store: ThrottlerStore = {
+      consume: vi.fn(async () => ({
+        count: 0,
+        resetAt: Number.NaN,
+      })),
+    };
+
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ limit: 2, store, ttl: 60 });
+    const ctx = createRequestContext();
+
+    await expect(
+      guard.canActivate(createGuardContext(TestController, 'action', ctx)),
+    ).rejects.toThrow(/store count/i);
+  });
+
   it('builds store keys from route and token identity context', async () => {
     const store: ThrottlerStore = {
       consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({

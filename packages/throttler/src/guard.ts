@@ -12,7 +12,7 @@ import {
 import { createMemoryThrottlerStore } from './store.js';
 import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions, ThrottlerStore } from './types.js';
-import { validateThrottleOptions, validateThrottlerModuleOptions } from './validation.js';
+import { validateThrottleOptions, validateThrottlerModuleOptions, validateThrottlerStoreEntry } from './validation.js';
 
 type MetadataBag = Record<PropertyKey, unknown>;
 
@@ -110,10 +110,10 @@ export class ThrottlerGuard implements Guard {
     const handlerKey = buildHandlerKey(handler);
     const storeKey = buildStoreKey(handlerKey, clientKey);
     const now = Date.now();
-    const entry = await this.store.consume(storeKey, {
+    const entry = validateThrottlerStoreEntry(await this.store.consume(storeKey, {
       now,
       ttlSeconds,
-    });
+    }));
 
     if (entry.count > limit) {
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
