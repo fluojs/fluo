@@ -53,6 +53,7 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 - `@konekti/core`
 - `@konekti/cqrs`
 - `@konekti/cron`
+- `@konekti/email`
 - `@konekti/discord`
 - `@konekti/di`
 - `@konekti/drizzle`
@@ -77,6 +78,7 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 - `@konekti/redis`
 - `@konekti/runtime`
 - `@konekti/serialization`
+- `@konekti/slack`
 - `@konekti/socket.io`
 - `@konekti/studio`
 - `@konekti/terminus`

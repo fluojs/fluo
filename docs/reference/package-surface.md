@@ -14,7 +14,7 @@ This page is the source of truth for the Konekti public package families and the
 | **Platform** | Runtime adapters. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket and Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | Database and cache. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
-| **Patterns** | Messaging and architecture. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, `@konekti/discord` |
+| **Patterns** | Messaging and architecture. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/slack`, `@konekti/discord` |
 | **Operations** | Health and monitoring. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI and diagnostics. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 

@@ -14,7 +14,7 @@
 | **Platform** | 런타임 어댑터. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket 및 Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | 데이터베이스 및 캐시. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
-| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, `@konekti/discord` |
+| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/slack`, `@konekti/discord` |
 | **Operations** | 헬스 및 모니터링. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI 및 진단. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
