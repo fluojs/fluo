@@ -229,6 +229,21 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/discord:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/drizzle:
     dependencies:
       '@konekti/core':
