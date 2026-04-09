@@ -1,3 +1,6 @@
+/**
+ * Plain JSON-like object used as the normalized configuration snapshot shape.
+ */
 export type ConfigDictionary = Record<string, unknown>;
 
 /**
@@ -23,6 +26,9 @@ export type DotValue<T, K extends string> = K extends keyof T
       : never
     : never;
 
+/**
+ * Module-level configuration options for loading and validating application config.
+ */
 export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
@@ -36,21 +42,39 @@ export interface ConfigModuleOptions {
   isGlobal?: boolean;
 }
 
+/**
+ * Extended load options for one-off config loads and reloaders outside `ConfigModule.forRoot(...)`.
+ */
 export interface ConfigLoadOptions extends ConfigModuleOptions {
   cwd?: string;
   runtimeOverrides?: ConfigDictionary;
 }
 
+/**
+ * Reason attached to config reload notifications.
+ */
 export type ConfigReloadReason = 'manual' | 'watch';
 
+/**
+ * Listener invoked after a config reload succeeds.
+ */
 export type ConfigReloadListener = (snapshot: ConfigDictionary, reason: ConfigReloadReason) => void;
 
+/**
+ * Listener invoked when a watched reload attempt fails.
+ */
 export type ConfigReloadErrorListener = (error: unknown, reason: ConfigReloadReason) => void;
 
+/**
+ * Disposable subscription handle returned from reloader listener registration.
+ */
 export interface ConfigReloadSubscription {
   unsubscribe(): void;
 }
 
+/**
+ * Stateful config reloader contract returned by {@link createConfigReloader}.
+ */
 export interface ConfigReloader {
   current(): ConfigDictionary;
   reload(): ConfigDictionary;
