@@ -49,6 +49,25 @@ function assertMethodIsPublic(context: ClassMethodDecoratorContext, decoratorNam
   }
 }
 
+/**
+ * Schedules a public instance method using a cron expression.
+ *
+ * @param expression Cron expression validated during decorator evaluation.
+ * @param options Optional task name, lock settings, hooks, and timezone.
+ * @returns A method decorator that stores cron metadata for bootstrap discovery.
+ *
+ * @example
+ * ```ts
+ * import { Cron, CronExpression } from '@konekti/cron';
+ *
+ * class BillingService {
+ *   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
+ *   async reconcilePendingInvoices() {
+ *     await reconcileInvoices();
+ *   }
+ * }
+ * ```
+ */
 export function Cron(expression: string, options: CronTaskOptions = {}): MethodDecoratorLike {
   try {
     new CronValidator(expression, { maxRuns: 0 });
@@ -71,6 +90,13 @@ export function Cron(expression: string, options: CronTaskOptions = {}): MethodD
   return decorator as MethodDecoratorLike;
 }
 
+/**
+ * Schedules a public instance method to run repeatedly after a fixed delay.
+ *
+ * @param ms Positive interval in milliseconds.
+ * @param options Optional task name, lock settings, and lifecycle hooks.
+ * @returns A method decorator that stores interval metadata for bootstrap discovery.
+ */
 export function Interval(ms: number, options: IntervalTaskOptions = {}): MethodDecoratorLike {
   assertValidIntervalMs(ms, '@Interval');
 
@@ -89,6 +115,13 @@ export function Interval(ms: number, options: IntervalTaskOptions = {}): MethodD
   return decorator as MethodDecoratorLike;
 }
 
+/**
+ * Schedules a public instance method to run once after application startup.
+ *
+ * @param ms Positive delay in milliseconds before the task runs.
+ * @param options Optional task name, lock settings, and lifecycle hooks.
+ * @returns A method decorator that stores timeout metadata for bootstrap discovery.
+ */
 export function Timeout(ms: number, options: TimeoutTaskOptions = {}): MethodDecoratorLike {
   assertValidIntervalMs(ms, '@Timeout');
 
