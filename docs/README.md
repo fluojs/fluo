@@ -49,6 +49,8 @@ Detailed technical specifications and comparisons.
 - **[API Surface Overview](./reference/package-surface.md)**: The canonical inventory of public package families, runtime coverage, and package responsibilities.
 - **[Compatibility Matrix](./reference/toolchain-contract-matrix.md)**: Versions, runtimes, and platform support.
 
+The notification family (`@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, and `@konekti/discord`) is indexed through the package chooser and package surface reference pages above.
+
 ## 🔄 Moving to Konekti
 
 Coming from another ecosystem? We've got you covered.
