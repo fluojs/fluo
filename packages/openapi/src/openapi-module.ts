@@ -23,6 +23,10 @@ const SWAGGER_UI_BUNDLE_JS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui
 
 /**
  * Public options for `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
+ *
+ * @remarks
+ * Keep README examples for full controller/module workflows. These options are
+ * intended to document the runtime hooks that shape the generated document.
  */
 export interface OpenApiModuleOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
@@ -113,6 +117,15 @@ export class OpenApiModule {
    *
    * @param options Static module options used to build and serve the OpenAPI document.
    * @returns A runtime module type that can be imported in `@Module({ imports: [...] })`.
+   *
+   * @example
+   * ```ts
+   * OpenApiModule.forRoot({
+   *   title: 'Public API',
+   *   version: '1.0.0',
+   *   ui: true,
+   * });
+   * ```
    */
   static forRoot(options: OpenApiModuleOptions): ModuleType {
     return this.createModule({
@@ -126,6 +139,17 @@ export class OpenApiModule {
    *
    * @param options Async options factory plus optional DI `inject` token list.
    * @returns A runtime module type that resolves options at bootstrap time.
+   *
+   * @example
+   * ```ts
+   * OpenApiModule.forRootAsync({
+   *   inject: [ConfigService],
+   *   useFactory: (config) => ({
+   *     title: config.get('APP_NAME'),
+   *     version: config.get('APP_VERSION'),
+   *   }),
+   * });
+   * ```
    */
   static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType {
     return this.createModule({

@@ -166,6 +166,11 @@ export interface OpenApiDocument {
 
 /**
  * Input used by `buildOpenApiDocument(...)` to assemble an OpenAPI document.
+ *
+ * @remarks
+ * Most applications should prefer `OpenApiModule.forRoot(...)`. Use this lower
+ * level builder when tests or custom tooling need a document without mounting
+ * the OpenAPI runtime module.
  */
 export interface BuildOpenApiDocumentOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
@@ -1165,6 +1170,21 @@ function registerExtraModels(
  *
  * @param options Document-generation input including handlers, metadata, and optional schema transforms.
  * @returns A generated OpenAPI document ready to serialize or serve.
+ */
+/**
+ * Build an OpenAPI 3.1 document from discovered Konekti HTTP handler descriptors.
+ *
+ * @param options Document assembly options, descriptors, and optional schema transforms.
+ * @returns A fully normalized OpenAPI document ready to serve or snapshot in tests.
+ *
+ * @example
+ * ```ts
+ * const document = buildOpenApiDocument({
+ *   descriptors,
+ *   title: 'Public API',
+ *   version: '1.0.0',
+ * });
+ * ```
  */
 export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
   const paths: Record<string, OpenApiPathItemObject> = {};
