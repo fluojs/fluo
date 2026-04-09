@@ -33,6 +33,16 @@ export function ensureMetadataSymbol(): symbol {
 
 void ensureMetadataSymbol();
 
+function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Clones mutable metadata payloads before storing or returning them from shared metadata helpers.
  *
@@ -40,7 +50,11 @@ void ensureMetadataSymbol();
  * @returns A detached clone for supported mutable shapes, or the original value for immutable references.
  */
 export function cloneMutableValue<T>(value: T): T {
-  return fallbackClone(value);
+  if (Array.isArray(value) || value instanceof Date || value instanceof Map || value instanceof Set || isPlainObject(value)) {
+    return fallbackClone(value);
+  }
+
+  return value;
 }
 
 /**

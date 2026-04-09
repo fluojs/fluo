@@ -153,6 +153,31 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('preserves custom middleware instances while still cloning the module middleware array', () => {
+    class ExampleMiddleware {
+      calls = 0;
+
+      handle() {
+        this.calls += 1;
+      }
+    }
+
+    const middleware = new ExampleMiddleware();
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      middleware: [middleware],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const returnedMiddleware = metadata?.middleware?.[0] as typeof middleware | undefined;
+
+    expect(returnedMiddleware).toBe(middleware);
+    expect(metadata?.middleware).not.toBeUndefined();
+    expect(metadata?.middleware).not.toBe((getModuleMetadata(ExampleModule)?.middleware as unknown[] | undefined));
+  });
+
   it('builds DTO binding schema from field metadata', () => {
     class GetUserRequest {
       id!: string;
