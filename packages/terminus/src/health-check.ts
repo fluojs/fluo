@@ -65,6 +65,12 @@ function inferIndicatorKey(indicator: HealthIndicator, index: number): string {
   return `indicator-${String(index + 1)}`;
 }
 
+/**
+ * Run every registered health indicator and aggregate their results.
+ *
+ * @param indicators Indicator instances to execute for the current health probe.
+ * @returns A structured report containing `info`, `error`, and full `details` maps.
+ */
 export async function runHealthCheck(indicators: readonly HealthIndicator[]): Promise<HealthCheckReport> {
   const checks = await Promise.all(
     indicators.map(async (indicator, index) => {
@@ -111,6 +117,14 @@ export async function runHealthCheck(indicators: readonly HealthIndicator[]): Pr
   };
 }
 
+/**
+ * Assert that an aggregated health report is fully healthy.
+ *
+ * @param report Health report returned by `runHealthCheck(...)` or `TerminusHealthService.check()`.
+ * @param message Error message used when one or more indicators are down.
+ * @returns The same health report when every indicator is healthy.
+ * @throws {HealthCheckError} When the report contains at least one down indicator.
+ */
 export function assertHealthCheck(report: HealthCheckReport, message = 'Health check failed.'): HealthCheckReport {
   if (report.status === 'error') {
     throw new HealthCheckError(message, report.error);
@@ -119,14 +133,25 @@ export function assertHealthCheck(report: HealthCheckReport, message = 'Health c
   return report;
 }
 
+/** Service facade that resolves and runs the health indicators registered in Terminus. */
 @Inject([TERMINUS_HEALTH_INDICATORS])
 export class TerminusHealthService {
   constructor(private readonly indicators: readonly HealthIndicator[]) {}
 
+  /**
+   * Execute all registered indicators once.
+   *
+   * @returns The aggregated health report for this check cycle.
+   */
   async check(): Promise<HealthCheckReport> {
     return runHealthCheck(this.indicators);
   }
 
+  /**
+   * Return whether every registered indicator currently reports `up`.
+   *
+   * @returns `true` when the aggregated report status is `ok`.
+   */
   async isHealthy(): Promise<boolean> {
     return (await this.check()).status === 'ok';
   }

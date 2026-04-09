@@ -39,6 +39,12 @@ function providerToken(provider: Provider): unknown {
   return undefined;
 }
 
+/**
+ * Create the provider set that powers Terminus indicator aggregation.
+ *
+ * @param options Module options containing eager indicators, provider factories, and readiness checks.
+ * @returns Runtime providers required by `TerminusModule.forRoot(...)`.
+ */
 export function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[] {
   const normalizedOptions: TerminusModuleOptions = {
     ...options,
@@ -170,7 +176,21 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
   });
 }
 
+/** Module entry point that wires Terminus indicators into runtime health endpoints. */
 export class TerminusModule {
+  /**
+   * Register Terminus health indicators and readiness hooks.
+   *
+   * @example
+   * ```ts
+   * TerminusModule.forRoot({
+   *   indicators: [new MemoryHealthIndicator({ key: 'memory' })],
+   * });
+   * ```
+   *
+   * @param options Terminus health indicator and readiness configuration.
+   * @returns A runtime module exposing health endpoints and `TerminusHealthService`.
+   */
   static forRoot(options: TerminusModuleOptions = {}): ModuleType {
     return createTerminusRuntimeModule(options);
   }
