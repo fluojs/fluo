@@ -57,6 +57,12 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
   return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
+/**
+ * Lifecycle-managed microservice runtime that discovers pattern handlers and binds them to a transport.
+ *
+ * The service resolves singleton or request-scoped handlers, exposes programmatic
+ * send/emit/stream APIs, and delegates transport-specific I/O to the configured adapter.
+ */
 @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, MICROSERVICE_OPTIONS])
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
@@ -73,6 +79,11 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     private readonly moduleOptions: MicroserviceModuleOptions,
   ) {}
 
+  /**
+   * Starts transport listeners and discovers decorated handlers.
+   *
+   * @returns A promise that resolves once the configured transport is ready to accept traffic.
+   */
   async listen(): Promise<void> {
     if (this.listening) {
       return;
@@ -131,6 +142,11 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
   }
 
+  /**
+   * Closes the configured transport and stops accepting microservice traffic.
+   *
+   * @returns A promise that resolves once shutdown completes.
+   */
   async close(): Promise<void> {
     if (this.listenPromise) {
       await this.listenPromise;
@@ -153,6 +169,11 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     await this.close();
   }
 
+  /**
+   * Creates a platform status snapshot for health checks and diagnostics.
+   *
+   * @returns A structured snapshot describing handler counts, transport capabilities, and lifecycle state.
+   */
   createPlatformStatusSnapshot() {
     return createMicroservicePlatformStatusSnapshot({
       handlerCounts: {
@@ -174,14 +195,39 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     });
   }
 
+  /**
+   * Sends one request-response message through the configured transport.
+   *
+   * @param pattern Pattern identifying the remote handler.
+   * @param payload Serializable payload forwarded to the transport.
+   * @param signal Optional abort signal passed to the transport.
+   * @returns The transport response payload.
+   */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
     return this.moduleOptions.transport.send(pattern, clonePayload(payload), signal);
   }
 
+  /**
+   * Emits one fire-and-forget event through the configured transport.
+   *
+   * @param pattern Pattern identifying the remote event channel.
+   * @param payload Serializable payload forwarded to the transport.
+   * @returns A promise that resolves once the transport accepts the event.
+   */
   async emit(pattern: string, payload: unknown): Promise<void> {
     await this.moduleOptions.transport.emit(pattern, clonePayload(payload));
   }
 
+  /**
+   * Opens a server-streaming request through the configured transport.
+   *
+   * @param pattern Pattern identifying the remote server-stream handler.
+   * @param payload Serializable request payload forwarded to the transport.
+   * @param signal Optional abort signal passed to the transport.
+   * @returns An async iterable of stream messages.
+   *
+   * @throws {Error} When the configured transport does not implement `serverStream()`.
+   */
   serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
     const transport = this.moduleOptions.transport;
 
@@ -192,6 +238,15 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     return transport.serverStream(pattern, clonePayload(payload), signal);
   }
 
+  /**
+   * Opens a client-streaming request through the configured transport.
+   *
+   * @param pattern Pattern identifying the remote client-stream handler.
+   * @param signal Optional abort signal passed to the transport.
+   * @returns A writer for request chunks plus a promise for the final response.
+   *
+   * @throws {Error} When the configured transport does not implement `clientStream()`.
+   */
   clientStream(pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
     const transport = this.moduleOptions.transport;
 
@@ -202,6 +257,15 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     return transport.clientStream(pattern, signal);
   }
 
+  /**
+   * Opens a bidirectional stream through the configured transport.
+   *
+   * @param pattern Pattern identifying the remote bidi-stream handler.
+   * @param signal Optional abort signal passed to the transport.
+   * @returns A reader for response chunks and a writer for outbound chunks.
+   *
+   * @throws {Error} When the configured transport does not implement `bidiStream()`.
+   */
   bidiStream(pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
     const transport = this.moduleOptions.transport;
 

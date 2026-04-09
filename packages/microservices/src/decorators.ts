@@ -62,22 +62,64 @@ function createPatternDecorator(kind: HandlerKind, pattern: Pattern): MethodDeco
   };
 }
 
+/**
+ * Marks a public instance method as the request-response handler for one message pattern.
+ *
+ * @param pattern String or `RegExp` pattern matched against inbound transport packets.
+ * @returns A method decorator that stores message-handler metadata for runtime discovery.
+ *
+ * @example
+ * ```ts
+ * import { MessagePattern } from '@konekti/microservices';
+ *
+ * export class MathHandler {
+ *   @MessagePattern('math.sum')
+ *   sum(data: { a: number; b: number }) {
+ *     return data.a + data.b;
+ *   }
+ * }
+ * ```
+ */
 export function MessagePattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('message', pattern);
 }
 
+/**
+ * Marks a public instance method as the fire-and-forget handler for one event pattern.
+ *
+ * @param pattern String or `RegExp` pattern matched against inbound event packets.
+ * @returns A method decorator that stores event-handler metadata for runtime discovery.
+ */
 export function EventPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('event', pattern);
 }
 
+/**
+ * Marks a public instance method as the server-streaming handler for one pattern.
+ *
+ * @param pattern String or `RegExp` pattern matched against inbound server-stream packets.
+ * @returns A method decorator that stores server-stream metadata for runtime discovery.
+ */
 export function ServerStreamPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('server-stream', pattern);
 }
 
+/**
+ * Marks a public instance method as the client-streaming handler for one pattern.
+ *
+ * @param pattern String or `RegExp` pattern matched against inbound client-stream packets.
+ * @returns A method decorator that stores client-stream metadata for runtime discovery.
+ */
 export function ClientStreamPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('client-stream', pattern);
 }
 
+/**
+ * Marks a public instance method as the bidirectional streaming handler for one pattern.
+ *
+ * @param pattern String or `RegExp` pattern matched against inbound bidirectional stream packets.
+ * @returns A method decorator that stores bidi-stream metadata for runtime discovery.
+ */
 export function BidiStreamPattern(pattern: Pattern): MethodDecoratorLike {
   return createPatternDecorator('bidi-stream', pattern);
 }
