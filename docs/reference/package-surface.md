@@ -17,7 +17,7 @@ This page is the source of truth for the Konekti public package families and the
 | **Operations** | Health and monitoring. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI and diagnostics. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
-## canonical runtime matrix
+## canonical runtime package matrix
 
 Konekti uses a transport-neutral runtime. Adapters bridge this runtime to specific hosting environments.
 

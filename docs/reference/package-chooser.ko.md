@@ -73,4 +73,4 @@
 
 ---
 
-전체 패키지 책임에 대해서는 [package-surface.ko.md](./package-surface.ko.md)를 참조하세요.
+전체 패키지 책임에 대해서는 [package-surface.ko.md](./package-surface.ko.md#canonical-runtime-package-matrix)를 참조하세요.

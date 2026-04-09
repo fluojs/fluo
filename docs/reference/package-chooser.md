@@ -73,4 +73,4 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 ---
 
-For the full package responsibilities, see [package-surface.md](./package-surface.md).
+For the full package responsibilities, see [package-surface.md](./package-surface.md#canonical-runtime-package-matrix).

@@ -17,7 +17,7 @@
 | **Operations** | 헬스 및 모니터링. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI 및 진단. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
-## 정규 런타임 매트릭스
+## canonical runtime package matrix
 
 Konekti는 전송 중립(transport-neutral) 런타임을 사용합니다. 어댑터가 이 런타임을 특정 호스팅 환경에 연결합니다.
 
