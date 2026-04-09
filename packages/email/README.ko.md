@@ -10,23 +10,25 @@ Konekti를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-l
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
+  - [`@konekti/email/node`를 이용한 Node 전용 SMTP](#konektiemailnode를-이용한-node-전용-smtp)
   - [`EmailService`를 이용한 standalone 전달](#emailservice를-이용한-standalone-전달)
   - [`@konekti/notifications`와의 통합](#konektinotifications와의-통합)
   - [큐 기반 대량 전달](#큐-기반-대량-전달)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
+- [런타임 전용 서브패스](#런타임-전용-서브패스)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
 
 ## 설치
 
 ```bash
-npm install @konekti/email @konekti/notifications @konekti/queue
+npm install @konekti/email nodemailer
 ```
 
-내장 notifications queue adapter와 worker가 필요할 때만 `@konekti/queue`를 함께 설치하면 됩니다.
+내장 notifications 채널과 queue worker 연동이 필요할 때만 `@konekti/notifications`, `@konekti/queue`를 함께 설치하면 됩니다.
 
-Node 전용 SMTP/Nodemailer 전달이 필요하다면 그 관심사는 공유 패키지 경계 밖에 두어야 합니다. 전용 adapter 작업은 별도 이슈 [#918](https://github.com/konektijs/konekti/issues/918)에서 추적합니다.
+Node 전용 SMTP 전달은 이제 명시적인 `@konekti/email/node` 서브패스에 위치합니다. 루트 `@konekti/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 동작을 함께 끌어오지 않습니다.
 
 ## 사용 시점
 
@@ -88,6 +90,44 @@ export class WelcomeService {
 ```
 
 ## 일반적인 패턴
+
+### `@konekti/email/node`를 이용한 Node 전용 SMTP
+
+런타임 이식 가능한 루트 패키지 계약을 약화시키지 않으면서 1st-party Nodemailer/SMTP 전달이 필요하다면 전용 Node 서브패스를 사용합니다.
+
+```typescript
+import { Module } from '@konekti/core';
+import { EmailModule } from '@konekti/email';
+import { createNodemailerEmailTransportFactory } from '@konekti/email/node';
+
+@Module({
+  imports: [
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: {
+            pass: 'smtp-password',
+            user: 'smtp-user',
+          },
+          host: 'smtp.example.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+      verifyOnModuleInit: true,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Behavioral contract 메모:
+
+- `createNodemailerEmailTransportFactory(...)`는 Node 전용이며 `@konekti/email/node`에서만 export됩니다.
+- 이 factory는 자신이 생성한 Nodemailer transporter 리소스를 소유하므로 `EmailService`가 bootstrap 시 검증하고 shutdown 시 닫을 수 있습니다.
+- `createNodemailerEmailTransport(...)`는 이미 존재하는 Nodemailer transporter를 감싸지만 리소스 소유권은 호출자에게 남깁니다.
+- SMTP 자격 증명은 여전히 명시적인 옵션 또는 DI를 통해 들어와야 합니다. 루트 패키지와 Node 서브패스 모두 `process.env`를 직접 읽지 않습니다.
 
 ### `EmailService`를 이용한 standalone 전달
 
@@ -236,15 +276,28 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `EmailConfigurationError`
 - `EmailMessageValidationError`
 
+### Node 전용 서브패스
+
+- `createNodemailerEmailTransport(...)`
+- `createNodemailerEmailTransportFactory(...)`
+- `NodemailerEmailTransport`
+
+## 런타임 전용 서브패스
+
+| 런타임 | 서브패스 | export |
+| --- | --- | --- |
+| Node.js | `@konekti/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+
 ## 관련 패키지
 
 - `@konekti/notifications`: `EMAIL_CHANNEL`을 소비하는 공통 오케스트레이션 계층입니다.
 - `@konekti/queue`: 대량 이메일 전달을 백그라운드에서 처리하려는 경우 권장됩니다.
 - `@konekti/config`: 환경 직접 접근 없이 transport 자격 증명과 sender 기본값을 해석하려는 경우 권장됩니다.
-- `#918`: 향후 Nodemailer/SMTP 전달을 위한 Node 전용 `@konekti/email/node` adapter를 추적합니다.
+- `nodemailer`: `@konekti/email/node`가 소비하는 Node 전용 SMTP 구현체입니다.
 
 ## 예제 소스
 
 - `packages/email/src/module.test.ts`: 모듈 등록, async wiring, lifecycle, queue-backed notifications 예제.
 - `packages/email/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
+- `packages/email/src/node/node.test.ts`: Node 전용 Nodemailer adapter 매핑과 lifecycle 예제.
 - `packages/email/src/status.test.ts`: health/readiness 계약 예제.
