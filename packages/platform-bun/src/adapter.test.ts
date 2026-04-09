@@ -38,6 +38,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 function installMockBun(): MockBun {
   const mockBun = {} as MockBun;
 
@@ -265,6 +276,77 @@ describe('@konekti/platform-bun', () => {
     }
 
     expect(process.listeners(signal).length).toBe(listenersBefore);
+  });
+
+  it('drains in-flight requests before Bun close resolves', async () => {
+    const mockBun = installMockBun();
+    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const deferred = createDeferred<void>();
+    let closeSettled = false;
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    });
+
+    const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/drain'));
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    expect(mockBun.lastServer?.stop).toHaveBeenCalledTimes(1);
+
+    deferred.resolve();
+
+    await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    await closePromise;
+
+    expect(closeSettled).toBe(true);
+    expect(adapter.getServer()).toBeUndefined();
+  });
+
+  it('keeps the Bun dispatcher until drain settles even when close() times out', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mockBun = installMockBun();
+      const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+      const deferred = createDeferred<void>();
+      const dispatcher = {
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await deferred.promise;
+          response.setStatus(200);
+          await response.send({ ok: true });
+        },
+      };
+
+      await adapter.listen(dispatcher);
+
+      const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/timeout-check'));
+      const closeResultPromise = adapter.close().catch((error: unknown) => error);
+
+      await vi.advanceTimersByTimeAsync(10_001);
+
+      await expect(closeResultPromise).resolves.toBeInstanceOf(Error);
+      expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+
+      deferred.resolve();
+      await responsePromise;
+      vi.useRealTimers();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('throws a clear error when Bun.serve() is unavailable', async () => {

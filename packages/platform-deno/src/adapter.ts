@@ -83,6 +83,7 @@ export interface RunDenoApplicationOptions extends RunHttpAdapterApplicationOpti
 
 const DEFAULT_HOSTNAME = '0.0.0.0';
 const DEFAULT_PORT = 3000;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 declare global {
   interface GlobalThis {
@@ -94,6 +95,8 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private abortController?: AbortController;
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
+  private inFlightDrain?: Deferred<void>;
+  private inFlightRequestCount = 0;
   private server?: DenoServeController;
   private websocketBinding?: DenoWebSocketBinding<DenoServerWebSocket>;
 
@@ -125,22 +128,32 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async handle(request: Request): Promise<Response> {
-    if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
-      const upgradeWebSocket = resolveUpgradeWebSocket(this.options.upgradeWebSocket);
-
-      return await this.websocketBinding.fetch(request, {
-        upgrade: (upgradeRequest) => upgradeWebSocket(upgradeRequest),
-      });
+    if (this.closeInFlight) {
+      return createShutdownResponse();
     }
 
-    return await dispatchWebRequest({
-      dispatcher: this.dispatcher,
-      dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
-      maxBodySize: this.options.maxBodySize,
-      multipart: this.options.multipart,
-      rawBody: this.options.rawBody,
-      request,
-    });
+    const release = this.trackInFlightRequest();
+
+    try {
+      if (this.websocketBinding && isWebSocketUpgradeRequest(request)) {
+        const upgradeWebSocket = resolveUpgradeWebSocket(this.options.upgradeWebSocket);
+
+        return await this.websocketBinding.fetch(request, {
+          upgrade: (upgradeRequest) => upgradeWebSocket(upgradeRequest),
+        });
+      }
+
+      return await dispatchWebRequest({
+        dispatcher: this.dispatcher,
+        dispatcherNotReadyMessage: 'Deno adapter received a request before dispatcher binding completed.',
+        maxBodySize: this.options.maxBodySize,
+        multipart: this.options.multipart,
+        rawBody: this.options.rawBody,
+        request,
+      });
+    } finally {
+      release();
+    }
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
@@ -166,31 +179,70 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async close(): Promise<void> {
     if (this.closeInFlight) {
-      await this.closeInFlight;
+      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
       return;
     }
 
     const server = this.server;
     const abortController = this.abortController;
 
-    this.server = undefined;
-    this.abortController = undefined;
-
     if (!server) {
       this.dispatcher = undefined;
+      this.abortController = undefined;
       return;
     }
 
-    this.closeInFlight = (async () => {
-      abortController?.abort();
-      await server.shutdown();
-      await server.finished;
-      this.dispatcher = undefined;
-    })().finally(() => {
+    const closePromise = closeDenoServerWithDrain(
+      server,
+      abortController,
+      () => this.waitForInFlightRequests(),
+    );
+    const closeInFlight = closePromise.finally(() => {
+      if (this.server === server) {
+        this.server = undefined;
+      }
+
+      if (this.abortController === abortController) {
+        this.abortController = undefined;
+      }
+
       this.closeInFlight = undefined;
+      this.dispatcher = undefined;
     });
 
-    await this.closeInFlight;
+    this.closeInFlight = closeInFlight;
+    void closeInFlight.catch(() => {});
+
+    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+  }
+
+  private trackInFlightRequest(): () => void {
+    this.inFlightRequestCount += 1;
+
+    if (this.inFlightRequestCount === 1) {
+      this.inFlightDrain = createDeferred<void>();
+    }
+
+    return () => {
+      if (this.inFlightRequestCount === 0) {
+        return;
+      }
+
+      this.inFlightRequestCount -= 1;
+
+      if (this.inFlightRequestCount === 0) {
+        this.inFlightDrain?.resolve();
+        this.inFlightDrain = undefined;
+      }
+    };
+  }
+
+  private async waitForInFlightRequests(): Promise<void> {
+    if (this.inFlightRequestCount === 0) {
+      return;
+    }
+
+    await this.inFlightDrain?.promise;
   }
 }
 
@@ -260,4 +312,60 @@ function resolveUpgradeWebSocket(
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+}
+
+function closeDenoServerWithDrain(
+  server: DenoServeController,
+  abortController: AbortController | undefined,
+  waitForDrain: () => Promise<void>,
+): Promise<void> {
+  return (async () => {
+    abortController?.abort();
+    await server.shutdown();
+    await waitForDrain();
+    await server.finished;
+  })();
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
+function createShutdownResponse(): Response {
+  return new Response(JSON.stringify({
+    error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Server is shutting down.',
+      status: 503,
+    },
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+    status: 503,
+  });
+}
+
+function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
+  return Promise.race([
+    closePromise,
+    new Promise<void>((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Deno adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  reject: (reason?: unknown) => void;
+  resolve: (value: T | PromiseLike<T>) => void;
 }

@@ -164,10 +164,15 @@ export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.';
 
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
+  private closeInFlight?: Promise<void>;
+  private dispatcher?: Dispatcher;
+  private inFlightDrain?: Deferred<void>;
+  private inFlightRequestCount = 0;
   private server?: BunServerLike;
   private realtimeBinding?: BunWebSocketBinding<unknown>;
 
@@ -210,15 +215,14 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    this.dispatcher = dispatcher;
+
+    if (this.server) {
+      return;
+    }
+
     const bun = requireBunGlobal();
     const realtimeBinding = this.realtimeBinding;
-
-    const fetch = createBunFetchHandler({
-      dispatcher,
-      maxBodySize: this.options.maxBodySize,
-      multipart: this.options.multipart,
-      rawBody: this.options.rawBody,
-    });
 
     this.server = bun.serve({
       development: this.options.development,
@@ -235,9 +239,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
           }
         }
 
-        const response = await fetch(request);
-
-        return response;
+        return await this.dispatchHttpRequest(request);
       },
       hostname: this.options.hostname,
       idleTimeout: realtimeBinding?.idleTimeout ?? this.options.idleTimeout,
@@ -249,13 +251,85 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   }
 
   async close(): Promise<void> {
+    if (this.closeInFlight) {
+      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+      return;
+    }
+
     if (!this.server) {
+      this.dispatcher = undefined;
       return;
     }
 
     const server = this.server;
-    this.server = undefined;
-    server.stop(this.options.stopActiveConnections);
+    const closePromise = closeBunServerWithDrain(
+      server,
+      this.options.stopActiveConnections,
+      () => this.waitForInFlightRequests(),
+    );
+    const closeInFlight = closePromise.finally(() => {
+      if (this.server === server) {
+        this.server = undefined;
+      }
+
+      this.closeInFlight = undefined;
+      this.dispatcher = undefined;
+    });
+
+    this.closeInFlight = closeInFlight;
+    void closeInFlight.catch(() => {});
+
+    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
+  }
+
+  private async dispatchHttpRequest(request: Request): Promise<Response> {
+    if (this.closeInFlight) {
+      return createShutdownResponse();
+    }
+
+    const release = this.trackInFlightRequest();
+
+    try {
+      return await dispatchWebRequest({
+        dispatcher: this.dispatcher,
+        dispatcherNotReadyMessage: DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
+        maxBodySize: this.options.maxBodySize,
+        multipart: this.options.multipart,
+        rawBody: this.options.rawBody,
+        request,
+      });
+    } finally {
+      release();
+    }
+  }
+
+  private trackInFlightRequest(): () => void {
+    this.inFlightRequestCount += 1;
+
+    if (this.inFlightRequestCount === 1) {
+      this.inFlightDrain = createDeferred<void>();
+    }
+
+    return () => {
+      if (this.inFlightRequestCount === 0) {
+        return;
+      }
+
+      this.inFlightRequestCount -= 1;
+
+      if (this.inFlightRequestCount === 0) {
+        this.inFlightDrain?.resolve();
+        this.inFlightDrain = undefined;
+      }
+    };
+  }
+
+  private async waitForInFlightRequests(): Promise<void> {
+    if (this.inFlightRequestCount === 0) {
+      return;
+    }
+
+    await this.inFlightDrain?.promise;
   }
 }
 
@@ -341,6 +415,60 @@ function resolvePort(port: number | undefined): number {
   return typeof port === 'number' && Number.isFinite(port) ? port : DEFAULT_PORT;
 }
 
+function closeBunServerWithDrain(
+  server: BunServerLike,
+  stopActiveConnections: boolean | undefined,
+  waitForDrain: () => Promise<void>,
+): Promise<void> {
+  return (async () => {
+    server.stop(stopActiveConnections);
+    await waitForDrain();
+  })();
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
+function createShutdownResponse(): Response {
+  return new Response(JSON.stringify({
+    error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Server is shutting down.',
+      status: 503,
+    },
+  }), {
+    headers: {
+      'content-type': 'application/json',
+    },
+    status: 503,
+  });
+}
+
+function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
+  return Promise.race([
+    closePromise,
+    new Promise<void>((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Bun adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  reject: (reason?: unknown) => void;
+  resolve: (value: T | PromiseLike<T>) => void;
 }

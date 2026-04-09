@@ -24,6 +24,8 @@ deno add npm:@konekti/platform-deno npm:@konekti/runtime npm:@konekti/http
 
 Use this package when running Konekti applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
 
+During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before the Deno server lifecycle completes.
+
 ## Quick Start
 
 ```typescript
@@ -71,4 +73,3 @@ export class MyGateway {}
 
 - `packages/platform-deno/src/adapter.test.ts`
 - `packages/websockets/src/deno/deno.test.ts`
-
