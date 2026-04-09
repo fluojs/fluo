@@ -9,6 +9,7 @@ interface DrizzleExecuteLike {
   execute?: (query: unknown) => Promise<unknown>;
 }
 
+/** Options for probing Drizzle-backed database connectivity. */
 export interface DrizzleHealthIndicatorOptions {
   database?: DrizzleExecuteLike;
   key?: string;
@@ -37,10 +38,22 @@ async function runDrizzlePing(options: DrizzleHealthIndicatorOptions): Promise<v
   await database.execute(options.query ?? DEFAULT_DRIZZLE_QUERY);
 }
 
+/**
+ * Create a Drizzle health indicator.
+ *
+ * @param options Optional database handle, ping callback, timeout, query, and key override.
+ * @returns A health indicator that executes a lightweight Drizzle query.
+ */
 export function createDrizzleHealthIndicator(options: DrizzleHealthIndicatorOptions = {}): HealthIndicator {
   return new DrizzleHealthIndicator(options);
 }
 
+/**
+ * Create a provider that resolves a Drizzle database handle from DI and wraps it as an indicator.
+ *
+ * @param options Optional timeout, query override, key override, or custom ping callback.
+ * @returns A factory provider that exposes `DrizzleHealthIndicator` from the DI container.
+ */
 export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealthIndicatorOptions, 'database'> = {}): Provider {
   return {
     inject: [DRIZZLE_DATABASE],
@@ -49,6 +62,7 @@ export function createDrizzleHealthIndicatorProvider(options: Omit<DrizzleHealth
   };
 }
 
+/** Health indicator that probes Drizzle connectivity with an execute-capable handle. */
 export class DrizzleHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
 
