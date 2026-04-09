@@ -24,7 +24,7 @@ We categorize gaps by their impact on production workflows.
 
 ### Tier 2: Developer Experience (DX)
 - **CLI Breadth**: NestJS provides a wide range of schematic generators (e.g., `nest g res`). Konekti's CLI is currently focused on `new`, `build`, and `repo` slices.
-- **Inter-service Transports**: While basic microservice patterns exist, we lack the breadth of NestJS's "hybrid application" and complex transport support (e.g., gRPC, RabbitMQ).
+- **Hybrid Application Ergonomics**: `@konekti/microservices` already ships the base transport layer and documented adapters (see [package-surface.md](../reference/package-surface.md) and [`packages/microservices/README.md`](../../packages/microservices/README.md)). The remaining gap is NestJS-style hybrid application composition and related DX, not missing gRPC or RabbitMQ support.
 
 ---
 
@@ -42,7 +42,7 @@ Konekti intentionally diverges from NestJS in certain areas to adhere to TC39 st
 ### Recently Resolved Gaps
 - **[2026-03] Standalone Application Context**: Shipped in `@konekti/runtime`.
 - **[2026-02] Schema-based Validation**: Support for Standard Schema implemented across HTTP runtimes.
-- **[2025-11] Microservice Base**: Base transport layer shipped in `@konekti/microservices`.
+- **[2025-11] Microservice Base & Transport Adapters**: Base transport layer and first-party transport adapters shipped in `@konekti/microservices`.
 
 ---
 
