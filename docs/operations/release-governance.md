@@ -53,6 +53,7 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 - `@konekti/core`
 - `@konekti/cqrs`
 - `@konekti/cron`
+- `@konekti/discord`
 - `@konekti/di`
 - `@konekti/drizzle`
 - `@konekti/event-bus`

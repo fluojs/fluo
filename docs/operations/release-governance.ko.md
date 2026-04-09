@@ -53,6 +53,7 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 - `@konekti/core`
 - `@konekti/cqrs`
 - `@konekti/cron`
+- `@konekti/discord`
 - `@konekti/di`
 - `@konekti/drizzle`
 - `@konekti/event-bus`
