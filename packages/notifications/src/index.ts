@@ -6,7 +6,7 @@ export {
 export { NotificationsModule, createNotificationsProviders } from './module.js';
 export { NotificationsService } from './service.js';
 export { createNotificationsPlatformStatusSnapshot } from './status.js';
-export type { NotificationsPlatformStatusSnapshot } from './status.js';
+export type { NotificationsPlatformStatusSnapshot, NotificationsStatusAdapterInput } from './status.js';
 export { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 export type {
   NotificationChannel,
