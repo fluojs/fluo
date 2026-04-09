@@ -39,6 +39,10 @@ type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
 
 /**
  * Prisma runtime facade that owns lifecycle hooks and transaction context access.
+ *
+ * @typeParam TClient Root Prisma client shape registered in the module.
+ * @typeParam TTransactionClient Transaction-scoped client resolved inside `$transaction(...)` callbacks.
+ * @typeParam TTransactionOptions Options forwarded to Prisma interactive transactions.
  */
 @Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
 export class PrismaService<
@@ -60,6 +64,11 @@ export class PrismaService<
 
   /**
    * Returns the active Prisma handle for the current async context.
+   *
+   * @example
+   * ```ts
+   * const user = await prisma.current().user.findUnique({ where: { id } });
+   * ```
    *
    * @returns The request/transaction-scoped client when a transaction is active; otherwise the root client.
    */
@@ -138,6 +147,13 @@ export class PrismaService<
   /**
    * Opens a Prisma interactive transaction boundary and executes the callback in that context.
    *
+   * @example
+   * ```ts
+   * await prisma.transaction(async () => {
+   *   await prisma.current().user.create({ data });
+   * });
+   * ```
+   *
    * @param fn Callback executed inside the transaction flow where `current()` resolves from ALS to the active transaction client,
    * or reuses the already-active context / direct-execution path when no new boundary is opened.
    * @param options Optional Prisma transaction options forwarded to `$transaction`.
@@ -156,6 +172,11 @@ export class PrismaService<
 
   /**
    * Opens an abort-aware request transaction boundary.
+   *
+   * @example
+   * ```ts
+   * await prisma.requestTransaction(async () => next.handle(), request.signal);
+   * ```
    *
    * @param fn Callback executed inside the request-scoped transaction flow where `current()` resolves from ALS to the active
    * transaction client, or reuses the already-active context / direct-execution path when no new boundary is opened.

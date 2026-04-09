@@ -52,6 +52,8 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
 
 /**
  * Session-aware Mongoose wrapper that integrates request scoping and shutdown handling with the Konekti runtime.
+ *
+ * @typeParam TConnection Root Mongoose connection shape registered in the module.
  */
 @Inject([MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS])
 export class MongooseConnection<TConnection extends MongooseConnectionLike = MongooseConnectionLike>
@@ -67,12 +69,30 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     private readonly connectionOptions: MongooseRuntimeOptions = { strictTransactions: false },
   ) {}
 
-  /** Returns the root Mongoose connection handle. */
+  /**
+   * Returns the root Mongoose connection handle.
+   *
+   * @example
+   * ```ts
+   * const User = conn.current().model('User');
+   * ```
+   *
+   * @returns The registered Mongoose connection.
+   */
   current(): TConnection {
     return this.connection;
   }
 
-  /** Returns the active Mongoose session for the current async context, if one exists. */
+  /**
+   * Returns the active Mongoose session for the current async context, if one exists.
+   *
+   * @example
+   * ```ts
+   * const session = conn.currentSession();
+   * ```
+   *
+   * @returns The ambient session inside a transaction boundary, or `undefined` outside one.
+   */
   currentSession(): MongooseSessionLike | undefined {
     return this.sessions.getStore();
   }
@@ -105,7 +125,19 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     });
   }
 
-  /** Opens a Mongoose session transaction boundary or reuses the current one when already active. */
+  /**
+   * Opens a Mongoose session transaction boundary or reuses the current one when already active.
+   *
+   * @example
+   * ```ts
+   * await conn.transaction(async () => {
+   *   await User.create([{ name: 'Ada' }], { session: conn.currentSession() });
+   * });
+   * ```
+   *
+   * @param fn Callback executed within the transaction scope.
+   * @returns The callback result after the session transaction finishes or the direct-execution fallback completes.
+   */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
@@ -126,7 +158,18 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     }
   }
 
-  /** Opens an abort-aware request transaction boundary for the current HTTP request. */
+  /**
+   * Opens an abort-aware request transaction boundary for the current HTTP request.
+   *
+   * @example
+   * ```ts
+   * await conn.requestTransaction(async () => next.handle(), request.signal);
+   * ```
+   *
+   * @param fn Callback executed within the request transaction scope.
+   * @param signal Optional abort signal linked to the request lifecycle.
+   * @returns The callback result after the request transaction finishes or the direct-execution fallback completes.
+   */
   async requestTransaction<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const currentSession = this.sessions.getStore();
     if (currentSession) {
