@@ -273,6 +273,36 @@ describe('NotificationsModule', () => {
     ]);
   });
 
+  it('validates channels before queueing bulk deliveries', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run for queued bulk dispatch');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', payload: { template: 'known' } },
+        { channel: 'discord', payload: { template: 'unknown' } },
+      ]),
+    ).rejects.toBeInstanceOf(NotificationChannelNotFoundError);
+    expect(queue.jobs).toHaveLength(0);
+  });
+
   it('preserves direct delivery results when lifecycle publication fails', async () => {
     const publisher = new RecordingPublisher();
     publisher.failOnNames.add('notification.dispatch.delivered');
