@@ -217,6 +217,26 @@ function closeReloader(
   errorListeners.clear();
 }
 
+/**
+ * Creates a stateful config reloader that mirrors `loadConfig(...)` semantics and optionally watches the env file.
+ *
+ * @param options Configuration loading options, including optional watch mode and validation hooks.
+ * @returns A reloader that exposes the current snapshot, manual reload, subscriptions, and cleanup.
+ * @throws {KonektiError} When the initial config load or validation fails.
+ *
+ * @example
+ * ```ts
+ * const reloader = createConfigReloader({ envFile: '.env', watch: true });
+ *
+ * const subscription = reloader.subscribe((snapshot) => {
+ *   console.log(snapshot.PORT);
+ * });
+ *
+ * reloader.reload();
+ * subscription.unsubscribe();
+ * reloader.close();
+ * ```
+ */
 export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
   const normalized = normalizeLoadOptions(options);
   const state: ReloaderState = {
@@ -247,6 +267,15 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
   };
 }
 
+/**
+ * Loads, merges, and validates one configuration snapshot without creating long-lived watcher state.
+ *
+ * Merge precedence stays aligned with the package README contract: `defaults` < env file < `processEnv` < `runtimeOverrides`.
+ *
+ * @param options Configuration loading options for source precedence, parsing, and validation.
+ * @returns A detached normalized configuration dictionary for the current load.
+ * @throws {KonektiError} When validation throws or the config cannot be normalized.
+ */
 export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
   return cloneConfigDictionary(resolveConfig(normalizeLoadOptions(options)));
 }
