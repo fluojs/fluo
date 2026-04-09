@@ -136,6 +136,17 @@ class UsersModule {}
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
 
+### Node 전용 서브경로 (`@konekti/runtime/node`)
+
+로거 팩토리 및 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
+
+```typescript
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@konekti/runtime/node';
+```
+
+- `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거.
+- `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
+
 ## 관련 패키지
 
 - [@konekti/core](../core): 핵심 데코레이터 및 메타데이터 시스템.

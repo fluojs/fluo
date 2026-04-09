@@ -3,8 +3,6 @@ export * from './bootstrap.js';
 export * from './health/diagnostics.js';
 export * from './errors.js';
 export * from './health/health.js';
-export * from './logging/json-logger.js';
-export * from './logging/logger.js';
 export type {
   MultipartOptions,
   MultipartRequestLike,

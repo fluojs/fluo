@@ -136,6 +136,17 @@ The static facade for application lifecycle management.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
 
+### Node-Specific Subpath (`@konekti/runtime/node`)
+
+Logger factories and other Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
+
+```typescript
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@konekti/runtime/node';
+```
+
+- `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`.
+- `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
+
 ## Related Packages
 
 - [@konekti/core](../core): Core decorators and metadata system.

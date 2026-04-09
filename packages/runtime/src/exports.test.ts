@@ -6,7 +6,7 @@ import * as runtime from './index.js';
 import * as runtimeInternal from './internal.js';
 import * as runtimeInternalHttpAdapter from './adapters/internal-http-adapter.js';
 import * as runtimeInternalRequestResponseFactory from './adapters/internal-request-response-factory.js';
-import * as runtimeNode from './node/node.js';
+import * as runtimeNode from './node.js';
 import * as runtimeWeb from './web.js';
 
 describe('runtime export boundaries', () => {
@@ -20,8 +20,8 @@ describe('runtime export boundaries', () => {
 
   it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
     expect(runtime.createHealthModule).toBeTypeOf('function');
-    expect(runtime.createConsoleApplicationLogger).toBeTypeOf('function');
-    expect(runtime.createJsonApplicationLogger).toBeTypeOf('function');
+    expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
+    expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
     expect(runtime).toHaveProperty('APPLICATION_LOGGER');
     expect(runtime).toHaveProperty('PLATFORM_SHELL');
     expect(runtime).not.toHaveProperty('MetricsModule');
@@ -45,6 +45,11 @@ describe('runtime export boundaries', () => {
     expect(runtimeInternalHttpAdapter.bootstrapHttpAdapterApplication).toBeTypeOf('function');
     expect(runtimeInternalHttpAdapter.runHttpAdapterApplication).toBeTypeOf('function');
     expect(runtimeInternalRequestResponseFactory.dispatchWithRequestResponseFactory).toBeTypeOf('function');
+  });
+
+  it('exposes Node-only logger factories only on the ./node subpath', () => {
+    expect(runtimeNode.createConsoleApplicationLogger).toBeTypeOf('function');
+    expect(runtimeNode.createJsonApplicationLogger).toBeTypeOf('function');
   });
 
   it('declares the narrowed package export map', () => {
