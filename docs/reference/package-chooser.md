@@ -12,6 +12,7 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 | --- | --- |
 | **Foundation** | `@konekti/core`, `@konekti/di`, `@konekti/runtime` |
 | **HTTP Routing** | `@konekti/http` |
+| **GraphQL API** | `@konekti/graphql` |
 | **Fastify (Recommended)** | `@konekti/platform-fastify` |
 | **Express Compatibility** | `@konekti/platform-express` |
 | **Input Validation** | `@konekti/validation` |
