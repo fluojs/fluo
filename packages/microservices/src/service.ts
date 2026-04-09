@@ -1,5 +1,5 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { fallbackClone, getClassDiMetadata } from '@konekti/core/internal';
+import { cloneWithFallback, getClassDiMetadata } from '@konekti/core/internal';
 import type { Container, Provider } from '@konekti/di';
 import {
   type ApplicationLogger,
@@ -27,14 +27,6 @@ interface DiscoveryCandidate {
   scope: 'request' | 'singleton' | 'transient';
   targetType: Function;
   token: Token;
-}
-
-function clonePayload<T>(payload: T): T {
-  try {
-    return structuredClone(payload);
-  } catch {
-    return fallbackClone(payload) as T;
-  }
 }
 
 function methodKeyToName(methodKey: MetadataPropertyKey): string {
@@ -105,7 +97,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       if (transport.listenServerStreaming) {
         transport.listenServerStreaming(
           async (pattern: string, payload: unknown, writer: ServerStreamWriter) => {
-            await this.dispatchServerStream(pattern, clonePayload(payload), writer);
+    await this.dispatchServerStream(pattern, cloneWithFallback(payload), writer);
           },
         );
       }
@@ -204,7 +196,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns The transport response payload.
    */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
-    return this.moduleOptions.transport.send(pattern, clonePayload(payload), signal);
+    return this.moduleOptions.transport.send(pattern, cloneWithFallback(payload), signal);
   }
 
   /**
@@ -215,7 +207,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns A promise that resolves once the transport accepts the event.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
-    await this.moduleOptions.transport.emit(pattern, clonePayload(payload));
+    await this.moduleOptions.transport.emit(pattern, cloneWithFallback(payload));
   }
 
   /**
@@ -235,7 +227,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       throw new Error('The configured transport does not support server streaming. Use a transport that implements serverStream().');
     }
 
-    return transport.serverStream(pattern, clonePayload(payload), signal);
+    return transport.serverStream(pattern, cloneWithFallback(payload), signal);
   }
 
   /**
@@ -295,10 +287,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
         throw new Error(`No message handler registered for pattern "${packet.pattern}".`);
       }
 
-      return await this.invokeHandler(first, clonePayload(packet.payload));
+    return await this.invokeHandler(first, cloneWithFallback(packet.payload));
     }
 
-    return await this.dispatchEventHandlers(matches, clonePayload(packet.payload));
+    return await this.dispatchEventHandlers(matches, cloneWithFallback(packet.payload));
   }
 
   private async dispatchServerStream(pattern: string, payload: unknown, writer: ServerStreamWriter): Promise<void> {
@@ -561,7 +553,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     const scopedDescriptors = descriptors.filter((descriptor) => descriptor.scope !== 'singleton');
 
     const singletonResults = await Promise.allSettled(
-      singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, clonePayload(payload))),
+      singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),
     );
 
     for (const result of singletonResults) {
@@ -584,7 +576,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     try {
       const scopedResults = await Promise.allSettled(
         scopedDescriptors.map((descriptor) =>
-          this.invokeResolvedHandlerInScope(perEventScope, descriptor, clonePayload(payload)),
+    this.invokeResolvedHandlerInScope(perEventScope, descriptor, cloneWithFallback(payload)),
         ),
       );
 
