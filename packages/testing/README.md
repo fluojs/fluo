@@ -17,8 +17,10 @@ Testing module construction, provider overrides, and request-level test helpers 
 ## Installation
 
 ```bash
-npm install --save-dev @konekti/testing
+npm install --save-dev @konekti/testing vitest
 ```
+
+`vitest` is a required peer dependency for the mock helpers and the `@konekti/testing/vitest` entrypoint.
 
 ## When to Use
 
@@ -79,6 +81,8 @@ import { vi } from 'vitest';
 const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
+
+Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 
 ### Conformance and portability harnesses
 
