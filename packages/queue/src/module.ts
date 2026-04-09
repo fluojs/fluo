@@ -54,6 +54,21 @@ export class QueueModule {
    *
    * @param options Queue runtime defaults used by discovered workers and enqueued jobs.
    * @returns A module definition that exports `QueueLifecycleService` and the compatibility token `QUEUE`.
+   *
+   * @example
+   * ```ts
+   * import { Module } from '@konekti/core';
+   * import { QueueModule } from '@konekti/queue';
+   * import { RedisModule } from '@konekti/redis';
+   *
+   * @Module({
+   *   imports: [
+   *     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+   *     QueueModule.forRoot({ defaultAttempts: 3 }),
+   *   ],
+   * })
+   * export class AppModule {}
+   * ```
    */
   static forRoot(options: QueueModuleOptions = {}): ModuleType {
     class QueueModuleDefinition {}
