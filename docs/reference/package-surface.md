@@ -14,7 +14,7 @@ This page is the source of truth for the Konekti public package families and the
 | **Platform** | Runtime adapters. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket and Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | Database and cache. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
-| **Patterns** | Messaging and architecture. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/discord` |
+| **Patterns** | Messaging and architecture. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, `@konekti/discord` |
 | **Operations** | Health and monitoring. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI and diagnostics. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
@@ -50,6 +50,9 @@ Konekti uses a transport-neutral runtime. Adapters bridge this runtime to specif
 - **`@konekti/passport`**: Strategy-agnostic authentication guards, scopes, and Passport.js bridges.
 - **`@konekti/microservices`**: Pattern-matching transport abstraction for TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 - **`@konekti/notifications`**: Shared channel contract and orchestration layer for provider-specific notification packages.
+- **`@konekti/email`**: Transport-agnostic email delivery core. It provides a first-party notifications channel and queue worker integration.
+- **`@konekti/email/node`**: Node.js specific subpath for `@konekti/email` that provides first-party Nodemailer/SMTP transport.
+- **`@konekti/slack`**: Webhook-first Slack delivery core that can run standalone or register a first-party notifications channel.
 - **`@konekti/discord`**: Webhook-first Discord delivery core that can run standalone or register a first-party notifications channel.
 - **`@konekti/websockets`**: Transport-neutral WebSocket gateway authoring.
 - **`@konekti/validation`**: Class-validator based input materialization and safety.

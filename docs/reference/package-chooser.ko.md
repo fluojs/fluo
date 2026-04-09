@@ -61,6 +61,11 @@
 | **마이크로서비스** | `@konekti/microservices` |
 | **백그라운드 작업** | `@konekti/queue` + `@konekti/redis` |
 | **크론 / 스케줄링** | `@konekti/cron` |
+| **알림 (Notifications)** | `@konekti/notifications` |
+| **이메일 (Portable)** | `@konekti/email` |
+| **이메일 (Node SMTP)** | `@konekti/email/node` |
+| **슬랙 알림** | `@konekti/slack` |
+| **디스코드 알림** | `@konekti/discord` |
 
 ## 관측 가능성 및 문서화
 

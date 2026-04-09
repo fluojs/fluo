@@ -61,6 +61,11 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 | **Microservices** | `@konekti/microservices` |
 | **Background Jobs** | `@konekti/queue` + `@konekti/redis` |
 | **Cron / Scheduling** | `@konekti/cron` |
+| **Notifications** | `@konekti/notifications` |
+| **Email (Portable)** | `@konekti/email` |
+| **Email (Node SMTP)** | `@konekti/email/node` |
+| **Slack Notifications** | `@konekti/slack` |
+| **Discord Notifications** | `@konekti/discord` |
 
 ## observability & docs
 

@@ -14,7 +14,7 @@
 | **Platform** | 런타임 어댑터. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket 및 Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | 데이터베이스 및 캐시. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
-| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/discord` |
+| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, `@konekti/discord` |
 | **Operations** | 헬스 및 모니터링. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI 및 진단. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
@@ -50,6 +50,9 @@ Konekti는 전송 중립(transport-neutral) 런타임을 사용합니다. 어댑
 - **`@konekti/passport`**: 전략 비종속 인증 가드, scope 처리, Passport.js 브리지.
 - **`@konekti/microservices`**: TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC를 위한 패턴 매칭 전송 추상화.
 - **`@konekti/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
+- **`@konekti/email`**: 전송 중립(transport-agnostic) 이메일 발송 코어. 알림 채널 및 큐 워커 통합을 제공합니다.
+- **`@konekti/email/node`**: Nodemailer/SMTP 전송을 제공하는 `@konekti/email`의 Node.js 전용 서브패스.
+- **`@konekti/slack`**: standalone으로도 동작하고 1st-party notifications 채널로도 등록할 수 있는 webhook-first Slack 전달 코어.
 - **`@konekti/discord`**: standalone으로도 동작하고 1st-party notifications 채널로도 등록할 수 있는 webhook-first Discord 전달 코어.
 - **`@konekti/websockets`**: 전송 중립 WebSocket 게이트웨이 작성.
 - **`@konekti/validation`**: class-validator 기반 입력 구체화(materialization) 및 안전성.
