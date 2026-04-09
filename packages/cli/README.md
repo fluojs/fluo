@@ -97,6 +97,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 - **[@konekti/runtime](../runtime/README.md)**: The underlying engine used for inspection and bootstrap.
 - **[@konekti/studio](../studio/README.md)**: The web-based UI for visualizing `inspect --json` exports.
 - **[@konekti/testing](../testing/README.md)**: Used by generated test templates for integration and E2E testing.
+- **[Canonical Runtime Package Matrix](../../docs/reference/package-surface.md)**: The source of truth for official runtime/package combinations.
 
 ## Example Sources
 

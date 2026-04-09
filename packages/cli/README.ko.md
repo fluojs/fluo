@@ -97,6 +97,7 @@ konekti inspect ./src/app.module.ts --json > snapshot.json
 - **[@konekti/runtime](../runtime/README.ko.md)**: 검사 및 부트스트랩에 사용되는 기본 엔진입니다.
 - **[@konekti/studio](../studio/README.ko.md)**: `inspect --json` 출력을 시각화하기 위한 웹 기반 UI입니다.
 - **[@konekti/testing](../testing/README.ko.md)**: 통합 및 E2E 테스트를 위해 생성된 테스트 템플릿에서 사용됩니다.
+- **[Canonical Runtime Package Matrix](../../docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 조합을 보여주는 기준 문서입니다.
 
 ## 예제 소스
 
