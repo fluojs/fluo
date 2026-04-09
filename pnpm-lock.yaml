@@ -384,6 +384,18 @@ importers:
         specifier: '>=7.0.0'
         version: 9.3.2(socks@2.8.7)
 
+  packages/notifications:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/openapi:
     dependencies:
       '@konekti/core':

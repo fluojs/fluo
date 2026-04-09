@@ -13,7 +13,7 @@
 | **Platform** | 런타임 어댑터. | `@konekti/platform-fastify`, `@konekti/platform-nodejs`, `@konekti/platform-express`, `@konekti/platform-bun`, `@konekti/platform-deno`, `@konekti/platform-cloudflare-workers` |
 | **Realtime** | WebSocket 및 Socket.IO. | `@konekti/websockets`, `@konekti/socket.io` |
 | **Persistence** | 데이터베이스 및 캐시. | `@konekti/prisma`, `@konekti/drizzle`, `@konekti/mongoose`, `@konekti/redis`, `@konekti/cache-manager` |
-| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue` |
+| **Patterns** | 메시징 및 아키텍처. | `@konekti/microservices`, `@konekti/cqrs`, `@konekti/event-bus`, `@konekti/cron`, `@konekti/queue`, `@konekti/notifications` |
 | **Operations** | 헬스 및 모니터링. | `@konekti/metrics`, `@konekti/terminus`, `@konekti/throttler` |
 | **Tooling** | CLI 및 진단. | `@konekti/cli`, `@konekti/studio`, `@konekti/testing` |
 
@@ -45,6 +45,7 @@ Konekti는 전송 중립(transport-neutral) 런타임을 사용합니다. 어댑
 ### features
 - **`@konekti/http`**: 라우팅, 가드, 인터셉터, 예외 처리.
 - **`@konekti/microservices`**: Kafka, RabbitMQ, gRPC 등을 위한 패턴 매칭 전송 추상화.
+- **`@konekti/notifications`**: provider별 알림 패키지가 공유하는 채널 계약과 오케스트레이션 계층.
 - **`@konekti/websockets`**: 전송 중립 WebSocket 게이트웨이 작성.
 - **`@konekti/validation`**: class-validator 기반 입력 구체화(materialization) 및 안전성.
 - **`@konekti/prisma` / `@konekti/drizzle`**: ORM 라이프사이클 및 ALS 기반 트랜잭션 컨텍스트.
