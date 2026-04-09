@@ -68,6 +68,7 @@ export class NotificationsService implements Notifications {
     await this.publishLifecycleEventSafely('notification.dispatch.requested', notification, options);
 
     if (this.shouldQueueSingleDispatch(options)) {
+      this.requireChannel(notification.channel);
       const job = this.createQueueJob(notification);
       const deliveryId = await this.requireQueueAdapter().enqueue(job);
       const result: NotificationDispatchResult = {

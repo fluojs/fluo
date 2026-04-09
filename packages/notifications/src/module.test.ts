@@ -156,6 +156,33 @@ describe('NotificationsModule', () => {
     expect(queue.jobs).toHaveLength(1);
   });
 
+  it('validates channels before queueing a single explicit queue dispatch', async () => {
+    const queue = new RecordingQueueAdapter();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatch({ channel: 'discord', payload: { template: 'unknown' } }, { queue: true }),
+    ).rejects.toBeInstanceOf(NotificationChannelNotFoundError);
+    expect(queue.jobs).toHaveLength(0);
+  });
+
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
     const API_KEY = Symbol('api-key');
     const publisher = new RecordingPublisher();
