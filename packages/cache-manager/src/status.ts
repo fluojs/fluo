@@ -1,5 +1,8 @@
 import type { PlatformDiagnosticIssue, PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
 
+/**
+ * Snapshot shape produced by the cache-manager platform status helpers.
+ */
 export interface CacheManagerPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -7,9 +10,19 @@ export interface CacheManagerPlatformStatusSnapshot {
   details: Record<string, unknown>;
 }
 
+/**
+ * Backing store categories recognized by the cache-manager status adapter.
+ */
 export type CacheManagerStoreKind = 'memory' | 'redis' | 'custom';
+
+/**
+ * Ownership modes used to describe who is responsible for the backing store lifecycle.
+ */
 export type CacheManagerStoreOwnershipMode = 'framework' | 'external';
 
+/**
+ * Input consumed by cache-manager status and diagnostic helpers.
+ */
 export interface CacheManagerStatusAdapterInput {
   componentId?: string;
   storeKind: CacheManagerStoreKind;
@@ -66,6 +79,12 @@ function createHealth(input: CacheManagerStatusAdapterInput): PlatformHealthRepo
   };
 }
 
+/**
+ * Create a platform status snapshot for cache-manager readiness, health, and telemetry.
+ *
+ * @param input Store metadata and readiness hints collected during bootstrap.
+ * @returns A cache-manager status snapshot suitable for platform diagnostics.
+ */
 export function createCacheManagerPlatformStatusSnapshot(input: CacheManagerStatusAdapterInput): CacheManagerPlatformStatusSnapshot {
   const storeOwnershipMode = resolveStoreOwnershipMode(input);
   const backingReady = isBackingStoreReady(input);
@@ -100,6 +119,12 @@ export function createCacheManagerPlatformStatusSnapshot(input: CacheManagerStat
   };
 }
 
+/**
+ * Translate cache-manager readiness input into platform diagnostic issues.
+ *
+ * @param input Store metadata and readiness hints collected during bootstrap.
+ * @returns Zero or more diagnostic issues describing degraded or unavailable cache backing stores.
+ */
 export function createCacheManagerPlatformDiagnosticIssues(input: CacheManagerStatusAdapterInput): PlatformDiagnosticIssue[] {
   if (isBackingStoreReady(input)) {
     return [];

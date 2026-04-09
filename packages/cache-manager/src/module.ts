@@ -90,6 +90,14 @@ async function createStore(options: NormalizedCacheModuleOptions, container: Con
  *
  * @param options Cache module options with optional store and HTTP caching configuration.
  * @returns Providers for normalized options, cache store resolution, `CacheService`, and `CacheInterceptor`.
+ *
+ * @example
+ * ```ts
+ * const providers = createCacheProviders({
+ *   store: 'memory',
+ *   ttl: 60,
+ * });
+ * ```
  */
 export function createCacheProviders(options: CacheModuleOptions = {}): Provider[] {
   const normalized = normalizeCacheModuleOptions(options);
@@ -130,6 +138,10 @@ export function createCacheProviders(options: CacheModuleOptions = {}): Provider
 
 /**
  * Runtime module entrypoint for cache-manager services and interceptor wiring.
+ *
+ * @remarks
+ * This module only wires providers and store resolution. The documented cache
+ * semantics remain defined by the decorators, interceptor, and `CacheService`.
  */
 export class CacheModule {
   /**
@@ -137,6 +149,14 @@ export class CacheModule {
    *
    * @param options Cache module options.
    * @returns A runtime module exporting `CacheService` and `CacheInterceptor`.
+   *
+   * @example
+   * ```ts
+   * CacheModule.forRoot({
+   *   store: 'redis',
+   *   ttl: 300,
+   * });
+   * ```
    */
   static forRoot(options: CacheModuleOptions = {}): ModuleType {
     const normalized = normalizeCacheModuleOptions(options);
