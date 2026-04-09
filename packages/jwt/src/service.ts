@@ -56,23 +56,97 @@ function parseExpiresInSeconds(expiresIn: SignOptions['expiresIn']): number | un
   return value * parseDurationUnitToSeconds(rawUnit as DurationUnit);
 }
 
+/**
+ * Per-call claim overrides accepted by {@link JwtService.sign}.
+ *
+ * Use these options when one token needs narrower issuer, audience, subject, or
+ * lifetime semantics than the module-level signer defaults.
+ */
 export interface SignOptions {
+  /**
+   * Overrides the token `aud` claim for this signing call.
+   *
+   * Match this with the verifier-side `audience` expectation to prevent a token
+   * minted for one consumer from being accepted by another.
+   */
   audience?: JwtVerifierOptions['audience'];
+  /**
+   * Sets the token lifetime relative to the current clock.
+   *
+   * Accepts seconds or a short duration literal such as `"60s"`, `"15m"`,
+   * `"1h"`, or `"7d"`.
+   */
   expiresIn?: number | `${number}${DurationUnit}`;
+  /**
+   * Overrides the token `iss` claim for this signing call.
+   *
+   * Keep issuer values stable so downstream verifiers can reject tokens from
+   * unexpected environments or services.
+   */
   issuer?: string;
+  /**
+   * Sets the `nbf` claim as a NumericDate in seconds.
+   *
+   * Tokens remain invalid until the verifier clock reaches this timestamp.
+   */
   notBefore?: number;
+  /**
+   * Overrides the token `sub` claim for this signing call.
+   */
   subject?: string;
 }
 
+/**
+ * Per-call verification overrides accepted by {@link JwtService.verify}.
+ *
+ * These options are merged on top of the module-level verifier policy for the
+ * current token check only.
+ */
 export interface VerifyOptions {
+  /**
+   * Restricts which JWT algorithms are allowed for this verification call.
+   */
   algorithms?: JwtVerifierOptions['algorithms'];
+  /**
+   * Expected `aud` claim value or values.
+   *
+   * Provide this when a token should only be accepted for a specific API or
+   * client boundary.
+   */
   audience?: JwtVerifierOptions['audience'];
+  /**
+   * Permitted clock skew in seconds when evaluating `exp`, `nbf`, and age-based
+   * checks.
+   */
   clockSkewSeconds?: number;
+  /**
+   * Expected `iss` claim value for this verification call.
+   */
   issuer?: string;
+  /**
+   * Maximum acceptable token age in seconds, calculated from the `iat` claim.
+   *
+   * When set, tokens without a finite `iat` claim are rejected.
+   */
   maxAge?: number;
+  /**
+   * Controls whether `exp` must be present on the token.
+   *
+   * Leave this enabled for access tokens unless the issuing system explicitly
+   * documents a different contract.
+   */
   requireExp?: boolean;
 }
 
+/**
+ * NestJS-style facade over Konekti's default JWT signer and verifier.
+ *
+ * @remarks
+ * This class keeps the low-level JWT behavior from {@link DefaultJwtSigner} and
+ * {@link DefaultJwtVerifier}, but exposes a smaller `sign` / `verify` /
+ * `decode` surface for applications migrating from similar auth service
+ * patterns.
+ */
 @Inject([JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier])
 export class JwtService {
   constructor(
@@ -81,6 +155,22 @@ export class JwtService {
     private readonly verifier: DefaultJwtVerifier,
   ) {}
 
+  /**
+   * Signs a JWT access token from arbitrary claim payload plus optional claim overrides.
+   *
+   * @example
+   * ```ts
+   * const token = await jwtService.sign(
+   *   { role: 'admin' },
+   *   { audience: 'admin-ui', expiresIn: '15m', subject: 'user-123' },
+   * );
+   * ```
+   *
+   * @param payload Base JWT claims to embed in the token payload.
+   * @param options Optional per-call overrides for `aud`, `iss`, `sub`, `nbf`, and `exp`.
+   * @returns A signed JWT string suitable for bearer-token transport.
+   * @throws {Error} When `options.expiresIn` is not a supported non-negative duration.
+   */
   async sign(payload: object, options?: SignOptions): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
     const expiresInSeconds = parseExpiresInSeconds(options?.expiresIn);
@@ -99,6 +189,25 @@ export class JwtService {
     return this.signer.signAccessToken(claims);
   }
 
+  /**
+   * Verifies a JWT and returns the decoded claim bag typed as `T`.
+   *
+   * @example
+   * ```ts
+   * const claims = await jwtService.verify<{ sub: string; scope?: string }>(token, {
+   *   audience: 'admin-ui',
+   *   issuer: 'my-api',
+   *   requireExp: true,
+   * });
+   * ```
+   *
+   * @param token Compact JWT string to verify.
+   * @param options Optional per-call verifier overrides layered on top of module defaults.
+   * @returns The verified token claims cast to the requested generic type.
+   * @throws {JwtInvalidTokenError} When the token is malformed or violates issuer/audience/claim requirements.
+   * @throws {JwtExpiredTokenError} When the token is expired or exceeds `maxAge`.
+   * @throws {JwtConfigurationError} When the active verifier configuration cannot validate the token.
+   */
   async verify<T = unknown>(token: string, options?: VerifyOptions): Promise<T> {
     const verifier = options
       ? new DefaultJwtVerifier({
@@ -116,6 +225,16 @@ export class JwtService {
     return principal.claims as T;
   }
 
+  /**
+   * Decodes the JWT payload segment without verifying signature or claims.
+   *
+   * @remarks
+   * Use this only for diagnostics or non-authoritative inspection. Call
+   * {@link JwtService.verify} before trusting any returned claim value.
+   *
+   * @param token Compact JWT string to inspect.
+   * @returns The decoded payload object, or `null` when the token is malformed.
+   */
   decode(token: string): unknown {
     const segments = token.split('.');
 
