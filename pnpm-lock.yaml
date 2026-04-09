@@ -247,6 +247,24 @@ importers:
         specifier: '>=0.30.0'
         version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@5.9.3))
 
+  packages/email:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@konekti/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/event-bus:
     dependencies:
       '@konekti/core':
