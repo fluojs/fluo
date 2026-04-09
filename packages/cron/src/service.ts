@@ -139,6 +139,13 @@ function assertValidCronExpression(expression: string): void {
   }
 }
 
+/**
+ * Lifecycle-managed scheduler runtime for decorator-discovered and dynamic tasks.
+ *
+ * The service discovers scheduling decorators during bootstrap, coordinates
+ * optional distributed locks through Redis, and exposes runtime task management
+ * through {@link SchedulingRegistry}.
+ */
 @Inject([CRON_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
 export class CronLifecycleService
   implements SchedulingRegistry, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy
@@ -160,6 +167,14 @@ export class CronLifecycleService
     private readonly logger: ApplicationLogger,
   ) {}
 
+  /**
+   * Registers a cron task at runtime.
+   *
+   * @param name Stable task name used for lookup and distributed lock derivation.
+   * @param expression Cron expression validated before registration.
+   * @param callback Task body executed on matching cron ticks.
+   * @param options Optional hooks, distributed lock overrides, and timezone.
+   */
   addCron(name: string, expression: string, callback: SchedulingTaskCallback, options: CronTaskOptions = {}): void {
     assertValidTaskName(name);
     assertValidCronExpression(expression);
@@ -183,6 +198,14 @@ export class CronLifecycleService
     );
   }
 
+  /**
+   * Registers a fixed-interval task at runtime.
+   *
+   * @param name Stable task name used for lookup and distributed lock derivation.
+   * @param ms Positive interval in milliseconds.
+   * @param callback Task body executed on each interval.
+   * @param options Optional hooks and distributed lock overrides.
+   */
   addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options: IntervalTaskOptions = {}): void {
     assertValidTaskName(name);
     assertValidMs(ms, 'scheduling registry');
@@ -205,6 +228,14 @@ export class CronLifecycleService
     );
   }
 
+  /**
+   * Registers a one-shot delayed task at runtime.
+   *
+   * @param name Stable task name used for lookup and distributed lock derivation.
+   * @param ms Positive delay in milliseconds before execution.
+   * @param callback Task body executed once after the delay.
+   * @param options Optional hooks and distributed lock overrides.
+   */
   addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options: TimeoutTaskOptions = {}): void {
     assertValidTaskName(name);
     assertValidMs(ms, 'scheduling registry');
@@ -227,6 +258,12 @@ export class CronLifecycleService
     );
   }
 
+  /**
+   * Removes a registered task by name.
+   *
+   * @param name Task name to remove.
+   * @returns `true` when a task existed and was removed.
+   */
   remove(name: string): boolean {
     const task = this.tasks.get(name);
 
@@ -239,6 +276,12 @@ export class CronLifecycleService
     return true;
   }
 
+  /**
+   * Enables a task that was previously disabled.
+   *
+   * @param name Task name to enable.
+   * @returns `true` when the task exists after the operation.
+   */
   enable(name: string): boolean {
     const task = this.tasks.get(name);
 
@@ -259,6 +302,12 @@ export class CronLifecycleService
     return true;
   }
 
+  /**
+   * Disables a task without removing its descriptor.
+   *
+   * @param name Task name to disable.
+   * @returns `true` when the task exists after the operation.
+   */
   disable(name: string): boolean {
     const task = this.tasks.get(name);
 
@@ -275,16 +324,33 @@ export class CronLifecycleService
     return true;
   }
 
+  /**
+   * Looks up one task descriptor.
+   *
+   * @param name Task name to inspect.
+   * @returns The task descriptor, or `undefined` when not found.
+   */
   get(name: string): SchedulingTaskDescriptor | undefined {
     const task = this.tasks.get(name);
 
     return task ? this.toSchedulingTaskDescriptor(task) : undefined;
   }
 
+  /**
+   * Lists every known task descriptor.
+   *
+   * @returns All decorator-discovered and dynamically registered task descriptors.
+   */
   getAll(): SchedulingTaskDescriptor[] {
     return Array.from(this.tasks.values()).map((task) => this.toSchedulingTaskDescriptor(task));
   }
 
+  /**
+   * Replaces the cron expression of one existing cron task.
+   *
+   * @param name Name of the cron task to update.
+   * @param expression New cron expression to validate and schedule.
+   */
   updateCronExpression(name: string, expression: string): void {
     assertValidCronExpression(expression);
 
