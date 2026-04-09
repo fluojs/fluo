@@ -63,5 +63,7 @@ describe('@konekti/notifications public API surface', () => {
 
   it('hides internal normalized options token from the root barrel', () => {
     expect(notificationsPublicApi).not.toHaveProperty('NOTIFICATIONS_OPTIONS');
+    expect(notificationsPublicApi).not.toHaveProperty('NotificationsStatusAdapterInput');
+    expect(notificationsPublicApi).not.toHaveProperty('NotificationsOperationMode');
   });
 });

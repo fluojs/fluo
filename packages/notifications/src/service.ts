@@ -19,22 +19,6 @@ import type {
   NotificationsQueueJob,
 } from './types.js';
 
-let fallbackDeliveryIdSequence = 0;
-
-function normalizeDeliveryId(value: string | undefined, fallback: NotificationDispatchRequest): string {
-  if (value && value.length > 0) {
-    return value;
-  }
-
-  if (fallback.id) {
-    return fallback.id;
-  }
-
-  fallbackDeliveryIdSequence = (fallbackDeliveryIdSequence + 1) % Number.MAX_SAFE_INTEGER;
-
-  return `${fallback.channel}:${Date.now().toString(36)}:${fallbackDeliveryIdSequence.toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
-}
-
 /**
  * Injectable orchestration service for shared notification dispatch.
  *
@@ -46,6 +30,7 @@ function normalizeDeliveryId(value: string | undefined, fallback: NotificationDi
 @Inject([NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS])
 export class NotificationsService implements Notifications {
   private readonly channelsByName = new Map<string, NotificationChannel>();
+  private fallbackDeliveryIdSequence = 0;
 
   constructor(
     private readonly options: NormalizedNotificationsModuleOptions,
@@ -87,7 +72,7 @@ export class NotificationsService implements Notifications {
       const deliveryId = await this.requireQueueAdapter().enqueue(job);
       const result: NotificationDispatchResult = {
         channel: notification.channel,
-        deliveryId: normalizeDeliveryId(deliveryId, notification),
+        deliveryId: this.normalizeDeliveryId(deliveryId, notification),
         queued: true,
         status: 'queued',
       };
@@ -103,7 +88,7 @@ export class NotificationsService implements Notifications {
       const delivery = await channel.send(notification, { signal: options.signal });
       const result: NotificationDispatchResult = {
         channel: notification.channel,
-        deliveryId: normalizeDeliveryId(delivery.externalId, notification),
+        deliveryId: this.normalizeDeliveryId(delivery.externalId, notification),
         metadata: delivery.metadata,
         queued: delivery.status === 'queued',
         status: delivery.status ?? 'delivered',
@@ -148,6 +133,9 @@ export class NotificationsService implements Notifications {
 
     if (this.shouldQueue(notifications.length, options)) {
       const queue = this.requireQueueAdapter();
+      for (const notification of notifications) {
+        this.requireChannel(notification.channel);
+      }
       const jobs = notifications.map((notification) => this.createQueueJob(notification));
 
       for (const notification of notifications) {
@@ -160,7 +148,7 @@ export class NotificationsService implements Notifications {
 
       const results = notifications.map((notification, index) => ({
         channel: notification.channel,
-        deliveryId: normalizeDeliveryId(ids[index], notification),
+        deliveryId: this.normalizeDeliveryId(ids[index], notification),
         queued: true,
         status: 'queued' as const,
       }));
@@ -238,6 +226,20 @@ export class NotificationsService implements Notifications {
     }
 
     return channel;
+  }
+
+  private normalizeDeliveryId(value: string | undefined, fallback: NotificationDispatchRequest): string {
+    if (value && value.length > 0) {
+      return value;
+    }
+
+    if (fallback.id) {
+      return fallback.id;
+    }
+
+    this.fallbackDeliveryIdSequence = (this.fallbackDeliveryIdSequence + 1) % Number.MAX_SAFE_INTEGER;
+
+    return `${fallback.channel}:${Date.now().toString(36)}:${this.fallbackDeliveryIdSequence.toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
   }
 
   private requireQueueAdapter() {
