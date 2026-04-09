@@ -10,6 +10,14 @@
 
 <!-- How did you verify these changes? Include test results or instructions. -->
 
+## Public export documentation
+
+See [docs/operations/public-export-tsdoc-baseline.md](docs/operations/public-export-tsdoc-baseline.md) for the repo-wide authoring baseline.
+
+- [ ] Changed public exports include a source-level summary.
+- [ ] Changed exported functions document matching `@param` / `@returns` tags where applicable.
+- [ ] Source `@example` blocks and README scenario examples still play complementary roles.
+
 ## Behavioral contract
 
 See [docs/operations/behavioral-contract-policy.md](docs/operations/behavioral-contract-policy.md) for full details.
