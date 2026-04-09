@@ -599,6 +599,21 @@ importers:
         specifier: workspace:*
         version: link:../http
 
+  packages/slack:
+    dependencies:
+      '@konekti/core':
+        specifier: workspace:*
+        version: link:../core
+      '@konekti/di':
+        specifier: workspace:*
+        version: link:../di
+      '@konekti/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@konekti/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
   packages/socket.io:
     dependencies:
       '@konekti/core':
