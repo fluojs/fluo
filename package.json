@@ -22,9 +22,10 @@
     "typecheck": "tsc -p tsconfig.tools.json --noEmit && tsc -p examples/tsconfig.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "biome lint",
+    "lint": "biome lint && pnpm verify:public-export-tsdoc",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
     "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs",
+    "verify:public-export-tsdoc": "node tooling/governance/verify-public-export-tsdoc.mjs",
     "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs"
   },
   "pnpm": {
