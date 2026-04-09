@@ -45,6 +45,44 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 ### 0.x 단계 (안정화 전)
 `0.x` 단계에서는 **Minor** 버전이 파괴적 변경을 위해 사용됩니다. `0.x` 마이너 릴리스의 모든 파괴적 변경은 반드시 `CHANGELOG.md`에 마이그레이션 노트를 동반해야 합니다.
 
+## intended publish surface
+
+- `@konekti/cache-manager`
+- `@konekti/cli`
+- `@konekti/config`
+- `@konekti/core`
+- `@konekti/cqrs`
+- `@konekti/cron`
+- `@konekti/di`
+- `@konekti/drizzle`
+- `@konekti/event-bus`
+- `@konekti/graphql`
+- `@konekti/http`
+- `@konekti/jwt`
+- `@konekti/metrics`
+- `@konekti/microservices`
+- `@konekti/mongoose`
+- `@konekti/openapi`
+- `@konekti/passport`
+- `@konekti/platform-bun`
+- `@konekti/platform-cloudflare-workers`
+- `@konekti/platform-deno`
+- `@konekti/platform-express`
+- `@konekti/platform-fastify`
+- `@konekti/platform-nodejs`
+- `@konekti/prisma`
+- `@konekti/queue`
+- `@konekti/redis`
+- `@konekti/runtime`
+- `@konekti/serialization`
+- `@konekti/socket.io`
+- `@konekti/studio`
+- `@konekti/terminus`
+- `@konekti/testing`
+- `@konekti/throttler`
+- `@konekti/validation`
+- `@konekti/websockets`
+
 ---
 
 ## 릴리스 프로세스 및 강제 사항 (Enforcement)
@@ -54,6 +92,7 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 ### CI/CD 강제 사항
 - **`pnpm verify:release-readiness`**: 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 검증합니다.
 - **`pnpm verify:platform-consistency-governance`**: 영어와 한국어 문서 간의 구조적 일관성을 강제합니다.
+- **`pnpm verify:public-export-tsdoc`**: `packages/*/src` 아래 변경된 public export가 repo-wide TSDoc 최소 기준을 놓치면 실패합니다.
 - **동작 계약 체크**: `process.env`가 승인된 패턴(`@konekti/config`) 외부에서 액세스될 경우 릴리스를 차단합니다.
 
 ### 변경 이력 표준 (Changelog Standards)
@@ -63,6 +102,7 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 
 ## 관련 문서
 - [동작 계약 정책 (Behavioral Contract Policy)](./behavioral-contract-policy.ko.md)
+- [Public Export TSDoc 기준선](./public-export-tsdoc-baseline.ko.md)
 - [NestJS 기능 격차 (NestJS Parity Gaps)](./nestjs-parity-gaps.ko.md)
 - [플랫폼 준수 작성 체크리스트 (Platform Conformance Authoring Checklist)](./platform-conformance-authoring-checklist.ko.md)
 - [테스트 가이드 (Testing Guide)](./testing-guide.ko.md)

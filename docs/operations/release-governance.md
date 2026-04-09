@@ -45,6 +45,44 @@ Konekti follows strict **Semantic Versioning (Semver)**.
 ### 0.x Phase (Pre-Stable)
 During the `0.x` phase, the **Minor** version is used for breaking changes. Every breaking change in a `0.x` minor release MUST be accompanied by a migration note in the `CHANGELOG.md`.
 
+## intended publish surface
+
+- `@konekti/cache-manager`
+- `@konekti/cli`
+- `@konekti/config`
+- `@konekti/core`
+- `@konekti/cqrs`
+- `@konekti/cron`
+- `@konekti/di`
+- `@konekti/drizzle`
+- `@konekti/event-bus`
+- `@konekti/graphql`
+- `@konekti/http`
+- `@konekti/jwt`
+- `@konekti/metrics`
+- `@konekti/microservices`
+- `@konekti/mongoose`
+- `@konekti/openapi`
+- `@konekti/passport`
+- `@konekti/platform-bun`
+- `@konekti/platform-cloudflare-workers`
+- `@konekti/platform-deno`
+- `@konekti/platform-express`
+- `@konekti/platform-fastify`
+- `@konekti/platform-nodejs`
+- `@konekti/prisma`
+- `@konekti/queue`
+- `@konekti/redis`
+- `@konekti/runtime`
+- `@konekti/serialization`
+- `@konekti/socket.io`
+- `@konekti/studio`
+- `@konekti/terminus`
+- `@konekti/testing`
+- `@konekti/throttler`
+- `@konekti/validation`
+- `@konekti/websockets`
+
 ---
 
 ## Release Process & Enforcement
@@ -54,6 +92,7 @@ Governance is enforced through automated gates and manual checklists.
 ### CI/CD Enforcement
 - **`pnpm verify:release-readiness`**: Validates the packed CLI entrypoints and starter scaffolding.
 - **`pnpm verify:platform-consistency-governance`**: Enforces structural parity between English and Korean documentation.
+- **`pnpm verify:public-export-tsdoc`**: Fails when changed public exports in `packages/*/src` miss the repo-wide TSDoc minimum baseline.
 - **Behavioral Contract Check**: Blocks releases if `process.env` is accessed outside of the sanctioned `@konekti/config` patterns.
 
 ### Changelog Standards
@@ -63,6 +102,7 @@ Every public release must have a matching entry in the root `CHANGELOG.md` follo
 
 ## Related Docs
 - [Behavioral Contract Policy](./behavioral-contract-policy.md)
+- [Public Export TSDoc Baseline](./public-export-tsdoc-baseline.md)
 - [NestJS Parity Gaps](./nestjs-parity-gaps.md)
 - [Platform Conformance Authoring Checklist](./platform-conformance-authoring-checklist.md)
 - [Testing Guide](./testing-guide.md)
