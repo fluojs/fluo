@@ -17,8 +17,10 @@ type MetricHistogramLike = {
   observe(labels: Record<string, string>, value: number): void;
 };
 
+/** Strategy used to label request paths in emitted HTTP metrics. */
 export type HttpMetricsPathLabelMode = 'raw' | 'template';
 
+/** Context passed to a custom path-label normalizer. */
 export interface HttpMetricsPathLabelContext {
   method: string;
   params: Readonly<Record<string, string>>;
@@ -26,8 +28,10 @@ export interface HttpMetricsPathLabelContext {
   request: FrameworkRequest;
 }
 
+/** Callback that resolves the final path label used in emitted metrics. */
 export type HttpMetricsPathLabelNormalizer = (context: HttpMetricsPathLabelContext) => string;
 
+/** Options that tune HTTP request metric label generation. */
 export interface HttpMetricsMiddlewareOptions {
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
@@ -54,6 +58,9 @@ function readErrorStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Middleware that records HTTP request totals, failures, and latency.
+ */
 export class HttpMetricsMiddleware implements Middleware {
   private readonly requestsTotal: MetricCounterLike;
   private readonly errorsTotal: MetricCounterLike;

@@ -13,12 +13,16 @@ import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsService } from './metrics-service.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
+/** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel?: string;
 }
 
+/**
+ * Module options for exposing Prometheus metrics and runtime platform telemetry.
+ */
 export interface MetricsModuleOptions {
   http?: boolean | MetricsHttpOptions;
   path?: string;
@@ -33,9 +37,24 @@ export interface MetricsModuleOptions {
   registry?: Registry;
 }
 
+/** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
   private static registeredRegistries = new WeakSet<Registry>();
 
+  /**
+   * Register framework metrics, optional HTTP middleware, and a scrape endpoint.
+   *
+   * @example
+   * ```ts
+   * MetricsModule.forRoot({
+   *   http: { pathLabelMode: 'template' },
+   *   registry: new Registry(),
+   * });
+   * ```
+   *
+   * @param options Metrics endpoint, registry, HTTP middleware, and runtime telemetry configuration.
+   * @returns A runtime module that exposes metrics through the configured path.
+   */
   static forRoot(options: MetricsModuleOptions = {}): ModuleType {
     const provider = options.provider ?? 'prometheus';
     if (provider !== 'prometheus') {
