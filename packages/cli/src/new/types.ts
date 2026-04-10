@@ -1,9 +1,9 @@
 export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
 export type DependencySource = 'local' | 'published';
-export type BootstrapShape = 'application';
+export type BootstrapShape = 'application' | 'microservice';
 export type BootstrapRuntime = 'node';
-export type BootstrapPlatform = 'fastify';
-export type BootstrapTransport = 'http';
+export type BootstrapPlatform = 'fastify' | 'none';
+export type BootstrapTransport = 'grpc' | 'http' | 'kafka' | 'mqtt' | 'nats' | 'rabbitmq' | 'redis' | 'redis-streams' | 'tcp';
 export type BootstrapToolingPreset = 'standard';
 
 export interface BootstrapTopology {

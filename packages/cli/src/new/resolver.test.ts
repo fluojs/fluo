@@ -6,6 +6,20 @@ describe('resolveBootstrapSchema', () => {
   it('returns the shape-first compatibility baseline when no explicit schema is provided', () => {
     expect(resolveBootstrapSchema()).toEqual(DEFAULT_BOOTSTRAP_SCHEMA);
   });
+
+  it('switches to the microservice starter defaults when shape=microservice is selected', () => {
+    expect(resolveBootstrapSchema({ shape: 'microservice' })).toEqual({
+      platform: 'none',
+      runtime: 'node',
+      shape: 'microservice',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+    });
+  });
 });
 
 describe('resolveBootstrapPlan', () => {
@@ -61,6 +75,79 @@ describe('resolveBootstrapPlan', () => {
     expect(npmPlan.dependencies).toEqual(bunPlan.dependencies);
   });
 
+  it('resolves the runnable TCP microservice starter as a first-class path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      shape: 'microservice',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/di',
+          '@fluojs/microservices',
+          '@fluojs/runtime',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'none',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'tcp',
+        type: 'microservice',
+      },
+      schema: {
+        platform: 'none',
+        runtime: 'node',
+        shape: 'microservice',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'tcp',
+      },
+    });
+  });
+
+  it('rejects selecting the HTTP transport for the microservice shape', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'none',
+      runtime: 'node',
+      shape: 'microservice',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'http',
+    })).toThrow(
+      'Unsupported bootstrap schema "microservice/node/http/none/standard/single-package". Microservice starters require a transport-aware microservice transport such as tcp, redis, nats, kafka, rabbitmq, mqtt, or grpc.',
+    );
+  });
+
+  it('validates documented microservice transport families separately from the runnable starter path', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'none',
+      runtime: 'node',
+      shape: 'microservice',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'kafka',
+    })).toThrow(
+      'Unsupported bootstrap schema "microservice/node/kafka/none/standard/single-package". The first-class microservice starter currently emits the runnable TCP starter, while transport validation recognizes the documented families: tcp, redis, redis-streams, nats, kafka, rabbitmq, mqtt, grpc.',
+    );
+  });
+
   it('rejects unsupported topology or runtime combinations until later issues extend the matrix', () => {
     expect(() => resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
@@ -74,7 +161,7 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
       platform: 'fastify',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline only supports the standard single-package Node + Fastify HTTP starter.',
+      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter and the TCP microservice starter.',
     );
   });
 });
