@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { installDependencies } from './install.js';
+import { resolveBootstrapPlan, type ResolvedBootstrapPlan } from './resolver.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
 const PACKAGE_DIRECTORY_BY_NAME = {
@@ -109,6 +110,7 @@ function createExecCommand(packageManager: PackageManager, command: string): str
 
 function createProjectPackageJson(
   options: BootstrapOptions,
+  bootstrapPlan: ResolvedBootstrapPlan,
   releaseVersion: string,
   packageSpecs: Record<string, string>,
 ): string {
@@ -125,6 +127,19 @@ function createProjectPackageJson(
         resolutions: packageSpecs,
       }
     : {};
+
+  const dependencyEntries = Object.fromEntries(
+    bootstrapPlan.dependencies.dependencies.map((packageName) => [
+      packageName,
+      createDependencySpec(packageName, releaseVersion, packageSpecs),
+    ]),
+  );
+  const devDependencyEntries = Object.fromEntries(
+    bootstrapPlan.dependencies.devDependencies.map((packageName) => [
+      packageName,
+      createDependencySpec(packageName, releaseVersion, packageSpecs),
+    ]),
+  );
 
   return JSON.stringify(
     {
@@ -144,18 +159,9 @@ function createProjectPackageJson(
         'test:watch': 'vitest',
         typecheck: 'tsc -p tsconfig.json --noEmit',
       },
-      dependencies: {
-        '@fluojs/config': createDependencySpec('@fluojs/config', releaseVersion, packageSpecs),
-        '@fluojs/core': createDependencySpec('@fluojs/core', releaseVersion, packageSpecs),
-        '@fluojs/validation': createDependencySpec('@fluojs/validation', releaseVersion, packageSpecs),
-        '@fluojs/di': createDependencySpec('@fluojs/di', releaseVersion, packageSpecs),
-        '@fluojs/http': createDependencySpec('@fluojs/http', releaseVersion, packageSpecs),
-        '@fluojs/platform-fastify': createDependencySpec('@fluojs/platform-fastify', releaseVersion, packageSpecs),
-        '@fluojs/runtime': createDependencySpec('@fluojs/runtime', releaseVersion, packageSpecs),
-      },
+      dependencies: dependencyEntries,
       devDependencies: {
-        '@fluojs/cli': createDependencySpec('@fluojs/cli', releaseVersion, packageSpecs),
-        '@fluojs/testing': createDependencySpec('@fluojs/testing', releaseVersion, packageSpecs),
+        ...devDependencyEntries,
         ...PUBLISHED_DEV_DEPENDENCIES,
       },
     },
@@ -572,11 +578,12 @@ type ScaffoldFile = {
 
 function buildScaffoldFiles(
   options: BootstrapOptions,
+  bootstrapPlan: ResolvedBootstrapPlan,
   releaseVersion: string,
   packageSpecs: Record<string, string>,
 ): ScaffoldFile[] {
   return [
-    { content: createProjectPackageJson(options, releaseVersion, packageSpecs), path: 'package.json' },
+    { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
     { content: createProjectReadme(options), path: 'README.md' },
     { content: createProjectTsconfig(), path: 'tsconfig.json' },
     { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
@@ -613,7 +620,8 @@ export async function scaffoldBootstrapApp(
 ): Promise<void> {
   const targetDirectory = resolve(options.targetDirectory);
   const releaseVersion = readOwnPackageVersion(importMetaUrl);
-  const packageSpecs = await resolvePackageSpecs(options);
+  const bootstrapPlan = resolveBootstrapPlan(options);
+  const packageSpecs = await resolvePackageSpecs(options, bootstrapPlan);
 
   mkdirSync(targetDirectory, { recursive: true });
 
@@ -627,7 +635,7 @@ export async function scaffoldBootstrapApp(
     }
   }
 
-  for (const file of buildScaffoldFiles(options, releaseVersion, packageSpecs)) {
+  for (const file of buildScaffoldFiles(options, bootstrapPlan, releaseVersion, packageSpecs)) {
     writeTextFile(join(targetDirectory, file.path), file.content);
   }
 
@@ -995,7 +1003,24 @@ async function normalizePackedPackageManifest(
   rmSync(temporaryDirectory, { force: true, recursive: true });
 }
 
-async function resolvePackageSpecs(options: BootstrapOptions): Promise<Record<string, string>> {
+function collectLocalPackageNames(bootstrapPlan: ResolvedBootstrapPlan): readonly LocalPackageName[] {
+  const packageNames = new Set<LocalPackageName>();
+
+  for (const packageName of bootstrapPlan.dependencies.dependencies) {
+    packageNames.add(packageName);
+  }
+
+  for (const packageName of bootstrapPlan.dependencies.devDependencies) {
+    packageNames.add(packageName);
+  }
+
+  return Array.from(packageNames);
+}
+
+async function resolvePackageSpecs(
+  options: BootstrapOptions,
+  bootstrapPlan: ResolvedBootstrapPlan,
+): Promise<Record<string, string>> {
   if (options.dependencySource !== 'local' || !options.repoRoot) {
     return {};
   }
@@ -1005,7 +1030,7 @@ async function resolvePackageSpecs(options: BootstrapOptions): Promise<Record<st
   const cacheStampPath = join(outputDirectory, LOCAL_PACKAGE_CACHE_STAMP_FILE);
   mkdirSync(outputDirectory, { recursive: true });
 
-  const packageNames = LOCAL_PACKAGE_NAMES;
+  const packageNames = collectLocalPackageNames(bootstrapPlan);
   const packageVersions = collectLocalPackageVersions(repoRoot, packageNames);
   const expectedCacheStamp = computeLocalPackageCacheStamp(repoRoot, packageNames, packageVersions);
   const currentCacheStamp = readLocalPackageCacheStamp(cacheStampPath);
