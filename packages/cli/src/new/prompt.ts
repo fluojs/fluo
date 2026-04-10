@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { resolveBootstrapSchema } from './resolver.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
 
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
@@ -114,9 +115,11 @@ export function resolveBootstrapAnswers(
   }
 
   const projectName = assertValidProjectName(partial.projectName);
+  const schema = resolveBootstrapSchema(partial);
 
   return {
     packageManager: partial.packageManager ?? detectPackageManager(cwd, userAgent),
+    ...schema,
     projectName,
     targetDirectory: partial.targetDirectory ?? `./${projectName}`,
   };

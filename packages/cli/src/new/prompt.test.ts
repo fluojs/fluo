@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { detectPackageManager, resolveBootstrapAnswers } from './prompt.js';
+import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 
 const createdDirectories: string[] = [];
 
@@ -42,6 +43,7 @@ describe('resolveBootstrapAnswers', () => {
 
     expect(resolveBootstrapAnswers({ projectName: 'starter-app' }, workspaceDirectory)).toEqual({
       packageManager: 'bun',
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
       projectName: 'starter-app',
       targetDirectory: './starter-app',
     });
