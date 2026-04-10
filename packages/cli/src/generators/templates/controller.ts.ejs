@@ -9,7 +9,7 @@ import { <%- service %> } from './<%- kebab %>.service';
 
 @Controller('/<%- kebab %>')
 <% if (hasService) { %>
-@Inject([<%- service %>])
+@Inject(<%- service %>)
 <% } %>
 class <%- pascal %> {
 <% if (hasService) { %>

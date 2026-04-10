@@ -138,9 +138,9 @@ describe('CLI generators', () => {
     const service = generateServiceFiles('User', { hasRepo: true })[0]?.content ?? '';
 
     expect(controller).toContain("import { UserService } from './user.service';");
-    expect(controller).toContain('@Inject([UserService])');
+    expect(controller).toContain('@Inject(UserService)');
     expect(service).toContain("import { UserRepo } from './user.repo';");
-    expect(service).toContain('@Inject([UserRepo])');
+    expect(service).toContain('@Inject(UserRepo)');
   });
 
   describe('registerInModule', () => {
