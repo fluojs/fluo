@@ -2,7 +2,7 @@
 
 <p><a href="./package-folder-structure.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 참조 가이드는 Konekti 모노레포 내 패키지들의 표준 폴더 구조를 정의합니다. `packages/` 내의 모든 패키지는 일관성과 유지보수성을 위해 이 규칙을 따라야 합니다.
+이 참조 가이드는 fluo 모노레포 내 패키지들의 표준 폴더 구조를 정의합니다. `packages/` 내의 모든 패키지는 일관성과 유지보수성을 위해 이 규칙을 따라야 합니다.
 
 ## 표준 루트 파일
 
@@ -24,23 +24,23 @@
 
 ### `decorators/`
 사용자 대상 데코레이터 및 메타데이터 리더입니다.
-- *예시*: `@konekti/serialization`, `@konekti/validation`.
+- *예시*: `@fluojs/serialization`, `@fluojs/validation`.
 
 ### `transports/`
 교차 프로토콜 지원을 위한 플러그형 전송 구현체입니다.
-- *예시*: `@konekti/microservices` (Kafka, RabbitMQ 등).
+- *예시*: `@fluojs/microservices` (Kafka, RabbitMQ 등).
 
 ### `stores/`
 플러그형 저장소 백엔드입니다.
-- *예시*: `@konekti/cache-manager` (Memory, Redis).
+- *예시*: `@fluojs/cache-manager` (Memory, Redis).
 
 ### `adapters/`
 서드파티 라이브러리와 내부 인터페이스 간의 브릿지입니다.
-- *예시*: `@konekti/cli`, `@konekti/passport`.
+- *예시*: `@fluojs/cli`, `@fluojs/passport`.
 
 ### `node/` / `web/`
 Node.js 전용 로직과 웹 표준 로직을 분리하기 위해 사용되는 플랫폼별 코드입니다.
-- *예시*: `@konekti/runtime`, `@konekti/websockets`.
+- *예시*: `@fluojs/runtime`, `@fluojs/websockets`.
 
 ### `internal/`
 프레임워크 내부 구현 상세입니다. 이 파일들은 `index.ts`에서 **내보내지 않아야(re-export)** 합니다.

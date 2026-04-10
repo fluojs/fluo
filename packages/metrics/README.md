@@ -1,8 +1,8 @@
-# @konekti/metrics
+# @fluojs/metrics
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Prometheus metrics exposure for Konekti applications, including framework-aware HTTP metrics and platform telemetry.
+Prometheus metrics exposure for fluo applications, including framework-aware HTTP metrics and platform telemetry.
 
 ## Table of Contents
 
@@ -17,20 +17,20 @@ Prometheus metrics exposure for Konekti applications, including framework-aware 
 ## Installation
 
 ```bash
-pnpm add @konekti/metrics
+pnpm add @fluojs/metrics
 ```
 
 ## When to Use
 
 - when your app should expose a `/metrics` endpoint for Prometheus-compatible scraping
 - when HTTP latency and request counts should be instrumented without hand-written middleware
-- when application telemetry should stay aligned with Konekti readiness and health state
+- when application telemetry should stay aligned with fluo readiness and health state
 
 ## Quick Start
 
 ```ts
-import { MetricsModule } from '@konekti/metrics';
-import { Module } from '@konekti/core';
+import { MetricsModule } from '@fluojs/metrics';
+import { Module } from '@fluojs/core';
 
 @Module({
   imports: [MetricsModule.forRoot()],
@@ -55,7 +55,7 @@ MetricsModule.forRoot({
 
 ```ts
 import { Counter, Registry } from 'prom-client';
-import { MetricsModule } from '@konekti/metrics';
+import { MetricsModule } from '@fluojs/metrics';
 
 const registry = new Registry();
 
@@ -84,9 +84,9 @@ Prometheus metric names must stay unique inside a registry. Shared-registry mode
 
 ## Related Packages
 
-- `@konekti/http`: contributes the request lifecycle that HTTP metrics observe
-- `@konekti/runtime`: provides platform state used by runtime telemetry gauges
-- `@konekti/terminus`: commonly paired with metrics for ops visibility
+- `@fluojs/http`: contributes the request lifecycle that HTTP metrics observe
+- `@fluojs/runtime`: provides platform state used by runtime telemetry gauges
+- `@fluojs/terminus`: commonly paired with metrics for ops visibility
 
 ## Example Sources
 

@@ -1,8 +1,8 @@
-# @konekti/redis
+# @fluojs/redis
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 공유 Redis 연결 계층입니다. 애플리케이션 수명 주기에 따라 관리되는 단일 `ioredis` 클라이언트를 제공합니다.
+fluo를 위한 공유 Redis 연결 계층입니다. 애플리케이션 수명 주기에 따라 관리되는 단일 `ioredis` 클라이언트를 제공합니다.
 
 ## 목차
 
@@ -17,7 +17,7 @@ Konekti를 위한 공유 Redis 연결 계층입니다. 애플리케이션 수명
 ## 설치
 
 ```bash
-npm install @konekti/redis ioredis
+npm install @fluojs/redis ioredis
 ```
 
 ## 사용 시점
@@ -31,8 +31,8 @@ npm install @konekti/redis ioredis
 ### 모듈 등록
 
 ```typescript
-import { Module } from '@konekti/core';
-import { RedisModule } from '@konekti/redis';
+import { Module } from '@fluojs/core';
+import { RedisModule } from '@fluojs/redis';
 
 @Module({
   imports: [
@@ -50,8 +50,8 @@ export class AppModule {}
 `RedisService`를 주입받아 고수준 작업을 수행하거나, `REDIS_CLIENT`를 통해 원시 `ioredis` 인스턴스를 직접 사용할 수 있습니다.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { RedisService } from '@konekti/redis';
+import { Inject } from '@fluojs/core';
+import { RedisService } from '@fluojs/redis';
 
 export class CacheRepository {
   @Inject(RedisService)
@@ -74,8 +74,8 @@ export class CacheRepository {
 파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { Inject } from '@fluojs/core';
+import { REDIS_CLIENT } from '@fluojs/redis';
 import type Redis from 'ioredis';
 
 export class AdvancedService {
@@ -100,9 +100,9 @@ export class AdvancedService {
 
 ## 관련 패키지
 
-- `@konekti/cache-manager`: Redis를 백엔드로 사용하는 캐싱 패키지입니다.
-- `@konekti/queue`: Redis 기반의 분산 작업 큐 패키지입니다.
-- `@konekti/throttler`: Redis 기반의 분산 전송률 제한 패키지입니다.
+- `@fluojs/cache-manager`: Redis를 백엔드로 사용하는 캐싱 패키지입니다.
+- `@fluojs/queue`: Redis 기반의 분산 작업 큐 패키지입니다.
+- `@fluojs/throttler`: Redis 기반의 분산 전송률 제한 패키지입니다.
 
 ## 예제 소스
 

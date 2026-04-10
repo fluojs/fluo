@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./security-middleware.ko.md"><kbd>한국어</kbd></a></p>
 
-A secure backend is built in layers. Konekti provides transport-level security middleware and application-level throttlers to protect your system from common web vulnerabilities, malicious bots, and resource exhaustion.
+A secure backend is built in layers. fluo provides transport-level security middleware and application-level throttlers to protect your system from common web vulnerabilities, malicious bots, and resource exhaustion.
 
-## Why Security Middleware in Konekti?
+## Why Security Middleware in fluo?
 
 - **Defense in Depth**: Protect your application at the earliest stage of the request journey, before any expensive business logic or database queries are executed.
 - **Consistent Protection**: Apply security headers (CORS, CSP, HSTS, etc.) globally across all routes with a single configuration, ensuring no "shadow endpoints" are left vulnerable.
@@ -13,9 +13,9 @@ A secure backend is built in layers. Konekti provides transport-level security m
 
 ## Responsibility Split
 
-- **`@konekti/http` (Infrastructure Protection)**: Contains core middleware like `createCorsMiddleware`, `RateLimitMiddleware`, and security header injectors. These provide a baseline "shield" for the entire application.
-- **`@konekti/throttler` (Application Protection)**: A more refined system for logic-driven limits. It uses decorators to protect specific methods and can store hit counts in shared Redis instances.
-- **`@konekti/passport` (Identity Protection)**: Manages the authentication layer, ensuring that security middleware can differentiate between anonymous and authenticated traffic.
+- **`@fluojs/http` (Infrastructure Protection)**: Contains core middleware like `createCorsMiddleware`, `RateLimitMiddleware`, and security header injectors. These provide a baseline "shield" for the entire application.
+- **`@fluojs/throttler` (Application Protection)**: A more refined system for logic-driven limits. It uses decorators to protect specific methods and can store hit counts in shared Redis instances.
+- **`@fluojs/passport` (Identity Protection)**: Manages the authentication layer, ensuring that security middleware can differentiate between anonymous and authenticated traffic.
 
 ## Typical Workflows
 
@@ -40,7 +40,7 @@ async resetPassword(@FromBody() dto: ResetDto) {
 ```
 
 ### 3. Automated Security Headers
-Konekti ensures every response carries the necessary metadata to instruct the browser on security policies.
+fluo ensures every response carries the necessary metadata to instruct the browser on security policies.
 - **Strict-Transport-Security**: Force HTTPS.
 - **X-Content-Type-Options**: Prevent MIME sniffing.
 - **Content-Security-Policy**: Control resource loading.
@@ -50,7 +50,7 @@ Konekti ensures every response carries the necessary metadata to instruct the br
 - **Transport vs. Application**: 
   - **Middleware** (Transport) is fast and stops malicious traffic early (e.g., DDoS protection).
   - **Interceptors/Decorators** (Application) are smart and understand the user's identity and intent.
-- **Stateless by Default**: Rate limiting in the HTTP package is memory-based (stateless per instance). For distributed environments, you **must** use the Redis-backed `@konekti/throttler`.
+- **Stateless by Default**: Rate limiting in the HTTP package is memory-based (stateless per instance). For distributed environments, you **must** use the Redis-backed `@fluojs/throttler`.
 - **The "Fail-Fast" Rule**: Security checks always run before validation and business logic. A throttled request never hits your service code.
 
 ## Next Steps

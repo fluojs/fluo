@@ -1,4 +1,4 @@
-# @konekti/jwt
+# @fluojs/jwt
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
@@ -17,7 +17,7 @@ HTTP-agnostic JWT token core that handles signing access tokens and verifying th
 ## Installation
 
 ```bash
-npm install @konekti/jwt
+npm install @fluojs/jwt
 ```
 
 ## When to Use
@@ -33,8 +33,8 @@ npm install @konekti/jwt
 Configure the JWT module with your signing keys and policy.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { JwtModule } from '@konekti/jwt';
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
 
 @Module({
   imports: [
@@ -55,7 +55,7 @@ export class AuthModule {}
 Inject `DefaultJwtSigner` to issue tokens and `DefaultJwtVerifier` to validate them.
 
 ```typescript
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@konekti/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
 
 // Sign
 const token = await signer.signAccessToken({
@@ -89,7 +89,7 @@ const verifier = new DefaultJwtVerifier({
 
 ### Principal Normalization
 
-`@konekti/jwt` automatically unifies `scope` (string) and `scopes` (array) claims into a single `scopes: string[]` property in the `JwtPrincipal`, ensuring consistent behavior for authorization guards.
+`@fluojs/jwt` automatically unifies `scope` (string) and `scopes` (array) claims into a single `scopes: string[]` property in the `JwtPrincipal`, ensuring consistent behavior for authorization guards.
 
 ## Public API Overview
 
@@ -105,8 +105,8 @@ const verifier = new DefaultJwtVerifier({
 
 ## Related Packages
 
-- `@konekti/passport`: The auth execution layer that uses this core for guards and strategies.
-- `@konekti/config`: Recommended for managing secrets and JWT options across environments.
+- `@fluojs/passport`: The auth execution layer that uses this core for guards and strategies.
+- `@fluojs/config`: Recommended for managing secrets and JWT options across environments.
 
 ## Example Sources
 

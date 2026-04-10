@@ -1,8 +1,8 @@
-# @konekti/di
+# @fluojs/di
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Minimal token-based dependency injection container powering every Konekti application.
+Minimal token-based dependency injection container powering every fluo application.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Minimal token-based dependency injection container powering every Konekti applic
 ## Installation
 
 ```bash
-npm install @konekti/di
+npm install @fluojs/di
 ```
 
 ## When to Use
@@ -33,8 +33,8 @@ Use this package when you need to:
 The container resolves tokens into instances based on their registered providers.
 
 ```typescript
-import { Container } from '@konekti/di';
-import { Inject, Scope } from '@konekti/core';
+import { Container } from '@fluojs/di';
+import { Inject, Scope } from '@fluojs/core';
 
 class Logger {
   log(msg: string) { console.log(msg); }
@@ -61,7 +61,7 @@ const result = await service.getStatus();
 ## Key Capabilities
 
 ### Provider Types
-Konekti DI supports three main provider shapes:
+fluo DI supports three main provider shapes:
 - **Class Providers**: `container.register(MyService)` or `{ provide: MyToken, useClass: MyService }`.
 - **Value Providers**: `{ provide: 'API_URL', useValue: 'https://api.example.com' }`.
 - **Factory Providers**: `{ provide: 'ASYNC_CONFIG', useFactory: async (db) => await db.load(), inject: [Database] }`.
@@ -91,9 +91,9 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 
 ## Related Packages
 
-- **`@konekti/core`**: Defines the `@Inject()` and `@Scope()` decorators used to annotate classes.
-- **`@konekti/runtime`**: Handles automatic registration of providers during application bootstrap.
-- **`@konekti/http`**: Creates a request scope for every incoming HTTP request.
+- **`@fluojs/core`**: Defines the `@Inject()` and `@Scope()` decorators used to annotate classes.
+- **`@fluojs/runtime`**: Handles automatic registration of providers during application bootstrap.
+- **`@fluojs/http`**: Creates a request scope for every incoming HTTP request.
 
 ## Example Sources
 

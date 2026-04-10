@@ -1,10 +1,10 @@
-# contributing to konekti
+# contributing to fluo
 
-Konekti is built on standard TypeScript decorators and explicit contract discipline. This guide explains how to set up your environment, verify changes, and follow our maintainer workflows.
+fluo is built on standard TypeScript decorators and explicit contract discipline. This guide explains how to set up your environment, verify changes, and follow our maintainer workflows.
 
 ## local development setup
 
-Konekti uses a monorepo structure managed by `pnpm`.
+fluo uses a monorepo structure managed by `pnpm`.
 
 1. **Prerequisites**: Node.js 20+ and `pnpm`.
 2. **Install dependencies**:
@@ -60,7 +60,7 @@ Use the following repo-local references before inventing a new style:
 
 ### CLI sandbox verification
 
-When modifying `@konekti/cli` or core runtime packages, use the sandbox scripts to verify end-to-end behavior.
+When modifying `@fluojs/cli` or core runtime packages, use the sandbox scripts to verify end-to-end behavior.
 
 Inside `packages/cli/`:
 - `pnpm sandbox:create`: Generates a fresh starter app in a temporary directory.
@@ -74,7 +74,7 @@ Canonical examples in `examples/` are first-class workspace members and verifica
 
 - **Typecheck**: `pnpm typecheck` includes `tsc -p examples/tsconfig.json --noEmit`. Examples share path-mapped workspace packages, so editor resolution and CI catch type errors in example code.
 - **Tests**: `pnpm test` runs `vitest run`, which includes the `examples` project defined in `vitest.config.ts`. Each example has tests in `src/app.test.ts`.
-- **Dependencies**: Each example has a `package.json` with `workspace:*` dependencies on `@konekti/*` packages. Run `pnpm install` after adding or changing example dependencies.
+- **Dependencies**: Each example has a `package.json` with `workspace:*` dependencies on `@fluojs/*` packages. Run `pnpm install` after adding or changing example dependencies.
 
 When modifying core packages, verify that examples still pass:
 
@@ -91,7 +91,7 @@ We recommend using `git worktree` for multi-tasking or resolving issues in isola
 
 ## behavioral contracts
 
-Konekti maintains strict behavioral contracts. Before opening a PR, ensure you have:
+fluo maintains strict behavioral contracts. Before opening a PR, ensure you have:
 1. Read the affected package `README.md`.
 2. Checked [docs/operations/behavioral-contract-policy.md](docs/operations/behavioral-contract-policy.md).
 3. Updated documentation if runtime behavior or API surface changed.

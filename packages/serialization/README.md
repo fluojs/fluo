@@ -1,8 +1,8 @@
-# @konekti/serialization
+# @fluojs/serialization
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Class-based response serialization and output shaping for Konekti.
+Class-based response serialization and output shaping for fluo.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Class-based response serialization and output shaping for Konekti.
 ## Installation
 
 ```bash
-pnpm add @konekti/serialization
+pnpm add @fluojs/serialization
 ```
 
 ## When to Use
@@ -30,7 +30,7 @@ pnpm add @konekti/serialization
 ## Quick Start
 
 ```ts
-import { Exclude, Expose, Transform, serialize } from '@konekti/serialization';
+import { Exclude, Expose, Transform, serialize } from '@fluojs/serialization';
 
 class UserEntity {
   @Expose()
@@ -46,7 +46,7 @@ class UserEntity {
 
 const user = Object.assign(new UserEntity(), {
   id: '1',
-  username: 'konekti',
+  username: 'fluo',
   passwordHash: 'secret',
 });
 
@@ -58,7 +58,7 @@ console.log(serialize(user));
 ### Expose-only output DTOs
 
 ```ts
-import { Expose } from '@konekti/serialization';
+import { Expose } from '@fluojs/serialization';
 
 @Expose({ excludeExtraneous: true })
 class SecureDto {
@@ -72,7 +72,7 @@ class SecureDto {
 ### Value transforms
 
 ```ts
-import { Transform } from '@konekti/serialization';
+import { Transform } from '@fluojs/serialization';
 
 class ProductDto {
   @Transform((price) => `$${price.toFixed(2)}`)
@@ -83,8 +83,8 @@ class ProductDto {
 ### HTTP response shaping with an interceptor
 
 ```ts
-import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { SerializerInterceptor } from '@konekti/serialization';
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
 
 @Controller('/users')
 @UseInterceptors(SerializerInterceptor)
@@ -108,8 +108,8 @@ The serializer cuts cyclic references safely instead of recursing forever, so co
 
 ## Related Packages
 
-- `@konekti/http`: applies `SerializerInterceptor` to HTTP handlers
-- `@konekti/validation`: handles input-side DTO materialization and validation
+- `@fluojs/http`: applies `SerializerInterceptor` to HTTP handlers
+- `@fluojs/validation`: handles input-side DTO materialization and validation
 
 ## Example Sources
 

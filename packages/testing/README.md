@@ -1,8 +1,8 @@
-# @konekti/testing
+# @fluojs/testing
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Testing module construction, provider overrides, and request-level test helpers for Konekti applications.
+Testing module construction, provider overrides, and request-level test helpers for fluo applications.
 
 ## Table of Contents
 
@@ -17,22 +17,22 @@ Testing module construction, provider overrides, and request-level test helpers 
 ## Installation
 
 ```bash
-npm install --save-dev @konekti/testing vitest
+npm install --save-dev @fluojs/testing vitest
 ```
 
-`vitest` is a required peer dependency for the mock helpers and the `@konekti/testing/vitest` entrypoint.
+`vitest` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint.
 
 ## When to Use
 
 - when you want to compile a real module graph but replace a few explicit providers with fakes
-- when route-level tests should run through Konekti's real dispatch stack without starting a network server
+- when route-level tests should run through fluo's real dispatch stack without starting a network server
 - when library or adapter packages need conformance and portability harnesses from responsibility-specific subpaths
 - when starter templates need a stable baseline for unit, integration, and e2e-style tests
 
 ## Quick Start
 
 ```ts
-import { createTestingModule } from '@konekti/testing';
+import { createTestingModule } from '@fluojs/testing';
 import { vi } from 'vitest';
 
 const module = await createTestingModule({ rootModule: AppModule })
@@ -60,7 +60,7 @@ const module = await createTestingModule({ rootModule: AppModule })
 ### Request-level tests with `createTestApp()`
 
 ```ts
-import { createTestApp } from '@konekti/testing';
+import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
@@ -75,7 +75,7 @@ await app.close();
 ### Mock helpers from explicit subpaths
 
 ```ts
-import { createDeepMock, createMock } from '@konekti/testing/mock';
+import { createDeepMock, createMock } from '@fluojs/testing/mock';
 import { vi } from 'vitest';
 
 const repo = createMock<UserRepository>({ findById: vi.fn() });
@@ -86,21 +86,21 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 ### Conformance and portability harnesses
 
-Use subpaths like `@konekti/testing/platform-conformance`, `@konekti/testing/http-adapter-portability`, and `@konekti/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
 
 ## Public API Overview
 
 - **Root package**: `createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, shared testing types
-- **Mock subpath**: `@konekti/testing/mock`
-- **HTTP helpers**: `@konekti/testing/http`
+- **Mock subpath**: `@fluojs/testing/mock`
+- **HTTP helpers**: `@fluojs/testing/http`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
-- **Tooling**: `@konekti/testing/vitest` with `konektiBabelDecoratorsPlugin()`
+- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()`
 
 ## Related Packages
 
-- `@konekti/di`: powers provider resolution in compiled test containers
-- `@konekti/runtime`: provides the module graph behavior that testing builds on
-- `@konekti/http`: powers request dispatch used by `createTestApp()`
+- `@fluojs/di`: powers provider resolution in compiled test containers
+- `@fluojs/runtime`: provides the module graph behavior that testing builds on
+- `@fluojs/http`: powers request dispatch used by `createTestApp()`
 
 ## Example Sources
 

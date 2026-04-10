@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./di-and-modules.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti manages application complexity through an **explicit, token-based Dependency Injection (DI) system** and a hierarchical **Module Graph**. Unlike frameworks that rely on "magic" reflection, Konekti requires clear contracts between every provider and its consumer.
+fluo manages application complexity through an **explicit, token-based Dependency Injection (DI) system** and a hierarchical **Module Graph**. Unlike frameworks that rely on "magic" reflection, fluo requires clear contracts between every provider and its consumer.
 
 ## why this matters
 
@@ -11,12 +11,12 @@ In large-scale applications, "implicit" dependency injection—where the framewo
 - **Difficult testing**: Mocking becomes a chore when you're not 100% sure what's being injected.
 - **Runtime surprises**: Circular dependencies or missing providers often result in cryptic `undefined` errors at runtime.
 
-Konekti eliminates these pains by making the dependency graph **auditable and explicit**. You can look at any class and see exactly what it requires, where those requirements come from, and how they are scoped.
+fluo eliminates these pains by making the dependency graph **auditable and explicit**. You can look at any class and see exactly what it requires, where those requirements come from, and how they are scoped.
 
 ## core ideas
 
 ### token-based di
-In Konekti, every dependency is identified by a **Token**. A token can be:
+In fluo, every dependency is identified by a **Token**. A token can be:
 - **A Class**: The most common case. The class constructor itself acts as the unique identifier.
 - **A Symbol or String**: Used for abstract interfaces (e.g., `ILogger`) where you want to swap implementations without changing the consumer.
 - **A Configuration Key**: For injecting specific settings directly into a service.
@@ -24,7 +24,7 @@ In Konekti, every dependency is identified by a **Token**. A token can be:
 By using explicit tokens, we bypass the need for `emitDecoratorMetadata` and ensure that your code is compatible with any modern JavaScript build tool.
 
 ### the module as a "boundary"
-A **Module** in Konekti is more than just a organization tool; it is a **security and encapsulation boundary**.
+A **Module** in fluo is more than just a organization tool; it is a **security and encapsulation boundary**.
 - **Private by Default**: A service defined in `UserModule` is invisible to `AuthModule` unless it is explicitly listed in the `exports` array of `UserModule` and `UserModule` is in the `imports` of `AuthModule`.
 - **Encapsulated Implementation**: This allows you to have internal "helper" services that cannot be accidentally used (and coupled to) by other parts of the system.
 
@@ -57,7 +57,7 @@ export class UsersService {
 ## boundaries
 
 - **No Global Scope**: There is no "global" provider unless explicitly marked. We prefer the safety of the import/export chain.
-- **Circular Dependency Detection**: Konekti's DI container detects circular dependencies at bootstrap time and throws a clear error, preventing stack overflows.
+- **Circular Dependency Detection**: fluo's DI container detects circular dependencies at bootstrap time and throws a clear error, preventing stack overflows.
 - **Strict Validation**: If a required dependency is missing from the module graph, the application will **fail to start**. We prefer a crash at boot over a crash in production.
 
 ## related docs

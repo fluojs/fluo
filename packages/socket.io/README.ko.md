@@ -1,8 +1,8 @@
-# @konekti/socket.io
+# @fluojs/socket.io
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
+fluo 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 
 ## 목차
 
@@ -17,19 +17,19 @@ Konekti 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 ## 설치
 
 ```bash
-npm install @konekti/socket.io @konekti/websockets socket.io
+npm install @fluojs/socket.io @fluojs/websockets socket.io
 ```
 
 ## 사용 시점
 
-Socket.IO가 제공하는 room, namespace, broadcast, 자동 재연결 같은 고수준 실시간 기능이 필요할 때 사용합니다. 이 패키지는 raw websocket 대신 Socket.IO v4 서버를 Konekti의 `@WebSocketGateway` 기반 모델에 연결합니다.
+Socket.IO가 제공하는 room, namespace, broadcast, 자동 재연결 같은 고수준 실시간 기능이 필요할 때 사용합니다. 이 패키지는 raw websocket 대신 Socket.IO v4 서버를 fluo의 `@WebSocketGateway` 기반 모델에 연결합니다.
 
 ## 빠른 시작
 
 ```ts
-import { Inject, Module } from '@konekti/core';
-import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@konekti/socket.io';
-import { OnMessage, WebSocketGateway } from '@konekti/websockets';
+import { Inject, Module } from '@fluojs/core';
+import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@fluojs/socket.io';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
 
 @Inject(SOCKETIO_ROOM_SERVICE)
 @WebSocketGateway({ path: '/chat' })
@@ -61,7 +61,7 @@ this.rooms.broadcastToRoom('room:123', 'event', data);
 ### Raw Socket.IO 서버 접근
 
 ```ts
-import { SOCKETIO_SERVER } from '@konekti/socket.io';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
 import type { Server } from 'socket.io';
 
 @Inject(SOCKETIO_SERVER)

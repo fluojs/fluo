@@ -1,8 +1,8 @@
-# @konekti/platform-fastify
+# @fluojs/platform-fastify
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
+fluo 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 
 ## 목차
 
@@ -18,21 +18,21 @@ Konekti 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 ## 설치
 
 ```bash
-npm install @konekti/platform-fastify fastify
+npm install @fluojs/platform-fastify fastify
 ```
 
 ## 사용 시점
 
-Konekti 애플리케이션을 위한 고성능 HTTP 어댑터가 필요한 경우 이 패키지를 사용합니다. Fastify는 낮은 오버헤드와 효율적인 요청 처리로 잘 알려져 있으며, 높은 처리량과 동시성이 요구되는 프로덕션 Konekti 애플리케이션에 권장되는 선택입니다.
+fluo 애플리케이션을 위한 고성능 HTTP 어댑터가 필요한 경우 이 패키지를 사용합니다. Fastify는 낮은 오버헤드와 효율적인 요청 처리로 잘 알려져 있으며, 높은 처리량과 동시성이 요구되는 프로덕션 fluo 애플리케이션에 권장되는 선택입니다.
 
 ## 빠른 시작
 
 ```typescript
-import { createFastifyAdapter } from '@konekti/platform-fastify';
-import { KonektiFactory } from '@konekti/runtime';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -42,7 +42,7 @@ await app.listen();
 ## 주요 패턴
 
 ### 멀티파트 및 Raw Body
-Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 Konekti 요청 인터페이스를 통해 노출됩니다.
+Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다.
 
 ```typescript
 const adapter = createFastifyAdapter({
@@ -53,7 +53,7 @@ const adapter = createFastifyAdapter({
 ```
 
 ### 서버 기반 실시간 통신 (Real-Time)
-Fastify는 `@konekti/websockets`가 기본 Node.js HTTP 서버에 직접 연결될 수 있도록 `server-backed` 기능을 제공합니다.
+Fastify는 `@fluojs/websockets`가 기본 Node.js HTTP 서버에 직접 연결될 수 있도록 `server-backed` 기능을 제공합니다.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -62,7 +62,7 @@ export class MyGateway {}
 
 ## 성능
 
-Konekti의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어댑터보다 훨씬 뛰어난 성능을 발휘합니다.
+fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어댑터보다 훨씬 뛰어난 성능을 발휘합니다.
 
 | 어댑터 | 초당 요청 수 (Req/sec) | 평균 지연 시간 (Avg Latency) |
 | --- | ---: | ---: |
@@ -80,9 +80,9 @@ Konekti의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 
 
 ## 관련 패키지
 
-- `@konekti/runtime`: 핵심 런타임입니다.
-- `@konekti/platform-express`: 대안 Express 기반 어댑터입니다.
-- `@konekti/websockets`: 실시간 게이트웨이 지원을 제공합니다.
+- `@fluojs/runtime`: 핵심 런타임입니다.
+- `@fluojs/platform-express`: 대안 Express 기반 어댑터입니다.
+- `@fluojs/websockets`: 실시간 게이트웨이 지원을 제공합니다.
 
 ## 예제 소스
 

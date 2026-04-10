@@ -2,7 +2,7 @@
 
 > **기준 소스**: [repo:docs/README.md] [repo:docs/reference/package-chooser.md] [ex:README.md]
 
-저장소에는 이미 강한 Konekti 입문서를 만드는 데 필요한 재료가 거의 다 있다. 핵심 부족분은 원천 자료의 양이 아니라, 기존 docs, package README, examples, maintainer policy가 아직 하나의 긴 서사로 엮여 있지 않다는 점이다.
+저장소에는 이미 강한 fluo 입문서를 만드는 데 필요한 재료가 거의 다 있다. 핵심 부족분은 원천 자료의 양이 아니라, 기존 docs, package README, examples, maintainer policy가 아직 하나의 긴 서사로 엮여 있지 않다는 점이다.
 
 ## 이미 강한 부분
 

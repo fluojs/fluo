@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./decorators-and-metadata.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti is built from the ground up on **TC39 Standard Decorators**. We have completely abandoned the legacy `experimentalDecorators` and `emitDecoratorMetadata` model in favor of a clean, performant, and standard-aligned metadata system.
+fluo is built from the ground up on **TC39 Standard Decorators**. We have completely abandoned the legacy `experimentalDecorators` and `emitDecoratorMetadata` model in favor of a clean, performant, and standard-aligned metadata system.
 
 ## why this matters
 
@@ -11,22 +11,22 @@ For years, the TypeScript ecosystem relied on a "proposal" version of decorators
 - **Fragile type-guessing**: Circular dependencies often broke the "metadata emit," leading to runtime `undefined` errors.
 - **Lock-in**: Your code became dependent on specific TypeScript compiler flags, making it harder to run on tools like `esbuild`, `swc`, or native engines without complex plugins.
 
-Konekti's move to **Standard Decorators** ensures your backend is portable, explicit, and ready for the future of JavaScript.
+fluo's move to **Standard Decorators** ensures your backend is portable, explicit, and ready for the future of JavaScript.
 
 ## core ideas
 
 ### standard decorators (TC39)
-Every decorator in Konekti—`@Module`, `@Controller`, `@Inject`—is a standard JavaScript decorator. They are functions that receive a well-defined context and return a modified version of the element they decorate.
+Every decorator in fluo—`@Module`, `@Controller`, `@Inject`—is a standard JavaScript decorator. They are functions that receive a well-defined context and return a modified version of the element they decorate.
 - **No Reflect Metadata**: We do not use `reflect-metadata`. Metadata is stored in a structured, framework-owned registry.
 - **Native Speed**: Because we don't rely on heavy reflection libraries, application startup and dependency resolution are significantly faster.
 
 ### explicit over implicit
-Legacy frameworks often "guessed" your dependencies by looking at constructor types. In Konekti, we value **explicitness**.
+Legacy frameworks often "guessed" your dependencies by looking at constructor types. In fluo, we value **explicitness**.
 - You use `@Inject(UsersService)` to clearly state your dependencies.
 - This makes your code searchable, auditable, and eliminates the "magic" that leads to difficult-to-debug DI issues.
 
 ### framework-owned registry
-Decorators in Konekti serve as "declarations" that populate a central **Framework Registry**. This registry acts as the source of truth for:
+Decorators in fluo serve as "declarations" that populate a central **Framework Registry**. This registry acts as the source of truth for:
 1. **The Dependency Graph**: Which classes depend on which tokens.
 2. **Routing Tables**: Which methods handle which HTTP paths.
 3. **Validation Schemas**: How incoming JSON should be parsed and checked.
@@ -40,7 +40,7 @@ Decorators in Konekti serve as "declarations" that populate a central **Framewor
 
 ## boundaries
 
-- **No Magic Discovery**: Konekti does not "scan" your filesystem. Metadata is registered only when a class is imported and its decorators are executed.
+- **No Magic Discovery**: fluo does not "scan" your filesystem. Metadata is registered only when a class is imported and its decorators are executed.
 - **Immutable at Runtime**: Once the application is bootstrapped, the framework registry is typically locked. You cannot dynamically add decorators to a running class.
 - **Type Safety First**: While decorators add metadata, they do not change the type signature of your classes. Your IDE and compiler still see the original, clean TypeScript class.
 

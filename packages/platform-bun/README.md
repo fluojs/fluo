@@ -1,8 +1,8 @@
-# @konekti/platform-bun
+# @fluojs/platform-bun
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Bun-backed HTTP adapter for the Konekti runtime, built on native `Bun.serve()`.
+Bun-backed HTTP adapter for the fluo runtime, built on native `Bun.serve()`.
 
 ## Table of Contents
 
@@ -17,23 +17,23 @@ Bun-backed HTTP adapter for the Konekti runtime, built on native `Bun.serve()`.
 ## Installation
 
 ```bash
-npm install @konekti/platform-bun
+npm install @fluojs/platform-bun
 ```
 
 ## When to Use
 
-Use this package when running Konekti applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.
+Use this package when running fluo applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.
 
 During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before Bun forcefully tears the server down.
 
 ## Quick Start
 
 ```typescript
-import { createBunAdapter } from '@konekti/platform-bun';
-import { KonektiFactory } from '@konekti/runtime';
+import { createBunAdapter } from '@fluojs/platform-bun';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -46,7 +46,7 @@ await app.listen();
 If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
 
 ```typescript
-import { createBunFetchHandler } from '@konekti/platform-bun';
+import { createBunFetchHandler } from '@fluojs/platform-bun';
 
 const handler = await createBunFetchHandler({ 
   dispatcher: app.getHttpDispatcher(),
@@ -60,7 +60,7 @@ Bun.serve({
 ```
 
 ### Native WebSocket Upgrade
-The adapter supports Bun's native `server.upgrade()` through the `@konekti/websockets/bun` binding.
+The adapter supports Bun's native `server.upgrade()` through the `@fluojs/websockets/bun` binding.
 
 ```typescript
 // gateways automatically use Bun's native upgrade when the Bun adapter is active
@@ -77,9 +77,9 @@ export class MyGateway {}
 
 ## Related Packages
 
-- `@konekti/runtime`: Core framework runtime.
-- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/bun`.
-- `@konekti/socket.io`: Supports the native Bun engine.
+- `@fluojs/runtime`: Core framework runtime.
+- `@fluojs/websockets`: Includes specific subpath `@fluojs/websockets/bun`.
+- `@fluojs/socket.io`: Supports the native Bun engine.
 
 ## Example Sources
 

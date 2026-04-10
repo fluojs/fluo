@@ -2,9 +2,9 @@
 
 <p><a href="./observability.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-측정할 수 없는 것은 관리할 수 없습니다. Konekti는 **로깅**, **Prometheus 메트릭**, **헬스 체크**, **요청 상관관계(Correlation)**를 하나의 응집된 운영 전략으로 통합한 관측 가능성 모델을 제공합니다.
+측정할 수 없는 것은 관리할 수 없습니다. fluo는 **로깅**, **Prometheus 메트릭**, **헬스 체크**, **요청 상관관계(Correlation)**를 하나의 응집된 운영 전략으로 통합한 관측 가능성 모델을 제공합니다.
 
-## 왜 Konekti의 관측 가능성인가요?
+## 왜 fluo의 관측 가능성인가요?
 
 - **통합된 문맥 (Unified Context)**: 모든 로그 항목, 메트릭, 트레이스(Trace)는 비동기 경계를 넘어 유지되는 일관된 `X-Request-Id`로 연결됩니다.
 - **기본으로 제공되는 운영 준비**: 몇 줄의 코드만으로 Kubernetes, Prometheus, Grafana와 같은 업계 표준 도구와 호환되는 `/health`, `/ready`, `/metrics` 엔드포인트를 노출할 수 있습니다.
@@ -13,15 +13,15 @@
 
 ## 책임 분담
 
-- **`@konekti/metrics` (텔레메트리)**: Prometheus 호환 메트릭을 수집하고 노출합니다. HTTP 지연 시간 및 요청 수와 같은 저수준 계측(Instrumentation)을 담당합니다.
-- **`@konekti/terminus` (헬스 및 수명 주기)**: 데이터베이스, Redis, 커스텀 로직 등 복잡한 헬스 체크를 오케스트레이션하고 우아한 종료 시퀀스를 관리합니다.
-- **`@konekti/http` (상관관계)**: 요청의 여정 동안 `requestId`를 전달하는 `AsyncLocalStorage` 문맥을 관리합니다.
-- **`@konekti/runtime` (상태)**: 헬스 시스템에서 사용하는 기본적인 "is-alive" 및 "is-ready" 플래그를 제공합니다.
+- **`@fluojs/metrics` (텔레메트리)**: Prometheus 호환 메트릭을 수집하고 노출합니다. HTTP 지연 시간 및 요청 수와 같은 저수준 계측(Instrumentation)을 담당합니다.
+- **`@fluojs/terminus` (헬스 및 수명 주기)**: 데이터베이스, Redis, 커스텀 로직 등 복잡한 헬스 체크를 오케스트레이션하고 우아한 종료 시퀀스를 관리합니다.
+- **`@fluojs/http` (상관관계)**: 요청의 여정 동안 `requestId`를 전달하는 `AsyncLocalStorage` 문맥을 관리합니다.
+- **`@fluojs/runtime` (상태)**: 헬스 시스템에서 사용하는 기본적인 "is-alive" 및 "is-ready" 플래그를 제공합니다.
 
 ## 일반적인 워크플로우
 
 ### 1. 요청 상관관계 (Correlation)
-Konekti는 들어오는 모든 요청에 고유 ID를 자동으로 할당합니다. 이 ID는 파라미터를 전달하지 않고도 코드 어디에서나 접근할 수 있습니다.
+fluo는 들어오는 모든 요청에 고유 ID를 자동으로 할당합니다. 이 ID는 파라미터를 전달하지 않고도 코드 어디에서나 접근할 수 있습니다.
 
 ```typescript
 // 서비스 로직 어디에서나

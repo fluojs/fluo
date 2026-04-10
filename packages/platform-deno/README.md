@@ -1,8 +1,8 @@
-# @konekti/platform-deno
+# @fluojs/platform-deno
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Deno-backed HTTP adapter for the Konekti runtime, built on native `Deno.serve`.
+Deno-backed HTTP adapter for the fluo runtime, built on native `Deno.serve`.
 
 ## Table of Contents
 
@@ -17,19 +17,19 @@ Deno-backed HTTP adapter for the Konekti runtime, built on native `Deno.serve`.
 ## Installation
 
 ```bash
-deno add npm:@konekti/platform-deno npm:@konekti/runtime npm:@konekti/http
+deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 ```
 
 ## When to Use
 
-Use this package when running Konekti applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
+Use this package when running fluo applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
 
 During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before the Deno server lifecycle completes.
 
 ## Quick Start
 
 ```typescript
-import { runDenoApplication } from '@konekti/platform-deno';
+import { runDenoApplication } from '@fluojs/platform-deno';
 import { AppModule } from './app.module.ts';
 
 await runDenoApplication(AppModule, {
@@ -48,7 +48,7 @@ const response = await adapter.handle(new Request('http://localhost:3000/health'
 ```
 
 ### Deno-Native WebSocket Support
-The adapter supports Deno's native `Deno.upgradeWebSocket` through the `@konekti/websockets/deno` binding.
+The adapter supports Deno's native `Deno.upgradeWebSocket` through the `@fluojs/websockets/deno` binding.
 
 ```typescript
 // Gateways automatically use Deno's native upgrade when the Deno adapter is active
@@ -65,9 +65,9 @@ export class MyGateway {}
 
 ## Related Packages
 
-- `@konekti/runtime`: Core framework runtime.
-- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/deno`.
-- `@konekti/http`: HTTP decorators and abstractions.
+- `@fluojs/runtime`: Core framework runtime.
+- `@fluojs/websockets`: Includes specific subpath `@fluojs/websockets/deno`.
+- `@fluojs/http`: HTTP decorators and abstractions.
 
 ## Example Sources
 

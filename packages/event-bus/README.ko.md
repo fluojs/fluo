@@ -1,8 +1,8 @@
-# @konekti/event-bus
+# @fluojs/event-bus
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 인프로세스(In-process) 이벤트 발행 및 구독 패키지입니다. 데코레이터 기반의 핸들러 탐색 기능을 제공하며, Redis Pub/Sub과 같은 외부 트랜스포트 어댑터를 통해 프로세스 간 통신을 지원합니다.
+fluo를 위한 인프로세스(In-process) 이벤트 발행 및 구독 패키지입니다. 데코레이터 기반의 핸들러 탐색 기능을 제공하며, Redis Pub/Sub과 같은 외부 트랜스포트 어댑터를 통해 프로세스 간 통신을 지원합니다.
 
 ## 목차
 
@@ -17,7 +17,7 @@ Konekti를 위한 인프로세스(In-process) 이벤트 발행 및 구독 패키
 ## 설치
 
 ```bash
-npm install @konekti/event-bus
+npm install @fluojs/event-bus
 ```
 
 ## 사용 시점
@@ -33,7 +33,7 @@ npm install @konekti/event-bus
 이벤트 클래스를 정의하고, 핸들러 메서드에 `@OnEvent` 데코레이터를 사용합니다.
 
 ```typescript
-import { OnEvent } from '@konekti/event-bus';
+import { OnEvent } from '@fluojs/event-bus';
 
 export class UserSignedUpEvent {
   constructor(public readonly email: string) {}
@@ -52,8 +52,8 @@ export class NotificationService {
 `EventBusModule`을 등록하고 `EventBusLifecycleService`를 주입받아 이벤트를 발행합니다.
 
 ```typescript
-import { Module, Inject } from '@konekti/core';
-import { EventBusModule, EventBusLifecycleService } from '@konekti/event-bus';
+import { Module, Inject } from '@fluojs/core';
+import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
 
 @Module({
   imports: [EventBusModule.forRoot()],
@@ -79,7 +79,7 @@ export class UserService {
 트랜스포트 어댑터를 연결하여 이벤트 버스를 다른 프로세스로 확장할 수 있습니다.
 
 ```typescript
-import { RedisEventBusTransport } from '@konekti/event-bus/redis';
+import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
 
 EventBusModule.forRoot({
   transport: new RedisEventBusTransport({ 
@@ -111,8 +111,8 @@ class UserRegisteredEvent {
 
 ## 관련 패키지
 
-- `@konekti/cqrs`: 더 정형화된 아키텍처 패턴을 위해 이벤트 버스 위에 구축된 패키지입니다.
-- `@konekti/redis`: `RedisEventBusTransport` 사용 시 필요한 클라이언트를 제공합니다.
+- `@fluojs/cqrs`: 더 정형화된 아키텍처 패턴을 위해 이벤트 버스 위에 구축된 패키지입니다.
+- `@fluojs/redis`: `RedisEventBusTransport` 사용 시 필요한 클라이언트를 제공합니다.
 
 ## 예제 소스
 

@@ -1,8 +1,8 @@
-# @konekti/di
+# @fluojs/di
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-모든 Konekti 애플리케이션을 구동하는 최소 토큰 기반 의존성 주입 컨테이너입니다.
+모든 fluo 애플리케이션을 구동하는 최소 토큰 기반 의존성 주입 컨테이너입니다.
 
 ## 목차
 
@@ -17,7 +17,7 @@
 ## 설치
 
 ```bash
-npm install @konekti/di
+npm install @fluojs/di
 ```
 
 ## 사용 시점
@@ -32,8 +32,8 @@ npm install @konekti/di
 컨테이너는 등록된 provider를 기준으로 토큰을 인스턴스로 해석합니다.
 
 ```ts
-import { Container } from '@konekti/di';
-import { Inject, Scope } from '@konekti/core';
+import { Container } from '@fluojs/di';
+import { Inject, Scope } from '@fluojs/core';
 
 class Logger {
   log(message: string) {
@@ -89,9 +89,9 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 
 ## 관련 패키지
 
-- `@konekti/core`: `@Inject()`와 `@Scope()` 데코레이터를 정의합니다.
-- `@konekti/runtime`: 부트스트랩 중 provider 등록과 모듈 그래프 조립을 담당합니다.
-- `@konekti/http`: 들어오는 요청마다 request scope를 생성합니다.
+- `@fluojs/core`: `@Inject()`와 `@Scope()` 데코레이터를 정의합니다.
+- `@fluojs/runtime`: 부트스트랩 중 provider 등록과 모듈 그래프 조립을 담당합니다.
+- `@fluojs/http`: 들어오는 요청마다 request scope를 생성합니다.
 
 ## 예제 소스
 

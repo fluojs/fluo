@@ -4,7 +4,7 @@
   <a href="./public-export-tsdoc-baseline.md">English</a> | <strong>한국어</strong>
 </p>
 
-이 문서는 `@konekti/*` 패키지에서 변경되는 public export에 적용할 소스 레벨 TSDoc 최소 기준을 정의합니다. 이후 패키지군별 확장 작업 전에 IDE hover 도움말, 코드 리뷰 기대치, 패키지 README 예제를 같은 기준으로 맞추기 위한 출발점입니다.
+이 문서는 `@fluojs/*` 패키지에서 변경되는 public export에 적용할 소스 레벨 TSDoc 최소 기준을 정의합니다. 이후 패키지군별 확장 작업 전에 IDE hover 도움말, 코드 리뷰 기대치, 패키지 README 예제를 같은 기준으로 맞추기 위한 출발점입니다.
 
 ## 이 문서가 중요한 경우
 

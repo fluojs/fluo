@@ -2,9 +2,9 @@
 
 <p><a href="./caching.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-성능은 Konekti의 핵심 원칙 중 하나입니다. Konekti의 캐싱 시스템은 **투명한 HTTP 응답 캐싱**과 **프로그래밍 방식의 애플리케이션 레벨 캐싱**을 위한 통합 인터페이스를 제공하며, 인메모리(In-memory) 및 분산 Redis 백엔드를 모두 지원합니다.
+성능은 fluo의 핵심 원칙 중 하나입니다. fluo의 캐싱 시스템은 **투명한 HTTP 응답 캐싱**과 **프로그래밍 방식의 애플리케이션 레벨 캐싱**을 위한 통합 인터페이스를 제공하며, 인메모리(In-memory) 및 분산 Redis 백엔드를 모두 지원합니다.
 
-## 왜 Konekti의 캐싱인가요?
+## 왜 fluo의 캐싱인가요?
 
 - **투명한 성능 향상**: 단일 인터셉터 설정만으로 비용이 많이 드는 `GET` 요청의 응답 시간을 개선할 수 있습니다.
 - **신원 인식(Identity-Aware) 캐싱**: 인증된 사용자(`principal.subject`)별로 캐시된 응답을 자동 격리하여 사용자 간 데이터 유출을 방지합니다.
@@ -13,9 +13,9 @@
 
 ## 책임 분담
 
-- **`@konekti/cache-manager` (파사드)**: 수동 작업을 위한 `CacheService`와 HTTP를 위한 `CacheInterceptor`를 정의합니다. 플러그형 저장소 아키텍처를 관리합니다.
-- **`@konekti/http` (후크)**: 요청 처리 과정에서 인터셉터가 캐시를 읽고 쓸 수 있도록 필요한 수명 주기 후크(Lifecycle hooks)를 제공합니다.
-- **`@konekti/redis` (분산 저장소)**: 여러 애플리케이션 인스턴스에 걸쳐 캐시를 유지할 수 있게 해주는 선택적 패키지입니다.
+- **`@fluojs/cache-manager` (파사드)**: 수동 작업을 위한 `CacheService`와 HTTP를 위한 `CacheInterceptor`를 정의합니다. 플러그형 저장소 아키텍처를 관리합니다.
+- **`@fluojs/http` (후크)**: 요청 처리 과정에서 인터셉터가 캐시를 읽고 쓸 수 있도록 필요한 수명 주기 후크(Lifecycle hooks)를 제공합니다.
+- **`@fluojs/redis` (분산 저장소)**: 여러 애플리케이션 인스턴스에 걸쳐 캐시를 유지할 수 있게 해주는 선택적 패키지입니다.
 
 ## 일반적인 워크플로우
 
@@ -43,7 +43,7 @@ async getExchangeRates() {
 ```
 
 ### 3. 신원 바인딩 키 (Identity-Bound Keys)
-Konekti의 기본 키 생성 전략은 보안을 최우선으로 합니다. `RequestContext.principal`이 존재하는 경우, 캐시 키에 사용자의 식별자(Subject)가 자동으로 포함됩니다.
+fluo의 기본 키 생성 전략은 보안을 최우선으로 합니다. `RequestContext.principal`이 존재하는 경우, 캐시 키에 사용자의 식별자(Subject)가 자동으로 포함됩니다.
 - **기본 키**: `라우트 경로 + 쿼리 파라미터(활성화된 경우) + principal_subject`
 - **결과**: 사용자 A와 사용자 B는 동일한 URL에 접근하더라도 서로의 캐시된 응답을 절대 볼 수 없습니다.
 

@@ -1,8 +1,8 @@
-# @konekti/mongoose
+# @fluojs/mongoose
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Mongoose integration for Konekti with session-aware transaction handling and lifecycle-friendly connection management.
+Mongoose integration for fluo with session-aware transaction handling and lifecycle-friendly connection management.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Mongoose integration for Konekti with session-aware transaction handling and lif
 ## Installation
 
 ```bash
-pnpm add @konekti/mongoose
+pnpm add @fluojs/mongoose
 pnpm add mongoose
 ```
 
@@ -30,8 +30,8 @@ pnpm add mongoose
 ## Quick Start
 
 ```ts
-import { Module } from '@konekti/core';
-import { MongooseModule } from '@konekti/mongoose';
+import { Module } from '@fluojs/core';
+import { MongooseModule } from '@fluojs/mongoose';
 import mongoose from 'mongoose';
 
 const connection = mongoose.createConnection('mongodb://localhost:27017/test');
@@ -52,7 +52,7 @@ class AppModule {}
 ### Access the connection through `MongooseConnection`
 
 ```ts
-import { MongooseConnection } from '@konekti/mongoose';
+import { MongooseConnection } from '@fluojs/mongoose';
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
@@ -78,8 +78,8 @@ await this.conn.transaction(async () => {
 ### Request-scoped transactions
 
 ```ts
-import { UseInterceptors } from '@konekti/http';
-import { MongooseTransactionInterceptor } from '@konekti/mongoose';
+import { UseInterceptors } from '@fluojs/http';
+import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
 class UserController {}
@@ -96,9 +96,9 @@ class UserController {}
 
 ## Related Packages
 
-- `@konekti/runtime`: manages startup and shutdown hooks
-- `@konekti/http`: provides the interceptor chain for request transactions
-- `@konekti/prisma` and `@konekti/drizzle`: alternate database integrations with different transaction models
+- `@fluojs/runtime`: manages startup and shutdown hooks
+- `@fluojs/http`: provides the interceptor chain for request transactions
+- `@fluojs/prisma` and `@fluojs/drizzle`: alternate database integrations with different transaction models
 
 ## Example Sources
 

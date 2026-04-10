@@ -1,8 +1,8 @@
-# @konekti/discord
+# @fluojs/discord
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Webhook-first, transport-agnostic Discord delivery core for Konekti. It provides a Nest-like module API, an injectable `DiscordService` for standalone usage, and a first-party `DiscordChannel` for `@konekti/notifications` integration without assuming a Node-only Discord SDK.
+Webhook-first, transport-agnostic Discord delivery core for fluo. It provides a Nest-like module API, an injectable `DiscordService` for standalone usage, and a first-party `DiscordChannel` for `@fluojs/notifications` integration without assuming a Node-only Discord SDK.
 
 ## Table of Contents
 
@@ -11,7 +11,7 @@ Webhook-first, transport-agnostic Discord delivery core for Konekti. It provides
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Standalone delivery with `DiscordService`](#standalone-delivery-with-discordservice)
-  - [Integration with `@konekti/notifications`](#integration-with-konektinotifications)
+  - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
@@ -21,12 +21,12 @@ Webhook-first, transport-agnostic Discord delivery core for Konekti. It provides
 ## Installation
 
 ```bash
-npm install @konekti/discord @konekti/notifications
+npm install @fluojs/discord @fluojs/notifications
 ```
 
 ## When to Use
 
-- When you want one package that can send Discord messages directly and also plug into `@konekti/notifications`.
+- When you want one package that can send Discord messages directly and also plug into `@fluojs/notifications`.
 - When transport choice must stay explicit and portable across Node, Bun, Deno, and Cloudflare-compatible application boundaries.
 - When Discord delivery should prefer incoming webhooks while still allowing richer REST or bot-backed integrations through a custom transport contract.
 - When configuration must enter through DI or explicit options instead of `process.env` reads inside the package.
@@ -36,8 +36,8 @@ npm install @konekti/discord @konekti/notifications
 ### Register the module
 
 ```typescript
-import { Module } from '@konekti/core';
-import { DiscordModule, createDiscordWebhookTransport } from '@konekti/discord';
+import { Module } from '@fluojs/core';
+import { DiscordModule, createDiscordWebhookTransport } from '@fluojs/discord';
 
 @Module({
   imports: [
@@ -56,8 +56,8 @@ export class AppModule {}
 ### Send Discord messages directly
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { DiscordService } from '@konekti/discord';
+import { Inject } from '@fluojs/core';
+import { DiscordService } from '@fluojs/discord';
 
 export class DeployNotifier {
   constructor(@Inject(DiscordService) private readonly discord: DiscordService) {}
@@ -95,18 +95,18 @@ Behavioral contract notes:
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
-### Integration with `@konekti/notifications`
+### Integration with `@fluojs/notifications`
 
 Inject `DISCORD_CHANNEL` into `NotificationsModule.forRootAsync(...)` so the Discord package remains the only place that understands Discord-specific payload fields and recipient-to-thread translation.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { NotificationsModule } from '@konekti/notifications';
+import { Module } from '@fluojs/core';
+import { NotificationsModule } from '@fluojs/notifications';
 import {
   DISCORD_CHANNEL,
   DiscordModule,
   createDiscordWebhookTransport,
-} from '@konekti/discord';
+} from '@fluojs/discord';
 
 @Module({
   imports: [
@@ -196,9 +196,9 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ## Related Packages
 
-- `@konekti/notifications`: Shared orchestration layer that consumes `DISCORD_CHANNEL`.
-- `@konekti/config`: Recommended for resolving webhook URLs or thread ids without direct environment access.
-- `@konekti/event-bus`: Useful when Discord notifications are one side effect among several event-driven workflows.
+- `@fluojs/notifications`: Shared orchestration layer that consumes `DISCORD_CHANNEL`.
+- `@fluojs/config`: Recommended for resolving webhook URLs or thread ids without direct environment access.
+- `@fluojs/event-bus`: Useful when Discord notifications are one side effect among several event-driven workflows.
 
 ## Example Sources
 

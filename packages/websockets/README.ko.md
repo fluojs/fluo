@@ -1,8 +1,8 @@
-# @konekti/websockets
+# @fluojs/websockets
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성 패키지입니다.
+fluo 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작성 패키지입니다.
 
 ## 목차
 
@@ -17,19 +17,19 @@ Konekti 런타임을 위한 데코레이터 기반 WebSocket 게이트웨이 작
 ## 설치
 
 ```bash
-npm install @konekti/websockets ws
+npm install @fluojs/websockets ws
 ```
 
 ## 사용 시점
 
-Konekti 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패키지를 사용합니다. 연결, 메시지 및 연결 해제 처리를 위한 깔끔한 데코레이터 기반 API를 제공하며, 다양한 런타임(Node.js, Bun, Deno, Cloudflare Workers)을 최고 수준으로 지원합니다.
+fluo 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패키지를 사용합니다. 연결, 메시지 및 연결 해제 처리를 위한 깔끔한 데코레이터 기반 API를 제공하며, 다양한 런타임(Node.js, Bun, Deno, Cloudflare Workers)을 최고 수준으로 지원합니다.
 
 ## 빠른 시작
 
 ```typescript
-import { WebSocketGateway, OnConnect, OnMessage } from '@konekti/websockets';
-import { NodeWebSocketModule } from '@konekti/websockets/node';
-import { Module } from '@konekti/core';
+import { WebSocketGateway, OnConnect, OnMessage } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
+import { Module } from '@fluojs/core';
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
@@ -87,10 +87,10 @@ class DedicatedChatGateway {}
 
 | 런타임 | 서브패스 | 모듈 |
 | --- | --- | --- |
-| Node.js | `@konekti/websockets/node` | `NodeWebSocketModule` |
-| Bun | `@konekti/websockets/bun` | `BunWebSocketModule` |
-| Deno | `@konekti/websockets/deno` | `DenoWebSocketModule` |
-| Workers | `@konekti/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
 
 ## 예제 소스
 

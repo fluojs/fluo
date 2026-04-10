@@ -2,7 +2,7 @@
 
 Status: Draft (Phase 4)
 
-This RFC defines the API and integration plan for `@FieldResolver` in `@konekti/graphql`.
+This RFC defines the API and integration plan for `@FieldResolver` in `@fluojs/graphql`.
 No runtime implementation is included in this phase.
 
 ## Goals

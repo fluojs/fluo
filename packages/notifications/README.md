@@ -1,8 +1,8 @@
-# @konekti/notifications
+# @fluojs/notifications
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Channel-agnostic notification orchestration for Konekti. It freezes the shared contract for notification channels, provides a Nest-like module API, and exposes optional queue-backed delivery and lifecycle event publication seams.
+Channel-agnostic notification orchestration for fluo. It freezes the shared contract for notification channels, provides a Nest-like module API, and exposes optional queue-backed delivery and lifecycle event publication seams.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ Channel-agnostic notification orchestration for Konekti. It freezes the shared c
 ## Installation
 
 ```bash
-npm install @konekti/notifications
+npm install @fluojs/notifications
 ```
 
 ## When to Use
@@ -35,11 +35,11 @@ npm install @konekti/notifications
 ### 1. Register the foundation module
 
 ```typescript
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import {
   NotificationsModule,
   type NotificationChannel,
-} from '@konekti/notifications';
+} from '@fluojs/notifications';
 
 const emailChannel: NotificationChannel = {
   channel: 'email',
@@ -66,8 +66,8 @@ export class AppModule {}
 ### 2. Inject `NotificationsService`
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { NotificationsService } from '@konekti/notifications';
+import { Inject } from '@fluojs/core';
+import { NotificationsService } from '@fluojs/notifications';
 
 export class WelcomeService {
   constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
@@ -76,7 +76,7 @@ export class WelcomeService {
     await this.notifications.dispatch({
       channel: 'email',
       recipients: [email],
-      subject: 'Welcome to Konekti',
+      subject: 'Welcome to fluo',
       payload: {
         template: 'welcome-email',
         userId,
@@ -118,7 +118,7 @@ Behavioral contract notes:
 
 ### Lifecycle publication through an event publisher
 
-Publish caller-visible lifecycle events without coupling the foundation package to `@konekti/event-bus` directly.
+Publish caller-visible lifecycle events without coupling the foundation package to `@fluojs/event-bus` directly.
 
 ```typescript
 NotificationsModule.forRoot({
@@ -147,7 +147,7 @@ The foundation package intentionally does **not**:
 
 - ship built-in email, Slack, or Discord implementations
 - inspect `process.env` directly
-- depend on `@konekti/queue` or `@konekti/event-bus` concrete runtime types
+- depend on `@fluojs/queue` or `@fluojs/event-bus` concrete runtime types
 - encode provider-specific payload semantics into the shared contract
 
 These limitations are part of the package contract so leaf packages can evolve independently while sharing one stable orchestration layer.
@@ -179,9 +179,9 @@ These limitations are part of the package contract so leaf packages can evolve i
 
 ## Related Packages
 
-- `@konekti/queue`: Recommended when bulk notification delivery should run in the background.
-- `@konekti/event-bus`: Recommended when notification lifecycle events should be published to the wider app.
-- `@konekti/config`: Recommended for passing provider configuration into `forRootAsync()` without direct environment access.
+- `@fluojs/queue`: Recommended when bulk notification delivery should run in the background.
+- `@fluojs/event-bus`: Recommended when notification lifecycle events should be published to the wider app.
+- `@fluojs/config`: Recommended for passing provider configuration into `forRootAsync()` without direct environment access.
 
 ## Example Sources
 

@@ -1,8 +1,8 @@
-# @konekti/microservices
+# @fluojs/microservices
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Transport-driven microservices for Konekti. Build scalable, message-driven architectures with deep DI integration and support for multiple transport protocols including TCP, Redis, NATS, Kafka, RabbitMQ, and gRPC.
+Transport-driven microservices for fluo. Build scalable, message-driven architectures with deep DI integration and support for multiple transport protocols including TCP, Redis, NATS, Kafka, RabbitMQ, and gRPC.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Transport-driven microservices for Konekti. Build scalable, message-driven archi
 ## Installation
 
 ```bash
-pnpm add @konekti/microservices
+pnpm add @fluojs/microservices
 ```
 
 Optional transport-specific dependencies:
@@ -37,9 +37,9 @@ Optional transport-specific dependencies:
 Define a message handler and bootstrap the microservice using the TCP transport.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { KonektiFactory } from '@konekti/runtime';
-import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@konekti/microservices';
+import { Module } from '@fluojs/core';
+import { fluoFactory } from '@fluojs/runtime';
+import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@fluojs/microservices';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -58,7 +58,7 @@ class MathHandler {
 })
 class AppModule {}
 
-const microservice = await KonektiFactory.createMicroservice(AppModule);
+const microservice = await fluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
@@ -74,11 +74,11 @@ Use `@MessagePattern` for request-response flows and `@EventPattern` for fire-an
 First-party support for all gRPC streaming modes: Server-side, Client-side, and Bidirectional streaming using `@ServerStreamPattern`, `@ClientStreamPattern`, and `@BidiStreamPattern`.
 
 ### Request-Scoped DI
-Microservice handlers fully support Konekti's DI scopes. Request-scoped providers are isolated per message or per event, ensuring safe state management in concurrent processing.
+Microservice handlers fully support fluo's DI scopes. Request-scoped providers are isolated per message or per event, ensuring safe state management in concurrent processing.
 
 ## Public API Overview
 
-### Root barrel (`@konekti/microservices`)
+### Root barrel (`@fluojs/microservices`)
 
 - `MicroservicesModule`, `createMicroservicesProviders`: module registration helpers.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: routing and streaming decorators.
@@ -88,21 +88,21 @@ Microservice handlers fully support Konekti's DI scopes. Request-scoped provider
 
 ### Supported transport subpaths
 
-- `@konekti/microservices/tcp`
-- `@konekti/microservices/redis` (Redis Pub/Sub transport)
-- `@konekti/microservices/nats`
-- `@konekti/microservices/kafka`
-- `@konekti/microservices/rabbitmq`
-- `@konekti/microservices/grpc`
-- `@konekti/microservices/mqtt`
+- `@fluojs/microservices/tcp`
+- `@fluojs/microservices/redis` (Redis Pub/Sub transport)
+- `@fluojs/microservices/nats`
+- `@fluojs/microservices/kafka`
+- `@fluojs/microservices/rabbitmq`
+- `@fluojs/microservices/grpc`
+- `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport` is currently supported from the root barrel only; there is no dedicated `@konekti/microservices/redis-streams` export.
+`RedisStreamsMicroserviceTransport` is currently supported from the root barrel only; there is no dedicated `@fluojs/microservices/redis-streams` export.
 
 ## Related Packages
 
-- `@konekti/core`: Core DI and module system.
-- `@konekti/runtime`: Microservice bootstrap and factory.
-- `@konekti/di`: Underlying dependency injection engine.
+- `@fluojs/core`: Core DI and module system.
+- `@fluojs/runtime`: Microservice bootstrap and factory.
+- `@fluojs/di`: Underlying dependency injection engine.
 
 ## Example Sources
 

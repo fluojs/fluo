@@ -8,8 +8,8 @@
 - [챕터 실습 맵](./chapter-labs.md)
 
 - [파트 I 개요 — 철학과 멘탈 모델](./chapters/part-01-foundations-and-framing.md)
-  - [1장. 왜 Konekti인가](./chapters/chapter-01-why-konekti.md)
-  - [2장. Konekti 멘탈 모델](./chapters/chapter-02-explicit-mental-model.md)
+  - [1장. 왜 fluo인가](./chapters/chapter-01-why-fluo.md)
+  - [2장. fluo 멘탈 모델](./chapters/chapter-02-explicit-mental-model.md)
   - [3장. 용어와 학습 지도](./chapters/chapter-03-glossary-and-learning-map.md)
 
 - [파트 II 개요 — 핵심 실행 경로](./chapters/part-02-core-application-path.md)

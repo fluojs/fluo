@@ -1,8 +1,8 @@
-# @konekti/studio
+# @fluojs/studio
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-File-first shared platform snapshot viewer for Konekti runtime exports.
+File-first shared platform snapshot viewer for fluo runtime exports.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ File-first shared platform snapshot viewer for Konekti runtime exports.
 ## Installation
 
 ```bash
-pnpm add @konekti/studio
+pnpm add @fluojs/studio
 ```
 
 ## When to Use
@@ -29,11 +29,11 @@ pnpm add @konekti/studio
 
 ## Quick Start
 
-Studio consumes JSON exports from the Konekti CLI.
+Studio consumes JSON exports from the fluo CLI.
 
 1. **Export a snapshot**:
    ```bash
-   konekti inspect ./src/app.module.ts --json > snapshot.json
+   fluo inspect ./src/app.module.ts --json > snapshot.json
    ```
 
 2. **Open Studio**:
@@ -67,8 +67,8 @@ Studio is primarily a web application, but it defines contracts for consuming pl
 
 ## Related Packages
 
-- **[@konekti/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
-- **[@konekti/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
+- **[@fluojs/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
+- **[@fluojs/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
 
 ## Example Sources
 

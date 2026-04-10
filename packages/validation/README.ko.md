@@ -1,10 +1,10 @@
-# @konekti/validation
+# @fluojs/validation
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 입력값 검증 데코레이터, Mapped DTO 헬퍼 및 검증 엔진입니다.
+fluo를 위한 입력값 검증 데코레이터, Mapped DTO 헬퍼 및 검증 엔진입니다.
 
-`@konekti/validation`은 애플리케이션의 **입력 경계(Input Boundary)**를 담당합니다. 가공되지 않은(untyped) raw 데이터를 검증이 완료된 타입 기반 클래스 인스턴스(DTO)로 변환하는 강력한 데코레이터 세트와 실체화(Materialization) 엔진을 제공합니다. 이를 통해 비즈니스 로직에 도달하기 전 데이터의 무결성을 보장합니다.
+`@fluojs/validation`은 애플리케이션의 **입력 경계(Input Boundary)**를 담당합니다. 가공되지 않은(untyped) raw 데이터를 검증이 완료된 타입 기반 클래스 인스턴스(DTO)로 변환하는 강력한 데코레이터 세트와 실체화(Materialization) 엔진을 제공합니다. 이를 통해 비즈니스 로직에 도달하기 전 데이터의 무결성을 보장합니다.
 
 ## 목차
 
@@ -23,7 +23,7 @@ Konekti를 위한 입력값 검증 데코레이터, Mapped DTO 헬퍼 및 검증
 ## 설치
 
 ```bash
-pnpm add @konekti/validation
+pnpm add @fluojs/validation
 ```
 
 ## 사용 시점
@@ -38,7 +38,7 @@ pnpm add @konekti/validation
 표준 데코레이터를 사용하여 DTO를 정의하고, `DefaultValidator`를 사용하여 raw 데이터를 실체화 및 검증합니다.
 
 ```typescript
-import { IsEmail, IsString, MinLength, DefaultValidator } from '@konekti/validation';
+import { IsEmail, IsString, MinLength, DefaultValidator } from '@fluojs/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -71,7 +71,7 @@ console.log(user.name); // "Ko"
 모든 검증 데코레이터와 바인딩 메타데이터를 보존하면서 새로운 DTO 클래스를 파생합니다.
 
 ```typescript
-import { IsString, IsEmail, PickType, PartialType } from '@konekti/validation';
+import { IsString, IsEmail, PickType, PartialType } from '@fluojs/validation';
 
 class UserDto {
   @IsString() name: string = '';
@@ -87,11 +87,11 @@ class UpdateUserDto extends PartialType(UserDto) {}
 
 ### Standard Schema 지원 (Zod, Valibot)
 
-`@ValidateClass`를 통해 클래스 레벨에서 선호하는 스키마 라이브러리를 사용할 수 있습니다. Konekti는 [Standard Schema](https://github.com/standard-schema/spec) 규격을 구현하는 모든 라이브러리를 지원합니다.
+`@ValidateClass`를 통해 클래스 레벨에서 선호하는 스키마 라이브러리를 사용할 수 있습니다. fluo는 [Standard Schema](https://github.com/standard-schema/spec) 규격을 구현하는 모든 라이브러리를 지원합니다.
 유효하지 않은 입력은 명시적인 `issues`로 보고되어야 하며, 이슈가 없는 검증 결과는 성공으로 처리합니다.
 
 ```typescript
-import { ValidateClass } from '@konekti/validation';
+import { ValidateClass } from '@fluojs/validation';
 import { z } from 'zod';
 
 const UserSchema = z.object({
@@ -109,7 +109,7 @@ class RestrictedUserDto {
 `@ValidateNested`를 사용하여 복잡한 계층적 데이터 구조를 검증합니다.
 
 ```typescript
-import { IsString, ValidateNested } from '@konekti/validation';
+import { IsString, ValidateNested } from '@fluojs/validation';
 
 class ProfileDto {
   @IsString() bio: string = '';
@@ -139,9 +139,9 @@ class UserDto {
 
 ## 관련 패키지
 
-- `@konekti/core`: 데코레이터가 사용하는 메타데이터 시스템을 제공합니다.
-- `@konekti/http`: 이 패키지를 사용하여 들어오는 요청 데이터를 자동으로 검증합니다.
-- `@konekti/serialization`: **출력** 측면(응답용 DTO 가공)을 담당합니다.
+- `@fluojs/core`: 데코레이터가 사용하는 메타데이터 시스템을 제공합니다.
+- `@fluojs/http`: 이 패키지를 사용하여 들어오는 요청 데이터를 자동으로 검증합니다.
+- `@fluojs/serialization`: **출력** 측면(응답용 DTO 가공)을 담당합니다.
 
 ## 예제 소스
 

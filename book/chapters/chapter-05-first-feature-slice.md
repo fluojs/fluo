@@ -3,15 +3,15 @@
 > **기준 소스**: [repo:docs/getting-started/first-feature-path.md] [ex:realworld-api/README.md]
 > **주요 구현 앵커**: [ex:realworld-api/src/users/users.module.ts] [ex:realworld-api/src/users/users.service.ts] [ex:realworld-api/src/users/users.controller.ts]
 
-이 장에서는 Konekti가 기능을 어떻게 쪼개는지 살펴본다. 핵심은 폴더 구조가 아니라 **기능 경계가 코드에 어떻게 드러나는가**다.
+이 장에서는 fluo가 기능을 어떻게 쪼개는지 살펴본다. 핵심은 폴더 구조가 아니라 **기능 경계가 코드에 어떻게 드러나는가**다.
 
 ## 왜 기능 슬라이스가 초반에 와야 하는가
 
-많은 프레임워크 책은 controller를 먼저 만들고 service를 나중에 붙이며 module은 마지막에 다룬다. 하지만 Konekti에서는 처음부터 **이 기능을 어떤 경계로 독립시킬 것인가**를 생각해야 한다 `[repo:docs/getting-started/first-feature-path.md]`. 왜냐하면 explicit DI와 module graph는 애초에 기능 단위의 조립을 전제로 하기 때문이다.
+많은 프레임워크 책은 controller를 먼저 만들고 service를 나중에 붙이며 module은 마지막에 다룬다. 하지만 fluo에서는 처음부터 **이 기능을 어떤 경계로 독립시킬 것인가**를 생각해야 한다 `[repo:docs/getting-started/first-feature-path.md]`. 왜냐하면 explicit DI와 module graph는 애초에 기능 단위의 조립을 전제로 하기 때문이다.
 
 ## 왜 “기능 슬라이스”로 설명하는가
 
-첫 기능 경로 문서는 Konekti를 단순한 controller 추가 과정이 아니라, **하나의 독립된 기능 조각을 앱에 붙이는 과정**으로 설명한다 `[repo:docs/getting-started/first-feature-path.md]`. 이 관점은 초반부터 중요하다. 왜냐하면 Konekti의 `@Module`과 `exports`는 나중에 커질 구조를 미리 고려한 도구이기 때문이다.
+첫 기능 경로 문서는 fluo를 단순한 controller 추가 과정이 아니라, **하나의 독립된 기능 조각을 앱에 붙이는 과정**으로 설명한다 `[repo:docs/getting-started/first-feature-path.md]`. 이 관점은 초반부터 중요하다. 왜냐하면 fluo의 `@Module`과 `exports`는 나중에 커질 구조를 미리 고려한 도구이기 때문이다.
 
 ## RealWorld 예제의 users 슬라이스
 
@@ -81,7 +81,7 @@ export class UsersService {
 
 ## controller는 단순 endpoint 선언이 아니다
 
-controller는 흔히 라우트 파일처럼 보이지만, Konekti에서는 request pipeline과 domain logic 사이의 번역층에 가깝다 `[ex:realworld-api/src/users/users.controller.ts]`. controller는 request DTO를 받고, validation이 끝난 값을 service로 넘기고, service 결과를 response DTO로 돌려준다.
+controller는 흔히 라우트 파일처럼 보이지만, fluo에서는 request pipeline과 domain logic 사이의 번역층에 가깝다 `[ex:realworld-api/src/users/users.controller.ts]`. controller는 request DTO를 받고, validation이 끝난 값을 service로 넘기고, service 결과를 response DTO로 돌려준다.
 
 즉, controller는 “로직을 쓰는 곳”이라기보다, **외부 입력을 내부 세계로 들어오게 만드는 통제 지점**이다.
 
@@ -89,7 +89,7 @@ controller는 흔히 라우트 파일처럼 보이지만, Konekti에서는 reque
 
 JavaScript 중급자는 이미 “함수 몇 개로도 서버는 만들 수 있다”는 사실을 안다. 그래서 여기서 중요한 것은 “할 수 있느냐”가 아니라 **“성장 가능한 경계를 어떻게 처음부터 심을 것이냐”**다.
 
-Konekti는 슬라이스를 통해 다음을 가능하게 한다.
+fluo는 슬라이스를 통해 다음을 가능하게 한다.
 
 - 기능 단위로 모듈을 떼어내기 쉽다.
 - 테스트 범위를 기능별로 잡기 쉽다.

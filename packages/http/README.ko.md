@@ -1,4 +1,4 @@
-# @konekti/http
+# @fluojs/http
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
@@ -17,7 +17,7 @@
 ## 설치
 
 ```bash
-npm install @konekti/http
+npm install @fluojs/http
 ```
 
 ## 사용 시점
@@ -30,8 +30,8 @@ npm install @konekti/http
 ## 빠른 시작
 
 ```ts
-import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/validation';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
+import { IsString, MinLength } from '@fluojs/validation';
 
 class CreateUserDto {
   @FromBody()
@@ -60,7 +60,7 @@ export class UserController {
 ### 가드와 인터셉터
 
 ```ts
-import { Controller, Get, UseGuards, UseInterceptors } from '@konekti/http';
+import { Controller, Get, UseGuards, UseInterceptors } from '@fluojs/http';
 
 @Controller('/admin')
 @UseGuards(AdminGuard)
@@ -76,7 +76,7 @@ class AdminController {
 ### 비동기 요청 컨텍스트
 
 ```ts
-import { getCurrentRequestContext } from '@konekti/http';
+import { getCurrentRequestContext } from '@fluojs/http';
 
 function someDeepHelper() {
   const ctx = getCurrentRequestContext();
@@ -87,7 +87,7 @@ function someDeepHelper() {
 ### 서버 전송 이벤트
 
 ```ts
-import { Get, SseResponse, type RequestContext } from '@konekti/http';
+import { Get, SseResponse, type RequestContext } from '@fluojs/http';
 
 @Get('/events')
 stream(_input: undefined, ctx: RequestContext) {
@@ -106,7 +106,7 @@ stream(_input: undefined, ctx: RequestContext) {
 - **예외**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
 - **헬퍼**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
 
-## 내부 서브경로 (`@konekti/http/internal`)
+## 내부 서브경로 (`@fluojs/http/internal`)
 
 `./internal` 서브경로는 플랫폼 어댑터와 핵심 런타임에서 사용하는 저수준 유틸리티를 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
 
@@ -116,10 +116,10 @@ stream(_input: undefined, ctx: RequestContext) {
 
 ## 관련 패키지
 
-- `@konekti/core`: 컨트롤러, 라우트, DTO 메타데이터를 저장합니다.
-- `@konekti/validation`: HTTP 바인딩 이후 DTO를 검증합니다.
-- `@konekti/runtime`: 부트스트랩 중 디스패처를 조립합니다.
-- `@konekti/passport`: 같은 가드 체인 안에서 인증을 연결합니다.
+- `@fluojs/core`: 컨트롤러, 라우트, DTO 메타데이터를 저장합니다.
+- `@fluojs/validation`: HTTP 바인딩 이후 DTO를 검증합니다.
+- `@fluojs/runtime`: 부트스트랩 중 디스패처를 조립합니다.
+- `@fluojs/passport`: 같은 가드 체인 안에서 인증을 연결합니다.
 
 ## 예제 소스
 

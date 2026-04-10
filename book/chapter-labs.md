@@ -2,7 +2,7 @@
 
 > **기준 소스**: [ex:README.md] [repo:docs/getting-started/first-feature-path.md] [repo:docs/reference/package-chooser.md]
 
-이 파일은 미래의 책 챕터를 실제 Konekti 예제 파일에 연결해, 책이 실행 가능한 자료에 계속 발을 붙이고 있도록 만든다.
+이 파일은 미래의 책 챕터를 실제 fluo 예제 파일에 연결해, 책이 실행 가능한 자료에 계속 발을 붙이고 있도록 만든다.
 
 ## 이 파일을 사용하는 법
 
@@ -16,7 +16,7 @@
 
 | 예정 챕터 | 주요 실습 앵커 | 이 파일이 중요한 이유 |
 | --- | --- | --- |
-| Why Konekti | `[repo:README.md]` | Defines the standard-first positioning, explicit DI framing, and ecosystem categories |
+| Why fluo | `[repo:README.md]` | Defines the standard-first positioning, explicit DI framing, and ecosystem categories |
 | Mental model and glossary | `[repo:docs/reference/glossary-and-mental-model.md]` | Gives the core vocabulary used throughout the repo |
 | Example learning path | `[ex:README.md]` | Defines the official example reading order |
 
@@ -25,7 +25,7 @@
 | 예정 챕터 | 주요 실습 앵커 | 이 파일이 중요한 이유 |
 | --- | --- | --- |
 | Bootstrap and AppModule | `[ex:minimal/src/main.ts]` | Smallest explicit runtime bootstrap with a platform adapter |
-| Starter scaffold anatomy | `[ex:minimal/README.md]` | Explains the minimal project structure and how it maps to `konekti new` |
+| Starter scaffold anatomy | `[ex:minimal/README.md]` | Explains the minimal project structure and how it maps to `fluo new` |
 | First feature slice | `[repo:docs/getting-started/first-feature-path.md]` | The cleanest official progression from starter to first domain feature |
 
 ### 파트 3. DI, 모듈, HTTP 런타임

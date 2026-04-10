@@ -2,19 +2,19 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-가장 작은 실행 가능한 Konekti 애플리케이션입니다. 이 예제는 `konekti new`가 생성하는 것과 동일한 시작 경로를 따르되, 필수 요소만 남겼습니다.
+가장 작은 실행 가능한 fluo 애플리케이션입니다. 이 예제는 `fluo new`가 생성하는 것과 동일한 시작 경로를 따르되, 필수 요소만 남겼습니다.
 
 ## 이 예제가 보여주는 것
 
-- `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 adapter-first Fastify 부트스트랩
+- `fluoFactory.create(..., { adapter: createFastifyAdapter(...) })` 기반 adapter-first Fastify 부트스트랩
 - `@Module`, `@Inject`, `@Controller`, `@Get`을 사용한 표준 데코레이터 DI
 - `createHealthModule()`의 내장 `/health` 및 `/ready` 엔드포인트
 - `/hello` 경로의 단일 스타터 컨트롤러
-- `@konekti/testing`을 사용한 단위 및 e2e 스타일 테스트
+- `@fluojs/testing`을 사용한 단위 및 e2e 스타일 테스트
 
 ## 실행 방법
 
-이 예제는 Konekti 모노레포 내부에 있으며 워크스페이스 링크 패키지를 사용합니다. 저장소 루트에서:
+이 예제는 fluo 모노레포 내부에 있으며 워크스페이스 링크 패키지를 사용합니다. 저장소 루트에서:
 
 ```sh
 pnpm install
@@ -41,11 +41,11 @@ examples/minimal/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 `konekti new` 출력의 의도적인 부분 집합입니다. config, health 모듈, 생성된 테스트, 빌드 도구가 포함된 전체 스타터 경험을 원한다면:
+이 예제는 `fluo new` 출력의 의도적인 부분 집합입니다. config, health 모듈, 생성된 테스트, 빌드 도구가 포함된 전체 스타터 경험을 원한다면:
 
 ```sh
-pnpm add -g @konekti/cli
-konekti new my-app
+pnpm add -g @fluojs/cli
+fluo new my-app
 ```
 
 ## 관련 문서

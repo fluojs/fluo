@@ -4,11 +4,11 @@
   <strong>English</strong> | <a href="./behavioral-contract-policy.ko.md">한국어</a>
 </p>
 
-This policy defines the governance and rules for preserving behavioral contracts within the Konekti framework. It ensures that changes to the codebase do not silently break documented runtime expectations, side effects, or lifecycle guarantees.
+This policy defines the governance and rules for preserving behavioral contracts within the fluo framework. It ensures that changes to the codebase do not silently break documented runtime expectations, side effects, or lifecycle guarantees.
 
 ## When this document matters
 
-- **Core Refactoring**: When modifying existing `@konekti/*` packages or internal runtime logic.
+- **Core Refactoring**: When modifying existing `@fluojs/*` packages or internal runtime logic.
 - **API Authoring**: When introducing new public decorators, providers, or platform adapters.
 - **Documentation**: When authoring or updating package-level `README.md` files and operational guides.
 - **Pull Request Review**: As a primary checklist for maintainers to verify that contract conformance is maintained.
@@ -26,7 +26,7 @@ A behavioral contract is a documented promise regarding a package's runtime beha
 - "This adapter closes all idle keep-alive connections within 5 seconds of receiving a shutdown signal."
 
 ### 2. Documentation Requirements
-Every `@konekti/*` package MUST maintain the following in its `README.md` (and the Korean mirror):
+Every `@fluojs/*` package MUST maintain the following in its `README.md` (and the Korean mirror):
 - **Supported Operations**: The detailed semantics of public methods and decorators.
 - **Runtime Invariants**: Behaviors that must remain consistent across different platforms (Node.js, Bun, Deno).
 - **Lifecycle Guarantees**: Explicit behavior for initialization, cleanup, and graceful shutdown.
@@ -44,13 +44,13 @@ Any behavior documented in a package's README or operational docs is considered 
 - **1.0+ Phase**: Breaking changes are strictly prohibited in minor/patch releases and MUST trigger a **Major** version bump with a comprehensive migration guide.
 
 ### Rule 3: Environment Isolation
-Packages must not access `process.env` directly. All environment-driven configurations must enter the system through the application boundary (typically via `@konekti/config`) and be passed as explicit parameters or injected options.
+Packages must not access `process.env` directly. All environment-driven configurations must enter the system through the application boundary (typically via `@fluojs/config`) and be passed as explicit parameters or injected options.
 
 ---
 
 ## Enforcement
 
-Konekti uses automated gates to ensure compliance:
+fluo uses automated gates to ensure compliance:
 1.  **Structural Parity**: `pnpm verify:platform-consistency-governance` fails if English and Korean documentation structures drift.
 2.  **Access Control**: Static analysis tools block direct `process.env` access in core packages.
 3.  **Regression Testing**: All documented contracts must be backed by a corresponding test case in the package's test suite.

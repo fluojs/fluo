@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./observability.ko.md"><kbd>한국어</kbd></a></p>
 
-You cannot manage what you cannot measure. Konekti provides a unified observability model that integrates **logging**, **Prometheus metrics**, **health checks**, and **request correlation** into a single, cohesive operations strategy.
+You cannot manage what you cannot measure. fluo provides a unified observability model that integrates **logging**, **Prometheus metrics**, **health checks**, and **request correlation** into a single, cohesive operations strategy.
 
-## Why Observability in Konekti?
+## Why Observability in fluo?
 
 - **Unified Context**: Every log entry, metric, and trace is tied together by a consistent `X-Request-Id` that persists across asynchronous boundaries.
 - **Production-Ready by Default**: With a few lines of code, your application exposes `/health`, `/ready`, and `/metrics` endpoints compatible with industry-standard tooling (Kubernetes, Prometheus, Grafana).
@@ -13,15 +13,15 @@ You cannot manage what you cannot measure. Konekti provides a unified observabil
 
 ## Responsibility Split
 
-- **`@konekti/metrics` (Telemetry)**: Collects and exposes Prometheus-compatible metrics. It handles the low-level instrumentation of HTTP latency and request counts.
-- **`@konekti/terminus` (Health & Lifecycle)**: Orchestrates complex health checks (DB, Redis, custom) and manages the graceful shutdown sequence.
-- **`@konekti/http` (Correlation)**: Manages the `AsyncLocalStorage` context that carries the `requestId` throughout the request's journey.
-- **`@konekti/runtime` (State)**: Provides the fundamental "is-alive" and "is-ready" flags used by the health system.
+- **`@fluojs/metrics` (Telemetry)**: Collects and exposes Prometheus-compatible metrics. It handles the low-level instrumentation of HTTP latency and request counts.
+- **`@fluojs/terminus` (Health & Lifecycle)**: Orchestrates complex health checks (DB, Redis, custom) and manages the graceful shutdown sequence.
+- **`@fluojs/http` (Correlation)**: Manages the `AsyncLocalStorage` context that carries the `requestId` throughout the request's journey.
+- **`@fluojs/runtime` (State)**: Provides the fundamental "is-alive" and "is-ready" flags used by the health system.
 
 ## Typical Workflows
 
 ### 1. Request Correlation
-Konekti automatically assigns a unique ID to every incoming request. This ID is accessible anywhere in your code without passing parameters.
+fluo automatically assigns a unique ID to every incoming request. This ID is accessible anywhere in your code without passing parameters.
 
 ```typescript
 // Anywhere in your service logic

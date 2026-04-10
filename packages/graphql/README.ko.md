@@ -1,8 +1,8 @@
-# @konekti/graphql
+# @fluojs/graphql
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **GraphQL Yoga**를 기반으로 설계되었으며, 깊은 DI 통합과 퍼스트 파티 DataLoader 지원을 통해 고성능의 명세 준수 GraphQL 실행 파이프라인을 제공합니다.
+fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **GraphQL Yoga**를 기반으로 설계되었으며, 깊은 DI 통합과 퍼스트 파티 DataLoader 지원을 통해 고성능의 명세 준수 GraphQL 실행 파이프라인을 제공합니다.
 
 ## 목차
 
@@ -17,13 +17,13 @@ Konekti를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Gr
 ## 설치
 
 ```bash
-pnpm add @konekti/graphql graphql graphql-yoga
+pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
 ## 사용 시점
 
 - TypeScript 데코레이터를 사용하여 타입 안전한 GraphQL API를 구축할 때 (**Code-first**).
-- 기존 GraphQL 스키마를 Konekti 애플리케이션에 통합할 때 (**Schema-first**).
+- 기존 GraphQL 스키마를 fluo 애플리케이션에 통합할 때 (**Schema-first**).
 - GraphQL resolver 내에서 request-scoped provider를 포함한 원활한 의존성 주입이 필요할 때.
 - Request-scoped **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
 
@@ -32,9 +32,9 @@ pnpm add @konekti/graphql graphql graphql-yoga
 `GraphqlModule`을 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
-import { GraphqlModule, Query, Resolver, Arg } from '@konekti/graphql';
+import { Module } from '@fluojs/core';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
 @Resolver()
 class HelloResolver {
@@ -58,19 +58,19 @@ const app = await bootstrapNodeApplication(AppModule);
 await app.listen(3000);
 // curl -X POST http://localhost:3000/graphql \
 //   -H "Content-Type: application/json" \
-//   -d '{"query": "{ hello(name: \"Konekti\") }"}'
+//   -d '{"query": "{ hello(name: \"fluo\") }"}'
 ```
 
 ## 핵심 기능
 
 ### Code-first Resolvers
-Konekti는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다.
+fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다.
 
 ### Request-Scoped DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
 
 ```typescript
-import { createDataLoader, type GraphQLContext } from '@konekti/graphql';
+import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
 
 const userLoader = createDataLoader(async (ids: string[]) => {
   const users = await userService.findByIds(ids);
@@ -109,9 +109,9 @@ GraphqlModule.forRoot({
 
 ## 관련 패키지
 
-- `@konekti/core`: 핵심 DI 및 모듈 시스템.
-- `@konekti/http`: 기반 HTTP 추상화.
-- `@konekti/validation`: GraphQL 입력을 위한 통합 DTO 검증.
+- `@fluojs/core`: 핵심 DI 및 모듈 시스템.
+- `@fluojs/http`: 기반 HTTP 추상화.
+- `@fluojs/validation`: GraphQL 입력을 위한 통합 DTO 검증.
 
 ## 예제 소스
 

@@ -2,9 +2,9 @@
 
 <p><a href="./error-responses.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-백엔드의 품질은 종종 실패를 어떻게 다루느냐에 따라 결정됩니다. Konekti는 프레임워크 전반에서 **표준화된 에러 응답 형식**을 강제하여, 문제가 발생했을 때도 클라이언트에게 예측 가능하고 유용하며 보안상 안전한 API를 제공합니다.
+백엔드의 품질은 종종 실패를 어떻게 다루느냐에 따라 결정됩니다. fluo는 프레임워크 전반에서 **표준화된 에러 응답 형식**을 강제하여, 문제가 발생했을 때도 클라이언트에게 예측 가능하고 유용하며 보안상 안전한 API를 제공합니다.
 
-## 왜 Konekti의 에러 처리인가요?
+## 왜 fluo의 에러 처리인가요?
 
 - **예측 가능한 API Surface**: 클라이언트는 데이터베이스, 유효성 검사, 인증 가드 등 에러의 발생 지점에 상관없이 작동하는 단일 에러 처리 로직을 구현할 수 있습니다.
 - **실용적인 피드백**: 유효성 검사 에러는 필드 레벨의 상세 정보를 포함하므로, 프론트엔드 개발자가 추측 없이 사용자에게 정확한 에러 메시지를 보여줄 수 있습니다.
@@ -13,9 +13,9 @@
 
 ## 책임 분담
 
-- **`@konekti/http` (필터)**: 처리되지 않은 에러를 캐치하는 글로벌 예외 필터, 기본 `HttpException` 클래스, 그리고 `NotFoundException`, `ForbiddenException` 같은 표준 HTTP 예외를 제공합니다.
-- **`@konekti/validation` (리포터)**: DTO 유효성 검사 실패 시 풍부하고 계층적인 에러 구조를 생성하는 데 특화되어 있습니다.
-- **`@konekti/core` (계약)**: `KonektiError` 같은 공통 프레임워크 에러 프리미티브와 다른 패키지들이 기대하는 낮은 수준의 불변 조건을 정의합니다.
+- **`@fluojs/http` (필터)**: 처리되지 않은 에러를 캐치하는 글로벌 예외 필터, 기본 `HttpException` 클래스, 그리고 `NotFoundException`, `ForbiddenException` 같은 표준 HTTP 예외를 제공합니다.
+- **`@fluojs/validation` (리포터)**: DTO 유효성 검사 실패 시 풍부하고 계층적인 에러 구조를 생성하는 데 특화되어 있습니다.
+- **`@fluojs/core` (계약)**: `fluoError` 같은 공통 프레임워크 에러 프리미티브와 다른 패키지들이 기대하는 낮은 수준의 불변 조건을 정의합니다.
 
 ## 일반적인 워크플로우
 
@@ -29,10 +29,10 @@ if (!user) {
 ```
 
 ### 2. 글로벌 캐치올 (Global Catch-All)
-요청 처리 중 발생하는 모든 예외는 Konekti 디스패처에 의해 캡처됩니다. 디스패처는 해당 예외가 알려진 `HttpException`인지 일반 JavaScript `Error`인지 식별합니다.
+요청 처리 중 발생하는 모든 예외는 fluo 디스패처에 의해 캡처됩니다. 디스패처는 해당 예외가 알려진 `HttpException`인지 일반 JavaScript `Error`인지 식별합니다.
 
 ### 3. 에러 봉투 포맷팅 (Envelope Formatting)
-에러는 표준 Konekti 봉투(Envelope) 형식으로 래핑됩니다.
+에러는 표준 fluo 봉투(Envelope) 형식으로 래핑됩니다.
 
 ```json
 {

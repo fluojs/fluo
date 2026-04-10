@@ -9,7 +9,7 @@ This document defines the framework's stance on compile-time manifest generation
 ## When this document matters
 
 - **Performance Auditing**: When evaluating runtime bottlenecks in module registration or DI resolution.
-- **Architectural Proposals**: When suggesting changes to how Konekti discovers routes, providers, or metadata.
+- **Architectural Proposals**: When suggesting changes to how fluo discovers routes, providers, or metadata.
 - **Toolchain Updates**: When modifying the build process (e.g., adding a pre-compilation step for metadata extraction).
 
 ---
@@ -20,7 +20,7 @@ This document defines the framework's stance on compile-time manifest generation
 **Latest Review**: 2026-04-08
 
 ### Decision Summary
-Konekti currently relies on **Runtime Reflection** via standard TC39 decorators. We have explicitly deferred the implementation of a **Compile-Time Manifest** (static metadata extraction) for the following reasons:
+fluo currently relies on **Runtime Reflection** via standard TC39 decorators. We have explicitly deferred the implementation of a **Compile-Time Manifest** (static metadata extraction) for the following reasons:
 
 1.  **Complexity Overhead**: Introducing a mandatory pre-compilation step would significantly increase the complexity of the developer experience (DX) and the CLI toolchain.
 2.  **Performance Thresholds**: Current bootstrap benchmarks show that runtime registration is within acceptable limits (sub-millisecond for most module shapes).

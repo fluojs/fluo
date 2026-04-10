@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runnable Konekti authentication example that combines `@konekti/jwt` and `@konekti/passport` around the simplest official bearer-token flow.
+Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/passport` around the simplest official bearer-token flow.
 
 ## what this example demonstrates
 
@@ -11,7 +11,7 @@ Runnable Konekti authentication example that combines `@konekti/jwt` and `@konek
 - verifying bearer tokens through a custom `AuthStrategy`
 - explicit DI token metadata instead of reflection-based injection
 - runtime-owned `/health` and `/ready` endpoints alongside auth routes
-- unit, integration, and e2e-style testing with `@konekti/testing`
+- unit, integration, and e2e-style testing with `@fluojs/testing`
 
 ## routes
 

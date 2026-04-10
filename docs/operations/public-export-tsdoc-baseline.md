@@ -4,7 +4,7 @@
   <strong>English</strong> | <a href="./public-export-tsdoc-baseline.ko.md">한국어</a>
 </p>
 
-This guide defines the minimum source-level TSDoc baseline for changed public exports in `@konekti/*` packages. It keeps IDE hover help, code review expectations, and package README examples aligned before the package-group rollout begins.
+This guide defines the minimum source-level TSDoc baseline for changed public exports in `@fluojs/*` packages. It keeps IDE hover help, code review expectations, and package README examples aligned before the package-group rollout begins.
 
 ## When this document matters
 

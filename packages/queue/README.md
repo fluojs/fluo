@@ -1,8 +1,8 @@
-# @konekti/queue
+# @fluojs/queue
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Redis-backed distributed job processing for Konekti. It features decorator-based worker discovery, automatic job serialization, and lifecycle-managed execution.
+Redis-backed distributed job processing for fluo. It features decorator-based worker discovery, automatic job serialization, and lifecycle-managed execution.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Redis-backed distributed job processing for Konekti. It features decorator-based
 ## Installation
 
 ```bash
-npm install @konekti/queue @konekti/redis
+npm install @fluojs/queue @fluojs/redis
 ```
 
 ## When to Use
@@ -33,7 +33,7 @@ npm install @konekti/queue @konekti/redis
 Create a job class and a worker class decorated with `@QueueWorker`.
 
 ```typescript
-import { QueueWorker } from '@konekti/queue';
+import { QueueWorker } from '@fluojs/queue';
 
 export class ProcessOrderJob {
   constructor(public readonly orderId: string) {}
@@ -53,9 +53,9 @@ export class OrderWorker {
 Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
 
 ```typescript
-import { Module, Inject } from '@konekti/core';
-import { QueueModule, QueueLifecycleService } from '@konekti/queue';
-import { RedisModule } from '@konekti/redis';
+import { Module, Inject } from '@fluojs/core';
+import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
+import { RedisModule } from '@fluojs/redis';
 
 @Module({
   imports: [
@@ -91,7 +91,7 @@ Workers can be configured with a maximum number of attempts and backoff strategi
 
 ### Dead-Letter Handling
 
-Jobs that fail all retry attempts are automatically moved to a dead-letter list in Redis (`konekti:queue:dead-letter:<jobName>`) for manual inspection or recovery.
+Jobs that fail all retry attempts are automatically moved to a dead-letter list in Redis (`fluo:queue:dead-letter:<jobName>`) for manual inspection or recovery.
 
 ## Public API Overview
 
@@ -106,8 +106,8 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 
 ## Related Packages
 
-- `@konekti/redis`: Required as the backing store for job persistence.
-- `@konekti/cron`: For scheduled/recurring background tasks.
+- `@fluojs/redis`: Required as the backing store for job persistence.
+- `@fluojs/cron`: For scheduled/recurring background tasks.
 
 ## Example Sources
 

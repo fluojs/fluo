@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./config-and-environments.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti treats configuration as **validated runtime data** rather than a collection of ambient environment variables. By enforcing explicit loading, strict validation, and typed access, we ensure your application's behavior is predictable across every environment.
+fluo treats configuration as **validated runtime data** rather than a collection of ambient environment variables. By enforcing explicit loading, strict validation, and typed access, we ensure your application's behavior is predictable across every environment.
 
 ## why this matters
 
@@ -11,12 +11,12 @@ Konekti treats configuration as **validated runtime data** rather than a collect
 - **Type Uncertainty**: `process.env` values are always strings. Forgetting to parse a `PORT` as a number or a `DEBUG` flag as a boolean leads to subtle, hard-to-trace bugs.
 - **Testing Friction**: Mocking global `process.env` in unit tests is messy and can lead to side effects between test suites.
 
-Konekti solves these issues by creating a **Config Boundary**. All configuration must pass through a validation gate before it ever reaches your application logic.
+fluo solves these issues by creating a **Config Boundary**. All configuration must pass through a validation gate before it ever reaches your application logic.
 
 ## core ideas
 
 ### explicit loading (no magic env)
-Konekti does not automatically scan your system for environment variables. You must explicitly define your configuration sources during the bootstrap process. This might include:
+fluo does not automatically scan your system for environment variables. You must explicitly define your configuration sources during the bootstrap process. This might include:
 - A specific `.env` file path.
 - A static JSON or YAML configuration.
 - A filtered subset of `process.env`.
@@ -36,15 +36,15 @@ Within your application, you never access external environment variables. Instea
 
 ## loading precedence
 
-When multiple sources are provided, Konekti merges them in a deterministic order:
-1. **Bootstrap Overrides**: Values passed directly in the `Konekti.create()` call (highest priority).
+When multiple sources are provided, fluo merges them in a deterministic order:
+1. **Bootstrap Overrides**: Values passed directly in the `fluo.create()` call (highest priority).
 2. **Environment Variables**: Values mapped from the system environment.
 3. **Configuration Files**: Values read from `.env`, `config.json`, etc.
 4. **Code Defaults**: Hardcoded fallback values (lowest priority).
 
 ## boundaries
 
-- **Zero Global Dependency**: No package in the Konekti ecosystem is allowed to access `process.env` directly. Everything must go through the DI container.
+- **Zero Global Dependency**: No package in the fluo ecosystem is allowed to access `process.env` directly. Everything must go through the DI container.
 - **Validation Barrier**: A configuration snapshot is considered "corrupt" if even a single required field fails validation. No partial configuration is ever applied.
 - **Runtime Reloading**: In development, the `ConfigService` can apply new snapshots without restarting the process (see [Dev Reload Architecture](./dev-reload-architecture.md)).
 

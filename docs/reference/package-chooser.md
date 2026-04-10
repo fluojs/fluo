@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./package-chooser.ko.md"><kbd>한국어</kbd></a></p>
 
-Use this guide to select the correct Konekti packages for your specific task. This page is organized by goal to help you build your application stack efficiently.
+Use this guide to select the correct fluo packages for your specific task. This page is organized by goal to help you build your application stack efficiently.
 
 ## build a new web API (Node.js)
 
@@ -10,13 +10,13 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | task | recommended packages |
 | --- | --- |
-| **Foundation** | `@konekti/core`, `@konekti/di`, `@konekti/runtime` |
-| **HTTP Routing** | `@konekti/http` |
-| **GraphQL API** | `@konekti/graphql` |
-| **Fastify (Recommended)** | `@konekti/platform-fastify` |
-| **Express Compatibility** | `@konekti/platform-express` |
-| **Input Validation** | `@konekti/validation` |
-| **Configuration** | `@konekti/config` |
+| **Foundation** | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` |
+| **HTTP Routing** | `@fluojs/http` |
+| **GraphQL API** | `@fluojs/graphql` |
+| **Fastify (Recommended)** | `@fluojs/platform-fastify` |
+| **Express Compatibility** | `@fluojs/platform-express` |
+| **Input Validation** | `@fluojs/validation` |
+| **Configuration** | `@fluojs/config` |
 
 ## deploy to edge / modern runtimes
 
@@ -24,9 +24,9 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | target | adapter |
 | --- | --- |
-| **Bun** | `@konekti/platform-bun` |
-| **Deno** | `@konekti/platform-deno` |
-| **Cloudflare Workers** | `@konekti/platform-cloudflare-workers` |
+| **Bun** | `@fluojs/platform-bun` |
+| **Deno** | `@fluojs/platform-deno` |
+| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` |
 
 ## add persistence & data access
 
@@ -34,11 +34,11 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | goal | recommended packages |
 | --- | --- |
-| **Relational (Prisma)** | `@konekti/prisma` |
-| **Relational (Drizzle)** | `@konekti/drizzle` |
-| **Document (Mongoose)** | `@konekti/mongoose` |
-| **Caching** | `@konekti/cache-manager` |
-| **Redis Shared Service** | `@konekti/redis` |
+| **Relational (Prisma)** | `@fluojs/prisma` |
+| **Relational (Drizzle)** | `@fluojs/drizzle` |
+| **Document (Mongoose)** | `@fluojs/mongoose` |
+| **Caching** | `@fluojs/cache-manager` |
+| **Redis Shared Service** | `@fluojs/redis` |
 
 ## implement security & auth
 
@@ -46,9 +46,9 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | goal | recommended packages |
 | --- | --- |
-| **JWT Strategy** | `@konekti/jwt` |
-| **Passport Integration** | `@konekti/passport` |
-| **Rate Limiting** | `@konekti/throttler` |
+| **JWT Strategy** | `@fluojs/jwt` |
+| **Passport Integration** | `@fluojs/passport` |
+| **Rate Limiting** | `@fluojs/throttler` |
 
 ## realtime & messaging
 
@@ -56,16 +56,16 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | goal | recommended packages |
 | --- | --- |
-| **Raw WebSockets** | `@konekti/websockets` |
-| **Socket.IO** | `@konekti/socket.io` |
-| **Microservices** | `@konekti/microservices` |
-| **Background Jobs** | `@konekti/queue` + `@konekti/redis` |
-| **Cron / Scheduling** | `@konekti/cron` |
-| **Notifications** | `@konekti/notifications` |
-| **Email (Portable)** | `@konekti/email` |
-| **Email (Node SMTP)** | `@konekti/email/node` |
-| **Slack Notifications** | `@konekti/slack` |
-| **Discord Notifications** | `@konekti/discord` |
+| **Raw WebSockets** | `@fluojs/websockets` |
+| **Socket.IO** | `@fluojs/socket.io` |
+| **Microservices** | `@fluojs/microservices` |
+| **Background Jobs** | `@fluojs/queue` + `@fluojs/redis` |
+| **Cron / Scheduling** | `@fluojs/cron` |
+| **Notifications** | `@fluojs/notifications` |
+| **Email (Portable)** | `@fluojs/email` |
+| **Email (Node SMTP)** | `@fluojs/email/node` |
+| **Slack Notifications** | `@fluojs/slack` |
+| **Discord Notifications** | `@fluojs/discord` |
 
 ## observability & docs
 
@@ -73,9 +73,9 @@ Use this guide to select the correct Konekti packages for your specific task. Th
 
 | goal | recommended packages |
 | --- | --- |
-| **OpenAPI / Swagger** | `@konekti/openapi` |
-| **Metrics (Prometheus)** | `@konekti/metrics` |
-| **Health Checks** | `@konekti/terminus` |
+| **OpenAPI / Swagger** | `@fluojs/openapi` |
+| **Metrics (Prometheus)** | `@fluojs/metrics` |
+| **Health Checks** | `@fluojs/terminus` |
 
 ---
 

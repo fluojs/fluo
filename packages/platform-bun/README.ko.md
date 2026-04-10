@@ -1,8 +1,8 @@
-# @konekti/platform-bun
+# @fluojs/platform-bun
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-네이티브 `Bun.serve()`를 기반으로 구축된 Konekti 런타임용 Bun 기반 HTTP 어댑터 패키지입니다.
+네이티브 `Bun.serve()`를 기반으로 구축된 fluo 런타임용 Bun 기반 HTTP 어댑터 패키지입니다.
 
 ## 목차
 
@@ -17,23 +17,23 @@
 ## 설치
 
 ```bash
-npm install @konekti/platform-bun
+npm install @fluojs/platform-bun
 ```
 
 ## 사용 시점
 
-Konekti 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Bun의 고성능 `Request`/`Response` 브리지와 네이티브 `fetch` 방식의 아키텍처를 활용하여 Bun 사용자에게 원활하고 빠른 경험을 제공합니다.
+fluo 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Bun의 고성능 `Request`/`Response` 브리지와 네이티브 `fetch` 방식의 아키텍처를 활용하여 Bun 사용자에게 원활하고 빠른 경험을 제공합니다.
 
 애플리케이션 종료 중에는 새 유입을 중단하고, Bun이 서버를 강제로 내리기 전에 활성 HTTP 핸들러가 bounded drain window 안에서 마무리될 수 있도록 동작합니다.
 
 ## 빠른 시작
 
 ```typescript
-import { createBunAdapter } from '@konekti/platform-bun';
-import { KonektiFactory } from '@konekti/runtime';
+import { createBunAdapter } from '@fluojs/platform-bun';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createBunAdapter({ port: 3000 }),
 });
 
@@ -46,7 +46,7 @@ await app.listen();
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 
 ```typescript
-import { createBunFetchHandler } from '@konekti/platform-bun';
+import { createBunFetchHandler } from '@fluojs/platform-bun';
 
 const handler = await createBunFetchHandler({ 
   dispatcher: app.getHttpDispatcher(),
@@ -60,7 +60,7 @@ Bun.serve({
 ```
 
 ### 네이티브 WebSocket 업그레이드
-어댑터는 `@konekti/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다.
+어댑터는 `@fluojs/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다.
 
 ```typescript
 // Bun 어댑터가 활성화된 경우 게이트웨이는 자동으로 Bun의 네이티브 업그레이드를 사용합니다.
@@ -77,9 +77,9 @@ export class MyGateway {}
 
 ## 관련 패키지
 
-- `@konekti/runtime`: 핵심 런타임입니다.
-- `@konekti/websockets`: 전용 서브패스 `@konekti/websockets/bun`을 포함합니다.
-- `@konekti/socket.io`: 네이티브 Bun 엔진을 지원합니다.
+- `@fluojs/runtime`: 핵심 런타임입니다.
+- `@fluojs/websockets`: 전용 서브패스 `@fluojs/websockets/bun`을 포함합니다.
+- `@fluojs/socket.io`: 네이티브 Bun 엔진을 지원합니다.
 
 ## 예제 소스
 

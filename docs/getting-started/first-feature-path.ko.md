@@ -2,7 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./first-feature-path.md"><kbd>English</kbd></a></p>
 
-기본 스타터 앱에서 나아가 실제 비즈니스 로직을 구축해 보세요. Konekti는 기술 계층이 아닌 기능별로 관련 로직을 그룹화하는 **슬라이스 기반 아키텍처(Slice-based architecture)**를 권장합니다.
+기본 스타터 앱에서 나아가 실제 비즈니스 로직을 구축해 보세요. fluo는 기술 계층이 아닌 기능별로 관련 로직을 그룹화하는 **슬라이스 기반 아키텍처(Slice-based architecture)**를 권장합니다.
 
 ### 대상 독자
 [퀵 스타트](./quick-start.ko.md)를 완료하고 첫 번째 API 엔드포인트를 구현할 준비가 된 개발자.
@@ -15,11 +15,11 @@ mkdir -p src/catalog
 ```
 
 ### 2. 프로바이더 생성
-프로바이더는 비즈니스 로직이나 데이터 액세스를 처리합니다. Konekti에서는 클래스 상단에 `@Inject` 데코레이터를 사용하여 의존성을 명시적으로 선언합니다.
+프로바이더는 비즈니스 로직이나 데이터 액세스를 처리합니다. fluo에서는 클래스 상단에 `@Inject` 데코레이터를 사용하여 의존성을 명시적으로 선언합니다.
 
 ```ts
 // src/catalog/product.service.ts
-import { Scope } from '@konekti/core';
+import { Scope } from '@fluojs/core';
 
 @Scope('singleton')
 export class ProductService {
@@ -34,8 +34,8 @@ export class ProductService {
 
 ```ts
 // src/catalog/product.controller.ts
-import { Controller, Get } from '@konekti/http';
-import { Inject } from '@konekti/core';
+import { Controller, Get } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
 import { ProductService } from './product.service';
 
 @Controller('/products')
@@ -51,11 +51,11 @@ export class ProductController {
 ```
 
 ### 4. 모듈로 묶기
-모듈은 Konekti 애플리케이션 그래프를 구성하는 기본 단위입니다.
+모듈은 fluo 애플리케이션 그래프를 구성하는 기본 단위입니다.
 
 ```ts
 // src/catalog/catalog.module.ts
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import { ProductService } from './product.service';
 import { ProductController } from './product.controller';
 
@@ -72,7 +72,7 @@ export class CatalogModule {}
 
 ```ts
 // src/app.module.ts
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
@@ -94,5 +94,5 @@ curl http://localhost:3000/products
 - **표준 준수**: 이 모든 흐름은 미래의 ECMAScript 표준과 일치하는 기본 TypeScript 데코레이터를 사용합니다.
 
 ### 다음 단계
-- **반복 작업 자동화**: `konekti g module catalog` 명령어를 사용하여 이 모든 구조를 단 몇 초 만에 생성해 보세요. [제너레이터 워크플로우](./generator-workflow.ko.md)에서 자세히 알아볼 수 있습니다.
-- **유효성 검사 추가**: 안전하고 타입 안정성이 보장된 입력을 위해 DTO와 `@konekti/validation`을 사용하는 방법을 배워보세요.
+- **반복 작업 자동화**: `fluo g module catalog` 명령어를 사용하여 이 모든 구조를 단 몇 초 만에 생성해 보세요. [제너레이터 워크플로우](./generator-workflow.ko.md)에서 자세히 알아볼 수 있습니다.
+- **유효성 검사 추가**: 안전하고 타입 안정성이 보장된 입력을 위해 DTO와 `@fluojs/validation`을 사용하는 방법을 배워보세요.

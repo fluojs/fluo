@@ -1,8 +1,8 @@
-# @konekti/passport
+# @fluojs/passport
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Strategy-agnostic auth execution layer for Konekti. It routes any `AuthStrategy` through a generic `AuthGuard` into the request context, populating `requestContext.principal`.
+Strategy-agnostic auth execution layer for fluo. It routes any `AuthStrategy` through a generic `AuthGuard` into the request context, populating `requestContext.principal`.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Strategy-agnostic auth execution layer for Konekti. It routes any `AuthStrategy`
 ## Installation
 
 ```bash
-npm install @konekti/passport
+npm install @fluojs/passport
 ```
 
 ## When to Use
@@ -34,8 +34,8 @@ npm install @konekti/passport
 Define your strategies and register them using `createPassportProviders`.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { createPassportProviders } from '@konekti/passport';
+import { Module } from '@fluojs/core';
+import { createPassportProviders } from '@fluojs/passport';
 import { MyJwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -55,8 +55,8 @@ export class AuthModule {}
 Use `@UseAuth()` and `@RequireScopes()` to enforce authentication.
 
 ```typescript
-import { Controller, Get } from '@konekti/http';
-import { UseAuth, RequireScopes } from '@konekti/passport';
+import { Controller, Get } from '@fluojs/http';
+import { UseAuth, RequireScopes } from '@fluojs/passport';
 
 @Controller('/profile')
 export class ProfileController {
@@ -73,7 +73,7 @@ export class ProfileController {
 
 ### Passport.js Bridge
 
-Easily adapt any standard Passport.js strategy (like `passport-google-oauth20`) to work with Konekti's DI and async lifecycle.
+Easily adapt any standard Passport.js strategy (like `passport-google-oauth20`) to work with fluo's DI and async lifecycle.
 
 ```typescript
 const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
@@ -102,7 +102,7 @@ async refresh(input: never, ctx: RequestContext) {
 ### Core Classes
 - `AuthGuard`: The HTTP guard that executes the strategy chain.
 - `CookieManager`: Utility for managing HttpOnly auth cookies.
-- `JwtRefreshTokenAdapter`: Bridges `@konekti/jwt` refresh logic to the passport interface.
+- `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
 
 ### Interfaces
 - `AuthStrategy`: The contract for implementing custom authentication logic.
@@ -110,8 +110,8 @@ async refresh(input: never, ctx: RequestContext) {
 
 ## Related Packages
 
-- `@konekti/jwt`: The underlying token core for JWT-based strategies.
-- `@konekti/http`: Provides the routing and guard infrastructure.
+- `@fluojs/jwt`: The underlying token core for JWT-based strategies.
+- `@fluojs/http`: Provides the routing and guard infrastructure.
 
 ## Example Sources
 

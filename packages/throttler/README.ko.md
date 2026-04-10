@@ -1,8 +1,8 @@
-# @konekti/throttler
+# @fluojs/throttler
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-메모리 내(In-memory) 및 Redis 저장소 어댑터를 지원하는 Konekti 애플리케이션용 데코레이터 기반 속도 제한(Rate Limiting) 패키지입니다.
+메모리 내(In-memory) 및 Redis 저장소 어댑터를 지원하는 fluo 애플리케이션용 데코레이터 기반 속도 제한(Rate Limiting) 패키지입니다.
 
 ## 목차
 
@@ -19,7 +19,7 @@
 ## 설치
 
 ```bash
-npm install @konekti/throttler
+npm install @fluojs/throttler
 ```
 
 ## 사용 시점
@@ -34,9 +34,9 @@ npm install @konekti/throttler
 `ThrottlerModule`을 등록하고 컨트롤러나 메서드에 `Throttle` 데코레이터를 적용합니다.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { ThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
-import { Controller, Post } from '@konekti/http';
+import { Module } from '@fluojs/core';
+import { ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
+import { Controller, Post } from '@fluojs/http';
 
 @Module({
   imports: [
@@ -71,8 +71,8 @@ class AuthController {
 다중 인스턴스 배포 환경에서는 `RedisThrottlerStore`를 사용하여 모든 인스턴스 간에 속도 제한 상태를 공유하세요.
 
 ```typescript
-import { ThrottlerModule, RedisThrottlerStore } from '@konekti/throttler';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
+import { REDIS_CLIENT } from '@fluojs/redis';
 
 // 프로바이더 또는 모듈 팩토리 내부에서
 const redisStore = new RedisThrottlerStore(redisClient);
@@ -117,8 +117,8 @@ ThrottlerModule.forRoot({
 
 ## 관련 패키지
 
-- `@konekti/http`: HTTP 컨텍스트 및 예외 처리를 위해 필요합니다.
-- `@konekti/redis`: `RedisThrottlerStore` 사용 시 필요합니다.
+- `@fluojs/http`: HTTP 컨텍스트 및 예외 처리를 위해 필요합니다.
+- `@fluojs/redis`: `RedisThrottlerStore` 사용 시 필요합니다.
 
 ## 예제 소스
 

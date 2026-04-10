@@ -1,8 +1,8 @@
-# @konekti/cqrs
+# @fluojs/cqrs
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-CQRS primitives for Konekti applications with bootstrap-time handler discovery, command/query dispatch, and event publishing delegation through `@konekti/event-bus`.
+CQRS primitives for fluo applications with bootstrap-time handler discovery, command/query dispatch, and event publishing delegation through `@fluojs/event-bus`.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ CQRS primitives for Konekti applications with bootstrap-time handler discovery, 
 ## Installation
 
 ```bash
-npm install @konekti/cqrs
+npm install @fluojs/cqrs
 ```
 
 ## When to Use
@@ -34,14 +34,14 @@ npm install @konekti/cqrs
 Register the `CqrsModule` and define your first command and handler.
 
 ```typescript
-import { Inject, Module } from '@konekti/core';
+import { Inject, Module } from '@fluojs/core';
 import {
   CqrsModule,
   CommandHandler,
   ICommand,
   ICommandHandler,
   CommandBusLifecycleService,
-} from '@konekti/cqrs';
+} from '@fluojs/cqrs';
 
 // 1. Define a Command
 class CreateUserCommand implements ICommand {
@@ -81,8 +81,8 @@ class AppModule {}
 Sagas allow you to listen for events and trigger new commands, enabling complex long-running workflows.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { Saga, ISaga, IEvent, CommandBusLifecycleService } from '@konekti/cqrs';
+import { Inject } from '@fluojs/core';
+import { Saga, ISaga, IEvent, CommandBusLifecycleService } from '@fluojs/cqrs';
 
 class UserCreatedEvent implements IEvent {
   constructor(public readonly userId: string) {}
@@ -108,8 +108,8 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 For codebases transitioning to class-first DI or requiring explicit symbol tokens, the following are available:
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@konekti/cqrs';
+import { Inject } from '@fluojs/core';
+import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@fluojs/cqrs';
 
 @Inject(COMMAND_BUS, QUERY_BUS, EVENT_BUS)
 class LegacyService {
@@ -137,8 +137,8 @@ class LegacyService {
 
 ## Related Packages
 
-- `@konekti/event-bus`: Underlying event distribution used by `CqrsEventBusService`.
-- `@konekti/core`: Required for `@Module` and `@Inject` decorators.
+- `@fluojs/event-bus`: Underlying event distribution used by `CqrsEventBusService`.
+- `@fluojs/core`: Required for `@Module` and `@Inject` decorators.
 
 ## Example Sources
 

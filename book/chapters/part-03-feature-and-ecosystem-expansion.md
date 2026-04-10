@@ -18,7 +18,7 @@ realworld-api 예제를 첫 번째 실전 해설 대상으로 삼는다. 이 예
 
 ### 12장. 인증과 Principal 흐름
 
-auth 개념 문서는 `@konekti/jwt`, `@konekti/passport`, `@konekti/http`의 책임 분리를 설명하고, auth 예제는 bearer-token 흐름을 실행 가능한 형태로 제공한다 `[repo:docs/concepts/auth-and-jwt.md]` `[ex:auth-jwt-passport/README.md]`.
+auth 개념 문서는 `@fluojs/jwt`, `@fluojs/passport`, `@fluojs/http`의 책임 분리를 설명하고, auth 예제는 bearer-token 흐름을 실행 가능한 형태로 제공한다 `[repo:docs/concepts/auth-and-jwt.md]` `[ex:auth-jwt-passport/README.md]`.
 
 ```ts
 // source: ex:auth-jwt-passport/src/auth/auth.service.ts

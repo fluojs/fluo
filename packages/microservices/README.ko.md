@@ -1,8 +1,8 @@
-# @konekti/microservices
+# @fluojs/microservices
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti용 트랜스포트 기반 마이크로서비스 패키지입니다. TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC 같은 여러 프로토콜 위에서 동일한 데코레이터 기반 프로그래밍 모델을 제공합니다.
+fluo용 트랜스포트 기반 마이크로서비스 패키지입니다. TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, gRPC 같은 여러 프로토콜 위에서 동일한 데코레이터 기반 프로그래밍 모델을 제공합니다.
 
 ## 목차
 
@@ -17,7 +17,7 @@ Konekti용 트랜스포트 기반 마이크로서비스 패키지입니다. TCP,
 ## 설치
 
 ```bash
-pnpm add @konekti/microservices
+pnpm add @fluojs/microservices
 ```
 
 선택적 트랜스포트 의존성:
@@ -31,14 +31,14 @@ pnpm add @konekti/microservices
 - 서비스 간 통신을 메시지나 이벤트 중심으로 분리하고 싶을 때
 - TCP, NATS, Kafka 같은 여러 트랜스포트 위에서 같은 핸들러 모델을 유지하고 싶을 때
 - 요청-응답과 이벤트 fan-out을 같은 프레임워크 규약으로 다루고 싶을 때
-- gRPC 스트리밍을 포함한 복수의 마이크로서비스 프로토콜을 Konekti DI와 함께 사용하고 싶을 때
+- gRPC 스트리밍을 포함한 복수의 마이크로서비스 프로토콜을 fluo DI와 함께 사용하고 싶을 때
 
 ## 빠른 시작
 
 ```ts
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@konekti/microservices';
-import { Module } from '@konekti/core';
-import { KonektiFactory } from '@konekti/runtime';
+import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { Module } from '@fluojs/core';
+import { fluoFactory } from '@fluojs/runtime';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -57,7 +57,7 @@ class MathHandler {
 })
 class AppModule {}
 
-const microservice = await KonektiFactory.createMicroservice(AppModule);
+const microservice = await fluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
@@ -77,11 +77,11 @@ await microservice.listen();
 
 ### 요청 단위 DI scope
 
-마이크로서비스 핸들러도 Konekti의 request/transient scope 모델을 그대로 따르므로, 메시지 또는 이벤트 단위로 격리된 상태를 안전하게 사용할 수 있습니다.
+마이크로서비스 핸들러도 fluo의 request/transient scope 모델을 그대로 따르므로, 메시지 또는 이벤트 단위로 격리된 상태를 안전하게 사용할 수 있습니다.
 
 ## 공개 API 개요
 
-### 루트 배럴 (`@konekti/microservices`)
+### 루트 배럴 (`@fluojs/microservices`)
 
 - `MicroservicesModule`, `createMicroservicesProviders`: 모듈 등록 진입점입니다.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: 라우팅/스트리밍 데코레이터입니다.
@@ -91,21 +91,21 @@ await microservice.listen();
 
 ### 지원되는 트랜스포트 서브패스
 
-- `@konekti/microservices/tcp`
-- `@konekti/microservices/redis` (Redis Pub/Sub 트랜스포트)
-- `@konekti/microservices/nats`
-- `@konekti/microservices/kafka`
-- `@konekti/microservices/rabbitmq`
-- `@konekti/microservices/grpc`
-- `@konekti/microservices/mqtt`
+- `@fluojs/microservices/tcp`
+- `@fluojs/microservices/redis` (Redis Pub/Sub 트랜스포트)
+- `@fluojs/microservices/nats`
+- `@fluojs/microservices/kafka`
+- `@fluojs/microservices/rabbitmq`
+- `@fluojs/microservices/grpc`
+- `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport`는 현재 루트 배럴에서만 지원하며, `@konekti/microservices/redis-streams` 전용 export는 없습니다.
+`RedisStreamsMicroserviceTransport`는 현재 루트 배럴에서만 지원하며, `@fluojs/microservices/redis-streams` 전용 export는 없습니다.
 
 ## 관련 패키지
 
-- `@konekti/core`: 모듈과 DI 메타데이터의 기반 패키지입니다.
-- `@konekti/runtime`: 마이크로서비스 부트스트랩과 팩토리 API를 제공합니다.
-- `@konekti/di`: 핸들러와 provider를 resolve하는 DI 엔진입니다.
+- `@fluojs/core`: 모듈과 DI 메타데이터의 기반 패키지입니다.
+- `@fluojs/runtime`: 마이크로서비스 부트스트랩과 팩토리 API를 제공합니다.
+- `@fluojs/di`: 핸들러와 provider를 resolve하는 DI 엔진입니다.
 
 ## 예제 소스
 

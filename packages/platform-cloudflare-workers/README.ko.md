@@ -1,8 +1,8 @@
-# @konekti/platform-cloudflare-workers
+# @fluojs/platform-cloudflare-workers
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-엣지에 최적화된 Konekti 런타임용 Cloudflare Workers HTTP 어댑터 패키지입니다.
+엣지에 최적화된 fluo 런타임용 Cloudflare Workers HTTP 어댑터 패키지입니다.
 
 ## 목차
 
@@ -17,12 +17,12 @@
 ## 설치
 
 ```bash
-npm install @konekti/platform-cloudflare-workers
+npm install @fluojs/platform-cloudflare-workers
 ```
 
 ## 사용 시점
 
-Konekti 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)에 배포할 때 이 패키지를 사용합니다. 이 어댑터는 서버리스 엣지 환경에 맞게 설계되었으며, Worker isolate 제약 조건과 네이티브 Web API를 준수하는 가벼운 `fetch` 기반 어댑터를 제공합니다.
+fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)에 배포할 때 이 패키지를 사용합니다. 이 어댑터는 서버리스 엣지 환경에 맞게 설계되었으며, Worker isolate 제약 조건과 네이티브 Web API를 준수하는 가벼운 `fetch` 기반 어댑터를 제공합니다.
 
 ## 빠른 시작
 
@@ -30,12 +30,12 @@ Konekti 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.co
 애플리케이션을 부트스트랩하고 표준 Cloudflare Worker `fetch` 핸들러를 내보냅니다.
 
 ```typescript
-import { KonektiFactory } from '@konekti/runtime';
-import { createCloudflareWorkerAdapter } from '@konekti/platform-cloudflare-workers';
+import { fluoFactory } from '@fluojs/runtime';
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await KonektiFactory.create(AppModule, { adapter });
+const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -48,7 +48,7 @@ export default {
 첫 번째 요청 시 부트스트랩을 수행하는 엔트리포인트 헬퍼를 사용하여 설정을 더욱 간소화할 수 있습니다.
 
 ```typescript
-import { createCloudflareWorkerEntrypoint } from '@konekti/platform-cloudflare-workers';
+import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const worker = createCloudflareWorkerEntrypoint(AppModule);
@@ -61,7 +61,7 @@ export default {
 ## 주요 패턴
 
 ### WebSocketPair 활용
-어댑터는 `@konekti/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다.
+어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -69,7 +69,7 @@ export class MyGateway {}
 ```
 
 ### 엣지 네이티브 미들웨어
-표준 Konekti 미들웨어(CORS, Global Prefix 등)가 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다.
+표준 fluo 미들웨어(CORS, Global Prefix 등)가 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다.
 
 ```typescript
 const adapter = createCloudflareWorkerAdapter({
@@ -87,9 +87,9 @@ const adapter = createCloudflareWorkerAdapter({
 
 ## 관련 패키지
 
-- `@konekti/runtime`: 핵심 런타임입니다.
-- `@konekti/websockets`: 전용 서브패스 `@konekti/websockets/cloudflare-workers`를 포함합니다.
-- `@konekti/http`: 공통 HTTP 데코레이터 계층입니다.
+- `@fluojs/runtime`: 핵심 런타임입니다.
+- `@fluojs/websockets`: 전용 서브패스 `@fluojs/websockets/cloudflare-workers`를 포함합니다.
+- `@fluojs/http`: 공통 HTTP 데코레이터 계층입니다.
 
 ## 예제 소스
 

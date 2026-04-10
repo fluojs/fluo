@@ -1,8 +1,8 @@
-# @konekti/event-bus
+# @fluojs/event-bus
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-In-process event publishing and subscription for Konekti. It features decorator-based handler discovery and support for external transport adapters like Redis Pub/Sub for cross-process communication.
+In-process event publishing and subscription for fluo. It features decorator-based handler discovery and support for external transport adapters like Redis Pub/Sub for cross-process communication.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ In-process event publishing and subscription for Konekti. It features decorator-
 ## Installation
 
 ```bash
-npm install @konekti/event-bus
+npm install @fluojs/event-bus
 ```
 
 ## When to Use
@@ -33,7 +33,7 @@ npm install @konekti/event-bus
 Create an event class and a handler method decorated with `@OnEvent`.
 
 ```typescript
-import { OnEvent } from '@konekti/event-bus';
+import { OnEvent } from '@fluojs/event-bus';
 
 export class UserSignedUpEvent {
   constructor(public readonly email: string) {}
@@ -52,8 +52,8 @@ export class NotificationService {
 Import `EventBusModule` and inject `EventBusLifecycleService` to publish events.
 
 ```typescript
-import { Module, Inject } from '@konekti/core';
-import { EventBusModule, EventBusLifecycleService } from '@konekti/event-bus';
+import { Module, Inject } from '@fluojs/core';
+import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
 
 @Module({
   imports: [EventBusModule.forRoot()],
@@ -79,7 +79,7 @@ export class UserService {
 Extend the event bus to other processes by plugging in a transport adapter.
 
 ```typescript
-import { RedisEventBusTransport } from '@konekti/event-bus/redis';
+import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
 
 EventBusModule.forRoot({
   transport: new RedisEventBusTransport({ 
@@ -111,8 +111,8 @@ class UserRegisteredEvent {
 
 ## Related Packages
 
-- `@konekti/cqrs`: Built on top of the event bus for more formal architectural patterns.
-- `@konekti/redis`: Provides the clients required for `RedisEventBusTransport`.
+- `@fluojs/cqrs`: Built on top of the event bus for more formal architectural patterns.
+- `@fluojs/redis`: Provides the clients required for `RedisEventBusTransport`.
 
 ## Example Sources
 

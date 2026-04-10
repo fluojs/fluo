@@ -2,19 +2,19 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The smallest runnable Konekti application. This example follows the exact same startup path that `konekti new` generates, stripped down to the essentials.
+The smallest runnable fluo application. This example follows the exact same startup path that `fluo new` generates, stripped down to the essentials.
 
 ## what this example demonstrates
 
-- Adapter-first Fastify bootstrap via `KonektiFactory.create(..., { adapter: createFastifyAdapter(...) })`
+- Adapter-first Fastify bootstrap via `fluoFactory.create(..., { adapter: createFastifyAdapter(...) })`
 - Standard decorator DI with `@Module`, `@Inject`, `@Controller`, `@Get`
 - Built-in `/health` and `/ready` endpoints from `createHealthModule()`
 - A single starter controller at `/hello`
-- Unit and e2e-style testing with `@konekti/testing`
+- Unit and e2e-style testing with `@fluojs/testing`
 
 ## how to run
 
-This example lives inside the Konekti monorepo and uses workspace-linked packages. From the repository root:
+This example lives inside the fluo monorepo and uses workspace-linked packages. From the repository root:
 
 ```sh
 pnpm install
@@ -41,11 +41,11 @@ examples/minimal/
 
 ## relationship to the starter scaffold
 
-This example is intentionally a subset of the `konekti new` output. If you want the full starter experience with config, health module, generated tests, and build tooling, run:
+This example is intentionally a subset of the `fluo new` output. If you want the full starter experience with config, health module, generated tests, and build tooling, run:
 
 ```sh
-pnpm add -g @konekti/cli
-konekti new my-app
+pnpm add -g @fluojs/cli
+fluo new my-app
 ```
 
 ## related docs

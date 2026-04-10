@@ -1,8 +1,8 @@
-# @konekti/platform-nodejs
+# @fluojs/platform-nodejs
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
+fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 
 ## 목차
 
@@ -17,21 +17,21 @@ Konekti 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 ## 설치
 
 ```bash
-npm install @konekti/platform-nodejs
+npm install @fluojs/platform-nodejs
 ```
 
 ## 사용 시점
 
-Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.js 내장 `http` 또는 `https` 모듈에서 직접 Konekti 애플리케이션을 실행하려는 경우에 사용합니다. 최소한의 리소스 사용, 저수준 최적화 또는 표준 Node API가 선호되는 환경에 이상적입니다.
+Express나 Fastify와 같은 중간 프레임워크의 오버헤드 없이 Node.js 내장 `http` 또는 `https` 모듈에서 직접 fluo 애플리케이션을 실행하려는 경우에 사용합니다. 최소한의 리소스 사용, 저수준 최적화 또는 표준 Node API가 선호되는 환경에 이상적입니다.
 
 ## 빠른 시작
 
 ```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { KonektiFactory } from '@konekti/runtime';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -58,7 +58,7 @@ const adapter = createNodejsAdapter({
 `runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
 
 ```typescript
-import { runNodejsApplication } from '@konekti/platform-nodejs';
+import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
 await runNodejsApplication(AppModule, {
@@ -76,9 +76,9 @@ await runNodejsApplication(AppModule, {
 
 ## 관련 패키지
 
-- `@konekti/runtime`: 핵심 런타임 facade입니다.
-- `@konekti/websockets`: 실시간 게이트웨이 지원을 제공합니다.
-- `@konekti/http`: 공통 HTTP 추상화 및 데코레이터를 포함합니다.
+- `@fluojs/runtime`: 핵심 런타임 facade입니다.
+- `@fluojs/websockets`: 실시간 게이트웨이 지원을 제공합니다.
+- `@fluojs/http`: 공통 HTTP 추상화 및 데코레이터를 포함합니다.
 
 ## 예제 소스
 

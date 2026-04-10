@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./error-responses.ko.md"><kbd>한국어</kbd></a></p>
 
-A backend's quality is often judged by how it handles failure. Konekti enforces a **standardized error response format** across the entire framework, ensuring that your API remains predictable, actionable, and secure for clients even when things go wrong.
+A backend's quality is often judged by how it handles failure. fluo enforces a **standardized error response format** across the entire framework, ensuring that your API remains predictable, actionable, and secure for clients even when things go wrong.
 
-## Why Standardized Errors in Konekti?
+## Why Standardized Errors in fluo?
 
 - **Predictable API Surface**: Clients can implement a single error-handling logic that works across all your endpoints, whether the error came from a database, a validation rule, or an auth guard.
 - **Actionable Feedback**: Validation errors include detailed field-level information, allowing frontend developers to show precise error messages to users without guessing.
@@ -13,9 +13,9 @@ A backend's quality is often judged by how it handles failure. Konekti enforces 
 
 ## Responsibility Split
 
-- **`@konekti/http` (The Filter)**: Provides the global exception filter, the base `HttpException` class, and the set of standard exceptions (e.g., `NotFoundException`, `ForbiddenException`).
-- **`@konekti/validation` (The Reporter)**: Specialized in generating rich, nested error structures when DTO validation fails.
-- **`@konekti/core` (The Contract)**: Defines shared framework error primitives such as `KonektiError` and the lower-level invariants other packages build on.
+- **`@fluojs/http` (The Filter)**: Provides the global exception filter, the base `HttpException` class, and the set of standard exceptions (e.g., `NotFoundException`, `ForbiddenException`).
+- **`@fluojs/validation` (The Reporter)**: Specialized in generating rich, nested error structures when DTO validation fails.
+- **`@fluojs/core` (The Contract)**: Defines shared framework error primitives such as `fluoError` and the lower-level invariants other packages build on.
 
 ## Typical Workflow
 
@@ -29,10 +29,10 @@ if (!user) {
 ```
 
 ### 2. The Global Catch-All
-Any exception thrown (or unhandled) during a request is caught by the Konekti dispatcher. It identifies if the exception is a known `HttpException` or a raw JavaScript `Error`.
+Any exception thrown (or unhandled) during a request is caught by the fluo dispatcher. It identifies if the exception is a known `HttpException` or a raw JavaScript `Error`.
 
 ### 3. Envelope Formatting
-The error is wrapped in the standard Konekti envelope.
+The error is wrapped in the standard fluo envelope.
 
 ```json
 {

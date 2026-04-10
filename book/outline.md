@@ -1,12 +1,12 @@
-# Konekti 입문서 상위 목차
+# fluo 입문서 상위 목차
 
 > **기준 소스**: [repo:README.md] [repo:docs/README.md] [ex:README.md]
 
-이 목차는 저장소가 이미 암시하고 있는 Konekti 학습 축을 따른다. 즉, 정체성과 철학, 첫 실행 경험, core runtime과 DI, HTTP 실행, 설정과 검증, 기능 패키지, 런타임 이식성, 테스트, 메인테이너 거버넌스의 순서다 `[repo:docs/README.md]` `[repo:docs/concepts/architecture-overview.md]` `[repo:docs/operations/release-governance.md]`.
+이 목차는 저장소가 이미 암시하고 있는 fluo 학습 축을 따른다. 즉, 정체성과 철학, 첫 실행 경험, core runtime과 DI, HTTP 실행, 설정과 검증, 기능 패키지, 런타임 이식성, 테스트, 메인테이너 거버넌스의 순서다 `[repo:docs/README.md]` `[repo:docs/concepts/architecture-overview.md]` `[repo:docs/operations/release-governance.md]`.
 
 ## 파트 0. 이 책을 읽는 법
 
-1. Why Konekti now
+1. Why fluo now
 2. Who this book is for
 3. How the repository is organized
 4. How the examples and docs fit together
@@ -14,7 +14,7 @@
 ## 파트 1. 철학과 멘탈 모델
 
 5. Standard-First as a framework stance
-6. Why Konekti rejects legacy decorator assumptions
+6. Why fluo rejects legacy decorator assumptions
 7. Explicit over implicit
 8. Module graph as the real shape of the app
 9. Platform adapters and runtime neutrality
@@ -24,13 +24,13 @@
 ## 파트 2. 첫 접촉: 0에서 실행까지
 
 12. Installing the CLI
-13. What `konekti new` gives you
+13. What `fluo new` gives you
 14. `pnpm dev` and the first request path
 15. Starter scaffold anatomy
 16. Why the minimal example matters
 17. TypeScript configuration and modern decorator posture
 
-## 파트 3. 가장 작은 유용한 Konekti 앱
+## 파트 3. 가장 작은 유용한 fluo 앱
 
 18. AppModule and bootstrapping
 19. Controller, service, and route basics
@@ -41,7 +41,7 @@
 
 ## 파트 4. 핵심 아키텍처
 
-24. `@konekti/core` as the metadata spine
+24. `@fluojs/core` as the metadata spine
 25. Standard decorators and stable metadata
 26. Token-based DI
 27. Providers, tokens, and scopes
@@ -52,7 +52,7 @@
 
 ## 파트 5. HTTP 런타임과 요청 흐름
 
-32. Why Konekti is explicit about the request pipeline
+32. Why fluo is explicit about the request pipeline
 33. Controllers and routing
 34. Request binding and DTO materialization
 35. Validation before handler execution
@@ -104,7 +104,7 @@
 
 ## 파트 11. 테스트와 메인테이너 작업
 
-66. Konekti testing toolbox
+66. fluo testing toolbox
 67. Unit, slice, e2e-style, and conformance tests
 68. `pnpm verify` as a maintainer threshold
 69. Public export documentation standards

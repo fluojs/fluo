@@ -1,8 +1,8 @@
-# @konekti/email
+# @fluojs/email
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Transport-agnostic email delivery core for Konekti. It provides a Nest-like module API, an injectable `EmailService` for standalone usage, and a first-party channel/queue adapter pair for `@konekti/notifications` integration without hard-coding any runtime-specific transport.
+Transport-agnostic email delivery core for fluo. It provides a Nest-like module API, an injectable `EmailService` for standalone usage, and a first-party channel/queue adapter pair for `@fluojs/notifications` integration without hard-coding any runtime-specific transport.
 
 ## Table of Contents
 
@@ -10,9 +10,9 @@ Transport-agnostic email delivery core for Konekti. It provides a Nest-like modu
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-  - [Node-only SMTP with `@konekti/email/node`](#node-only-smtp-with-konektiemailnode)
+  - [Node-only SMTP with `@fluojs/email/node`](#node-only-smtp-with-fluojs-email-node)
   - [Standalone delivery with `EmailService`](#standalone-delivery-with-emailservice)
-  - [Integration with `@konekti/notifications`](#integration-with-konektinotifications)
+  - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Queue-backed bulk delivery](#queue-backed-bulk-delivery)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
@@ -23,27 +23,27 @@ Transport-agnostic email delivery core for Konekti. It provides a Nest-like modu
 ## Installation
 
 ```bash
-npm install @konekti/email nodemailer
+npm install @fluojs/email nodemailer
 ```
 
-Install `@konekti/notifications` and `@konekti/queue` only when you want the built-in notifications channel and queue worker integration.
+Install `@fluojs/notifications` and `@fluojs/queue` only when you want the built-in notifications channel and queue worker integration.
 
-Node-specific SMTP delivery now lives behind the explicit `@konekti/email/node` subpath. The root `@konekti/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only behavior.
+Node-specific SMTP delivery now lives behind the explicit `@fluojs/email/node` subpath. The root `@fluojs/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only behavior.
 
 ## When to Use
 
-- When you want one package that can send email directly and also plug into `@konekti/notifications`.
+- When you want one package that can send email directly and also plug into `@fluojs/notifications`.
 - When transport choice must stay explicit and portable across Node, Bun, Deno, and Cloudflare-compatible application boundaries.
 - When email transport resources must participate in application bootstrap/shutdown without the core package assuming a specific runtime.
-- When bulk notification delivery should enqueue email work through `@konekti/queue` instead of blocking request paths.
+- When bulk notification delivery should enqueue email work through `@fluojs/queue` instead of blocking request paths.
 
 ## Quick Start
 
 ### Register the module
 
 ```typescript
-import { Module } from '@konekti/core';
-import { EmailModule, type EmailTransport } from '@konekti/email';
+import { Module } from '@fluojs/core';
+import { EmailModule, type EmailTransport } from '@fluojs/email';
 
 class ExampleTransport implements EmailTransport {
   async send(message) {
@@ -73,8 +73,8 @@ export class AppModule {}
 ### Send mail directly
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { EmailService } from '@konekti/email';
+import { Inject } from '@fluojs/core';
+import { EmailService } from '@fluojs/email';
 
 export class WelcomeService {
   constructor(@Inject(EmailService) private readonly email: EmailService) {}
@@ -82,7 +82,7 @@ export class WelcomeService {
   async sendWelcome(address: string) {
     await this.email.send({
       to: [address],
-      subject: 'Welcome to Konekti',
+      subject: 'Welcome to fluo',
       text: 'Your account is ready.',
     });
   }
@@ -91,14 +91,14 @@ export class WelcomeService {
 
 ## Common Patterns
 
-### Node-only SMTP with `@konekti/email/node`
+### Node-only SMTP with `@fluojs/email/node`
 
 Use the dedicated Node subpath when you want first-party Nodemailer/SMTP delivery without weakening the runtime-portable root package contract.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { EmailModule } from '@konekti/email';
-import { createNodemailerEmailTransportFactory } from '@konekti/email/node';
+import { Module } from '@fluojs/core';
+import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 
 @Module({
   imports: [
@@ -124,7 +124,7 @@ export class AppModule {}
 
 Behavioral contract notes:
 
-- `createNodemailerEmailTransportFactory(...)` is Node-only and is exported exclusively from `@konekti/email/node`.
+- `createNodemailerEmailTransportFactory(...)` is Node-only and is exported exclusively from `@fluojs/email/node`.
 - The factory owns the Nodemailer transporter it creates, so `EmailService` can verify it on bootstrap and close it during shutdown.
 - `createNodemailerEmailTransport(...)` wraps an existing Nodemailer transporter without transferring resource ownership.
 - SMTP credentials still enter through explicit options or DI. Neither the root package nor the Node subpath reads `process.env` directly.
@@ -153,14 +153,14 @@ Behavioral contract notes:
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
-### Integration with `@konekti/notifications`
+### Integration with `@fluojs/notifications`
 
 Inject `EMAIL_CHANNEL` into `NotificationsModule.forRootAsync(...)` so the email package remains the only place that understands email-specific payload fields and template rendering.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { EmailModule, EMAIL_CHANNEL } from '@konekti/email';
-import { NotificationsModule } from '@konekti/notifications';
+import { Module } from '@fluojs/core';
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { NotificationsModule } from '@fluojs/notifications';
 
 @Module({
   imports: [
@@ -191,17 +191,17 @@ Supported notification payload fields:
 
 ### Queue-backed bulk delivery
 
-When `@konekti/notifications` should offload bulk email delivery to the background, inject `QueueLifecycleService`, call `createEmailNotificationsQueueAdapter(queue)`, and import `QueueModule`.
+When `@fluojs/notifications` should offload bulk email delivery to the background, inject `QueueLifecycleService`, call `createEmailNotificationsQueueAdapter(queue)`, and import `QueueModule`.
 
 ```typescript
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import {
   EmailModule,
   EMAIL_CHANNEL,
   createEmailNotificationsQueueAdapter,
-} from '@konekti/email';
-import { NotificationsModule } from '@konekti/notifications';
-import { QueueLifecycleService, QueueModule } from '@konekti/queue';
+} from '@fluojs/email';
+import { NotificationsModule } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
@@ -235,7 +235,7 @@ The built-in queue worker contract uses these defaults:
 - `backoff: { type: 'exponential', delayMs: 1000 }`
 - `concurrency: 5`
 - `rateLimiter: { max: 50, duration: 1000 }`
-- `jobName: 'konekti.email.notification'`
+- `jobName: 'fluo.email.notification'`
 
 These defaults are exported as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` so callers can document or mirror them when they build custom queue adapters/workers.
 
@@ -246,7 +246,7 @@ The email package intentionally does **not**:
 - read transport credentials from `process.env`
 - ship a built-in SMTP or Nodemailer transport in the shared root package
 - configure `QueueModule` automatically
-- leak provider-specific option types into `@konekti/notifications`
+- leak provider-specific option types into `@fluojs/notifications`
 
 These limitations are part of the package contract so transport selection, template strategy, and queue rollout stay explicit at the application boundary.
 
@@ -286,14 +286,14 @@ These limitations are part of the package contract so transport selection, templ
 
 | Runtime | Subpath | Exports |
 | --- | --- | --- |
-| Node.js | `@konekti/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
 
 ## Related Packages
 
-- `@konekti/notifications`: Shared orchestration layer that consumes `EMAIL_CHANNEL`.
-- `@konekti/queue`: Recommended when bulk email delivery should run in the background.
-- `@konekti/config`: Recommended for resolving transport credentials and sender defaults without direct environment access.
-- `nodemailer`: The Node-only SMTP implementation consumed by `@konekti/email/node`.
+- `@fluojs/notifications`: Shared orchestration layer that consumes `EMAIL_CHANNEL`.
+- `@fluojs/queue`: Recommended when bulk email delivery should run in the background.
+- `@fluojs/config`: Recommended for resolving transport credentials and sender defaults without direct environment access.
+- `nodemailer`: The Node-only SMTP implementation consumed by `@fluojs/email/node`.
 
 ## Example Sources
 

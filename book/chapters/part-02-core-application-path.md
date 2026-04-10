@@ -18,12 +18,12 @@
 
 ```ts
 // source: ex:minimal/src/main.ts
-import { createFastifyAdapter } from '@konekti/platform-fastify';
-import { KonektiFactory } from '@konekti/runtime';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { fluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 await app.listen();
@@ -60,7 +60,7 @@ export class UsersController {
 
 ### 10장. 설정은 데이터다
 
-config 문서와 package README를 함께 사용해, 왜 Konekti가 흩어진 `process.env` 접근을 싫어하고 bootstrap 시점의 검증을 선호하는지 설명한다 `[repo:docs/concepts/config-and-environments.md]` `[pkg:config/README.md]`.
+config 문서와 package README를 함께 사용해, 왜 fluo가 흩어진 `process.env` 접근을 싫어하고 bootstrap 시점의 검증을 선호하는지 설명한다 `[repo:docs/concepts/config-and-environments.md]` `[pkg:config/README.md]`.
 
 ## 연결 챕터
 

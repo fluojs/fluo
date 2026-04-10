@@ -1,8 +1,8 @@
-# @konekti/drizzle
+# @fluojs/drizzle
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Drizzle ORM integration for Konekti with a transaction-aware database wrapper and an optional dispose hook.
+Drizzle ORM integration for fluo with a transaction-aware database wrapper and an optional dispose hook.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Drizzle ORM integration for Konekti with a transaction-aware database wrapper an
 ## Installation
 
 ```bash
-npm install @konekti/drizzle
+npm install @fluojs/drizzle
 ```
 
 ## When to Use
@@ -29,9 +29,9 @@ npm install @konekti/drizzle
 ## Quick Start
 
 ```ts
-import { ConfigService } from '@konekti/config';
-import { Module } from '@konekti/core';
-import { DrizzleModule } from '@konekti/drizzle';
+import { ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { DrizzleModule } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
@@ -62,7 +62,7 @@ export class AppModule {}
 ### Use `DrizzleDatabase.current()` inside repositories
 
 ```ts
-import { DrizzleDatabase } from '@konekti/drizzle';
+import { DrizzleDatabase } from '@fluojs/drizzle';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 
@@ -88,8 +88,8 @@ await this.db.transaction(async () => {
 ### Request-scoped transactions with an interceptor
 
 ```ts
-import { UseInterceptors } from '@konekti/http';
-import { DrizzleTransactionInterceptor } from '@konekti/drizzle';
+import { UseInterceptors } from '@fluojs/http';
+import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 
 @UseInterceptors(DrizzleTransactionInterceptor)
 class UsersController {}
@@ -106,9 +106,9 @@ class UsersController {}
 
 ## Related Packages
 
-- `@konekti/runtime`: owns module startup and shutdown sequencing
-- `@konekti/http`: provides the interceptor pipeline used for request transactions
-- `@konekti/prisma` and `@konekti/mongoose`: alternate ORM/ODM integrations with the same Konekti runtime model
+- `@fluojs/runtime`: owns module startup and shutdown sequencing
+- `@fluojs/http`: provides the interceptor pipeline used for request transactions
+- `@fluojs/prisma` and `@fluojs/mongoose`: alternate ORM/ODM integrations with the same fluo runtime model
 
 ## Example Sources
 

@@ -2,20 +2,20 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-최소 스타터를 넘어 표준 앱 경로를 보여주는 보다 현실적인 Konekti 애플리케이션입니다. 동일한 스타터 정렬 adapter-first 부트스트랩 위에 모듈 조합, DTO 검증, config 로딩, 도메인 CRUD 슬라이스를 추가합니다.
+최소 스타터를 넘어 표준 앱 경로를 보여주는 보다 현실적인 fluo 애플리케이션입니다. 동일한 스타터 정렬 adapter-first 부트스트랩 위에 모듈 조합, DTO 검증, config 로딩, 도메인 CRUD 슬라이스를 추가합니다.
 
 ## 이 예제가 보여주는 것
 
 - `imports` / `exports`를 사용한 다중 모듈 조합
 - `ConfigModule.forRoot`을 통한 타입 안전 설정
-- `@konekti/validation` 데코레이터를 사용한 Request DTO 검증
+- `@fluojs/validation` 데코레이터를 사용한 Request DTO 검증
 - 명시적 DI 토큰을 사용한 Repository 패턴
 - 런타임 소유 `/health`, `/ready` + 도메인 `/users` CRUD 표면
-- `@konekti/testing`의 단위 및 e2e 스타일 테스트 패턴
+- `@fluojs/testing`의 단위 및 e2e 스타일 테스트 패턴
 
 ## 실행 방법
 
-이 예제는 Konekti 모노레포 내부에 있으며 워크스페이스 링크 패키지를 사용합니다. 저장소 루트에서:
+이 예제는 fluo 모노레포 내부에 있으며 워크스페이스 링크 패키지를 사용합니다. 저장소 루트에서:
 
 ```sh
 pnpm install
@@ -47,7 +47,7 @@ examples/realworld-api/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 `konekti new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing, platform-fastify)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
+이 예제는 `fluo new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing, platform-fastify)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
 
 ## 권장 읽기 순서
 

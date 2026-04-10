@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./first-feature-path.ko.md"><kbd>한국어</kbd></a></p>
 
-Move from a basic starter to building real-world logic. Konekti encourages a **slice-based architecture**, where related logic is grouped by feature rather than technical layer.
+Move from a basic starter to building real-world logic. fluo encourages a **slice-based architecture**, where related logic is grouped by feature rather than technical layer.
 
 ### who this is for
 Developers who have completed the [Quick Start](./quick-start.md) and are ready to implement their first API endpoint.
@@ -15,11 +15,11 @@ mkdir -p src/catalog
 ```
 
 ### 2. create a provider
-Providers handle business logic or data access. In Konekti, dependencies are declared explicitly using the `@Inject` decorator on the class.
+Providers handle business logic or data access. In fluo, dependencies are declared explicitly using the `@Inject` decorator on the class.
 
 ```ts
 // src/catalog/product.service.ts
-import { Scope } from '@konekti/core';
+import { Scope } from '@fluojs/core';
 
 @Scope('singleton')
 export class ProductService {
@@ -34,8 +34,8 @@ Controllers define the HTTP interface. Note how we explicitly `@Inject` the `Pro
 
 ```ts
 // src/catalog/product.controller.ts
-import { Controller, Get } from '@konekti/http';
-import { Inject } from '@konekti/core';
+import { Controller, Get } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
 import { ProductService } from './product.service';
 
 @Controller('/products')
@@ -51,11 +51,11 @@ export class ProductController {
 ```
 
 ### 4. bundle into a module
-Modules are the building blocks of the Konekti application graph.
+Modules are the building blocks of the fluo application graph.
 
 ```ts
 // src/catalog/catalog.module.ts
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import { ProductService } from './product.service';
 import { ProductController } from './product.controller';
 
@@ -72,7 +72,7 @@ Import your new module into the root `AppModule` to activate it.
 
 ```ts
 // src/app.module.ts
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
@@ -94,5 +94,5 @@ curl http://localhost:3000/products
 - **Standard-Ready**: This entire flow uses native TypeScript decorators that align with future ECMAScript standards.
 
 ### next steps
-- **Automate the Boilerplate**: Use `konekti g module catalog` to generate this entire structure in seconds. See [Generator Workflow](./generator-workflow.md).
-- **Add Validation**: Learn how to use DTOs and `@konekti/validation` for secure, type-safe inputs.
+- **Automate the Boilerplate**: Use `fluo g module catalog` to generate this entire structure in seconds. See [Generator Workflow](./generator-workflow.md).
+- **Add Validation**: Learn how to use DTOs and `@fluojs/validation` for secure, type-safe inputs.

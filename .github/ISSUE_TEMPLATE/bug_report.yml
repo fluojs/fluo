@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in the Konekti framework or CLI
+description: Report a bug in the fluo framework or CLI
 labels: ["bug", "priority:p2"]
 body:
   - type: markdown
@@ -32,7 +32,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Konekti Version
+      label: fluo Version
       description: e.g. v1.2.3, or @latest
     validations:
       required: true

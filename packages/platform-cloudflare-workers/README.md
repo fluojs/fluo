@@ -1,8 +1,8 @@
-# @konekti/platform-cloudflare-workers
+# @fluojs/platform-cloudflare-workers
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Cloudflare Workers HTTP adapter for the Konekti runtime, optimized for the edge.
+Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 
 ## Table of Contents
 
@@ -17,12 +17,12 @@ Cloudflare Workers HTTP adapter for the Konekti runtime, optimized for the edge.
 ## Installation
 
 ```bash
-npm install @konekti/platform-cloudflare-workers
+npm install @fluojs/platform-cloudflare-workers
 ```
 
 ## When to Use
 
-Use this package when deploying Konekti applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
+Use this package when deploying fluo applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
 
 ## Quick Start
 
@@ -30,12 +30,12 @@ Use this package when deploying Konekti applications to [Cloudflare Workers](htt
 Bootstrap your application and export a standard Cloudflare Worker `fetch` handler.
 
 ```typescript
-import { KonektiFactory } from '@konekti/runtime';
-import { createCloudflareWorkerAdapter } from '@konekti/platform-cloudflare-workers';
+import { fluoFactory } from '@fluojs/runtime';
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const adapter = createCloudflareWorkerAdapter();
-const app = await KonektiFactory.create(AppModule, { adapter });
+const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
 
@@ -48,7 +48,7 @@ export default {
 Use the entrypoint helper for an even simpler setup that bootstraps on the first request.
 
 ```typescript
-import { createCloudflareWorkerEntrypoint } from '@konekti/platform-cloudflare-workers';
+import { createCloudflareWorkerEntrypoint } from '@fluojs/platform-cloudflare-workers';
 import { AppModule } from './app.module';
 
 const worker = createCloudflareWorkerEntrypoint(AppModule);
@@ -61,7 +61,7 @@ export default {
 ## Common Patterns
 
 ### Working with WebSocketPairs
-The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@konekti/websockets/cloudflare-workers` binding.
+The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -69,7 +69,7 @@ export class MyGateway {}
 ```
 
 ### Edge-Native Middleware
-Standard Konekti middleware (CORS, Global Prefix, etc.) is fully supported and optimized for the Cloudflare environment.
+Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported and optimized for the Cloudflare environment.
 
 ```typescript
 const adapter = createCloudflareWorkerAdapter({
@@ -87,9 +87,9 @@ const adapter = createCloudflareWorkerAdapter({
 
 ## Related Packages
 
-- `@konekti/runtime`: Core framework runtime.
-- `@konekti/websockets`: Includes specific subpath `@konekti/websockets/cloudflare-workers`.
-- `@konekti/http`: Shared HTTP decorators.
+- `@fluojs/runtime`: Core framework runtime.
+- `@fluojs/websockets`: Includes specific subpath `@fluojs/websockets/cloudflare-workers`.
+- `@fluojs/http`: Shared HTTP decorators.
 
 ## Example Sources
 

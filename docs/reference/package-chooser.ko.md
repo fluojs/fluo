@@ -2,7 +2,7 @@
 
 <p><a href="./package-chooser.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 가이드를 사용하여 특정 작업에 맞는 Konekti 패키지를 선택하세요. 애플리케이션 스택을 효율적으로 구축할 수 있도록 목표별로 정리되어 있습니다.
+이 가이드를 사용하여 특정 작업에 맞는 fluo 패키지를 선택하세요. 애플리케이션 스택을 효율적으로 구축할 수 있도록 목표별로 정리되어 있습니다.
 
 ## 새 웹 API 만들기 (Node.js)
 
@@ -10,13 +10,13 @@
 
 | 작업 | 추천 패키지 |
 | --- | --- |
-| **기반** | `@konekti/core`, `@konekti/di`, `@konekti/runtime` |
-| **HTTP 라우팅** | `@konekti/http` |
-| **GraphQL API** | `@konekti/graphql` |
-| **Fastify (권장)** | `@konekti/platform-fastify` |
-| **Express 호환** | `@konekti/platform-express` |
-| **입력 유효성 검사** | `@konekti/validation` |
-| **설정** | `@konekti/config` |
+| **기반** | `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime` |
+| **HTTP 라우팅** | `@fluojs/http` |
+| **GraphQL API** | `@fluojs/graphql` |
+| **Fastify (권장)** | `@fluojs/platform-fastify` |
+| **Express 호환** | `@fluojs/platform-express` |
+| **입력 유효성 검사** | `@fluojs/validation` |
+| **설정** | `@fluojs/config` |
 
 ## 엣지 / 모던 런타임에 배포
 
@@ -24,9 +24,9 @@
 
 | 대상 | 어댑터 |
 | --- | --- |
-| **Bun** | `@konekti/platform-bun` |
-| **Deno** | `@konekti/platform-deno` |
-| **Cloudflare Workers** | `@konekti/platform-cloudflare-workers` |
+| **Bun** | `@fluojs/platform-bun` |
+| **Deno** | `@fluojs/platform-deno` |
+| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` |
 
 ## 영속성 및 데이터 접근 추가
 
@@ -34,11 +34,11 @@
 
 | 목표 | 추천 패키지 |
 | --- | --- |
-| **관계형 (Prisma)** | `@konekti/prisma` |
-| **관계형 (Drizzle)** | `@konekti/drizzle` |
-| **도큐먼트 (Mongoose)** | `@konekti/mongoose` |
-| **캐싱** | `@konekti/cache-manager` |
-| **Redis 공유 서비스** | `@konekti/redis` |
+| **관계형 (Prisma)** | `@fluojs/prisma` |
+| **관계형 (Drizzle)** | `@fluojs/drizzle` |
+| **도큐먼트 (Mongoose)** | `@fluojs/mongoose` |
+| **캐싱** | `@fluojs/cache-manager` |
+| **Redis 공유 서비스** | `@fluojs/redis` |
 
 ## 보안 및 인증 구현
 
@@ -46,9 +46,9 @@
 
 | 목표 | 추천 패키지 |
 | --- | --- |
-| **JWT 전략** | `@konekti/jwt` |
-| **Passport 통합** | `@konekti/passport` |
-| **속도 제한** | `@konekti/throttler` |
+| **JWT 전략** | `@fluojs/jwt` |
+| **Passport 통합** | `@fluojs/passport` |
+| **속도 제한** | `@fluojs/throttler` |
 
 ## 실시간 및 메시징
 
@@ -56,16 +56,16 @@
 
 | 목표 | 추천 패키지 |
 | --- | --- |
-| **Raw WebSocket** | `@konekti/websockets` |
-| **Socket.IO** | `@konekti/socket.io` |
-| **마이크로서비스** | `@konekti/microservices` |
-| **백그라운드 작업** | `@konekti/queue` + `@konekti/redis` |
-| **크론 / 스케줄링** | `@konekti/cron` |
-| **알림 (Notifications)** | `@konekti/notifications` |
-| **이메일 (Portable)** | `@konekti/email` |
-| **이메일 (Node SMTP)** | `@konekti/email/node` |
-| **슬랙 알림** | `@konekti/slack` |
-| **디스코드 알림** | `@konekti/discord` |
+| **Raw WebSocket** | `@fluojs/websockets` |
+| **Socket.IO** | `@fluojs/socket.io` |
+| **마이크로서비스** | `@fluojs/microservices` |
+| **백그라운드 작업** | `@fluojs/queue` + `@fluojs/redis` |
+| **크론 / 스케줄링** | `@fluojs/cron` |
+| **알림 (Notifications)** | `@fluojs/notifications` |
+| **이메일 (Portable)** | `@fluojs/email` |
+| **이메일 (Node SMTP)** | `@fluojs/email/node` |
+| **슬랙 알림** | `@fluojs/slack` |
+| **디스코드 알림** | `@fluojs/discord` |
 
 ## 관측 가능성 및 문서화
 
@@ -73,9 +73,9 @@
 
 | 목표 | 추천 패키지 |
 | --- | --- |
-| **OpenAPI / Swagger** | `@konekti/openapi` |
-| **메트릭 (Prometheus)** | `@konekti/metrics` |
-| **헬스 체크** | `@konekti/terminus` |
+| **OpenAPI / Swagger** | `@fluojs/openapi` |
+| **메트릭 (Prometheus)** | `@fluojs/metrics` |
+| **헬스 체크** | `@fluojs/terminus` |
 
 ---
 

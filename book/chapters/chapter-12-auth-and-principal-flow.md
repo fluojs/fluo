@@ -9,15 +9,15 @@
 
 HTTP 장을 읽고 나면 독자는 request pipeline을 이해했다고 느낀다. 하지만 인증이 들어오는 순간 그 파이프라인은 훨씬 현실적인 모양을 갖춘다. 누가 요청을 보냈는지, 어떤 principal이 context에 실리는지, route protection은 어느 단계에서 끊기는지가 모두 중요해지기 때문이다 `[repo:docs/concepts/auth-and-jwt.md]`.
 
-Konekti의 auth 설명에서 중요한 것은 책임 분리다.
+fluo의 auth 설명에서 중요한 것은 책임 분리다.
 
-- `@konekti/jwt`는 토큰 서명/검증을 담당한다.
-- `@konekti/passport`는 strategy bridge를 담당한다.
-- `@konekti/http`는 guard 실행 시점과 context 주입을 담당한다 `[repo:docs/concepts/auth-and-jwt.md]`.
+- `@fluojs/jwt`는 토큰 서명/검증을 담당한다.
+- `@fluojs/passport`는 strategy bridge를 담당한다.
+- `@fluojs/http`는 guard 실행 시점과 context 주입을 담당한다 `[repo:docs/concepts/auth-and-jwt.md]`.
 
 즉, 인증은 하나의 패키지가 아니라 여러 층의 협업이다.
 
-이 점은 Konekti auth 설계의 강점이기도 하다. 토큰 발급, 검증 전략, request pipeline 통합이 한 패키지에 뒤엉키지 않고 분리되어 있기 때문에, 사용자는 각 층의 책임을 더 분명히 이해할 수 있다.
+이 점은 fluo auth 설계의 강점이기도 하다. 토큰 발급, 검증 전략, request pipeline 통합이 한 패키지에 뒤엉키지 않고 분리되어 있기 때문에, 사용자는 각 층의 책임을 더 분명히 이해할 수 있다.
 
 ## principal이 중요한 이유
 
@@ -153,9 +153,9 @@ async canActivate(context: GuardContext): Promise<true> {
     ...createJwtCoreProviders({
       accessTokenTtlSeconds: 3600,
       algorithms: ['HS256'],
-      audience: 'konekti-auth-example-clients',
-      issuer: 'konekti-auth-example',
-      secret: 'konekti-auth-example-secret',
+      audience: 'fluo-auth-example-clients',
+      issuer: 'fluo-auth-example',
+      secret: 'fluo-auth-example-secret',
     }),
     ...createPassportProviders(
       { defaultStrategy: 'jwt' },

@@ -2,7 +2,7 @@
 
 상태: Draft (Phase 4)
 
-이 문서는 `@konekti/graphql`의 `@FieldResolver` API와 통합 계획을 정의합니다.
+이 문서는 `@fluojs/graphql`의 `@FieldResolver` API와 통합 계획을 정의합니다.
 이 단계에서는 런타임 구현을 포함하지 않습니다.
 
 ## 목표

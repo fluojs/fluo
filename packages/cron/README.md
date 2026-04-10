@@ -1,8 +1,8 @@
-# @konekti/cron
+# @fluojs/cron
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Decorator-based scheduling for Konekti applications with lifecycle-managed startup/shutdown and optional Redis distributed locking.
+Decorator-based scheduling for fluo applications with lifecycle-managed startup/shutdown and optional Redis distributed locking.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ Decorator-based scheduling for Konekti applications with lifecycle-managed start
 ## Installation
 
 ```bash
-npm install @konekti/cron croner
+npm install @fluojs/cron croner
 ```
 
 ## When to Use
@@ -34,8 +34,8 @@ npm install @konekti/cron croner
 Register the `CronModule` and use decorators to schedule your methods.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { CronModule, Cron, CronExpression, Interval, Timeout } from '@konekti/cron';
+import { Module } from '@fluojs/core';
+import { CronModule, Cron, CronExpression, Interval, Timeout } from '@fluojs/cron';
 
 class BillingService {
   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
@@ -65,12 +65,12 @@ class AppModule {}
 
 ### Distributed Locking
 
-To prevent scheduled tasks from running concurrently across multiple server instances, enable distributed mode. This requires `@konekti/redis`.
+To prevent scheduled tasks from running concurrently across multiple server instances, enable distributed mode. This requires `@fluojs/redis`.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { CronModule } from '@konekti/cron';
-import { RedisModule } from '@konekti/redis';
+import { Module } from '@fluojs/core';
+import { CronModule } from '@fluojs/cron';
+import { RedisModule } from '@fluojs/redis';
 
 @Module({
   imports: [
@@ -78,7 +78,7 @@ import { RedisModule } from '@konekti/redis';
     CronModule.forRoot({
       distributed: {
         enabled: true,
-        keyPrefix: 'konekti:cron:lock',
+        keyPrefix: 'fluo:cron:lock',
         lockTtlMs: 30_000,
       },
     }),
@@ -92,8 +92,8 @@ class AppModule {}
 You can manage tasks at runtime using the `SCHEDULING_REGISTRY`.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@konekti/cron';
+import { Inject } from '@fluojs/core';
+import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@fluojs/cron';
 
 class TaskManager {
   constructor(
@@ -128,8 +128,8 @@ class TaskManager {
 
 ## Related Packages
 
-- `@konekti/redis`: Required for distributed locking functionality.
-- `@konekti/core`: Required for DI and Module management.
+- `@fluojs/redis`: Required for distributed locking functionality.
+- `@fluojs/core`: Required for DI and Module management.
 - `croner`: The underlying scheduling engine.
 
 ## Example Sources

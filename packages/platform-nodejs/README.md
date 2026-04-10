@@ -1,8 +1,8 @@
-# @konekti/platform-nodejs
+# @fluojs/platform-nodejs
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Raw Node.js HTTP adapter package for the Konekti runtime.
+Raw Node.js HTTP adapter package for the fluo runtime.
 
 ## Table of Contents
 
@@ -17,21 +17,21 @@ Raw Node.js HTTP adapter package for the Konekti runtime.
 ## Installation
 
 ```bash
-npm install @konekti/platform-nodejs
+npm install @fluojs/platform-nodejs
 ```
 
 ## When to Use
 
-Use this package when you want to run a Konekti application directly on the Node.js built-in `http` or `https` modules without the overhead of an intermediate framework like Express or Fastify. It is ideal for minimal footprints, custom low-level optimizations, or environments where standard Node APIs are preferred.
+Use this package when you want to run a fluo application directly on the Node.js built-in `http` or `https` modules without the overhead of an intermediate framework like Express or Fastify. It is ideal for minimal footprints, custom low-level optimizations, or environments where standard Node APIs are preferred.
 
 ## Quick Start
 
 ```typescript
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { KonektiFactory } from '@konekti/runtime';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
 });
 
@@ -58,7 +58,7 @@ const adapter = createNodejsAdapter({
 You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
 
 ```typescript
-import { runNodejsApplication } from '@konekti/platform-nodejs';
+import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
 
 await runNodejsApplication(AppModule, {
@@ -76,9 +76,9 @@ await runNodejsApplication(AppModule, {
 
 ## Related Packages
 
-- `@konekti/runtime`: The core runtime facade.
-- `@konekti/websockets`: Real-time gateway support.
-- `@konekti/http`: Shared HTTP abstractions and decorators.
+- `@fluojs/runtime`: The core runtime facade.
+- `@fluojs/websockets`: Real-time gateway support.
+- `@fluojs/http`: Shared HTTP abstractions and decorators.
 
 ## Example Sources
 

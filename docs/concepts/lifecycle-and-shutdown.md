@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./lifecycle-and-shutdown.ko.md"><kbd>한국어</kbd></a></p>
 
-Konekti provides a rigorous, deterministic **Application Lifecycle** that governs how your service starts, signals health, and gracefully exits. This lifecycle ensures that your application is never in a "half-alive" state.
+fluo provides a rigorous, deterministic **Application Lifecycle** that governs how your service starts, signals health, and gracefully exits. This lifecycle ensures that your application is never in a "half-alive" state.
 
 ## why this matters
 
@@ -11,7 +11,7 @@ In modern cloud-native environments (Kubernetes, AWS, etc.), the way an applicat
 - **The "Dirty" Shutdown**: If you kill a process while it's still writing to a database, you risk data corruption.
 - **Zombie Resources**: Failing to close Redis clients or message broker connections can lead to resource exhaustion over time.
 
-Konekti eliminates these risks by providing a **Structured Lifecycle Contract**. Every module and provider in your application can participate in this contract, ensuring that dependencies are initialized and destroyed in the correct order.
+fluo eliminates these risks by providing a **Structured Lifecycle Contract**. Every module and provider in your application can participate in this contract, ensuring that dependencies are initialized and destroyed in the correct order.
 
 ## core ideas
 
@@ -21,15 +21,15 @@ Bootstrap is an "all-or-nothing" operation.
 2. **Module Compilation**: If the DI graph is broken, we stop.
 3. **Provider Initialization**: If a database connection fails during `onModuleInit`, we stop.
 
-Konekti ensures that a process only stays alive if it is **fully functional**.
+fluo ensures that a process only stays alive if it is **fully functional**.
 
 ### readiness vs. liveness
-Konekti distinguishes between being "alive" (the process is running) and being "ready" (the process can handle traffic).
+fluo distinguishes between being "alive" (the process is running) and being "ready" (the process can handle traffic).
 - **Liveness**: Managed by the runtime engine.
 - **Readiness**: Only signaled after `onApplicationBootstrap` has successfully completed across all modules. This is the signal for load balancers to start routing traffic to the instance.
 
 ### graceful shutdown sequence
-When a `SIGTERM` or `SIGINT` is received, Konekti begins a coordinated retreat:
+When a `SIGTERM` or `SIGINT` is received, fluo begins a coordinated retreat:
 1. **Stop Ingestion**: The HTTP server stops accepting new connections immediately.
 2. **Request Draining**: Active requests are given a grace period (configurable) to finish.
 3. **Reverse-Order Teardown**: Shutdown hooks (`onModuleDestroy`, `beforeApplicationShutdown`) are executed in the **exact reverse order** of their initialization. If Module A depends on Module B, Module A is destroyed *first* to ensure Module B's resources are still available during A's cleanup.
@@ -43,8 +43,8 @@ When a `SIGTERM` or `SIGINT` is received, Konekti begins a coordinated retreat:
 
 ## boundaries
 
-- **Dependency-Aware**: You never have to worry about the order of cleanup. Konekti calculates the correct sequence based on your `@Inject()` metadata.
-- **Timeout Protection**: If a shutdown hook takes too long (e.g., a hanging database query), Konekti will eventually force-exit to prevent "zombie" processes from blocking deployments.
+- **Dependency-Aware**: You never have to worry about the order of cleanup. fluo calculates the correct sequence based on your `@Inject()` metadata.
+- **Timeout Protection**: If a shutdown hook takes too long (e.g., a hanging database query), fluo will eventually force-exit to prevent "zombie" processes from blocking deployments.
 - **Idempotency**: Lifecycle hooks are guaranteed to run exactly once per application instance.
 
 ## related docs

@@ -1,8 +1,8 @@
-# @konekti/throttler
+# @fluojs/throttler
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Decorator-based rate limiting for Konekti applications with in-memory and Redis store adapters.
+Decorator-based rate limiting for fluo applications with in-memory and Redis store adapters.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ Decorator-based rate limiting for Konekti applications with in-memory and Redis 
 ## Installation
 
 ```bash
-npm install @konekti/throttler
+npm install @fluojs/throttler
 ```
 
 ## When to Use
@@ -34,9 +34,9 @@ npm install @konekti/throttler
 Register the `ThrottlerModule` and apply the `Throttle` decorator to your controllers or methods.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { ThrottlerModule, Throttle, SkipThrottle } from '@konekti/throttler';
-import { Controller, Post } from '@konekti/http';
+import { Module } from '@fluojs/core';
+import { ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
+import { Controller, Post } from '@fluojs/http';
 
 @Module({
   imports: [
@@ -71,8 +71,8 @@ class AuthController {
 For multi-instance deployments, use `RedisThrottlerStore` to share the rate limit state across all instances.
 
 ```typescript
-import { ThrottlerModule, RedisThrottlerStore } from '@konekti/throttler';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
+import { REDIS_CLIENT } from '@fluojs/redis';
 
 // Inside a provider or module factory
 const redisStore = new RedisThrottlerStore(redisClient);
@@ -117,8 +117,8 @@ ThrottlerModule.forRoot({
 
 ## Related Packages
 
-- `@konekti/http`: Required for HTTP context and Exception handling.
-- `@konekti/redis`: Required when using `RedisThrottlerStore`.
+- `@fluojs/http`: Required for HTTP context and Exception handling.
+- `@fluojs/redis`: Required when using `RedisThrottlerStore`.
 
 ## Example Sources
 

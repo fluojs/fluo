@@ -1,8 +1,8 @@
-# @konekti/websockets
+# @fluojs/websockets
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Decorator-based WebSocket gateway authoring for the Konekti runtime.
+Decorator-based WebSocket gateway authoring for the fluo runtime.
 
 ## Table of Contents
 
@@ -17,19 +17,19 @@ Decorator-based WebSocket gateway authoring for the Konekti runtime.
 ## Installation
 
 ```bash
-npm install @konekti/websockets ws
+npm install @fluojs/websockets ws
 ```
 
 ## When to Use
 
-Use this package to add real-time WebSocket capabilities to your Konekti application. It provides a clean, decorator-driven API for handling connections, messages, and disconnections, with first-class support for multiple runtimes (Node.js, Bun, Deno, Cloudflare Workers).
+Use this package to add real-time WebSocket capabilities to your fluo application. It provides a clean, decorator-driven API for handling connections, messages, and disconnections, with first-class support for multiple runtimes (Node.js, Bun, Deno, Cloudflare Workers).
 
 ## Quick Start
 
 ```typescript
-import { WebSocketGateway, OnConnect, OnMessage } from '@konekti/websockets';
-import { NodeWebSocketModule } from '@konekti/websockets/node';
-import { Module } from '@konekti/core';
+import { WebSocketGateway, OnConnect, OnMessage } from '@fluojs/websockets';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
+import { Module } from '@fluojs/core';
 
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
@@ -87,10 +87,10 @@ class DedicatedChatGateway {}
 
 | Runtime | Subpath | Module |
 | --- | --- | --- |
-| Node.js | `@konekti/websockets/node` | `NodeWebSocketModule` |
-| Bun | `@konekti/websockets/bun` | `BunWebSocketModule` |
-| Deno | `@konekti/websockets/deno` | `DenoWebSocketModule` |
-| Workers | `@konekti/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` |
+| Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` |
 
 ## Example Sources
 

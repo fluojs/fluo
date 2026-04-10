@@ -1,8 +1,8 @@
-# @konekti/platform-fastify
+# @fluojs/platform-fastify
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Fastify-backed HTTP adapter for the Konekti runtime.
+Fastify-backed HTTP adapter for the fluo runtime.
 
 ## Table of Contents
 
@@ -18,21 +18,21 @@ Fastify-backed HTTP adapter for the Konekti runtime.
 ## Installation
 
 ```bash
-npm install @konekti/platform-fastify fastify
+npm install @fluojs/platform-fastify fastify
 ```
 
 ## When to Use
 
-Use this package when you need a high-performance HTTP adapter for your Konekti application. Fastify is known for its low overhead and efficient request handling, making it the recommended choice for production Konekti applications requiring high throughput and concurrency.
+Use this package when you need a high-performance HTTP adapter for your fluo application. Fastify is known for its low overhead and efficient request handling, making it the recommended choice for production fluo applications requiring high throughput and concurrency.
 
 ## Quick Start
 
 ```typescript
-import { createFastifyAdapter } from '@konekti/platform-fastify';
-import { KonektiFactory } from '@konekti/runtime';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await KonektiFactory.create(AppModule, {
+const app = await fluoFactory.create(AppModule, {
   adapter: createFastifyAdapter({ port: 3000 }),
 });
 
@@ -42,7 +42,7 @@ await app.listen();
 ## Common Patterns
 
 ### Multipart and Raw Body
-The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard Konekti request interface.
+The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface.
 
 ```typescript
 const adapter = createFastifyAdapter({
@@ -53,7 +53,7 @@ const adapter = createFastifyAdapter({
 ```
 
 ### Server-Backed Real-Time
-Fastify provides a `server-backed` capability that allows `@konekti/websockets` to attach directly to the underlying Node.js HTTP server.
+Fastify provides a `server-backed` capability that allows `@fluojs/websockets` to attach directly to the underlying Node.js HTTP server.
 
 ```typescript
 @WebSocketGateway({ path: '/ws' })
@@ -62,7 +62,7 @@ export class MyGateway {}
 
 ## Performance
 
-Konekti's Fastify adapter significantly outperforms the raw Node.js adapter in high-concurrency scenarios.
+fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high-concurrency scenarios.
 
 | Adapter | Requests/sec | Avg Latency |
 | --- | ---: | ---: |
@@ -80,9 +80,9 @@ Konekti's Fastify adapter significantly outperforms the raw Node.js adapter in h
 
 ## Related Packages
 
-- `@konekti/runtime`: Core framework runtime.
-- `@konekti/platform-express`: Alternative Express-based adapter.
-- `@konekti/websockets`: Real-time gateway support.
+- `@fluojs/runtime`: Core framework runtime.
+- `@fluojs/platform-express`: Alternative Express-based adapter.
+- `@fluojs/websockets`: Real-time gateway support.
 
 ## Example Sources
 

@@ -1,8 +1,8 @@
-# @konekti/slack
+# @fluojs/slack
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Webhook-first, transport-agnostic Slack delivery core for Konekti. It provides a Nest-like module API, an injectable `SlackService` for standalone usage, and a first-party `SlackChannel` for `@konekti/notifications` integration without assuming a Node-only SDK.
+Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Nest-like module API, an injectable `SlackService` for standalone usage, and a first-party `SlackChannel` for `@fluojs/notifications` integration without assuming a Node-only SDK.
 
 ## Table of Contents
 
@@ -11,7 +11,7 @@ Webhook-first, transport-agnostic Slack delivery core for Konekti. It provides a
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Standalone delivery with `SlackService`](#standalone-delivery-with-slackservice)
-  - [Integration with `@konekti/notifications`](#integration-with-konektinotifications)
+  - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
@@ -21,12 +21,12 @@ Webhook-first, transport-agnostic Slack delivery core for Konekti. It provides a
 ## Installation
 
 ```bash
-npm install @konekti/slack @konekti/notifications
+npm install @fluojs/slack @fluojs/notifications
 ```
 
 ## When to Use
 
-- When you want one package that can send Slack messages directly and also plug into `@konekti/notifications`.
+- When you want one package that can send Slack messages directly and also plug into `@fluojs/notifications`.
 - When transport choice must stay explicit and portable across Node, Bun, Deno, and Cloudflare-compatible application boundaries.
 - When Slack delivery should prefer incoming webhooks while still allowing richer API integrations through a custom transport contract.
 - When configuration must enter through DI or explicit options instead of `process.env` reads inside the package.
@@ -36,8 +36,8 @@ npm install @konekti/slack @konekti/notifications
 ### Register the module
 
 ```typescript
-import { Module } from '@konekti/core';
-import { SlackModule, createSlackWebhookTransport } from '@konekti/slack';
+import { Module } from '@fluojs/core';
+import { SlackModule, createSlackWebhookTransport } from '@fluojs/slack';
 
 @Module({
   imports: [
@@ -56,8 +56,8 @@ export class AppModule {}
 ### Send Slack messages directly
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { SlackService } from '@konekti/slack';
+import { Inject } from '@fluojs/core';
+import { SlackService } from '@fluojs/slack';
 
 export class DeployNotifier {
   constructor(@Inject(SlackService) private readonly slack: SlackService) {}
@@ -95,18 +95,18 @@ Behavioral contract notes:
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
-### Integration with `@konekti/notifications`
+### Integration with `@fluojs/notifications`
 
 Inject `SLACK_CHANNEL` into `NotificationsModule.forRootAsync(...)` so the Slack package remains the only place that understands Slack-specific payload fields and recipient-to-channel translation.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { NotificationsModule } from '@konekti/notifications';
+import { Module } from '@fluojs/core';
+import { NotificationsModule } from '@fluojs/notifications';
 import {
   SLACK_CHANNEL,
   SlackModule,
   createSlackWebhookTransport,
-} from '@konekti/slack';
+} from '@fluojs/slack';
 
 @Module({
   imports: [
@@ -197,9 +197,9 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ## Related Packages
 
-- `@konekti/notifications`: Shared orchestration layer that consumes `SLACK_CHANNEL`.
-- `@konekti/config`: Recommended for resolving webhook URLs or tokens without direct environment access.
-- `@konekti/event-bus`: Useful when Slack notifications are one side effect among several event-driven workflows.
+- `@fluojs/notifications`: Shared orchestration layer that consumes `SLACK_CHANNEL`.
+- `@fluojs/config`: Recommended for resolving webhook URLs or tokens without direct environment access.
+- `@fluojs/event-bus`: Useful when Slack notifications are one side effect among several event-driven workflows.
 
 ## Example Sources
 

@@ -1,8 +1,8 @@
-# @konekti/redis
+# @fluojs/redis
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Shared Redis connection layer for Konekti. It provides a singleton `ioredis` client managed by the application lifecycle.
+Shared Redis connection layer for fluo. It provides a singleton `ioredis` client managed by the application lifecycle.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Shared Redis connection layer for Konekti. It provides a singleton `ioredis` cli
 ## Installation
 
 ```bash
-npm install @konekti/redis ioredis
+npm install @fluojs/redis ioredis
 ```
 
 ## When to Use
@@ -31,8 +31,8 @@ npm install @konekti/redis ioredis
 ### Register the Module
 
 ```typescript
-import { Module } from '@konekti/core';
-import { RedisModule } from '@konekti/redis';
+import { Module } from '@fluojs/core';
+import { RedisModule } from '@fluojs/redis';
 
 @Module({
   imports: [
@@ -50,8 +50,8 @@ export class AppModule {}
 Inject `RedisService` for high-level operations or `REDIS_CLIENT` for the raw `ioredis` instance.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { RedisService } from '@konekti/redis';
+import { Inject } from '@fluojs/core';
+import { RedisService } from '@fluojs/redis';
 
 export class CacheRepository {
   @Inject(RedisService)
@@ -74,8 +74,8 @@ export class CacheRepository {
 If you need advanced Redis commands (pipelines, lua scripts, pub/sub), inject the raw client directly.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { Inject } from '@fluojs/core';
+import { REDIS_CLIENT } from '@fluojs/redis';
 import type Redis from 'ioredis';
 
 export class AdvancedService {
@@ -100,9 +100,9 @@ export class AdvancedService {
 
 ## Related Packages
 
-- `@konekti/cache-manager`: Uses this package for Redis-backed caching.
-- `@konekti/queue`: Uses this package for distributed job processing.
-- `@konekti/throttler`: Uses this package for distributed rate limiting.
+- `@fluojs/cache-manager`: Uses this package for Redis-backed caching.
+- `@fluojs/queue`: Uses this package for distributed job processing.
+- `@fluojs/throttler`: Uses this package for distributed rate limiting.
 
 ## Example Sources
 

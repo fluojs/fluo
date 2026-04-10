@@ -4,20 +4,20 @@
   <strong>한국어</strong> | <a href="./platform-conformance-authoring-checklist.md">English</a>
 </p>
 
-이 체크리스트는 Konekti 생태계에서 공식적인 플랫폼 지향 패키지를 작성할 때 준수해야 할 기술적 및 동작적 요구사항을 정의합니다. Konekti 플랫폼 쉘에 참여하는 모든 패키지가 예측 가능하고, 이식 가능하며, 프레임워크의 핵심 표준과 일관성을 유지할 수 있도록 보장합니다.
+이 체크리스트는 fluo 생태계에서 공식적인 플랫폼 지향 패키지를 작성할 때 준수해야 할 기술적 및 동작적 요구사항을 정의합니다. fluo 플랫폼 쉘에 참여하는 모든 패키지가 예측 가능하고, 이식 가능하며, 프레임워크의 핵심 표준과 일관성을 유지할 수 있도록 보장합니다.
 
 ## 이 문서가 필요한 경우
 
-- **컴포넌트 생성**: 새로운 `@konekti/platform-*` 또는 `@konekti/*-adapter` 패키지를 작성할 때.
+- **컴포넌트 생성**: 새로운 `@fluojs/platform-*` 또는 `@fluojs/*-adapter` 패키지를 작성할 때.
 - **계약 수정**: 플랫폼 수준 컴포넌트의 공개된 동작이나 생명주기 훅을 업데이트할 때.
-- **이식성 감사**: 패키지가 크로스 런타임(Node.js, Bun, Deno 등) 지원을 위해 Konekti 플랫폼 준수 표준을 따르고 있는지 인증할 때.
+- **이식성 감사**: 패키지가 크로스 런타임(Node.js, Bun, Deno 등) 지원을 위해 fluo 플랫폼 준수 표준을 따르고 있는지 인증할 때.
 
 ---
 
 ## 작성 체크리스트 (Authoring Checklist)
 
 ### 1. 준수 하네스 및 테스트 (Conformance Harness & Testing)
-모든 플랫폼 지향 패키지는 `@konekti/testing`의 공식 테스트 하네스를 사용하여 검증되어야 합니다.
+모든 플랫폼 지향 패키지는 `@fluojs/testing`의 공식 테스트 하네스를 사용하여 검증되어야 합니다.
 - [ ] **하네스 채택**: 일반적인 생명주기 검증을 위해 `createPlatformConformanceHarness(...)`를 구현합니다.
 - [ ] **전송 이식성**: (HTTP/메시지 어댑터의 경우) 크로스 런타임 동작을 확인하기 위해 `createHttpAdapterPortabilityHarness(...)`를 사용합니다.
 - [ ] **상태 격리**: `validate()` 메서드가 부수 효과가 없는 검사이며 컴포넌트 상태를 전이시키지 않는지 확인합니다.

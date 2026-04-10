@@ -1,8 +1,8 @@
-# @konekti/config
+# @fluojs/config
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Configuration loading, merging, validation, and typed runtime access for Konekti applications.
+Configuration loading, merging, validation, and typed runtime access for fluo applications.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Configuration loading, merging, validation, and typed runtime access for Konekti
 ## Installation
 
 ```bash
-npm install @konekti/config
+npm install @fluojs/config
 ```
 
 ## When to Use
@@ -33,8 +33,8 @@ Use this package when you need to:
 The `ConfigModule` handles loading and validating your configuration during bootstrap.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { ConfigModule } from '@konekti/config';
+import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
 
 @Module({
   imports: [
@@ -54,8 +54,8 @@ class AppModule {}
 Once registered, you can inject `ConfigService` to access your values:
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { ConfigService } from '@konekti/config';
+import { Inject } from '@fluojs/core';
+import { ConfigService } from '@fluojs/config';
 
 class MyService {
   constructor(@Inject(ConfigService) private config: ConfigService) {
@@ -91,8 +91,8 @@ The `validate` function runs after all sources are merged but before the applica
 
 ## Related Packages
 
-- **`@konekti/runtime`**: Calls `loadConfig` internally during application bootstrap.
-- **`@konekti/validation`**: Can be used within the `validate` function for schema-based validation.
+- **`@fluojs/runtime`**: Calls `loadConfig` internally during application bootstrap.
+- **`@fluojs/validation`**: Can be used within the `validate` function for schema-based validation.
 
 ## Example Sources
 

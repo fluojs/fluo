@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./cqrs.ko.md"><kbd>한국어</kbd></a></p>
 
-Architecture is about managing complexity. Konekti provides a robust CQRS implementation that separates **state-changing operations (Commands)** from **data-retrieval operations (Queries)** into distinct buses, facilitating scalable and maintainable backend systems.
+Architecture is about managing complexity. fluo provides a robust CQRS implementation that separates **state-changing operations (Commands)** from **data-retrieval operations (Queries)** into distinct buses, facilitating scalable and maintainable backend systems.
 
-## Why CQRS in Konekti?
+## Why CQRS in fluo?
 
 - **Decoupled Intent and Execution**: Application services only need to know the "Intent" (a Command or Query object), not the implementation details of how it's handled.
 - **Explicit Domain Modeling**: By treating state changes as first-class `Command` objects, your business logic becomes auditable and easier to reason about.
@@ -13,8 +13,8 @@ Architecture is about managing complexity. Konekti provides a robust CQRS implem
 
 ## Responsibility Split
 
-- **`@konekti/cqrs` (The Orchestrator)**: Provides the core `CommandBus`, `QueryBus`, and `CqrsEventBus`. It manages the discovery lifecycle and ensures each message reaches its designated handler.
-- **`@konekti/event-bus` (The Engine)**: The underlying infrastructure for event distribution. The CQRS package delegates event publishing to this package for high-performance delivery.
+- **`@fluojs/cqrs` (The Orchestrator)**: Provides the core `CommandBus`, `QueryBus`, and `CqrsEventBus`. It manages the discovery lifecycle and ensures each message reaches its designated handler.
+- **`@fluojs/event-bus` (The Engine)**: The underlying infrastructure for event distribution. The CQRS package delegates event publishing to this package for high-performance delivery.
 
 ## Typical Workflows
 
@@ -57,7 +57,7 @@ class WelcomeSaga implements ISaga<UserCreatedEvent> {
 
 ## Core Boundaries
 
-- **The Single Handler Rule**: Commands and Queries are **Point-to-Point**. Each must have exactly one handler. If zero or multiple handlers are found, Konekti will throw an error at bootstrap or execution time.
+- **The Single Handler Rule**: Commands and Queries are **Point-to-Point**. Each must have exactly one handler. If zero or multiple handlers are found, fluo will throw an error at bootstrap or execution time.
 - **Event-to-Many**: Unlike commands, a single `Event` can be handled by multiple `EventHandlers` and `Sagas` simultaneously.
 - **Local vs. Distributed**: The default CQRS buses operate within a single process. For distributed architectures, you can bridge these buses to external brokers via custom adapters.
 

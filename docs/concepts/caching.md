@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./caching.ko.md"><kbd>한국어</kbd></a></p>
 
-Performance is a first-class citizen in Konekti. The caching system provides a unified interface for both **transparent HTTP response caching** and **programmatic application-level caching**, supporting in-memory and distributed Redis backends.
+Performance is a first-class citizen in fluo. The caching system provides a unified interface for both **transparent HTTP response caching** and **programmatic application-level caching**, supporting in-memory and distributed Redis backends.
 
-## Why Caching in Konekti?
+## Why Caching in fluo?
 
 - **Transparent Performance**: Improve response times for expensive `GET` requests with a single interceptor.
 - **Identity-Aware Caching**: Automatically isolate cached responses by authenticated user (`principal.subject`) to prevent cross-user data leakage.
@@ -13,9 +13,9 @@ Performance is a first-class citizen in Konekti. The caching system provides a u
 
 ## Responsibility Split
 
-- **`@konekti/cache-manager` (The Facade)**: Defines the `CacheService` for manual operations and the `CacheInterceptor` for HTTP. It manages the pluggable store architecture.
-- **`@konekti/http` (The Hook)**: Provides the lifecycle hooks required for the interceptor to read from and write to the cache during request processing.
-- **`@konekti/redis` (The Distributed Store)**: An optional package that allows your cache to persist across multiple application instances via Redis.
+- **`@fluojs/cache-manager` (The Facade)**: Defines the `CacheService` for manual operations and the `CacheInterceptor` for HTTP. It manages the pluggable store architecture.
+- **`@fluojs/http` (The Hook)**: Provides the lifecycle hooks required for the interceptor to read from and write to the cache during request processing.
+- **`@fluojs/redis` (The Distributed Store)**: An optional package that allows your cache to persist across multiple application instances via Redis.
 
 ## Typical Workflows
 
@@ -43,7 +43,7 @@ async getExchangeRates() {
 ```
 
 ### 3. Identity-Bound Keys
-Konekti's default key strategy is security-first. If a `RequestContext.principal` is present, the cache key automatically includes the user's subject:
+fluo's default key strategy is security-first. If a `RequestContext.principal` is present, the cache key automatically includes the user's subject:
 - **Default Key**: `route_path + query_params (if enabled) + principal_subject`
 - **Result**: User A and User B will never see each other's cached responses, even for the same URL.
 

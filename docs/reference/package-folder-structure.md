@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./package-folder-structure.ko.md"><kbd>한국어</kbd></a></p>
 
-This reference defines the standard folder structure for packages within the Konekti monorepo. Every package in `packages/` should follow these conventions for consistency and maintainability.
+This reference defines the standard folder structure for packages within the fluo monorepo. Every package in `packages/` should follow these conventions for consistency and maintainability.
 
 ## standard root files
 
@@ -24,23 +24,23 @@ If a package requires multiple files for a specific responsibility, use the foll
 
 ### `decorators/`
 User-facing decorators and metadata readers.
-- *Examples*: `@konekti/serialization`, `@konekti/validation`.
+- *Examples*: `@fluojs/serialization`, `@fluojs/validation`.
 
 ### `transports/`
 Pluggable transport implementations for cross-protocol support.
-- *Examples*: `@konekti/microservices` (Kafka, RabbitMQ, etc.).
+- *Examples*: `@fluojs/microservices` (Kafka, RabbitMQ, etc.).
 
 ### `stores/`
 Pluggable storage backends.
-- *Examples*: `@konekti/cache-manager` (Memory, Redis).
+- *Examples*: `@fluojs/cache-manager` (Memory, Redis).
 
 ### `adapters/`
 Bridges between third-party libraries and internal interfaces.
-- *Examples*: `@konekti/cli`, `@konekti/passport`.
+- *Examples*: `@fluojs/cli`, `@fluojs/passport`.
 
 ### `node/` / `web/`
 Platform-specific code used to separate Node.js-only logic from web-standard logic.
-- *Examples*: `@konekti/runtime`, `@konekti/websockets`.
+- *Examples*: `@fluojs/runtime`, `@fluojs/websockets`.
 
 ### `internal/`
 Framework-private implementation details. These files **must not** be re-exported from `index.ts`.

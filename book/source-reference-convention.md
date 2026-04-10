@@ -1,6 +1,6 @@
-# KSR: Konekti 출처 표기 규칙
+# KSR: fluo 출처 표기 규칙
 
-이 작업 공간은 Konekti의 실제 문서, 코드, 예제에 대한 모든 주장을 저장소 파일로 되돌아갈 수 있게 만드는 **가벼운 출처 표기 형식**을 사용한다.
+이 작업 공간은 fluo의 실제 문서, 코드, 예제에 대한 모든 주장을 저장소 파일로 되돌아갈 수 있게 만드는 **가벼운 출처 표기 형식**을 사용한다.
 
 ## 접두어
 
@@ -30,7 +30,7 @@
 
 예시:
 
-- Runtime bootstrap uses `KonektiFactory.create(...)` in the minimal example `[ex:minimal/src/main.ts#L10-L13]`.
+- Runtime bootstrap uses `fluoFactory.create(...)` in the minimal example `[ex:minimal/src/main.ts#L10-L13]`.
 - The realworld API example binds a DTO with `@RequestDto(CreateUserDto)` `[ex:realworld-api/src/users/users.controller.ts#L18-L22]`.
 
 ## 코드 블록 출처
@@ -72,7 +72,7 @@ or
 
 ## 도표 출처
 
-도표가 실제 Konekti 동작을 설명한다면, 그 구조가 어떤 문서나 코드에서 왔는지도 함께 적어야 한다.
+도표가 실제 fluo 동작을 설명한다면, 그 구조가 어떤 문서나 코드에서 왔는지도 함께 적어야 한다.
 
 권장 형식:
 

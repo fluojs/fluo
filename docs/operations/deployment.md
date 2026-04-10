@@ -4,11 +4,11 @@
   <strong>English</strong> | <a href="./deployment.ko.md">한국어</a>
 </p>
 
-This document defines the production deployment standards, containerization patterns, and runtime health indicators for the Konekti framework. It ensures that applications remain resilient, observable, and easy to manage across diverse cloud environments.
+This document defines the production deployment standards, containerization patterns, and runtime health indicators for the fluo framework. It ensures that applications remain resilient, observable, and easy to manage across diverse cloud environments.
 
 ## When this document matters
 
-- **Production Readiness**: When preparing a Konekti application for a live environment.
+- **Production Readiness**: When preparing a fluo application for a live environment.
 - **Infrastructure Configuration**: When setting up Kubernetes probes, resource limits, or cloud-native scaling.
 - **Troubleshooting**: When diagnosing startup failures, unexpected restarts, or graceful shutdown issues.
 
@@ -16,7 +16,7 @@ This document defines the production deployment standards, containerization patt
 
 ## Containerization
 
-Konekti recommends a multi-stage Docker build to minimize image size and reduce the attack surface.
+fluo recommends a multi-stage Docker build to minimize image size and reduce the attack surface.
 
 ### Recommended Dockerfile Pattern
 ```dockerfile
@@ -34,8 +34,8 @@ RUN pnpm build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 konekti
-USER konekti
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 fluo
+USER fluo
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -53,7 +53,7 @@ CMD ["node", "dist/main.js"]
 
 ## Health and Readiness Probes
 
-Konekti provides built-in endpoints for automated health monitoring. These integrate directly with Kubernetes `livenessProbe` and `readinessProbe`.
+fluo provides built-in endpoints for automated health monitoring. These integrate directly with Kubernetes `livenessProbe` and `readinessProbe`.
 
 - **Liveness (`/health`)**: Returns `200 OK` as long as the process is running. Used to trigger container restarts.
 - **Readiness (`/ready`)**: Returns `200 OK` only after the application bootstrap is complete and all registered dependency checks (e.g., Database, Redis) pass. Returns `503 Service Unavailable` during startup or dependency failure.
@@ -81,7 +81,7 @@ readinessProbe:
 
 ## Graceful Shutdown
 
-The Konekti runtime (specifically `runNodeApplication` from `@konekti/runtime/node`) automatically listens for `SIGTERM` and `SIGINT` signals to initiate a clean shutdown.
+The fluo runtime (specifically `runNodeApplication` from `@fluojs/runtime/node`) automatically listens for `SIGTERM` and `SIGINT` signals to initiate a clean shutdown.
 
 1. **Stop Ingress**: The HTTP adapter stops accepting new connections.
 2. **Request Drain**: The runtime waits for active requests to finish within the `shutdownTimeoutMs` window (default: 10s).

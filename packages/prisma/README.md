@@ -1,8 +1,8 @@
-# @konekti/prisma
+# @fluojs/prisma
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Prisma lifecycle and ALS-backed transaction context for Konekti applications. Connects a `PrismaClient` to the module system with automatic connection management and request-scoped transactions.
+Prisma lifecycle and ALS-backed transaction context for fluo applications. Connects a `PrismaClient` to the module system with automatic connection management and request-scoped transactions.
 
 ## Table of Contents
 
@@ -20,14 +20,14 @@ Prisma lifecycle and ALS-backed transaction context for Konekti applications. Co
 ## Installation
 
 ```bash
-pnpm add @konekti/prisma
+pnpm add @fluojs/prisma
 # Ensure @prisma/client is also installed
 pnpm add @prisma/client
 ```
 
 ## When to Use
 
-- When using Prisma as your ORM and you want it integrated with Konekti's dependency injection and lifecycle hooks.
+- When using Prisma as your ORM and you want it integrated with fluo's dependency injection and lifecycle hooks.
 - When you need a reliable way to share a transaction context across multiple services and repositories without passing a `tx` object everywhere.
 - When you want automatic `$connect` on startup and `$disconnect` on shutdown.
 
@@ -36,8 +36,8 @@ pnpm add @prisma/client
 Register the `PrismaModule` in your root module by providing a `PrismaClient` instance.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { PrismaModule } from '@konekti/prisma';
+import { Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -57,7 +57,7 @@ class AppModule {}
 The `PrismaService` is the primary way to interact with Prisma. Its `current()` method automatically returns the active transaction client if inside a transaction scope, or the root client otherwise.
 
 ```typescript
-import { PrismaService } from '@konekti/prisma';
+import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 @Inject(PrismaService)
@@ -87,8 +87,8 @@ await this.prisma.transaction(async () => {
 Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
 
 ```typescript
-import { UseInterceptors } from '@konekti/http';
-import { PrismaTransactionInterceptor } from '@konekti/prisma';
+import { UseInterceptors } from '@fluojs/http';
+import { PrismaTransactionInterceptor } from '@fluojs/prisma';
 
 @UseInterceptors(PrismaTransactionInterceptor)
 class UserController {
@@ -122,9 +122,9 @@ Injectable token for the raw `PrismaClient` instance.
 
 ## Related Packages
 
-- `@konekti/runtime`: Manages the application lifecycle hooks.
-- `@konekti/http`: Provides the interceptor system.
-- `@konekti/terminus`: Provides a health indicator for Prisma.
+- `@fluojs/runtime`: Manages the application lifecycle hooks.
+- `@fluojs/http`: Provides the interceptor system.
+- `@fluojs/terminus`: Provides a health indicator for Prisma.
 
 ## Example Sources
 

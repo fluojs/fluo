@@ -2,7 +2,7 @@
 
 > **기준 소스**: [repo:docs/README.md] [ex:README.md] [repo:docs/reference/package-chooser.md]
 
-이 파일은 현재 책의 각 파트를 Konekti 공식 문서, examples, package README, 예상 페이지 분량과 연결한다.
+이 파일은 현재 책의 각 파트를 fluo 공식 문서, examples, package README, 예상 페이지 분량과 연결한다.
 
 ## 예상 분량
 
@@ -20,7 +20,7 @@
 
 ### 파트 0–1. 철학과 멘탈 모델
 
-**목적**: 구현 세부사항에 들어가기 전에 Konekti가 무엇을 지향하는지 설명한다.
+**목적**: 구현 세부사항에 들어가기 전에 fluo가 무엇을 지향하는지 설명한다.
 
 **주요 소스**
 
@@ -31,7 +31,7 @@
 
 **이 파트가 만들어야 하는 것**
 
-- a strong answer to “why Konekti exists”
+- a strong answer to “why fluo exists”
 - a stable vocabulary for later chapters
 - a clear distinction between standard decorators, explicit DI, and behavioral contracts
 
@@ -52,7 +52,7 @@ Anchor explanation in the actual minimal bootstrap and starter-aligned example r
 
 ### 파트 3–5. 핵심 애플리케이션 경로
 
-**목적**: Konekti가 내부에서 어떻게 동작하는지, 그리고 request boundary에서 어떤 과정을 거치는지 설명한다.
+**목적**: fluo가 내부에서 어떻게 동작하는지, 그리고 request boundary에서 어떤 과정을 거치는지 설명한다.
 
 **주요 소스**
 

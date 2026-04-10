@@ -1,8 +1,8 @@
-# @konekti/cache-manager
+# @fluojs/cache-manager
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-메모리(Memory) 및 Redis 저장소 어댑터를 지원하는 Konekti 애플리케이션용 범용 캐시 관리 패키지입니다. 데코레이터 기반의 HTTP 응답 캐싱과 프로그래밍 방식의 애플리케이션 레벨 캐시 API를 모두 제공합니다.
+메모리(Memory) 및 Redis 저장소 어댑터를 지원하는 fluo 애플리케이션용 범용 캐시 관리 패키지입니다. 데코레이터 기반의 HTTP 응답 캐싱과 프로그래밍 방식의 애플리케이션 레벨 캐시 API를 모두 제공합니다.
 
 ## 목차
 
@@ -21,13 +21,13 @@
 ## 설치
 
 ```bash
-npm install @konekti/cache-manager
+npm install @fluojs/cache-manager
 ```
 
 Redis 기반 캐싱을 사용하는 경우:
 
 ```bash
-npm install @konekti/cache-manager @konekti/redis ioredis
+npm install @fluojs/cache-manager @fluojs/redis ioredis
 ```
 
 ## 사용 시점
@@ -44,9 +44,9 @@ npm install @konekti/cache-manager @konekti/redis ioredis
 `CacheModule`을 등록하고 컨트롤러에 `CacheInterceptor`를 사용합니다.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { CacheModule, CacheInterceptor, CacheTTL } from '@konekti/cache-manager';
+import { Module } from '@fluojs/core';
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { CacheModule, CacheInterceptor, CacheTTL } from '@fluojs/cache-manager';
 
 @Controller('/products')
 class ProductController {
@@ -70,8 +70,8 @@ class AppModule {}
 `CacheService`를 주입받아 프로그래밍 방식으로 캐시를 관리합니다.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { CacheService } from '@konekti/cache-manager';
+import { Inject } from '@fluojs/core';
+import { CacheService } from '@fluojs/cache-manager';
 
 class UserService {
   constructor(@Inject(CacheService) private readonly cache: CacheService) {}
@@ -89,7 +89,7 @@ class UserService {
 
 ### Redis 저장소 사용
 
-Redis를 사용하려면 `@konekti/redis`가 설정되어 있어야 하며, `store` 옵션을 `'redis'`로 설정합니다.
+Redis를 사용하려면 `@fluojs/redis`가 설정되어 있어야 하며, `store` 옵션을 `'redis'`로 설정합니다.
 
 ```typescript
 CacheModule.forRoot({
@@ -127,8 +127,8 @@ CacheModule.forRoot({
 
 ## 관련 패키지
 
-- `@konekti/redis`: Redis 저장소 사용 시 필요합니다.
-- `@konekti/http`: HTTP 인터셉터 및 데코레이터 사용 시 필요합니다.
+- `@fluojs/redis`: Redis 저장소 사용 시 필요합니다.
+- `@fluojs/http`: HTTP 인터셉터 및 데코레이터 사용 시 필요합니다.
 
 ## 예제 소스
 

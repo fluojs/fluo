@@ -1,8 +1,8 @@
-# @konekti/validation
+# @fluojs/validation
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Input-side validation decorators, mapped DTO helpers, and the materialization engine for Konekti.
+Input-side validation decorators, mapped DTO helpers, and the materialization engine for fluo.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Input-side validation decorators, mapped DTO helpers, and the materialization en
 ## Installation
 
 ```bash
-pnpm add @konekti/validation
+pnpm add @fluojs/validation
 ```
 
 ## When to Use
@@ -30,7 +30,7 @@ pnpm add @konekti/validation
 ## Quick Start
 
 ```ts
-import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@konekti/validation';
+import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -45,7 +45,7 @@ const validator = new DefaultValidator();
 
 try {
   const dto = await validator.materialize(
-    { email: 'hello@example.com', name: 'Konekti' },
+    { email: 'hello@example.com', name: 'fluo' },
     CreateUserDto,
   );
 
@@ -67,7 +67,7 @@ try {
 ### Mapped DTO helpers
 
 ```ts
-import { IsEmail, IsString, PartialType, PickType } from '@konekti/validation';
+import { IsEmail, IsString, PartialType, PickType } from '@fluojs/validation';
 
 class UserDto {
   @IsString() name = '';
@@ -83,7 +83,7 @@ class UpdateUserDto extends PartialType(UserDto) {}
 Standard Schema adapters are expected to report invalid input through explicit issues. Validation results without issues are treated as successful.
 
 ```ts
-import { ValidateClass } from '@konekti/validation';
+import { ValidateClass } from '@fluojs/validation';
 import { z } from 'zod';
 
 const UserSchema = z.object({ age: z.number().min(18) });
@@ -107,9 +107,9 @@ class RestrictedUserDto {
 
 ## Related Packages
 
-- `@konekti/http`: binds request data, then uses this package to validate it
-- `@konekti/serialization`: shapes output DTOs on the response side
-- `@konekti/core`: provides the metadata primitives used by validation decorators
+- `@fluojs/http`: binds request data, then uses this package to validate it
+- `@fluojs/serialization`: shapes output DTOs on the response side
+- `@fluojs/core`: provides the metadata primitives used by validation decorators
 
 ## Example Sources
 

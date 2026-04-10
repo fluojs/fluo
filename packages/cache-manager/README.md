@@ -1,8 +1,8 @@
-# @konekti/cache-manager
+# @fluojs/cache-manager
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-General-purpose cache manager for Konekti with pluggable memory and Redis stores. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
+General-purpose cache manager for fluo with pluggable memory and Redis stores. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
 
 ## Table of Contents
 
@@ -21,13 +21,13 @@ General-purpose cache manager for Konekti with pluggable memory and Redis stores
 ## Installation
 
 ```bash
-npm install @konekti/cache-manager
+npm install @fluojs/cache-manager
 ```
 
 For Redis-backed caching:
 
 ```bash
-npm install @konekti/cache-manager @konekti/redis ioredis
+npm install @fluojs/cache-manager @fluojs/redis ioredis
 ```
 
 ## When to Use
@@ -44,9 +44,9 @@ npm install @konekti/cache-manager @konekti/redis ioredis
 Register the `CacheModule` and use the `CacheInterceptor` on your controllers.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { Controller, Get, UseInterceptors } from '@konekti/http';
-import { CacheModule, CacheInterceptor, CacheTTL } from '@konekti/cache-manager';
+import { Module } from '@fluojs/core';
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { CacheModule, CacheInterceptor, CacheTTL } from '@fluojs/cache-manager';
 
 @Controller('/products')
 class ProductController {
@@ -70,8 +70,8 @@ class AppModule {}
 Inject `CacheService` to manage cache programmatically.
 
 ```typescript
-import { Inject } from '@konekti/core';
-import { CacheService } from '@konekti/cache-manager';
+import { Inject } from '@fluojs/core';
+import { CacheService } from '@fluojs/cache-manager';
 
 class UserService {
   constructor(@Inject(CacheService) private readonly cache: CacheService) {}
@@ -89,7 +89,7 @@ class UserService {
 
 ### Redis Storage
 
-To use Redis, ensure `@konekti/redis` is configured and set the store to `'redis'`.
+To use Redis, ensure `@fluojs/redis` is configured and set the store to `'redis'`.
 
 ```typescript
 CacheModule.forRoot({
@@ -127,8 +127,8 @@ CacheModule.forRoot({
 
 ## Related Packages
 
-- `@konekti/redis`: Required for Redis storage.
-- `@konekti/http`: Required for HTTP interceptors and decorators.
+- `@fluojs/redis`: Required for Redis storage.
+- `@fluojs/http`: Required for HTTP interceptors and decorators.
 
 ## Example Sources
 

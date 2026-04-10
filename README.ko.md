@@ -1,4 +1,4 @@
-# Konekti
+# fluo
 
 <p align="center">
   <strong>표준 우선(Standard-First) TypeScript 백엔드 프레임워크</strong>
@@ -8,13 +8,13 @@
   <a href="./README.md">English</a> | <strong>한국어</strong>
 </p>
 
-Konekti는 **TC39 표준 데코레이터**를 기반으로 처음부터 다시 설계된 현대적인 TypeScript 백엔드 프레임워크입니다. 레거시 데코레이터 기반 프레임워크에 대한 고성능, 명시적, 그리고 메타데이터가 필요 없는 대안을 제공합니다.
+fluo는 **TC39 표준 데코레이터**를 기반으로 처음부터 다시 설계된 현대적인 TypeScript 백엔드 프레임워크입니다. 레거시 데코레이터 기반 프레임워크에 대한 고성능, 명시적, 그리고 메타데이터가 필요 없는 대안을 제공합니다.
 
-## 왜 Konekti인가요?
+## 왜 fluo인가요?
 
-NestJS와 같은 대부분의 TypeScript 프레임워크는 JavaScript 언어의 발전 방향과 동떨어진 `experimentalDecorators` 및 `emitDecoratorMetadata` 플래그에 의존하는 과거에 머물러 있습니다. Konekti는 기술 생태계를 미래로 이끕니다.
+NestJS와 같은 대부분의 TypeScript 프레임워크는 JavaScript 언어의 발전 방향과 동떨어진 `experimentalDecorators` 및 `emitDecoratorMetadata` 플래그에 의존하는 과거에 머물러 있습니다. fluo는 기술 생태계를 미래로 이끕니다.
 
-- **🚀 마법 없는 고성능**: 무거운 리플렉션 라이브러리나 숨겨진 메타데이터 생성이 없습니다. Konekti는 가볍고 빠르며, 하드웨어에 가까운 성능을 유지합니다.
+- **🚀 마법 없는 고성능**: 무거운 리플렉션 라이브러리나 숨겨진 메타데이터 생성이 없습니다. fluo는 가볍고 빠르며, 하드웨어에 가까운 성능을 유지합니다.
 - **🛡️ 암묵적 대신 명시적**: 의존성 주입(DI)이 투명하고 감사 가능합니다. 컴파일러가 생성한 불투명한 블롭이 아니라, 코드에서 직접 의존성 그래프를 확인할 수 있습니다.
 - **🌍 어디서나 실행**: 통합된 런타임 파사드(Facade)를 기반으로 구축되었습니다. 로직 변경 없이 Node.js의 Fastify에서 Bun, Deno, 또는 Cloudflare Workers로 전환하세요.
 - **✨ 미래 지향적**: 현대적인 TypeScript 시대를 위해 설계되었습니다. 레거시 컴파일러 동작과 싸우지 않고 가장 강력한 타입 안정성 기능을 활용하세요.
@@ -24,7 +24,7 @@ NestJS와 같은 대부분의 TypeScript 프레임워크는 JavaScript 언어의
 조직화 능력은 NestJS처럼 강력하면서도, 명시성은 Go 언어처럼 느껴지는 프레임워크를 상상해 보세요.
 
 ```ts
-import { Module, Inject } from '@konekti/core';
+import { Module, Inject } from '@fluojs/core';
 import { UsersRepository } from './users.repository';
 
 @Inject(UsersRepository)
@@ -42,14 +42,14 @@ export class UsersModule {}
 
 ## 빠른 시작
 
-CLI를 사용하는 것이 Konekti를 경험하는 가장 빠른 방법입니다.
+CLI를 사용하는 것이 fluo를 경험하는 가장 빠른 방법입니다.
 
 ```bash
 # CLI 설치
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 
 # 프로젝트 생성
-konekti new my-backend
+fluo new my-backend
 cd my-backend
 
 # 엔진 가동
@@ -60,7 +60,7 @@ pnpm dev
 
 ## 모듈형 생태계
 
-Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 모듈들의 집합입니다.
+fluo는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된 모듈들의 집합입니다.
 
 | 카테고리 | 패키지 |
 | :--- | :--- |
@@ -74,10 +74,10 @@ Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된
 ## 이어서 읽기
 
 - 📖 **[문서 포털](./docs/README.ko.md)**: 아키텍처, DI, 패턴에 대한 심층 문서.
-- 🚀 **[시작하기](./docs/getting-started/quick-start.ko.md)**: Konekti와 함께하는 첫 15분.
+- 🚀 **[시작하기](./docs/getting-started/quick-start.ko.md)**: fluo와 함께하는 첫 15분.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 범위를 보여주는 기준 문서.
 - 💡 **[예제 앱](./examples/README.ko.md)**: 최소 설정부터 복잡한 RealWorld API까지.
-- 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `konekti` 명령어 마스터하기.
+- 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `fluo` 명령어 마스터하기.
 
 ## 우리의 철학
 

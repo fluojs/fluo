@@ -1,4 +1,4 @@
-# @konekti/http
+# @fluojs/http
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
@@ -17,7 +17,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 ## Installation
 
 ```bash
-npm install @konekti/http
+npm install @fluojs/http
 ```
 
 ## When to Use
@@ -32,8 +32,8 @@ Use this package when you need to:
 ## Quick Start
 
 ```ts
-import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@konekti/http';
-import { IsString, MinLength } from '@konekti/validation';
+import { Controller, FromBody, FromPath, Get, Post, RequestDto } from '@fluojs/http';
+import { IsString, MinLength } from '@fluojs/validation';
 
 class CreateUserDto {
   @FromBody()
@@ -62,7 +62,7 @@ export class UserController {
 ### Guards and interceptors
 
 ```ts
-import { Controller, Get, UseGuards, UseInterceptors } from '@konekti/http';
+import { Controller, Get, UseGuards, UseInterceptors } from '@fluojs/http';
 
 @Controller('/admin')
 @UseGuards(AdminGuard)
@@ -78,7 +78,7 @@ class AdminController {
 ### Async request context
 
 ```ts
-import { getCurrentRequestContext } from '@konekti/http';
+import { getCurrentRequestContext } from '@fluojs/http';
 
 function someDeepHelper() {
   const ctx = getCurrentRequestContext();
@@ -89,7 +89,7 @@ function someDeepHelper() {
 ### Server-sent events
 
 ```ts
-import { Get, SseResponse, type RequestContext } from '@konekti/http';
+import { Get, SseResponse, type RequestContext } from '@fluojs/http';
 
 @Get('/events')
 stream(_input: undefined, ctx: RequestContext) {
@@ -108,7 +108,7 @@ stream(_input: undefined, ctx: RequestContext) {
 - **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
 
-## Internal Subpath (`@konekti/http/internal`)
+## Internal Subpath (`@fluojs/http/internal`)
 
 The `./internal` subpath exports low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
 
@@ -118,10 +118,10 @@ The `./internal` subpath exports low-level utilities used by platform adapters a
 
 ## Related Packages
 
-- `@konekti/core`: stores controller, route, and DTO metadata
-- `@konekti/validation`: validates DTOs after HTTP binding
-- `@konekti/runtime`: assembles the dispatcher during application bootstrap
-- `@konekti/passport`: plugs auth guards into the same HTTP guard chain
+- `@fluojs/core`: stores controller, route, and DTO metadata
+- `@fluojs/validation`: validates DTOs after HTTP binding
+- `@fluojs/runtime`: assembles the dispatcher during application bootstrap
+- `@fluojs/passport`: plugs auth guards into the same HTTP guard chain
 
 ## Example Sources
 

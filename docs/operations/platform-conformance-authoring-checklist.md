@@ -4,20 +4,20 @@
   <strong>English</strong> | <a href="./platform-conformance-authoring-checklist.ko.md">한국어</a>
 </p>
 
-This checklist defines the technical and behavioral requirements for official platform-facing packages in the Konekti ecosystem. It ensures that every package participating in the Konekti platform shell remains predictable, portable, and consistent with the framework's core standards.
+This checklist defines the technical and behavioral requirements for official platform-facing packages in the fluo ecosystem. It ensures that every package participating in the fluo platform shell remains predictable, portable, and consistent with the framework's core standards.
 
 ## When this document matters
 
-- **Component Creation**: When authoring a new `@konekti/platform-*` or `@konekti/*-adapter` package.
+- **Component Creation**: When authoring a new `@fluojs/platform-*` or `@fluojs/*-adapter` package.
 - **Contract Modification**: When updating the public-facing behaviors or lifecycle hooks of a platform-level component.
-- **Portability Audits**: When certifying a package's alignment with the Konekti Platform Conformance standard for cross-runtime support (Node.js, Bun, Deno, etc.).
+- **Portability Audits**: When certifying a package's alignment with the fluo Platform Conformance standard for cross-runtime support (Node.js, Bun, Deno, etc.).
 
 ---
 
 ## Authoring Checklist
 
 ### 1. Conformance Harness & Testing
-Every platform-facing package MUST be validated using the framework's official testing harnesses from `@konekti/testing`.
+Every platform-facing package MUST be validated using the framework's official testing harnesses from `@fluojs/testing`.
 - [ ] **Harness Adoption**: Implements `createPlatformConformanceHarness(...)` for general lifecycle verification.
 - [ ] **Transport Portability**: (For HTTP/Message adapters) Uses `createHttpAdapterPortabilityHarness(...)` to verify cross-runtime behavior.
 - [ ] **State Isolation**: Verifies that the `validate()` method is a side-effect-free check and does not transition the component state.

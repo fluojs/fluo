@@ -3,7 +3,7 @@
 > **기준 소스**: [ex:realworld-api/README.md] [repo:docs/getting-started/first-feature-path.md]
 > **주요 구현 앵커**: [ex:realworld-api/src/users/users.module.ts] [ex:realworld-api/src/users/users.service.ts] [ex:realworld-api/src/users/users.controller.ts]
 
-이 장은 realworld-api 예제를 통해 Konekti식 CRUD 구조가 어떻게 만들어지는지 보여준다. 여기서 중요한 것은 CRUD 메서드 개수보다, 기능 조각이 어떤 경계 위에 세워지는지다.
+이 장은 realworld-api 예제를 통해 fluo식 CRUD 구조가 어떻게 만들어지는지 보여준다. 여기서 중요한 것은 CRUD 메서드 개수보다, 기능 조각이 어떤 경계 위에 세워지는지다.
 
 ## 왜 realworld 예제가 중요한가
 
@@ -161,10 +161,10 @@ export class UsersRepo {
 
 - plain class 수준의 `UsersRepo` unit test `[ex:realworld-api/src/app.test.ts#L11-L21]`
 - `UsersService` unit test `[ex:realworld-api/src/app.test.ts#L23-L33]`
-- `KonektiFactory.create(...)` 기반 integration test `[ex:realworld-api/src/app.test.ts#L74-L103]`
+- `fluoFactory.create(...)` 기반 integration test `[ex:realworld-api/src/app.test.ts#L74-L103]`
 - `createTestApp(...)` 기반 e2e 스타일 test `[ex:realworld-api/src/app.test.ts#L105-L147]`
 
-이 구조는 CRUD 예제가 단순 샘플이 아니라, Konekti의 testing ladder까지 함께 보여 주는 교육 자산이라는 뜻이다.
+이 구조는 CRUD 예제가 단순 샘플이 아니라, fluo의 testing ladder까지 함께 보여 주는 교육 자산이라는 뜻이다.
 
 ## realworld 예제를 읽는 추천 순서
 

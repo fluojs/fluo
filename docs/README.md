@@ -1,4 +1,4 @@
-# Konekti Documentation
+# fluo Documentation
 
 <p align="center">
   <strong>Build predictable, standards-first backends at any scale.</strong>
@@ -8,20 +8,20 @@
   <strong>English</strong> | <a href="./README.ko.md">한국어</a>
 </p>
 
-Welcome to the central documentation hub for Konekti. Whether you're building a simple REST API or a complex microservices architecture, these guides will help you leverage the full power of modern TypeScript.
+Welcome to the central documentation hub for fluo. Whether you're building a simple REST API or a complex microservices architecture, these guides will help you leverage the full power of modern TypeScript.
 
 ## 🏁 Get Started
 
-If you're new to Konekti, start here to go from zero to a running application in minutes.
+If you're new to fluo, start here to go from zero to a running application in minutes.
 
 - **[Quick Start](./getting-started/quick-start.md)**: The canonical install -> `new` -> `dev` path.
 - **[First Feature Path](./getting-started/first-feature-path.md)**: Moving from a boilerplate to your first real domain logic.
-- **[Bootstrap & Startup](./getting-started/bootstrap-paths.md)**: How Konekti handles application lifecycle and initialization.
+- **[Bootstrap & Startup](./getting-started/bootstrap-paths.md)**: How fluo handles application lifecycle and initialization.
 - **[Glossary & Mental Model](./reference/glossary-and-mental-model.md)**: The core vocabulary of the framework.
 
 ## 🧠 Core Concepts
 
-Understand the "Why" and "How" behind Konekti's design choices.
+Understand the "Why" and "How" behind fluo's design choices.
 
 - **[Architecture Overview](./concepts/architecture-overview.md)**: Package boundaries and the flow of a request.
 - **[Standard Decorators](./concepts/decorators-and-metadata.md)**: Why we ditched legacy flags for the TC39 standard.
@@ -49,9 +49,9 @@ Detailed technical specifications and comparisons.
 - **[API Surface Overview](./reference/package-surface.md)**: The canonical inventory of public package families, runtime coverage, and package responsibilities.
 - **[Compatibility Matrix](./reference/toolchain-contract-matrix.md)**: Versions, runtimes, and platform support.
 
-The notification family (`@konekti/notifications`, `@konekti/email`, `@konekti/email/node`, `@konekti/slack`, and `@konekti/discord`) is indexed through the package chooser and package surface reference pages above.
+The notification family (`@fluojs/notifications`, `@fluojs/email`, `@fluojs/email/node`, `@fluojs/slack`, and `@fluojs/discord`) is indexed through the package chooser and package surface reference pages above.
 
-## 🔄 Moving to Konekti
+## 🔄 Moving to fluo
 
 Coming from another ecosystem? We've got you covered.
 
@@ -60,5 +60,5 @@ Coming from another ecosystem? We've got you covered.
 
 ---
 ### Looking for something else?
-- **[Runnable Examples](../examples/README.md)**: See Konekti in action with real-world code.
+- **[Runnable Examples](../examples/README.md)**: See fluo in action with real-world code.
 - **[Package READMEs](../packages/)**: Every module has its own deep-dive documentation.

@@ -1,8 +1,8 @@
-# @konekti/passport
+# @fluojs/passport
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Konekti를 위한 인증 실행 계층으로, 어떤 `AuthStrategy`든 공통 `AuthGuard`를 통해 요청 컨텍스트(`requestContext.principal`)에 연결합니다.
+fluo를 위한 인증 실행 계층으로, 어떤 `AuthStrategy`든 공통 `AuthGuard`를 통해 요청 컨텍스트(`requestContext.principal`)에 연결합니다.
 
 ## 목차
 
@@ -17,14 +17,14 @@ Konekti를 위한 인증 실행 계층으로, 어떤 `AuthStrategy`든 공통 `A
 ## 설치
 
 ```bash
-npm install @konekti/passport
+npm install @fluojs/passport
 ```
 
 ## 사용 시점
 
 - 애플리케이션에 인증 및 권한 부여(RBAC/Scopes) 기능을 추가해야 할 때.
 - 하나의 애플리케이션에서 여러 인증 방식(JWT, 쿠키, API 키 등)을 혼합하여 사용할 때.
-- 기존 Passport.js 전략들을 Konekti의 DI 및 비동기 환경에서 재사용하고 싶을 때.
+- 기존 Passport.js 전략들을 fluo의 DI 및 비동기 환경에서 재사용하고 싶을 때.
 - 리프레시 토큰 로테이션이나 계정 연결 정책을 구현할 때.
 
 ## 빠른 시작
@@ -34,8 +34,8 @@ npm install @konekti/passport
 사용할 전략을 정의하고 `createPassportProviders`를 통해 등록합니다.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { createPassportProviders } from '@konekti/passport';
+import { Module } from '@fluojs/core';
+import { createPassportProviders } from '@fluojs/passport';
 import { MyJwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -55,8 +55,8 @@ export class AuthModule {}
 `@UseAuth()`와 `@RequireScopes()`를 사용하여 인증을 강제합니다.
 
 ```typescript
-import { Controller, Get } from '@konekti/http';
-import { UseAuth, RequireScopes } from '@konekti/passport';
+import { Controller, Get } from '@fluojs/http';
+import { UseAuth, RequireScopes } from '@fluojs/passport';
 
 @Controller('/profile')
 export class ProfileController {
@@ -73,7 +73,7 @@ export class ProfileController {
 
 ### Passport.js 브릿지 (Bridge)
 
-표준 Passport.js 전략(예: `passport-google-oauth20`)을 Konekti의 DI와 비동기 수명 주기에 맞춰 쉽게 변환하여 사용할 수 있습니다.
+표준 Passport.js 전략(예: `passport-google-oauth20`)을 fluo의 DI와 비동기 수명 주기에 맞춰 쉽게 변환하여 사용할 수 있습니다.
 
 ```typescript
 const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
@@ -102,7 +102,7 @@ async refresh(input: never, ctx: RequestContext) {
 ### 주요 클래스
 - `AuthGuard`: 전략 체인을 실행하는 HTTP 가드입니다.
 - `CookieManager`: HttpOnly 인증 쿠키 관리를 위한 유틸리티입니다.
-- `JwtRefreshTokenAdapter`: `@konekti/jwt`의 리프레시 로직을 패스포트 인터페이스로 연결합니다.
+- `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 리프레시 로직을 패스포트 인터페이스로 연결합니다.
 
 ### 인터페이스
 - `AuthStrategy`: 커스텀 인증 로직 구현을 위한 계약입니다.
@@ -110,8 +110,8 @@ async refresh(input: never, ctx: RequestContext) {
 
 ## 관련 패키지
 
-- `@konekti/jwt`: JWT 기반 전략을 위한 하위 토큰 코어 패키지입니다.
-- `@konekti/http`: 라우팅 및 가드 인프라를 제공하는 기본 패키지입니다.
+- `@fluojs/jwt`: JWT 기반 전략을 위한 하위 토큰 코어 패키지입니다.
+- `@fluojs/http`: 라우팅 및 가드 인프라를 제공하는 기본 패키지입니다.
 
 ## 예제 소스
 

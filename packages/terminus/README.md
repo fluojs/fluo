@@ -1,8 +1,8 @@
-# @konekti/terminus
+# @fluojs/terminus
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on top of runtime health/readiness endpoints to provide dependency-aware status reporting.
+Health indicator toolkit for fluo applications. `@fluojs/terminus` layers on top of runtime health/readiness endpoints to provide dependency-aware status reporting.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ Health indicator toolkit for Konekti applications. `@konekti/terminus` layers on
 ## Installation
 
 ```bash
-pnpm add @konekti/terminus
+pnpm add @fluojs/terminus
 ```
 
 ## When to Use
@@ -34,8 +34,8 @@ pnpm add @konekti/terminus
 Import `TerminusModule.forRoot()` to register health indicators.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@konekti/terminus';
+import { Module } from '@fluojs/core';
+import { HttpHealthIndicator, MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
 
 @Module({
   imports: [
@@ -67,7 +67,7 @@ The package provides several indicators out of the box:
 To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the provider factories.
 
 ```typescript
-import { createRedisHealthIndicatorProvider, TerminusModule } from '@konekti/terminus';
+import { createRedisHealthIndicatorProvider, TerminusModule } from '@fluojs/terminus';
 
 TerminusModule.forRoot({
   indicatorProviders: [
@@ -102,8 +102,8 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 ## Related Packages
 
-- `@konekti/metrics`: Often used together for observability.
-- `@konekti/prisma` / `@konekti/drizzle` / `@konekti/redis`: Peer dependencies for specific indicators.
+- `@fluojs/metrics`: Often used together for observability.
+- `@fluojs/prisma` / `@fluojs/drizzle` / `@fluojs/redis`: Peer dependencies for specific indicators.
 
 ## Example Sources
 

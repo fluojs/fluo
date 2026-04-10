@@ -1,4 +1,4 @@
-# @konekti/jwt
+# @fluojs/jwt
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
@@ -17,7 +17,7 @@ HTTP에 독립적인 JWT 토큰 코어로, 액세스 토큰의 서명 및 검증
 ## 설치
 
 ```bash
-npm install @konekti/jwt
+npm install @fluojs/jwt
 ```
 
 ## 사용 시점
@@ -33,8 +33,8 @@ npm install @konekti/jwt
 서명 키와 정책을 사용하여 JWT 모듈을 설정합니다.
 
 ```typescript
-import { Module } from '@konekti/core';
-import { JwtModule } from '@konekti/jwt';
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
 
 @Module({
   imports: [
@@ -55,7 +55,7 @@ export class AuthModule {}
 `DefaultJwtSigner`를 주입받아 토큰을 발행하고, `DefaultJwtVerifier`를 통해 검증합니다.
 
 ```typescript
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@konekti/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
 
 // 서명 (Sign)
 const token = await signer.signAccessToken({
@@ -89,7 +89,7 @@ const verifier = new DefaultJwtVerifier({
 
 ### 주체 정규화 (Principal Normalization)
 
-`@konekti/jwt`는 `scope` (문자열)와 `scopes` (배열) 클레임을 자동으로 감지하여 `JwtPrincipal`의 단일 `scopes: string[]` 속성으로 통합합니다. 이를 통해 권한 가드에서 일관된 로직을 적용할 수 있습니다.
+`@fluojs/jwt`는 `scope` (문자열)와 `scopes` (배열) 클레임을 자동으로 감지하여 `JwtPrincipal`의 단일 `scopes: string[]` 속성으로 통합합니다. 이를 통해 권한 가드에서 일관된 로직을 적용할 수 있습니다.
 
 ## 공개 API 개요
 
@@ -105,8 +105,8 @@ const verifier = new DefaultJwtVerifier({
 
 ## 관련 패키지
 
-- `@konekti/passport`: 이 코어 패키지를 사용하여 가드와 전략을 실행하는 인증 계층입니다.
-- `@konekti/config`: 환경별로 비밀 키와 JWT 옵션을 관리할 때 권장되는 패키지입니다.
+- `@fluojs/passport`: 이 코어 패키지를 사용하여 가드와 전략을 실행하는 인증 계층입니다.
+- `@fluojs/config`: 환경별로 비밀 키와 JWT 옵션을 관리할 때 권장되는 패키지입니다.
 
 ## 예제 소스
 

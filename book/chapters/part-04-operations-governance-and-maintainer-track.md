@@ -2,7 +2,7 @@
 
 > **기준 소스**: [repo:CONTRIBUTING.md] [repo:docs/operations/testing-guide.md] [repo:docs/operations/release-governance.md]
 
-이 파트는 독자가 단순 사용자를 넘어, Konekti를 유지보수하거나 확장할 수 있을 만큼 신뢰 가능한 기여자로 성장하는 경로를 설명한다.
+이 파트는 독자가 단순 사용자를 넘어, fluo를 유지보수하거나 확장할 수 있을 만큼 신뢰 가능한 기여자로 성장하는 경로를 설명한다.
 
 ## 파트 목표
 

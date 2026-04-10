@@ -1,8 +1,8 @@
-# @konekti/socket.io
+# @fluojs/socket.io
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Socket.IO v4 gateway adapter for the Konekti runtime.
+Socket.IO v4 gateway adapter for the fluo runtime.
 
 ## Table of Contents
 
@@ -17,19 +17,19 @@ Socket.IO v4 gateway adapter for the Konekti runtime.
 ## Installation
 
 ```bash
-npm install @konekti/socket.io @konekti/websockets socket.io
+npm install @fluojs/socket.io @fluojs/websockets socket.io
 ```
 
 ## When to Use
 
-Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into Konekti's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets.
+Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets.
 
 ## Quick Start
 
 ```typescript
-import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@konekti/socket.io';
-import { WebSocketGateway, OnMessage } from '@konekti/websockets';
-import { Inject, Module } from '@konekti/core';
+import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@fluojs/socket.io';
+import { WebSocketGateway, OnMessage } from '@fluojs/websockets';
+import { Inject, Module } from '@fluojs/core';
 
 @Inject(SOCKETIO_ROOM_SERVICE)
 @WebSocketGateway({ path: '/chat' })
@@ -63,7 +63,7 @@ this.rooms.broadcastToRoom('room:123', 'event', data);
 You can inject the underlying Socket.IO `Server` instance for low-level control.
 
 ```typescript
-import { SOCKETIO_SERVER } from '@konekti/socket.io';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
 import type { Server } from 'socket.io';
 
 @Inject(SOCKETIO_SERVER)

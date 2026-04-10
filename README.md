@@ -1,4 +1,4 @@
-# Konekti
+# fluo
 
 <p align="center">
   <strong>Standard-First TypeScript Backend Framework</strong>
@@ -8,13 +8,13 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a>
 </p>
 
-Konekti is a modern TypeScript backend framework built from the ground up on **TC39 standard decorators**. It provides a high-performance, explicit, and metadata-free alternative to legacy decorator-based frameworks. 
+fluo is a modern TypeScript backend framework built from the ground up on **TC39 standard decorators**. It provides a high-performance, explicit, and metadata-free alternative to legacy decorator-based frameworks. 
 
-## Why Konekti?
+## Why fluo?
 
-Most TypeScript frameworks (like NestJS) are stuck in the past, relying on `experimentalDecorators` and `emitDecoratorMetadata` flags that deviate from the JavaScript language path. Konekti moves the industry forward.
+Most TypeScript frameworks (like NestJS) are stuck in the past, relying on `experimentalDecorators` and `emitDecoratorMetadata` flags that deviate from the JavaScript language path. fluo moves the industry forward.
 
-- **🚀 Performance Without Magic**: No heavy reflection libraries or hidden metadata emit. Konekti is lean, fast, and stays close to the metal.
+- **🚀 Performance Without Magic**: No heavy reflection libraries or hidden metadata emit. fluo is lean, fast, and stays close to the metal.
 - **🛡️ Explicit Over Implicit**: Dependency injection is clear and auditable. You see your dependency graph in your code, not in compiler-generated blobs.
 - **🌍 Run Anywhere**: Built on a unified runtime facade. Move from Fastify on Node.js to Bun, Deno, or Cloudflare Workers with zero logic changes.
 - **✨ Future-Proof**: Designed for the modern TypeScript era. Use the strongest type-safety features without fighting legacy compiler behaviors.
@@ -24,7 +24,7 @@ Most TypeScript frameworks (like NestJS) are stuck in the past, relying on `expe
 Imagine a framework that feels like NestJS in its organizational power, but like Go in its explicitness.
 
 ```ts
-import { Module, Inject } from '@konekti/core';
+import { Module, Inject } from '@fluojs/core';
 import { UsersRepository } from './users.repository';
 
 @Inject(UsersRepository)
@@ -42,14 +42,14 @@ export class UsersModule {}
 
 ## Quick Start
 
-The fastest way to experience Konekti is through the official CLI.
+The fastest way to experience fluo is through the official CLI.
 
 ```bash
 # Get the CLI
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 
 # Spin up a project
-konekti new my-backend
+fluo new my-backend
 cd my-backend
 
 # Start the engine
@@ -60,7 +60,7 @@ The starter template gives you a production-ready setup with Fastify, built-in h
 
 ## A Modular Ecosystem
 
-Konekti isn't a monolith. It's a collection of precision-engineered modules:
+fluo isn't a monolith. It's a collection of precision-engineered modules:
 
 | Category | Packages |
 | :--- | :--- |
@@ -74,10 +74,10 @@ Konekti isn't a monolith. It's a collection of precision-engineered modules:
 ## Where to Go Next?
 
 - 📖 **[Documentation Hub](./docs/README.md)**: Deep dives into architecture, DI, and patterns.
-- 🚀 **[Getting Started](./docs/getting-started/quick-start.md)**: Your first 15 minutes with Konekti.
+- 🚀 **[Getting Started](./docs/getting-started/quick-start.md)**: Your first 15 minutes with fluo.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.md)**: The source of truth for official runtime/package coverage.
 - 💡 **[Example Apps](./examples/README.md)**: From minimal setups to complex RealWorld APIs.
-- 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `konekti` command for rapid development.
+- 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `fluo` command for rapid development.
 
 ## Our Philosophy
 

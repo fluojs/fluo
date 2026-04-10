@@ -4,11 +4,11 @@
   <strong>English</strong> | <a href="./testing-guide.ko.md"><kbd>한국어</kbd></a>
 </p>
 
-This document defines the testing architecture and verification policies for the Konekti framework. It serves as the authoritative guide for both framework contributors and application developers to ensure reliable, metadata-free verification of system behavior.
+This document defines the testing architecture and verification policies for the fluo framework. It serves as the authoritative guide for both framework contributors and application developers to ensure reliable, metadata-free verification of system behavior.
 
 ## When this document matters
 
-- **Core Contribution**: When adding new features or fixing bugs in `@konekti/*` packages.
+- **Core Contribution**: When adding new features or fixing bugs in `@fluojs/*` packages.
 - **Platform Authorship**: When creating new runtimes or third-party extensions.
 - **Application Development**: When establishing test suites for business logic, HTTP routes, or persistence layers.
 
@@ -16,7 +16,7 @@ This document defines the testing architecture and verification policies for the
 
 ## Verification Policy
 
-Konekti prioritizes **Explicit Verification** over implicit coverage. All platform-facing changes must demonstrate behavioral stability through the following hierarchy:
+fluo prioritizes **Explicit Verification** over implicit coverage. All platform-facing changes must demonstrate behavioral stability through the following hierarchy:
 
 1.  **Type Safety**: Every public API must be fully typed and pass `pnpm typecheck`.
 2.  **Unit Isolation**: Logic-heavy providers must have unit tests with zero external dependencies.
@@ -25,9 +25,9 @@ Konekti prioritizes **Explicit Verification** over implicit coverage. All platfo
 
 ---
 
-## The Testing Toolbox (`@konekti/testing`)
+## The Testing Toolbox (`@fluojs/testing`)
 
-The `@konekti/testing` package is the official gateway for all verification activities.
+The `@fluojs/testing` package is the official gateway for all verification activities.
 
 ### Core Utilities
 - `createTestingModule()`: The primary entry point for module-level integration tests.
@@ -35,9 +35,9 @@ The `@konekti/testing` package is the official gateway for all verification acti
 - `TestingModuleRef`: A handle to the compiled test environment for dependency resolution and dispatching.
 
 ### Specialized Subpaths
-- `@konekti/testing/mock`: Advanced mocking utilities (`createMock`, `createDeepMock`).
-- `@konekti/testing/http`: Fluent request builders and security principal injectors.
-- `@konekti/testing/platform-conformance`: Standardized test suites for cross-runtime verification.
+- `@fluojs/testing/mock`: Advanced mocking utilities (`createMock`, `createDeepMock`).
+- `@fluojs/testing/http`: Fluent request builders and security principal injectors.
+- `@fluojs/testing/platform-conformance`: Standardized test suites for cross-runtime verification.
 
 ---
 
@@ -47,7 +47,7 @@ The `@konekti/testing` package is the official gateway for all verification acti
 Use this when you need real DI wiring but want to fake external collaborators like repositories or third-party clients.
 
 ```ts
-import { createTestingModule } from '@konekti/testing';
+import { createTestingModule } from '@fluojs/testing';
 import { vi } from 'vitest';
 
 const fakeUserRepo = {
@@ -76,7 +76,7 @@ const moduleRef = await createTestingModule({ rootModule: AppModule })
 Use `createTestApp` for high-confidence verification of the entire request lifecycle.
 
 ```ts
-import { createTestApp } from '@konekti/testing';
+import { createTestApp } from '@fluojs/testing';
 
 const app = await createTestApp({ rootModule: AppModule });
 
@@ -106,7 +106,7 @@ Keep the module wiring real but override the low-level client tokens to avoid ne
 | `pnpm verify:release-readiness` | Comprehensive gate for public releases, including packed CLI verification. |
 
 ### Generated Templates
-When using the CLI (`konekti g repo <Name>`), the following templates are provided as the baseline:
+When using the CLI (`fluo g repo <Name>`), the following templates are provided as the baseline:
 - `<name>.repo.test.ts`: Unit test template for business logic.
 - `<name>.repo.slice.test.ts`: Integration template using `createTestingModule`.
 
