@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -198,6 +198,17 @@ function verifySandboxProject(projectName) {
 
   if (!existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))) {
     throw new Error('Expected the starter scaffold to include src/app.e2e.test.ts.');
+  }
+
+  if (!existsSync(join(projectDirectory, 'vite.config.ts'))) {
+    throw new Error('Expected the starter scaffold to include vite.config.ts.');
+  }
+
+  for (const configPath of ['tsconfig.json', 'tsconfig.build.json', 'vite.config.ts', 'vitest.config.ts']) {
+    const content = readFileSync(join(projectDirectory, configPath), 'utf8');
+    if (content.includes('baseUrl')) {
+      throw new Error(`Expected ${configPath} to avoid deprecated baseUrl aliasing.`);
+    }
   }
 
   log('Running generated project checks');

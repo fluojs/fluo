@@ -69,7 +69,7 @@ fluo migrate ./src --apply
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.
 - `@Injectable()`을 제거하고 스코프를 `@Scope()`로 매핑합니다.
-- `tsconfig.json`을 업데이트하여 `experimentalDecorators`를 비활성화합니다.
+- `tsconfig.json`을 업데이트하여 `experimentalDecorators`를 비활성화하고 `baseUrl` 기반 경로 별칭을 TS6-safe `paths` 엔트리로 재작성합니다.
 
 ### 런타임 검사 (Inspection)
 애플리케이션 구조를 시각화하고 초기화 문제를 해결합니다.
