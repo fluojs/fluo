@@ -28,7 +28,7 @@ describe('core decorators', () => {
   it('writes inject and scope metadata through decorators', () => {
     const LOGGER = Symbol('LOGGER');
 
-    @Inject([LOGGER])
+    @Inject(LOGGER)
     @Scope('request')
     class AppService {}
 
@@ -41,7 +41,7 @@ describe('core decorators', () => {
   it('inherits DI metadata through decorators while keeping own reads separate', () => {
     const LOGGER = Symbol('LOGGER');
 
-    @Inject([LOGGER])
+    @Inject(LOGGER)
     @Scope('request')
     class BaseService {}
 
@@ -54,14 +54,14 @@ describe('core decorators', () => {
     });
   });
 
-  it('allows @Inject([]) to clear inherited inject tokens', () => {
+  it('treats @Inject() as an explicit empty inject override', () => {
     const LOGGER = Symbol('LOGGER');
 
-    @Inject([LOGGER])
+    @Inject(LOGGER)
     @Scope('request')
     class BaseService {}
 
-    @Inject([])
+    @Inject()
     class ChildService extends BaseService {}
 
     expect(getOwnClassDiMetadata(ChildService)).toEqual({
@@ -71,6 +71,29 @@ describe('core decorators', () => {
     expect(getClassDiMetadata(ChildService)).toEqual({
       inject: [],
       scope: 'request',
+    });
+  });
+
+  it('keeps the legacy array syntax working during the migration window', () => {
+    const LOGGER = Symbol('LOGGER');
+    const CACHE = Symbol('CACHE');
+
+    @Inject([LOGGER, CACHE])
+    class LegacyArrayService {}
+
+    expect(getClassDiMetadata(LegacyArrayService)).toEqual({
+      inject: [LOGGER, CACHE],
+      scope: undefined,
+    });
+  });
+
+  it('stores an explicit empty inject list for zero-dependency classes', () => {
+    @Inject()
+    class ZeroDependencyService {}
+
+    expect(getOwnClassDiMetadata(ZeroDependencyService)).toEqual({
+      inject: [],
+      scope: undefined,
     });
   });
 });

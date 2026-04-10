@@ -36,13 +36,41 @@ export function Global(): StandardClassDecoratorFn {
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  *
+ * Passing tokens variadically (`@Inject(A, B)`) is the canonical API. Calling `@Inject()` records an
+ * explicit empty inject list so subclasses can intentionally clear inherited constructor tokens.
+ * During the staged migration window, the legacy array form (`@Inject([A, B])`) is still normalized.
+ *
+ * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @returns A standard class decorator that stores explicit injection metadata on the target class.
+ */
+export function Inject(): StandardClassDecoratorFn;
+/**
+ * Defines explicit constructor injection tokens for the decorated class.
+ *
  * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject<const TTokens extends readonly Token[]>(
-  tokens: TupleOnly<TTokens>,
+  ...tokens: TupleOnly<TTokens>
 ): StandardClassDecoratorFn;
-export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn {
+/**
+ * Defines explicit constructor injection tokens for the decorated class.
+ *
+ * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @returns A standard class decorator that stores explicit injection metadata on the target class.
+ */
+export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
+/**
+ * Defines explicit constructor injection tokens for the decorated class.
+ *
+ * @param tokensOrList Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @returns A standard class decorator that stores explicit injection metadata on the target class.
+ */
+export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
+  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
+    ? [...tokensOrList[0] as readonly Token[]]
+    : [...tokensOrList as readonly Token[]];
+
   return (target) => {
     defineClassDiMetadata(target, { inject: [...tokens] });
   };
