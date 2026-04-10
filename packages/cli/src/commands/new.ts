@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
-import { resolveBootstrapAnswers } from '../new/prompt.js';
+import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
 
@@ -18,7 +18,10 @@ function isHelpFlag(value: string | undefined): boolean {
  */
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
+  interactive?: boolean;
+  prompt?: BootstrapPrompter;
   stderr?: CliStream;
+  stdin?: { isTTY?: boolean };
   stdout?: CliStream;
   userAgent?: string;
 }
@@ -81,6 +84,26 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
     option: '--force',
   },
   {
+    aliases: [],
+    description: 'Install starter dependencies after writing files.',
+    option: '--install',
+  },
+  {
+    aliases: [],
+    description: 'Skip starter dependency installation.',
+    option: '--no-install',
+  },
+  {
+    aliases: [],
+    description: 'Initialize a git repository in the generated starter.',
+    option: '--git',
+  },
+  {
+    aliases: [],
+    description: 'Skip git repository initialization in the generated starter.',
+    option: '--no-git',
+  },
+  {
     aliases: ['-h'],
     description: 'Show help for the new command.',
     option: '--help',
@@ -128,6 +151,19 @@ function readOptionValue(
   return value;
 }
 
+function setBooleanSelection(
+  currentValue: boolean | undefined,
+  nextValue: boolean,
+  positiveFlag: string,
+  negativeFlag: string,
+): boolean {
+  if (currentValue !== undefined) {
+    throw new Error(`Duplicate ${nextValue ? positiveFlag : negativeFlag} option.`);
+  }
+
+  return nextValue;
+}
+
 function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolean } {
   const parsed: Partial<BootstrapAnswers> & { force?: boolean } = {};
   let hasExplicitTargetDirectory = false;
@@ -164,7 +200,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
 
         parsed.shape = readOptionValue(argv, index, '--shape') as BootstrapAnswers['shape'];
         if (!SUPPORTED_SHAPES.has(parsed.shape)) {
-          throw new Error('Invalid --shape value "' + parsed.shape + '". Use one of: application, microservice.');
+          throw new Error(`Invalid --shape value "${parsed.shape}". Use one of: application, microservice.`);
         }
         index += 1;
         break;
@@ -244,6 +280,28 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
         break;
       case '--force':
         parsed.force = true;
+        break;
+      case '--install':
+        parsed.installDependencies = setBooleanSelection(
+          parsed.installDependencies,
+          true,
+          '--install',
+          '--no-install',
+        );
+        break;
+      case '--no-install':
+        parsed.installDependencies = setBooleanSelection(
+          parsed.installDependencies,
+          false,
+          '--install',
+          '--no-install',
+        );
+        break;
+      case '--git':
+        parsed.initializeGit = setBooleanSelection(parsed.initializeGit, true, '--git', '--no-git');
+        break;
+      case '--no-git':
+        parsed.initializeGit = setBooleanSelection(parsed.initializeGit, false, '--git', '--no-git');
         break;
       default:
         if (arg.startsWith('-')) {
@@ -327,21 +385,38 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
 
     const parsed = parseArgs(argv);
 
-    if (!parsed.projectName) {
+    const partialAnswers = {
+      ...parsed,
+      initializeGit: parsed.initializeGit ?? runtime.initializeGit,
+      installDependencies: parsed.installDependencies ?? runtime.installDependencies ?? (runtime.skipInstall === true ? false : undefined),
+    };
+
+    if (!partialAnswers.projectName && !(runtime.interactive ?? runtime.prompt ?? runtime.stdin?.isTTY ?? process.stdin.isTTY)) {
       throw new Error(newUsage());
     }
 
-    const answers = resolveBootstrapAnswers(parsed, runtime.cwd ?? process.cwd(), runtime.userAgent);
+    const answers = await collectBootstrapAnswers(partialAnswers, runtime.cwd ?? process.cwd(), runtime.userAgent, {
+      interactive: runtime.interactive,
+      prompt: runtime.prompt,
+      stdin: runtime.stdin,
+      stdout,
+    });
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,
       force: parsed.force ?? runtime.force,
+      initializeGit: answers.initializeGit,
+      installDependencies: answers.installDependencies,
       repoRoot: runtime.repoRoot,
       skipInstall: runtime.skipInstall,
       targetDirectory: resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory),
     };
 
-    stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
+    if (answers.installDependencies) {
+      stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
+    } else {
+      stdout.write('Skipping dependency installation.\n');
+    }
 
     await scaffoldBootstrapApp(options);
 

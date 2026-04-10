@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { installDependencies } from './install.js';
+import { initializeGitRepository, installDependencies } from './install.js';
 import { resolveBootstrapPlan, type ResolvedBootstrapPlan } from './resolver.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
@@ -853,7 +853,11 @@ export async function scaffoldBootstrapApp(
     writeTextFile(join(targetDirectory, file.path), file.content);
   }
 
-  if (!options.skipInstall) {
+  if (options.initializeGit) {
+    await initializeGitRepository(targetDirectory);
+  }
+
+  if (options.installDependencies ?? !options.skipInstall) {
     await installDependencies(targetDirectory, options.packageManager);
   }
 }
