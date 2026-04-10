@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -14,6 +14,33 @@ afterEach(() => {
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+function readDirectorySnapshot(rootDirectory: string): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  const pending = [rootDirectory];
+
+  while (pending.length > 0) {
+    const currentDirectory = pending.pop();
+
+    if (!currentDirectory) {
+      continue;
+    }
+
+    for (const entry of readdirSync(currentDirectory)) {
+      const entryPath = join(currentDirectory, entry);
+      const entryStat = statSync(entryPath);
+
+      if (entryStat.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+
+      snapshot[relative(rootDirectory, entryPath)] = readFileSync(entryPath, 'utf8');
+    }
+  }
+
+  return snapshot;
+}
 
 describe('scaffoldBootstrapApp', () => {
   it('generates TS6 starter configs without deprecated baseUrl aliases', async () => {
@@ -49,5 +76,37 @@ describe('scaffoldBootstrapApp', () => {
     expect(viteConfig).not.toContain('baseUrl');
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
     expect(vitestConfig).not.toContain('baseUrl');
+  });
+
+  it('keeps the default Node + Fastify HTTP scaffold identical when explicit shape flags are provided', async () => {
+    const defaultTargetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-default-'));
+    const explicitTargetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-explicit-'));
+    temporaryDirectories.push(defaultTargetDirectory, explicitTargetDirectory);
+
+    await scaffoldBootstrapApp({
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      packageManager: 'pnpm',
+      projectName: 'starter-app',
+      skipInstall: true,
+      targetDirectory: defaultTargetDirectory,
+    });
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'fastify',
+      projectName: 'starter-app',
+      runtime: 'node',
+      shape: 'application',
+      skipInstall: true,
+      targetDirectory: explicitTargetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'http',
+    });
+
+    expect(readDirectorySnapshot(explicitTargetDirectory)).toEqual(readDirectorySnapshot(defaultTargetDirectory));
   });
 });

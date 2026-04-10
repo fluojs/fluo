@@ -576,7 +576,7 @@ type ScaffoldFile = {
   path: string;
 };
 
-function buildScaffoldFiles(
+function emitSharedScaffoldFiles(
   options: BootstrapOptions,
   bootstrapPlan: ResolvedBootstrapPlan,
   releaseVersion: string,
@@ -592,6 +592,11 @@ function buildScaffoldFiles(
     { content: createVitestConfig(), path: 'vitest.config.ts' },
     { content: createGitignore(), path: '.gitignore' },
     { content: createEnvFile(), path: '.env' },
+   ];
+ }
+
+ function emitStandardHttpNodeFastifyScaffoldFiles(options: BootstrapOptions): ScaffoldFile[] {
+   return [
     { content: createAppFile(), path: 'src/app.ts' },
     { content: createMainFile(), path: 'src/main.ts' },
     { content: createHealthResponseDtoFile(), path: 'src/health/health.response.dto.ts' },
@@ -604,6 +609,26 @@ function buildScaffoldFiles(
     { content: createHealthModuleFile(), path: 'src/health/health.module.ts' },
     { content: createAppTestFile(), path: 'src/app.test.ts' },
     { content: createAppE2eTestFile(), path: 'src/app.e2e.test.ts' },
+  ];
+}
+
+function emitScaffoldFilesForPlan(options: BootstrapOptions, bootstrapPlan: ResolvedBootstrapPlan): ScaffoldFile[] {
+  if (bootstrapPlan.emitter.type === 'http') {
+    return emitStandardHttpNodeFastifyScaffoldFiles(options);
+  }
+
+  return [];
+}
+
+function buildScaffoldFiles(
+  options: BootstrapOptions,
+  bootstrapPlan: ResolvedBootstrapPlan,
+  releaseVersion: string,
+  packageSpecs: Record<string, string>,
+): ScaffoldFile[] {
+  return [
+    ...emitSharedScaffoldFiles(options, bootstrapPlan, releaseVersion, packageSpecs),
+    ...emitScaffoldFilesForPlan(options, bootstrapPlan),
   ];
 }
 

@@ -18,6 +18,17 @@ const TRANSPORTS: readonly BootstrapTransport[] = ['http'];
 const TOOLING_PRESETS: readonly BootstrapToolingPreset[] = ['standard'];
 const TOPOLOGY_MODES: readonly BootstrapTopology['mode'][] = ['single-package'];
 
+type ResolvedHttpScaffoldEmitter = {
+  platform: 'fastify';
+  preset: 'standard';
+  runtime: 'node';
+  transport: 'http';
+  type: 'http';
+};
+
+/**
+ * Shape-first compatibility baseline for `fluo new` until additional starter variants ship.
+ */
 export const DEFAULT_BOOTSTRAP_SCHEMA: BootstrapSchema = {
   platform: 'fastify',
   runtime: 'node',
@@ -30,6 +41,9 @@ export const DEFAULT_BOOTSTRAP_SCHEMA: BootstrapSchema = {
   transport: 'http',
 };
 
+/**
+ * Dependency set required by the currently supported `fluo new` starter baseline.
+ */
 export interface ResolvedBootstrapDependencies {
   dependencies: readonly [
     '@fluojs/config',
@@ -46,9 +60,12 @@ export interface ResolvedBootstrapDependencies {
   ];
 }
 
+/**
+ * Scaffold planning result that routes a resolved schema into the correct emitter boundary.
+ */
 export interface ResolvedBootstrapPlan {
   dependencies: ResolvedBootstrapDependencies;
-  scaffoldPreset: 'standard-http-node-fastify';
+  emitter: ResolvedHttpScaffoldEmitter;
   schema: BootstrapSchema;
 }
 
@@ -87,6 +104,12 @@ function normalizeTopology(topology: Partial<BootstrapTopology> | undefined): Bo
   };
 }
 
+/**
+ * Resolves a partial starter schema onto the currently supported v2 compatibility baseline.
+ *
+ * @param partial Partial CLI/runtime schema selections.
+ * @returns A normalized bootstrap schema with defaults applied.
+ */
 export function resolveBootstrapSchema(partial: Partial<BootstrapSchema> = {}): BootstrapSchema {
   return {
     platform: assertOneOf('platform', partial.platform ?? DEFAULT_BOOTSTRAP_SCHEMA.platform, PLATFORMS),
@@ -98,6 +121,12 @@ export function resolveBootstrapSchema(partial: Partial<BootstrapSchema> = {}): 
   };
 }
 
+/**
+ * Resolves the dependency and emitter plan for the requested starter schema.
+ *
+ * @param options Partial or full bootstrap options collected from the CLI/runtime surface.
+ * @returns The normalized schema plus the emitter boundary that should render scaffold files.
+ */
 export function resolveBootstrapPlan(options: BootstrapResolutionInput | BootstrapOptions): ResolvedBootstrapPlan {
   const schema = resolveBootstrapSchema(options);
 
@@ -118,7 +147,13 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
 
   return {
     dependencies: DEFAULT_DEPENDENCIES,
-    scaffoldPreset: 'standard-http-node-fastify',
+    emitter: {
+      platform: 'fastify',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'http',
+      type: 'http',
+    },
     schema,
   };
 }

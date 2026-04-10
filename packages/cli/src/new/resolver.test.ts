@@ -26,9 +26,30 @@ describe('resolveBootstrapPlan', () => {
           '@fluojs/testing',
         ],
       },
-      scaffoldPreset: 'standard-http-node-fastify',
+      emitter: {
+        platform: 'fastify',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'http',
+        type: 'http',
+      },
       schema: DEFAULT_BOOTSTRAP_SCHEMA,
     });
+  });
+
+  it('accepts explicit HTTP shape flags without changing the compatibility baseline', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'application',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'http',
+    })).toEqual(resolveBootstrapPlan({ packageManager: 'pnpm' as const }));
   });
 
   it('does not treat package-manager choice as runtime or platform selection', () => {
