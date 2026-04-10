@@ -14,9 +14,9 @@ import { BearerJwtStrategy } from './bearer.strategy';
     ...createJwtCoreProviders({
       accessTokenTtlSeconds: 3600,
       algorithms: ['HS256'],
-      audience: 'konekti-auth-example-clients',
-      issuer: 'konekti-auth-example',
-      secret: 'konekti-auth-example-secret',
+      audience: 'fluo-auth-example-clients',
+      issuer: 'fluo-auth-example',
+      secret: 'fluo-auth-example-secret',
     }),
     ...createPassportProviders(
       { defaultStrategy: 'jwt' },

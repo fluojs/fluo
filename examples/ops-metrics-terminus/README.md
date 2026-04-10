@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runnable Konekti operations example focused on `@konekti/metrics` and `@konekti/terminus`. It shows how runtime health/readiness, Prometheus scraping, and one custom metric fit together in a small app.
+Runnable fluo operations example focused on `@fluojs/metrics` and `@fluojs/terminus`. It shows how runtime health/readiness, Prometheus scraping, and one custom metric fit together in a small app.
 
 ## what this example demonstrates
 
@@ -10,7 +10,7 @@ Runnable Konekti operations example focused on `@konekti/metrics` and `@konekti/
 - `/health` and `/ready` via `TerminusModule.forRoot(...)`
 - one custom Prometheus counter registered on a shared Registry that is scraped through `MetricsModule`
 - runtime-aligned health/readiness semantics exposed through terminus and metrics
-- unit, integration, and e2e-style verification with `@konekti/testing`
+- unit, integration, and e2e-style verification with `@fluojs/testing`
 
 ## routes
 

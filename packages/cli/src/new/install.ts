@@ -59,7 +59,7 @@ export async function installDependencies(targetDirectory: string, packageManage
 
   if (packageManager === 'yarn' && hasCorepack === false) {
     console.warn(
-      `[konekti] corepack was not found in PATH, falling back to "yarn install". See ${COREPACK_DOCS_URL}`,
+      `[fluo] corepack was not found in PATH, falling back to "yarn install". See ${COREPACK_DOCS_URL}`,
     );
   }
 
