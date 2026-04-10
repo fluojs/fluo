@@ -208,6 +208,17 @@ function createBabelConfig(): string {
 `;
 }
 
+function createViteConfig(): string {
+  return `import { defineConfig } from 'vite';
+
+export default defineConfig({
+  server: {
+    port: 5173,
+  },
+});
+`;
+}
+
 function createVitestConfig(): string {
   return `import { defineConfig } from 'vitest/config';
 
@@ -570,6 +581,7 @@ function buildScaffoldFiles(
     { content: createProjectTsconfig(), path: 'tsconfig.json' },
     { content: createProjectTsconfigBuild(), path: 'tsconfig.build.json' },
     { content: createBabelConfig(), path: 'babel.config.cjs' },
+    { content: createViteConfig(), path: 'vite.config.ts' },
     { content: createVitestConfig(), path: 'vitest.config.ts' },
     { content: createGitignore(), path: '.gitignore' },
     { content: createEnvFile(), path: '.env' },

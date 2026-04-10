@@ -69,7 +69,7 @@ fluo migrate ./src --apply
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.
 - Removes `@Injectable()` and maps scopes to `@Scope()`.
-- Updates `tsconfig.json` to disable `experimentalDecorators`.
+- Updates `tsconfig.json` to disable `experimentalDecorators` and rewrites `baseUrl`-backed path aliases to TS6-safe `paths` entries.
 
 ### Runtime Inspection
 Visualize your application structure and troubleshoot initialization issues.
