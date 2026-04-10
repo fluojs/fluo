@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/cqrs",
-  "description": "Command/query buses with bootstrap-time handler discovery, saga support, and event-bus delegation for Konekti.",
+  "description": "Command/query buses with bootstrap-time handler discovery, saga support, and event-bus delegation for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "cqrs",
     "command-bus",
     "query-bus",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/cqrs"
   },
   "engines": {

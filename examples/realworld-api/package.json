@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/example-realworld-api",
-  "description": "Realistic Konekti application with CRUD, validation, and config — canonical verification target.",
+  "description": "Realistic Fluo application with CRUD, validation, and config — canonical verification target.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

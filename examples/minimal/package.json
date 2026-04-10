@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/example-minimal",
-  "description": "Minimal runnable Konekti application — canonical verification target.",
+  "description": "Minimal runnable Fluo application — canonical verification target.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

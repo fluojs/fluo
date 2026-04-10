@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/passport",
-  "description": "Strategy-agnostic authentication guard wiring and strategy registry for Konekti.",
+  "description": "Strategy-agnostic authentication guard wiring and strategy registry for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "passport",
     "authentication",
     "auth",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/passport"
   },
   "engines": {

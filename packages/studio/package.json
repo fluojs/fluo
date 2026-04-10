@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/studio",
-  "description": "File-first diagnostics viewer for Konekti runtime platform snapshot and timing JSON exports.",
+  "description": "File-first diagnostics viewer for Fluo runtime platform snapshot and timing JSON exports.",
   "keywords": [
-    "konekti",
+    "fluo",
     "studio",
     "diagnostics",
     "viewer",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/studio"
   },
   "engines": {
@@ -39,7 +39,7 @@
     "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@konekti-internal/tooling-vite": "workspace:*",
+    "@fluojs-internal/tooling-vite": "workspace:*",
     "vitest": "^3.2.4"
   }
 }

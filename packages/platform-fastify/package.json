@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/platform-fastify",
-  "description": "Fastify-based HTTP adapter for the Konekti runtime.",
+  "description": "Fastify-based HTTP adapter for the Fluo runtime.",
   "keywords": [
-    "konekti",
+    "fluo",
     "fastify",
     "http-adapter",
     "platform",
@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/platform-fastify"
   },
   "engines": {

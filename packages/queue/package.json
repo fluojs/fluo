@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/queue",
-  "description": "Redis-backed background job processing with worker discovery and DLQ support for Konekti.",
+  "description": "Redis-backed background job processing with worker discovery and DLQ support for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "queue",
     "jobs",
     "background",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/queue"
   },
   "engines": {

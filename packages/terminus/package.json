@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/terminus",
-  "description": "Health indicator composition and enriched runtime health aggregation for Konekti applications.",
+  "description": "Health indicator composition and enriched runtime health aggregation for Fluo applications.",
   "keywords": [
-    "konekti",
+    "fluo",
     "terminus",
     "health",
     "readiness",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/terminus"
   },
   "engines": {

@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/platform-cloudflare-workers",
-  "description": "Cloudflare Workers HTTP adapter for the Konekti runtime built on the shared Web Request/Response core.",
+  "description": "Cloudflare Workers HTTP adapter for the Fluo runtime built on the shared Web Request/Response core.",
   "keywords": [
-    "konekti",
+    "fluo",
     "cloudflare",
     "workers",
     "http-adapter",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/platform-cloudflare-workers"
   },
   "engines": {

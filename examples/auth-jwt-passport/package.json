@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/example-auth-jwt-passport",
-  "description": "Runnable Konekti authentication example with JWT issuance and Passport-style route protection.",
+  "description": "Runnable Fluo authentication example with JWT issuance and Passport-style route protection.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

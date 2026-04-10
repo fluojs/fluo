@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/serialization",
-  "description": "Class-based response serialization and output shaping interceptors for Konekti.",
+  "description": "Class-based response serialization and output shaping interceptors for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "serialization",
     "response",
     "interceptor",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/serialization"
   },
   "engines": {

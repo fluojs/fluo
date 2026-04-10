@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/microservices",
-  "description": "Transport-driven microservice runtime with pattern decorators and multi-transport support for Konekti.",
+  "description": "Transport-driven microservice runtime with pattern decorators and multi-transport support for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "microservices",
     "transport",
     "tcp",
@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/microservices"
   },
   "engines": {

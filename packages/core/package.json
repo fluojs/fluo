@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/core",
-  "description": "Shared contracts, decorators, and metadata helpers that form the foundation of every Konekti package.",
+  "description": "Shared contracts, decorators, and metadata helpers that form the foundation of every Fluo package.",
   "keywords": [
-    "konekti",
+    "fluo",
     "core",
     "decorators",
     "metadata",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/core"
   },
   "engines": {

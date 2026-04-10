@@ -1,5 +1,5 @@
 {
-  "name": "@konekti-internal/tooling-vite",
+  "name": "@fluojs-internal/tooling-vite",
   "version": "0.0.0",
   "private": true
 }

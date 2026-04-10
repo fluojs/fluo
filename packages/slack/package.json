@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/slack",
-  "description": "Webhook-first, transport-agnostic Slack delivery core for Konekti with notifications integration.",
+  "description": "Webhook-first, transport-agnostic Slack delivery core for Fluo with notifications integration.",
   "keywords": [
-    "konekti",
+    "fluo",
     "slack",
     "webhook",
     "notifications",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/slack"
   },
   "publishConfig": {

@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/config",
-  "description": "Configuration loading, merging, validation, and typed runtime access for Konekti applications.",
+  "description": "Configuration loading, merging, validation, and typed runtime access for Fluo applications.",
   "keywords": [
-    "konekti",
+    "fluo",
     "config",
     "configuration",
     "environment",
@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/config"
   },
   "engines": {

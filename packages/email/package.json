@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/email",
-  "description": "Transport-agnostic email delivery core for Konekti with notifications and queue integration seams.",
+  "description": "Transport-agnostic email delivery core for Fluo with notifications and queue integration seams.",
   "keywords": [
-    "konekti",
+    "fluo",
     "email",
     "transport",
     "portable",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/email"
   },
   "publishConfig": {
