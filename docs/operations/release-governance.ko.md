@@ -4,7 +4,7 @@
   <strong>한국어</strong> | <a href="./release-governance.md">English</a>
 </p>
 
-이 문서는 Konekti 생태계의 릴리스 표준, 안정성 계약 및 버전 관리 정책을 정의합니다. 프레임워크 업데이트가 예측 가능하고, 파괴적 변경 사항이 명확하게 전달되며, 공개 패키지가 높은 품질을 유지할 수 있도록 보장합니다.
+이 문서는 fluo 생태계의 릴리스 표준, 안정성 계약 및 버전 관리 정책을 정의합니다. 프레임워크 업데이트가 예측 가능하고, 파괴적 변경 사항이 명확하게 전달되며, 공개 패키지가 높은 품질을 유지할 수 있도록 보장합니다.
 
 ## 이 문서가 필요한 경우
 
@@ -17,7 +17,7 @@
 
 ## 안정성 계약 (Stability Contract)
 
-Konekti는 패키지의 성숙도를 전달하기 위해 계층화된 안정성 모델을 사용합니다.
+fluo는 패키지의 성숙도를 전달하기 위해 계층화된 안정성 모델을 사용합니다.
 
 | 등급 | 안정성 | 설명 |
 | :--- | :--- | :--- |
@@ -36,7 +36,7 @@ Konekti는 패키지의 성숙도를 전달하기 위해 계층화된 안정성 
 
 ## 버전 관리 정책 (Versioning Policy)
 
-Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅니다.
+fluo는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅니다.
 
 - **Major (`X.0.0`)**: 중대한 파괴적 변경, 아키텍처의 전환 또는 지원 중단된 API의 삭제.
 - **Minor (`0.X.0`)**: 새로운 기능 추가, 하위 호환성을 유지하는 개선 또는 문서화된 동작을 보존하는 주요 내부 리팩토링.
@@ -47,45 +47,45 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 
 ## intended publish surface
 
-- `@konekti/cache-manager`
-- `@konekti/cli`
-- `@konekti/config`
-- `@konekti/core`
-- `@konekti/cqrs`
-- `@konekti/cron`
-- `@konekti/email`
-- `@konekti/discord`
-- `@konekti/di`
-- `@konekti/drizzle`
-- `@konekti/event-bus`
-- `@konekti/graphql`
-- `@konekti/http`
-- `@konekti/jwt`
-- `@konekti/metrics`
-- `@konekti/microservices`
-- `@konekti/mongoose`
-- `@konekti/notifications`
-- `@konekti/openapi`
-- `@konekti/passport`
-- `@konekti/platform-bun`
-- `@konekti/platform-cloudflare-workers`
-- `@konekti/platform-deno`
-- `@konekti/platform-express`
-- `@konekti/platform-fastify`
-- `@konekti/platform-nodejs`
-- `@konekti/prisma`
-- `@konekti/queue`
-- `@konekti/redis`
-- `@konekti/runtime`
-- `@konekti/serialization`
-- `@konekti/slack`
-- `@konekti/socket.io`
-- `@konekti/studio`
-- `@konekti/terminus`
-- `@konekti/testing`
-- `@konekti/throttler`
-- `@konekti/validation`
-- `@konekti/websockets`
+- `@fluojs/cache-manager`
+- `@fluojs/cli`
+- `@fluojs/config`
+- `@fluojs/core`
+- `@fluojs/cqrs`
+- `@fluojs/cron`
+- `@fluojs/email`
+- `@fluojs/discord`
+- `@fluojs/di`
+- `@fluojs/drizzle`
+- `@fluojs/event-bus`
+- `@fluojs/graphql`
+- `@fluojs/http`
+- `@fluojs/jwt`
+- `@fluojs/metrics`
+- `@fluojs/microservices`
+- `@fluojs/mongoose`
+- `@fluojs/notifications`
+- `@fluojs/openapi`
+- `@fluojs/passport`
+- `@fluojs/platform-bun`
+- `@fluojs/platform-cloudflare-workers`
+- `@fluojs/platform-deno`
+- `@fluojs/platform-express`
+- `@fluojs/platform-fastify`
+- `@fluojs/platform-nodejs`
+- `@fluojs/prisma`
+- `@fluojs/queue`
+- `@fluojs/redis`
+- `@fluojs/runtime`
+- `@fluojs/serialization`
+- `@fluojs/slack`
+- `@fluojs/socket.io`
+- `@fluojs/studio`
+- `@fluojs/terminus`
+- `@fluojs/testing`
+- `@fluojs/throttler`
+- `@fluojs/validation`
+- `@fluojs/websockets`
 
 ---
 
@@ -97,7 +97,7 @@ Konekti는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅
 - **`pnpm verify:release-readiness`**: 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 검증합니다.
 - **`pnpm verify:platform-consistency-governance`**: 영어와 한국어 문서 간의 구조적 일관성을 강제합니다.
 - **`pnpm verify:public-export-tsdoc`**: `packages/*/src` 아래 변경된 public export가 repo-wide TSDoc 최소 기준을 놓치면 실패합니다.
-- **동작 계약 체크**: `process.env`가 승인된 패턴(`@konekti/config`) 외부에서 액세스될 경우 릴리스를 차단합니다.
+- **동작 계약 체크**: `process.env`가 승인된 패턴(`@fluojs/config`) 외부에서 액세스될 경우 릴리스를 차단합니다.
 
 ### 변경 이력 표준 (Changelog Standards)
 모든 공개 릴리스는 *Keep a Changelog* 형식을 따르는 루트 `CHANGELOG.md`에 일치하는 항목이 있어야 합니다. GitHub 릴리스는 배포 단계에서 이 내용을 바탕으로 자동으로 생성됩니다.

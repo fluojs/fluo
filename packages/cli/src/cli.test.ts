@@ -34,7 +34,7 @@ describe('CLI command runner', () => {
       fluo: './bin/fluo.mjs',
       konekti: './bin/konekti.mjs',
     });
-    expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('canonical executable is `fluo`');
+    expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('The canonical CLI for fluo');
   });
 
   it('uses the default target directory from a single-app workspace root', async () => {

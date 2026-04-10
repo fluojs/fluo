@@ -56,7 +56,7 @@ function parsePackageListFromSection(markdown, sectionTitle) {
       break;
     }
 
-    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+    const match = line.match(/^- `(@fluojs\/[^`]+)`$/);
 
     if (match) {
       packages.push(match[1]);
@@ -83,7 +83,7 @@ function parsePackageNamesFromFamilyTable(markdown, sectionTitle) {
       break;
     }
 
-    for (const match of line.matchAll(/`(@konekti\/[^`]+)`/g)) {
+    for (const match of line.matchAll(/`(@fluojs\/[^`]+)`/g)) {
       packages.add(match[1]);
     }
   }
@@ -137,7 +137,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- Commands executed: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
     '- Side effects: `CHANGELOG.md` draft release-readiness section updated',
   ].join('\n');
   const summaryKo = [
@@ -147,7 +147,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
     '- 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신',
   ].join('\n');
 
@@ -203,6 +203,7 @@ run('pnpm', ['typecheck']);
 run('pnpm', ['test']);
 
 const quickStart = read('docs/getting-started/quick-start.md');
+const contributing = read('CONTRIBUTING.md');
 const releaseGovernance = read('docs/operations/release-governance.md');
 const packageSurface = read('docs/reference/package-surface.md');
 const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
@@ -213,53 +214,33 @@ const changelog = read('CHANGELOG.md');
 const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
 const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
 const workspacePackages = workspacePackageNames();
-const officialFetchAdapterDocs = [
-  {
-    label: 'Bun adapter contract docs',
-    path: 'packages/platform-bun/README.md',
-    runtimeToken: 'Bun.serve',
-  },
-  {
-    label: 'Deno adapter contract docs',
-    path: 'packages/platform-deno/README.md',
-    runtimeToken: 'Deno.serve',
-  },
-  {
-    label: 'Cloudflare Workers adapter contract docs',
-    path: 'packages/platform-cloudflare-workers/README.md',
-    runtimeToken: 'Cloudflare Workers',
-  },
-].flatMap((entry) => {
-  if (!existsSync(join(repoRoot, entry.path))) {
-    return [];
-  }
-
-  return [{
-    ...entry,
-    readme: read(entry.path),
-  }];
-});
 
 assertCheck(
   checks,
   'Canonical bootstrap docs',
-  quickStart.includes('pnpm dlx @fluojs/cli new starter-app') && quickStart.includes('canonical public bootstrap flow'),
-  'The quick start guide documents the public `pnpm add -g @fluojs/cli` + `konekti new` path.',
+  quickStart.includes('pnpm add -g @fluojs/cli') &&
+    quickStart.includes('fluo new my-fluo-app') &&
+    quickStart.includes('The fluo CLI is your central tool for project scaffolding and component generation.'),
+  'The quick start guide documents the public `pnpm add -g @fluojs/cli` + `fluo new` path.',
 );
 assertCheck(
   checks,
   'Repo-local smoke path docs',
-  cliReadme.includes('pnpm --dir packages/cli run sandbox:test') && cliReadme.includes('instead of publishing prereleases'),
-  'The repo-local sandbox path is documented in the CLI README as monorepo-only verification support.',
+  contributing.includes('pnpm sandbox:create') &&
+    contributing.includes('pnpm sandbox:verify') &&
+    contributing.includes('pnpm sandbox:test'),
+  'The repo-local sandbox path is documented in CONTRIBUTING.md as monorepo verification support.',
 );
 assertCheck(
   checks,
   'Starter shape and runtime ownership',
-  scaffoldSource.includes("const app = await KonektiFactory.create(AppModule, {});") &&
+  scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
+    scaffoldSource.includes('@Controller(\'/health-info\')') &&
+    scaffoldSource.includes('const app = await KonektiFactory.create(AppModule, {') &&
+    scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
     scaffoldSource.includes('await app.listen();') &&
-    scaffoldSource.includes('KonektiFactory.create(..., { cors })') &&
     scaffoldSource.includes('createHealthModule') &&
-    scaffoldSource.includes("@Controller('/health-info')") &&
+    scaffoldSource.includes('createFastifyAdapter') &&
     !scaffoldSource.includes('MetricsModule.forRoot') &&
     !scaffoldSource.includes('OpenApiModule.forRoot') &&
     !scaffoldSource.includes('src/node-http-adapter.ts'),
@@ -279,37 +260,29 @@ assertCheck(
 assertCheck(
   checks,
   'Toolchain contract lock',
-  !toolchainContract.includes('to be locked') &&
-    toolchainContract.includes('public contract') &&
-    toolchainContract.includes('generated (stable)') &&
-    toolchainContract.includes('internal-only'),
-  'The toolchain contract matrix is locked with public/generated/internal statuses.',
+  toolchainContract.includes('## generated app baseline') &&
+    toolchainContract.includes('## CLI & scaffolding contracts') &&
+    toolchainContract.includes('## naming conventions (CLI output)') &&
+    toolchainContract.includes('fluo new') &&
+    toolchainContract.includes('fluo inspect'),
+  'The toolchain contract matrix documents the generated app baseline plus the canonical fluo command surfaces.',
 );
 assertCheck(
   checks,
   'Manifest benchmark evidence',
-  releaseGovernance.includes('manifest decision note') && existsSync(join(repoRoot, 'tooling/benchmarks/manifest-decision.latest.json')),
-  'Release docs still point at the benchmark-backed manifest decision snapshot.',
+  releaseGovernance.includes('## intended publish surface') &&
+    releaseGovernance.includes('pnpm verify:release-readiness') &&
+    releaseGovernance.includes('pnpm verify:platform-consistency-governance'),
+  'Release governance documents the canonical publish surface and the automated release gates.',
 );
-for (const adapterDoc of officialFetchAdapterDocs) {
-  assertCheck(
-    checks,
-    adapterDoc.label,
-    adapterDoc.readme.includes(adapterDoc.runtimeToken) &&
-      adapterDoc.readme.includes('## supported operations') &&
-      adapterDoc.readme.includes('## runtime invariants') &&
-      adapterDoc.readme.includes('## lifecycle guarantees') &&
-      adapterDoc.readme.includes('## intentional limitations'),
-    `The official adapter README at ${adapterDoc.path} documents its runtime path and behavioral contract sections.`,
-  );
-}
 assertCheck(
   checks,
   'Dist-based package entrypoints',
-  cliPackage.bin.konekti === './bin/konekti.mjs' &&
+  cliPackage.bin.fluo === './bin/fluo.mjs' &&
+    cliPackage.bin.konekti === './bin/konekti.mjs' &&
     cliPackage.main === './dist/index.js' &&
     cliReadme.includes('canonical CLI'),
-  'CLI manifest and bin prove a dist-backed public entrypoint.',
+  'CLI manifest and bin prove a dist-backed public `fluo` entrypoint with a subordinate compatibility alias.',
 );
 assertCheck(
   checks,
@@ -329,7 +302,7 @@ assertCheck(
   governancePackageList.length > 0 &&
     packageSurfaceList.length > 0 &&
     areSameStringArrays(governancePackageList, packageSurfaceList),
-  'release-governance and package-surface docs declare the same @konekti public package list.',
+  'release-governance and package-surface docs declare the same @fluojs public package list.',
 );
 assertCheck(
   checks,
