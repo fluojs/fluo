@@ -1,5 +1,5 @@
 {
-  "name": "konekti",
+  "name": "fluo",
   "private": true,
   "packageManager": "pnpm@10.4.1",
   "engines": {

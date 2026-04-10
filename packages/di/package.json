@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/di",
-  "description": "Minimal token-based dependency injection container powering every Konekti application.",
+  "description": "Minimal token-based dependency injection container powering every Fluo application.",
   "keywords": [
-    "konekti",
+    "fluo",
     "di",
     "dependency-injection",
     "ioc",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/di"
   },
   "engines": {

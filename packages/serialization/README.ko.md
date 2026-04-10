@@ -60,7 +60,7 @@ const user = new UserEntity({ id: '1', username: 'fluo', passwordHash: 'secret' 
 const result = serialize(user);
 
 console.log(result); 
-// 출력: { id: "1", username: "KONEKTI" }
+// 출력: { id: "1", username: "fluo" }
 // passwordHash는 제외됩니다.
 ```
 

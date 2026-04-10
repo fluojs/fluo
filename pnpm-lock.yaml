@@ -804,7 +804,7 @@ importers:
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
-      '@konekti-internal/tooling-vite':
+      '@fluojs-internal/tooling-vite':
         specifier: workspace:*
         version: link:../../tooling/vite
       vitest:

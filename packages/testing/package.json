@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/testing",
-  "description": "Testing module construction and provider override utilities for Konekti applications.",
+  "description": "Testing module construction and provider override utilities for Fluo applications.",
   "keywords": [
-    "konekti",
+    "fluo",
     "testing",
     "test",
     "mock",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/testing"
   },
   "engines": {

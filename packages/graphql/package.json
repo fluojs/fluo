@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/graphql",
-  "description": "Decorator-based GraphQL module, schema exposure, and execution pipeline for Konekti.",
+  "description": "Decorator-based GraphQL module, schema exposure, and execution pipeline for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "graphql",
     "resolver",
     "schema",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/graphql"
   },
   "engines": {

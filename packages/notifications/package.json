@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/notifications",
-  "description": "Channel-agnostic notification orchestration with optional queue and lifecycle event seams for Konekti.",
+  "description": "Channel-agnostic notification orchestration with optional queue and lifecycle event seams for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "notifications",
     "messaging",
     "queue",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/notifications"
   },
   "engines": {

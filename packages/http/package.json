@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/http",
-  "description": "HTTP execution layer — routing, guards, interceptors, DTO binding, and exception handling for Konekti.",
+  "description": "HTTP execution layer — routing, guards, interceptors, DTO binding, and exception handling for Fluo.",
   "keywords": [
-    "konekti",
+    "fluo",
     "http",
     "routing",
     "guards",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/http"
   },
   "engines": {

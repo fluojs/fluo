@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/socket.io",
-  "description": "Socket.IO v4 gateway adapter for Konekti applications, built on the shared runtime and websocket decorators.",
+  "description": "Socket.IO v4 gateway adapter for Fluo applications, built on the shared runtime and websocket decorators.",
   "keywords": [
-    "konekti",
+    "fluo",
     "socket.io",
     "websocket",
     "gateway",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/socket.io"
   },
   "engines": {

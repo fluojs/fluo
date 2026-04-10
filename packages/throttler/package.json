@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/throttler",
-  "description": "Decorator-based rate limiting for Konekti applications with in-memory and Redis store adapters.",
+  "description": "Decorator-based rate limiting for Fluo applications with in-memory and Redis store adapters.",
   "keywords": [
-    "konekti",
+    "fluo",
     "throttler",
     "rate-limit",
     "rate-limiting",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/throttler"
   },
   "engines": {

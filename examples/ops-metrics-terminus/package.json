@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/example-ops-metrics-terminus",
-  "description": "Runnable Konekti operations example with metrics and terminus health/readiness endpoints.",
+  "description": "Runnable Fluo operations example with metrics and terminus health/readiness endpoints.",
   "version": "0.0.0",
   "private": true,
   "type": "module",

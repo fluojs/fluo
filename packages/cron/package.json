@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/cron",
-  "description": "Decorator-based task scheduling for Konekti with cron, interval, and timeout triggers and optional distributed locking.",
+  "description": "Decorator-based task scheduling for Fluo with cron, interval, and timeout triggers and optional distributed locking.",
   "keywords": [
-    "konekti",
+    "fluo",
     "cron",
     "scheduler",
     "interval",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/cron"
   },
   "engines": {

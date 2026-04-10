@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/drizzle",
-  "description": "Drizzle ORM integration for Konekti with ALS transaction context, async module factory, and optional dispose hook.",
+  "description": "Drizzle ORM integration for Fluo with ALS transaction context, async module factory, and optional dispose hook.",
   "keywords": [
-    "konekti",
+    "fluo",
     "drizzle",
     "orm",
     "database",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/drizzle"
   },
   "engines": {

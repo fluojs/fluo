@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/cache-manager",
-  "description": "Decorator-driven HTTP response caching and standalone cache service for Konekti, with memory and Redis backends.",
+  "description": "Decorator-driven HTTP response caching and standalone cache service for Fluo, with memory and Redis backends.",
   "keywords": [
-    "konekti",
+    "fluo",
     "cache",
     "caching",
     "http-cache",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/cache-manager"
   },
   "engines": {

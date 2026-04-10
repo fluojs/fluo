@@ -1,8 +1,8 @@
 {
   "name": "@fluojs/websockets",
-  "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node, Bun, Deno, and Cloudflare Workers raw websocket bindings on dedicated subpaths.",
+  "description": "Decorator-based WebSocket gateway authoring core for Fluo, with explicit Node, Bun, Deno, and Cloudflare Workers raw websocket bindings on dedicated subpaths.",
   "keywords": [
-    "konekti",
+    "fluo",
     "websocket",
     "ws",
     "gateway",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/konektijs/konekti.git",
+    "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/websockets"
   },
   "engines": {
