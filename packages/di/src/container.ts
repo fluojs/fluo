@@ -45,7 +45,7 @@ function isExistingProvider(value: Provider): value is ExistingProvider {
 
 function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
   if (token == null) {
-    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject([...]) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
+    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
   }
 
   return token;

@@ -38,14 +38,14 @@ function formatDiContext(ctx?: DiErrorContext): string {
 
   if (parts.length === 0) return '';
 
-  return '\n  ' + parts.join('\n  ');
+  return `\n  ${parts.join('\n  ')}`;
 }
 
 /**
  * Raised when a provider declaration or inject token cannot be normalized into a valid DI registration.
  *
  * @remarks
- * This usually points to malformed provider objects, missing `@Inject([...])` tokens, or `null`/
+ * This usually points to malformed provider objects, missing `@Inject(...)` tokens, or `null`/
  * `undefined` references that were evaluated before a `forwardRef()` indirection could be applied.
  */
 export class InvalidProviderError extends KonektiCodeError {
@@ -144,11 +144,11 @@ export class DuplicateProviderError extends KonektiCodeError {
 function buildMeta(context: DiErrorContext): Record<string, unknown> {
   const meta: Record<string, unknown> = {};
 
-  if (context.token !== undefined) meta['token'] = formatTokenName(context.token);
-  if (context.scope) meta['scope'] = context.scope;
-  if (context.module) meta['module'] = context.module;
-  if (context.dependencyChain) meta['dependencyChain'] = context.dependencyChain.map((t) => formatTokenName(t));
-  if (context.hint) meta['hint'] = context.hint;
+  if (context.token !== undefined) meta.token = formatTokenName(context.token);
+  if (context.scope) meta.scope = context.scope;
+  if (context.module) meta.module = context.module;
+  if (context.dependencyChain) meta.dependencyChain = context.dependencyChain.map((t) => formatTokenName(t));
+  if (context.hint) meta.hint = context.hint;
 
   return meta;
 }
