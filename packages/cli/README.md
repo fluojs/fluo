@@ -1,8 +1,8 @@
-# @konekti/cli
+# @fluojs/cli
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The canonical CLI for Konekti — bootstrap new applications, generate components, and migrate from legacy frameworks.
+The canonical CLI for fluo — bootstrap new applications, generate components, and migrate from legacy frameworks.
 
 ## Table of Contents
 
@@ -17,13 +17,17 @@ The canonical CLI for Konekti — bootstrap new applications, generate component
 ## Installation
 
 ```bash
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 ```
 
 Or run directly without installation:
 
 ```bash
-pnpm dlx @konekti/cli new my-app
+pnpm dlx @fluojs/cli new my-app
+
+The canonical executable is `fluo`. The legacy `konekti` command remains as a temporary compatibility alias and is not the documented default.
+
+For repo-local smoke verification, run `pnpm --dir packages/cli run sandbox:test` instead of publishing prereleases.
 ```
 
 ## When to Use
@@ -39,7 +43,7 @@ pnpm dlx @konekti/cli new my-app
 Scaffold a complete starter application in seconds.
 
 ```bash
-konekti new my-app
+fluo new my-app
 cd my-app
 pnpm dev
 ```
@@ -48,9 +52,9 @@ pnpm dev
 Add a new resource with a controller and service, automatically wired into the module.
 
 ```bash
-konekti generate module users
-konekti generate controller users
-konekti generate service users
+fluo generate module users
+fluo generate controller users
+fluo generate service users
 ```
 
 ## Common Patterns
@@ -60,10 +64,10 @@ Run safe, first-phase codemods to align your codebase with TC39 standard decorat
 
 ```bash
 # Preview changes (dry-run)
-konekti migrate ./src
+fluo migrate ./src
 
 # Apply transformations
-konekti migrate ./src --apply
+fluo migrate ./src --apply
 ```
 
 **Key Transformations:**
@@ -76,10 +80,10 @@ Visualize your application structure and troubleshoot initialization issues.
 
 ```bash
 # Export dependency graph as Mermaid
-konekti inspect ./src/app.module.ts --mermaid
+fluo inspect ./src/app.module.ts --mermaid
 
 # Export snapshot for @konekti/studio
-konekti inspect ./src/app.module.ts --json > snapshot.json
+fluo inspect ./src/app.module.ts --json > snapshot.json
 ```
 
 ## Public API Overview
@@ -94,9 +98,9 @@ The package can be used programmatically to trigger CLI actions from within othe
 
 ## Related Packages
 
-- **[@konekti/runtime](../runtime/README.md)**: The underlying engine used for inspection and bootstrap.
-- **[@konekti/studio](../studio/README.md)**: The web-based UI for visualizing `inspect --json` exports.
-- **[@konekti/testing](../testing/README.md)**: Used by generated test templates for integration and E2E testing.
+- **[@fluojs/runtime](../runtime/README.md)**: The underlying engine used for inspection and bootstrap.
+- **[@fluojs/studio](../studio/README.md)**: The web-based UI for visualizing `inspect --json` exports.
+- **[@fluojs/testing](../testing/README.md)**: Used by generated test templates for integration and E2E testing.
 - **[Canonical Runtime Package Matrix](../../docs/reference/package-surface.md)**: The source of truth for official runtime/package combinations.
 
 ## Example Sources
