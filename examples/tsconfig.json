@@ -1,11 +1,9 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": "..",
-    "ignoreDeprecations": "6.0",
     "noEmit": true,
     "paths": {
-      "@fluojs/*": ["packages/*/src/index.ts"]
+      "@fluojs/*": ["../packages/*/src/index.ts"]
     },
     "types": ["node"]
   },
