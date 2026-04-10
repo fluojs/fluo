@@ -8,17 +8,17 @@
 기존의 레거시 데코레이터에서 벗어나 현대적이고 고성능인 TypeScript 프레임워크를 즉시 경험해보고 싶은 개발자.
 
 ### 1. CLI 설치
-Konekti CLI는 프로젝트 스캐폴딩과 컴포넌트 생성을 위한 핵심 도구입니다.
+fluo CLI는 프로젝트 스캐폴딩과 컴포넌트 생성을 위한 핵심 도구입니다.
 
 ```sh
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 ```
 
 ### 2. 첫 번째 프로젝트 생성
 새로운 애플리케이션을 초기화합니다. 기본적으로 Node.js 환경에서 고성능 **Fastify** 어댑터가 구성됩니다.
 
 ```sh
-konekti new my-konekti-app
+fluo new my-konekti-app
 cd my-konekti-app
 ```
 

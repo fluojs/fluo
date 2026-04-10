@@ -8,17 +8,17 @@ Experience the power of **standard decorators** and **explicit dependency inject
 Developers who want to move beyond legacy decorators and see a modern, high-performance TypeScript framework in action.
 
 ### 1. install the CLI
-The Konekti CLI is your central tool for project scaffolding and component generation.
+The fluo CLI is your central tool for project scaffolding and component generation.
 
 ```sh
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 ```
 
 ### 2. create your first project
 Initialize a fresh application. By default, this bootstraps a high-performance **Fastify** adapter on Node.js.
 
 ```sh
-konekti new my-konekti-app
+fluo new my-konekti-app
 cd my-konekti-app
 ```
 
