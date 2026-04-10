@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, extname, resolve } from 'node:path';
+import { basename, extname, posix, resolve } from 'node:path';
 
 import ts from 'typescript';
 
@@ -936,13 +936,25 @@ function rewriteTsconfig(source: string, filePath: string): { changed: boolean; 
     }
 
     const nextCompilerOptions = { ...parsed.compilerOptions };
+    const baseUrl = typeof nextCompilerOptions.baseUrl === 'string' ? nextCompilerOptions.baseUrl : undefined;
+    const rewrittenPaths = rewriteBaseUrlPaths(nextCompilerOptions.paths, baseUrl);
     const hadExperimentalDecorators = 'experimentalDecorators' in nextCompilerOptions;
     const hadDecoratorMetadata = 'emitDecoratorMetadata' in nextCompilerOptions;
+    const hadBaseUrl = typeof nextCompilerOptions.baseUrl === 'string';
+    const shouldDropBaseUrl = hadBaseUrl && !!baseUrl && (normalizeBaseUrl(baseUrl) === '.' || !!rewrittenPaths);
 
     delete nextCompilerOptions.experimentalDecorators;
     delete nextCompilerOptions.emitDecoratorMetadata;
 
-    if (!hadExperimentalDecorators && !hadDecoratorMetadata) {
+    if (rewrittenPaths) {
+      nextCompilerOptions.paths = rewrittenPaths;
+    }
+
+    if (shouldDropBaseUrl) {
+      delete nextCompilerOptions.baseUrl;
+    }
+
+    if (!hadExperimentalDecorators && !hadDecoratorMetadata && !rewrittenPaths && !shouldDropBaseUrl) {
       return { changed: false, source, warnings: [] };
     }
 
@@ -958,6 +970,44 @@ function rewriteTsconfig(source: string, filePath: string): { changed: boolean; 
       warnings: [{ category: 'tsconfig-parse' as const, filePath, line: 1, message: 'Failed to parse tsconfig.json. Rewrite it manually.' }],
     };
   }
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  const normalized = posix.normalize(baseUrl.replace(/\\/g, '/'));
+  return normalized === '' ? '.' : normalized;
+}
+
+function rewriteBaseUrlPathTarget(target: string, baseUrl: string): string {
+  if (target === '') {
+    return target;
+  }
+
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  if (normalizedBaseUrl === '.') {
+    return target;
+  }
+
+  if (/^(?:[A-Za-z]:|\/|[a-z]+:)/.test(target)) {
+    return target;
+  }
+
+  return posix.join(normalizedBaseUrl, target.replace(/\\/g, '/'));
+}
+
+function rewriteBaseUrlPaths(paths: unknown, baseUrl: string | undefined): Record<string, unknown> | undefined {
+  if (!baseUrl || !paths || Array.isArray(paths) || typeof paths !== 'object') {
+    return undefined;
+  }
+
+  const rewrittenEntries = Object.entries(paths).map(([alias, targets]) => {
+    if (!Array.isArray(targets) || !targets.every((target) => typeof target === 'string')) {
+      return [alias, targets] as const;
+    }
+
+    return [alias, targets.map((target) => rewriteBaseUrlPathTarget(target, baseUrl))] as const;
+  });
+
+  return Object.fromEntries(rewrittenEntries);
 }
 
 function detectManualFollowUps(source: string, filePath: string): MigrationWarning[] {

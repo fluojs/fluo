@@ -89,8 +89,13 @@ describe('users', () => {
     `${JSON.stringify(
       {
         compilerOptions: {
+          baseUrl: 'src',
           emitDecoratorMetadata: true,
           experimentalDecorators: true,
+          paths: {
+            '@app/*': ['app/*'],
+            '@health': ['./health/health.module.ts'],
+          },
           strict: true,
         },
       },
@@ -132,6 +137,12 @@ describe('runNestJsMigration', () => {
     const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'users.service.ts'), 'utf8');
     const testContent = readFileSync(join(workspaceDirectory, 'src', 'users.spec.ts'), 'utf8');
     const tsconfigContent = readFileSync(join(workspaceDirectory, 'tsconfig.json'), 'utf8');
+    const tsconfig = JSON.parse(tsconfigContent) as {
+      compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+      };
+    };
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
     expect(mainContent).toContain("from \"@fluojs/runtime\"");
@@ -145,6 +156,11 @@ describe('runNestJsMigration', () => {
     expect(testContent).not.toContain('Test.createTestingModule');
     expect(tsconfigContent).not.toContain('experimentalDecorators');
     expect(tsconfigContent).not.toContain('emitDecoratorMetadata');
+    expect(tsconfig.compilerOptions?.baseUrl).toBeUndefined();
+    expect(tsconfig.compilerOptions?.paths).toEqual({
+      '@app/*': ['src/app/*'],
+      '@health': ['src/health/health.module.ts'],
+    });
 
     const secondReport = runNestJsMigration({
       apply: true,
@@ -166,9 +182,20 @@ describe('runNestJsMigration', () => {
 
     const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
     const tsconfigContent = readFileSync(join(workspaceDirectory, 'tsconfig.json'), 'utf8');
+    const tsconfig = JSON.parse(tsconfigContent) as {
+      compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+      };
+    };
 
     expect(mainContent).toContain('NestFactory.create');
     expect(tsconfigContent).not.toContain('experimentalDecorators');
+    expect(tsconfig.compilerOptions?.baseUrl).toBeUndefined();
+    expect(tsconfig.compilerOptions?.paths).toEqual({
+      '@app/*': ['src/app/*'],
+      '@health': ['src/health/health.module.ts'],
+    });
   });
 
   it('preserves listen(port) when port cannot be folded into create options', () => {
