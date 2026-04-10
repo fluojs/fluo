@@ -27,7 +27,7 @@ Imagine a framework that feels like NestJS in its organizational power, but like
 import { Module, Inject } from '@konekti/core';
 import { UsersRepository } from './users.repository';
 
-@Inject([UsersRepository])
+@Inject(UsersRepository)
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }

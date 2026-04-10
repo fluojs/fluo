@@ -31,7 +31,7 @@ import { Inject, Module } from '@konekti/core';
 import { SOCKETIO_ROOM_SERVICE, SocketIoModule, type SocketIoRoomService } from '@konekti/socket.io';
 import { OnMessage, WebSocketGateway } from '@konekti/websockets';
 
-@Inject([SOCKETIO_ROOM_SERVICE])
+@Inject(SOCKETIO_ROOM_SERVICE)
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
   constructor(private readonly rooms: SocketIoRoomService) {}
@@ -64,7 +64,7 @@ this.rooms.broadcastToRoom('room:123', 'event', data);
 import { SOCKETIO_SERVER } from '@konekti/socket.io';
 import type { Server } from 'socket.io';
 
-@Inject([SOCKETIO_SERVER])
+@Inject(SOCKETIO_SERVER)
 class MyService {
   constructor(private readonly io: Server) {}
 }

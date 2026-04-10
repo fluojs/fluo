@@ -67,7 +67,7 @@ export class UsersModule {}
 
 ```ts
 // source: ex:realworld-api/src/users/users.service.ts
-@Inject([UsersRepo])
+@Inject(UsersRepo)
 export class UsersService {
   constructor(private readonly repo: UsersRepo) {}
 

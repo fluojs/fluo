@@ -27,7 +27,7 @@ NestJS와 같은 대부분의 TypeScript 프레임워크는 JavaScript 언어의
 import { Module, Inject } from '@konekti/core';
 import { UsersRepository } from './users.repository';
 
-@Inject([UsersRepository])
+@Inject(UsersRepository)
 export class UsersService {
   constructor(private readonly repo: UsersRepository) {}
 }

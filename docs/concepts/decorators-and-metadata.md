@@ -22,7 +22,7 @@ Every decorator in Konekti—`@Module`, `@Controller`, `@Inject`—is a standard
 
 ### explicit over implicit
 Legacy frameworks often "guessed" your dependencies by looking at constructor types. In Konekti, we value **explicitness**.
-- You use `@Inject([UsersService])` to clearly state your dependencies.
+- You use `@Inject(UsersService)` to clearly state your dependencies.
 - This makes your code searchable, auditable, and eliminates the "magic" that leads to difficult-to-debug DI issues.
 
 ### framework-owned registry

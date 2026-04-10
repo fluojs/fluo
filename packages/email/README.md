@@ -77,7 +77,7 @@ import { Inject } from '@konekti/core';
 import { EmailService } from '@konekti/email';
 
 export class WelcomeService {
-  constructor(@Inject([EmailService]) private readonly email: EmailService) {}
+  constructor(@Inject(EmailService) private readonly email: EmailService) {}
 
   async sendWelcome(address: string) {
     await this.email.send({

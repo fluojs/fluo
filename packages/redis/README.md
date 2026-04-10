@@ -54,7 +54,7 @@ import { Inject } from '@konekti/core';
 import { RedisService } from '@konekti/redis';
 
 export class CacheRepository {
-  @Inject([RedisService])
+  @Inject(RedisService)
   private readonly redis: RedisService;
 
   async saveUser(id: string, user: object) {
@@ -79,7 +79,7 @@ import { REDIS_CLIENT } from '@konekti/redis';
 import type Redis from 'ioredis';
 
 export class AdvancedService {
-  @Inject([REDIS_CLIENT])
+  @Inject(REDIS_CLIENT)
   private readonly client: Redis;
 
   async executeComplex() {

@@ -33,7 +33,7 @@ export class UsersModule {}
 
 ```ts
 // source: ex:realworld-api/src/users/users.service.ts
-@Inject([UsersRepo])
+@Inject(UsersRepo)
 export class UsersService {
   constructor(private readonly repo: UsersRepo) {}
 
@@ -83,7 +83,7 @@ export class CreateUserDto {
 
 ```ts
 // source: ex:realworld-api/src/users/users.controller.ts
-@Inject([UsersService])
+@Inject(UsersService)
 @Controller('/users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}

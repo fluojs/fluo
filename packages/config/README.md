@@ -58,7 +58,7 @@ import { Inject } from '@konekti/core';
 import { ConfigService } from '@konekti/config';
 
 class MyService {
-  constructor(@Inject([ConfigService]) private config: ConfigService) {
+  constructor(@Inject(ConfigService) private config: ConfigService) {
     const port = this.config.get('PORT');
     const dbUrl = this.config.getOrThrow('DATABASE_URL');
   }

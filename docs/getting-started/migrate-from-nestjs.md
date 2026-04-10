@@ -41,7 +41,7 @@ export class UsersService {
 ```ts
 import { Inject } from '@konekti/core';
 
-@Inject([UsersRepository])
+@Inject(UsersRepository)
 export class UsersService {
   constructor(private repo: UsersRepository) {}
 }

@@ -39,7 +39,7 @@ import { Inject } from '@konekti/core';
 import { ProductService } from './product.service';
 
 @Controller('/products')
-@Inject([ProductService])
+@Inject(ProductService)
 export class ProductController {
   constructor(private readonly service: ProductService) {}
 
@@ -89,7 +89,7 @@ curl http://localhost:3000/products
 *기대 결과: `[{"id":1,"name":"Standard Decorator","price":99}]`*
 
 ### 왜 이런 방식을 사용하나요?
-- **명시적 연결**: `@Inject([ProductService])`를 통해 숨겨진 메타데이터 마법 없이도 클래스가 무엇에 의존하는지 즉시 파악할 수 있습니다.
+- **명시적 연결**: `@Inject(ProductService)`를 통해 숨겨진 메타데이터 마법 없이도 클래스가 무엇에 의존하는지 즉시 파악할 수 있습니다.
 - **슬라이스 소유권**: "Catalog"와 관련된 모든 로직이 한 곳에 모여 있어 유지보수와 확장이 용이합니다.
 - **표준 준수**: 이 모든 흐름은 미래의 ECMAScript 표준과 일치하는 기본 TypeScript 데코레이터를 사용합니다.
 

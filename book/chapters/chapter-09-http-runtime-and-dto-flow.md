@@ -40,7 +40,7 @@ realworld controller를 보면 Konekti의 HTTP 스타일이 잘 드러난다 `[e
 
 ```ts
 // source: ex:realworld-api/src/users/users.controller.ts
-@Inject([UsersService])
+@Inject(UsersService)
 @Controller('/users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}

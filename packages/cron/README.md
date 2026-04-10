@@ -97,7 +97,7 @@ import { SCHEDULING_REGISTRY, type SchedulingRegistry } from '@konekti/cron';
 
 class TaskManager {
   constructor(
-    @Inject([SCHEDULING_REGISTRY]) private readonly registry: SchedulingRegistry
+    @Inject(SCHEDULING_REGISTRY) private readonly registry: SchedulingRegistry
   ) {}
 
   addNewTask() {

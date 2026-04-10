@@ -58,7 +58,7 @@ class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
 }
 
 // 3. Command Bus 사용
-@Inject([CommandBusLifecycleService])
+@Inject(CommandBusLifecycleService)
 class UserService {
   constructor(private readonly commandBus: CommandBusLifecycleService) {}
 
@@ -92,7 +92,7 @@ class SendWelcomeEmailCommand implements ICommand {
   constructor(public readonly userId: string) {}
 }
 
-@Inject([CommandBusLifecycleService])
+@Inject(CommandBusLifecycleService)
 @Saga(UserCreatedEvent)
 class UserSaga implements ISaga<UserCreatedEvent> {
   constructor(private readonly commandBus: CommandBusLifecycleService) {}
@@ -111,7 +111,7 @@ Class-first DI로 전환 중이거나 명시적 Symbol 토큰이 필요한 경�
 import { Inject } from '@konekti/core';
 import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@konekti/cqrs';
 
-@Inject([COMMAND_BUS, QUERY_BUS, EVENT_BUS])
+@Inject(COMMAND_BUS, QUERY_BUS, EVENT_BUS)
 class LegacyService {
   constructor(commandBus, queryBus, eventBus) {}
 }

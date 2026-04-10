@@ -67,7 +67,7 @@ import { RedisModule } from '@konekti/redis';
 export class AppModule {}
 
 export class OrderService {
-  @Inject([QueueLifecycleService])
+  @Inject(QueueLifecycleService)
   private readonly queue: QueueLifecycleService;
 
   async placeOrder(id: string) {

@@ -60,7 +60,7 @@ The `PrismaService` is the primary way to interact with Prisma. Its `current()` 
 import { PrismaService } from '@konekti/prisma';
 import { PrismaClient } from '@prisma/client';
 
-@Inject([PrismaService])
+@Inject(PrismaService)
 export class UserRepository {
   constructor(private readonly prisma: PrismaService<PrismaClient>) {}
 

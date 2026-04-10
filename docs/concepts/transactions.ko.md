@@ -23,7 +23,7 @@
 서비스 내에서 특정 로직의 하위 집합만 원자적으로 처리해야 할 때 적합합니다.
 
 ```typescript
-@Inject([PrismaService])
+@Inject(PrismaService)
 class OrderService {
   async checkout(cartId: string) {
     return this.prisma.transaction(async () => {

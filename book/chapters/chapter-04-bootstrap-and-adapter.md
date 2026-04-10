@@ -156,7 +156,7 @@ minimal 예제는 작은 만큼 중요하다. `hello.controller.ts`와 `hello.se
 
 ```ts
 // source: ex:minimal/src/hello.controller.ts
-@Inject([HelloService])
+@Inject(HelloService)
 @Controller('/hello')
 export class HelloController {
   constructor(private readonly helloService: HelloService) {}

@@ -62,7 +62,7 @@ import { EventBusModule, EventBusLifecycleService } from '@konekti/event-bus';
 export class AppModule {}
 
 export class UserService {
-  @Inject([EventBusLifecycleService])
+  @Inject(EventBusLifecycleService)
   private readonly eventBus: EventBusLifecycleService;
 
   async signUp(email: string) {

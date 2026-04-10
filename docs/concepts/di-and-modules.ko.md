@@ -32,7 +32,7 @@ Konekti의 **Module**은 단순한 정리 도구가 아니라 **보안과 캡슐
 우리는 **Constructor Injection**을 기본 패턴으로 권장합니다. 이는 표준 class 기반 프로그래밍과 잘 맞고, 단위 테스트를 매우 단순하게 만듭니다. mock object를 생성자에 그대로 전달하면 됩니다.
 
 ```ts
-@Inject([UsersRepository, 'APP_CONFIG'])
+@Inject(UsersRepository, 'APP_CONFIG')
 export class UsersService {
   constructor(
     private readonly repo: UsersRepository,

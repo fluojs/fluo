@@ -62,7 +62,7 @@ class AppModule {}
 ```typescript
 import { MongooseConnection } from '@konekti/mongoose';
 
-@Inject([MongooseConnection])
+@Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 

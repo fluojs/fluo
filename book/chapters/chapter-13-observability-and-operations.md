@@ -88,7 +88,7 @@ class MetricsController {
 
 ```ts
 // source: ex:ops-metrics-terminus/src/ops/ops.controller.ts
-@Inject([OpsMetricsService])
+@Inject(OpsMetricsService)
 @Controller('/ops')
 export class OpsController {
   constructor(private readonly service: OpsMetricsService) {}

@@ -74,7 +74,7 @@ import { Inject } from '@konekti/core';
 import { CacheService } from '@konekti/cache-manager';
 
 class UserService {
-  constructor(@Inject([CacheService]) private readonly cache: CacheService) {}
+  constructor(@Inject(CacheService) private readonly cache: CacheService) {}
 
   async getProfile(userId: string) {
     return this.cache.remember(`user:${userId}`, async () => {

@@ -70,7 +70,7 @@ import { Inject } from '@konekti/core';
 import { NotificationsService } from '@konekti/notifications';
 
 export class WelcomeService {
-  constructor(@Inject([NotificationsService]) private readonly notifications: NotificationsService) {}
+  constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
 
   async sendWelcomeEmail(userId: string, email: string) {
     await this.notifications.dispatch({

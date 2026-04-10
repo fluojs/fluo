@@ -39,7 +39,7 @@ import { Inject } from '@konekti/core';
 import { ProductService } from './product.service';
 
 @Controller('/products')
-@Inject([ProductService])
+@Inject(ProductService)
 export class ProductController {
   constructor(private readonly service: ProductService) {}
 
@@ -89,7 +89,7 @@ curl http://localhost:3000/products
 *Expect: `[{"id":1,"name":"Standard Decorator","price":99}]`*
 
 ### why this workflow?
-- **Explicit Wiring**: `@Inject([ProductService])` makes it immediately clear what a class depends on without hidden metadata magic.
+- **Explicit Wiring**: `@Inject(ProductService)` makes it immediately clear what a class depends on without hidden metadata magic.
 - **Slice Ownership**: All logic related to "Catalog" lives in one place, making it easier to maintain and scale.
 - **Standard-Ready**: This entire flow uses native TypeScript decorators that align with future ECMAScript standards.
 

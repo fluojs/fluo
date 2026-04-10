@@ -60,7 +60,7 @@ class AppModule {}
 import { PrismaService } from '@konekti/prisma';
 import { PrismaClient } from '@prisma/client';
 
-@Inject([PrismaService])
+@Inject(PrismaService)
 export class UserRepository {
   constructor(private readonly prisma: PrismaService<PrismaClient>) {}
 

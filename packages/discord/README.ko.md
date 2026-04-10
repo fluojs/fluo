@@ -60,7 +60,7 @@ import { Inject } from '@konekti/core';
 import { DiscordService } from '@konekti/discord';
 
 export class DeployNotifier {
-  constructor(@Inject([DiscordService]) private readonly discord: DiscordService) {}
+  constructor(@Inject(DiscordService) private readonly discord: DiscordService) {}
 
   async announce(version: string) {
     await this.discord.send({

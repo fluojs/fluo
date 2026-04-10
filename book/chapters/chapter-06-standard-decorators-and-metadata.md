@@ -38,7 +38,7 @@ flowchart LR
 
 - `@Module(...)`는 `defineModuleMetadata(...)`를 호출한다.
 - `@Global()`은 module metadata에 `global: true`를 기록한다.
-- `@Inject([...])`는 클래스의 주입 토큰 목록을 기록한다.
+- `@Inject(...)`는 클래스의 주입 토큰 목록을 기록한다.
 - `@Scope(...)`는 provider lifecycle을 기록한다.
 
 즉, 이 시점의 핵심은 **행동이 아니라 선언**이다.
@@ -294,7 +294,7 @@ export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn {
 }
 ```
 
-여기서 `TupleOnly<TTokens>`는 단순 타입 장식이 아니다. Konekti가 `@Inject([...])`를 “아무 배열이나 넣는 곳”이 아니라, **생성자 파라미터 순서와 대응되는 고정 토큰 목록**으로 다루고 싶어 한다는 의도가 드러난다. 즉, decorator layer에서도 이미 “명시성”이 타입 수준으로 강화되고 있다.
+여기서 `TupleOnly<TTokens>`는 단순 타입 장식이 아니다. Konekti가 `@Inject(...)`를 “아무 값이나 여러 개 넣는 곳”이 아니라, **생성자 파라미터 순서와 대응되는 고정 토큰 목록**으로 다루고 싶어 한다는 의도가 드러난다. 즉, decorator layer에서도 이미 “명시성”이 타입 수준으로 강화되고 있다.
 
 ## metadata key 체계는 왜 이중 구조인가
 

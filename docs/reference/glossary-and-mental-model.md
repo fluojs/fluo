@@ -25,7 +25,7 @@ This glossary defines the core terminology and mental models that govern the Kon
 Konekti treats the runtime as a neutral orchestration engine. It doesn't assume a specific HTTP server or process model. Instead, it relies on **Platform Adapters** to provide the glue. This means your application logic stays decoupled from whether it's running on Fastify, a Cloudflare Worker, or a bare Node listener.
 
 ### explicit over implicit: "no magic"
-While many frameworks rely on "magic" or reflection, Konekti favors explicit declaration. Injection dependencies are declared via `@Inject([])`, and modules must explicitly list their exports. This ensures that the module graph is predictable, auditable, and easy to debug using the CLI.
+While many frameworks rely on "magic" or reflection, Konekti favors explicit declaration. Injection dependencies are declared via `@Inject()`, and modules must explicitly list their exports. This ensures that the module graph is predictable, auditable, and easy to debug using the CLI.
 
 ### single-responsibility packages: "pay only for what you use"
 The framework is split into granular packages. If you don't need Redis, you don't include `@konekti/redis`. If you aren't using WebSockets, you don't include `@konekti/websockets`. This keeps your production bundle lean and your dependency tree manageable.

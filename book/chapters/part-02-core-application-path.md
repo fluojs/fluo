@@ -45,7 +45,7 @@ HTTP runtime 개념 문서는 파이프라인을 설명하고, realworld control
 
 ```ts
 // source: ex:realworld-api/src/users/users.controller.ts
-@Inject([UsersService])
+@Inject(UsersService)
 @Controller('/users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}

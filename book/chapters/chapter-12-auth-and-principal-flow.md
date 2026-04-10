@@ -31,7 +31,7 @@ Konekti의 auth 설명에서 중요한 것은 책임 분리다.
 
 ```ts
 // source: ex:auth-jwt-passport/src/auth/auth.service.ts
-@Inject([DefaultJwtSigner])
+@Inject(DefaultJwtSigner)
 export class AuthService {
   constructor(private readonly signer: DefaultJwtSigner) {}
 
@@ -87,7 +87,7 @@ export class ProfileController {
 
 ```ts
 // source: ex:auth-jwt-passport/src/auth/bearer.strategy.ts
-@Inject([DefaultJwtVerifier])
+@Inject(DefaultJwtVerifier)
 export class BearerJwtStrategy implements AuthStrategy {
   constructor(private readonly verifier: DefaultJwtVerifier) {}
 

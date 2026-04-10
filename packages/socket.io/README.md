@@ -31,7 +31,7 @@ import { SocketIoModule, SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from 
 import { WebSocketGateway, OnMessage } from '@konekti/websockets';
 import { Inject, Module } from '@konekti/core';
 
-@Inject([SOCKETIO_ROOM_SERVICE])
+@Inject(SOCKETIO_ROOM_SERVICE)
 @WebSocketGateway({ path: '/chat' })
 class ChatGateway {
   constructor(private readonly rooms: SocketIoRoomService) {}
@@ -66,7 +66,7 @@ You can inject the underlying Socket.IO `Server` instance for low-level control.
 import { SOCKETIO_SERVER } from '@konekti/socket.io';
 import type { Server } from 'socket.io';
 
-@Inject([SOCKETIO_SERVER])
+@Inject(SOCKETIO_SERVER)
 class MyService {
   constructor(private readonly io: Server) {}
 }

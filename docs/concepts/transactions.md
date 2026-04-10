@@ -23,7 +23,7 @@ Data integrity is the foundation of any reliable backend. Konekti provides stand
 Perfect for specific logic within a service where only a subset of operations must be atomic.
 
 ```typescript
-@Inject([PrismaService])
+@Inject(PrismaService)
 class OrderService {
   async checkout(cartId: string) {
     return this.prisma.transaction(async () => {

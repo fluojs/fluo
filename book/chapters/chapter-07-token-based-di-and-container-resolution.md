@@ -34,7 +34,7 @@ flowchart TD
 
 ```ts
 // source: ex:realworld-api/src/users/users.service.ts
-@Inject([UsersRepo])
+@Inject(UsersRepo)
 export class UsersService {
   constructor(private readonly repo: UsersRepo) {}
 }
@@ -366,7 +366,7 @@ DI 시스템이 커질수록 등록과 override를 같은 동작처럼 다루는
 
 실전에서 “주입이 안 된다”는 문제를 만났을 때는 다음 순서로 좁혀 가면 좋다.
 
-1. `@Inject([...])`가 실제로 적혔는가? `[pkg:core/src/decorators.ts]`
+1. `@Inject(...)`가 실제로 적혔는가? `[pkg:core/src/decorators.ts]`
 2. `getClassDiMetadata(...)`로 읽힐 metadata가 있는가? `[pkg:core/src/metadata/class-di.ts]`
 3. provider가 normalize 가능한 형태로 등록되었는가? `[pkg:di/src/container.ts]`
 4. 현재 module에서 그 token이 visible한가? `[pkg:runtime/src/module-graph.ts]`

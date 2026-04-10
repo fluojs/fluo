@@ -32,7 +32,7 @@ A **Module** in Konekti is more than just a organization tool; it is a **securit
 We mandate **Constructor Injection** as the primary pattern. This aligns with standard class-based programming and makes unit testing trivial: you simply pass mock objects to the constructor.
 
 ```ts
-@Inject([UsersRepository, 'APP_CONFIG'])
+@Inject(UsersRepository, 'APP_CONFIG')
 export class UsersService {
   constructor(
     private readonly repo: UsersRepository,

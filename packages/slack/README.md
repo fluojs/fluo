@@ -60,7 +60,7 @@ import { Inject } from '@konekti/core';
 import { SlackService } from '@konekti/slack';
 
 export class DeployNotifier {
-  constructor(@Inject([SlackService]) private readonly slack: SlackService) {}
+  constructor(@Inject(SlackService) private readonly slack: SlackService) {}
 
   async announce(version: string) {
     await this.slack.send({

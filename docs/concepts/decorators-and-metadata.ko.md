@@ -22,7 +22,7 @@ Konekti의 모든 decorator—`@Module`, `@Controller`, `@Inject`—는 표준 J
 
 ### 명시적 방식이 암시적 방식보다 우선
 레거시 프레임워크는 constructor type을 보고 의존성을 “추측”하는 경우가 많았습니다. Konekti는 **명시성**을 중시합니다.
-- `@Inject([UsersService])`를 사용해 의존성을 명확히 선언합니다.
+- `@Inject(UsersService)`를 사용해 의존성을 명확히 선언합니다.
 - 이 방식은 코드를 검색 가능하고 감사 가능하게 만들며, 디버깅이 어려운 DI 문제를 만드는 “마법”을 제거합니다.
 
 ### 프레임워크 소유 registry
