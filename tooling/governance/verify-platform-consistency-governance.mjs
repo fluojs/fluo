@@ -138,7 +138,7 @@ function parsePackageListFromSection(markdown, sectionTitle) {
       break;
     }
 
-    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+    const match = line.match(/^- `(@fluojs\/[^`]+)`$/);
     if (match) {
       packages.push(match[1]);
     }
@@ -516,8 +516,8 @@ function enforceCanonicalPackageSurfaceSync() {
   const koreanPackageSurface = parsePackageNamesFromFamilyTable(packageSurfaceKo, '공개 패키지 패밀리');
 
   assert(intendedPublishSurface.length > 0, 'release-governance.md must define an intended publish surface list.');
-  assert(englishPackageSurface.length > 0, 'package-surface.md must enumerate public @konekti packages in its family table.');
-  assert(koreanPackageSurface.length > 0, 'package-surface.ko.md must enumerate public @konekti packages in its family table.');
+  assert(englishPackageSurface.length > 0, 'package-surface.md must enumerate public @fluojs packages in its family table.');
+  assert(koreanPackageSurface.length > 0, 'package-surface.ko.md must enumerate public @fluojs packages in its family table.');
   assert(
     areSameStringArrays(intendedPublishSurface, englishPackageSurface),
     'docs/reference/package-surface.md must stay synchronized with docs/operations/release-governance.md intended publish surface.',
