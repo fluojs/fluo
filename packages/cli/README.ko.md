@@ -50,6 +50,12 @@ pnpm dev
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
+`fluo new`는 이제 first-class microservice starter path도 제공합니다. 현재 실행 가능한 스타터는 TCP transport를 생성하며, CLI는 package manager 선택과 분리된 상태로 문서화된 microservice transport 계열도 검증합니다.
+
+```bash
+fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
+```
+
 ### 2. 기능 추가
 컨트롤러와 서비스가 포함된 새 리소스를 추가하고, 모듈에 자동으로 연결합니다.
 

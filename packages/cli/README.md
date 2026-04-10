@@ -50,6 +50,12 @@ The default starter remains the Node.js + Fastify HTTP application baseline. You
 fluo new my-app --shape application --transport http --runtime node --platform fastify
 ```
 
+`fluo new` also exposes a first-class microservice starter path. The runnable starter currently emits the TCP transport while the CLI validates the documented microservice transport families separately from package-manager choice:
+
+```bash
+fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
+```
+
 ### 2. Generate a feature
 Add a new resource with a controller and service, automatically wired into the module.
 
