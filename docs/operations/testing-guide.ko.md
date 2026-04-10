@@ -106,7 +106,7 @@ await app.close();
 | `pnpm verify:release-readiness` | 패키징된 CLI 검증을 포함한 공개 릴리스를 위한 최종 관문입니다. |
 
 ### 생성된 템플릿
-CLI(`konekti g repo <Name>`) 사용 시 기본적으로 제공되는 템플릿은 다음과 같습니다.
+CLI(`fluo g repo <Name>`) 사용 시 기본적으로 제공되는 템플릿은 다음과 같습니다.
 - `<name>.repo.test.ts`: 비즈니스 로직을 위한 유닛 테스트 템플릿.
 - `<name>.repo.slice.test.ts`: `createTestingModule`을 사용하는 통합 테스트 템플릿.
 
