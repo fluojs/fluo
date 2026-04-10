@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { detectPackageManager, resolveBootstrapAnswers } from './prompt.js';
+import { collectBootstrapAnswers, detectPackageManager, resolveBootstrapAnswers, type BootstrapPrompter } from './prompt.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 
 const createdDirectories: string[] = [];
@@ -42,8 +42,83 @@ describe('resolveBootstrapAnswers', () => {
     );
 
     expect(resolveBootstrapAnswers({ projectName: 'starter-app' }, workspaceDirectory)).toEqual({
+      initializeGit: false,
+      installDependencies: true,
       packageManager: 'bun',
       ...DEFAULT_BOOTSTRAP_SCHEMA,
+      projectName: 'starter-app',
+      targetDirectory: './starter-app',
+    });
+  });
+});
+
+describe('collectBootstrapAnswers', () => {
+  function createPrompt(overrides: Partial<BootstrapPrompter>): BootstrapPrompter {
+    return {
+      confirm: async () => false,
+      select: async <T extends string>(_message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (!defaultValue) {
+          throw new Error('Expected default value.');
+        }
+
+        return defaultValue;
+      },
+      text: async () => 'starter-app',
+      ...overrides,
+    };
+  }
+
+  it('collects the application wizard path without terminal emulation', async () => {
+    const prompt = createPrompt({
+      confirm: async (_message, defaultValue) => defaultValue,
+      select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (message === 'Starter shape') {
+          return 'application' as T;
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await expect(collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt })).resolves.toEqual({
+      initializeGit: false,
+      installDependencies: true,
+      packageManager: 'pnpm',
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      projectName: 'starter-app',
+      targetDirectory: './starter-app',
+    });
+  });
+
+  it('branches through the microservice transport wizard path', async () => {
+    const prompt = createPrompt({
+      confirm: async (_message, defaultValue) => defaultValue,
+      select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (message === 'Starter shape') {
+          return 'microservice' as T;
+        }
+
+        if (message === 'Microservice transport') {
+          return 'kafka' as T;
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await expect(collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt })).resolves.toEqual({
+      initializeGit: false,
+      installDependencies: true,
+      packageManager: 'pnpm',
+      platform: 'none',
+      runtime: 'node',
+      shape: 'microservice',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'kafka',
       projectName: 'starter-app',
       targetDirectory: './starter-app',
     });
