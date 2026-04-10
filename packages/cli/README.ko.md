@@ -44,6 +44,12 @@ cd my-app
 pnpm dev
 ```
 
+기본 스타터는 여전히 Node.js + Fastify HTTP 애플리케이션 기준선을 유지합니다. 이제 flags-first v2 shape 옵션으로 같은 HTTP 경로를 명시적으로 선택해도 생성 결과는 바뀌지 않습니다.
+
+```bash
+fluo new my-app --shape application --transport http --runtime node --platform fastify
+```
+
 ### 2. 기능 추가
 컨트롤러와 서비스가 포함된 새 리소스를 추가하고, 모듈에 자동으로 연결합니다.
 

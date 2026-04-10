@@ -44,6 +44,12 @@ cd my-app
 pnpm dev
 ```
 
+The default starter remains the Node.js + Fastify HTTP application baseline. You can now select that HTTP path explicitly with flags-first v2 shape options without changing the generated result:
+
+```bash
+fluo new my-app --shape application --transport http --runtime node --platform fastify
+```
+
 ### 2. Generate a feature
 Add a new resource with a controller and service, automatically wired into the module.
 
