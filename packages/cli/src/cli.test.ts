@@ -24,6 +24,19 @@ afterEach(() => {
 });
 
 describe('CLI command runner', () => {
+  it('publishes fluo as the canonical bin and keeps konekti as a compatibility alias', () => {
+    const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+      bin: Record<string, string>;
+    };
+
+    expect(manifest.bin).toEqual({
+      fluo: './bin/fluo.mjs',
+      konekti: './bin/konekti.mjs',
+    });
+    expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('canonical executable is `fluo`');
+  });
+
   it('uses the default target directory from a single-app workspace root', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'konekti-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -220,11 +233,11 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
     expect(stdoutBuffer.join('')).toContain('| Command  | Aliases | Description');
     expect(stdoutBuffer.join('')).toContain('| new      | create');
     expect(stdoutBuffer.join('')).toContain('| generate | g');
-    expect(stdoutBuffer.join('')).toContain("Run 'konekti help <command>'");
+    expect(stdoutBuffer.join('')).toContain("Run 'fluo help <command>'");
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
   });
 
@@ -238,7 +251,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti new|create [project-name] [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo new|create [project-name] [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
     expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn|bun>');
     expect(stdoutBuffer.join('')).not.toContain('Schematics');
@@ -258,7 +271,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti new|create [project-name] [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo new|create [project-name] [options]');
   });
 
   it('prints generate usage for `help g`', async () => {
@@ -271,7 +284,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo generate|g <kind> <name> [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Schematic\s+\| Aliases\s+\| Wiring\s+\| Description\s+\|/);
 
     for (const entry of generatorManifest) {
@@ -281,7 +294,7 @@ describe('CLI command runner', () => {
     }
 
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
-    expect(stdoutBuffer.join('')).not.toContain('Usage: konekti new|create');
+    expect(stdoutBuffer.join('')).not.toContain('Usage: fluo new|create');
     expect(stdoutBuffer.join('')).toContain('Next steps:');
     expect(stdoutBuffer.join('')).toContain("Run 'pnpm typecheck'");
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/generator-workflow.md');
@@ -297,7 +310,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti inspect <module-path> [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo inspect <module-path> [options]');
     expect(stdoutBuffer.join('')).toContain('--mermaid');
     expect(stdoutBuffer.join('')).toContain('--timing');
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md');
@@ -389,7 +402,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo generate|g <kind> <name> [options]');
 
     for (const entry of generatorManifest) {
       expect(stdoutBuffer.join('')).toContain(entry.schematic);
@@ -775,7 +788,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Usage: konekti <command> [options]');
+    expect(stderrBuffer.join('')).toContain('Usage: fluo <command> [options]');
   });
 
   it('rejects unknown options for `new` before scaffolding side effects', async () => {
@@ -898,7 +911,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toContain('Usage: fluo generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*repository\s*\|\s*repo\s*\|/);
   });
 
@@ -912,7 +925,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toContain('Usage: fluo generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*service\s*\|\s*s\s*\|/);
   });
 
@@ -1076,7 +1089,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Usage: konekti generate|g <kind> <name> [options]');
+    expect(stderrBuffer.join('')).toContain('Usage: fluo generate|g <kind> <name> [options]');
     expect(stderrBuffer.join('')).toMatch(/\|\s*request-dto\s*\|\s*req\s*\|/);
   });
 
@@ -1161,7 +1174,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Usage: konekti migrate <path> [options]');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo migrate <path> [options]');
     expect(stdoutBuffer.join('')).toContain('--apply');
     expect(stdoutBuffer.join('')).toContain('--only <comma-list>');
     expect(stdoutBuffer.join('')).toContain('Next steps:');

@@ -94,5 +94,5 @@ curl http://localhost:3000/products
 - **표준 준수**: 이 모든 흐름은 미래의 ECMAScript 표준과 일치하는 기본 TypeScript 데코레이터를 사용합니다.
 
 ### 다음 단계
-- **반복 작업 자동화**: `konekti g module catalog` 명령어를 사용하여 이 모든 구조를 단 몇 초 만에 생성해 보세요. [제너레이터 워크플로우](./generator-workflow.ko.md)에서 자세히 알아볼 수 있습니다.
+- **반복 작업 자동화**: `fluo g module catalog` 명령어를 사용하여 이 모든 구조를 단 몇 초 만에 생성해 보세요. [제너레이터 워크플로우](./generator-workflow.ko.md)에서 자세히 알아볼 수 있습니다.
 - **유효성 검사 추가**: 안전하고 타입 안정성이 보장된 입력을 위해 DTO와 `@konekti/validation`을 사용하는 방법을 배워보세요.

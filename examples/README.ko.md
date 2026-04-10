@@ -26,7 +26,7 @@
 
 ## 예제가 문서에서 맡는 역할
 
-- `minimal`은 기본 Node.js + Fastify 경로에서 `konekti new`가 만드는 canonical starter shape를 증명합니다
+- `minimal`은 기본 Node.js + Fastify 경로에서 `fluo new`가 만드는 canonical starter shape를 증명합니다
 - `realworld-api`는 스타터 이후 첫 실전 module/DTO/test 경로를 보여줍니다
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다

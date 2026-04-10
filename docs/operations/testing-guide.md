@@ -106,7 +106,7 @@ Keep the module wiring real but override the low-level client tokens to avoid ne
 | `pnpm verify:release-readiness` | Comprehensive gate for public releases, including packed CLI verification. |
 
 ### Generated Templates
-When using the CLI (`konekti g repo <Name>`), the following templates are provided as the baseline:
+When using the CLI (`fluo g repo <Name>`), the following templates are provided as the baseline:
 - `<name>.repo.test.ts`: Unit test template for business logic.
 - `<name>.repo.slice.test.ts`: Integration template using `createTestingModule`.
 

@@ -2,7 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./toolchain-contract-matrix.md"><kbd>English</kbd></a></p>
 
-이 매트릭스는 Konekti CLI로 생성된 애플리케이션 및 공식 예제를 위한 공개 툴체인 계약을 정의합니다. 버전 고정 및 빌드 구성의 참조로 활용하세요.
+이 매트릭스는 fluo CLI로 생성된 애플리케이션 및 공식 예제를 위한 공개 툴체인 계약을 정의합니다. 버전 고정 및 빌드 구성의 참조로 활용하세요.
 
 ## 생성 앱 기준선
 
@@ -18,9 +18,9 @@
 
 | 목표 | 명령어 | 출력 계약 |
 | --- | --- | --- |
-| **프로젝트 생성** | `konekti new` | Fastify 및 Node.js 기반의 표준 폴더 구조 생성. |
-| **리소스 생성** | `konekti g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. |
-| **진단** | `konekti inspect` | 런타임 그래프 및 타이밍 데이터를 JSON 형식으로 내보내기. |
+| **프로젝트 생성** | `fluo new` | Fastify 및 Node.js 기반의 표준 폴더 구조 생성. |
+| **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. |
+| **진단** | `fluo inspect` | 런타임 그래프 및 타이밍 데이터를 JSON 형식으로 내보내기. |
 
 ## 명명 규칙 (CLI 출력)
 

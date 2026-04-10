@@ -205,15 +205,24 @@ function verifySandboxProject(projectName) {
   run('pnpm', ['build'], projectDirectory);
   run('pnpm', ['test'], projectDirectory);
 
-  log('Running the installed CLI inside the sandbox project');
-  run('pnpm', ['exec', 'konekti', 'g', 'repo', 'User'], projectDirectory);
+  log('Checking installed CLI command paths inside the sandbox project');
+  if (!existsSync(join(projectDirectory, 'node_modules', '.bin', 'fluo'))) {
+    throw new Error('Expected the installed CLI to expose node_modules/.bin/fluo.');
+  }
+
+  if (!existsSync(join(projectDirectory, 'node_modules', '.bin', 'konekti'))) {
+    throw new Error('Expected the installed CLI to keep node_modules/.bin/konekti as a compatibility alias.');
+  }
+
+  run('pnpm', ['exec', 'fluo', 'g', 'repo', 'User'], projectDirectory);
+  run('pnpm', ['exec', 'konekti', '--help'], projectDirectory);
 
   if (!existsSync(join(projectDirectory, 'src', 'users', 'user.repo.ts'))) {
-    throw new Error('Expected the installed CLI to generate src/users/user.repo.ts.');
+    throw new Error('Expected the installed `fluo` command to generate src/users/user.repo.ts.');
   }
 
   if (!existsSync(join(projectDirectory, 'src', 'users', 'user.repo.slice.test.ts'))) {
-    throw new Error('Expected the installed CLI to generate src/users/user.repo.slice.test.ts.');
+    throw new Error('Expected the installed `fluo` command to generate src/users/user.repo.slice.test.ts.');
   }
 
   log('Re-running typecheck and test after generator output');

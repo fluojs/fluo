@@ -1,4 +1,4 @@
-# Konekti
+# fluo
 
 <p align="center">
   <strong>Standard-First TypeScript Backend Framework</strong>
@@ -42,14 +42,14 @@ export class UsersModule {}
 
 ## Quick Start
 
-The fastest way to experience Konekti is through the official CLI.
+The fastest way to experience fluo is through the official CLI.
 
 ```bash
 # Get the CLI
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 
 # Spin up a project
-konekti new my-backend
+fluo new my-backend
 cd my-backend
 
 # Start the engine
@@ -77,7 +77,7 @@ Konekti isn't a monolith. It's a collection of precision-engineered modules:
 - 🚀 **[Getting Started](./docs/getting-started/quick-start.md)**: Your first 15 minutes with Konekti.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.md)**: The source of truth for official runtime/package coverage.
 - 💡 **[Example Apps](./examples/README.md)**: From minimal setups to complex RealWorld APIs.
-- 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `konekti` command for rapid development.
+- 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `fluo` command for rapid development.
 
 ## Our Philosophy
 
