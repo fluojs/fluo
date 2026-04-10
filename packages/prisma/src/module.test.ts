@@ -90,7 +90,7 @@ describe('@konekti/prisma', () => {
       },
     };
 
-    @Inject([PrismaService])
+    @Inject(PrismaService)
     class UserService {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 

@@ -254,7 +254,7 @@ describe('@konekti/websockets/deno', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(private readonly state: GatewayState) {}

@@ -78,7 +78,7 @@ describe('core decorators', () => {
     const LOGGER = Symbol('LOGGER');
     const CACHE = Symbol('CACHE');
 
-    @Inject([LOGGER, CACHE])
+    @Inject(LOGGER, CACHE)
     class LegacyArrayService {}
 
     expect(getClassDiMetadata(LegacyArrayService)).toEqual({

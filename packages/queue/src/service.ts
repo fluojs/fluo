@@ -135,7 +135,7 @@ async function closeConnection(connection: QueueOwnedConnection): Promise<void> 
  * The service discovers `@QueueWorker()` providers during bootstrap, creates the
  * BullMQ queues/workers they require, and shuts them down with the application.
  */
-@Inject([QUEUE_OPTIONS, REDIS_CLIENT, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(QUEUE_OPTIONS, REDIS_CLIENT, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy {
   private readonly descriptorsByJobType = new Map<QueueJobType, QueueWorkerDescriptor>();
   private readonly queuesByJobName = new Map<string, QueueInstance>();

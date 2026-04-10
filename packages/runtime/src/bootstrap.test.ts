@@ -19,7 +19,7 @@ describe('bootstrapModule', () => {
       providers: [Logger],
     });
 
-    @Inject([Logger])
+    @Inject(Logger)
     class AppService {
       constructor(readonly logger: Logger) {}
     }
@@ -46,7 +46,7 @@ describe('bootstrapModule', () => {
       providers: [InternalRepository],
     });
 
-    @Inject([InternalRepository])
+    @Inject(InternalRepository)
     class BillingService {}
 
     class BillingModule {}
@@ -144,7 +144,7 @@ describe('bootstrapModule', () => {
   it('allows subclasses to inherit @Inject metadata for dependency validation', () => {
     class Logger {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     class BaseBillingService {
       constructor(readonly logger: Logger) {}
     }
@@ -163,7 +163,7 @@ describe('bootstrapModule', () => {
     class Logger {}
     class Metrics {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     class BaseBillingService {
       constructor(readonly logger: Logger) {}
     }
@@ -196,7 +196,7 @@ describe('bootstrapModule', () => {
     })
     class SharedModule {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     class BillingService {
       constructor(readonly logger: Logger) {}
     }
@@ -505,7 +505,7 @@ describe('bootstrapModule requiredConstructorParameters fix', () => {
   it('keeps supporting the legacy array syntax during the staged migration', () => {
     class Logger {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     class LegacyAppService {
       constructor(readonly logger: Logger) {}
     }
@@ -888,7 +888,7 @@ describe('Recovery-oriented error context (runtime)', () => {
         providers: [InternalRepository],
       });
 
-      @Inject([InternalRepository])
+      @Inject(InternalRepository)
       class BillingService {}
 
       class BillingModule {}
@@ -919,7 +919,7 @@ describe('Recovery-oriented error context (runtime)', () => {
         providers: [InternalRepository],
       });
 
-      @Inject([InternalRepository])
+      @Inject(InternalRepository)
       class BillingController {}
 
       class BillingModule {}
@@ -949,7 +949,7 @@ describe('Recovery-oriented error context (runtime)', () => {
         providers: [InternalRepository],
       });
 
-      @Inject([InternalRepository])
+      @Inject(InternalRepository)
       class BillingService {}
 
       class BillingModule {}

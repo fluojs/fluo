@@ -27,7 +27,7 @@ class NoopRefreshTokenStore implements RefreshTokenStore {
   }
 }
 
-@Inject([DefaultJwtSigner, DefaultJwtVerifier])
+@Inject(DefaultJwtSigner, DefaultJwtVerifier)
 class JwtRoundTripService {
   constructor(
     private readonly signer: DefaultJwtSigner,

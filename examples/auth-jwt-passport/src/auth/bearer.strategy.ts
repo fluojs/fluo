@@ -21,7 +21,7 @@ function readAuthorizationHeader(context: GuardContext): string | undefined {
   return undefined;
 }
 
-@Inject([DefaultJwtVerifier])
+@Inject(DefaultJwtVerifier)
 export class BearerJwtStrategy implements AuthStrategy {
   constructor(private readonly verifier: DefaultJwtVerifier) {}
 

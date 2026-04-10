@@ -5,7 +5,7 @@ import { CreateUserDto } from './create-user.dto';
 import type { UserResponseDto } from './user-response.dto';
 import { UsersService } from './users.service';
 
-@Inject([UsersService])
+@Inject(UsersService)
 @Controller('/users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}

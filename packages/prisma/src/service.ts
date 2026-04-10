@@ -44,7 +44,7 @@ type TransactionAbortSignalSupport = 'unknown' | 'supported' | 'unsupported';
  * @typeParam TTransactionClient Transaction-scoped client resolved inside `$transaction(...)` callbacks.
  * @typeParam TTransactionOptions Options forwarded to Prisma interactive transactions.
  */
-@Inject([PRISMA_CLIENT, PRISMA_OPTIONS])
+@Inject(PRISMA_CLIENT, PRISMA_OPTIONS)
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = InferPrismaTransactionClient<TClient>,

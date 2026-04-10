@@ -133,7 +133,7 @@ describe('@konekti/cqrs', () => {
       users = new Map<string, string>();
     }
 
-    @Inject([Store])
+    @Inject(Store)
     @CommandHandler(CreateUserCommand)
     class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
       constructor(private readonly store: Store) {}
@@ -144,7 +144,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([Store])
+    @Inject(Store)
     @QueryHandler(GetUserQuery)
     class GetUserHandler implements IQueryHandler<GetUserQuery, { id: string; name: string | undefined }> {
       constructor(private readonly store: Store) {}
@@ -397,7 +397,7 @@ describe('@konekti/cqrs', () => {
       constructor(public readonly orderId: string) {}
     }
 
-    @Inject([EVENT_BUS, ProcessStore])
+    @Inject(EVENT_BUS, ProcessStore)
     @CommandHandler(StartPaymentCommand)
     class StartPaymentHandler implements ICommandHandler<StartPaymentCommand> {
       constructor(
@@ -411,7 +411,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([EVENT_BUS, ProcessStore])
+    @Inject(EVENT_BUS, ProcessStore)
     @CommandHandler(ReserveInventoryCommand)
     class ReserveInventoryHandler implements ICommandHandler<ReserveInventoryCommand> {
       constructor(
@@ -425,7 +425,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([ProcessStore])
+    @Inject(ProcessStore)
     @CommandHandler(CompleteOrderCommand)
     class CompleteOrderHandler implements ICommandHandler<CompleteOrderCommand> {
       constructor(private readonly store: ProcessStore) {}
@@ -435,7 +435,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([COMMAND_BUS, ProcessStore])
+    @Inject(COMMAND_BUS, ProcessStore)
     @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
     class OrderFulfillmentSaga implements ISaga<IEvent> {
       constructor(
@@ -635,7 +635,7 @@ describe('@konekti/cqrs', () => {
       ) {}
     }
 
-    @Inject([SequenceStore])
+    @Inject(SequenceStore)
     @Saga(SequencedEvent)
     class SequencingSaga implements ISaga<SequencedEvent> {
       constructor(private readonly store: SequenceStore) {}
@@ -678,7 +678,7 @@ describe('@konekti/cqrs', () => {
       constructor(public readonly id: string) {}
     }
 
-    @Inject([ShutdownStore])
+    @Inject(ShutdownStore)
     @Saga(ShutdownEvent)
     class ShutdownSaga implements ISaga<ShutdownEvent> {
       constructor(private readonly store: ShutdownStore) {}
@@ -721,7 +721,7 @@ describe('@konekti/cqrs', () => {
       eventNames: string[] = [];
     }
 
-    @Inject([Store])
+    @Inject(Store)
     @CommandHandler(CreateUserCommand)
     class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
       constructor(private readonly store: Store) {}
@@ -732,7 +732,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([Store])
+    @Inject(Store)
     @QueryHandler(GetUserCountQuery)
     class GetUserHandler implements IQueryHandler<GetUserCountQuery, number> {
       constructor(private readonly store: Store) {}
@@ -742,7 +742,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([Store])
+    @Inject(Store)
     @EventHandler(UserCreatedEvent)
     class UserCreatedEventRecorder implements IEventHandler<UserCreatedEvent> {
       constructor(private readonly store: Store) {}
@@ -752,7 +752,7 @@ describe('@konekti/cqrs', () => {
       }
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class UserCreatedOnEventProjection {
       constructor(private readonly store: Store) {}
 

@@ -38,7 +38,7 @@ export function Global(): StandardClassDecoratorFn {
  *
  * Passing tokens variadically (`@Inject(A, B)`) is the canonical API. Calling `@Inject()` records an
  * explicit empty inject list so subclasses can intentionally clear inherited constructor tokens.
- * During the staged migration window, the legacy array form (`@Inject([A, B])`) is still normalized.
+ * During the staged migration window, the legacy array form (`@Inject(A, B)`) is still normalized.
  *
  * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.

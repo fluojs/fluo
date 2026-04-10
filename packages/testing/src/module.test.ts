@@ -58,7 +58,7 @@ describe('@konekti/testing', () => {
       readonly name = 'logger';
     }
 
-    @Inject([Logger])
+    @Inject(Logger)
     class UserService {
       constructor(readonly logger: Logger) {}
     }
@@ -83,7 +83,7 @@ describe('@konekti/testing', () => {
       readonly name = 'logger';
     }
 
-    @Inject([Logger])
+    @Inject(Logger)
     class UserService {
       constructor(readonly logger: Logger) {}
     }
@@ -109,7 +109,7 @@ describe('@konekti/testing', () => {
       readonly name: string = 'logger';
     }
 
-    @Inject([Logger])
+    @Inject(Logger)
     class UserService {
       constructor(readonly logger: Logger) {}
     }
@@ -179,7 +179,7 @@ describe('@konekti/testing', () => {
       readonly name: string = 'fake-logger';
     }
 
-    @Inject([Logger])
+    @Inject(Logger)
     class UserService {
       constructor(readonly logger: Logger) {}
     }
@@ -518,7 +518,7 @@ describe('TestingModuleRef.dispatch', () => {
       }
     }
 
-    @Inject([CounterService])
+    @Inject(CounterService)
     @Controller('/counter')
     class CounterController {
       constructor(private readonly counter: CounterService) {}
@@ -629,7 +629,7 @@ describe('overrideModule', () => {
       }
     }
 
-    @Inject([RealService])
+    @Inject(RealService)
     class ConsumerService {
       constructor(readonly dep: RealService) {}
     }
@@ -761,7 +761,7 @@ describe('mockToken', () => {
       readonly name = 'logger';
     }
 
-    @Inject([Logger])
+    @Inject(Logger)
     class UserService {
       constructor(readonly logger: Logger) {}
     }

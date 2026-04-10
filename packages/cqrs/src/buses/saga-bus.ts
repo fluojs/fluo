@@ -32,7 +32,7 @@ function toErrorMessage(error: unknown): string {
  * The service prevents re-entrant dispatch loops within the same async context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   private discoveryPromise: Promise<void> | undefined;

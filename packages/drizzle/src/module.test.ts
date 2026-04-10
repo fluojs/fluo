@@ -43,7 +43,7 @@ describe('@konekti/drizzle', () => {
       },
     };
 
-    @Inject([DrizzleDatabase])
+    @Inject(DrizzleDatabase)
     class UserService {
       constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase>) {}
 

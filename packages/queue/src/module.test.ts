@@ -372,7 +372,7 @@ describe('@konekti/queue', () => {
       subject = '';
     }
 
-    @Inject([WorkerStore])
+    @Inject(WorkerStore)
     @QueueWorker(SendWelcomeEmailJob)
     class SendWelcomeEmailWorker {
       constructor(private readonly store: WorkerStore) {}
@@ -383,7 +383,7 @@ describe('@konekti/queue', () => {
       }
     }
 
-    @Inject([QUEUE])
+    @Inject(QUEUE)
     class UserService {
       constructor(private readonly queue: Queue) {}
 
@@ -588,7 +588,7 @@ describe('@konekti/queue', () => {
       received: string[] = [];
     }
 
-    @Inject([WorkerStore])
+    @Inject(WorkerStore)
     @QueueWorker(BootstrapJob)
     class BootstrapWorker {
       constructor(private readonly store: WorkerStore) {}
@@ -598,7 +598,7 @@ describe('@konekti/queue', () => {
       }
     }
 
-    @Inject([QUEUE])
+    @Inject(QUEUE)
     class BootstrapPublisher {
       constructor(private readonly queue: Queue) {}
 

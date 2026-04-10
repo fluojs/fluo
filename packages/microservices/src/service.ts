@@ -55,7 +55,7 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
  * The service resolves singleton or request-scoped handlers, exposes programmatic
  * send/emit/stream APIs, and delegates transport-specific I/O to the configured adapter.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, MICROSERVICE_OPTIONS])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, MICROSERVICE_OPTIONS)
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();

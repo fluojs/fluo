@@ -129,7 +129,7 @@ export interface NormalizedProvider<T = unknown> {
  *
  * @example
  * ```ts
- * @Inject([forwardRef(() => AuthService)])
+ * @Inject(forwardRef(() => AuthService))
  * class UsersService {
  *   constructor(private readonly auth: AuthService) {}
  * }

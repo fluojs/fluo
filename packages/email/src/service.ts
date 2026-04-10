@@ -72,7 +72,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
  * explicitly injected {@link EmailTransport} contracts, and translates
  * `@konekti/notifications` envelopes into concrete email messages.
  */
-@Inject([EMAIL_OPTIONS])
+@Inject(EMAIL_OPTIONS)
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private resolvedTransport: EmailTransport | undefined;

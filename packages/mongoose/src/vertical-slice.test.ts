@@ -124,7 +124,7 @@ describe('@konekti/mongoose vertical slice', () => {
       id = '';
     }
 
-    @Inject([MongooseConnection])
+    @Inject(MongooseConnection)
     class UserRepository {
       constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
@@ -152,7 +152,7 @@ describe('@konekti/mongoose vertical slice', () => {
       }
     }
 
-    @Inject([UserRepository])
+    @Inject(UserRepository)
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
@@ -172,7 +172,7 @@ describe('@konekti/mongoose vertical slice', () => {
     }
 
     @Controller('/users')
-    @Inject([UserService])
+    @Inject(UserService)
     class UsersController {
       constructor(private readonly users: UserService) {}
 

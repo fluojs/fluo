@@ -146,7 +146,7 @@ describe('@konekti/drizzle vertical slice', () => {
       id = '';
     }
 
-    @Inject([DrizzleDatabase])
+    @Inject(DrizzleDatabase)
     class UserRepository {
       constructor(private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase>) {}
 
@@ -166,7 +166,7 @@ describe('@konekti/drizzle vertical slice', () => {
       }
     }
 
-    @Inject([UserRepository])
+    @Inject(UserRepository)
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
@@ -186,7 +186,7 @@ describe('@konekti/drizzle vertical slice', () => {
     }
 
     @Controller('/users')
-    @Inject([UserService])
+    @Inject(UserService)
     class UsersController {
       constructor(private readonly users: UserService) {}
 

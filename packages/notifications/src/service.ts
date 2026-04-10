@@ -27,7 +27,7 @@ import type {
  * resolves channels by name, applies optional queue delegation, and emits optional
  * lifecycle events through the configured publisher seam.
  */
-@Inject([NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS])
+@Inject(NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS)
 export class NotificationsService implements Notifications {
   private readonly channelsByName = new Map<string, NotificationChannel>();
   private fallbackDeliveryIdSequence = 0;

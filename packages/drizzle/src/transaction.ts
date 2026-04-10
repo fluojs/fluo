@@ -11,7 +11,7 @@ import type { DrizzleDatabaseLike } from './types.js';
  * Pair this with repository/service code that reads `DrizzleDatabase.current()` so downstream calls share the same
  * request-scoped transaction handle.
  */
-@Inject([DrizzleDatabase])
+@Inject(DrizzleDatabase)
 export class DrizzleTransactionInterceptor implements Interceptor {
   constructor(private readonly database: DrizzleDatabase<DrizzleDatabaseLike<unknown, unknown>, unknown, unknown>) {}
 

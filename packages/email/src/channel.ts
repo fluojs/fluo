@@ -12,7 +12,7 @@ import type { EmailNotificationDispatchRequest, EmailSendResult, NormalizedEmail
  * This class keeps the foundation package channel-agnostic while allowing `@konekti/email`
  * to interpret email-specific payload fields, template rendering, and transport delivery.
  */
-@Inject([EmailService, EMAIL_OPTIONS])
+@Inject(EmailService, EMAIL_OPTIONS)
 export class EmailChannel implements NotificationChannel<EmailNotificationDispatchRequest, EmailSendResult> {
   readonly channel: string;
 

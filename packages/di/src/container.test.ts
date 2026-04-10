@@ -68,7 +68,7 @@ describe('Container', () => {
   it('supports @Inject and @Scope metadata for dependency tokens and scope', async () => {
     class Logger {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     @ScopeDecorator('request')
     class RequestService {
       constructor(readonly logger: Logger) {}
@@ -89,7 +89,7 @@ describe('Container', () => {
   it('accepts Scope constants in both decorator and provider registrations', async () => {
     class Logger {}
 
-    @Inject([Logger])
+    @Inject(Logger)
     @ScopeDecorator(Scope.REQUEST)
     class RequestService {
       constructor(readonly logger: Logger) {}

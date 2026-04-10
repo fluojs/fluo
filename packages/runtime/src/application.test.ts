@@ -316,7 +316,7 @@ describe('bootstrapApplication', () => {
       async listen() {},
     };
 
-    @Inject([RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER])
+    @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER)
     class RuntimeTokenProbe implements OnModuleInit, OnApplicationBootstrap {
       seenCompiledModules: readonly CompiledModule[] = [];
       seenContainer: Container | undefined;

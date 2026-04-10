@@ -3,7 +3,7 @@ import { Controller, Get } from '@konekti/http';
 
 import { HelloService } from './hello.service';
 
-@Inject([HelloService])
+@Inject(HelloService)
 @Controller('/hello')
 export class HelloController {
   constructor(private readonly helloService: HelloService) {}

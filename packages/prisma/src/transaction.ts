@@ -11,7 +11,7 @@ import type { PrismaClientLike } from './types.js';
  * Pair this with repository/service code that reads `PrismaService.current()` so downstream calls share the same
  * request-scoped transaction client.
  */
-@Inject([PrismaService])
+@Inject(PrismaService)
 export class PrismaTransactionInterceptor implements Interceptor {
   constructor(private readonly prisma: PrismaService<PrismaClientLike>) {}
 

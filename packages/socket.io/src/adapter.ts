@@ -263,7 +263,7 @@ function extractPayload(args: unknown[]): unknown {
  * This service preserves the README-level gateway contracts for namespace discovery, buffered pre-ready events,
  * Bun engine hosting, and graceful shutdown behavior.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS_INTERNAL])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, SOCKETIO_OPTIONS_INTERNAL)
 export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
 {

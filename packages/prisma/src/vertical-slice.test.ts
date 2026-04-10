@@ -162,7 +162,7 @@ describe('@konekti/prisma vertical slice', () => {
       id = '';
     }
 
-    @Inject([PrismaService])
+    @Inject(PrismaService)
     class UserRepository {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 
@@ -186,7 +186,7 @@ describe('@konekti/prisma vertical slice', () => {
       }
     }
 
-    @Inject([UserRepository])
+    @Inject(UserRepository)
     class UserService {
       constructor(private readonly repo: UserRepository) {}
 
@@ -206,7 +206,7 @@ describe('@konekti/prisma vertical slice', () => {
     }
 
     @Controller('/users')
-    @Inject([UserService])
+    @Inject(UserService)
     class UsersController {
       constructor(private readonly users: UserService) {}
 

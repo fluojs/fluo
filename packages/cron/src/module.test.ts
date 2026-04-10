@@ -333,7 +333,7 @@ describe('@konekti/cron', () => {
       count = 0;
     }
 
-    @Inject([TickStore])
+    @Inject(TickStore)
     class FeatureCronService {
       constructor(private readonly store: TickStore) {}
 
@@ -374,7 +374,7 @@ describe('@konekti/cron', () => {
       count = 0;
     }
 
-    @Inject([TickStore])
+    @Inject(TickStore)
     class SuccessTask {
       constructor(private readonly store: TickStore) {}
 
@@ -577,7 +577,7 @@ describe('@konekti/cron', () => {
       count = 0;
     }
 
-    @Inject([SharedStore])
+    @Inject(SharedStore)
     class DistributedTaskService {
       constructor(private readonly store: SharedStore) {}
 
@@ -716,7 +716,7 @@ describe('@konekti/cron', () => {
       count = 0;
     }
 
-    @Inject([SharedStore])
+    @Inject(SharedStore)
     class DistributedTaskService {
       constructor(private readonly store: SharedStore) {}
 
@@ -798,7 +798,7 @@ describe('@konekti/cron', () => {
       count = 0;
     }
 
-    @Inject([TickStore])
+    @Inject(TickStore)
     class DefaultSchedulerTaskService {
       constructor(private readonly store: TickStore) {}
 
@@ -1366,7 +1366,7 @@ describe('@konekti/cron', () => {
       timeoutCount = 0;
     }
 
-    @Inject([TickStore])
+    @Inject(TickStore)
     class TaskService {
       constructor(private readonly store: TickStore) {}
 
@@ -1512,7 +1512,7 @@ describe('@konekti/cron', () => {
       timeoutCount = 0;
     }
 
-    @Inject([TickStore])
+    @Inject(TickStore)
     class TaskService {
       constructor(private readonly store: TickStore) {}
 

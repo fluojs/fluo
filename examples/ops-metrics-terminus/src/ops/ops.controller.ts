@@ -3,7 +3,7 @@ import { Controller, Get } from '@konekti/http';
 
 import { OpsMetricsService } from './ops-metrics.service';
 
-@Inject([OpsMetricsService])
+@Inject(OpsMetricsService)
 @Controller('/ops')
 export class OpsController {
   constructor(private readonly service: OpsMetricsService) {}
