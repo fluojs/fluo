@@ -30,8 +30,8 @@ importers:
         specifier: ^22.13.10
         version: 22.19.15
       typescript:
-        specifier: ^5.8.2
-        version: 5.9.3
+        specifier: ^6.0.2
+        version: 6.0.2
       vite:
         specifier: ^6.2.1
         version: 6.4.1(@types/node@22.19.15)(tsx@4.21.0)
@@ -173,8 +173,8 @@ importers:
         specifier: ^4.20.4
         version: 4.21.0
       typescript:
-        specifier: ^5.8.2
-        version: 5.9.3
+        specifier: ^6.0.2
+        version: 6.0.2
     devDependencies:
       '@types/ejs':
         specifier: ^3.1.5
@@ -291,7 +291,7 @@ importers:
         version: link:../runtime
       drizzle-orm:
         specifier: '>=0.30.0'
-        version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@5.9.3))
+        version: 0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@6.0.2))
     devDependencies:
       vitest:
         specifier: ^3.2.4
@@ -657,7 +657,7 @@ importers:
         version: link:../validation
       '@prisma/client':
         specifier: '>=5.0.0'
-        version: 7.5.0(typescript@5.9.3)
+        version: 7.5.0(typescript@6.0.2)
     devDependencies:
       vitest:
         specifier: ^3.2.4
@@ -777,7 +777,7 @@ importers:
         version: link:../websockets
       '@socket.io/bun-engine':
         specifier: ^0.1.0
-        version: 0.1.0(typescript@5.9.3)
+        version: 0.1.0(typescript@6.0.2)
     devDependencies:
       '@fluojs/platform-express':
         specifier: workspace:*
@@ -918,7 +918,7 @@ importers:
         version: 2.2.0
       valibot:
         specifier: ^1.0.0
-        version: 1.3.1(typescript@5.9.3)
+        version: 1.3.1(typescript@6.0.2)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)
@@ -3169,8 +3169,8 @@ packages:
   typedarray@0.0.6:
     resolution: {integrity: sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA==}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.2:
+    resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -3958,11 +3958,11 @@ snapshots:
 
   '@prisma/client-runtime-utils@7.5.0': {}
 
-  '@prisma/client@7.5.0(typescript@5.9.3)':
+  '@prisma/client@7.5.0(typescript@6.0.2)':
     dependencies:
       '@prisma/client-runtime-utils': 7.5.0
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 6.0.2
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -4064,9 +4064,9 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
 
-  '@socket.io/bun-engine@0.1.0(typescript@5.9.3)':
+  '@socket.io/bun-engine@0.1.0(typescript@6.0.2)':
     dependencies:
-      typescript: 5.9.3
+      typescript: 6.0.2
 
   '@socket.io/component-emitter@3.1.2': {}
 
@@ -4504,10 +4504,10 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  drizzle-orm@0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@5.9.3)):
+  drizzle-orm@0.45.1(@opentelemetry/api@1.9.0)(@prisma/client@7.5.0(typescript@6.0.2)):
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
-      '@prisma/client': 7.5.0(typescript@5.9.3)
+      '@prisma/client': 7.5.0(typescript@6.0.2)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -5527,7 +5527,7 @@ snapshots:
 
   typedarray@0.0.6: {}
 
-  typescript@5.9.3: {}
+  typescript@6.0.2: {}
 
   undici-types@6.21.0: {}
 
@@ -5545,9 +5545,9 @@ snapshots:
 
   uuid@11.1.0: {}
 
-  valibot@1.3.1(typescript@5.9.3):
+  valibot@1.3.1(typescript@6.0.2):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 6.0.2
 
   validator@13.15.26: {}
 
