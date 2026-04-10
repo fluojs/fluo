@@ -28,7 +28,7 @@ const PUBLISHED_DEV_DEPENDENCIES = {
   '@types/babel__core': '^7.20.5',
   '@types/node': '^22.13.10',
   tsx: '^4.20.4',
-  typescript: '^5.8.2',
+  typescript: '^6.0.2',
   vite: '^6.2.1',
   vitest: '^3.0.8',
 } as const;
