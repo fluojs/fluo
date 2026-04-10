@@ -351,14 +351,15 @@ function fileHasChangedPublicExportDeclarationFromGit(relativePath, gitRef = pre
   return diffShowsChangedPublicExportDeclaration(diffResult.stdout);
 }
 
-function changedPublicExportSourcePathsFromGit(
+export function changedPublicExportSourcePathsFromGit(
   relativePaths = changedFilesFromGit().filter((path) => isGovernedPublicExportSourcePath(path)),
   readSource = read,
   gitRef = preferredBaseRefFromGit(),
   readSourceAtRef = readAtGitRef,
+  hasChangedDeclaration = fileHasChangedPublicExportDeclarationFromGit,
 ) {
   return relativePaths.filter((relativePath) => {
-    if (!fileHasChangedPublicExportDeclarationFromGit(relativePath, gitRef)) {
+    if (!hasChangedDeclaration(relativePath, gitRef)) {
       return false;
     }
 

@@ -125,3 +125,77 @@ describe('enforcePublicExportTSDocBaseline', () => {
     ).toThrowError(/docs\/operations\/public-export-tsdoc-baseline\.md/);
   });
 });
+
+describe('changedPublicExportSourcePathsFromGit', () => {
+  it('ignores import-only namespace churn when exported declarations are unchanged', async () => {
+    const governanceModule = (await import('./verify-public-export-tsdoc.mjs')) as any;
+    const currentSource = [
+      "import { Module } from '@fluojs/core';",
+      '',
+      '/**',
+      ' * Configure the example module.',
+      ' */',
+      'export class ExampleModule {}',
+      '',
+    ].join('\n');
+
+    const previousSource = [
+      "import { Module } from '@konekti/core';",
+      '',
+      '/**',
+      ' * Configure the example module.',
+      ' */',
+      'export class ExampleModule {}',
+      '',
+    ].join('\n');
+
+    expect(
+      governanceModule.changedPublicExportSourcePathsFromGit(
+        ['packages/core/src/example.ts'],
+        () => currentSource,
+        'test-base',
+        () => previousSource,
+        () => false,
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps files selected when an exported declaration actually changes', async () => {
+    const governanceModule = (await import('./verify-public-export-tsdoc.mjs')) as any;
+    const currentSource = [
+      '/**',
+      ' * Format a greeting.',
+      ' *',
+      ' * @param name Name to format.',
+      ' * @returns The formatted greeting.',
+      ' */',
+      'export function greet(name: string): string {',
+      "  return `Hello, ${name}`;",
+      '}',
+      '',
+    ].join('\n');
+
+    const previousSource = [
+      '/**',
+      ' * Format a greeting.',
+      ' *',
+      ' * @param name Name to format.',
+      ' * @returns The formatted greeting.',
+      ' */',
+      'export function greet(name: string): string {',
+      '  return name;',
+      '}',
+      '',
+    ].join('\n');
+
+    expect(
+      governanceModule.changedPublicExportSourcePathsFromGit(
+        ['packages/core/src/example.ts'],
+        () => currentSource,
+        'test-base',
+        () => previousSource,
+        () => true,
+      ),
+    ).toEqual(['packages/core/src/example.ts']);
+  });
+});
