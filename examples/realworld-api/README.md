@@ -2,20 +2,20 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-A more realistic Konekti application demonstrating the standard app path beyond the minimal starter. This example builds on the same starter-aligned adapter-first bootstrap while adding module composition, DTO validation, config loading, and a domain CRUD slice.
+A more realistic fluo application demonstrating the standard app path beyond the minimal starter. This example builds on the same starter-aligned adapter-first bootstrap while adding module composition, DTO validation, config loading, and a domain CRUD slice.
 
 ## what this example demonstrates
 
 - Multi-module composition with `imports` / `exports`
 - Typed configuration via `ConfigModule.forRoot`
-- Request DTO validation with `@konekti/validation` decorators
+- Request DTO validation with `@fluojs/validation` decorators
 - Repository pattern with explicit DI tokens
 - Runtime-owned `/health` and `/ready` plus a domain `/users` CRUD surface
-- Unit and e2e-style testing patterns from `@konekti/testing`
+- Unit and e2e-style testing patterns from `@fluojs/testing`
 
 ## how to run
 
-This example lives inside the Konekti monorepo and uses workspace-linked packages. From the repository root:
+This example lives inside the fluo monorepo and uses workspace-linked packages. From the repository root:
 
 ```sh
 pnpm install

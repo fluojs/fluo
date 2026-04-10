@@ -11,7 +11,7 @@ function colorize(value: string, color: string, enabled: boolean): string {
 }
 
 function formatLog(level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', context: string, message: string, color: boolean): string {
-  const prefix = colorize('[Konekti]', BRIGHT_GREEN, color);
+  const prefix = colorize('[fluo]', BRIGHT_GREEN, color);
   const pid = colorize(String(process.pid), BRIGHT_YELLOW, color);
   const timestamp = colorize(new Date().toLocaleString('en-US'), DIM, color);
   const levelColor = level === 'ERROR' || level === 'WARN' ? BRIGHT_RED : BRIGHT_GREEN;
@@ -23,20 +23,20 @@ function formatLog(level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', context: string, m
 
 export function createConsoleApplicationLogger(): ApplicationLogger {
   return {
-    debug(message, context = 'Konekti') {
+    debug(message, context = 'fluo') {
       console.debug(formatLog('DEBUG', context, message, Boolean(process.stdout.isTTY)));
     },
-    error(message, error, context = 'Konekti') {
+    error(message, error, context = 'fluo') {
       console.error(formatLog('ERROR', context, message, Boolean(process.stderr.isTTY)));
 
       if (error) {
         console.error(error);
       }
     },
-    log(message, context = 'Konekti') {
+    log(message, context = 'fluo') {
       console.log(formatLog('LOG', context, message, Boolean(process.stdout.isTTY)));
     },
-    warn(message, context = 'Konekti') {
+    warn(message, context = 'fluo') {
       console.warn(formatLog('WARN', context, message, Boolean(process.stderr.isTTY)));
     },
   };

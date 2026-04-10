@@ -11,7 +11,7 @@ import { HelloController } from './hello.controller';
 describe('HelloService', () => {
   it('returns a greeting message', () => {
     const service = new HelloService();
-    expect(service.greet('Konekti')).toEqual({ message: 'Hello, Konekti!' });
+    expect(service.greet('fluo')).toEqual({ message: 'Hello, fluo!' });
   });
 });
 

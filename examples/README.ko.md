@@ -2,9 +2,9 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉토리는 Konekti의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, docs hub와 함께 읽는 것을 전제로 합니다.
+이 디렉토리는 fluo의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, docs hub와 함께 읽는 것을 전제로 합니다.
 
-이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 기본 Node.js + Fastify 경로를 유지합니다. 공식 Bun, Deno, Cloudflare Workers 런타임 가이드는 대응하는 `@konekti/platform-*` 패키지 README에서 다룹니다.
+이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 기본 Node.js + Fastify 경로를 유지합니다. 공식 Bun, Deno, Cloudflare Workers 런타임 가이드는 대응하는 `@fluojs/platform-*` 패키지 README에서 다룹니다.
 
 ## 현재 공식 예제
 

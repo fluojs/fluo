@@ -703,7 +703,7 @@ describe('CLI command runner', () => {
     const output = stdoutBuffer.join('');
 
     expect(exitCode).toBe(0);
-    expect(output).toContain('Scaffold a new Konekti application');
+    expect(output).toContain('Scaffold a new fluo application');
     expect(output).toContain('Generate a schematic');
     expect(output).toContain('Inspect runtime platform snapshot/diagnostics');
     expect(output).toContain('dry-run by default');

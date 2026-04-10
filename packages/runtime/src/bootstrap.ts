@@ -487,7 +487,7 @@ class KonektiApplication implements Application {
     }
 
     this.applicationState = 'ready';
-    this.logger.log('Konekti application successfully started.', 'KonektiApplication');
+      this.logger.log('fluo application successfully started.', 'KonektiApplication');
   }
 
   dispatch = async (...args: Parameters<Dispatcher['dispatch']>): Promise<void> => {
@@ -616,7 +616,7 @@ class KonektiMicroserviceApplication implements MicroserviceApplication {
 
     await this.runtime.listen();
     this.microserviceState = 'ready';
-    this.logger.log('Konekti microservice successfully started.', 'KonektiFactory');
+      this.logger.log('fluo microservice successfully started.', 'KonektiFactory');
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
@@ -930,7 +930,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
   const timingPhases: BootstrapTimingPhase[] = [];
 
   try {
-    logger.log('Starting Konekti application...', 'KonektiFactory');
+    logger.log('Starting fluo application...', 'KonektiFactory');
     const runtimeProviders = createRuntimeProviders(options, logger);
 
     const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
@@ -1009,7 +1009,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
     );
   } catch (error: unknown) {
     logger.error(
-      'Failed to bootstrap application. Check the error below for what failed and how to fix it.',
+      'Failed to bootstrap the fluo application. Check the error below for what failed and how to fix it.',
       error,
       'KonektiFactory',
     );
@@ -1067,7 +1067,7 @@ export class KonektiFactory {
     const timingPhases: BootstrapTimingPhase[] = [];
 
     try {
-      logger.log('Starting Konekti application context...', 'KonektiFactory');
+      logger.log('Starting fluo application context...', 'KonektiFactory');
       const runtimeProviders = createRuntimeProviders(options, logger);
 
   const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;

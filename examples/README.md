@@ -2,13 +2,13 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-This directory contains the official runnable example applications for Konekti. Each example has its own README and is meant to be read alongside the docs hub rather than in isolation.
+This directory contains the official runnable example applications for fluo. Each example has its own README and is meant to be read alongside the docs hub rather than in isolation.
 
-These examples intentionally stay on the default Node.js + Fastify starter path so the generated scaffold and the runnable examples keep matching. Official Bun, Deno, and Cloudflare Workers runtime guidance lives in the corresponding `@konekti/platform-*` package READMEs.
+These examples intentionally stay on the default Node.js + Fastify starter path so the generated scaffold and the runnable examples keep matching. Official Bun, Deno, and Cloudflare Workers runtime guidance lives in the corresponding `@fluojs/platform-*` package READMEs.
 
 ## current official examples
 
-- `./minimal/` — the smallest runnable Konekti app, matching the canonical starter path
+- `./minimal/` — the smallest runnable fluo app, matching the canonical starter path
 - `./realworld-api/` — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
 - `./auth-jwt-passport/` — bearer-token auth example with JWT issuance and protected routes via passport core
 - `./ops-metrics-terminus/` — operations example centered on `/metrics`, `/health`, and `/ready`

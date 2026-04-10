@@ -1942,7 +1942,7 @@ describe('bootstrapApplication', () => {
       'app:shutdown:bootstrap-failed',
     ]);
     expect(loggerEvents).toContain(
-      'error:KonektiFactory:Failed to bootstrap application. Check the error below for what failed and how to fix it.:boom',
+      'error:KonektiFactory:Failed to bootstrap the fluo application. Check the error below for what failed and how to fix it.:boom',
     );
   });
 
@@ -1986,7 +1986,7 @@ describe('bootstrapApplication', () => {
     });
 
     expect(loggerEvents).toEqual([
-      'log:KonektiFactory:Starting Konekti application...',
+      'log:KonektiFactory:Starting fluo application...',
       'log:InstanceLoader:AppModule dependencies initialized',
       'log:RoutesResolver:HealthController {/health}',
       'log:RouterExplorer:Mapped {/health, GET} route',
