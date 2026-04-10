@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-`@konekti/jwt`와 `@konekti/passport`를 가장 단순한 공식 bearer-token 흐름으로 묶어 보여주는 runnable Konekti 인증 예제입니다.
+`@fluojs/jwt`와 `@fluojs/passport`를 가장 단순한 공식 bearer-token 흐름으로 묶어 보여주는 runnable fluo 인증 예제입니다.
 
 ## 이 예제가 보여주는 것
 
@@ -11,7 +11,7 @@
 - custom `AuthStrategy`를 통한 bearer token 검증
 - reflection 기반 주입 대신 명시적 DI token metadata
 - auth 라우트와 함께 동작하는 runtime-owned `/health`, `/ready`
-- `@konekti/testing`을 사용한 unit / integration / e2e 스타일 테스트
+- `@fluojs/testing`을 사용한 unit / integration / e2e 스타일 테스트
 
 ## 라우트
 
