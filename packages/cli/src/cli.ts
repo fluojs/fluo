@@ -103,7 +103,7 @@ function isHelpFlag(value: string | undefined): boolean {
 
 function generateUsage(): string {
   return [
-    'Usage: konekti generate|g <kind> <name> [options]',
+    'Usage: fluo generate|g <kind> <name> [options]',
     '',
     'Schematics',
     renderHelpTable(GENERATE_KIND_HELP, [
@@ -133,7 +133,7 @@ function generateUsage(): string {
 
 function usage(): string {
   return [
-    'Usage: konekti <command> [options]',
+    'Usage: fluo <command> [options]',
     '',
     'Commands',
     renderHelpTable(TOP_LEVEL_COMMAND_HELP, [
@@ -142,7 +142,7 @@ function usage(): string {
       { header: 'Description', render: (entry) => entry.description },
     ]),
     '',
-    "Run 'konekti help <command>' for more information on a command.",
+    "Run 'fluo help <command>' for more information on a command.",
     'Docs: https://github.com/konektijs/konekti/tree/main/docs/getting-started/quick-start.md',
   ].join('\n');
 }
@@ -267,7 +267,7 @@ function parseCommand(argv: string[]): ParsedCommand {
 /**
  * Runs the top-level CLI command dispatcher and returns a process-style exit code.
  *
- * This programmatic entry point mirrors the published `konekti` binary while allowing callers to swap
+ * This programmatic entry point mirrors the published `fluo` binary while allowing callers to swap
  * standard streams or the working directory for tests, sandboxes, and editor integrations.
  *
  * @example

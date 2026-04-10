@@ -26,7 +26,7 @@ If you are new to the repo, follow this order:
 
 ## how these examples fit the docs
 
-- `minimal` proves the canonical starter shape from `konekti new` on the default Node.js + Fastify path
+- `minimal` proves the canonical starter shape from `fluo new` on the default Node.js + Fastify path
 - `realworld-api` proves the first practical module/DTO/test path beyond the starter
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path

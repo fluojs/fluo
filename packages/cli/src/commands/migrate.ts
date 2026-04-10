@@ -145,7 +145,7 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
 
 export function migrateUsage(): string {
   return [
-    'Usage: konekti migrate <path> [options]',
+    'Usage: fluo migrate <path> [options]',
     '',
     'Options',
     renderHelpTable(MIGRATE_OPTION_HELP, [

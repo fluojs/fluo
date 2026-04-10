@@ -25,6 +25,7 @@
   },
   "type": "module",
   "bin": {
+    "fluo": "./bin/fluo.mjs",
     "konekti": "./bin/konekti.mjs"
   },
   "exports": {

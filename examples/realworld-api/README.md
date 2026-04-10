@@ -47,7 +47,7 @@ examples/realworld-api/
 
 ## relationship to the starter scaffold
 
-This example extends the `konekti new` pattern by adding a real domain module. It uses the same packages the starter includes (core, runtime, http, config, validation, testing, platform-fastify) plus standard module composition patterns. No extra packages beyond the starter scaffold are required.
+This example extends the `fluo new` pattern by adding a real domain module. It uses the same packages the starter includes (core, runtime, http, config, validation, testing, platform-fastify) plus standard module composition patterns. No extra packages beyond the starter scaffold are required.
 
 ## recommended reading order
 

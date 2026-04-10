@@ -272,7 +272,7 @@ function renderApp(message?: string): void {
     <main>
       <header>
         <h1>Konekti Studio Platform Snapshot Viewer</h1>
-        <p>Load JSON exported by <code>konekti inspect --json</code> (shared platform snapshot/diagnostic schema) and optionally timing JSON from <code>--timing</code>.</p>
+        <p>Load JSON exported by <code>fluo inspect --json</code> (shared platform snapshot/diagnostic schema) and optionally timing JSON from <code>--timing</code>.</p>
       </header>
 
       <section class="card uploader" id="drop-zone">

@@ -94,5 +94,5 @@ curl http://localhost:3000/products
 - **Standard-Ready**: This entire flow uses native TypeScript decorators that align with future ECMAScript standards.
 
 ### next steps
-- **Automate the Boilerplate**: Use `konekti g module catalog` to generate this entire structure in seconds. See [Generator Workflow](./generator-workflow.md).
+- **Automate the Boilerplate**: Use `fluo g module catalog` to generate this entire structure in seconds. See [Generator Workflow](./generator-workflow.md).
 - **Add Validation**: Learn how to use DTOs and `@konekti/validation` for secure, type-safe inputs.

@@ -47,7 +47,7 @@ examples/realworld-api/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 `konekti new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing, platform-fastify)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
+이 예제는 `fluo new` 패턴에 실제 도메인 모듈을 추가하여 확장합니다. 스타터에 포함된 동일한 패키지(core, runtime, http, config, validation, testing, platform-fastify)와 표준 모듈 조합 패턴을 사용합니다. 스타터 스캐폴드 이상의 추가 패키지는 필요하지 않습니다.
 
 ## 권장 읽기 순서
 

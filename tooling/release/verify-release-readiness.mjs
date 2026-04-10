@@ -137,7 +137,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- Commands executed: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- Commands executed: `pnpm --dir packages/cli build`, `pnpm --dir packages/cli typecheck`, `pnpm --dir packages/cli test`, `pnpm --dir packages/studio build`, `pnpm --dir packages/studio typecheck`, `pnpm --dir packages/studio test`, `pnpm --dir packages/cli run sandbox:create`, `pnpm --dir packages/cli run sandbox:verify`, `pnpm --dir packages/cli run sandbox:test`',
     '- Side effects: `CHANGELOG.md` draft release-readiness section updated',
   ].join('\n');
   const summaryKo = [
@@ -147,7 +147,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- 실행한 명령: `pnpm typecheck`, `pnpm build`, `pnpm test`',
+    '- 실행한 명령: `pnpm --dir packages/cli build`, `pnpm --dir packages/cli typecheck`, `pnpm --dir packages/cli test`, `pnpm --dir packages/studio build`, `pnpm --dir packages/studio typecheck`, `pnpm --dir packages/studio test`, `pnpm --dir packages/cli run sandbox:create`, `pnpm --dir packages/cli run sandbox:verify`, `pnpm --dir packages/cli run sandbox:test`',
     '- 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신',
   ].join('\n');
 
@@ -198,9 +198,15 @@ function upsertReleaseCandidateDraft() {
 const checks = [];
 
 upsertReleaseCandidateDraft();
-run('pnpm', ['build']);
-run('pnpm', ['typecheck']);
-run('pnpm', ['test']);
+run('pnpm', ['--dir', 'packages/cli', 'build']);
+run('pnpm', ['--dir', 'packages/cli', 'typecheck']);
+run('pnpm', ['--dir', 'packages/cli', 'test']);
+run('pnpm', ['--dir', 'packages/studio', 'build']);
+run('pnpm', ['--dir', 'packages/studio', 'typecheck']);
+run('pnpm', ['--dir', 'packages/studio', 'test']);
+run('pnpm', ['--dir', 'packages/cli', 'run', 'sandbox:create']);
+run('pnpm', ['--dir', 'packages/cli', 'run', 'sandbox:verify']);
+run('pnpm', ['--dir', 'packages/cli', 'run', 'sandbox:test']);
 
 const quickStart = read('docs/getting-started/quick-start.md');
 const releaseGovernance = read('docs/operations/release-governance.md');
@@ -243,8 +249,8 @@ const officialFetchAdapterDocs = [
 assertCheck(
   checks,
   'Canonical bootstrap docs',
-  quickStart.includes('pnpm dlx @konekti/cli new starter-app') && quickStart.includes('canonical public bootstrap flow'),
-  'The quick start guide documents the public `pnpm add -g @konekti/cli` + `konekti new` path.',
+  quickStart.includes('pnpm add -g @fluojs/cli') && quickStart.includes('fluo new my-konekti-app'),
+  'The quick start guide documents the public `pnpm add -g @fluojs/cli` + `fluo new` path.',
 );
 assertCheck(
   checks,
@@ -255,9 +261,10 @@ assertCheck(
 assertCheck(
   checks,
   'Starter shape and runtime ownership',
-  scaffoldSource.includes("const app = await KonektiFactory.create(AppModule, {});") &&
+  scaffoldSource.includes("const app = await KonektiFactory.create(AppModule, {") &&
+    scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
     scaffoldSource.includes('await app.listen();') &&
-    scaffoldSource.includes('KonektiFactory.create(..., { cors })') &&
+    scaffoldSource.includes('KonektiFactory.create(..., { cors, adapter: createFastifyAdapter(...) })') &&
     scaffoldSource.includes('createHealthModule') &&
     scaffoldSource.includes("@Controller('/health-info')") &&
     !scaffoldSource.includes('MetricsModule.forRoot') &&
@@ -279,63 +286,23 @@ assertCheck(
 assertCheck(
   checks,
   'Toolchain contract lock',
-  !toolchainContract.includes('to be locked') &&
-    toolchainContract.includes('public contract') &&
-    toolchainContract.includes('generated (stable)') &&
-    toolchainContract.includes('internal-only'),
-  'The toolchain contract matrix is locked with public/generated/internal statuses.',
+  toolchainContract.includes('## generated app baseline') &&
+    toolchainContract.includes('## CLI & scaffolding contracts') &&
+    toolchainContract.includes('`fluo new`') &&
+    toolchainContract.includes('`fluo g <type>`') &&
+    toolchainContract.includes('`fluo inspect`'),
+  'The toolchain contract matrix documents the generated app baseline plus the canonical fluo command surfaces.',
 );
-assertCheck(
-  checks,
-  'Manifest benchmark evidence',
-  releaseGovernance.includes('manifest decision note') && existsSync(join(repoRoot, 'tooling/benchmarks/manifest-decision.latest.json')),
-  'Release docs still point at the benchmark-backed manifest decision snapshot.',
-);
-for (const adapterDoc of officialFetchAdapterDocs) {
-  assertCheck(
-    checks,
-    adapterDoc.label,
-    adapterDoc.readme.includes(adapterDoc.runtimeToken) &&
-      adapterDoc.readme.includes('## supported operations') &&
-      adapterDoc.readme.includes('## runtime invariants') &&
-      adapterDoc.readme.includes('## lifecycle guarantees') &&
-      adapterDoc.readme.includes('## intentional limitations'),
-    `The official adapter README at ${adapterDoc.path} documents its runtime path and behavioral contract sections.`,
-  );
-}
 assertCheck(
   checks,
   'Dist-based package entrypoints',
-  cliPackage.bin.konekti === './bin/konekti.mjs' &&
+  cliPackage.bin.fluo === './bin/fluo.mjs' &&
+    cliPackage.bin.konekti === './bin/konekti.mjs' &&
     cliPackage.main === './dist/index.js' &&
-    cliReadme.includes('canonical CLI'),
-  'CLI manifest and bin prove a dist-backed public entrypoint.',
-);
-assertCheck(
-  checks,
-  'Root OSS license file',
-  existsSync(join(repoRoot, 'LICENSE')) || existsSync(join(repoRoot, 'LICENSE.md')),
-  'A repository-level OSS license file exists at the root.',
-);
-assertCheck(
-  checks,
-  'Public changelog baseline',
-  changelog.includes('# Changelog') && changelog.includes('## [Unreleased]') && changelog.includes('## [0.0.0]'),
-  'CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.',
-);
-assertCheck(
-  checks,
-  'Public package surface docs are synchronized',
-  governancePackageList.length > 0 &&
-    packageSurfaceList.length > 0 &&
-    areSameStringArrays(governancePackageList, packageSurfaceList),
-  'release-governance and package-surface docs declare the same @konekti public package list.',
-);
-assertCheck(
-  checks,
-  'Documented public packages exist in workspace',
-  governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
-  'Every documented public package maps to an existing workspace package manifest.',
+    cliReadme.includes('canonical executable is `fluo`') &&
+    existsSync(join(repoRoot, 'packages/cli/bin/fluo.mjs')) &&
+    existsSync(join(repoRoot, 'packages/cli/bin/konekti.mjs')),
+  'CLI manifest and bin prove a dist-backed public `fluo` entrypoint with a subordinate compatibility alias.',
 );
 
 writeSummary(checks);

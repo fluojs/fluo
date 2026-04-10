@@ -42,14 +42,14 @@ export class UsersModule {}
 
 ## 빠른 시작
 
-CLI를 사용하는 것이 Konekti를 경험하는 가장 빠른 방법입니다.
+CLI를 사용하는 것이 fluo를 경험하는 가장 빠른 방법입니다.
 
 ```bash
 # CLI 설치
-pnpm add -g @konekti/cli
+pnpm add -g @fluojs/cli
 
 # 프로젝트 생성
-konekti new my-backend
+fluo new my-backend
 cd my-backend
 
 # 엔진 가동
@@ -77,7 +77,7 @@ Konekti는 거대한 단일체(Monolith)가 아닙니다. 정교하게 설계된
 - 🚀 **[시작하기](./docs/getting-started/quick-start.ko.md)**: Konekti와 함께하는 첫 15분.
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md)**: 공식 런타임/패키지 범위를 보여주는 기준 문서.
 - 💡 **[예제 앱](./examples/README.ko.md)**: 최소 설정부터 복잡한 RealWorld API까지.
-- 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `konekti` 명령어 마스터하기.
+- 🛠️ **[CLI 가이드](./packages/cli/README.ko.md)**: 신속한 개발을 위한 `fluo` 명령어 마스터하기.
 
 ## 우리의 철학
 

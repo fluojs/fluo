@@ -69,7 +69,7 @@ function isHelpFlag(value: string | undefined): boolean {
 
 export function inspectUsage(): string {
   return [
-    'Usage: konekti inspect <module-path> [options]',
+    'Usage: fluo inspect <module-path> [options]',
     '',
     'Options',
     renderHelpTable(INSPECT_OPTION_HELP, [

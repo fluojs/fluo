@@ -33,7 +33,7 @@ Studio consumes JSON exports from the Konekti CLI.
 
 1. **Export a snapshot**:
    ```bash
-   konekti inspect ./src/app.module.ts --json > snapshot.json
+   fluo inspect ./src/app.module.ts --json > snapshot.json
    ```
 
 2. **Open Studio**:
@@ -67,8 +67,8 @@ Studio is primarily a web application, but it defines contracts for consuming pl
 
 ## Related Packages
 
-- **[@konekti/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
-- **[@konekti/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
+- **[@fluojs/cli](../cli/README.md)**: Provides the `inspect` command to generate Studio-compatible exports.
+- **[@fluojs/runtime](../runtime/README.md)**: The engine that generates the diagnostic and snapshot data.
 
 ## Example Sources
 
