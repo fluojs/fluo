@@ -8,7 +8,7 @@
 
 | 항목 | 계약 | 버전 / 비고 |
 | --- | --- | --- |
-| **TypeScript** | `v5.8+` | `strict: true`, `experimentalDecorators: false`, `module: esnext` |
+| **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext` |
 | **Babel** | `v7.26+` | `@babel/plugin-proposal-decorators` (`{ version: '2023-11' }`) |
 | **Vite** | `v6.2+` | 개발 번들링 및 빌드 오케스트레이션에 사용. |
 | **Vitest** | `v3.0+` | 유닛 및 E2E 테스트용 표준 테스트 러너. |
