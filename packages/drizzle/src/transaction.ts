@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { Interceptor, InterceptorContext } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import type { Interceptor, InterceptorContext } from '@fluojs/http';
 
 import { DrizzleDatabase } from './database.js';
 import type { DrizzleDatabaseLike } from './types.js';

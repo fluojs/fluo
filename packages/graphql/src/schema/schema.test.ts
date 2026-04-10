@@ -13,7 +13,7 @@ import {
   buildSchema,
 } from 'graphql';
 
-import type { Container } from '@konekti/di';
+import type { Container } from '@fluojs/di';
 
 import { createCodeFirstSchema } from './schema.js';
 import { listOf } from '../types.js';

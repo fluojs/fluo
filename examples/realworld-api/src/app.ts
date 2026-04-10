@@ -1,6 +1,6 @@
-import { Module } from '@konekti/core';
-import { ConfigModule } from '@konekti/config';
-import { createHealthModule } from '@konekti/runtime';
+import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+import { createHealthModule } from '@fluojs/runtime';
 
 import { UsersModule } from './users/users.module';
 

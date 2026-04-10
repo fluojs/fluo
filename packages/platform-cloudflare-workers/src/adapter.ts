@@ -2,22 +2,22 @@ import {
   createFetchStyleHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
-} from '@konekti/http';
+} from '@fluojs/http';
 import {
   bootstrapHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
-} from '@konekti/runtime/internal/http-adapter';
+} from '@fluojs/runtime/internal/http-adapter';
 import type {
   Application,
   ModuleType,
   UploadedFile,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 import {
   dispatchWebRequest,
   type CreateWebRequestResponseFactoryOptions,
-} from '@konekti/runtime/web';
+} from '@fluojs/runtime/web';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;
@@ -107,7 +107,7 @@ export class CloudflareWorkerHttpApplicationAdapter
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
+      'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       { support: 'supported' },
     );
   }

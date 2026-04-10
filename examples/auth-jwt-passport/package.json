@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/example-auth-jwt-passport",
+  "name": "@fluojs/example-auth-jwt-passport",
   "description": "Runnable Konekti authentication example with JWT issuance and Passport-style route protection.",
   "version": "0.0.0",
   "private": true,
@@ -11,15 +11,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/jwt": "workspace:*",
-    "@konekti/passport": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*",
-    "@konekti/runtime": "workspace:*",
-    "@konekti/validation": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/jwt": "workspace:*",
+    "@fluojs/passport": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/validation": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/testing": "workspace:*"
+    "@fluojs/testing": "workspace:*"
   }
 }

@@ -38,7 +38,7 @@ describe('runGenerateCommand', () => {
     const modulePath = join(domainDirectory, 'post.module.ts');
     mkdirSync(domainDirectory, { recursive: true });
 
-    writeFileSync(modulePath, `import { Module } from '@konekti/core';\nimport { ExistingService } from './existing.service';\n\n@Module({ providers:[ExistingService], controllers:[] })\nclass PostModule {}\n\nexport { PostModule };\n`);
+    writeFileSync(modulePath, `import { Module } from '@fluojs/core';\nimport { ExistingService } from './existing.service';\n\n@Module({ providers:[ExistingService], controllers:[] })\nclass PostModule {}\n\nexport { PostModule };\n`);
 
     runGenerateCommand('service', 'Post', sourceDirectory);
     runGenerateCommand('service', 'Post', sourceDirectory);
@@ -64,7 +64,7 @@ describe('runGenerateCommand', () => {
 
     writeFileSync(
       modulePath,
-      `import { Module } from '@konekti/core';
+      `import { Module } from '@fluojs/core';
 
 @Module({ providers: ExistingService })
 class PostModule {}
@@ -93,11 +93,11 @@ export { PostModule };
     const serviceTestContent = readFileSync(join(sourceDirectory, 'audits', 'audit.service.test.ts'), 'utf8');
 
     expect(controllerContent).not.toContain("from './post.service'");
-    expect(controllerContent).not.toContain("from '@konekti/core'");
+    expect(controllerContent).not.toContain("from '@fluojs/core'");
     expect(controllerContent).toContain('return [];');
     expect(controllerTestContent).toContain('new PostController().listPosts()');
     expect(serviceContent).not.toContain("from './audit.repo'");
-    expect(serviceContent).not.toContain("from '@konekti/core'");
+    expect(serviceContent).not.toContain("from '@fluojs/core'");
     expect(serviceContent).toContain('return [];');
     expect(serviceTestContent).toContain('new AuditService().listAudits()');
   });

@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/redis",
+  "name": "@fluojs/redis",
   "description": "App-scoped Redis lifecycle management, raw client injection, and RedisService facade for Konekti.",
   "keywords": [
     "konekti",
@@ -43,9 +43,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "ioredis": "^5.10.0"
   },
   "devDependencies": {

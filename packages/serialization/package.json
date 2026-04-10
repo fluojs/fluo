@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/serialization",
+  "name": "@fluojs/serialization",
   "description": "Class-based response serialization and output shaping interceptors for Konekti.",
   "keywords": [
     "konekti",
@@ -43,8 +43,8 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/http": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

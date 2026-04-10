@@ -1,6 +1,6 @@
-import { type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Provider, Scope } from '@konekti/di';
+import { type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Provider, Scope } from '@fluojs/di';
 
 import type { CompiledModule, ModuleType } from '../types.js';
 

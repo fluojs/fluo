@@ -1,6 +1,6 @@
-import type { Token } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import type { Token } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import type { ApplicationLogger } from './types.js';
 import type { CompiledModule } from './types.js';

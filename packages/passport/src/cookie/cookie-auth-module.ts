@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import type { Provider } from '@fluojs/di';
+import { DefaultJwtVerifier } from '@fluojs/jwt';
 
 import {
   COOKIE_AUTH_OPTIONS,

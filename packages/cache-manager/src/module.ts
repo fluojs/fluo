@@ -1,6 +1,6 @@
-import type { Provider, Container } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
-import { RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import type { Provider, Container } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CacheInterceptor } from './interceptor.js';
 import { MemoryStore } from './stores/memory-store.js';
@@ -61,8 +61,8 @@ async function resolveRedisClient(
   if (!resolvedClient) {
     throw new Error(
       [
-        '@konekti/cache-manager redis store requires a Redis client at bootstrap.',
-        'Install and import @konekti/redis (createRedisModule) or provide options.redis.client directly.',
+        '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
+        'Install and import @fluojs/redis (createRedisModule) or provide options.redis.client directly.',
       ].join(' '),
     );
   }

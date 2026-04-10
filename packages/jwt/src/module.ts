@@ -1,7 +1,7 @@
-import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@konekti/core';
-import { defineModuleMetadata } from '@konekti/core/internal';
-import type { Container, Provider } from '@konekti/di';
-import { RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@fluojs/core';
+import { defineModuleMetadata } from '@fluojs/core/internal';
+import type { Container, Provider } from '@fluojs/di';
+import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { JwtConfigurationError } from './errors.js';
 import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh/refresh-token.js';

@@ -1,4 +1,4 @@
-import { InvariantError } from '@konekti/core';
+import { InvariantError } from '@fluojs/core';
 
 import type {
   PlatformComponent,

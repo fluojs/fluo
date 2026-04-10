@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Module, type Constructor, type Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container, type Provider } from '@konekti/di';
-import { KonektiFactory } from '@konekti/runtime';
+import { Inject, Module, type Constructor, type Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
+import { KonektiFactory } from '@fluojs/runtime';
 
 import { JwtModule } from './module.js';
 import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh/refresh-token.js';

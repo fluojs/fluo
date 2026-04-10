@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Scope as ScopeDecorator } from '@konekti/core';
+import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';

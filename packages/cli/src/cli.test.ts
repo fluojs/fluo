@@ -578,7 +578,7 @@ describe('CLI command runner', () => {
     );
     writeFileSync(
       join(domainDir, 'order.module.ts'),
-      `import { Module } from '@konekti/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass OrderModule {}\n\nexport { OrderModule };\n`,
+      `import { Module } from '@fluojs/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass OrderModule {}\n\nexport { OrderModule };\n`,
     );
 
     const exitCode = await runCli(['g', 'controller', 'Order'], {
@@ -616,10 +616,10 @@ describe('CLI command runner', () => {
     const appE2eTestContent = readFileSync(join(projectDirectory, 'src', 'app.e2e.test.ts'), 'utf8');
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/runtime');
-    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@konekti/platform-fastify');
-    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/prisma');
-    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@konekti/drizzle');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@fluojs/runtime');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).toContain('@fluojs/platform-fastify');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@fluojs/prisma');
+    expect(readFileSync(join(projectDirectory, 'package.json'), 'utf8')).not.toContain('@fluojs/drizzle');
     expect(packageJson.scripts?.typecheck).toBeDefined();
     expect(packageJson.scripts?.build).toBeDefined();
     expect(packageJson.scripts?.test).toBeDefined();
@@ -635,11 +635,11 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('@konekti/runtime/node');
-    expect(readmeContent).toContain('@konekti/platform-nodejs');
+    expect(readmeContent).toContain('@fluojs/runtime/node');
+    expect(readmeContent).toContain('@fluojs/platform-nodejs');
     expect(readmeContent).toContain('createFastifyAdapter');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
-    expect(mainContent).toContain("from '@konekti/platform-fastify'");
+    expect(mainContent).toContain("from '@fluojs/platform-fastify'");
     expect(mainContent).toContain('adapter: createFastifyAdapter({ port })');
     expect(mainContent).toContain('await app.listen();');
     expect(appTestContent).toContain("createRequest('/health')");

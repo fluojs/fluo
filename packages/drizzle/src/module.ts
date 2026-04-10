@@ -1,6 +1,6 @@
-import type { AsyncModuleOptions } from '@konekti/core';
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { AsyncModuleOptions } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { DrizzleDatabase } from './database.js';
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';

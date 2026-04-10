@@ -6,9 +6,9 @@ import {
   type HandlerDescriptor,
   type HandlerSource,
   type RequestContext,
-} from '@konekti/http';
-import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@konekti/core';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+} from '@fluojs/http';
+import { Inject, type AsyncModuleOptions, type Constructor, type MaybePromise, type Token } from '@fluojs/core';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
 import {

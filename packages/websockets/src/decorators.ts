@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import { webSocketGatewayMetadataSymbol, webSocketHandlerMetadataSymbol } from './metadata.js';
 import type { WebSocketEventMap, WebSocketGatewayHandlerMetadata, WebSocketGatewayOptions } from './types.js';
@@ -76,7 +76,7 @@ function createMethodDecorator(metadata: WebSocketGatewayHandlerMetadata): Metho
  *
  * @example
  * ```ts
- * import { WebSocketGateway } from '@konekti/websockets';
+ * import { WebSocketGateway } from '@fluojs/websockets';
  *
  * @WebSocketGateway({ path: '/chat' })
  * class ChatGateway {}
@@ -103,7 +103,7 @@ export function WebSocketGateway(
  *
  * @example
  * ```ts
- * import { OnMessage } from '@konekti/websockets';
+ * import { OnMessage } from '@fluojs/websockets';
  *
  * class ChatGateway {
  *   @OnMessage('ping')

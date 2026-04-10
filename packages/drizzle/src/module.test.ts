@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Global, Inject, Module } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Global, Inject, Module } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import {
   DrizzleModule,
@@ -9,7 +9,7 @@ import {
   DrizzleDatabase,
 } from './index.js';
 
-describe('@konekti/drizzle', () => {
+describe('@fluojs/drizzle', () => {
   it('exposes current database handles, transaction callbacks, and optional disposal', async () => {
     const events: string[] = [];
     const transactionDatabase = {

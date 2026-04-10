@@ -1,5 +1,5 @@
-import type { MaybePromise, Token } from '@konekti/core';
-import type { Guard, GuardContext, Principal } from '@konekti/http';
+import type { MaybePromise, Token } from '@fluojs/core';
+import type { Guard, GuardContext, Principal } from '@fluojs/http';
 
 /** Route-level authentication requirement metadata. */
 export interface AuthRequirement {

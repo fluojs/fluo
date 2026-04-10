@@ -3,10 +3,10 @@ import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
-import { Inject, Scope } from '@konekti/core';
-import { IsInt, MinLength } from '@konekti/validation';
-import { defineModule } from '@konekti/runtime';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
+import { Inject, Scope } from '@fluojs/core';
+import { IsInt, MinLength } from '@fluojs/validation';
+import { defineModule } from '@fluojs/runtime';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
@@ -362,7 +362,7 @@ class UnionOutputResolver {
   }
 }
 
-describe('@konekti/graphql', () => {
+describe('@fluojs/graphql', () => {
   it('invokes configured Yoga/Envelop plugins during request execution', async () => {
     const pluginHooks: string[] = [];
 
@@ -940,7 +940,7 @@ describe('@konekti/graphql', () => {
   });
 });
 
-describe('@konekti/graphql — provider scopes', () => {
+describe('@fluojs/graphql — provider scopes', () => {
   it('isolates request-scoped resolver instances across concurrent operations', async () => {
     let issued = 0;
 

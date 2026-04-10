@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/throttler",
+  "name": "@fluojs/throttler",
   "description": "Decorator-based rate limiting for Konekti applications with in-memory and Redis store adapters.",
   "keywords": [
     "konekti",
@@ -43,17 +43,17 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "peerDependencies": {
-    "@konekti/redis": "workspace:*",
+    "@fluojs/redis": "workspace:*",
     "ioredis": "^5.0.0"
   },
   "peerDependenciesMeta": {
-    "@konekti/redis": {
+    "@fluojs/redis": {
       "optional": true
     },
     "ioredis": {

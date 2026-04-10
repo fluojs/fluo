@@ -1,4 +1,4 @@
-import { UseGuards } from '@konekti/http';
+import { UseGuards } from '@fluojs/http';
 
 import { AuthGuard } from './guard.js';
 import { getOwnAuthRequirement } from './metadata.js';

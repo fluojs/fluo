@@ -3,7 +3,7 @@ import validator from 'validator';
 import {
   type Constructor,
   type MetadataPropertyKey,
-} from '@konekti/core';
+} from '@fluojs/core';
 import {
   getClassValidationRules,
   getDtoBindingSchema,
@@ -13,7 +13,7 @@ import {
   type DtoFieldValidationRule,
   type ValidationIssueMetadata,
   type ValidationRuleResult,
-} from '@konekti/core/internal';
+} from '@fluojs/core/internal';
 
 import { DtoValidationError } from './errors.js';
 import type { ValidationIssue, Validator } from './types.js';

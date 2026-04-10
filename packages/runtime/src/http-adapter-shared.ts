@@ -12,7 +12,7 @@ import {
   type MiddlewareLike,
   type Next,
   type SecurityHeadersOptions,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import { bootstrapApplication } from './bootstrap.js';
 import { createConsoleApplicationLogger } from './logging/logger.js';

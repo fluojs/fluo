@@ -1,7 +1,7 @@
-import { type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Container, Provider } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule } from '@konekti/runtime';
+import { type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Container, Provider } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 export interface DiscoveryCandidate {
   moduleName: string;

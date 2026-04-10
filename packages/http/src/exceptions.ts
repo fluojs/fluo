@@ -1,4 +1,4 @@
-import { KonektiError, type MetadataSource } from '@konekti/core';
+import { KonektiError, type MetadataSource } from '@fluojs/core';
 
 export interface HttpExceptionDetail {
   code: string;

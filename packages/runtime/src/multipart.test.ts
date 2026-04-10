@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PayloadTooLargeException } from '@konekti/http';
+import { PayloadTooLargeException } from '@fluojs/http';
 
 import { parseMultipart } from './multipart.js';
 

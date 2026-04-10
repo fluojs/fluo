@@ -1,4 +1,4 @@
-import type { MaybePromise } from '@konekti/core';
+import type { MaybePromise } from '@fluojs/core';
 
 type PrismaTransactionCallback<TTransactionClient, TResult> = (client: TTransactionClient) => Promise<TResult>;
 

@@ -1,6 +1,6 @@
-import { Inject } from '@konekti/core';
-import { Controller, Get, Post, RequestDto, type RequestContext } from '@konekti/http';
-import { RequireScopes, UseAuth } from '@konekti/passport';
+import { Inject } from '@fluojs/core';
+import { Controller, Get, Post, RequestDto, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
 
 import { LoginDto } from './login.dto';
 import { AuthService } from './auth.service';

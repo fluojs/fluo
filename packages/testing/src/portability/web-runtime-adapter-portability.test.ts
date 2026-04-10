@@ -1,11 +1,11 @@
 import { describe, it, vi } from 'vitest';
 
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { bootstrapBunApplication, type BunServeOptions, type BunServerLike } from '@konekti/platform-bun';
+import { bootstrapBunApplication, type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { bootstrapCloudflareWorkerApplication, type CloudflareWorkerExecutionContext } from '@konekti/platform-cloudflare-workers';
+import { bootstrapCloudflareWorkerApplication, type CloudflareWorkerExecutionContext } from '@fluojs/platform-cloudflare-workers';
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { bootstrapDenoApplication, type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@konekti/platform-deno';
+import { bootstrapDenoApplication, type DenoServeController, type DenoServeHandler, type DenoServeOptions } from '@fluojs/platform-deno';
 
 import { createWebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
 

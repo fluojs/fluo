@@ -1,5 +1,5 @@
-import type { Container } from '@konekti/di';
-import type { MetadataPropertyKey } from '@konekti/core';
+import type { Container } from '@fluojs/di';
+import type { MetadataPropertyKey } from '@fluojs/core';
 import type {
   GraphQLFieldConfigMap,
   GraphQLFieldConfig,
@@ -13,7 +13,7 @@ import type {
   GraphQLScalarType,
   GraphQLUnionType as GraphQLUnionTypeType,
 } from 'graphql';
-import { DtoValidationError } from '@konekti/validation';
+import { DtoValidationError } from '@fluojs/validation';
 
 import { createGraphqlInput, resolveArgType, resolveOutputType } from '../pipeline/input-pipeline.js';
 import {

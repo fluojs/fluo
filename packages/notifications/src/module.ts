@@ -1,6 +1,6 @@
-import type { AsyncModuleOptions, MaybePromise } from '@konekti/core';
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { NotificationsConfigurationError } from './errors.js';
 import { NotificationsService } from './service.js';

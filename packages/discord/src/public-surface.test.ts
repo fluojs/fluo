@@ -14,7 +14,7 @@ import type {
   DiscordWebhookTransportOptions,
 } from './index.js';
 
-describe('@konekti/discord public API surface', () => {
+describe('@fluojs/discord public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
     expect(discordPublicApi).toHaveProperty('DiscordModule');
     expect(discordPublicApi).toHaveProperty('createDiscordProviders');

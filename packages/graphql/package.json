@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/graphql",
+  "name": "@fluojs/graphql",
   "description": "Decorator-based GraphQL module, schema exposure, and execution pipeline for Konekti.",
   "keywords": [
     "konekti",
@@ -43,11 +43,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*",
-    "@konekti/validation": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/validation": "workspace:*",
     "dataloader": "^2.2.3",
     "graphql": "^16.13.1",
     "graphql-ws": "^5.16.2",

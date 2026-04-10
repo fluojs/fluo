@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import { DefaultJwtSigner } from '@konekti/jwt';
+import { Inject } from '@fluojs/core';
+import { DefaultJwtSigner } from '@fluojs/jwt';
 
 @Inject(DefaultJwtSigner)
 export class AuthService {

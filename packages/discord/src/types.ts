@@ -1,5 +1,5 @@
-import type { AsyncModuleOptions, MaybePromise } from '@konekti/core';
-import type { NotificationDispatchRequest } from '@konekti/notifications';
+import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { NotificationDispatchRequest } from '@fluojs/notifications';
 
 /** Opaque Discord embed object forwarded to one transport implementation. */
 export type DiscordEmbed = Readonly<Record<string, unknown>>;

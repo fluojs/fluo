@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as httpPublicApi from './index.js';
 
-describe('@konekti/http public API surface', () => {
+describe('@fluojs/http public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(httpPublicApi).toHaveProperty('Controller');
     expect(httpPublicApi).toHaveProperty('Get');

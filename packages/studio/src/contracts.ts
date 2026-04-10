@@ -3,7 +3,7 @@ import type {
   PlatformDiagnosticIssue,
   PlatformShellSnapshot,
   PlatformSnapshot,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
 export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];

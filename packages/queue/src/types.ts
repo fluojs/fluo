@@ -1,4 +1,4 @@
-import type { Token } from '@konekti/core';
+import type { Token } from '@fluojs/core';
 
 /** Class constructor used to identify and rehydrate one queue job payload shape. */
 export interface QueueJobType<TJob extends object = object> {

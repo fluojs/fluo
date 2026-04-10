@@ -9,7 +9,7 @@ import {
   type HttpApplicationAdapter,
   type MiddlewareLike,
   type SecurityHeadersOptions,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import {
   bootstrapHttpAdapterApplication,
@@ -41,7 +41,7 @@ import {
 } from '../adapters/request-response-factory.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from '../types.js';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;

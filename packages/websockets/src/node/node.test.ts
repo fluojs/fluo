@@ -3,9 +3,9 @@ import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
-import { Inject } from '@konekti/core';
-import { defineModule } from '@konekti/runtime';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
+import { Inject } from '@fluojs/core';
+import { defineModule } from '@fluojs/runtime';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
@@ -75,7 +75,7 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
-describe('@konekti/websockets/node', () => {
+describe('@fluojs/websockets/node', () => {
   it('exposes the explicit Node-only websocket seam', () => {
     expect(nodePublicApi).toHaveProperty('NodeWebSocketModule');
     expect(nodePublicApi).toHaveProperty('NodeWebSocketGatewayLifecycleService');

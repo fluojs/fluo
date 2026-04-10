@@ -1,7 +1,7 @@
 import {
   type Constructor,
   type MetadataPropertyKey,
-} from '@konekti/core';
+} from '@fluojs/core';
 import {
   metadataSymbol,
   type ClassValidationRule,
@@ -10,7 +10,7 @@ import {
   type CustomValidationDecoratorOptions,
   type DtoFieldValidationRule,
   type ValidationDecoratorOptions,
-} from '@konekti/core/internal';
+} from '@fluojs/core/internal';
 
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
 

@@ -40,14 +40,14 @@ export function Global(): StandardClassDecoratorFn {
  * explicit empty inject list so subclasses can intentionally clear inherited constructor tokens.
  * During the staged migration window, the legacy array form (`@Inject([A, B])`) is still normalized.
  *
- * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject(): StandardClassDecoratorFn;
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  *
- * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject<const TTokens extends readonly Token[]>(
@@ -56,14 +56,14 @@ export function Inject<const TTokens extends readonly Token[]>(
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  *
- * @param tokens Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @param tokens Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject(tokens: readonly Token[]): StandardClassDecoratorFn;
 /**
  * Defines explicit constructor injection tokens for the decorated class.
  *
- * @param tokensOrList Constructor-parameter token list used by `@konekti/di` during dependency resolution.
+ * @param tokensOrList Constructor-parameter token list used by `@fluojs/di` during dependency resolution.
  * @returns A standard class decorator that stores explicit injection metadata on the target class.
  */
 export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {

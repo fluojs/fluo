@@ -1,4 +1,4 @@
-import { KonektiCodeError, formatTokenName } from '@konekti/core';
+import { KonektiCodeError, formatTokenName } from '@fluojs/core';
 
 /**
  * Structured context attached to DI errors so logs and tests can inspect the failing contract.

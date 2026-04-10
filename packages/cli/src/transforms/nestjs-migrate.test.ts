@@ -134,13 +134,13 @@ describe('runNestJsMigration', () => {
     const tsconfigContent = readFileSync(join(workspaceDirectory, 'tsconfig.json'), 'utf8');
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
-    expect(mainContent).toContain("from \"@konekti/runtime\"");
+    expect(mainContent).toContain("from \"@fluojs/runtime\"");
     expect(mainContent).toMatch(/KonektiFactory\.create\(AppModule, \{[\s\S]*port:\s*3000[\s\S]*\}\)/);
     expect(mainContent).toContain('await app.listen();');
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
-    expect(serviceContent).toContain("from \"@konekti/core\"");
-    expect(testContent).toContain("from \"@konekti/testing\"");
+    expect(serviceContent).toContain("from \"@fluojs/core\"");
+    expect(testContent).toContain("from \"@fluojs/testing\"");
     expect(testContent).toMatch(/createTestingModule\(\{[\s\S]*rootModule:\s*UsersModule[\s\S]*\}\)/);
     expect(testContent).not.toContain('Test.createTestingModule');
     expect(tsconfigContent).not.toContain('experimentalDecorators');
@@ -271,7 +271,7 @@ describe('users', () => {
 
     expect(specContent).toContain('Test.createTestingModule({');
     expect(specContent).toContain('providers: []');
-    expect(specContent).not.toContain('from "@konekti/testing"');
+    expect(specContent).not.toContain('from "@fluojs/testing"');
     expect(report.warningCount).toBeGreaterThan(0);
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported Test.createTestingModule metadata shape'))).toBe(true);
   });
@@ -309,7 +309,7 @@ describe('users', () => {
     expect(specContent).toContain('Test.createTestingModule({ imports: [UsersModule] })');
     expect(specContent).toContain('.useMocker(() => ({}))');
     expect(specContent).not.toContain('createTestingModule({ rootModule: UsersModule })');
-    expect(specContent).not.toContain('from "@konekti/testing"');
+    expect(specContent).not.toContain('from "@fluojs/testing"');
     expect(report.warningCount).toBeGreaterThan(0);
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported testing builder method "useMocker"'))).toBe(true);
   });
@@ -329,7 +329,7 @@ describe('users', () => {
     expect(serviceContent).toContain('@Injectable({ scope: Scope.REQUEST })');
     expect(serviceContent).toMatch(/@KonektiScope\(("|')request\1\)/);
     expect(serviceContent).toContain("import { Injectable");
-    expect(serviceContent).toContain('import { Scope as KonektiScope } from "@konekti/core";');
+    expect(serviceContent).toContain('import { Scope as KonektiScope } from "@fluojs/core";');
 
     const secondReport = runNestJsMigration({
       apply: true,

@@ -5,9 +5,9 @@ import {
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@konekti/runtime';
-import type { OnApplicationShutdown } from '@konekti/runtime';
-import { Inject } from '@konekti/core';
+} from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/runtime';
+import { Inject } from '@fluojs/core';
 
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
 import { createMongoosePlatformStatusSnapshot } from './status.js';

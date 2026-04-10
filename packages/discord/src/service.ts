@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { DiscordMessageValidationError } from './errors.js';
 import { createDiscordPlatformStatusSnapshot } from './status.js';
@@ -44,7 +44,7 @@ function assertMessageContent(message: NormalizedDiscordMessage): void {
  * @remarks
  * The service stays transport-agnostic at the shared package boundary, consumes only
  * explicitly injected {@link DiscordTransport} contracts, and translates
- * `@konekti/notifications` envelopes into concrete Discord messages.
+ * `@fluojs/notifications` envelopes into concrete Discord messages.
  */
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {

@@ -1,4 +1,4 @@
-import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@konekti/http';
+import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@fluojs/http';
 import type { Registry } from 'prom-client';
 
 import { createPrometheusCounter, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';

@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
 /** Resolved Slack lifecycle state used for diagnostics and health checks. */
 export type SlackLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';

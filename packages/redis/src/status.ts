@@ -1,5 +1,5 @@
 import type Redis from 'ioredis';
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
 export interface PersistencePlatformStatusSnapshot {
   readiness: PlatformReadinessReport;

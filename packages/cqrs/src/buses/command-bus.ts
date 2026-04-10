@@ -1,6 +1,6 @@
-import { Inject, InvariantError } from '@konekti/core';
-import type { OnApplicationBootstrap } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import { Inject, InvariantError } from '@fluojs/core';
+import type { OnApplicationBootstrap } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CommandHandlerNotFoundException, DuplicateCommandHandlerError } from '../errors.js';
 import { getCommandHandlerMetadata } from '../metadata.js';

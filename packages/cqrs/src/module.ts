@@ -1,6 +1,6 @@
-import type { Provider } from '@konekti/di';
-import { EventBusModule, type EventBusModuleOptions } from '@konekti/event-bus';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { EventBusModule, type EventBusModuleOptions } from '@fluojs/event-bus';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';

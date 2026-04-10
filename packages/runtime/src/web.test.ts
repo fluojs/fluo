@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
+import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import { dispatchWebRequest } from './web.js';
 

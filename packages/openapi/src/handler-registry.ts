@@ -1,4 +1,4 @@
-import type { HandlerDescriptor } from '@konekti/http';
+import type { HandlerDescriptor } from '@fluojs/http';
 
 /**
  * Mutable registry used to snapshot handler descriptors before document generation.

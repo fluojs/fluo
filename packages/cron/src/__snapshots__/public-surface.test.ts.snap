@@ -1,5 +1,27 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`@fluojs/cron root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+[
+  "Cron",
+  "CronExpression",
+  "CronModule",
+  "Interval",
+  "SCHEDULING_REGISTRY",
+  "Timeout",
+  "createCronPlatformStatusSnapshot",
+  "createCronProviders",
+  "cronMetadataSymbol",
+  "defineCronTaskMetadata",
+  "defineSchedulingTaskMetadata",
+  "getCronTaskMetadata",
+  "getCronTaskMetadataEntries",
+  "getSchedulingTaskMetadata",
+  "getSchedulingTaskMetadataEntries",
+  "normalizeCronModuleOptions",
+  "schedulingMetadataSymbol",
+]
+`;
+
 exports[`@konekti/cron root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
 [
   "Cron",

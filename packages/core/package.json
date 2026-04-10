@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/core",
+  "name": "@fluojs/core",
   "description": "Shared contracts, decorators, and metadata helpers that form the foundation of every Konekti package.",
   "keywords": [
     "konekti",

@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
 import { GraphqlEndpointController, GraphqlLifecycleService } from './service.js';

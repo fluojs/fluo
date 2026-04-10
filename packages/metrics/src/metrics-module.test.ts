@@ -1,5 +1,5 @@
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
-import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
+import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
+import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 import { METER_PROVIDER } from './providers/meter-provider.js';

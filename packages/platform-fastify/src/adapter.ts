@@ -20,7 +20,7 @@ import {
   type HttpApplicationAdapter,
   type MiddlewareLike,
   type SecurityHeadersOptions,
-} from '@konekti/http';
+} from '@fluojs/http';
 import {
   type Application,
   type ApplicationLogger,
@@ -28,21 +28,21 @@ import {
   type ModuleType,
   type MultipartOptions,
   type UploadedFile,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-} from '@konekti/runtime/node';
+} from '@fluojs/runtime/node';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
-} from '@konekti/runtime/internal/http-adapter';
+} from '@fluojs/runtime/internal/http-adapter';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
-} from '@konekti/runtime/internal/request-response-factory';
+} from '@fluojs/runtime/internal/request-response-factory';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;

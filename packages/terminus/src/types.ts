@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import type { PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import type { PlatformHealthReport, PlatformReadinessReport, ReadinessCheck } from '@fluojs/runtime';
 
 /** Status values returned by one health indicator execution. */
 export type HealthIndicatorStatus = 'up' | 'down';

@@ -1,9 +1,9 @@
 import type { ServerOptions } from 'socket.io';
 
-import type { WebSocketRoomService } from '@konekti/websockets';
+import type { WebSocketRoomService } from '@fluojs/websockets';
 
 /**
- * Room management contract exposed by `@konekti/socket.io` gateways.
+ * Room management contract exposed by `@fluojs/socket.io` gateways.
  *
  * Extends the generic WebSocket room API with Socket.IO event emission semantics.
  */

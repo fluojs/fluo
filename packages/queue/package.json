@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/queue",
+  "name": "@fluojs/queue",
   "description": "Redis-backed background job processing with worker discovery and DLQ support for Konekti.",
   "keywords": [
     "konekti",
@@ -44,10 +44,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/redis": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/redis": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "bullmq": "^5.58.0"
   },
   "devDependencies": {

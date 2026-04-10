@@ -1,11 +1,11 @@
-import { Inject } from '@konekti/core';
-import type { GuardContext } from '@konekti/http';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import { Inject } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier } from '@fluojs/jwt';
 import {
   AuthenticationFailedError,
   AuthenticationRequiredError,
   type AuthStrategy,
-} from '@konekti/passport';
+} from '@fluojs/passport';
 
 function readAuthorizationHeader(context: GuardContext): string | undefined {
   const value = context.requestContext.request.headers.authorization;

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { metadataSymbol } from '@konekti/core/internal';
-import type { GuardContext, HandlerDescriptor, RequestContext } from '@konekti/http';
+import { metadataSymbol } from '@fluojs/core/internal';
+import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
@@ -125,7 +125,7 @@ describe('createThrottlerProviders', () => {
   });
 });
 
-describe('@konekti/throttler decorators', () => {
+describe('@fluojs/throttler decorators', () => {
   it('writes @Throttle method-level metadata into the route map', () => {
     class AuthController {
       @Throttle({ limit: 5, ttl: 60 })

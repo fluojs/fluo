@@ -1,4 +1,4 @@
-import type { MiddlewareContext } from '@konekti/http';
+import type { MiddlewareContext } from '@fluojs/http';
 
 /**
  * Snapshot of a client's current rate-limit window state.

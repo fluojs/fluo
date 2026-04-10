@@ -1,5 +1,5 @@
-import type { MaybePromise, Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
+import type { MaybePromise, Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import {
   isForwardRef,
   isOptionalToken,
@@ -8,12 +8,12 @@ import {
   type NormalizedProvider,
   type OptionalToken,
   type Provider,
-} from '@konekti/di';
-import type { BootstrapResult, ModuleDefinition, ModuleType } from '@konekti/runtime';
-import { bootstrapModule, defineModule } from '@konekti/runtime';
+} from '@fluojs/di';
+import type { BootstrapResult, ModuleDefinition, ModuleType } from '@fluojs/runtime';
+import { bootstrapModule, defineModule } from '@fluojs/runtime';
 
-import { createDispatcher, createHandlerMapping } from '@konekti/http';
-import type { Guard, HandlerSource, Interceptor } from '@konekti/http';
+import { createDispatcher, createHandlerMapping } from '@fluojs/http';
+import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { OverrideProviderBuilder, TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
 

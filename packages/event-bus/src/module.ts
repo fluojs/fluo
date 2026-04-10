@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { EventBusLifecycleService } from './service.js';
 import { EVENT_BUS, EVENT_BUS_OPTIONS } from './tokens.js';

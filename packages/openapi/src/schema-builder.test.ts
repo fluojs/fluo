@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/validation';
-import { Controller, FromBody, Get, Post, RequestDto, createHandlerMapping } from '@konekti/http';
+import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
+import { Controller, FromBody, Get, Post, RequestDto, createHandlerMapping } from '@fluojs/http';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity } from './decorators.js';
 import { buildOpenApiDocument } from './schema-builder.js';

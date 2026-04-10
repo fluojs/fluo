@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/config",
+  "name": "@fluojs/config",
   "description": "Configuration loading, merging, validation, and typed runtime access for Konekti applications.",
   "keywords": [
     "konekti",
@@ -42,7 +42,7 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
+    "@fluojs/core": "workspace:*",
     "dotenv": "^16.0.0",
     "dotenv-expand": "^11.0.0"
   },

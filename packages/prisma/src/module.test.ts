@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
-import { Global, Module } from '@konekti/core';
+import { Inject } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { Global, Module } from '@fluojs/core';
 
 import {
   PrismaModule,
@@ -49,7 +49,7 @@ const prismaTransactionClientInferenceChecked: _PrismaTransactionClientInference
 void prismaServiceCurrentInferenceChecked;
 void prismaTransactionClientInferenceChecked;
 
-describe('@konekti/prisma', () => {
+describe('@fluojs/prisma', () => {
   it('connects, reuses transaction-scoped handles, and disconnects through lifecycle hooks', async () => {
     const events: string[] = [];
     const transactionClient = {

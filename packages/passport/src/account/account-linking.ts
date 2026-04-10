@@ -1,4 +1,4 @@
-import { KonektiError, type MaybePromise } from '@konekti/core';
+import { KonektiError, type MaybePromise } from '@fluojs/core';
 
 /** DI token for registering an account-linking policy implementation. */
 export const ACCOUNT_LINKING_POLICY = Symbol.for('konekti.passport.account-linking-policy');

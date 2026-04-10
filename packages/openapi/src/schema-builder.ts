@@ -1,6 +1,6 @@
-import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
-import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@konekti/core/internal';
-import type { HandlerDescriptor, HttpMethod } from '@konekti/http';
+import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/internal';
+import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
 import {
   type ApiParameterMetadata,
   getControllerTags,

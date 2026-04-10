@@ -7,7 +7,7 @@ import {
   type FrameworkResponseCompression,
   type FrameworkResponse,
   type FrameworkResponseStream,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 

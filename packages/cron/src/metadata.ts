@@ -1,5 +1,5 @@
-import { type MetadataPropertyKey } from '@konekti/core';
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@konekti/core/internal';
+import { type MetadataPropertyKey } from '@fluojs/core';
+import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
 
 import type { CronTaskMetadata, SchedulingTaskMetadata } from './types.js';
 

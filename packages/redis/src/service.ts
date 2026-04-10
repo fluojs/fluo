@@ -1,6 +1,6 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 import type Redis from 'ioredis';
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { createRedisPlatformStatusSnapshot } from './status.js';
 import { REDIS_CLIENT } from './tokens.js';

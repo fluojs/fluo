@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
 export type CqrsLifecycleState = 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed';
 

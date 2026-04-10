@@ -71,7 +71,7 @@ export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) =>
  * Create a request-scoped `DataLoader` accessor.
  *
  * This is the recommended first-party entry point for DataLoader usage in
- * `@konekti/graphql`.  It combines the `dataloader` package with Konekti's
+ * `@fluojs/graphql`.  It combines the `dataloader` package with Konekti's
  * per-operation request-scoped cache so that:
  *
  * - Each GraphQL operation gets its own `DataLoader` instance (cache isolation).
@@ -80,7 +80,7 @@ export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) =>
  *
  * @example
  * ```ts
- * import { createDataLoader, type GraphQLContext } from '@konekti/graphql';
+ * import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
  *
  * const getUserById = createDataLoader<string, User | null>(async (ids) => {
  *   const users = await userRepo.findManyByIds([...ids]);

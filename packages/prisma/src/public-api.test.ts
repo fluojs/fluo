@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as prismaPublicApi from './index.js';
 
-describe('@konekti/prisma public API surface', () => {
+describe('@fluojs/prisma public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(prismaPublicApi).toHaveProperty('PrismaModule');
     expect(prismaPublicApi).toHaveProperty('createPrismaProviders');

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 
 import type { ContextKey, RequestContext } from '../types.js';
 

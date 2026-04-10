@@ -1,9 +1,9 @@
 // @ts-ignore Worktree-local LSP does not resolve workspace package aliases.
-import { Controller, Get, Post, SseResponse, type RequestContext } from '@konekti/http';
+import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
 // @ts-ignore Worktree-local LSP does not resolve workspace package aliases.
-import { defineModule, type ModuleType, type UploadedFile } from '@konekti/runtime';
+import { defineModule, type ModuleType, type UploadedFile } from '@fluojs/runtime';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;

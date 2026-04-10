@@ -1,6 +1,6 @@
-import type { AsyncModuleOptions, MaybePromise } from '@konekti/core';
-import type { NotificationDispatchRequest } from '@konekti/notifications';
-import type { QueueBackoffOptions, QueueRateLimiterOptions } from '@konekti/queue';
+import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { NotificationDispatchRequest } from '@fluojs/notifications';
+import type { QueueBackoffOptions, QueueRateLimiterOptions } from '@fluojs/queue';
 
 /** RFC 5322-style email address with an optional display name. */
 export interface EmailAddress {

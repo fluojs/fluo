@@ -7,7 +7,7 @@ type ExportTarget = {
   types: string;
 };
 
-describe('@konekti/microservices transport subpath exports', () => {
+describe('@fluojs/microservices transport subpath exports', () => {
   it('keeps documented transport subpaths aligned with emitted dist artifacts', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),

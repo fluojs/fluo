@@ -1,5 +1,5 @@
-import type { AsyncModuleOptions, MaybePromise } from '@konekti/core';
-import type { NotificationDispatchRequest } from '@konekti/notifications';
+import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { NotificationDispatchRequest } from '@fluojs/notifications';
 
 /** Opaque Slack Block Kit object forwarded to one transport implementation. */
 export type SlackBlock = Readonly<Record<string, unknown>>;

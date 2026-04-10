@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { Controller, Get, UnauthorizedException, createDispatcher, createHandlerMapping } from '@konekti/http';
-import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@konekti/http';
-import { Container } from '@konekti/di';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import { Controller, Get, UnauthorizedException, createDispatcher, createHandlerMapping } from '@fluojs/http';
+import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@fluojs/http';
+import { Container } from '@fluojs/di';
+import { DefaultJwtVerifier } from '@fluojs/jwt';
 
 import { RequireScopes, UseAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';

@@ -1,4 +1,4 @@
-import type { MaybePromise } from '@konekti/core';
+import type { MaybePromise } from '@fluojs/core';
 
 /**
  * Minimal Mongoose connection seam that optionally supports session creation.

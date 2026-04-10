@@ -8,8 +8,8 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
   type RequestContext,
-} from '@konekti/http';
-import { defineModule, type ApplicationLogger } from '@konekti/runtime';
+} from '@fluojs/http';
+import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
   bootstrapDenoApplication,
@@ -127,7 +127,7 @@ function createMockDenoSocket(): DenoServerWebSocket {
   };
 }
 
-describe('@konekti/platform-deno', () => {
+describe('@fluojs/platform-deno', () => {
   it('dispatches requests through the shared Web request/response core', async () => {
     @Controller('/hooks')
     class WebhookController {
@@ -360,7 +360,7 @@ describe('@konekti/platform-deno', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       support: 'supported',
       version: 1,
     });

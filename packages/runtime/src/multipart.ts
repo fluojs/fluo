@@ -1,4 +1,4 @@
-import { PayloadTooLargeException } from '@konekti/http';
+import { PayloadTooLargeException } from '@fluojs/http';
 
 export interface UploadedFile {
   fieldname: string;

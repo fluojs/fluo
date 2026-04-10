@@ -3,8 +3,8 @@ import { request as httpsRequest } from 'node:https';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { Controller, Get, Post, SseResponse, type FrameworkRequest, type RequestContext } from '@konekti/http';
-import { createHealthModule, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { Controller, Get, Post, SseResponse, type FrameworkRequest, type RequestContext } from '@fluojs/http';
+import { createHealthModule, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
   bootstrapFastifyApplication,
@@ -123,7 +123,7 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-describe('@konekti/platform-fastify', () => {
+describe('@fluojs/platform-fastify', () => {
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';

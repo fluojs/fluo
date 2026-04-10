@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Container } from '@konekti/di';
+import { Container } from '@fluojs/di';
 
 import type { FrameworkResponse, Middleware, MiddlewareContext, MiddlewareLike, Next } from '../types.js';
 import { forRoutes, isMiddlewareRouteConfig, runMiddlewareChain } from './middleware.js';

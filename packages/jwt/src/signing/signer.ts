@@ -1,6 +1,6 @@
 import { createHmac, createSign } from 'node:crypto';
 
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 
 import { JwtConfigurationError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';

@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions } from '@konekti/core';
+import type { AsyncModuleOptions } from '@fluojs/core';
 
 /** Opaque payload shape carried through the shared notification contract. */
 export type NotificationPayload = Record<string, unknown>;
@@ -72,7 +72,7 @@ export interface NotificationsQueueJob<TRequest extends NotificationDispatchRequ
  *
  * @remarks
  * The foundation package intentionally depends on this abstract contract instead of
- * a concrete `@konekti/queue` type so that queue-backed delivery remains optional.
+ * a concrete `@fluojs/queue` type so that queue-backed delivery remains optional.
  */
 export interface NotificationsQueueAdapter {
   /**

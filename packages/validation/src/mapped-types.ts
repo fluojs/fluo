@@ -1,7 +1,7 @@
 import {
   type Constructor,
   type MetadataPropertyKey,
-} from '@konekti/core';
+} from '@fluojs/core';
 import {
   appendClassValidationRule,
   appendDtoFieldValidationRule,
@@ -9,7 +9,7 @@ import {
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
-} from '@konekti/core/internal';
+} from '@fluojs/core/internal';
 
 type DtoConstructor<T = object> = Constructor<T>;
 

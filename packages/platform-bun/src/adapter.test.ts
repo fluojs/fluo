@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Controller, Get, Post, SseResponse, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@konekti/http';
-import { defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { Controller, Get, Post, SseResponse, type FrameworkRequest, type FrameworkResponse, type RequestContext } from '@fluojs/http';
+import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
   BunHttpApplicationAdapter,
@@ -116,7 +116,7 @@ function createMockServerWebSocket(data: unknown): BunServerWebSocket<unknown> {
   };
 }
 
-describe('@konekti/platform-bun', () => {
+describe('@fluojs/platform-bun', () => {
   it('translates Bun-style Request semantics into the framework request contract', async () => {
     const fetch = createBunFetchHandler({
       dispatcher: {
@@ -367,7 +367,7 @@ describe('@konekti/platform-bun', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       support: 'supported',
       version: 1,
     });

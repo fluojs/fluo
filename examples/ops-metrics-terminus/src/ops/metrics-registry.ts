@@ -1,4 +1,4 @@
-import { PrometheusMeterProvider, Registry } from '@konekti/metrics';
+import { PrometheusMeterProvider, Registry } from '@fluojs/metrics';
 
 export const sharedRegistry = new Registry();
 const meter = new PrometheusMeterProvider(sharedRegistry);

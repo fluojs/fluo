@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import type { ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import type { ModuleType } from '@fluojs/runtime';
 
 import { createNodeWebSocketProviders, NodeWebSocketModule } from './node.js';
 import type { WebSocketModuleOptions } from './types.js';
@@ -26,8 +26,8 @@ export class WebSocketModule {
    *
    * @example
    * ```ts
-   * import { Module } from '@konekti/core';
-   * import { WebSocketModule } from '@konekti/websockets';
+   * import { Module } from '@fluojs/core';
+   * import { WebSocketModule } from '@fluojs/websockets';
    *
    * @Module({
    *   imports: [WebSocketModule.forRoot()],

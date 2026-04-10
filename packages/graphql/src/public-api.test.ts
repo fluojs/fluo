@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as graphqlPublicApi from './index.js';
 
-describe('@konekti/graphql public API surface', () => {
+describe('@fluojs/graphql public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(graphqlPublicApi).toHaveProperty('Arg');
     expect(graphqlPublicApi).toHaveProperty('Query');

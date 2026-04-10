@@ -1,4 +1,4 @@
-import { getCurrentRequestContext } from '@konekti/http';
+import { getCurrentRequestContext } from '@fluojs/http';
 
 import type { ApplicationLogger } from '../types.js';
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as cqrs from './index.js';
 
-describe('@konekti/cqrs root barrel public surface', () => {
+describe('@fluojs/cqrs root barrel public surface', () => {
   it('keeps the documented root exports stable for 0.x governance', () => {
     expect(cqrs).toHaveProperty('CqrsModule');
     expect(cqrs).not.toHaveProperty('createCqrsModule');

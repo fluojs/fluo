@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
 import { SocketIoLifecycleService } from './adapter.js';
@@ -17,7 +17,7 @@ import type { SocketIoModuleOptions } from './types.js';
  *
  * @example
  * ```ts
- * import { createSocketIoProviders } from '@konekti/socket.io';
+ * import { createSocketIoProviders } from '@fluojs/socket.io';
  *
  * const providers = createSocketIoProviders({
  *   shutdown: { timeoutMs: 5_000 },
@@ -58,8 +58,8 @@ export class SocketIoModule {
    *
    * @example
    * ```ts
-   * import { Module } from '@konekti/core';
-   * import { SocketIoModule } from '@konekti/socket.io';
+   * import { Module } from '@fluojs/core';
+   * import { SocketIoModule } from '@fluojs/socket.io';
    *
    * @Module({
    *   imports: [SocketIoModule.forRoot()],

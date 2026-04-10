@@ -1,6 +1,6 @@
-import type { AsyncModuleOptions, MaybePromise } from '@konekti/core';
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { SlackConfigurationError } from './errors.js';
 import { SlackChannel } from './channel.js';

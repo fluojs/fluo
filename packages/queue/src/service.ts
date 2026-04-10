@@ -1,15 +1,15 @@
-import { Inject } from '@konekti/core';
-import { cloneWithFallback } from '@konekti/core/internal';
-import type { Container } from '@konekti/di';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { Inject } from '@fluojs/core';
+import { cloneWithFallback } from '@fluojs/core/internal';
+import type { Container } from '@fluojs/di';
+import { REDIS_CLIENT } from '@fluojs/redis';
 import {
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
 
 import { getQueueWorkerMetadata } from './metadata.js';
@@ -251,7 +251,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private getRedisClient(): QueueRedisClient {
     if (!hasQueueRedisClient(this.redisClient)) {
-      throw new Error('@konekti/queue requires REDIS_CLIENT with duplicate() and rpush() methods.');
+      throw new Error('@fluojs/queue requires REDIS_CLIENT with duplicate() and rpush() methods.');
     }
 
     return this.redisClient;

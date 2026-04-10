@@ -1,5 +1,5 @@
-import { Module } from '@konekti/core';
-import { createHealthModule } from '@konekti/runtime';
+import { Module } from '@fluojs/core';
+import { createHealthModule } from '@fluojs/runtime';
 
 import { AuthModule } from './auth/auth.module';
 

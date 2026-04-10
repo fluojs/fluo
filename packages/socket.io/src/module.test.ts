@@ -2,19 +2,19 @@ import { createServer as createHttpServer, type IncomingMessage, type Server as 
 import { createServer as createNetServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
-import { Inject, Scope } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
+import { Inject, Scope } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import {
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
   type HttpApplicationAdapter,
-} from '@konekti/http';
-import { createExpressAdapter } from '@konekti/platform-express';
-import { createFastifyAdapter } from '@konekti/platform-fastify';
-import { createNodejsAdapter } from '@konekti/platform-nodejs';
-import { bootstrapApplication, defineModule, KonektiFactory, type Application, type ApplicationLogger, type ModuleType } from '@konekti/runtime';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
-import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@konekti/websockets';
+} from '@fluojs/http';
+import { createExpressAdapter } from '@fluojs/platform-express';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { createNodejsAdapter } from '@fluojs/platform-nodejs';
+import { bootstrapApplication, defineModule, KonektiFactory, type Application, type ApplicationLogger, type ModuleType } from '@fluojs/runtime';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '@fluojs/websockets';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { Server as SocketIoServer, Socket } from 'socket.io';
 
@@ -175,7 +175,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/socket.io for the official Bun engine binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/socket.io for the official Bun engine binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -283,7 +283,7 @@ async function createSocketIoAdapterFirstApplication(
   });
 }
 
-describe('@konekti/socket.io', () => {
+describe('@fluojs/socket.io', () => {
   it('keeps lifecycle and options tokens out of the root public entrypoint', () => {
     expect(publicApi.SOCKETIO_ROOM_SERVICE).toBeDefined();
     expect(publicApi.SOCKETIO_SERVER).toBeDefined();
@@ -390,7 +390,7 @@ describe('@konekti/socket.io', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/socket.io when using @konekti/platform-bun');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io when using @fluojs/platform-bun');
   });
 
   it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {

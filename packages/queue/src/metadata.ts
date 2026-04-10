@@ -1,4 +1,4 @@
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@konekti/core/internal';
+import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
 
 import type { QueueWorkerMetadata } from './types.js';
 

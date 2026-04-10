@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/event-bus",
+  "name": "@fluojs/event-bus",
   "description": "In-process event publishing and handler discovery for Konekti applications.",
   "keywords": [
     "konekti",
@@ -46,9 +46,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "peerDependencies": {
     "ioredis": "^5.0.0"

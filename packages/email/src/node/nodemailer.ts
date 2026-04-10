@@ -13,7 +13,7 @@ import type {
   NormalizedEmailMessage,
 } from '../types.js';
 
-/** Node-only Nodemailer transporter type used by the explicit `@konekti/email/node` seam. */
+/** Node-only Nodemailer transporter type used by the explicit `@fluojs/email/node` seam. */
 export type NodemailerTransporter = Mail<SMTPTransport.SentMessageInfo>;
 
 /**
@@ -22,7 +22,7 @@ export type NodemailerTransporter = Mail<SMTPTransport.SentMessageInfo>;
  * @remarks
  * Use this when your application already constructs and manages the Nodemailer transporter
  * at the Node boundary, but you still want to satisfy the shared {@link EmailTransport}
- * contract consumed by `@konekti/email`.
+ * contract consumed by `@fluojs/email`.
  */
 export interface NodemailerEmailTransportOptions {
   /** Existing Nodemailer transporter instance that remains owned by the caller. */
@@ -30,7 +30,7 @@ export interface NodemailerEmailTransportOptions {
 }
 
 /**
- * Options for creating a factory-owned SMTP transporter behind `@konekti/email/node`.
+ * Options for creating a factory-owned SMTP transporter behind `@fluojs/email/node`.
  *
  * @remarks
  * The resulting factory advertises `ownsResources: true`, allowing the shared email module
@@ -99,7 +99,7 @@ function normalizeAddressList(value: unknown): string[] {
  * Node-only {@link EmailTransport} adapter that forwards normalized email messages to Nodemailer.
  *
  * @remarks
- * This adapter intentionally lives behind `@konekti/email/node` so SMTP/Nodemailer behavior,
+ * This adapter intentionally lives behind `@fluojs/email/node` so SMTP/Nodemailer behavior,
  * verification, and connection cleanup never leak into the transport-agnostic root barrel.
  */
 export class NodemailerEmailTransport implements EmailTransport {
@@ -167,7 +167,7 @@ export function createNodemailerEmailTransport(options: NodemailerEmailTransport
 }
 
 /**
- * Creates a factory-owned Nodemailer SMTP transport for the explicit `@konekti/email/node` entrypoint.
+ * Creates a factory-owned Nodemailer SMTP transport for the explicit `@fluojs/email/node` entrypoint.
  *
  * @param options SMTP connection settings and an optional diagnostic label.
  * @returns An {@link EmailTransportFactory} that lazily creates a Nodemailer transport and marks ownership as internal.

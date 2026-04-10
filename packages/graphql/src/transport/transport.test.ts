@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { FrameworkResponse } from '@konekti/http';
+import type { FrameworkResponse } from '@fluojs/http';
 
 import { writeFetchResponse } from './transport.js';
 

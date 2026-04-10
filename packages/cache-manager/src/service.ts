@@ -1,4 +1,4 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';

@@ -1,4 +1,4 @@
-import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpMethod, Middleware, Principal } from '@konekti/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpMethod, Middleware, Principal } from '@fluojs/http';
 
 /**
  * Principal payload used by testing request helpers.

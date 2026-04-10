@@ -4,7 +4,7 @@ import type { ServerResponse } from 'node:http';
 import type {
   FrameworkResponseCompression,
   FrameworkResponseCompressionWriteOptions,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 const COMPRESS_THRESHOLD = 1024;
 

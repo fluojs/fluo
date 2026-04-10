@@ -1,5 +1,5 @@
-import type { Constructor, MaybePromise, Token } from '@konekti/core';
-import type { Container, Provider } from '@konekti/di';
+import type { Constructor, MaybePromise, Token } from '@fluojs/core';
+import type { Container, Provider } from '@fluojs/di';
 import type {
   ConverterLike,
   Dispatcher,
@@ -10,7 +10,7 @@ import type {
   MiddlewareLike,
   RequestObserverLike,
   VersioningOptions,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
 import type { PlatformComponentInput } from './platform-contract.js';

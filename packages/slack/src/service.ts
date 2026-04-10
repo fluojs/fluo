@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { SlackMessageValidationError } from './errors.js';
 import { createSlackPlatformStatusSnapshot } from './status.js';
@@ -44,7 +44,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  * @remarks
  * The service stays transport-agnostic at the shared package boundary, consumes only
  * explicitly injected {@link SlackTransport} contracts, and translates
- * `@konekti/notifications` envelopes into concrete Slack messages.
+ * `@fluojs/notifications` envelopes into concrete Slack messages.
  */
 @Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {

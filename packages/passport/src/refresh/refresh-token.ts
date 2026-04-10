@@ -1,6 +1,6 @@
-import type { GuardContext, RequestContext } from '@konekti/http';
-import { Inject, InvariantError, type Token } from '@konekti/core';
-import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
+import type { GuardContext, RequestContext } from '@fluojs/http';
+import { Inject, InvariantError, type Token } from '@fluojs/core';
+import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,

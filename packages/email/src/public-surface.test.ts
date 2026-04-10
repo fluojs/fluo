@@ -12,7 +12,7 @@ import type {
   EmailTransportFactory,
 } from './index.js';
 
-describe('@konekti/email public API surface', () => {
+describe('@fluojs/email public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
     expect(emailPublicApi).toHaveProperty('EmailModule');
     expect(emailPublicApi).toHaveProperty('createEmailProviders');

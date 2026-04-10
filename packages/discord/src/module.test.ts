@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Constructor, Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container, type Provider } from '@konekti/di';
+import type { Constructor, Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
 
 import { DiscordChannel } from './channel.js';
 import { DiscordConfigurationError, DiscordMessageValidationError, DiscordTransportError } from './errors.js';

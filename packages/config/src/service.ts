@@ -1,4 +1,4 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 
 import { cloneConfigDictionary } from './clone.js';
 import type { ConfigDictionary, DotPaths, DotValue } from './types.js';

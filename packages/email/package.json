@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/email",
+  "name": "@fluojs/email",
   "description": "Transport-agnostic email delivery core for Konekti with notifications and queue integration seams.",
   "keywords": [
     "konekti",
@@ -52,11 +52,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/notifications": "workspace:*",
-    "@konekti/queue": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/notifications": "workspace:*",
+    "@fluojs/queue": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "nodemailer": "^6.10.1"
   },
   "devDependencies": {

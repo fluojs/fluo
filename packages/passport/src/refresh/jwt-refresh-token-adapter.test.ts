@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, type RefreshTokenStore } from '@konekti/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, type RefreshTokenStore } from '@fluojs/jwt';
 
 import { JwtRefreshTokenAdapter } from './jwt-refresh-token-adapter.js';
 

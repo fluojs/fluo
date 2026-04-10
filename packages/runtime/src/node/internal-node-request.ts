@@ -10,7 +10,7 @@ import {
   BadRequestException,
   PayloadTooLargeException,
   type FrameworkRequest,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import {
   parseMultipart,

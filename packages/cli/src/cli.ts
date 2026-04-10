@@ -272,7 +272,7 @@ function parseCommand(argv: string[]): ParsedCommand {
  *
  * @example
  * ```ts
- * import { runCli } from '@konekti/cli';
+ * import { runCli } from '@fluojs/cli';
  *
  * const output: string[] = [];
  * const exitCode = await runCli(['generate', 'service', 'Post'], {

@@ -1,5 +1,5 @@
-import { type MetadataPropertyKey } from '@konekti/core';
-import { metadataSymbol } from '@konekti/core/internal';
+import { type MetadataPropertyKey } from '@fluojs/core';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 

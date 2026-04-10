@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CallHandler, HttpMethod, InterceptorContext, Principal, RequestContext } from '@konekti/http';
+import type { CallHandler, HttpMethod, InterceptorContext, Principal, RequestContext } from '@fluojs/http';
 
 import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';

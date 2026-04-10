@@ -17,7 +17,7 @@ import type {
   ServerStreamWriter,
 } from './index.js';
 
-describe('@konekti/microservices public API surface', () => {
+describe('@fluojs/microservices public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(microservicesPublicApi).toHaveProperty('MicroservicesModule');
     expect(microservicesPublicApi).toHaveProperty('createMicroservicesProviders');

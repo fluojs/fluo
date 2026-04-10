@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import {
   Controller,
   FromBody,
@@ -14,7 +14,7 @@ import {
   UseInterceptors,
   type FrameworkRequest,
   type FrameworkResponse,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import { MongooseModule, MongooseConnection, MongooseTransactionInterceptor } from './index.js';
 import type { MongooseConnectionLike, MongooseSessionLike } from './types.js';
@@ -66,7 +66,7 @@ function createRequest(
   };
 }
 
-describe('@konekti/mongoose vertical slice', () => {
+describe('@fluojs/mongoose vertical slice', () => {
   it('propagates session through the request interceptor path', async () => {
     type UserRecord = {
       email: string;

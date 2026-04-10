@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import type { HttpApplicationAdapter } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { HttpApplicationAdapter } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
@@ -179,7 +179,7 @@ class TestDenoAdapter implements HttpApplicationAdapter, DenoWebSocketBindingHos
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -202,7 +202,7 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('@konekti/websockets/deno', () => {
+describe('@fluojs/websockets/deno', () => {
   it('exposes the explicit Deno websocket seam', () => {
     expect(denoPublicApi).toHaveProperty('DenoWebSocketModule');
     expect(denoPublicApi).toHaveProperty('DenoWebSocketGatewayLifecycleService');
@@ -242,7 +242,7 @@ describe('@konekti/websockets/deno', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/deno');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/deno');
   });
 
   it('preserves Deno-backed websocket behavior through the explicit deno seam', async () => {

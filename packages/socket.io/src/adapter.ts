@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage } from 'node:http';
 
-import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Container, Provider } from '@konekti/di';
-import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@konekti/http';
+import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Container, Provider } from '@fluojs/di';
+import type { HttpApplicationAdapter, HttpAdapterRealtimeCapability } from '@fluojs/http';
 import { Server as BunEngineServer } from '@socket.io/bun-engine';
 import type {
   ApplicationLogger,
@@ -12,14 +12,14 @@ import type {
   OnApplicationBootstrap,
   OnApplicationShutdown,
   OnModuleDestroy,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import {
   getWebSocketGatewayMetadata,
   getWebSocketHandlerMetadataEntries,
   type WebSocketGatewayDescriptor,
   type WebSocketGatewayHandlerDescriptor,
-} from '@konekti/websockets';
+} from '@fluojs/websockets';
 import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
@@ -158,7 +158,7 @@ function normalizeCorsForBunEngine(cors: SocketIoModuleOptions['cors']): BunEngi
 
   if (typeof cors === 'function') {
     throw new Error(
-      'Socket.IO Bun bootstrap does not support CORS delegate functions. Use static CORS options with @konekti/platform-bun.',
+      'Socket.IO Bun bootstrap does not support CORS delegate functions. Use static CORS options with @fluojs/platform-bun.',
     );
   }
 
@@ -166,13 +166,13 @@ function normalizeCorsForBunEngine(cors: SocketIoModuleOptions['cors']): BunEngi
 
   if (typeof origin === 'function') {
     throw new Error(
-      'Socket.IO Bun bootstrap does not support function-based cors.origin handlers. Use static origin values with @konekti/platform-bun.',
+      'Socket.IO Bun bootstrap does not support function-based cors.origin handlers. Use static origin values with @fluojs/platform-bun.',
     );
   }
 
   if (Array.isArray(origin) && origin.some((value) => typeof value === 'boolean')) {
     throw new Error(
-      'Socket.IO Bun bootstrap does not support boolean entries inside cors.origin arrays. Use string or RegExp origins with @konekti/platform-bun.',
+      'Socket.IO Bun bootstrap does not support boolean entries inside cors.origin arrays. Use string or RegExp origins with @fluojs/platform-bun.',
     );
   }
 
@@ -204,7 +204,7 @@ function resolveSocketIoBootstrapRuntime(
 ): SocketIoBootstrapRuntime {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Socket.IO bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability or @konekti/platform-bun for the official Bun engine path.',
+      'Socket.IO bootstrap requires an HTTP adapter with getRealtimeCapability(). Use a platform adapter that exposes a server-backed realtime capability or @fluojs/platform-bun for the official Bun engine path.',
     );
   }
 
@@ -231,7 +231,7 @@ function resolveSocketIoBootstrapRuntime(
 
   if (!hasBunRealtimeBindingHost(adapter)) {
     throw new Error(
-      'Socket.IO Bun bootstrap requires the selected adapter to expose Bun realtime binding configuration. Use @konekti/platform-bun for the official Bun engine path.',
+      'Socket.IO Bun bootstrap requires the selected adapter to expose Bun realtime binding configuration. Use @fluojs/platform-bun for the official Bun engine path.',
     );
   }
 
@@ -509,7 +509,7 @@ export class SocketIoLifecycleService
     }
 
     throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/socket.io when using @konekti/platform-bun. Gateway path ${descriptor.path} must use the official Bun engine host instead.`,
+      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io when using @fluojs/platform-bun. Gateway path ${descriptor.path} must use the official Bun engine host instead.`,
     );
   }
 

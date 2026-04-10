@@ -1,6 +1,6 @@
-import { Inject } from '@konekti/core';
-import type { NotificationsQueueAdapter, NotificationsQueueJob } from '@konekti/notifications';
-import { QueueLifecycleService, QueueWorker } from '@konekti/queue';
+import { Inject } from '@fluojs/core';
+import type { NotificationsQueueAdapter, NotificationsQueueJob } from '@fluojs/notifications';
+import { QueueLifecycleService, QueueWorker } from '@fluojs/queue';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailService } from './service.js';

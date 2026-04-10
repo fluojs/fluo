@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as drizzlePublicApi from './index.js';
 
-describe('@konekti/drizzle public API surface', () => {
+describe('@fluojs/drizzle public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(drizzlePublicApi).toHaveProperty('DrizzleDatabase');
     expect(drizzlePublicApi).toHaveProperty('DrizzleModule');

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp, createTestingModule } from '@konekti/testing';
-import { KonektiFactory } from '@konekti/runtime';
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
+import { createTestApp, createTestingModule } from '@fluojs/testing';
+import { KonektiFactory } from '@fluojs/runtime';
+import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import { AppModule } from './app';
 import { AuthService } from './auth/auth.service';

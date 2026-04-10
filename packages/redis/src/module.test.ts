@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 interface MockRedisInstance {
   options: Record<string, unknown>;
@@ -84,7 +84,7 @@ import {
   RedisService,
 } from './index.js';
 
-describe('@konekti/redis', () => {
+describe('@fluojs/redis', () => {
   beforeEach(() => {
     mockRedisState.connectError = undefined;
     mockRedisState.disconnectLeavesOpen = false;

@@ -1,7 +1,7 @@
-import { ForbiddenException, UnauthorizedException, type GuardContext } from '@konekti/http';
-import type { Principal } from '@konekti/http';
-import { Inject, type Token } from '@konekti/core';
-import { ContainerResolutionError } from '@konekti/di';
+import { ForbiddenException, UnauthorizedException, type GuardContext } from '@fluojs/http';
+import type { Principal } from '@fluojs/http';
+import { Inject, type Token } from '@fluojs/core';
+import { ContainerResolutionError } from '@fluojs/di';
 
 import {
   AuthenticationExpiredError,
@@ -57,7 +57,7 @@ function toErrorMessage(error: unknown): string {
  * and writes the resulting principal back to `requestContext.principal`.
  *
  * @remarks
- * `AuthGuard` preserves the public contract documented in `@konekti/passport`:
+ * `AuthGuard` preserves the public contract documented in `@fluojs/passport`:
  * authentication failures become canonical `401 Unauthorized` responses, scope
  * mismatches become `403 Forbidden`, and strategies may short-circuit the
  * response by returning `{ handled: true }` after committing the response.

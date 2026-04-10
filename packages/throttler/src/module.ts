@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { ThrottlerGuard } from './guard.js';
 import { THROTTLER_OPTIONS } from './tokens.js';

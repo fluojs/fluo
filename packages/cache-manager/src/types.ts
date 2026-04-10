@@ -1,4 +1,4 @@
-import type { InterceptorContext } from '@konekti/http';
+import type { InterceptorContext } from '@fluojs/http';
 
 type Awaitable<T> = T | Promise<T>;
 

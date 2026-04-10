@@ -5,9 +5,9 @@ import {
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@konekti/runtime';
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
-import { Inject } from '@konekti/core';
+} from '@fluojs/runtime';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
+import { Inject } from '@fluojs/core';
 
 import { createPrismaPlatformStatusSnapshot } from './status.js';
 import { PRISMA_CLIENT, PRISMA_OPTIONS } from './tokens.js';

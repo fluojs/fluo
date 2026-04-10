@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@konekti/notifications';
+import { Inject } from '@fluojs/core';
+import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@fluojs/notifications';
 
 import { DiscordTransportError } from './errors.js';
 import { DiscordService } from './service.js';
@@ -7,10 +7,10 @@ import { DISCORD_OPTIONS } from './tokens.js';
 import type { DiscordNotificationDispatchRequest, DiscordSendResult, NormalizedDiscordModuleOptions } from './types.js';
 
 /**
- * Notification channel implementation that bridges `@konekti/notifications` to {@link DiscordService}.
+ * Notification channel implementation that bridges `@fluojs/notifications` to {@link DiscordService}.
  *
  * @remarks
- * This class keeps the foundation package channel-agnostic while allowing `@konekti/discord`
+ * This class keeps the foundation package channel-agnostic while allowing `@fluojs/discord`
  * to interpret Discord-specific payload fields, webhook delivery, and transport behavior.
  */
 @Inject(DiscordService, DISCORD_OPTIONS)

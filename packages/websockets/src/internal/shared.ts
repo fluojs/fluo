@@ -1,7 +1,7 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Provider, Container } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule } from '@konekti/runtime';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Provider, Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from '../metadata.js';
 import type {

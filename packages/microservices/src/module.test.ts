@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope } from '@konekti/core';
-import { defineControllerMetadata, defineModuleMetadata } from '@konekti/core/internal';
-import { bootstrapApplication, KonektiFactory } from '@konekti/runtime';
+import { Inject, Scope } from '@fluojs/core';
+import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
+import { bootstrapApplication, KonektiFactory } from '@fluojs/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
@@ -185,7 +185,7 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
   }
 }
 
-describe('@konekti/microservices', () => {
+describe('@fluojs/microservices', () => {
   it('supports createMicroservice with message and event handlers', async () => {
     class Store {
       createdEvents: string[] = [];

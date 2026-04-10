@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 import { Cron as CronValidator } from 'croner';
 
 import { schedulingMetadataSymbol } from './metadata.js';
@@ -58,7 +58,7 @@ function assertMethodIsPublic(context: ClassMethodDecoratorContext, decoratorNam
  *
  * @example
  * ```ts
- * import { Cron, CronExpression } from '@konekti/cron';
+ * import { Cron, CronExpression } from '@fluojs/cron';
  *
  * class BillingService {
  *   @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })

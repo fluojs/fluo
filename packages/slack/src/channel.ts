@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@konekti/notifications';
+import { Inject } from '@fluojs/core';
+import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@fluojs/notifications';
 
 import { SlackTransportError } from './errors.js';
 import { SlackService } from './service.js';
@@ -7,10 +7,10 @@ import { SLACK_OPTIONS } from './tokens.js';
 import type { NormalizedSlackModuleOptions, SlackNotificationDispatchRequest, SlackSendResult } from './types.js';
 
 /**
- * Notification channel implementation that bridges `@konekti/notifications` to {@link SlackService}.
+ * Notification channel implementation that bridges `@fluojs/notifications` to {@link SlackService}.
  *
  * @remarks
- * This class keeps the foundation package channel-agnostic while allowing `@konekti/slack`
+ * This class keeps the foundation package channel-agnostic while allowing `@fluojs/slack`
  * to interpret Slack-specific payload fields, webhook delivery, and transport behavior.
  */
 @Inject(SlackService, SLACK_OPTIONS)

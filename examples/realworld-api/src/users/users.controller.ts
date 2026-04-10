@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import { Controller, Get, Post, RequestDto } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Get, Post, RequestDto } from '@fluojs/http';
 
 import { CreateUserDto } from './create-user.dto';
 import type { UserResponseDto } from './user-response.dto';

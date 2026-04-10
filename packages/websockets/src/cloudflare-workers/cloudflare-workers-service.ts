@@ -1,8 +1,8 @@
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import {
   dispatchGatewayDisconnect,
@@ -85,7 +85,7 @@ function resolveSupportedFetchStyleRealtimeCapability(
 ): FetchStyleRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Cloudflare Workers WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-cloudflare-workers together with @konekti/websockets/cloudflare-workers.',
+      'Cloudflare Workers WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @fluojs/platform-cloudflare-workers together with @fluojs/websockets/cloudflare-workers.',
     );
   }
 
@@ -143,7 +143,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
     if (!hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
       throw new Error(
-        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose Cloudflare websocket binding configuration. Use @konekti/platform-cloudflare-workers with @konekti/websockets/cloudflare-workers.',
+        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose Cloudflare websocket binding configuration. Use @fluojs/platform-cloudflare-workers with @fluojs/websockets/cloudflare-workers.',
       );
     }
 
@@ -160,7 +160,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
     }
 
     throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/cloudflare-workers. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
+      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/cloudflare-workers. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
     );
   }
 

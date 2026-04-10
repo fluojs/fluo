@@ -3,19 +3,19 @@ import { describe, it } from 'vitest';
 import {
   bootstrapFastifyApplication,
   runFastifyApplication,
-} from '@konekti/platform-fastify';
+} from '@fluojs/platform-fastify';
 import {
   bootstrapExpressApplication,
   runExpressApplication,
-} from '@konekti/platform-express';
+} from '@fluojs/platform-express';
 import {
   bootstrapNodejsApplication,
   runNodejsApplication,
-} from '@konekti/platform-nodejs';
+} from '@fluojs/platform-nodejs';
 import {
   bootstrapNodeApplication,
   runNodeApplication,
-} from '@konekti/runtime/node';
+} from '@fluojs/runtime/node';
 
 import { createHttpAdapterPortabilityHarness } from './http-adapter-portability.js';
 

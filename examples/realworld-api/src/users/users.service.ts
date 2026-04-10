@@ -1,4 +1,4 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 
 import { UsersRepo } from './users.repo';
 import type { UserResponseDto } from './user-response.dto';

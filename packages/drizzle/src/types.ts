@@ -1,4 +1,4 @@
-import type { MaybePromise } from '@konekti/core';
+import type { MaybePromise } from '@fluojs/core';
 
 type DrizzleTransactionCallback<TTransactionDatabase, TResult> = (database: TTransactionDatabase) => Promise<TResult>;
 

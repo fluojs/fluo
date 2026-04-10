@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import { queueWorkerMetadataSymbol } from './metadata.js';
 import type { QueueJobType, QueueWorkerMetadata, QueueWorkerOptions } from './types.js';
@@ -28,7 +28,7 @@ function defineStandardQueueWorkerMetadata(metadata: unknown, workerMetadata: Qu
  *
  * @example
  * ```ts
- * import { QueueWorker } from '@konekti/queue';
+ * import { QueueWorker } from '@fluojs/queue';
  *
  * class SendEmailJob {
  *   constructor(public readonly email: string) {}

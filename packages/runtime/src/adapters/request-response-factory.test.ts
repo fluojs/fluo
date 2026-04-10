@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
+import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import {
   dispatchWithRequestResponseFactory,

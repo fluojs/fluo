@@ -1,4 +1,4 @@
-import type { Dispatcher, FrameworkRequest, FrameworkResponse } from '@konekti/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 export interface RequestResponseFactory<
   RawRequest,

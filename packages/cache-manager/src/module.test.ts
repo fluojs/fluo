@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import { CacheEvict } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
@@ -129,7 +129,7 @@ describe('CacheModule.forRoot', () => {
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
-      '@konekti/cache-manager redis store requires a Redis client at bootstrap.',
+      '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
     );
   });
 

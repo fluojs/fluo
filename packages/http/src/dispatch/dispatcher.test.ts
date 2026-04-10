@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Container } from '@konekti/di';
+import { Container } from '@fluojs/di';
 
 import type {
   FrameworkRequest,
@@ -10,7 +10,7 @@ import type {
   MiddlewareContext,
   Next,
   RequestObservationContext,
-} from '@konekti/http';
+} from '@fluojs/http';
 import {
   Convert,
   FromBody,
@@ -31,10 +31,10 @@ import {
   UseInterceptors,
   type assertRequestContext,
   getCurrentRequestContext,
-} from '@konekti/http';
-import { IsNumber, IsString, MinLength, ValidateNested } from '@konekti/validation';
+} from '@fluojs/http';
+import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {

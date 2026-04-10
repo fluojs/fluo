@@ -19,7 +19,7 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
     }
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string };
-    const scopeName = manifest.name ?? `@konekti/${packageDirectoryName}`;
+    const scopeName = manifest.name ?? `@fluojs/${packageDirectoryName}`;
 
     for (const sourceEntry of readdirSync(sourceRoot)) {
       if (extname(sourceEntry) !== '.ts' || sourceEntry.endsWith('.test.ts') || sourceEntry === 'index.ts') {
@@ -37,8 +37,8 @@ function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, strin
   }
 
   return {
-    '@konekti/runtime/internal/http-adapter': join(packagesRoot, 'runtime', 'src', 'internal-http-adapter.ts'),
-    '@konekti/runtime/internal/request-response-factory': join(
+    '@fluojs/runtime/internal/http-adapter': join(packagesRoot, 'runtime', 'src', 'internal-http-adapter.ts'),
+    '@fluojs/runtime/internal/request-response-factory': join(
       packagesRoot,
       'runtime',
       'src',

@@ -3,8 +3,8 @@ import { request as httpsRequest } from 'node:https';
 
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
 import {
   Controller,
   FromBody,
@@ -22,8 +22,8 @@ import {
   type FrameworkResponse,
   type HttpApplicationAdapter,
   type Converter,
-} from '@konekti/http';
-import { Exclude, Expose, SerializerInterceptor } from '@konekti/serialization';
+} from '@fluojs/http';
+import { Exclude, Expose, SerializerInterceptor } from '@fluojs/serialization';
 import { bootstrapApplication, defineModule, KonektiFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';

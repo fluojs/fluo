@@ -1,8 +1,8 @@
-import { Inject, InvariantError } from '@konekti/core';
+import { Inject, InvariantError } from '@fluojs/core';
 import {
   type OnApplicationBootstrap,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { DuplicateQueryHandlerError, QueryHandlerNotFoundException } from '../errors.js';
 import { getQueryHandlerMetadata } from '../metadata.js';

@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
@@ -57,9 +57,9 @@ export class QueueModule {
    *
    * @example
    * ```ts
-   * import { Module } from '@konekti/core';
-   * import { QueueModule } from '@konekti/queue';
-   * import { RedisModule } from '@konekti/redis';
+   * import { Module } from '@fluojs/core';
+   * import { QueueModule } from '@fluojs/queue';
+   * import { RedisModule } from '@fluojs/redis';
    *
    * @Module({
    *   imports: [

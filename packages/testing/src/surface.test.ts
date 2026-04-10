@@ -10,7 +10,7 @@ import * as webPortability from './portability/web-runtime-adapter-portability.j
 import * as conformance from './conformance/platform-conformance.js';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 
-describe('@konekti/testing surface', () => {
+describe('@fluojs/testing surface', () => {
   it('keeps the root barrel focused on module/app helpers', () => {
     expect(testing.createTestingModule).toBeTypeOf('function');
     expect(testing.createTestApp).toBeTypeOf('function');

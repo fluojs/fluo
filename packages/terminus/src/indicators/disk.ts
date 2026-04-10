@@ -1,6 +1,6 @@
 import { statfs } from 'node:fs/promises';
 
-import type { Provider } from '@konekti/di';
+import type { Provider } from '@fluojs/di';
 
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';

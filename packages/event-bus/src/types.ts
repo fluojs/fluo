@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
 
 /** Constructor type used to identify one published event shape and optional stable transport key. */
 export interface EventType<TEvent extends object = object> {

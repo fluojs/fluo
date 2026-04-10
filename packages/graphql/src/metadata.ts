@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey } from '@konekti/core';
+import type { MetadataPropertyKey } from '@fluojs/core';
 
 import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 

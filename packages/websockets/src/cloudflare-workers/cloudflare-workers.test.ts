@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import type { HttpApplicationAdapter } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { HttpApplicationAdapter } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as workerPublicApi from './cloudflare-workers.js';
@@ -176,7 +176,7 @@ class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSo
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -199,7 +199,7 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('@konekti/websockets/cloudflare-workers', () => {
+describe('@fluojs/websockets/cloudflare-workers', () => {
   it('exposes the explicit Cloudflare Workers websocket seam', () => {
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketModule');
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');
@@ -239,7 +239,7 @@ describe('@konekti/websockets/cloudflare-workers', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/cloudflare-workers');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/cloudflare-workers');
   });
 
   it('preserves Worker-backed websocket behavior through the explicit cloudflare-workers seam', async () => {

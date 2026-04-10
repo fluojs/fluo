@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/socket.io",
+  "name": "@fluojs/socket.io",
   "description": "Socket.IO v4 gateway adapter for Konekti applications, built on the shared runtime and websocket decorators.",
   "keywords": [
     "konekti",
@@ -44,19 +44,19 @@
   },
   "dependencies": {
     "@socket.io/bun-engine": "^0.1.0",
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*",
-    "@konekti/websockets": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/websockets": "workspace:*"
   },
   "peerDependencies": {
     "socket.io": "^4.0.0"
   },
   "devDependencies": {
-    "@konekti/platform-express": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*",
-    "@konekti/platform-nodejs": "workspace:*",
+    "@fluojs/platform-express": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/platform-nodejs": "workspace:*",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "vitest": "^3.2.4"

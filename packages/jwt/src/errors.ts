@@ -1,4 +1,4 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 
 export class JwtVerificationError extends KonektiError {
   constructor(message: string, options: { cause?: unknown; code?: string } = {}) {

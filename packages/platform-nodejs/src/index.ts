@@ -1,10 +1,10 @@
-import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '@konekti/runtime/internal-node';
-import { createNodeHttpAdapter } from '@konekti/runtime/internal-node';
+import type { NodeHttpAdapterOptions, NodeHttpApplicationAdapter } from '@fluojs/runtime/internal-node';
+import { createNodeHttpAdapter } from '@fluojs/runtime/internal-node';
 
 export {
   bootstrapNodeApplication as bootstrapNodejsApplication,
   runNodeApplication as runNodejsApplication,
-} from '@konekti/runtime/internal-node';
+} from '@fluojs/runtime/internal-node';
 
 export type {
   BootstrapNodeApplicationOptions as BootstrapNodejsApplicationOptions,
@@ -12,7 +12,7 @@ export type {
   NodeHttpAdapterOptions as NodejsAdapterOptions,
   NodeHttpApplicationAdapter as NodejsHttpApplicationAdapter,
   RunNodeApplicationOptions as RunNodejsApplicationOptions,
-} from '@konekti/runtime/internal-node';
+} from '@fluojs/runtime/internal-node';
 
 export function createNodejsAdapter(
   options: NodeHttpAdapterOptions = {},

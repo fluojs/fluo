@@ -83,31 +83,31 @@ export type RunNestJsMigrationOptions = {
 
 const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
 
-const NEST_COMMON_TO_KONEKTI: Record<string, '@konekti/core' | '@konekti/http'> = {
-  Body: '@konekti/http',
-  ConflictException: '@konekti/http',
-  Controller: '@konekti/http',
-  Delete: '@konekti/http',
-  ForbiddenException: '@konekti/http',
-  Get: '@konekti/http',
-  Header: '@konekti/http',
-  Headers: '@konekti/http',
-  HttpCode: '@konekti/http',
-  HttpException: '@konekti/http',
-  Inject: '@konekti/core',
-  Module: '@konekti/core',
-  NotFoundException: '@konekti/http',
-  Param: '@konekti/http',
-  Patch: '@konekti/http',
-  Post: '@konekti/http',
-  Put: '@konekti/http',
-  Query: '@konekti/http',
-  Req: '@konekti/http',
-  Res: '@konekti/http',
-  Scope: '@konekti/core',
-  UnauthorizedException: '@konekti/http',
-  UseGuards: '@konekti/http',
-  UseInterceptors: '@konekti/http',
+const NEST_COMMON_TO_KONEKTI: Record<string, '@fluojs/core' | '@fluojs/http'> = {
+  Body: '@fluojs/http',
+  ConflictException: '@fluojs/http',
+  Controller: '@fluojs/http',
+  Delete: '@fluojs/http',
+  ForbiddenException: '@fluojs/http',
+  Get: '@fluojs/http',
+  Header: '@fluojs/http',
+  Headers: '@fluojs/http',
+  HttpCode: '@fluojs/http',
+  HttpException: '@fluojs/http',
+  Inject: '@fluojs/core',
+  Module: '@fluojs/core',
+  NotFoundException: '@fluojs/http',
+  Param: '@fluojs/http',
+  Patch: '@fluojs/http',
+  Post: '@fluojs/http',
+  Put: '@fluojs/http',
+  Query: '@fluojs/http',
+  Req: '@fluojs/http',
+  Res: '@fluojs/http',
+  Scope: '@fluojs/core',
+  UnauthorizedException: '@fluojs/http',
+  UseGuards: '@fluojs/http',
+  UseInterceptors: '@fluojs/http',
 };
 
 const REQUEST_DTO_DECORATORS = new Set(['Body', 'Param', 'Query']);
@@ -382,7 +382,7 @@ function hasConflictingScopeImport(sourceFile: ts.SourceFile): boolean {
       continue;
     }
 
-    if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text === '@konekti/core') {
+    if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text === '@fluojs/core') {
       continue;
     }
 
@@ -544,7 +544,7 @@ function rewriteInjectableAndScope(
     const nextSourceFile = parseSource(nextSource, filePath);
     nextSource = printSourceFile(
       nextSourceFile,
-      mergeNamedImport([...nextSourceFile.statements], '@konekti/core', [{ imported: 'Scope', local: scopeDecoratorName }]),
+      mergeNamedImport([...nextSourceFile.statements], '@fluojs/core', [{ imported: 'Scope', local: scopeDecoratorName }]),
     );
   }
 
@@ -725,7 +725,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
   nextSource = removed.source;
 
   const nextSourceFile = parseSource(nextSource, filePath);
-  const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@konekti/runtime', [{ imported: 'KonektiFactory', local: 'KonektiFactory' }]));
+  const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'KonektiFactory', local: 'KonektiFactory' }]));
 
   return {
     changed: withRuntimeImport !== source,
@@ -911,7 +911,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   const nextSourceFile = parseSource(nextSource, filePath);
   nextSource = printSourceFile(
     nextSourceFile,
-    mergeNamedImport([...nextSourceFile.statements], '@konekti/testing', [{ imported: 'createTestingModule', local: 'createTestingModule' }]),
+    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'createTestingModule', local: 'createTestingModule' }]),
   );
 
   const withKonektiImportSourceFile = parseSource(nextSource, filePath);

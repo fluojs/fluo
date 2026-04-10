@@ -2,12 +2,12 @@ import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@konekti/validation';
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
-import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@konekti/http';
-import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
+import { Controller, Get, Post, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 
 import {
   ApiBearerAuth,

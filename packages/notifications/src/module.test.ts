@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Constructor, type Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container, type Provider } from '@konekti/di';
+import { type Constructor, type Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
 
 import { NotificationChannelNotFoundError } from './errors.js';
 import { NotificationsModule } from './module.js';

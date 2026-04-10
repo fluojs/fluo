@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/cli",
+  "name": "@fluojs/cli",
   "description": "The Konekti CLI — bootstrap, generate, migrate, and inspect commands for application development.",
   "keywords": [
     "konekti",
@@ -51,7 +51,7 @@
     "sandbox:clean": "node ./scripts/local-test-env.mjs clean"
   },
   "dependencies": {
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "ejs": "^3.1.10",
     "tsx": "^4.20.4",
     "typescript": "^5.8.2"

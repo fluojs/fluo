@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CallHandler, InterceptorContext } from '@konekti/http';
+import type { CallHandler, InterceptorContext } from '@fluojs/http';
 
 import { Exclude } from './decorators/exclude.js';
 import { SerializerInterceptor } from './serializer-interceptor.js';
