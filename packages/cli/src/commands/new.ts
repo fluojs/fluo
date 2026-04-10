@@ -14,7 +14,7 @@ function isHelpFlag(value: string | undefined): boolean {
 }
 
 /**
- * Runtime dependency overrides for the programmatic `konekti new` entry point.
+ * Runtime dependency overrides for the programmatic `fluo new` entry point.
  */
 export interface NewCommandRuntimeOptions extends NewCommandOptions {
   cwd?: string;
@@ -131,13 +131,13 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
 }
 
 /**
- * Renders CLI help text for `konekti new`.
+ * Renders CLI help text for `fluo new`.
  *
  * @returns Stable help output for the scaffolding command.
  */
 export function newUsage(): string {
   return [
-    'Usage: konekti new|create [project-name] [options]',
+    'Usage: fluo new|create [project-name] [options]',
     '',
     'Options',
     renderHelpTable(NEW_OPTION_HELP, [
@@ -164,7 +164,7 @@ export function newUsage(): string {
 }
 
 /**
- * Executes `konekti new` with parsed arguments and scaffold options.
+ * Executes `fluo new` with parsed arguments and scaffold options.
  *
  * @example
  * ```ts
