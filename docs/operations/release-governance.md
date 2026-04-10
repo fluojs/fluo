@@ -4,7 +4,7 @@
   <strong>English</strong> | <a href="./release-governance.ko.md">한국어</a>
 </p>
 
-This document defines the release standards, stability contracts, and versioning policies for the Konekti ecosystem. It ensures that framework updates are predictable, breaking changes are communicated, and public-facing packages maintain high quality.
+This document defines the release standards, stability contracts, and versioning policies for the fluo ecosystem. It ensures that framework updates are predictable, breaking changes are communicated, and public-facing packages maintain high quality.
 
 ## When this document matters
 
@@ -17,7 +17,7 @@ This document defines the release standards, stability contracts, and versioning
 
 ## Stability Contract
 
-Konekti uses a tiered stability model to communicate the maturity of its packages.
+fluo uses a tiered stability model to communicate the maturity of its packages.
 
 | Tier | Stability | Description |
 | :--- | :--- | :--- |
@@ -36,7 +36,7 @@ A package graduates to `1.0` (Stable) only when:
 
 ## Versioning Policy
 
-Konekti follows strict **Semantic Versioning (Semver)**.
+fluo follows strict **Semantic Versioning (Semver)**.
 
 - **Major (`X.0.0`)**: Significant breaking changes, architectural shifts, or removal of deprecated APIs.
 - **Minor (`0.X.0`)**: New features, non-breaking enhancements, or significant internal refactorings that preserve documented behavior.
@@ -47,45 +47,45 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 
 ## intended publish surface
 
-- `@konekti/cache-manager`
-- `@konekti/cli`
-- `@konekti/config`
-- `@konekti/core`
-- `@konekti/cqrs`
-- `@konekti/cron`
-- `@konekti/email`
-- `@konekti/discord`
-- `@konekti/di`
-- `@konekti/drizzle`
-- `@konekti/event-bus`
-- `@konekti/graphql`
-- `@konekti/http`
-- `@konekti/jwt`
-- `@konekti/metrics`
-- `@konekti/microservices`
-- `@konekti/mongoose`
-- `@konekti/notifications`
-- `@konekti/openapi`
-- `@konekti/passport`
-- `@konekti/platform-bun`
-- `@konekti/platform-cloudflare-workers`
-- `@konekti/platform-deno`
-- `@konekti/platform-express`
-- `@konekti/platform-fastify`
-- `@konekti/platform-nodejs`
-- `@konekti/prisma`
-- `@konekti/queue`
-- `@konekti/redis`
-- `@konekti/runtime`
-- `@konekti/serialization`
-- `@konekti/slack`
-- `@konekti/socket.io`
-- `@konekti/studio`
-- `@konekti/terminus`
-- `@konekti/testing`
-- `@konekti/throttler`
-- `@konekti/validation`
-- `@konekti/websockets`
+- `@fluojs/cache-manager`
+- `@fluojs/cli`
+- `@fluojs/config`
+- `@fluojs/core`
+- `@fluojs/cqrs`
+- `@fluojs/cron`
+- `@fluojs/email`
+- `@fluojs/discord`
+- `@fluojs/di`
+- `@fluojs/drizzle`
+- `@fluojs/event-bus`
+- `@fluojs/graphql`
+- `@fluojs/http`
+- `@fluojs/jwt`
+- `@fluojs/metrics`
+- `@fluojs/microservices`
+- `@fluojs/mongoose`
+- `@fluojs/notifications`
+- `@fluojs/openapi`
+- `@fluojs/passport`
+- `@fluojs/platform-bun`
+- `@fluojs/platform-cloudflare-workers`
+- `@fluojs/platform-deno`
+- `@fluojs/platform-express`
+- `@fluojs/platform-fastify`
+- `@fluojs/platform-nodejs`
+- `@fluojs/prisma`
+- `@fluojs/queue`
+- `@fluojs/redis`
+- `@fluojs/runtime`
+- `@fluojs/serialization`
+- `@fluojs/slack`
+- `@fluojs/socket.io`
+- `@fluojs/studio`
+- `@fluojs/terminus`
+- `@fluojs/testing`
+- `@fluojs/throttler`
+- `@fluojs/validation`
+- `@fluojs/websockets`
 
 ---
 
@@ -97,7 +97,7 @@ Governance is enforced through automated gates and manual checklists.
 - **`pnpm verify:release-readiness`**: Validates the packed CLI entrypoints and starter scaffolding.
 - **`pnpm verify:platform-consistency-governance`**: Enforces structural parity between English and Korean documentation.
 - **`pnpm verify:public-export-tsdoc`**: Fails when changed public exports in `packages/*/src` miss the repo-wide TSDoc minimum baseline.
-- **Behavioral Contract Check**: Blocks releases if `process.env` is accessed outside of the sanctioned `@konekti/config` patterns.
+- **Behavioral Contract Check**: Blocks releases if `process.env` is accessed outside of the sanctioned `@fluojs/config` patterns.
 
 ### Changelog Standards
 Every public release must have a matching entry in the root `CHANGELOG.md` following the *Keep a Changelog* format. GitHub Releases are automatically populated from this content during the deployment phase.

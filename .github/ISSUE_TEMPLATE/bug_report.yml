@@ -33,7 +33,7 @@ body:
     id: version
     attributes:
       label: fluo Version
-      description: e.g. v1.2.3, or @latest
+      description: e.g. fluo v1.2.3, `fluo --version`, or @fluojs/cli@latest
     validations:
       required: true
   - type: textarea

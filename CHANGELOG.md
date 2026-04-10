@@ -21,12 +21,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `@konekti/terminus`: Terminus-style health indicators, structured `/health` aggregation, and runtime readiness integration layered on `createHealthModule()`.
 
 <!-- release-readiness-draft:start -->
-### Draft release readiness entry (2026-04-02)
+### Draft release readiness entry (2026-04-10)
 
 - Breaking changes:
   - _Describe public contract changes and include migration notes._
 - New features by package:
-  - _List package-level additions (for example `@konekti/http`, `@konekti/cli`)._
+  - _List package-level additions (for example `@fluojs/http`, `@fluojs/cli`)._
 - Bug fixes:
   - _List notable fixes by package._
 - Deprecations:

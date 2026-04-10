@@ -46,7 +46,7 @@ function parsePackageListFromSection(markdown: string, sectionTitle: string): st
       break;
     }
 
-    const match = line.match(/^- `(@konekti\/[^`]+)`$/);
+    const match = line.match(/^- `(@fluojs\/[^`]+)`$/);
     if (match?.[1]) {
       packages.push(match[1]);
     }
@@ -72,7 +72,7 @@ function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string
       break;
     }
 
-    for (const match of line.matchAll(/`(@konekti\/[^`]+)`/g)) {
+    for (const match of line.matchAll(/`(@fluojs\/[^`]+)`/g)) {
       if (match[1]) {
         packages.add(match[1]);
       }
