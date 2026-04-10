@@ -108,7 +108,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with npm');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(stdoutBuffer.join('')).toContain('npm run dev');
   });
 
@@ -125,8 +125,78 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(stdoutBuffer.join('')).toContain('pnpm dev');
+  });
+
+  it('runs the interactive new wizard through injected answers without terminal emulation', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new'], {
+      cwd: workspaceDirectory,
+      interactive: true,
+      prompt: {
+        confirm: async (message) => message === 'Initialize a git repository',
+        select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], _defaultValue?: T) => {
+          switch (message) {
+            case 'Starter shape':
+              return 'microservice' as T;
+            case 'Microservice transport':
+              return 'tcp' as T;
+            case 'Tooling preset':
+              return 'standard' as T;
+            case 'Package manager':
+              return 'pnpm' as T;
+            default:
+              throw new Error(`Unexpected prompt: ${message}`);
+          }
+        },
+        text: async () => 'wizard-app',
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'wizard-app', '.git'))).toBe(true);
+    expect(readFileSync(join(workspaceDirectory, 'wizard-app', 'README.md'), 'utf8')).toContain('Shape: `microservice`');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
+  });
+
+  it('keeps non-interactive programmatic new flows as a first-class path', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app'], {
+      cwd: workspaceDirectory,
+      interactive: false,
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'starter-app', '.git'))).toBe(false);
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
+  });
+
+  it('honors explicit install and git flags without changing the scaffold model', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', 'starter-app', '--no-install', '--git'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(join(workspaceDirectory, 'starter-app', '.git'))).toBe(true);
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
   });
 
   it('honors explicit yarn selection without changing the stable scaffold shape', async () => {
@@ -142,7 +212,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with yarn');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(stdoutBuffer.join('')).toContain('yarn dev');
   });
 
@@ -178,7 +248,7 @@ describe('CLI command runner', () => {
     const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(stdoutBuffer.join('')).toContain('cd ./starter-app');
     expect(packageJson).toContain('@fluojs/platform-fastify');
     expect(packageJson).toContain('@fluojs/runtime');
@@ -217,7 +287,7 @@ describe('CLI command runner', () => {
     const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(stdoutBuffer.join('')).toContain('cd ./starter-microservice');
     expect(packageJson).toContain('@fluojs/microservices');
     expect(packageJson).not.toContain('@fluojs/platform-fastify');
@@ -353,6 +423,10 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('--tooling <standard>');
     expect(stdoutBuffer.join('')).toContain('--topology <single-package>');
     expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn|bun>');
+    expect(stdoutBuffer.join('')).toContain('--install');
+    expect(stdoutBuffer.join('')).toContain('--no-install');
+    expect(stdoutBuffer.join('')).toContain('--git');
+    expect(stdoutBuffer.join('')).toContain('--no-git');
     expect(stdoutBuffer.join('')).not.toContain('Schematics');
     expect(stdoutBuffer.join('')).toContain('Next steps:');
     expect(stdoutBuffer.join('')).toContain('cd <app-name>');
@@ -737,7 +811,7 @@ describe('CLI command runner', () => {
     expect(packageJson.scripts?.test).toBeDefined();
     expect(readFileSync(join(projectDirectory, '.gitignore'), 'utf8')).toContain('.env');
     expect(readFileSync(join(projectDirectory, '.env'), 'utf8')).toContain('PORT=3000');
-    expect(stdoutBuffer.join('')).toContain('Installing dependencies with pnpm');
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.repo.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.service.ts'))).toBe(true);

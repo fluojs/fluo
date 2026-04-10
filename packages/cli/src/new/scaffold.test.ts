@@ -152,4 +152,21 @@ describe('scaffoldBootstrapApp', () => {
     expect(mainFile).toContain('FluoFactory.createMicroservice(AppModule)');
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
+
+  it('can initialize git while skipping dependency installation', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-git-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      initializeGit: true,
+      installDependencies: false,
+      packageManager: 'pnpm',
+      projectName: 'starter-app',
+      targetDirectory,
+    });
+
+    expect(statSync(join(targetDirectory, '.git')).isDirectory()).toBe(true);
+    expect(readFileSync(join(targetDirectory, 'package.json'), 'utf8')).toContain('"name": "starter-app"');
+  });
 });
