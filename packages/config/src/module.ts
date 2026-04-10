@@ -1,4 +1,4 @@
-import { defineModuleMetadata } from '@konekti/core/internal';
+import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { loadConfig } from './load.js';
 import { ConfigService } from './service.js';

@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/websockets",
+  "name": "@fluojs/websockets",
   "description": "Decorator-based WebSocket gateway authoring core for Konekti, with explicit Node, Bun, Deno, and Cloudflare Workers raw websocket bindings on dedicated subpaths.",
   "keywords": [
     "konekti",
@@ -75,16 +75,16 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@konekti/platform-bun": "workspace:*",
-    "@konekti/platform-express": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*",
+    "@fluojs/platform-bun": "workspace:*",
+    "@fluojs/platform-express": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
     "@types/ws": "^8.18.1",
     "vitest": "^3.2.4"
   }

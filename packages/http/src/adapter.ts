@@ -1,4 +1,4 @@
-import type { MaybePromise } from '@konekti/core';
+import type { MaybePromise } from '@fluojs/core';
 
 import type { Dispatcher } from './types.js';
 
@@ -78,7 +78,7 @@ export interface HttpApplicationAdapter {
   /**
    * Starts the adapter and binds request dispatching to the framework dispatcher.
    *
-   * @param dispatcher Dispatcher created by `@konekti/http` that executes the request pipeline.
+   * @param dispatcher Dispatcher created by `@fluojs/http` that executes the request pipeline.
    * @returns A promise that resolves when the adapter is ready to accept requests.
    */
   listen(dispatcher: Dispatcher): MaybePromise<void>;

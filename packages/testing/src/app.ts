@@ -1,4 +1,4 @@
-import { bootstrapApplication } from '@konekti/runtime';
+import { bootstrapApplication } from '@fluojs/runtime';
 
 import {
   createRequestBuilder,

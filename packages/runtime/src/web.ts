@@ -7,7 +7,7 @@ import {
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import {
   parseMultipart,
@@ -19,7 +19,7 @@ import {
   type RequestResponseFactory,
 } from './adapters/request-response-factory.js';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;

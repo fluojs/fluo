@@ -1,9 +1,9 @@
 import type { Mock } from 'vitest';
 
-import type { MaybePromise, Token } from '@konekti/core';
-import type { ClassType, Container, ForwardRefFn, OptionalToken, Provider } from '@konekti/di';
-import type { BootstrapResult, BootstrapModuleOptions, ModuleType } from '@konekti/runtime';
-import type { Guard, Interceptor } from '@konekti/http';
+import type { MaybePromise, Token } from '@fluojs/core';
+import type { ClassType, Container, ForwardRefFn, OptionalToken, Provider } from '@fluojs/di';
+import type { BootstrapResult, BootstrapModuleOptions, ModuleType } from '@fluojs/runtime';
+import type { Guard, Interceptor } from '@fluojs/http';
 import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
 
 /**

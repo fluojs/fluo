@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey } from '@konekti/core';
+import type { MetadataPropertyKey } from '@fluojs/core';
 
 import type {
   WebSocketGatewayHandlerMetadata,

@@ -1,6 +1,6 @@
-import type { Token } from '@konekti/core';
-import type { GuardContext, Principal } from '@konekti/http';
-import type { Provider } from '@konekti/di';
+import type { Token } from '@fluojs/core';
+import type { GuardContext, Principal } from '@fluojs/http';
+import type { Provider } from '@fluojs/di';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
 import { normalizePrincipalScopes } from '../scope.js';

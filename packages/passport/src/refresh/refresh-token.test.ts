@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { DefaultJwtVerifier } from '@konekti/jwt';
-import { JwtExpiredTokenError, JwtInvalidTokenError } from '@konekti/jwt';
+import type { DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
 import { RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
 import type { AuthStrategyResult } from '../types.js';
-import type { GuardContext, RequestContext } from '@konekti/http';
+import type { GuardContext, RequestContext } from '@fluojs/http';
 
 function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> = {}): RefreshTokenService {
   return {

@@ -1,13 +1,13 @@
-import type { Provider } from '@konekti/di';
-import type { RequestContext } from '@konekti/http';
+import type { Provider } from '@fluojs/di';
+import type { RequestContext } from '@fluojs/http';
 import {
   createHealthModule,
   defineModule,
   type ModuleType,
   type PlatformHealthReport,
   type PlatformReadinessReport,
-} from '@konekti/runtime';
-import { PLATFORM_SHELL, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { PLATFORM_SHELL, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { TerminusHealthService } from './health-check.js';
 import { TERMINUS_HEALTH_INDICATORS, TERMINUS_INDICATOR_PROVIDER_TOKENS } from './tokens.js';

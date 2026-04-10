@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/jwt",
+  "name": "@fluojs/jwt",
   "description": "HTTP-agnostic JWT signing and verification core for Konekti authentication.",
   "keywords": [
     "konekti",
@@ -43,9 +43,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

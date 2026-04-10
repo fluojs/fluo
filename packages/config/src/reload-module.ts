@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import { defineModuleMetadata } from '@konekti/core/internal';
+import { Inject } from '@fluojs/core';
+import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
 import { createConfigReloader } from './load.js';

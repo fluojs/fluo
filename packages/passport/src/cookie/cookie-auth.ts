@@ -1,6 +1,6 @@
-import { Inject } from '@konekti/core';
-import type { GuardContext } from '@konekti/http';
-import { DefaultJwtVerifier } from '@konekti/jwt';
+import { Inject } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import { DefaultJwtVerifier } from '@fluojs/jwt';
 
 import { AuthenticationRequiredError } from '../errors.js';
 import type { AuthStrategy, AuthStrategyResult } from '../types.js';

@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 import type { Mock } from 'vitest';
 
-import type { Token } from '@konekti/core';
-import type { ValueProvider } from '@konekti/di';
+import type { Token } from '@fluojs/core';
+import type { ValueProvider } from '@fluojs/di';
 
 import type { DeepMocked } from './types.js';
 

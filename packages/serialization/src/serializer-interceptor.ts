@@ -1,4 +1,4 @@
-import type { CallHandler, Interceptor, InterceptorContext } from '@konekti/http';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
 
 import { serialize } from './serialize.js';
 

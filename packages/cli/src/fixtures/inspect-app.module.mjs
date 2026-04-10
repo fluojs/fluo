@@ -1,4 +1,4 @@
-import { defineModule } from '@konekti/runtime';
+import { defineModule } from '@fluojs/runtime';
 
 class SharedService {}
 

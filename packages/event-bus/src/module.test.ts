@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Scope } from '@konekti/core';
-import { defineControllerMetadata } from '@konekti/core/internal';
-import { Container } from '@konekti/di';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { Inject, Scope } from '@fluojs/core';
+import { defineControllerMetadata } from '@fluojs/core/internal';
+import { Container } from '@fluojs/di';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import { OnEvent } from './decorators.js';
 import { getEventHandlerMetadataEntries } from './metadata.js';
@@ -54,7 +54,7 @@ class PasswordResetEvent {
   constructor(public readonly userId: string) {}
 }
 
-describe('@konekti/event-bus', () => {
+describe('@fluojs/event-bus', () => {
   it('writes event metadata from @OnEvent() using standard decorators', () => {
     class EventHandler {
       @OnEvent(UserCreatedEvent)

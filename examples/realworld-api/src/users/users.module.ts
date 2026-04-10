@@ -1,4 +1,4 @@
-import { Module } from '@konekti/core';
+import { Module } from '@fluojs/core';
 
 import { UsersController } from './users.controller';
 import { UsersRepo } from './users.repo';

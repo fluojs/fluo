@@ -10,7 +10,7 @@ import {
   type StudioPayload,
 } from './contracts.js';
 
-import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@konekti/runtime';
+import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
 
 interface StudioState {
   payload?: StudioPayload;

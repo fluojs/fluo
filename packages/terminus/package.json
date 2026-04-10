@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/terminus",
+  "name": "@fluojs/terminus",
   "description": "Health indicator composition and enriched runtime health aggregation for Konekti applications.",
   "keywords": [
     "konekti",
@@ -43,24 +43,24 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "peerDependencies": {
-    "@konekti/drizzle": "workspace:*",
-    "@konekti/prisma": "workspace:*",
-    "@konekti/redis": "workspace:*"
+    "@fluojs/drizzle": "workspace:*",
+    "@fluojs/prisma": "workspace:*",
+    "@fluojs/redis": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@konekti/drizzle": {
+    "@fluojs/drizzle": {
       "optional": true
     },
-    "@konekti/prisma": {
+    "@fluojs/prisma": {
       "optional": true
     },
-    "@konekti/redis": {
+    "@fluojs/redis": {
       "optional": true
     }
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import {
   CacheEvict,
@@ -12,7 +12,7 @@ import {
   getCacheTtlMetadata,
 } from './decorators.js';
 
-describe('@konekti/cache-manager decorators', () => {
+describe('@fluojs/cache-manager decorators', () => {
   it('stores cache key and ttl metadata in standard route map', () => {
     class CacheController {
       @CacheKey('GET:/items?sort=asc')

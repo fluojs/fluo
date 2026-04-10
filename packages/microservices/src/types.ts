@@ -1,5 +1,5 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
-import type { Scope } from '@konekti/di';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
+import type { Scope } from '@fluojs/di';
 
 /** Pattern matcher used to route messages and events to handler methods. */
 export type Pattern = RegExp | string;

@@ -7,9 +7,9 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
   type RequestContext,
-} from '@konekti/http';
-import { defineModule } from '@konekti/runtime';
-import * as runtimeWeb from '@konekti/runtime/web';
+} from '@fluojs/http';
+import { defineModule } from '@fluojs/runtime';
+import * as runtimeWeb from '@fluojs/runtime/web';
 
 import {
   bootstrapCloudflareWorkerApplication,
@@ -90,7 +90,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('@konekti/platform-cloudflare-workers', () => {
+describe('@fluojs/platform-cloudflare-workers', () => {
   it('delegates Worker fetch handling to the shared web adapter core', async () => {
     const adapter = createCloudflareWorkerAdapter({ rawBody: true });
     const dispatcher = {
@@ -133,7 +133,7 @@ describe('@konekti/platform-cloudflare-workers', () => {
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       support: 'supported',
       version: 1,
     });

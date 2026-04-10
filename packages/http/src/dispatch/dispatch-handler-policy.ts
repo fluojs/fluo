@@ -1,4 +1,4 @@
-import { InvariantError, type Token } from '@konekti/core';
+import { InvariantError, type Token } from '@fluojs/core';
 
 import { DefaultBinder } from '../adapters/binding.js';
 import { HttpDtoValidationAdapter } from '../adapters/dto-validation-adapter.js';

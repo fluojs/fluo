@@ -105,7 +105,7 @@ function writeSandboxMetadata(projectDirectory, projectName) {
     sandboxMetadataPath(projectDirectory),
     JSON.stringify(
       {
-        createdBy: '@konekti/cli local sandbox',
+        createdBy: '@fluojs/cli local sandbox',
         projectName,
       },
       null,
@@ -147,7 +147,7 @@ function verifySandboxExists(projectDirectory) {
 }
 
 async function loadRunCli() {
-  log('Building @konekti/cli dist for the local harness');
+  log('Building @fluojs/cli dist for the local harness');
   run('pnpm', ['build'], packageRoot);
 
   const cliModuleUrl = pathToFileURL(join(packageRoot, 'dist', 'cli.js')).href;

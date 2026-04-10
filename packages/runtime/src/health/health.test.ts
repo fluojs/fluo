@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
+import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import { bootstrapApplication, defineModule } from '../bootstrap.js';
 import { createHealthModule } from './health.js';

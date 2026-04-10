@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/example-minimal",
+  "name": "@fluojs/example-minimal",
   "description": "Minimal runnable Konekti application — canonical verification target.",
   "version": "0.0.0",
   "private": true,
@@ -11,12 +11,12 @@
     "typecheck": "tsc -p ../tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/testing": "workspace:*"
+    "@fluojs/testing": "workspace:*"
   }
 }

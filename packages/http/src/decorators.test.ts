@@ -6,7 +6,7 @@ import {
   getDtoBindingSchema,
   getDtoValidationSchema,
   getRouteMetadata,
-} from '@konekti/core/internal';
+} from '@fluojs/core/internal';
 
 import {
   Convert,
@@ -23,8 +23,8 @@ import {
   UseInterceptors,
   getRouteProducesMetadata,
 } from './decorators.js';
-import { IntersectionType, OmitType, PartialType, PickType } from '@konekti/validation';
-import { IsString, MinLength, ValidateClass } from '@konekti/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
+import { IsString, MinLength, ValidateClass } from '@fluojs/validation';
 
 class NoopTestConverter {
   convert(value: unknown) {

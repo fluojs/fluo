@@ -1,7 +1,7 @@
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import type {
   BunServerWebSocket,
   BunWebSocketBinding,
@@ -9,7 +9,7 @@ import type {
   BunWebSocketMessage,
   BunServerLike,
 } from './bun-types.js';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import {
   dispatchGatewayDisconnect,
@@ -92,7 +92,7 @@ function resolveSupportedFetchStyleRealtimeCapability(
 ): FetchStyleRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Bun WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-bun together with @konekti/websockets/bun.',
+      'Bun WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @fluojs/platform-bun together with @fluojs/websockets/bun.',
     );
   }
 
@@ -150,7 +150,7 @@ export class BunWebSocketGatewayLifecycleService
 
     if (!hasBunWebSocketBindingHost(this.adapter)) {
       throw new Error(
-        'Bun WebSocket gateway bootstrap requires the selected adapter to expose Bun websocket binding configuration. Use @konekti/platform-bun with @konekti/websockets/bun.',
+        'Bun WebSocket gateway bootstrap requires the selected adapter to expose Bun websocket binding configuration. Use @fluojs/platform-bun with @fluojs/websockets/bun.',
       );
     }
 
@@ -168,7 +168,7 @@ export class BunWebSocketGatewayLifecycleService
     }
 
     throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/bun. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
+      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/bun. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
     );
   }
 

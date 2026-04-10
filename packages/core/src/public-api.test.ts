@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import * as coreInternalApi from './internal.js';
 import * as corePublicApi from './index.js';
 
-describe('@konekti/core public API surface', () => {
+describe('@fluojs/core public API surface', () => {
   it('keeps documented root-barrel exports for application code', () => {
     expect(corePublicApi).toHaveProperty('Module');
     expect(corePublicApi).toHaveProperty('Global');

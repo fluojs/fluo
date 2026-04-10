@@ -1,5 +1,5 @@
-import type { Token } from '@konekti/core';
-import type { Container } from '@konekti/di';
+import type { Token } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
 
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { resolveContentNegotiation, writeErrorResponse, writeSuccessResponse, type ResolvedContentNegotiation } from './dispatch-response-policy.js';

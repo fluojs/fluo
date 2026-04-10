@@ -1,7 +1,7 @@
-import { Inject, InvariantError } from '@konekti/core';
-import { EVENT_BUS as KONEKTI_EVENT_BUS, type EventBus } from '@konekti/event-bus';
-import type { OnApplicationShutdown, OnApplicationBootstrap } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import { Inject, InvariantError } from '@fluojs/core';
+import { EVENT_BUS as KONEKTI_EVENT_BUS, type EventBus } from '@fluojs/event-bus';
+import type { OnApplicationShutdown, OnApplicationBootstrap } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
 import { createIsolatedEvent } from '../event-clone.js';
@@ -22,7 +22,7 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * CQRS-facing event bus that dispatches local event handlers, sagas, and the shared event transport.
  *
  * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
- * and delegates the final publication step to `@konekti/event-bus`.
+ * and delegates the final publication step to `@fluojs/event-bus`.
  */
 @Inject(KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {

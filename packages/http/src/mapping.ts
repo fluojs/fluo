@@ -1,5 +1,5 @@
-import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
-import { getControllerMetadata, getRouteMetadata } from '@konekti/core/internal';
+import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';

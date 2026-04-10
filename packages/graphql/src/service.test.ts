@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { HttpApplicationAdapter } from '@konekti/http';
-import type { ApplicationLogger, CompiledModule } from '@konekti/runtime';
-import type { Container } from '@konekti/di';
+import type { HttpApplicationAdapter } from '@fluojs/http';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
+import type { Container } from '@fluojs/di';
 
 import { GraphqlLifecycleService } from './service.js';
 import type { GraphqlModuleOptions } from './types.js';

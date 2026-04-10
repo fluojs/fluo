@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Container } from '@konekti/di';
+import { Container } from '@fluojs/di';
 
 import type { FrameworkRequest, FrameworkResponse, HandlerDescriptor, HandlerMapping, Interceptor, InterceptorContext } from '../types.js';
 import { createDispatcher } from './dispatcher.js';

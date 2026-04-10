@@ -1,11 +1,11 @@
-import type { MaybePromise } from '@konekti/core';
+import type { MaybePromise } from '@fluojs/core';
 import type {
   PlatformComponent,
   PlatformDiagnosticIssue,
   PlatformSnapshot,
   PlatformState,
   PlatformValidationResult,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 export interface PlatformConformanceScenario {
   createComponent: () => PlatformComponent;

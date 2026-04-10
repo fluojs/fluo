@@ -1,7 +1,7 @@
-import type { Provider } from '@konekti/di';
-import type { Token } from '@konekti/core';
-import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from '@konekti/core/internal';
-import type { MiddlewareLike } from '@konekti/http';
+import type { Provider } from '@fluojs/di';
+import type { Token } from '@fluojs/core';
+import { getClassDiMetadata, getModuleMetadata, getOwnClassDiMetadata } from '@fluojs/core/internal';
+import type { MiddlewareLike } from '@fluojs/http';
 
 import { ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';
 import type { BootstrapModuleOptions, CompiledModule, ModuleDefinition, ModuleType } from './types.js';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Scope } from '@konekti/core';
-import { defineModuleMetadata } from '@konekti/core/internal';
+import { Scope } from '@fluojs/core';
+import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { compileModuleGraph } from '../module-graph.js';
 import {

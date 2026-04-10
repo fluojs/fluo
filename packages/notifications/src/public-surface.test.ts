@@ -14,7 +14,7 @@ import type {
   NotificationsStatusAdapterInput,
 } from './index.js';
 
-describe('@konekti/notifications public API surface', () => {
+describe('@fluojs/notifications public API surface', () => {
   it('keeps documented supported root-barrel exports stable', () => {
     expect(notificationsPublicApi).toHaveProperty('NotificationsModule');
     expect(notificationsPublicApi).toHaveProperty('createNotificationsProviders');

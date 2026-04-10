@@ -1,4 +1,4 @@
-import type { FetchStyleHttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@konekti/http';
+import type { FetchStyleHttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
 
 export interface FetchStyleWebSocketConformanceHarnessOptions<
   TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,

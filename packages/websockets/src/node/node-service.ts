@@ -3,11 +3,11 @@ import { createServer as createHttpServer, type Server as HttpServer } from 'nod
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 
 import {

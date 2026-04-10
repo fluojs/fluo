@@ -1,13 +1,13 @@
-import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@konekti/http';
-import type { Application, ModuleType, MultipartOptions } from '@konekti/runtime';
+import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http';
+import type { Application, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
   type BootstrapHttpAdapterApplicationOptions,
   type HttpAdapterListenTarget,
   type RunHttpAdapterApplicationOptions,
-} from '@konekti/runtime/internal/http-adapter';
-import { dispatchWebRequest } from '@konekti/runtime/web';
+} from '@fluojs/runtime/internal/http-adapter';
+import { dispatchWebRequest } from '@fluojs/runtime/web';
 
 export interface DenoServeOnListenInfo {
   hostname: string;
@@ -112,7 +112,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
-      'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
+      'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       { support: 'supported' },
     );
   }

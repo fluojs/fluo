@@ -1,11 +1,11 @@
-import type { Token } from '@konekti/core';
-import type { NotificationChannel } from '@konekti/notifications';
+import type { Token } from '@fluojs/core';
+import type { NotificationChannel } from '@fluojs/notifications';
 
 import type { Discord, DiscordNotificationDispatchRequest, NormalizedDiscordModuleOptions } from './types.js';
 
 /** Compatibility token for the facade returned by {@link DiscordModule.forRoot}. */
 export const DISCORD: Token<Discord> = Symbol.for('konekti.discord');
-/** Injection token for the channel implementation consumed by `@konekti/notifications`. */
+/** Injection token for the channel implementation consumed by `@fluojs/notifications`. */
 export const DISCORD_CHANNEL: Token<NotificationChannel<DiscordNotificationDispatchRequest>> = Symbol.for(
   'konekti.discord.channel',
 );

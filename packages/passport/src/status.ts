@@ -3,7 +3,7 @@ import type {
   PlatformHealthReport,
   PlatformReadinessReport,
   PlatformSnapshot,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 export interface PassportPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;

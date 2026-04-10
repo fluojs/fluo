@@ -1,6 +1,6 @@
-import { Module } from '@konekti/core';
-import { createJwtCoreProviders } from '@konekti/jwt';
-import { createPassportProviders } from '@konekti/passport';
+import { Module } from '@fluojs/core';
+import { createJwtCoreProviders } from '@fluojs/jwt';
+import { createPassportProviders } from '@fluojs/passport';
 
 import { AuthController, ProfileController } from './auth.controller';
 import { AuthService } from './auth.service';

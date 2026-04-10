@@ -1,4 +1,4 @@
-import type { Token } from '@konekti/core';
+import type { Token } from '@fluojs/core';
 
 /** Marker interface for command messages handled by {@link CommandBus}. */
 export interface ICommand {}

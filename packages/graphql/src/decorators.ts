@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import {
   argMetadataSymbol,

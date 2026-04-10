@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/http",
+  "name": "@fluojs/http",
   "description": "HTTP execution layer — routing, guards, interceptors, DTO binding, and exception handling for Konekti.",
   "keywords": [
     "konekti",
@@ -48,9 +48,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/validation": "workspace:*",
-    "@konekti/di": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/validation": "workspace:*",
+    "@fluojs/di": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

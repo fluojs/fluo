@@ -1,5 +1,5 @@
-import { FromBody } from '@konekti/http';
-import { IsNotEmpty, IsString } from '@konekti/validation';
+import { FromBody } from '@fluojs/http';
+import { IsNotEmpty, IsString } from '@fluojs/validation';
 
 export class LoginDto {
   @IsString()

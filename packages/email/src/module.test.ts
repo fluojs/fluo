@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type Constructor, type Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container, type Provider } from '@konekti/di';
-import { NotificationsModule, NotificationsService } from '@konekti/notifications';
-import type { Queue } from '@konekti/queue';
+import { type Constructor, type Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
+import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import type { Queue } from '@fluojs/queue';
 
 interface MockQueueJob {
   attemptsMade: number;

@@ -1,4 +1,4 @@
-import type { Provider } from '@konekti/di';
+import type { Provider } from '@fluojs/di';
 
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
 import { HealthCheckError } from '../errors.js';

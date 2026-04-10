@@ -1,8 +1,8 @@
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
-import type { HttpApplicationAdapter } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 
 import {
   dispatchGatewayDisconnect,
@@ -85,7 +85,7 @@ function resolveSupportedFetchStyleRealtimeCapability(
 ): FetchStyleRealtimeCapability {
   if (typeof adapter.getRealtimeCapability !== 'function') {
     throw new Error(
-      'Deno WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @konekti/platform-deno together with @konekti/websockets/deno.',
+      'Deno WebSocket gateway bootstrap requires an HTTP adapter with getRealtimeCapability(). Use @fluojs/platform-deno together with @fluojs/websockets/deno.',
     );
   }
 
@@ -143,7 +143,7 @@ export class DenoWebSocketGatewayLifecycleService
 
     if (!hasDenoWebSocketBindingHost(this.adapter)) {
       throw new Error(
-        'Deno WebSocket gateway bootstrap requires the selected adapter to expose Deno websocket binding configuration. Use @konekti/platform-deno with @konekti/websockets/deno.',
+        'Deno WebSocket gateway bootstrap requires the selected adapter to expose Deno websocket binding configuration. Use @fluojs/platform-deno with @fluojs/websockets/deno.',
       );
     }
 
@@ -160,7 +160,7 @@ export class DenoWebSocketGatewayLifecycleService
     }
 
     throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/deno. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
+      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/deno. Gateway path ${descriptor.path} must use the default fetch-style request-upgrade host instead.`,
     );
   }
 

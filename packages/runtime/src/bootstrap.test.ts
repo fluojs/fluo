@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Global, Inject, Module } from '@konekti/core';
-import { defineModuleMetadata } from '@konekti/core/internal';
+import { Global, Inject, Module } from '@fluojs/core';
+import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { bootstrapModule, KonektiFactory } from './bootstrap.js';
 import { DuplicateProviderError, ModuleGraphError, ModuleInjectionMetadataError, ModuleVisibilityError } from './errors.js';

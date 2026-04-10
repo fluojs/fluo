@@ -3,16 +3,16 @@ import type { IncomingMessage } from 'node:http';
 import { createRequire } from 'node:module';
 import type { Duplex } from 'node:stream';
 
-import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@konekti/http';
-import { Inject } from '@konekti/core';
-import type { Container } from '@konekti/di';
+import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
 import {
   type ApplicationLogger,
   type CompiledModule,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import type {
   GraphQLError as GraphQLErrorType,
   GraphQLBoolean as GraphQLBooleanType,

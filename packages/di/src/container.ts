@@ -1,5 +1,5 @@
-import { InvariantError, formatTokenName, type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
+import { InvariantError, formatTokenName, type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
 
 import {
   CircularDependencyError,

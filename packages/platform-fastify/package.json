@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/platform-fastify",
+  "name": "@fluojs/platform-fastify",
   "description": "Fastify-based HTTP adapter for the Konekti runtime.",
   "keywords": [
     "konekti",
@@ -43,8 +43,8 @@
   },
   "dependencies": {
     "@fastify/multipart": "^9.2.1",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "fastify": "^5.6.1",
     "fastify-raw-body": "^5.0.0"
   },

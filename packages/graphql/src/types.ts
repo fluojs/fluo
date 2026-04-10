@@ -1,6 +1,6 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
-import type { Container } from '@konekti/di';
-import type { FrameworkRequest, Principal } from '@konekti/http';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type { FrameworkRequest, Principal } from '@fluojs/http';
 import type { GraphQLObjectType, GraphQLSchema, GraphQLUnionType } from 'graphql';
 
 /**

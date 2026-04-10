@@ -9,7 +9,7 @@ import type {
   EventType,
 } from './index.js';
 
-describe('@konekti/event-bus public API surface', () => {
+describe('@fluojs/event-bus public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(eventBusPublicApi).toHaveProperty('EventBusModule');
     expect(eventBusPublicApi).toHaveProperty('createEventBusProviders');

@@ -15,12 +15,12 @@ import {
   type FrameworkRequest,
   type FrameworkResponse,
   type RequestContext,
-} from '@konekti/http';
+} from '@fluojs/http';
 import {
   createHealthModule,
   defineModule,
   type ApplicationLogger,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 import {
   bootstrapExpressApplication,
@@ -139,7 +139,7 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-describe('@konekti/platform-express', () => {
+describe('@fluojs/platform-express', () => {
   it('uses the runtime default port instead of process.env.PORT', async () => {
     const previousPort = process.env.PORT;
     process.env.PORT = '4321';

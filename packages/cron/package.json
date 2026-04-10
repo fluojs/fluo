@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/cron",
+  "name": "@fluojs/cron",
   "description": "Decorator-based task scheduling for Konekti with cron, interval, and timeout triggers and optional distributed locking.",
   "keywords": [
     "konekti",
@@ -43,10 +43,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/redis": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/redis": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "croner": "^8.1.2"
   },
   "devDependencies": {

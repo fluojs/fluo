@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, Token } from '@konekti/core';
+import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 
 /**
  * Lifetime policy understood by the DI container.

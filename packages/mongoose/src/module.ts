@@ -1,6 +1,6 @@
-import type { AsyncModuleOptions } from '@konekti/core';
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { AsyncModuleOptions } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { MongooseConnection } from './connection.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';

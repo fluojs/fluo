@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import { microserviceMetadataSymbol } from './metadata.js';
 import type { HandlerKind, HandlerMetadata, Pattern } from './types.js';
@@ -70,7 +70,7 @@ function createPatternDecorator(kind: HandlerKind, pattern: Pattern): MethodDeco
  *
  * @example
  * ```ts
- * import { MessagePattern } from '@konekti/microservices';
+ * import { MessagePattern } from '@fluojs/microservices';
  *
  * export class MathHandler {
  *   @MessagePattern('math.sum')

@@ -1,4 +1,4 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 
 export class RouteConflictError extends KonektiError {
   constructor(message: string) {

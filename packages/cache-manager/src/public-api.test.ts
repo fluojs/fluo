@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as cacheManagerPublicApi from './index.js';
 
-describe('@konekti/cache-manager public API surface', () => {
+describe('@fluojs/cache-manager public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(cacheManagerPublicApi).toHaveProperty('CacheModule');
     expect(cacheManagerPublicApi).toHaveProperty('createCacheProviders');

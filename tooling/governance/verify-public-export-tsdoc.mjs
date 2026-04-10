@@ -57,6 +57,35 @@ function changedFilesFromGit() {
   return [...changedFiles].sort((left, right) => left.localeCompare(right));
 }
 
+function preferredBaseRefFromGit() {
+  const preferredBase = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
+  const mergeBaseResult = run('git', ['merge-base', 'HEAD', preferredBase], { allowFailure: true });
+
+  if (mergeBaseResult.status === 0 && mergeBaseResult.stdout.trim().length > 0) {
+    return mergeBaseResult.stdout.trim();
+  }
+
+  const headParentResult = run('git', ['rev-parse', 'HEAD~1'], { allowFailure: true });
+  if (headParentResult.status === 0 && headParentResult.stdout.trim().length > 0) {
+    return headParentResult.stdout.trim();
+  }
+
+  return null;
+}
+
+function readAtGitRef(gitRef, relativePath) {
+  if (!gitRef) {
+    return null;
+  }
+
+  const result = run('git', ['show', `${gitRef}:${relativePath}`], { allowFailure: true });
+  if (result.status !== 0) {
+    return null;
+  }
+
+  return result.stdout;
+}
+
 function read(relativePath) {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
@@ -279,6 +308,41 @@ function collectExportedDeclarations(sourceFile) {
   return declarations;
 }
 
+function serializeExportedDeclarations(source) {
+  const sourceFile = ts.createSourceFile('export-signature.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const printer = ts.createPrinter({ removeComments: true });
+
+  return collectExportedDeclarations(sourceFile).map(({ declaration }) => ({
+    declarationText: printer.printNode(ts.EmitHint.Unspecified, declaration, sourceFile).replace(/\s+/g, ' ').trim(),
+    kind: getDeclarationKind(declaration),
+    name: getNodeName(declaration),
+  }));
+}
+
+function hasChangedPublicExportDeclarations(_relativePath, currentSource, previousSource) {
+  if (previousSource === null) {
+    return true;
+  }
+
+  const currentDeclarations = serializeExportedDeclarations(currentSource);
+  const previousDeclarations = serializeExportedDeclarations(previousSource);
+
+  return JSON.stringify(currentDeclarations) !== JSON.stringify(previousDeclarations);
+}
+
+export function changedPublicExportSourcePathsFromGit(
+  relativePaths = changedFilesFromGit().filter((path) => isGovernedPublicExportSourcePath(path)),
+  readSource = read,
+  gitRef = preferredBaseRefFromGit(),
+  readSourceAtRef = readAtGitRef,
+) {
+  return relativePaths.filter((relativePath) => {
+    const currentSource = readSource(relativePath);
+    const previousSource = readSourceAtRef(gitRef, relativePath);
+    return hasChangedPublicExportDeclarations(relativePath, currentSource, previousSource);
+  });
+}
+
 function scriptKindForPath(relativePath) {
   const extension = extname(relativePath);
 
@@ -319,7 +383,7 @@ export function collectPublicExportTSDocViolations(relativePaths, readSource = r
 }
 
 export function enforcePublicExportTSDocBaseline(
-  relativePaths = changedFilesFromGit().filter((path) => isGovernedPublicExportSourcePath(path)),
+  relativePaths = changedPublicExportSourcePathsFromGit(),
   readSource = read,
 ) {
   const violations = collectPublicExportTSDocViolations(relativePaths, readSource);

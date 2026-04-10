@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Middleware } from '@konekti/http';
+import type { Middleware } from '@fluojs/http';
 
 import { defineModule } from './bootstrap.js';
 import { createHttpAdapterMiddleware, runHttpAdapterApplication } from './http-adapter-shared.js';

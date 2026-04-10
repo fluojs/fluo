@@ -1,6 +1,6 @@
-import { type Constructor } from '@konekti/core';
-import { getDtoBindingSchema } from '@konekti/core/internal';
-import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@konekti/validation';
+import { type Constructor } from '@fluojs/core';
+import { getDtoBindingSchema } from '@fluojs/core/internal';
+import { DefaultValidator as BaseDefaultValidator, DtoValidationError } from '@fluojs/validation';
 
 import { BadRequestException } from '../exceptions.js';
 import { toInputErrorDetail } from '../input-error-detail.js';

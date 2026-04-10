@@ -1,4 +1,4 @@
-import type { Token } from '@konekti/core';
+import type { Token } from '@fluojs/core';
 
 import type { Queue, NormalizedQueueModuleOptions } from './types.js';
 

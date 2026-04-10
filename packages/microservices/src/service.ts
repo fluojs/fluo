@@ -1,13 +1,13 @@
-import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { cloneWithFallback, getClassDiMetadata } from '@konekti/core/internal';
-import type { Container, Provider } from '@konekti/di';
+import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
+import type { Container, Provider } from '@fluojs/di';
 import {
   type ApplicationLogger,
   type CompiledModule,
   type MicroserviceRuntime,
   type OnApplicationShutdown,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { getHandlerMetadataEntries } from './metadata.js';
 import { createMicroservicePlatformStatusSnapshot } from './status.js';

@@ -8,7 +8,7 @@ import type {
   PlatformSnapshot,
   PlatformState,
   PlatformValidationResult,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 import { createPlatformConformanceHarness } from './platform-conformance.js';
 

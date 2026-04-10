@@ -33,7 +33,7 @@ describe('CLI generators', () => {
   it('emits repo slice templates based on stable testing APIs', () => {
     const content = generateRepoFiles('User')[2]?.content ?? '';
 
-    expect(content).toContain("from '@konekti/testing'");
+    expect(content).toContain("from '@fluojs/testing'");
     expect(content).toContain('createTestingModule({ rootModule: UserModule })');
     expect(content).toContain('await testingModule.resolve(UserRepo)');
   });
@@ -49,8 +49,8 @@ describe('CLI generators', () => {
   it('emits request DTO templates with split validator imports', () => {
     const dto = generateRequestDtoFiles('User')[0]?.content ?? '';
 
-    expect(dto).toContain("from '@konekti/http'");
-    expect(dto).toContain("from '@konekti/validation'");
+    expect(dto).toContain("from '@fluojs/http'");
+    expect(dto).toContain("from '@fluojs/validation'");
     expect(dto).toContain('@FromBody(\'user\')');
     expect(dto).toContain('@MinLength(1');
   });
@@ -77,7 +77,7 @@ describe('CLI generators', () => {
     const content = generateGuardFiles('Auth')[0]?.content ?? '';
     expect(content).toContain('implements Guard');
     expect(content).toContain('canActivate');
-    expect(content).toContain("from '@konekti/http'");
+    expect(content).toContain("from '@fluojs/http'");
   });
 
   it('generates interceptor file with correct naming', () => {
@@ -88,7 +88,7 @@ describe('CLI generators', () => {
     const content = generateInterceptorFiles('Logging')[0]?.content ?? '';
     expect(content).toContain('implements Interceptor');
     expect(content).toContain('intercept');
-    expect(content).toContain("from '@konekti/http'");
+    expect(content).toContain("from '@fluojs/http'");
   });
 
   it('generates middleware file with correct naming', () => {
@@ -100,7 +100,7 @@ describe('CLI generators', () => {
     expect(content).toContain('implements Middleware');
     expect(content).toContain('static forRoutes');
     expect(content).toContain('MiddlewareRouteConfig');
-    expect(content).toContain("from '@konekti/http'");
+    expect(content).toContain("from '@fluojs/http'");
   });
 
   it('generates middleware that registers into middleware array', () => {
@@ -126,10 +126,10 @@ describe('CLI generators', () => {
     const service = generateServiceFiles('User')[0]?.content ?? '';
 
     expect(controller).not.toContain("from './user.service'");
-    expect(controller).not.toContain("from '@konekti/core'");
+    expect(controller).not.toContain("from '@fluojs/core'");
     expect(controller).toContain('return [];');
     expect(service).not.toContain("from './user.repo'");
-    expect(service).not.toContain("from '@konekti/core'");
+    expect(service).not.toContain("from '@fluojs/core'");
     expect(service).toContain('return [];');
   });
 
@@ -144,7 +144,7 @@ describe('CLI generators', () => {
   });
 
   describe('registerInModule', () => {
-    const baseModule = `import { Module } from '@konekti/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n\nexport { UserModule };\n`;
+    const baseModule = `import { Module } from '@fluojs/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n\nexport { UserModule };\n`;
 
     it('inserts a provider into an empty providers array', () => {
       const result = registerInModule(baseModule, 'providers', 'UserService');
@@ -195,11 +195,11 @@ describe('CLI generators', () => {
 
   describe('ensureModuleImport', () => {
     it('inserts a new import after the last import declaration', () => {
-      const source = `import { Module } from '@konekti/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
+      const source = `import { Module } from '@fluojs/core';\n\n@Module({\n  controllers: [],\n  providers: [],\n})\nclass UserModule {}\n`;
       const result = ensureModuleImport(source, 'UserService', 'user.service');
 
       expect(result).toContain('import { UserService } from "./user.service";');
-      expect(result.indexOf('import { UserService } from "./user.service";')).toBeGreaterThan(result.indexOf("import { Module } from '@konekti/core';"));
+      expect(result.indexOf('import { UserService } from "./user.service";')).toBeGreaterThan(result.indexOf("import { Module } from '@fluojs/core';"));
       expect(result.indexOf('@Module({')).toBeGreaterThan(result.indexOf('import { UserService } from "./user.service";'));
     });
 

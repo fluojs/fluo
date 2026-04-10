@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Global, Inject, Module } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Global, Inject, Module } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import {
   MongooseModule,
@@ -27,7 +27,7 @@ function createFakeSession(events: string[]): MongooseSessionLike {
   };
 }
 
-describe('@konekti/mongoose', () => {
+describe('@fluojs/mongoose', () => {
   it('exposes current connection, session, and transaction callbacks with optional disposal', async () => {
     const events: string[] = [];
     const session = createFakeSession(events);

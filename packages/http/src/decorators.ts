@@ -2,12 +2,12 @@ import {
   type Constructor,
   type MetadataPropertyKey,
   type MetadataSource,
-} from '@konekti/core';
+} from '@fluojs/core';
 import {
   metadataSymbol,
   type ControllerMetadata,
   type DtoFieldBindingMetadata,
-} from '@konekti/core/internal';
+} from '@fluojs/core/internal';
 
 import type { ConverterLike, GuardLike, HttpMethod, InterceptorLike } from './types.js';
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import type { HttpApplicationAdapter } from '@konekti/http';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { HttpApplicationAdapter } from '@fluojs/http';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
@@ -35,7 +35,7 @@ class TestBunAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost 
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,
       reason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -141,7 +141,7 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('@konekti/websockets/bun', () => {
+describe('@fluojs/websockets/bun', () => {
   it('exposes the explicit Bun websocket seam', () => {
     expect(bunPublicApi).toHaveProperty('BunWebSocketModule');
     expect(bunPublicApi).toHaveProperty('BunWebSocketGatewayLifecycleService');
@@ -181,7 +181,7 @@ describe('@konekti/websockets/bun', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @konekti/websockets/bun');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/websockets/bun');
   });
 
   it('preserves Bun-backed websocket behavior through the explicit bun seam', async () => {

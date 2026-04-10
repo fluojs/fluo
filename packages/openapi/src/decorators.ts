@@ -1,5 +1,5 @@
-import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
-import { metadataSymbol } from '@konekti/core/internal';
+import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import { metadataSymbol } from '@fluojs/core/internal';
 import type { OpenApiSchemaObject } from './schema-builder.js';
 
 /**

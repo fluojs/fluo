@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 import Redis from 'ioredis';
 
 import { RedisService } from './redis-service.js';
@@ -38,8 +38,8 @@ export class RedisModule {
    *
    * @example
    * ```ts
-   * import { Module } from '@konekti/core';
-   * import { RedisModule } from '@konekti/redis';
+   * import { Module } from '@fluojs/core';
+   * import { RedisModule } from '@fluojs/redis';
    *
    * @Module({
    *   imports: [RedisModule.forRoot({ host: 'localhost', port: 6379 })],

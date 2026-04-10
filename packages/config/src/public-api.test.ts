@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as configPublicApi from './index.js';
 
-describe('@konekti/config public API surface', () => {
+describe('@fluojs/config public API surface', () => {
   it('keeps documented root-barrel exports', () => {
     expect(configPublicApi).toHaveProperty('ConfigModule');
     expect(configPublicApi).toHaveProperty('ConfigReloadModule');

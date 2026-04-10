@@ -1,4 +1,4 @@
-import { KonektiError, formatTokenName } from '@konekti/core';
+import { KonektiError, formatTokenName } from '@fluojs/core';
 
 export interface RuntimeErrorContext {
   readonly module?: string;

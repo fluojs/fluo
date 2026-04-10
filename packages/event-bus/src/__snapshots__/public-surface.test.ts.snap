@@ -1,5 +1,16 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`@fluojs/event-bus root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+[
+  "EVENT_BUS",
+  "EventBusLifecycleService",
+  "EventBusModule",
+  "OnEvent",
+  "createEventBusPlatformStatusSnapshot",
+  "createEventBusProviders",
+]
+`;
+
 exports[`@konekti/event-bus root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
 [
   "EVENT_BUS",

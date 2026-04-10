@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/passport",
+  "name": "@fluojs/passport",
   "description": "Strategy-agnostic authentication guard wiring and strategy registry for Konekti.",
   "keywords": [
     "konekti",
@@ -43,11 +43,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/jwt": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/jwt": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

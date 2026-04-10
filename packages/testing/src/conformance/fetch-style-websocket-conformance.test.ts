@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { createBunAdapter } from '@konekti/platform-bun';
+import { createBunAdapter } from '@fluojs/platform-bun';
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { createCloudflareWorkerAdapter } from '@konekti/platform-cloudflare-workers';
+import { createCloudflareWorkerAdapter } from '@fluojs/platform-cloudflare-workers';
 // @ts-ignore Vitest workspace alias resolution handles package test imports.
-import { createDenoAdapter } from '@konekti/platform-deno';
+import { createDenoAdapter } from '@fluojs/platform-deno';
 
 import { createFetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';
 
@@ -37,7 +37,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createBunAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.',
+        'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       name: 'bun',
     });
 
@@ -49,7 +49,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createDenoAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @konekti/websockets/deno for the official raw websocket binding.',
+        'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       name: 'deno',
     });
 
@@ -61,7 +61,7 @@ describe('official fetch-style runtime websocket contract', () => {
       createAdapter: () => createCloudflareWorkerAdapter(),
       expectedSupport: 'supported',
       expectedReason:
-        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @konekti/websockets/cloudflare-workers for the official raw websocket binding.',
+        'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       name: 'cloudflare-workers',
     });
 

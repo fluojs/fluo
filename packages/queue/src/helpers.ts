@@ -1,7 +1,7 @@
-import { type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Provider } from '@konekti/di';
-import type { CompiledModule } from '@konekti/runtime';
+import { type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Provider } from '@fluojs/di';
+import type { CompiledModule } from '@fluojs/runtime';
 
 import type { QueueRateLimiterOptions } from './types.js';
 

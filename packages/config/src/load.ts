@@ -2,7 +2,7 @@ import type { FSWatcher } from 'node:fs';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { join } from 'node:path';
 
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 import { parse as dotenvParse } from 'dotenv';
 import { expand as dotenvExpand } from 'dotenv-expand';
 

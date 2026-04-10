@@ -1,4 +1,4 @@
-import type { MetadataSource } from '@konekti/core';
+import type { MetadataSource } from '@fluojs/core';
 
 import type { HttpExceptionDetail } from './exceptions.js';
 

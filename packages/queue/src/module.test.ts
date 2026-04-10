@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject, Scope } from '@konekti/core';
-import { defineControllerMetadata } from '@konekti/core/internal';
-import { REDIS_CLIENT } from '@konekti/redis';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { Inject, Scope } from '@fluojs/core';
+import { defineControllerMetadata } from '@fluojs/core/internal';
+import { REDIS_CLIENT } from '@fluojs/redis';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 interface MockQueueConnection {
   closeCalls: number;
@@ -299,7 +299,7 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
-describe('@konekti/queue', () => {
+describe('@fluojs/queue', () => {
   beforeEach(() => {
     bullmqState.clear();
   });

@@ -1,4 +1,4 @@
-import type { CallHandler, Interceptor, InterceptorContext } from '@konekti/http';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
 
 export class <%- pascal %> implements Interceptor {
   async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {

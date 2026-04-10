@@ -1,4 +1,4 @@
-import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@konekti/runtime';
+import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
 /** Resolved Discord lifecycle state used for diagnostics and health checks. */
 export type DiscordLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';

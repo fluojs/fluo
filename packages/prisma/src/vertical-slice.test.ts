@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import {
   Controller,
   FromBody,
@@ -14,8 +14,8 @@ import {
   UseInterceptors,
   type FrameworkRequest,
   type FrameworkResponse,
-} from '@konekti/http';
-import { IsString, MinLength } from '@konekti/validation';
+} from '@fluojs/http';
+import { IsString, MinLength } from '@fluojs/validation';
 
 import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
 
@@ -67,7 +67,7 @@ function createRequest(
   };
 }
 
-describe('@konekti/prisma vertical slice', () => {
+describe('@fluojs/prisma vertical slice', () => {
   it('handles request DTO binding, validation, persistence, and canonical responses end-to-end', async () => {
     type UserRecord = {
       email: string;

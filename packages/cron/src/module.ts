@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { CronLifecycleService } from './service.js';
 import { defaultCronScheduler } from './scheduler.js';
@@ -79,8 +79,8 @@ export class CronModule {
    *
    * @example
    * ```ts
-   * import { Module } from '@konekti/core';
-   * import { CronModule } from '@konekti/cron';
+   * import { Module } from '@fluojs/core';
+   * import { CronModule } from '@fluojs/cron';
    *
    * @Module({
    *   imports: [CronModule.forRoot({ distributed: true })],

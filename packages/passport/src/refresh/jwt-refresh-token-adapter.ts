@@ -1,11 +1,11 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 import {
   DefaultJwtSigner,
   DefaultJwtVerifier,
   JwtConfigurationError,
   RefreshTokenService as JwtRefreshTokenService,
   type RefreshTokenStore,
-} from '@konekti/jwt';
+} from '@fluojs/jwt';
 
 import type { RefreshTokenService } from './refresh-token.js';
 

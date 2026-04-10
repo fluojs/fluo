@@ -1,6 +1,6 @@
-import { Inject } from '@konekti/core';
-import { metadataSymbol } from '@konekti/core/internal';
-import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import { metadataSymbol } from '@fluojs/core/internal';
+import { SseResponse, type CallHandler, type Interceptor, type InterceptorContext } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { CacheService } from './service.js';

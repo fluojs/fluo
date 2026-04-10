@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { Inject, InvariantError, KonektiError, type Token } from '@konekti/core';
-import type { OnApplicationBootstrap, OnApplicationShutdown } from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+import { Inject, InvariantError, KonektiError, type Token } from '@fluojs/core';
+import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
 import { SagaExecutionError } from '../errors.js';

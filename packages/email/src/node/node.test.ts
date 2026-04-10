@@ -42,7 +42,7 @@ function createMessage(): NormalizedEmailMessage {
   };
 }
 
-describe('@konekti/email/node', () => {
+describe('@fluojs/email/node', () => {
   it('exposes the explicit Node-only Nodemailer seam', () => {
     expect(nodePublicApi).toHaveProperty('NodemailerEmailTransport');
     expect(nodePublicApi).toHaveProperty('createNodemailerEmailTransport');

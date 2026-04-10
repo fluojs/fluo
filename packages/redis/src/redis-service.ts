@@ -1,4 +1,4 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 import type Redis from 'ioredis';
 
 import { REDIS_CLIENT } from './tokens.js';
@@ -19,8 +19,8 @@ function decodeRedisValue(raw: string): unknown {
  *
  * @example
  * ```ts
- * import { Inject } from '@konekti/core';
- * import { RedisService } from '@konekti/redis';
+ * import { Inject } from '@fluojs/core';
+ * import { RedisService } from '@fluojs/redis';
  *
  * export class SessionStore {
  *   @Inject(RedisService)

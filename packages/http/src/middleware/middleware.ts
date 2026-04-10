@@ -1,4 +1,4 @@
-import type { Constructor, Token } from '@konekti/core';
+import type { Constructor, Token } from '@fluojs/core';
 
 import type { Middleware, MiddlewareContext, MiddlewareLike, MiddlewareRouteConfig, Next, RequestContext } from '../types.js';
 

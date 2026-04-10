@@ -1,4 +1,4 @@
-import type { Constructor, MaybePromise, MetadataSource } from '@konekti/core';
+import type { Constructor, MaybePromise, MetadataSource } from '@fluojs/core';
 
 export interface ValidationIssue {
   /** Stable issue code for programmatic error handling. */

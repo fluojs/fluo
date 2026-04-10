@@ -1,4 +1,4 @@
-import { KonektiError } from '@konekti/core';
+import { KonektiError } from '@fluojs/core';
 
 /** Raised when the command bus cannot find a handler for the requested command type. */
 export class CommandHandlerNotFoundException extends KonektiError {

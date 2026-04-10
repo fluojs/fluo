@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/metrics",
+  "name": "@fluojs/metrics",
   "description": "Prometheus metrics exposure with isolated registries and low-cardinality HTTP metric middleware for Konekti.",
   "keywords": [
     "konekti",
@@ -42,9 +42,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
     "prom-client": "^15.1.3"
   },
   "devDependencies": {

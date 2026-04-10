@@ -1,6 +1,6 @@
-import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@konekti/core';
-import type { RequestScopeContainer } from '@konekti/di';
-export type { ValidationIssue, Validator } from '@konekti/validation';
+import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@fluojs/core';
+import type { RequestScopeContainer } from '@fluojs/di';
+export type { ValidationIssue, Validator } from '@fluojs/validation';
 
 /** HTTP methods understood by Konekti route metadata and dispatcher matching. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'ALL';

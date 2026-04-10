@@ -1,4 +1,4 @@
-import type { FrameworkRequest, FrameworkResponse, FrameworkResponseStream } from '@konekti/http';
+import type { FrameworkRequest, FrameworkResponse, FrameworkResponseStream } from '@fluojs/http';
 
 export function isGraphqlPath(path: string): boolean {
   return path === '/graphql' || path === '/graphql/';

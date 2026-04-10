@@ -1,4 +1,4 @@
-import type { Provider } from '@konekti/di';
+import type { Provider } from '@fluojs/di';
 import { AuthStrategyResolutionError } from './errors.js';
 import { AuthGuard } from './guard.js';
 import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';

@@ -168,7 +168,7 @@ export function newUsage(): string {
  *
  * @example
  * ```ts
- * import { runNewCommand } from '@konekti/cli';
+ * import { runNewCommand } from '@fluojs/cli';
  *
  * const exitCode = await runNewCommand(['starter-app', '--package-manager', 'pnpm'], {
  *   cwd: '/workspace',

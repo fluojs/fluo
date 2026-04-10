@@ -1,7 +1,7 @@
-import { Inject, type MetadataPropertyKey, type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { Container, Provider } from '@konekti/di';
-import { REDIS_CLIENT } from '@konekti/redis';
+import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { Container, Provider } from '@fluojs/di';
+import { REDIS_CLIENT } from '@fluojs/redis';
 import { Cron as CronValidator } from 'croner';
 import {
   type ApplicationLogger,
@@ -9,8 +9,8 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
   type OnModuleDestroy,
-} from '@konekti/runtime';
-import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@konekti/runtime/internal';
+} from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { createCronPlatformStatusSnapshot } from './status.js';

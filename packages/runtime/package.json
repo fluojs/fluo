@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/runtime",
+  "name": "@fluojs/runtime",
   "description": "Application bootstrap and runtime orchestration — module graph compilation, DI wiring, and diagnostics export for Konekti.",
   "keywords": [
     "konekti",
@@ -74,13 +74,13 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/config": "workspace:*",
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/http": "workspace:*"
+    "@fluojs/config": "workspace:*",
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/http": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/serialization": "workspace:*",
+    "@fluojs/serialization": "workspace:*",
     "vitest": "^3.2.4"
   }
 }

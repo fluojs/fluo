@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject, Module } from '@konekti/core';
-import { Controller, Get, Post, type RequestContext } from '@konekti/http';
-import type { Dispatcher } from '@konekti/http';
+import { Inject, Module } from '@fluojs/core';
+import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
+import type { Dispatcher } from '@fluojs/http';
 
 import {
   createTestApp,
@@ -37,7 +37,7 @@ class UserController {
 })
 class AppModule {}
 
-describe('@konekti/testing', () => {
+describe('@fluojs/testing', () => {
   it('exposes Test.createTestingModule for NestJS-style module builder access', async () => {
     const TOKEN = Symbol('token');
 

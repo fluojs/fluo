@@ -1,5 +1,5 @@
-import type { Provider } from '@konekti/di';
-import { defineModule, type ModuleType } from '@konekti/runtime';
+import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service.js';

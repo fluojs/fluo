@@ -7,15 +7,15 @@ import {
   Post,
   SseResponse,
   type RequestContext,
-} from '@konekti/http';
+} from '@fluojs/http';
 import {
   defineModule,
   type ApplicationLogger,
   type ModuleType,
   type UploadedFile,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;

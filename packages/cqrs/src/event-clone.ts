@@ -1,4 +1,4 @@
-import { cloneWithFallback } from '@konekti/core/internal';
+import { cloneWithFallback } from '@fluojs/core/internal';
 import type { CqrsEventType, IEvent } from './types.js';
 
 /**

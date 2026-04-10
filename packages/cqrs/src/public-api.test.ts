@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as cqrsPublicApi from './index.js';
 
-describe('@konekti/cqrs public API surface', () => {
+describe('@fluojs/cqrs public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(cqrsPublicApi).toHaveProperty('CqrsModule');
     expect(cqrsPublicApi).toHaveProperty('createCqrsProviders');

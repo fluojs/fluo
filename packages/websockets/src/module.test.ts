@@ -5,21 +5,21 @@ import type { Duplex } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
-import { Inject, Scope } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container } from '@konekti/di';
-import { bootstrapExpressApplication } from '@konekti/platform-express';
-import { bootstrapFastifyApplication } from '@konekti/platform-fastify';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
-import { bootstrapNodeApplication } from '@konekti/runtime/node';
-import { HTTP_APPLICATION_ADAPTER } from '@konekti/runtime/internal';
+import { Inject, Scope } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container } from '@fluojs/di';
+import { bootstrapExpressApplication } from '@fluojs/platform-express';
+import { bootstrapFastifyApplication } from '@fluojs/platform-fastify';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
+import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import {
   Controller,
   createNoopHttpApplicationAdapter,
   createServerBackedHttpAdapterRealtimeCapability,
   Get,
   type HttpApplicationAdapter,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from './decorators.js';
 import * as publicApi from './index.js';
@@ -223,7 +223,7 @@ function createMockSocket(): {
   };
 }
 
-describe('@konekti/websockets', () => {
+describe('@fluojs/websockets', () => {
   it('keeps lifecycle DI tokens internal to module wiring', () => {
     expect(publicApi).not.toHaveProperty('WEBSOCKET_GATEWAY_SERVICE');
     expect(publicApi).not.toHaveProperty('WEBSOCKET_SERVICE');

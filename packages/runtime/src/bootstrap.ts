@@ -1,7 +1,7 @@
-import { Container, type Provider } from '@konekti/di';
-import { DefaultBinder } from '@konekti/http/internal';
-import { InvariantError, type Token } from '@konekti/core';
-import { defineModuleMetadata, getClassDiMetadata } from '@konekti/core/internal';
+import { Container, type Provider } from '@fluojs/di';
+import { DefaultBinder } from '@fluojs/http/internal';
+import { InvariantError, type Token } from '@fluojs/core';
+import { defineModuleMetadata, getClassDiMetadata } from '@fluojs/core/internal';
 import {
   createDispatcher,
   createHandlerMapping,
@@ -10,7 +10,7 @@ import {
   type HttpApplicationAdapter,
   type Dispatcher,
   type HandlerSource,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import { DuplicateProviderError } from './errors.js';
 import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { Container } from '@konekti/di';
-import { OnEvent, type EventBusTransport } from '@konekti/event-bus';
-import { bootstrapApplication, defineModule, type ApplicationLogger } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { Container } from '@fluojs/di';
+import { OnEvent, type EventBusTransport } from '@fluojs/event-bus';
+import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
@@ -92,7 +92,7 @@ class UserCreatedEvent implements IEvent {
   constructor(public readonly name: string) {}
 }
 
-describe('@konekti/cqrs', () => {
+describe('@fluojs/cqrs', () => {
   it('stores and reads class decorator metadata for command/query/event handlers and sagas', () => {
     @CommandHandler(CreateUserCommand)
     class CreateUserHandler {

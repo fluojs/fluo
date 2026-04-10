@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/validation",
+  "name": "@fluojs/validation",
   "description": "Input-side validation decorators, mapped DTO helpers, and validation engine for Konekti.",
   "keywords": [
     "konekti",
@@ -47,7 +47,7 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
+    "@fluojs/core": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
     "validator": "^13.15.26"
   },

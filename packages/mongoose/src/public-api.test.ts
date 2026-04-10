@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as mongoosePublicApi from './index.js';
 
-describe('@konekti/mongoose public API surface', () => {
+describe('@fluojs/mongoose public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(mongoosePublicApi).toHaveProperty('MongooseConnection');
     expect(mongoosePublicApi).toHaveProperty('MongooseModule');

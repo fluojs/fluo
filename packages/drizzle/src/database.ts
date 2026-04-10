@@ -5,9 +5,9 @@ import {
   raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@konekti/runtime';
-import type { OnApplicationShutdown } from '@konekti/runtime';
-import { Inject } from '@konekti/core';
+} from '@fluojs/runtime';
+import type { OnApplicationShutdown } from '@fluojs/runtime';
+import { Inject } from '@fluojs/core';
 
 import { DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS } from './tokens.js';
 import { createDrizzlePlatformStatusSnapshot } from './status.js';

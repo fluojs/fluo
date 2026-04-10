@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import type {
   TypedOnMessageHandler as NodeTypedOnMessageHandler,
   WebSocketGatewayContext as NodeWebSocketGatewayContext,

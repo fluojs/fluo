@@ -4,8 +4,8 @@ import type {
   HttpApplicationAdapter,
   MiddlewareLike,
   SecurityHeadersOptions,
-} from '@konekti/http';
-import { createFetchStyleHttpAdapterRealtimeCapability } from '@konekti/http';
+} from '@fluojs/http';
+import { createFetchStyleHttpAdapterRealtimeCapability } from '@fluojs/http';
 import type {
   Application,
   ApplicationLogger,
@@ -13,19 +13,19 @@ import type {
   ModuleType,
   MultipartOptions,
   UploadedFile,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
-} from '@konekti/runtime/node';
-import { dispatchWebRequest } from '@konekti/runtime/web';
+} from '@fluojs/runtime/node';
+import { dispatchWebRequest } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
   type HttpAdapterListenTarget,
-} from '@konekti/runtime/internal/http-adapter';
+} from '@fluojs/runtime/internal/http-adapter';
 
-declare module '@konekti/http' {
+declare module '@fluojs/http' {
   interface FrameworkRequest {
     files?: UploadedFile[];
     rawBody?: Uint8Array;
@@ -166,7 +166,7 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_DISPATCHER_NOT_READY_MESSAGE = 'Bun adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const BUN_WEBSOCKET_SUPPORT_REASON =
-  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @konekti/websockets/bun for the official raw websocket binding.';
+  'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private closeInFlight?: Promise<void>;

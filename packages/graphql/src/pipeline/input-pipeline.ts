@@ -1,6 +1,6 @@
-import { type Constructor, type MetadataPropertyKey } from '@konekti/core';
-import { getDtoValidationSchema, type DtoFieldValidationRule } from '@konekti/core/internal';
-import { DefaultValidator } from '@konekti/validation';
+import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import { getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/internal';
+import { DefaultValidator } from '@fluojs/validation';
 
 import { isGraphqlListTypeRef } from '../types.js';
 import type { GraphqlArgType, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from '../types.js';

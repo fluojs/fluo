@@ -1,4 +1,4 @@
-import type { MetadataPropertyKey, Token } from '@konekti/core';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
 
 /** Supported task kinds handled by the scheduler runtime. */
 export type SchedulingTaskKind = 'cron' | 'interval' | 'timeout';

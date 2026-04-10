@@ -7,7 +7,7 @@ import {
   type ModuleType,
   type PlatformShellSnapshot,
   PLATFORM_SHELL,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
 

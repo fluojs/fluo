@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import type { EventHandlerMetadata, EventType } from './types.js';
 import { eventBusMetadataSymbol } from './metadata.js';
@@ -34,7 +34,7 @@ function defineStandardEventHandlerMetadata(
  *
  * @example
  * ```ts
- * import { OnEvent } from '@konekti/event-bus';
+ * import { OnEvent } from '@fluojs/event-bus';
  *
  * class UserRegisteredEvent {
  *   constructor(public readonly email: string) {}

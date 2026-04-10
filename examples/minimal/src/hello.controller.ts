@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import { Controller, Get } from '@konekti/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Get } from '@fluojs/http';
 
 import { HelloService } from './hello.service';
 

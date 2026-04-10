@@ -1,5 +1,5 @@
-import { Inject } from '@konekti/core';
-import type { OnApplicationShutdown, OnModuleInit } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailMessageValidationError } from './errors.js';
@@ -70,7 +70,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
  * @remarks
  * The service stays transport-agnostic at the shared package boundary, consumes only
  * explicitly injected {@link EmailTransport} contracts, and translates
- * `@konekti/notifications` envelopes into concrete email messages.
+ * `@fluojs/notifications` envelopes into concrete email messages.
  */
 @Inject(EMAIL_OPTIONS)
 export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {

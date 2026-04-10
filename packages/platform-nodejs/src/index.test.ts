@@ -2,12 +2,12 @@ import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { Controller, Get } from '@konekti/http';
-import { KonektiFactory, defineModule } from '@konekti/runtime';
+import { Controller, Get } from '@fluojs/http';
+import { KonektiFactory, defineModule } from '@fluojs/runtime';
 import {
   bootstrapNodeApplication,
   runNodeApplication,
-} from '@konekti/runtime/node';
+} from '@fluojs/runtime/node';
 
 import {
   bootstrapNodejsApplication,
@@ -41,7 +41,7 @@ async function findAvailablePort(): Promise<number> {
   });
 }
 
-describe('@konekti/platform-nodejs', () => {
+describe('@fluojs/platform-nodejs', () => {
   it('re-exports the existing Node compatibility helpers through the platform package', () => {
     expect(bootstrapNodejsApplication).toBe(bootstrapNodeApplication);
     expect(runNodejsApplication).toBe(runNodeApplication);

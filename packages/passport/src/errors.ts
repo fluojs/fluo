@@ -1,4 +1,4 @@
-import { KonektiError, type KonektiErrorOptions } from '@konekti/core';
+import { KonektiError, type KonektiErrorOptions } from '@fluojs/core';
 
 export class AuthStrategyResolutionError extends KonektiError {
   constructor(message: string) {

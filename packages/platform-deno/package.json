@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/platform-deno",
+  "name": "@fluojs/platform-deno",
   "description": "Deno-based HTTP adapter for the Konekti runtime.",
   "keywords": [
     "konekti",
@@ -42,8 +42,8 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/http": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/http": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

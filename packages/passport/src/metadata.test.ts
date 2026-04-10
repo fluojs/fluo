@@ -1,4 +1,4 @@
-import { Controller, Get } from '@konekti/http';
+import { Controller, Get } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
 import { RequireScopes, UseAuth } from './decorators.js';

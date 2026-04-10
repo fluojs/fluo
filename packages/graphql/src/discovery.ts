@@ -1,7 +1,7 @@
-import { type MetadataPropertyKey, type Token } from '@konekti/core';
-import { getClassDiMetadata } from '@konekti/core/internal';
-import type { FactoryProvider, Provider, ValueProvider } from '@konekti/di';
-import type { CompiledModule } from '@konekti/runtime';
+import { type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { getClassDiMetadata } from '@fluojs/core/internal';
+import type { FactoryProvider, Provider, ValueProvider } from '@fluojs/di';
+import type { CompiledModule } from '@fluojs/runtime';
 
 import { getArgFieldMetadataEntries, getResolverHandlerMetadataEntries, getResolverMetadata } from './metadata.js';
 import type { GraphqlModuleOptions, ResolverDescriptor } from './types.js';

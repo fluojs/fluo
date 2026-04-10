@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Inject } from '@konekti/core';
-import { bootstrapApplication, defineModule } from '@konekti/runtime';
+import { Inject } from '@fluojs/core';
+import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import {
   Controller,
   FromBody,
@@ -14,7 +14,7 @@ import {
   UseInterceptors,
   type FrameworkRequest,
   type FrameworkResponse,
-} from '@konekti/http';
+} from '@fluojs/http';
 
 import { DrizzleModule, DrizzleDatabase, DrizzleTransactionInterceptor } from './index.js';
 
@@ -65,7 +65,7 @@ function createRequest(
   };
 }
 
-describe('@konekti/drizzle vertical slice', () => {
+describe('@fluojs/drizzle vertical slice', () => {
   it('propagates transaction handles through the request interceptor path', async () => {
     type UserRecord = {
       email: string;

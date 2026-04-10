@@ -125,3 +125,137 @@ describe('enforcePublicExportTSDocBaseline', () => {
     ).toThrowError(/docs\/operations\/public-export-tsdoc-baseline\.md/);
   });
 });
+
+describe('changedPublicExportSourcePathsFromGit', () => {
+  it('ignores import-only namespace churn when exported declarations are unchanged', async () => {
+    const governanceModule = (await import('./verify-public-export-tsdoc.mjs')) as any;
+    const currentSource = [
+      "import { Module } from '@fluojs/core';",
+      '',
+      '/**',
+      ' * Configure the example module.',
+      ' */',
+      'export class ExampleModule {}',
+      '',
+    ].join('\n');
+
+    const previousSource = [
+      "import { Module } from '@konekti/core';",
+      '',
+      '/**',
+      ' * Configure the example module.',
+      ' */',
+      'export class ExampleModule {}',
+      '',
+    ].join('\n');
+
+    expect(
+      governanceModule.changedPublicExportSourcePathsFromGit(
+        ['packages/core/src/example.ts'],
+        () => currentSource,
+        'test-base',
+        () => previousSource,
+        () => false,
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps files selected when an exported class signature changes inside the body', async () => {
+    const governanceModule = (await import('./verify-public-export-tsdoc.mjs')) as any;
+    const currentSource = [
+      '/**',
+      ' * Example service.',
+      ' *',
+      ' * @param name Name to format.',
+      ' * @returns The formatted greeting.',
+      ' */',
+      'export class ExampleService {',
+      '  greet(name: string, locale: string): string {',
+      "    return `${locale}:${name}`;",
+      '  }',
+      '}',
+      '',
+    ].join('\n');
+
+    const previousSource = [
+      '/**',
+      ' * Example service.',
+      ' *',
+      ' * @param name Name to format.',
+      ' * @returns The formatted greeting.',
+      ' */',
+      'export class ExampleService {',
+      '  greet(name: string): string {',
+      '    return name;',
+      '  }',
+      '}',
+      '',
+    ].join('\n');
+
+    expect(
+      governanceModule.changedPublicExportSourcePathsFromGit(
+        ['packages/core/src/example.ts'],
+        () => currentSource,
+        'test-base',
+        () => previousSource,
+        () => true,
+      ),
+    ).toEqual(['packages/core/src/example.ts']);
+  });
+
+  it('keeps files selected when an exported interface or type literal shape changes', async () => {
+    const governanceModule = (await import('./verify-public-export-tsdoc.mjs')) as any;
+    const currentSource = [
+      '/**',
+      ' * Example options.',
+      ' */',
+      'export interface ExampleOptions {',
+      '  transport: {',
+      "    kind: 'http' | 'ws';",
+      '    secure: boolean;',
+      '  };',
+      '}',
+      '',
+      '/**',
+      ' * Example payload.',
+      ' */',
+      'export type ExamplePayload = {',
+      '  user: {',
+      '    id: string;',
+      '    roles: string[];',
+      '  };',
+      '};',
+      '',
+    ].join('\n');
+
+    const previousSource = [
+      '/**',
+      ' * Example options.',
+      ' */',
+      'export interface ExampleOptions {',
+      '  transport: {',
+      "    kind: 'http';",
+      '  };',
+      '}',
+      '',
+      '/**',
+      ' * Example payload.',
+      ' */',
+      'export type ExamplePayload = {',
+      '  user: {',
+      '    id: string;',
+      '  };',
+      '};',
+      '',
+    ].join('\n');
+
+    expect(
+      governanceModule.changedPublicExportSourcePathsFromGit(
+        ['packages/core/src/example.ts'],
+        () => currentSource,
+        'test-base',
+        () => previousSource,
+      ),
+    ).toEqual(['packages/core/src/example.ts']);
+  });
+});

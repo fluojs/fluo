@@ -1,4 +1,4 @@
-import { fallbackClone } from '@konekti/core/internal';
+import { fallbackClone } from '@fluojs/core/internal';
 
 export function cloneConfigDictionary<T>(value: T): T {
   try {

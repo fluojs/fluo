@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
-import type { PlatformShellSnapshot } from '@konekti/runtime';
+import type { PlatformShellSnapshot } from '@fluojs/runtime';
 
 const snapshotFixture: PlatformShellSnapshot = {
   components: [

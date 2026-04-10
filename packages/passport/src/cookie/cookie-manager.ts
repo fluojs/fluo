@@ -1,4 +1,4 @@
-import type { FrameworkResponse } from '@konekti/http';
+import type { FrameworkResponse } from '@fluojs/http';
 
 import { DEFAULT_COOKIE_AUTH_OPTIONS, type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-auth.js';
 

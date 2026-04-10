@@ -14,7 +14,7 @@ export interface RedisEventBusTransportOptions {
  * @example
  * ```ts
  * import Redis from 'ioredis';
- * import { RedisEventBusTransport } from '@konekti/event-bus/redis';
+ * import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
  *
  * const publishClient = new Redis();
  * const subscribeClient = new Redis();

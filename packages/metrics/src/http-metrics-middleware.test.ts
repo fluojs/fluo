@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse, MiddlewareContext } from '@konekti/http';
+import type { FrameworkRequest, FrameworkResponse, MiddlewareContext } from '@fluojs/http';
 import { Registry } from 'prom-client';
 
 import { HttpMetricsMiddleware } from './http-metrics-middleware.js';

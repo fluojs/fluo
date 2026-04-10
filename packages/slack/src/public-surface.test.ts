@@ -14,7 +14,7 @@ import type {
   SlackWebhookTransportOptions,
 } from './index.js';
 
-describe('@konekti/slack public API surface', () => {
+describe('@fluojs/slack public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
     expect(slackPublicApi).toHaveProperty('SlackModule');
     expect(slackPublicApi).toHaveProperty('createSlackProviders');

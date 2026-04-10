@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/example-ops-metrics-terminus",
+  "name": "@fluojs/example-ops-metrics-terminus",
   "description": "Runnable Konekti operations example with metrics and terminus health/readiness endpoints.",
   "version": "0.0.0",
   "private": true,
@@ -11,14 +11,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/http": "workspace:*",
-    "@konekti/metrics": "workspace:*",
-    "@konekti/platform-fastify": "workspace:*",
-    "@konekti/runtime": "workspace:*",
-    "@konekti/terminus": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/metrics": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/terminus": "workspace:*"
   },
   "devDependencies": {
-    "@konekti/testing": "workspace:*"
+    "@fluojs/testing": "workspace:*"
   }
 }

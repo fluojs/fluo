@@ -2,7 +2,7 @@ import type {
   PersistencePlatformStatusSnapshot,
   PlatformHealthReport,
   PlatformReadinessReport,
-} from '@konekti/runtime';
+} from '@fluojs/runtime';
 
 type PrismaPlatformLifecycleState = 'created' | 'ready' | 'shutting-down' | 'stopped';
 

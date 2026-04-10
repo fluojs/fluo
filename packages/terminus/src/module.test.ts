@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '@konekti/http';
-import { REDIS_CLIENT } from '@konekti/redis';
-import { bootstrapApplication, defineModule, type PlatformComponent } from '@konekti/runtime';
+import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
+import { REDIS_CLIENT } from '@fluojs/redis';
+import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';

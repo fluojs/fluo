@@ -1,7 +1,7 @@
 import { createHmac, createVerify, timingSafeEqual } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
 
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { JwksClient } from './jwks.js';

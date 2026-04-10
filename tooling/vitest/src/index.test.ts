@@ -23,15 +23,15 @@ describe('collectWorkspaceAliases', () => {
   it('uses manifest package names instead of package directory names', () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'konekti-vitest-alias-'));
 
-    writePackage(repoRoot, 'websocket', '@konekti/websockets', {
+    writePackage(repoRoot, 'websocket', '@fluojs/websockets', {
       'index.ts': 'export {}\n',
       'node.ts': 'export {}\n',
     });
-    writePackage(repoRoot, 'platform-socket.io', '@konekti/socket.io', {
+    writePackage(repoRoot, 'platform-socket.io', '@fluojs/socket.io', {
       'index.ts': 'export {}\n',
       'module.ts': 'export {}\n',
     });
-    writePackage(repoRoot, 'runtime', '@konekti/runtime', {
+    writePackage(repoRoot, 'runtime', '@fluojs/runtime', {
       'index.ts': 'export {}\n',
       'internal-http-adapter.ts': 'export {}\n',
       'internal-request-response-factory.ts': 'export {}\n',
@@ -39,11 +39,11 @@ describe('collectWorkspaceAliases', () => {
 
     const aliases = collectWorkspaceAliases(pathToFileURL(`${repoRoot}/`));
 
-    expect(aliases['@konekti/websockets']).toBe(join(repoRoot, 'packages', 'websocket', 'src', 'index.ts'));
-    expect(aliases['@konekti/websockets/node']).toBe(join(repoRoot, 'packages', 'websocket', 'src', 'node.ts'));
-    expect(aliases['@konekti/socket.io']).toBe(join(repoRoot, 'packages', 'platform-socket.io', 'src', 'index.ts'));
-    expect(aliases['@konekti/socket.io/module']).toBe(join(repoRoot, 'packages', 'platform-socket.io', 'src', 'module.ts'));
-    expect(aliases).not.toHaveProperty('@konekti/websocket');
-    expect(aliases).not.toHaveProperty('@konekti/platform-socket.io');
+    expect(aliases['@fluojs/websockets']).toBe(join(repoRoot, 'packages', 'websocket', 'src', 'index.ts'));
+    expect(aliases['@fluojs/websockets/node']).toBe(join(repoRoot, 'packages', 'websocket', 'src', 'node.ts'));
+    expect(aliases['@fluojs/socket.io']).toBe(join(repoRoot, 'packages', 'platform-socket.io', 'src', 'index.ts'));
+    expect(aliases['@fluojs/socket.io/module']).toBe(join(repoRoot, 'packages', 'platform-socket.io', 'src', 'module.ts'));
+    expect(aliases).not.toHaveProperty('@fluojs/websocket');
+    expect(aliases).not.toHaveProperty('@fluojs/platform-socket.io');
   });
 });

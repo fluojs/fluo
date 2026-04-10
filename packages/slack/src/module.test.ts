@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type Constructor, type Token } from '@konekti/core';
-import { getModuleMetadata } from '@konekti/core/internal';
-import { Container, type Provider } from '@konekti/di';
+import { type Constructor, type Token } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
+import { Container, type Provider } from '@fluojs/di';
 
 import { SlackChannel } from './channel.js';
 import { SlackConfigurationError, SlackMessageValidationError, SlackTransportError } from './errors.js';

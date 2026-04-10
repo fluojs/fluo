@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/studio",
+  "name": "@fluojs/studio",
   "description": "File-first diagnostics viewer for Konekti runtime platform snapshot and timing JSON exports.",
   "keywords": [
     "konekti",
@@ -36,10 +36,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@konekti-internal/tooling-vite": "workspace:*",
+    "@fluojs-internal/tooling-vite": "workspace:*",
     "vitest": "^3.2.4"
   }
 }

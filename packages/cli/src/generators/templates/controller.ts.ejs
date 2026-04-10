@@ -1,7 +1,7 @@
 <% if (hasService) { %>
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 <% } %>
-import { Controller, Get } from '@konekti/http';
+import { Controller, Get } from '@fluojs/http';
 
 <% if (hasService) { %>
 import { <%- service %> } from './<%- kebab %>.service';

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@konekti/http';
+import { Controller, Get } from '@fluojs/http';
 
 import { defineModule } from '../bootstrap.js';
 import type { ModuleType } from '../types.js';
@@ -17,7 +17,7 @@ export interface ReadinessStatus {
 }
 
 export interface HealthModuleOptions {
-  healthCheck?: (ctx: import('@konekti/http').RequestContext) =>
+  healthCheck?: (ctx: import('@fluojs/http').RequestContext) =>
     | HealthStatus
     | HealthCheckResponse
     | Promise<HealthStatus | HealthCheckResponse>;
@@ -32,7 +32,7 @@ export function createHealthModule(options: HealthModuleOptions = {}): ModuleTyp
   let ready = false;
 
   const resolveHealthResponse = async (
-    ctx: import('@konekti/http').RequestContext,
+    ctx: import('@fluojs/http').RequestContext,
   ): Promise<HealthStatus | HealthCheckResponse> => {
     if (!options.healthCheck) {
       return { status: 'ok' };
@@ -47,7 +47,7 @@ export function createHealthModule(options: HealthModuleOptions = {}): ModuleTyp
   @Controller(basePath)
   class HealthController {
     @Get('/health')
-    async health(_input: undefined, ctx: import('@konekti/http').RequestContext): Promise<unknown> {
+    async health(_input: undefined, ctx: import('@fluojs/http').RequestContext): Promise<unknown> {
       const result = await resolveHealthResponse(ctx);
 
       if (isHealthCheckResponse(result)) {
@@ -62,7 +62,7 @@ export function createHealthModule(options: HealthModuleOptions = {}): ModuleTyp
     }
 
     @Get('/ready')
-    async ready(_input: undefined, ctx: import('@konekti/http').RequestContext): Promise<ReadinessStatus> {
+    async ready(_input: undefined, ctx: import('@fluojs/http').RequestContext): Promise<ReadinessStatus> {
       if (!ready) {
         ctx.response.setStatus(503);
         return { status: 'starting' };

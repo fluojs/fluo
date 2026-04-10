@@ -1,5 +1,5 @@
 {
-  "name": "@konekti/discord",
+  "name": "@fluojs/discord",
   "description": "Webhook-first, transport-agnostic Discord delivery core for Konekti with notifications integration.",
   "keywords": [
     "konekti",
@@ -40,10 +40,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@konekti/core": "workspace:*",
-    "@konekti/di": "workspace:*",
-    "@konekti/notifications": "workspace:*",
-    "@konekti/runtime": "workspace:*"
+    "@fluojs/core": "workspace:*",
+    "@fluojs/di": "workspace:*",
+    "@fluojs/notifications": "workspace:*",
+    "@fluojs/runtime": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

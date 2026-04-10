@@ -1,15 +1,15 @@
-import { Inject } from '@konekti/core';
-import type { NotificationChannel, NotificationChannelDelivery, NotificationChannelContext } from '@konekti/notifications';
+import { Inject } from '@fluojs/core';
+import type { NotificationChannel, NotificationChannelDelivery, NotificationChannelContext } from '@fluojs/notifications';
 
 import { EmailService } from './service.js';
 import { EMAIL_OPTIONS } from './tokens.js';
 import type { EmailNotificationDispatchRequest, EmailSendResult, NormalizedEmailModuleOptions } from './types.js';
 
 /**
- * Notification channel implementation that bridges `@konekti/notifications` to {@link EmailService}.
+ * Notification channel implementation that bridges `@fluojs/notifications` to {@link EmailService}.
  *
  * @remarks
- * This class keeps the foundation package channel-agnostic while allowing `@konekti/email`
+ * This class keeps the foundation package channel-agnostic while allowing `@fluojs/email`
  * to interpret email-specific payload fields, template rendering, and transport delivery.
  */
 @Inject(EmailService, EMAIL_OPTIONS)

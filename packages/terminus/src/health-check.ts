@@ -1,4 +1,4 @@
-import { Inject } from '@konekti/core';
+import { Inject } from '@fluojs/core';
 
 import { HealthCheckError } from './errors.js';
 import { TERMINUS_HEALTH_INDICATORS } from './tokens.js';

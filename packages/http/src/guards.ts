@@ -1,4 +1,4 @@
-import type { Token } from '@konekti/core';
+import type { Token } from '@fluojs/core';
 
 import { ForbiddenException } from './exceptions.js';
 import type { Guard, GuardContext, GuardLike, RequestContext } from './types.js';

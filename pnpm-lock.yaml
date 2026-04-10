@@ -41,116 +41,116 @@ importers:
 
   examples/auth-jwt-passport:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@konekti/jwt':
+      '@fluojs/jwt':
         specifier: workspace:*
         version: link:../../packages/jwt
-      '@konekti/passport':
+      '@fluojs/passport':
         specifier: workspace:*
         version: link:../../packages/passport
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../../packages/platform-fastify
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../../packages/validation
     devDependencies:
-      '@konekti/testing':
+      '@fluojs/testing':
         specifier: workspace:*
         version: link:../../packages/testing
 
   examples/minimal:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../../packages/platform-fastify
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
     devDependencies:
-      '@konekti/testing':
+      '@fluojs/testing':
         specifier: workspace:*
         version: link:../../packages/testing
 
   examples/ops-metrics-terminus:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@konekti/metrics':
+      '@fluojs/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../../packages/platform-fastify
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@konekti/terminus':
+      '@fluojs/terminus':
         specifier: workspace:*
         version: link:../../packages/terminus
     devDependencies:
-      '@konekti/testing':
+      '@fluojs/testing':
         specifier: workspace:*
         version: link:../../packages/testing
 
   examples/realworld-api:
     dependencies:
-      '@konekti/config':
+      '@fluojs/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../../packages/platform-fastify
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../../packages/validation
     devDependencies:
-      '@konekti/testing':
+      '@fluojs/testing':
         specifier: workspace:*
         version: link:../../packages/testing
 
   packages/cache-manager:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/redis':
+      '@fluojs/redis':
         specifier: workspace:*
         version: link:../redis
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       ioredis:
@@ -163,7 +163,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       ejs:
@@ -185,7 +185,7 @@ importers:
 
   packages/config:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
       dotenv:
@@ -207,16 +207,16 @@ importers:
 
   packages/cqrs:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/event-bus':
+      '@fluojs/event-bus':
         specifier: workspace:*
         version: link:../event-bus
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -226,16 +226,16 @@ importers:
 
   packages/cron:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/redis':
+      '@fluojs/redis':
         specifier: workspace:*
         version: link:../redis
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       croner:
@@ -248,7 +248,7 @@ importers:
 
   packages/di:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -258,16 +258,16 @@ importers:
 
   packages/discord:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/notifications':
+      '@fluojs/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -277,16 +277,16 @@ importers:
 
   packages/drizzle:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       drizzle-orm:
@@ -299,19 +299,19 @@ importers:
 
   packages/email:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/notifications':
+      '@fluojs/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@konekti/queue':
+      '@fluojs/queue':
         specifier: workspace:*
         version: link:../queue
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       nodemailer:
@@ -327,13 +327,13 @@ importers:
 
   packages/event-bus:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       ioredis:
@@ -346,19 +346,19 @@ importers:
 
   packages/graphql:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../validation
       dataloader:
@@ -386,13 +386,13 @@ importers:
 
   packages/http:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../validation
     devDependencies:
@@ -402,13 +402,13 @@ importers:
 
   packages/jwt:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -418,13 +418,13 @@ importers:
 
   packages/metrics:
     dependencies:
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       prom-client:
@@ -440,21 +440,21 @@ importers:
 
   packages/microservices:
     dependencies:
+      '@fluojs/core':
+        specifier: workspace:*
+        version: link:../core
+      '@fluojs/di':
+        specifier: workspace:*
+        version: link:../di
+      '@fluojs/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@grpc/grpc-js':
         specifier: ^1.0.0
         version: 1.14.3
       '@grpc/proto-loader':
         specifier: ^0.8.0
         version: 0.8.0
-      '@konekti/core':
-        specifier: workspace:*
-        version: link:../core
-      '@konekti/di':
-        specifier: workspace:*
-        version: link:../di
-      '@konekti/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       ioredis:
         specifier: ^5.0.0
         version: 5.10.0
@@ -468,16 +468,16 @@ importers:
 
   packages/mongoose:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       mongoose:
@@ -490,13 +490,13 @@ importers:
 
   packages/notifications:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -506,16 +506,16 @@ importers:
 
   packages/openapi:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../validation
     devDependencies:
@@ -525,19 +525,19 @@ importers:
 
   packages/passport:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/jwt':
+      '@fluojs/jwt':
         specifier: workspace:*
         version: link:../jwt
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -547,10 +547,10 @@ importers:
 
   packages/platform-bun:
     dependencies:
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -560,10 +560,10 @@ importers:
 
   packages/platform-cloudflare-workers:
     dependencies:
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -573,10 +573,10 @@ importers:
 
   packages/platform-deno:
     dependencies:
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -586,10 +586,10 @@ importers:
 
   packages/platform-express:
     dependencies:
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       express:
@@ -608,10 +608,10 @@ importers:
       '@fastify/multipart':
         specifier: ^9.2.1
         version: 9.4.0
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       fastify:
@@ -627,10 +627,10 @@ importers:
 
   packages/platform-nodejs:
     dependencies:
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -640,19 +640,19 @@ importers:
 
   packages/prisma:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@konekti/validation':
+      '@fluojs/validation':
         specifier: workspace:*
         version: link:../validation
       '@prisma/client':
@@ -665,16 +665,16 @@ importers:
 
   packages/queue:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/redis':
+      '@fluojs/redis':
         specifier: workspace:*
         version: link:../redis
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       bullmq:
@@ -687,13 +687,13 @@ importers:
 
   packages/redis:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       ioredis:
@@ -706,20 +706,20 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@konekti/config':
+      '@fluojs/config':
         specifier: workspace:*
         version: link:../config
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
     devDependencies:
-      '@konekti/serialization':
+      '@fluojs/serialization':
         specifier: workspace:*
         version: link:../serialization
       vitest:
@@ -728,10 +728,10 @@ importers:
 
   packages/serialization:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
     devDependencies:
@@ -741,16 +741,16 @@ importers:
 
   packages/slack:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/notifications':
+      '@fluojs/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -760,32 +760,32 @@ importers:
 
   packages/socket.io:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@konekti/websockets':
+      '@fluojs/websockets':
         specifier: workspace:*
         version: link:../websockets
       '@socket.io/bun-engine':
         specifier: ^0.1.0
         version: 0.1.0(typescript@5.9.3)
     devDependencies:
-      '@konekti/platform-express':
+      '@fluojs/platform-express':
         specifier: workspace:*
         version: link:../platform-express
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../platform-fastify
-      '@konekti/platform-nodejs':
+      '@fluojs/platform-nodejs':
         specifier: workspace:*
         version: link:../platform-nodejs
       socket.io:
@@ -800,11 +800,11 @@ importers:
 
   packages/studio:
     dependencies:
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
-      '@konekti-internal/tooling-vite':
+      '@fluojs-internal/tooling-vite':
         specifier: workspace:*
         version: link:../../tooling/vite
       vitest:
@@ -813,25 +813,25 @@ importers:
 
   packages/terminus:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/drizzle':
+      '@fluojs/drizzle':
         specifier: workspace:*
         version: link:../drizzle
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/prisma':
+      '@fluojs/prisma':
         specifier: workspace:*
         version: link:../prisma
-      '@konekti/redis':
+      '@fluojs/redis':
         specifier: workspace:*
         version: link:../redis
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -844,29 +844,29 @@ importers:
       '@babel/core':
         specifier: '>=7.0.0'
         version: 7.29.0
-      '@konekti/config':
+      '@fluojs/config':
         specifier: workspace:*
         version: link:../config
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
-      '@konekti/platform-express':
+      '@fluojs/platform-express':
         specifier: workspace:*
         version: link:../platform-express
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../platform-fastify
-      '@konekti/platform-nodejs':
+      '@fluojs/platform-nodejs':
         specifier: workspace:*
         version: link:../platform-nodejs
       vitest:
@@ -875,19 +875,19 @@ importers:
 
   packages/throttler:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/redis':
+      '@fluojs/redis':
         specifier: workspace:*
         version: link:../redis
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
     devDependencies:
@@ -900,7 +900,7 @@ importers:
 
   packages/validation:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
       '@standard-schema/spec':
@@ -928,29 +928,29 @@ importers:
 
   packages/websockets:
     dependencies:
-      '@konekti/core':
+      '@fluojs/core':
         specifier: workspace:*
         version: link:../core
-      '@konekti/di':
+      '@fluojs/di':
         specifier: workspace:*
         version: link:../di
-      '@konekti/http':
+      '@fluojs/http':
         specifier: workspace:*
         version: link:../http
-      '@konekti/runtime':
+      '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
       ws:
         specifier: ^8.18.3
         version: 8.19.0
     devDependencies:
-      '@konekti/platform-bun':
+      '@fluojs/platform-bun':
         specifier: workspace:*
         version: link:../platform-bun
-      '@konekti/platform-express':
+      '@fluojs/platform-express':
         specifier: workspace:*
         version: link:../platform-express
-      '@konekti/platform-fastify':
+      '@fluojs/platform-fastify':
         specifier: workspace:*
         version: link:../platform-fastify
       '@types/ws':

@@ -1,4 +1,4 @@
-import { metadataSymbol } from '@konekti/core/internal';
+import { metadataSymbol } from '@fluojs/core/internal';
 
 import {
   commandHandlerMetadataSymbol,
@@ -82,7 +82,7 @@ function normalizeSagaEventTypes(eventTypeOrTypes: CqrsEventType | readonly Cqrs
  *
  * @example
  * ```ts
- * import { CommandHandler, type ICommandHandler } from '@konekti/cqrs';
+ * import { CommandHandler, type ICommandHandler } from '@fluojs/cqrs';
  *
  * class CreateUserCommand {
  *   constructor(public readonly name: string) {}

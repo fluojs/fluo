@@ -1,4 +1,4 @@
-import type { Token } from '@konekti/core';
+import type { Token } from '@fluojs/core';
 import type { Server } from 'socket.io';
 
 import type { SocketIoRoomService } from './types.js';

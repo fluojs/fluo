@@ -1,6 +1,6 @@
-import { Module } from '@konekti/core';
-import { MetricsModule } from '@konekti/metrics';
-import { MemoryHealthIndicator, TerminusModule } from '@konekti/terminus';
+import { Module } from '@fluojs/core';
+import { MetricsModule } from '@fluojs/metrics';
+import { MemoryHealthIndicator, TerminusModule } from '@fluojs/terminus';
 
 import { OpsModule } from './ops/ops.module';
 import { sharedRegistry } from './ops/metrics-registry';

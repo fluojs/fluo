@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getModuleMetadata } from '@konekti/core/internal';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import { describe, expect, it } from 'vitest';
 
 import { createConfigReloader, loadConfig } from './load.js';
