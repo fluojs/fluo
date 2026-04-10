@@ -87,7 +87,7 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
  * The service discovers `@OnEvent()` handlers, clones payloads before dispatch,
  * and can publish the same events to an external transport such as Redis Pub/Sub.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS)
 export class EventBusLifecycleService implements EventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;

@@ -29,7 +29,7 @@ function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>,
  * The query bus resolves singleton handlers only, warns on unsupported scopes,
  * and preserves the one-query-to-one-handler contract used by the CQRS surface.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap {
   private descriptors = new Map<QueryType, QueryHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;

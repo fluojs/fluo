@@ -55,7 +55,7 @@ async function executeSessionTransaction<T>(session: MongooseSessionLike, fn: ()
  *
  * @typeParam TConnection Root Mongoose connection shape registered in the module.
  */
-@Inject([MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS])
+@Inject(MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS)
 export class MongooseConnection<TConnection extends MongooseConnectionLike = MongooseConnectionLike>
   implements MongooseHandleProvider<TConnection>, OnApplicationShutdown
 {

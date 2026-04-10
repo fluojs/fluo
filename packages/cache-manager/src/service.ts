@@ -6,7 +6,7 @@ import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 /**
  * Application-level cache facade used for direct cache reads, writes, and read-through loading.
  */
-@Inject([CACHE_STORE, CACHE_OPTIONS])
+@Inject(CACHE_STORE, CACHE_OPTIONS)
 export class CacheService {
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly invalidationVersion = new Map<string, number>();

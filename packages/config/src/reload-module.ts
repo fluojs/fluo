@@ -15,6 +15,9 @@ import type {
 
 const CONFIG_RELOAD_OPTIONS = Symbol('konekti.config.reload-options');
 
+/**
+ * Exposes the config reload manager contract for dependency injection.
+ */
 export const CONFIG_RELOADER = Symbol('konekti.config.reloader');
 
 function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubscription {
@@ -27,7 +30,10 @@ function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubs
   };
 }
 
-@Inject([ConfigService, CONFIG_RELOAD_OPTIONS])
+/**
+ * Lazily creates and coordinates the active config reloader instance.
+ */
+@Inject(ConfigService, CONFIG_RELOAD_OPTIONS)
 export class ConfigReloadManager implements ConfigReloader {
   private reloader: ConfigReloader | undefined;
   private reloadForwarder: ConfigReloadSubscription | undefined;
@@ -115,6 +121,9 @@ export class ConfigReloadManager implements ConfigReloader {
   }
 }
 
+/**
+ * Registers config reload services and exports the shared reloader token.
+ */
 export class ConfigReloadModule {
   static forRoot(options?: ConfigLoadOptions): new () => ConfigReloadModule {
     const loadOptions = options ?? {};

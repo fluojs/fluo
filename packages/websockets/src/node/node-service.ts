@@ -164,7 +164,7 @@ function rejectBadUpgradeRequest(socket: Duplex): void {
  * This service preserves the documented runtime behavior for shared-path discovery order, optional server-backed
  * listeners, buffered pre-ready events, heartbeat handling, and graceful shutdown.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL)
 export class NodeWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {

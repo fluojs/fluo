@@ -9,8 +9,14 @@ import {
 
 import type { RefreshTokenService } from './refresh-token.js';
 
+/**
+ * Provides refresh-token module options through dependency injection.
+ */
 export const REFRESH_TOKEN_MODULE_OPTIONS = Symbol.for('konekti.passport.refresh-token-module-options');
 
+/**
+ * Configures refresh-token storage, rotation, and secret material.
+ */
 export interface RefreshTokenModuleOptions {
   expiresInSeconds?: number;
   rotation?: boolean;
@@ -91,7 +97,10 @@ function createInMemoryStore(): RefreshTokenStore {
   };
 }
 
-@Inject([DefaultJwtSigner, DefaultJwtVerifier, REFRESH_TOKEN_MODULE_OPTIONS])
+/**
+ * Bridges JWT refresh-token primitives into the passport refresh-token service contract.
+ */
+@Inject(DefaultJwtSigner, DefaultJwtVerifier, REFRESH_TOKEN_MODULE_OPTIONS)
 export class JwtRefreshTokenAdapter implements RefreshTokenService {
   private readonly service: JwtRefreshTokenService;
 

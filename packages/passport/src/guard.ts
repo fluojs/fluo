@@ -62,7 +62,7 @@ function toErrorMessage(error: unknown): string {
  * mismatches become `403 Forbidden`, and strategies may short-circuit the
  * response by returning `{ handled: true }` after committing the response.
  */
-@Inject([AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS])
+@Inject(AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS)
 export class AuthGuard implements AuthGuardContract {
   constructor(
     private readonly strategies: AuthStrategyRegistry = {},

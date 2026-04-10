@@ -191,7 +191,7 @@ describe('@konekti/microservices', () => {
       createdEvents: string[] = [];
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class UserHandlers {
       constructor(private readonly store: Store) {}
 
@@ -299,7 +299,7 @@ describe('@konekti/microservices', () => {
       events: string[] = [];
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class Handler {
       constructor(private readonly store: Store) {}
 
@@ -345,7 +345,7 @@ describe('@konekti/microservices', () => {
       events: string[] = [];
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class Handler {
       constructor(private readonly store: Store) {}
 
@@ -382,7 +382,7 @@ describe('@konekti/microservices', () => {
       message = '';
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class ControllerLikeHandler {
       constructor(private readonly store: Store) {}
 
@@ -424,7 +424,7 @@ describe('@konekti/microservices', () => {
       secondSeen = '';
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class FirstHandler {
       constructor(private readonly store: Store) {}
 
@@ -435,7 +435,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([Store])
+    @Inject(Store)
     class SecondHandler {
       constructor(private readonly store: Store) {}
 
@@ -473,7 +473,7 @@ describe('@konekti/microservices', () => {
       count = 0;
     }
 
-    @Inject([SharedState])
+    @Inject(SharedState)
     class HybridHandlers {
       constructor(private readonly state: SharedState) {}
 
@@ -585,7 +585,7 @@ describe('@konekti/microservices', () => {
       readonly id = ++created;
     }
 
-    @Inject([RequestState])
+    @Inject(RequestState)
     @Scope('request')
     class RequestScopedHandler {
       constructor(private readonly state: RequestState) {}
@@ -631,7 +631,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([RequestState])
+    @Inject(RequestState)
     @Scope('request')
     class RequestScopedHandler {
       constructor(private readonly state: RequestState) {}
@@ -670,7 +670,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([RequestState])
+    @Inject(RequestState)
     @Scope('request')
     class RequestScopedHandler {
       constructor(private readonly state: RequestState) {}
@@ -742,7 +742,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([EventContext])
+    @Inject(EventContext)
     @Scope('request')
     class RequestScopedEventHandler {
       constructor(private readonly ctx: EventContext) {}
@@ -782,7 +782,7 @@ describe('@konekti/microservices', () => {
       readonly id = ++SharedScope.counter;
     }
 
-    @Inject([SharedScope])
+    @Inject(SharedScope)
     @Scope('request')
     class FirstEventHandler {
       constructor(private readonly scope: SharedScope) {}
@@ -793,7 +793,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([SharedScope])
+    @Inject(SharedScope)
     @Scope('request')
     class SecondEventHandler {
       constructor(private readonly scope: SharedScope) {}
@@ -836,7 +836,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([DisposableContext])
+    @Inject(DisposableContext)
     @Scope('request')
     class DisposableHandler {
       constructor(private readonly ctx: DisposableContext) {}
@@ -880,7 +880,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([DisposableContext])
+    @Inject(DisposableContext)
     @Scope('request')
     class FailingHandler {
       constructor(private readonly ctx: DisposableContext) {}
@@ -957,7 +957,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([StreamContext])
+    @Inject(StreamContext)
     @Scope('request')
     class StreamHandler {
       constructor(private readonly ctx: StreamContext) {}
@@ -1006,7 +1006,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([StreamContext])
+    @Inject(StreamContext)
     @Scope('request')
     class FailingStreamHandler {
       constructor(private readonly ctx: StreamContext) {}
@@ -1052,7 +1052,7 @@ describe('@konekti/microservices', () => {
       readonly id = ++created;
     }
 
-    @Inject([StreamState])
+    @Inject(StreamState)
     @Scope('request')
     class ScopedStreamHandler {
       constructor(private readonly state: StreamState) {}
@@ -1111,7 +1111,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([ClientStreamContext])
+    @Inject(ClientStreamContext)
     @Scope('request')
     class ClientStreamHandler {
       constructor(private readonly ctx: ClientStreamContext) {}
@@ -1135,7 +1135,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([FailingClientStreamContext])
+    @Inject(FailingClientStreamContext)
     @Scope('request')
     class FailingClientStreamHandler {
       constructor(private readonly ctx: FailingClientStreamContext) {}
@@ -1190,7 +1190,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([BidiStreamContext])
+    @Inject(BidiStreamContext)
     @Scope('request')
     class BidiHandler {
       constructor(private readonly ctx: BidiStreamContext) {}
@@ -1212,7 +1212,7 @@ describe('@konekti/microservices', () => {
       }
     }
 
-    @Inject([FailingBidiContext])
+    @Inject(FailingBidiContext)
     @Scope('request')
     class FailingBidiHandler {
       constructor(private readonly ctx: FailingBidiContext) {}

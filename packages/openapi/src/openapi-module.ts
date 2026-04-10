@@ -164,7 +164,7 @@ export class OpenApiModule {
     const openApiDocumentToken = Symbol('konekti.openapi.document');
 
     @Controller('')
-    @Inject([openApiDocumentToken, openApiModuleOptionsToken])
+    @Inject(openApiDocumentToken, openApiModuleOptionsToken)
     class OpenApiController {
       constructor(
         private readonly document: OpenApiDocument,

@@ -146,7 +146,7 @@ function assertValidCronExpression(expression: string): void {
  * optional distributed locks through Redis, and exposes runtime task management
  * through {@link SchedulingRegistry}.
  */
-@Inject([CRON_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(CRON_OPTIONS, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class CronLifecycleService
   implements SchedulingRegistry, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy
 {

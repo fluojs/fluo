@@ -23,7 +23,7 @@ function decodeRedisValue(raw: string): unknown {
  * import { RedisService } from '@konekti/redis';
  *
  * export class SessionStore {
- *   @Inject([RedisService])
+ *   @Inject(RedisService)
  *   private readonly redis: RedisService;
  *
  *   async save(sessionId: string, value: object) {
@@ -32,7 +32,7 @@ function decodeRedisValue(raw: string): unknown {
  * }
  * ```
  */
-@Inject([REDIS_CLIENT])
+@Inject(REDIS_CLIENT)
 export class RedisService {
   constructor(private readonly client: Redis) {}
 

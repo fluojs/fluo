@@ -179,7 +179,10 @@ function installDeferredEviction(
   return restore;
 }
 
-@Inject([CacheService, CACHE_OPTIONS])
+/**
+ * Caches GET responses and evicts related entries after successful write operations.
+ */
+@Inject(CacheService, CACHE_OPTIONS)
 export class CacheInterceptor implements Interceptor {
   constructor(
     private readonly cache: CacheService,

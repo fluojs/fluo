@@ -5,20 +5,35 @@ import { DefaultJwtVerifier } from '@konekti/jwt';
 import { AuthenticationRequiredError } from '../errors.js';
 import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 
+/**
+ * Provides cookie-auth strategy options through dependency injection.
+ */
 export const COOKIE_AUTH_OPTIONS = Symbol.for('konekti.passport.cookie-auth-options');
 
+/**
+ * Configures cookie names and fallback behavior for cookie-based authentication.
+ */
 export interface CookieAuthOptions {
   accessTokenCookieName?: string;
   refreshTokenCookieName?: string;
   requireAccessToken?: boolean;
 }
 
+/**
+ * Supplies the default cookie names and access-token requirement for cookie auth.
+ */
 export const DEFAULT_COOKIE_AUTH_OPTIONS: Required<CookieAuthOptions> = {
   accessTokenCookieName: 'access_token',
   refreshTokenCookieName: 'refresh_token',
   requireAccessToken: true,
 };
 
+/**
+ * Normalizes optional cookie-auth settings into a fully populated options object.
+ *
+ * @param options Partial cookie-auth configuration supplied by the caller.
+ * @returns Cookie-auth options with defaults applied.
+ */
 export function normalizeCookieAuthOptions(options?: CookieAuthOptions): Required<CookieAuthOptions> {
   return {
     accessTokenCookieName: options?.accessTokenCookieName ?? DEFAULT_COOKIE_AUTH_OPTIONS.accessTokenCookieName,
@@ -27,7 +42,10 @@ export function normalizeCookieAuthOptions(options?: CookieAuthOptions): Require
   };
 }
 
-@Inject([DefaultJwtVerifier, COOKIE_AUTH_OPTIONS])
+/**
+ * Authenticates requests by reading and verifying JWTs from HTTP cookies.
+ */
+@Inject(DefaultJwtVerifier, COOKIE_AUTH_OPTIONS)
 export class CookieAuthStrategy implements AuthStrategy {
   private readonly options: Required<CookieAuthOptions>;
 
@@ -85,4 +103,7 @@ export class CookieAuthStrategy implements AuthStrategy {
   }
 }
 
+/**
+ * Identifies the built-in cookie authentication strategy.
+ */
 export const COOKIE_AUTH_STRATEGY_NAME = 'cookie';

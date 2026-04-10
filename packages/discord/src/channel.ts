@@ -13,7 +13,7 @@ import type { DiscordNotificationDispatchRequest, DiscordSendResult, NormalizedD
  * This class keeps the foundation package channel-agnostic while allowing `@konekti/discord`
  * to interpret Discord-specific payload fields, webhook delivery, and transport behavior.
  */
-@Inject([DiscordService, DISCORD_OPTIONS])
+@Inject(DiscordService, DISCORD_OPTIONS)
 export class DiscordChannel implements NotificationChannel<DiscordNotificationDispatchRequest, DiscordSendResult> {
   readonly channel: string;
 

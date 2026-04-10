@@ -327,7 +327,7 @@ describe('@konekti/socket.io', () => {
   });
 
   it('injects the Socket.IO server token into singleton providers', async () => {
-    @Inject([SOCKETIO_SERVER])
+    @Inject(SOCKETIO_SERVER)
     class ServerProbe {
       constructor(public readonly server: SocketIoServer) {}
     }
@@ -404,7 +404,7 @@ describe('@konekti/socket.io', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @Inject(GatewayState, SOCKETIO_ROOM_SERVICE)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(
@@ -480,7 +480,7 @@ describe('@konekti/socket.io', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @Inject(GatewayState, SOCKETIO_ROOM_SERVICE)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(
@@ -591,7 +591,7 @@ describe('@konekti/socket.io', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/async-connect' })
     class AsyncGateway {
       constructor(private readonly state: GatewayState) {}
@@ -811,7 +811,7 @@ describe('@konekti/socket.io', () => {
       chatMessages: unknown[] = [];
     }
 
-    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @Inject(GatewayState, SOCKETIO_ROOM_SERVICE)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(
@@ -831,7 +831,7 @@ describe('@konekti/socket.io', () => {
       }
     }
 
-    @Inject([GatewayState, SOCKETIO_ROOM_SERVICE])
+    @Inject(GatewayState, SOCKETIO_ROOM_SERVICE)
     @WebSocketGateway({ path: '/admin' })
     class AdminGateway {
       constructor(

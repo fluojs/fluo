@@ -58,7 +58,7 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
 /**
  * Guard that enforces module-, class-, and method-level throttling policies.
  */
-@Inject([THROTTLER_OPTIONS])
+@Inject(THROTTLER_OPTIONS)
 export class ThrottlerGuard implements Guard {
   private readonly store: ThrottlerStore;
 

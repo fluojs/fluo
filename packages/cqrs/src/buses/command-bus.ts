@@ -27,7 +27,7 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
  * The command bus resolves singleton handlers only, warns on unsupported scopes,
  * and throws explicit contract errors when no handler or multiple handlers exist.
  */
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();
   private discoveryPromise: Promise<void> | undefined;

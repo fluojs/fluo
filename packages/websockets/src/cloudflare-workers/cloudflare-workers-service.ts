@@ -110,7 +110,10 @@ function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL])
+/**
+ * Boots Cloudflare Workers websocket gateways and manages their room lifecycle state.
+ */
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, WEBSOCKET_OPTIONS_INTERNAL)
 export class CloudflareWorkersWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {

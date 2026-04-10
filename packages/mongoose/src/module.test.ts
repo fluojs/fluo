@@ -39,7 +39,7 @@ describe('@konekti/mongoose', () => {
       },
     };
 
-    @Inject([MongooseConnection])
+    @Inject(MongooseConnection)
     class UserService {
       constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 

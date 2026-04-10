@@ -134,7 +134,7 @@ export function assertHealthCheck(report: HealthCheckReport, message = 'Health c
 }
 
 /** Service facade that resolves and runs the health indicators registered in Terminus. */
-@Inject([TERMINUS_HEALTH_INDICATORS])
+@Inject(TERMINUS_HEALTH_INDICATORS)
 export class TerminusHealthService {
   constructor(private readonly indicators: readonly HealthIndicator[]) {}
 

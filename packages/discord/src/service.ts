@@ -46,7 +46,7 @@ function assertMessageContent(message: NormalizedDiscordMessage): void {
  * explicitly injected {@link DiscordTransport} contracts, and translates
  * `@konekti/notifications` envelopes into concrete Discord messages.
  */
-@Inject([DISCORD_OPTIONS])
+@Inject(DISCORD_OPTIONS)
 export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private resolvedTransport: DiscordTransport | undefined;

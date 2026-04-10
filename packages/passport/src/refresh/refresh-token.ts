@@ -9,6 +9,9 @@ import {
 } from '../errors.js';
 import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 
+/**
+ * Defines the operations required to issue, rotate, and revoke refresh tokens.
+ */
 export interface RefreshTokenService {
   issueRefreshToken(subject: string): Promise<string>;
   rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }>;
@@ -16,12 +19,21 @@ export interface RefreshTokenService {
   revokeAllForSubject(subject: string): Promise<void>;
 }
 
+/**
+ * Identifies the active refresh-token service implementation in dependency injection.
+ */
 export const REFRESH_TOKEN_SERVICE = Symbol.for('konekti.passport.refresh-token-service');
 
+/**
+ * Represents the refresh-token payload accepted by refresh endpoints.
+ */
 export interface RefreshTokenInput {
   refreshToken: string;
 }
 
+/**
+ * Captures the token pair returned after a successful refresh-token exchange.
+ */
 export interface RefreshTokenAuthResult {
   accessToken: string;
   refreshToken: string;
@@ -30,7 +42,10 @@ export interface RefreshTokenAuthResult {
 
 const MALFORMED_REFRESH_TOKEN = Symbol('MALFORMED_REFRESH_TOKEN');
 
-@Inject([REFRESH_TOKEN_SERVICE, DefaultJwtVerifier])
+/**
+ * Authenticates refresh-token requests and exchanges them for a fresh token pair.
+ */
+@Inject(REFRESH_TOKEN_SERVICE, DefaultJwtVerifier)
 export class RefreshTokenStrategy implements AuthStrategy {
   constructor(
     private readonly refreshTokenService: RefreshTokenService,
@@ -117,6 +132,12 @@ export class RefreshTokenStrategy implements AuthStrategy {
   }
 }
 
+/**
+ * Creates alias providers that expose a refresh-token service under the shared token.
+ *
+ * @param service DI token for the concrete refresh-token service implementation.
+ * @returns Providers that bind the shared refresh-token token to the supplied service.
+ */
 export function createRefreshTokenProviders(
   service: Token<RefreshTokenService>,
 ): Array<{ provide: Token<unknown>; useToken: Token<unknown> }> {

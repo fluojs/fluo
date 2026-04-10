@@ -147,7 +147,7 @@ export interface VerifyOptions {
  * `decode` surface for applications migrating from similar auth service
  * patterns.
  */
-@Inject([JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier])
+@Inject(JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier)
 export class JwtService {
   constructor(
     private readonly options: JwtVerifierOptions,

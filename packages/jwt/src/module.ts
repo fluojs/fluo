@@ -33,7 +33,7 @@ function resolveRefreshTokenOptions(value: unknown): NonNullable<JwtVerifierOpti
   return normalizeRefreshTokenOptions((value as JwtVerifierOptions).refreshToken);
 }
 
-@Inject([JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier, RUNTIME_CONTAINER])
+@Inject(JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier, RUNTIME_CONTAINER)
 class AsyncRefreshTokenServiceRegistrar {
   private registered = false;
 
@@ -93,6 +93,12 @@ function createJwtModuleProviders(
   return providers;
 }
 
+/**
+ * Creates the core JWT providers for direct module composition.
+ *
+ * @param options JWT verification and signing options used for provider registration.
+ * @returns Providers for the JWT verifier, signer, facade, and optional refresh token service.
+ */
 export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] {
   return createJwtModuleProviders({
     provide: JWT_OPTIONS,
@@ -101,6 +107,9 @@ export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] 
   }, Boolean(options.refreshToken), 'singleton');
 }
 
+/**
+ * Registers JWT services and optional refresh-token support for an application module.
+ */
 export class JwtModule {
   static forRoot(options: JwtVerifierOptions): ModuleType {
     return this.createModule({

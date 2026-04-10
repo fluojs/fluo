@@ -103,7 +103,7 @@ describe('@konekti/event-bus', () => {
       received: UserCreatedEvent | undefined;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class UserCreatedHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -156,7 +156,7 @@ describe('@konekti/event-bus', () => {
       successCalls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class SuccessfulHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -213,7 +213,7 @@ describe('@konekti/event-bus', () => {
       secondSeen = '';
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class FirstHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -224,7 +224,7 @@ describe('@konekti/event-bus', () => {
       }
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class SecondHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -262,7 +262,7 @@ describe('@konekti/event-bus', () => {
       successCalls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class SuccessHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -317,7 +317,7 @@ describe('@konekti/event-bus', () => {
       startedCalls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class SlowHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -364,7 +364,7 @@ describe('@konekti/event-bus', () => {
       startedCalls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class SlowHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -405,7 +405,7 @@ describe('@konekti/event-bus', () => {
       calls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class Handler {
       constructor(private readonly store: EventStore) {}
 
@@ -451,7 +451,7 @@ describe('@konekti/event-bus', () => {
       controllerCalls = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class ImportedProviderHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -461,7 +461,7 @@ describe('@konekti/event-bus', () => {
       }
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class ImportedControllerHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -501,7 +501,7 @@ describe('@konekti/event-bus', () => {
       seenUserId = '';
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class BaseEventHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -553,7 +553,7 @@ describe('@konekti/event-bus', () => {
       count = 0;
     }
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class UserCreatedHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -563,7 +563,7 @@ describe('@konekti/event-bus', () => {
       }
     }
 
-    @Inject([EVENT_BUS])
+    @Inject(EVENT_BUS)
     class UserPublisher {
       constructor(private readonly eventBus: EventBus) {}
 
@@ -694,7 +694,7 @@ describe('@konekti/event-bus', () => {
 
     const ALIAS_TOKEN = Symbol('AliasToken');
 
-    @Inject([EventStore])
+    @Inject(EventStore)
     class MultiTokenHandler {
       constructor(private readonly store: EventStore) {}
 
@@ -732,7 +732,7 @@ describe('@konekti/event-bus', () => {
     }
 
     const FirstCollidingHandler = (() => {
-      @Inject([EventStore])
+      @Inject(EventStore)
       class CollidingHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -746,7 +746,7 @@ describe('@konekti/event-bus', () => {
     })();
 
     const SecondCollidingHandler = (() => {
-      @Inject([EventStore])
+      @Inject(EventStore)
       class CollidingHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -932,7 +932,7 @@ describe('@konekti/event-bus', () => {
         received: UserCreatedEvent | undefined;
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class TransportHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -971,7 +971,7 @@ describe('@konekti/event-bus', () => {
         successCalls = 0;
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class SuccessfulTransportHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1019,7 +1019,7 @@ describe('@konekti/event-bus', () => {
         derivedCalls = 0;
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class BaseHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1029,7 +1029,7 @@ describe('@konekti/event-bus', () => {
         }
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class DerivedHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1082,7 +1082,7 @@ describe('@konekti/event-bus', () => {
         receivedSku = '';
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class InventoryHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1139,7 +1139,7 @@ describe('@konekti/event-bus', () => {
         detailedEvent: DetailedInventoryEvent | undefined;
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class BaseHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1149,7 +1149,7 @@ describe('@konekti/event-bus', () => {
         }
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class DetailedHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1192,7 +1192,7 @@ describe('@konekti/event-bus', () => {
         secondSeen = '';
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class FirstHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1203,7 +1203,7 @@ describe('@konekti/event-bus', () => {
         }
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class SecondHandler {
         constructor(private readonly store: EventStore) {}
 
@@ -1252,7 +1252,7 @@ describe('@konekti/event-bus', () => {
         calls = 0;
       }
 
-      @Inject([EventStore])
+      @Inject(EventStore)
       class LocalHandler {
         constructor(private readonly store: EventStore) {}
 

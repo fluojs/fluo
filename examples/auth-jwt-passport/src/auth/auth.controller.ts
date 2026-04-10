@@ -5,7 +5,7 @@ import { RequireScopes, UseAuth } from '@konekti/passport';
 import { LoginDto } from './login.dto';
 import { AuthService } from './auth.service';
 
-@Inject([AuthService])
+@Inject(AuthService)
 @Controller('/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

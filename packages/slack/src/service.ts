@@ -46,7 +46,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  * explicitly injected {@link SlackTransport} contracts, and translates
  * `@konekti/notifications` envelopes into concrete Slack messages.
  */
-@Inject([SLACK_OPTIONS])
+@Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private resolvedTransport: SlackTransport | undefined;

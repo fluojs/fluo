@@ -1,7 +1,7 @@
 import { Inject } from '@konekti/core';
 import { DefaultJwtSigner } from '@konekti/jwt';
 
-@Inject([DefaultJwtSigner])
+@Inject(DefaultJwtSigner)
 export class AuthService {
   constructor(private readonly signer: DefaultJwtSigner) {}
 

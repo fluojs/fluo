@@ -107,7 +107,7 @@ describe('@konekti/redis', () => {
   });
 
   it('registers a global Redis client, connects on bootstrap, and quits on shutdown', async () => {
-    @Inject([REDIS_CLIENT])
+    @Inject(REDIS_CLIENT)
     class CacheService {
       constructor(readonly redis: MockRedisInstance) {}
     }
@@ -209,7 +209,7 @@ describe('@konekti/redis', () => {
   });
 
   it('provides a typed RedisService facade with class-first injection', async () => {
-    @Inject([RedisService])
+    @Inject(RedisService)
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }
@@ -241,7 +241,7 @@ describe('@konekti/redis', () => {
   });
 
   it('returns raw string when stored value is not JSON', async () => {
-    @Inject([RedisService])
+    @Inject(RedisService)
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }
@@ -268,7 +268,7 @@ describe('@konekti/redis', () => {
   });
 
   it('keeps RedisService as the facade injection identity', async () => {
-    @Inject([RedisService])
+    @Inject(RedisService)
     class CacheFacade {
       constructor(readonly redisService: RedisService) {}
     }

@@ -11,7 +11,7 @@ import type { MongooseConnectionLike } from './types.js';
  * Pair this with repository/service code that reads `MongooseConnection.current()` and `currentSession()` so downstream
  * calls share the same request-scoped session.
  */
-@Inject([MongooseConnection])
+@Inject(MongooseConnection)
 export class MongooseTransactionInterceptor implements Interceptor {
   constructor(private readonly connection: MongooseConnection<MongooseConnectionLike>) {}
 

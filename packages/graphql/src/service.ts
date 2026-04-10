@@ -160,6 +160,9 @@ const runtimeRequire = createRequire(import.meta.url);
 let graphqlInstanceOfPatched = false;
 const allowedCrossRealmGraphqlObjects = new WeakSet<object>();
 
+/**
+ * Declares the HTTP endpoints that receive GraphQL GET and POST requests.
+ */
 @Controller('/graphql')
 export class GraphqlEndpointController {
   @Get('/')
@@ -287,7 +290,10 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
   };
 }
 
-@Inject([RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN])
+/**
+ * Boots the GraphQL runtime, middleware, and subscription transports for the active adapter.
+ */
+@Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN)
 export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private middlewareRegistered = false;
   private readonly operationContainers = new WeakMap<Request, Container>();

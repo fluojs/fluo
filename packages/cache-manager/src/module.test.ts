@@ -101,7 +101,7 @@ describe('CacheModule.forRoot', () => {
   });
 
   it('supports memory store without redis module/client installed', async () => {
-    @Inject([CacheService])
+    @Inject(CacheService)
     class Consumer {
       constructor(readonly cache: CacheService) {}
     }
@@ -134,7 +134,7 @@ describe('CacheModule.forRoot', () => {
   });
 
   it('supports redis store when a raw redis-style client is provided', async () => {
-    @Inject([CacheService])
+    @Inject(CacheService)
     class Consumer {
       constructor(readonly cache: CacheService) {}
     }

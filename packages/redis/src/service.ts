@@ -24,7 +24,10 @@ function isDisconnectable(status: string): boolean {
   return DISCONNECTABLE_STATUSES.has(status);
 }
 
-@Inject([REDIS_CLIENT])
+/**
+ * Manages Redis client startup and shutdown as part of the application lifecycle.
+ */
+@Inject(REDIS_CLIENT)
 export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdown {
   constructor(private readonly client: Redis) {}
 

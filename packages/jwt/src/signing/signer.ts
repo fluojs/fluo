@@ -29,7 +29,10 @@ function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgor
   return keys.find((entry) => entry.privateKey !== undefined);
 }
 
-@Inject([JWT_OPTIONS])
+/**
+ * Issues access and refresh tokens with the configured signing keys and algorithms.
+ */
+@Inject(JWT_OPTIONS)
 export class DefaultJwtSigner {
   private readonly refreshAlgorithms: JwtAlgorithm[];
 

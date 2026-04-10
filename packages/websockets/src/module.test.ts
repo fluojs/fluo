@@ -345,7 +345,7 @@ describe('@konekti/websockets', () => {
       connects = 0;
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/dedupe' })
     class DedupeGateway {
       constructor(private readonly state: GatewayState) {}
@@ -454,7 +454,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(private readonly state: GatewayState) {}
@@ -517,7 +517,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(private readonly state: GatewayState) {}
@@ -580,7 +580,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
       constructor(private readonly state: GatewayState) {}
@@ -652,7 +652,7 @@ describe('@konekti/websockets', () => {
         }
       }
 
-      @Inject([GatewayState])
+      @Inject(GatewayState)
       class ChatGateway {
         constructor(private readonly state: GatewayState) {}
 
@@ -729,7 +729,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/async-connect' })
     class AsyncGateway {
       constructor(private readonly state: GatewayState) {}
@@ -788,7 +788,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/buffer-cap' })
     class BufferedGateway {
       constructor(private readonly state: GatewayState) {}
@@ -850,7 +850,7 @@ describe('@konekti/websockets', () => {
       messages: unknown[] = [];
     }
 
-    @Inject([GatewayState])
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/async-connect-then-message' })
     class AsyncGateway2 {
       constructor(private readonly state: GatewayState) {}
@@ -910,7 +910,7 @@ describe('@konekti/websockets', () => {
       steps: string[] = [];
     }
 
-    @Inject([SharedState])
+    @Inject(SharedState)
     @WebSocketGateway({ path: '/ordered' })
     class FirstGateway {
       constructor(private readonly state: SharedState) {}
@@ -922,7 +922,7 @@ describe('@konekti/websockets', () => {
       }
     }
 
-    @Inject([SharedState])
+    @Inject(SharedState)
     @WebSocketGateway({ path: '/ordered' })
     class SecondGateway {
       constructor(private readonly state: SharedState) {}

@@ -3,7 +3,7 @@ import { Inject } from '@konekti/core';
 import { UsersRepo } from './users.repo';
 import type { UserResponseDto } from './user-response.dto';
 
-@Inject([UsersRepo])
+@Inject(UsersRepo)
 export class UsersService {
   constructor(private readonly repo: UsersRepo) {}
 

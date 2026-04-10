@@ -8,14 +8,23 @@ import { JwksClient } from './jwks.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
 
+/**
+ * Provides the resolved JWT verifier options through dependency injection.
+ */
 export const JWT_OPTIONS = Symbol.for('konekti.jwt.options');
 
+/**
+ * Maps supported HMAC JWT algorithms to their Node.js hash names.
+ */
 export const HMAC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   HS256: 'sha256',
   HS384: 'sha384',
   HS512: 'sha512',
 };
 
+/**
+ * Maps supported asymmetric JWT algorithms to their Node.js hash names.
+ */
 export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   RS256: 'sha256',
   RS384: 'sha384',
@@ -222,7 +231,10 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
   };
 }
 
-@Inject([JWT_OPTIONS])
+/**
+ * Verifies JWT access and refresh tokens against the configured key sources.
+ */
+@Inject(JWT_OPTIONS)
 export class DefaultJwtVerifier {
   private readonly jwksClient: JwksClient | undefined;
   private readonly keyResolutionState: KeyResolutionState;

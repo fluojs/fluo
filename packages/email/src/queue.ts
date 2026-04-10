@@ -49,7 +49,7 @@ export function createEmailNotificationsQueueAdapter(queue: QueueLifecycleServic
 
 /** Internal queue worker that converts queued notification jobs back into email delivery. */
 @QueueWorker(EmailNotificationQueueJob, DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS)
-@Inject([EmailService])
+@Inject(EmailService)
 export class EmailNotificationsQueueWorker {
   constructor(private readonly email: EmailService) {}
 

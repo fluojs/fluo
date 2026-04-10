@@ -24,7 +24,7 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
  * and delegates the final publication step to `@konekti/event-bus`.
  */
-@Inject([KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER])
+@Inject(KONEKTI_EVENT_BUS, CqrsSagaLifecycleService, RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER)
 export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;

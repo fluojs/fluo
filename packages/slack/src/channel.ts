@@ -13,7 +13,7 @@ import type { NormalizedSlackModuleOptions, SlackNotificationDispatchRequest, Sl
  * This class keeps the foundation package channel-agnostic while allowing `@konekti/slack`
  * to interpret Slack-specific payload fields, webhook delivery, and transport behavior.
  */
-@Inject([SlackService, SLACK_OPTIONS])
+@Inject(SlackService, SLACK_OPTIONS)
 export class SlackChannel implements NotificationChannel<SlackNotificationDispatchRequest, SlackSendResult> {
   readonly channel: string;
 
