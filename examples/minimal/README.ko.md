@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-가장 작은 실행 가능한 fluo 애플리케이션입니다. 이 예제는 `konekti new`가 생성하는 것과 동일한 시작 경로를 따르되, 필수 요소만 남겼습니다.
+가장 작은 실행 가능한 fluo 애플리케이션입니다. 이 예제는 `fluo new`가 생성하는 것과 동일한 시작 경로를 따르되, 필수 요소만 남겼습니다.
 
 ## 이 예제가 보여주는 것
 
@@ -41,11 +41,11 @@ examples/minimal/
 
 ## 스타터 스캐폴드와의 관계
 
-이 예제는 `konekti new` 출력의 의도적인 부분 집합입니다. config, health 모듈, 생성된 테스트, 빌드 도구가 포함된 전체 스타터 경험을 원한다면:
+이 예제는 `fluo new` 출력의 의도적인 부분 집합입니다. config, health 모듈, 생성된 테스트, 빌드 도구가 포함된 전체 스타터 경험을 원한다면:
 
 ```sh
 pnpm add -g @fluojs/cli
-konekti new my-app
+fluo new my-app
 ```
 
 ## 관련 문서

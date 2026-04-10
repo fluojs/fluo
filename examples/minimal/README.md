@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The smallest runnable fluo application. This example follows the exact same startup path that `konekti new` generates, stripped down to the essentials.
+The smallest runnable fluo application. This example follows the exact same startup path that `fluo new` generates, stripped down to the essentials.
 
 ## what this example demonstrates
 
@@ -41,11 +41,11 @@ examples/minimal/
 
 ## relationship to the starter scaffold
 
-This example is intentionally a subset of the `konekti new` output. If you want the full starter experience with config, health module, generated tests, and build tooling, run:
+This example is intentionally a subset of the `fluo new` output. If you want the full starter experience with config, health module, generated tests, and build tooling, run:
 
 ```sh
 pnpm add -g @fluojs/cli
-konekti new my-app
+fluo new my-app
 ```
 
 ## related docs
