@@ -36,6 +36,41 @@ describe('runtime matrix docs contract', () => {
     expect(read('packages/cli/README.ko.md')).toContain('../../docs/reference/package-surface.ko.md');
   });
 
+  it('publishes a clear fluo new support matrix and keeps linked docs aligned to it', () => {
+    expectAll(read('docs/reference/fluo-new-support-matrix.md'), [
+      'Application starter',
+      'Microservice starter',
+      'Mixed starter',
+      'Documented, not wired into `fluo new` yet',
+      '@fluojs/platform-express',
+      '@fluojs/platform-bun',
+      '@fluojs/platform-deno',
+      '@fluojs/platform-cloudflare-workers',
+    ]);
+    expectAll(read('docs/reference/fluo-new-support-matrix.ko.md'), [
+      '애플리케이션 스타터',
+      '마이크로서비스 스타터',
+      'mixed 스타터',
+      '문서화됨, 아직 `fluo new`에는 연결되지 않음',
+      '@fluojs/platform-express',
+      '@fluojs/platform-bun',
+      '@fluojs/platform-deno',
+      '@fluojs/platform-cloudflare-workers',
+    ]);
+    expect(read('docs/README.md')).toContain('./reference/fluo-new-support-matrix.md');
+    expect(read('docs/README.ko.md')).toContain('./reference/fluo-new-support-matrix.ko.md');
+    expect(read('docs/reference/package-chooser.md')).toContain('./fluo-new-support-matrix.md');
+    expect(read('docs/reference/package-chooser.ko.md')).toContain('./fluo-new-support-matrix.ko.md');
+    expect(read('docs/getting-started/quick-start.md')).toContain('../reference/fluo-new-support-matrix.md');
+    expect(read('docs/getting-started/quick-start.ko.md')).toContain('../reference/fluo-new-support-matrix.ko.md');
+    expect(read('docs/getting-started/bootstrap-paths.md')).toContain('../reference/fluo-new-support-matrix.md');
+    expect(read('docs/getting-started/bootstrap-paths.ko.md')).toContain('../reference/fluo-new-support-matrix.ko.md');
+    expect(read('docs/getting-started/migrate-from-nestjs.md')).toContain('../reference/fluo-new-support-matrix.md');
+    expect(read('docs/getting-started/migrate-from-nestjs.ko.md')).toContain('../reference/fluo-new-support-matrix.ko.md');
+    expect(read('packages/cli/README.md')).toContain('../../docs/reference/fluo-new-support-matrix.md');
+    expect(read('packages/cli/README.ko.md')).toContain('../../docs/reference/fluo-new-support-matrix.ko.md');
+  });
+
   it('keeps toolchain docs delegating runtime matrix ownership', () => {
     expect(read('docs/reference/toolchain-contract-matrix.md')).toContain('./package-surface.md');
     expect(read('docs/reference/toolchain-contract-matrix.ko.md')).toContain('./package-surface.ko.md');
