@@ -44,10 +44,12 @@ cd my-app
 pnpm dev
 ```
 
-기본 스타터는 여전히 Node.js + Fastify HTTP 애플리케이션 기준선을 유지합니다. 이제 flags-first v2 shape 옵션으로 같은 HTTP 경로를 명시적으로 선택해도 생성 결과는 바뀌지 않습니다.
+기본 스타터는 여전히 Node.js + Fastify HTTP 애플리케이션 기준선을 유지합니다. 이제 `fluo new`는 같은 Node 기반 설치/빌드 흐름 위에서 Express와 raw Node.js HTTP 애플리케이션 스타터도 first-class 경로로 제공합니다.
 
 ```bash
 fluo new my-app --shape application --transport http --runtime node --platform fastify
+fluo new my-express-app --shape application --transport http --runtime node --platform express
+fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
 ```
 
 `fluo new`는 이제 first-class microservice starter path도 제공합니다. 현재 실행 가능한 스타터는 TCP transport를 생성하며, CLI는 package manager 선택과 분리된 상태로 문서화된 microservice transport 계열도 검증합니다.
@@ -62,9 +64,9 @@ v2 매트릭스에는 mixed single-package starter도 포함됩니다. 하나의
 fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-`fluo new`가 interactive TTY에서 실행되면, 이제 v2 wizard가 기존 flags/config 모델 위에 그대로 얹혀 동작합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. 반면 non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출은 동일한 resolved defaults를 유지하는 first-class path로 계속 동작합니다.
+`fluo new`가 interactive TTY에서 실행되면, 이제 v2 wizard가 기존 flags/config 모델 위에 그대로 얹혀 동작합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime + HTTP platform, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. 반면 non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출은 동일한 resolved defaults를 유지하는 first-class path로 계속 동작합니다.
 
-이 스타터 경로와 더 넓은 Express/Bun/Deno/Cloudflare 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요.
+이제 제공되는 Fastify/Express/raw Node.js 스타터와 더 넓은 Bun/Deno/Cloudflare 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요.
 
 ### 2. 기능 추가
 컨트롤러와 서비스가 포함된 새 리소스를 추가하고, 모듈에 자동으로 연결합니다.

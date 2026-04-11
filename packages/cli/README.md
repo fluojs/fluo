@@ -44,10 +44,12 @@ cd my-app
 pnpm dev
 ```
 
-The default starter remains the Node.js + Fastify HTTP application baseline. You can now select that HTTP path explicitly with flags-first v2 shape options without changing the generated result:
+The default starter remains the Node.js + Fastify HTTP application baseline. `fluo new` now also ships first-class Express and raw Node.js HTTP application starters on the same Node-oriented install/build story:
 
 ```bash
 fluo new my-app --shape application --transport http --runtime node --platform fastify
+fluo new my-express-app --shape application --transport http --runtime node --platform express
+fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
 ```
 
 `fluo new` also exposes a first-class microservice starter path. The runnable starter currently emits the TCP transport while the CLI validates the documented microservice transport families separately from package-manager choice:
@@ -62,9 +64,9 @@ The v2 matrix also includes a mixed single-package starter: one Fastify HTTP app
 fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-When `fluo new` runs in an interactive TTY, the v2 wizard now layers on top of the same flags/config model instead of replacing it. The wizard asks for the project name, shape-first branch (`application` -> runtime, `microservice` -> transport), the maintained tooling preset, package-manager choice, whether to install dependencies immediately, and whether to initialize a git repository. Non-interactive flags and programmatic `runNewCommand(...)` calls still stay first-class paths with the same resolved defaults.
+When `fluo new` runs in an interactive TTY, the v2 wizard now layers on top of the same flags/config model instead of replacing it. The wizard asks for the project name, shape-first branch (`application` -> runtime + HTTP platform, `microservice` -> transport), the maintained tooling preset, package-manager choice, whether to install dependencies immediately, and whether to initialize a git repository. Non-interactive flags and programmatic `runNewCommand(...)` calls still stay first-class paths with the same resolved defaults.
 
-For a docs-level table that separates these starter paths from the broader Express/Bun/Deno/Cloudflare adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md).
+For a docs-level table that separates the shipped Fastify/Express/raw Node.js starters from the broader Bun/Deno/Cloudflare adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md).
 
 ### 2. Generate a feature
 Add a new resource with a controller and service, automatically wired into the module.
