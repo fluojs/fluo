@@ -20,6 +20,20 @@ describe('resolveBootstrapSchema', () => {
       transport: 'tcp',
     });
   });
+
+  it('switches to the mixed starter defaults when shape=mixed is selected', () => {
+    expect(resolveBootstrapSchema({ shape: 'mixed' })).toEqual({
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'mixed',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+    });
+  });
 });
 
 describe('resolveBootstrapPlan', () => {
@@ -114,6 +128,48 @@ describe('resolveBootstrapPlan', () => {
     });
   });
 
+  it('resolves the mixed starter as one HTTP app with an attached TCP microservice', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      shape: 'mixed',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/validation',
+          '@fluojs/di',
+          '@fluojs/http',
+          '@fluojs/microservices',
+          '@fluojs/platform-fastify',
+          '@fluojs/runtime',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'fastify',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'tcp',
+        type: 'mixed',
+      },
+      schema: {
+        platform: 'fastify',
+        runtime: 'node',
+        shape: 'mixed',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'tcp',
+      },
+    });
+  });
+
   it('rejects selecting the HTTP transport for the microservice shape', () => {
     expect(() => resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
@@ -148,6 +204,23 @@ describe('resolveBootstrapPlan', () => {
     );
   });
 
+  it('rejects unsupported mixed transports while keeping the mixed contract narrow', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'mixed',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'kafka',
+    })).toThrow(
+      'Unsupported bootstrap schema "mixed/node/kafka/fastify/standard/single-package". The first mixed starter currently supports only the attached TCP microservice contract.',
+    );
+  });
+
   it('rejects unsupported topology or runtime combinations until later issues extend the matrix', () => {
     expect(() => resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
@@ -161,7 +234,24 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
       platform: 'fastify',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter and the TCP microservice starter.',
+      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
+    );
+  });
+
+  it('rejects unsupported mixed topology expansions until a later issue adds them', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'mixed',
+      tooling: 'standard',
+      topology: {
+        deferred: false,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+    })).toThrow(
+      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
     );
   });
 });
