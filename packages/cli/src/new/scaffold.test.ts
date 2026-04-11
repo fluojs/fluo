@@ -1,6 +1,8 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -8,6 +10,50 @@ import { scaffoldBootstrapApp } from './scaffold.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 
 const temporaryDirectories: string[] = [];
+const LOCAL_PACKAGE_DIRECTORY_BY_NAME = {
+  '@fluojs/platform-bun': 'platform-bun',
+  '@fluojs/cli': 'cli',
+  '@fluojs/config': 'config',
+  '@fluojs/core': 'core',
+  '@fluojs/di': 'di',
+  '@fluojs/http': 'http',
+  '@fluojs/platform-cloudflare-workers': 'platform-cloudflare-workers',
+  '@fluojs/platform-deno': 'platform-deno',
+  '@fluojs/microservices': 'microservices',
+  '@fluojs/platform-express': 'platform-express',
+  '@fluojs/platform-fastify': 'platform-fastify',
+  '@fluojs/platform-nodejs': 'platform-nodejs',
+  '@fluojs/runtime': 'runtime',
+  '@fluojs/testing': 'testing',
+  '@fluojs/validation': 'validation',
+} as const;
+
+const FIXTURE_WORKSPACE_DEPENDENCIES: Partial<Record<keyof typeof LOCAL_PACKAGE_DIRECTORY_BY_NAME, Record<string, string>>> = {
+  '@fluojs/http': {
+    '@fluojs/core': 'workspace:*',
+    '@fluojs/di': 'workspace:*',
+    '@fluojs/validation': 'workspace:*',
+  },
+  '@fluojs/platform-fastify': {
+    '@fluojs/http': 'workspace:*',
+    '@fluojs/runtime': 'workspace:*',
+  },
+  '@fluojs/platform-express': {
+    '@fluojs/http': 'workspace:*',
+    '@fluojs/runtime': 'workspace:*',
+  },
+  '@fluojs/platform-nodejs': {
+    '@fluojs/http': 'workspace:*',
+    '@fluojs/runtime': 'workspace:*',
+  },
+  '@fluojs/runtime': {
+    '@fluojs/config': 'workspace:*',
+    '@fluojs/core': 'workspace:*',
+  },
+  '@fluojs/testing': {
+    '@fluojs/runtime': 'workspace:*',
+  },
+};
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -40,6 +86,106 @@ function readDirectorySnapshot(rootDirectory: string): Record<string, string> {
   }
 
   return snapshot;
+}
+
+function createLocalPackageCacheDirectory(repoRoot: string): string {
+  return join(tmpdir(), 'fluo-cli-local-packages', createHash('sha1').update(resolve(repoRoot)).digest('hex').slice(0, 12));
+}
+
+function createFixtureLocalRepo(): string {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'fluo-local-repo-'));
+  temporaryDirectories.push(repoRoot);
+
+  for (const [packageName, packageDirectory] of Object.entries(LOCAL_PACKAGE_DIRECTORY_BY_NAME)) {
+    const packageRoot = join(repoRoot, 'packages', packageDirectory);
+    const distDirectory = join(packageRoot, 'dist');
+    mkdirSync(distDirectory, { recursive: true });
+    writeFileSync(
+      join(packageRoot, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: packageName,
+          version: '1.0.0',
+          type: 'module',
+          files: ['dist'],
+          main: 'dist/index.js',
+          types: 'dist/index.d.ts',
+          dependencies: FIXTURE_WORKSPACE_DEPENDENCIES[packageName as keyof typeof LOCAL_PACKAGE_DIRECTORY_BY_NAME] ?? {},
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(join(distDirectory, 'index.js'), `export const packageName = '${packageName}';\n`, 'utf8');
+    writeFileSync(join(distDirectory, 'index.d.ts'), `export declare const packageName: '${packageName}';\n`, 'utf8');
+  }
+
+  execFileSync('git', ['init'], { cwd: repoRoot, stdio: 'ignore' });
+  execFileSync('git', ['add', '.'], { cwd: repoRoot, stdio: 'ignore' });
+  execFileSync(
+    'git',
+    ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '-m', 'fixture'],
+    { cwd: repoRoot, stdio: 'ignore' },
+  );
+
+  return repoRoot;
+}
+
+function createDefaultLocalScaffoldOptions(targetDirectory: string, repoRoot: string) {
+  return {
+    ...DEFAULT_BOOTSTRAP_SCHEMA,
+    dependencySource: 'local' as const,
+    packageManager: 'pnpm' as const,
+    projectName: 'starter-app',
+    repoRoot,
+    skipInstall: true,
+    targetDirectory,
+  };
+}
+
+function readLocalDependencyTarballPaths(targetDirectory: string): string[] {
+  const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const fileSpecs = new Set<string>();
+
+  for (const section of [packageJson.dependencies, packageJson.devDependencies]) {
+    for (const specifier of Object.values(section ?? {})) {
+      if (specifier.startsWith('file:')) {
+        fileSpecs.add(specifier.slice('file:'.length));
+      }
+    }
+  }
+
+  return Array.from(fileSpecs);
+}
+
+function readPackedPackageManifest(tarballPath: string): {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+} {
+  return JSON.parse(
+    execFileSync('tar', ['-xOf', tarballPath, 'package/package.json'], {
+      encoding: 'utf8',
+    }),
+  ) as {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+  };
+}
+
+function expectNoWorkspaceProtocolDependencies(tarballPath: string): void {
+  const manifest = readPackedPackageManifest(tarballPath);
+
+  for (const section of [manifest.dependencies, manifest.optionalDependencies, manifest.peerDependencies]) {
+    for (const specifier of Object.values(section ?? {})) {
+      expect(specifier).not.toContain('workspace:');
+    }
+  }
 }
 
 describe('scaffoldBootstrapApp', () => {
@@ -77,6 +223,69 @@ describe('scaffoldBootstrapApp', () => {
     expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
     expect(vitestConfig).not.toContain('baseUrl');
   });
+
+  it('packs local starter tarballs from staged package manifests without workspace protocol dependencies', async () => {
+    const repoRoot = createFixtureLocalRepo();
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-local-pack-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp(createDefaultLocalScaffoldOptions(targetDirectory, repoRoot));
+
+    const tarballPaths = readLocalDependencyTarballPaths(targetDirectory);
+
+    expect(tarballPaths.length).toBeGreaterThan(0);
+
+    for (const tarballPath of tarballPaths) {
+      expectNoWorkspaceProtocolDependencies(tarballPath);
+    }
+  }, 30_000);
+
+  it('invalidates stale local package cache tarballs from the old rewrite pipeline', async () => {
+    const repoRoot = createFixtureLocalRepo();
+    const localPackageCacheDirectory = createLocalPackageCacheDirectory(repoRoot);
+    const warmupTargetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-local-cache-warmup-'));
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-local-cache-refresh-'));
+    temporaryDirectories.push(warmupTargetDirectory, targetDirectory);
+
+    await scaffoldBootstrapApp(createDefaultLocalScaffoldOptions(warmupTargetDirectory, repoRoot));
+
+    const tarballPaths = readLocalDependencyTarballPaths(warmupTargetDirectory);
+    expect(tarballPaths.length).toBeGreaterThan(0);
+
+    const staleTarballPath = tarballPaths[0];
+    const staleTarballName = staleTarballPath.split('/').at(-1);
+    expect(staleTarballName).toBeTruthy();
+
+    const cacheStampPath = join(localPackageCacheDirectory, 'cache-stamp.json');
+    const cacheStamp = JSON.parse(readFileSync(cacheStampPath, 'utf8')) as {
+      cacheFormatVersion?: number;
+      dirtyFingerprint: string;
+      headCommit: string;
+      packageVersions: Record<string, string>;
+    };
+
+    writeFileSync(staleTarballPath, 'stale tarball from old rewrite pipeline', 'utf8');
+    writeFileSync(
+      cacheStampPath,
+      `${JSON.stringify(
+        {
+          dirtyFingerprint: cacheStamp.dirtyFingerprint,
+          headCommit: cacheStamp.headCommit,
+          packageVersions: cacheStamp.packageVersions,
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+
+    await scaffoldBootstrapApp(createDefaultLocalScaffoldOptions(targetDirectory, repoRoot));
+
+    const refreshedTarballPath = readLocalDependencyTarballPaths(targetDirectory).find((tarballPath) => tarballPath.endsWith(`/${staleTarballName}`));
+    expect(refreshedTarballPath).toBeTruthy();
+    expect(readFileSync(refreshedTarballPath!, 'utf8')).not.toContain('stale tarball from old rewrite pipeline');
+    expectNoWorkspaceProtocolDependencies(refreshedTarballPath!);
+  }, 30_000);
 
   it('keeps the default Node + Fastify HTTP scaffold identical when explicit shape flags are provided', async () => {
     const defaultTargetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-default-'));

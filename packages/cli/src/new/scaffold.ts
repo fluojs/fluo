@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -126,8 +126,10 @@ function describeApplicationStarter(options: Pick<BootstrapOptions, 'platform' |
 
 const LOCAL_PACKAGE_CACHE_DIR = join(tmpdir(), 'fluo-cli-local-packages');
 const LOCAL_PACKAGE_CACHE_STAMP_FILE = 'cache-stamp.json';
+const LOCAL_PACKAGE_CACHE_FORMAT_VERSION = 2;
 
 type LocalPackageCacheStamp = {
+  cacheFormatVersion: number;
   dirtyFingerprint: string;
   headCommit: string;
   packageVersions: Partial<Record<LocalPackageName, string>>;
@@ -2134,10 +2136,10 @@ export async function scaffoldBootstrapApp(
   }
 }
 
-function runPackCommand(repoRoot: string, packageDirectory: string, outputDirectory: string): Promise<void> {
+function runPackCommand(packageDirectory: string, outputDirectory: string): Promise<void> {
   return new Promise<void>((resolvePromise, reject) => {
     const child = spawn('npm', ['pack', '--pack-destination', outputDirectory], {
-      cwd: join(repoRoot, 'packages', packageDirectory),
+      cwd: packageDirectory,
       stdio: 'inherit',
     });
 
@@ -2304,6 +2306,87 @@ function createPackagePathArguments(packageNames: readonly LocalPackageName[]): 
   return Array.from(packagePaths);
 }
 
+function copyIfExists(sourcePath: string, destinationPath: string): void {
+  if (!existsSync(sourcePath)) {
+    return;
+  }
+
+  cpSync(sourcePath, destinationPath, { recursive: true });
+}
+
+function collectPackageStagePaths(
+  packageRoot: string,
+  manifest: {
+    bin?: Record<string, string> | string;
+    files?: string[];
+    main?: string;
+    types?: string;
+  },
+): string[] {
+  const stagePaths = new Set<string>();
+
+  for (const fixedPath of ['README.md', 'README.ko.md', 'LICENSE', 'LICENSE.md', 'LICENSE.txt']) {
+    if (existsSync(join(packageRoot, fixedPath))) {
+      stagePaths.add(fixedPath);
+    }
+  }
+
+  for (const fileEntry of manifest.files ?? []) {
+    if (existsSync(join(packageRoot, fileEntry))) {
+      stagePaths.add(fileEntry);
+    }
+  }
+
+  if (typeof manifest.bin === 'string') {
+    stagePaths.add(manifest.bin);
+  } else if (manifest.bin) {
+    for (const binPath of Object.values(manifest.bin)) {
+      stagePaths.add(binPath);
+    }
+  }
+
+  if (manifest.main) {
+    stagePaths.add(manifest.main);
+  }
+
+  if (manifest.types) {
+    stagePaths.add(manifest.types);
+  }
+
+  return Array.from(stagePaths);
+}
+
+function stagePackageForPacking(
+  repoRoot: string,
+  packageName: LocalPackageName,
+  packageVersions: ReadonlyMap<string, string>,
+  outputDirectory: string,
+): string {
+  const packageDirectory = PACKAGE_DIRECTORY_BY_NAME[packageName];
+  const packageRoot = join(repoRoot, 'packages', packageDirectory);
+  const stageDirectory = join(outputDirectory, `.stage-${packageDirectory}`);
+  const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+    bin?: Record<string, string> | string;
+    dependencies?: Record<string, string>;
+    files?: string[];
+    main?: string;
+    optionalDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+    types?: string;
+  };
+
+  rmSync(stageDirectory, { force: true, recursive: true });
+  mkdirSync(stageDirectory, { recursive: true });
+
+  for (const relativePath of collectPackageStagePaths(packageRoot, manifest)) {
+    copyIfExists(join(packageRoot, relativePath), join(stageDirectory, relativePath));
+  }
+
+  rewriteWorkspaceProtocolDependencies(manifest, packageVersions);
+  writeFileSync(join(stageDirectory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return stageDirectory;
+}
+
 function computeLocalPackageCacheStamp(
   repoRoot: string,
   packageNames: readonly LocalPackageName[],
@@ -2323,6 +2406,7 @@ function computeLocalPackageCacheStamp(
   }
 
   return {
+    cacheFormatVersion: LOCAL_PACKAGE_CACHE_FORMAT_VERSION,
     dirtyFingerprint,
     headCommit,
     packageVersions: toPackageVersionRecord(packageVersions),
@@ -2343,6 +2427,10 @@ function readLocalPackageCacheStamp(stampPath: string): LocalPackageCacheStamp |
 
 function cacheStampMatches(expected: LocalPackageCacheStamp, actual: LocalPackageCacheStamp | undefined): boolean {
   if (!actual) {
+    return false;
+  }
+
+  if (actual.cacheFormatVersion !== LOCAL_PACKAGE_CACHE_FORMAT_VERSION) {
     return false;
   }
 
@@ -2371,6 +2459,22 @@ function cacheContainsTarballs(
     const tarball = expectedTarballName(packageName, packageVersion);
     return packedFiles.has(tarball);
   });
+}
+
+function clearLocalPackageCacheArtifacts(outputDirectory: string): void {
+  if (!existsSync(outputDirectory)) {
+    return;
+  }
+
+  for (const entry of readdirSync(outputDirectory, { withFileTypes: true })) {
+    if (entry.name === LOCAL_PACKAGE_CACHE_STAMP_FILE) {
+      continue;
+    }
+
+    if (entry.isDirectory() || entry.name.endsWith('.tgz')) {
+      rmSync(join(outputDirectory, entry.name), { force: true, recursive: true });
+    }
+  }
 }
 
 function createLocalPackageCachePath(repoRoot: string): string {
@@ -2444,8 +2548,17 @@ async function packLocalPackages(
     const packageVersion = getPackageVersionOrThrow(packageVersions, packageName);
     const tarballName = expectedTarballName(packageName, packageVersion);
 
-    await runPackCommand(repoRoot, PACKAGE_DIRECTORY_BY_NAME[packageName], outputDirectory);
-    await normalizePackedPackageManifest(outputDirectory, tarballName, packageVersions);
+    const stageDirectory = stagePackageForPacking(repoRoot, packageName, packageVersions, outputDirectory);
+
+    try {
+      await runPackCommand(stageDirectory, outputDirectory);
+    } finally {
+      rmSync(stageDirectory, { force: true, recursive: true });
+    }
+
+    if (!existsSync(join(outputDirectory, tarballName))) {
+      throw new Error(`Unable to locate packed tarball for ${packageName}.`);
+    }
   }
 }
 
@@ -2502,53 +2615,6 @@ function rewriteWorkspaceProtocolDependencies(
   }
 }
 
-function runTarCommand(args: string[], cwd: string): Promise<void> {
-  return new Promise<void>((resolvePromise, reject) => {
-    const child = spawn('tar', args, {
-      cwd,
-      stdio: 'inherit',
-    });
-
-    child.on('error', reject);
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-
-      reject(new Error(`tar ${args.join(' ')} failed with exit code ${code}.`));
-    });
-  });
-}
-
-async function normalizePackedPackageManifest(
-  outputDirectory: string,
-  tarballName: string,
-  packageVersions: ReadonlyMap<string, string>,
-): Promise<void> {
-  const tarballPath = join(outputDirectory, tarballName);
-  const temporaryDirectory = join(outputDirectory, `.tmp-${tarballName.replace(/\.tgz$/, '')}`);
-  const packageJsonPath = join(temporaryDirectory, 'package', 'package.json');
-
-  rmSync(temporaryDirectory, { force: true, recursive: true });
-  mkdirSync(temporaryDirectory, { recursive: true });
-
-  await runTarCommand(['-xzf', tarballPath, '-C', temporaryDirectory], outputDirectory);
-
-  const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-    dependencies?: Record<string, string>;
-    optionalDependencies?: Record<string, string>;
-    peerDependencies?: Record<string, string>;
-  };
-
-  rewriteWorkspaceProtocolDependencies(manifest, packageVersions);
-  writeFileSync(packageJsonPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
-  rmSync(tarballPath, { force: true });
-  await runTarCommand(['-czf', tarballPath, '-C', temporaryDirectory, 'package'], outputDirectory);
-  rmSync(temporaryDirectory, { force: true, recursive: true });
-}
-
 async function resolvePackageSpecs(
   options: BootstrapOptions,
   bootstrapPlan: ResolvedBootstrapPlan,
@@ -2575,6 +2641,7 @@ async function resolvePackageSpecs(
 
   if (!canReuseCachedTarballs) {
     await ensureWorkspaceBuildOutput(repoRoot, packageNames);
+    clearLocalPackageCacheArtifacts(outputDirectory);
     await packLocalPackages(repoRoot, outputDirectory, packageNames, packageVersions);
 
     if (expectedCacheStamp) {
