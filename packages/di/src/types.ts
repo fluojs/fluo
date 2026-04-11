@@ -28,8 +28,7 @@ export namespace Scope {
 /**
  * Constructable class token used by provider definitions.
  */
-export interface ClassType<T = unknown> extends Constructor<T> {
-}
+export type ClassType<T = unknown> = Constructor<T> & Function;
 
 /**
  * Provider declaration that instantiates a class for a public token.

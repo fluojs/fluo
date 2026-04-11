@@ -66,7 +66,7 @@ describe('http decorators', () => {
       note?: string;
     }
 
-    @ValidateClass((value) => {
+    @ValidateClass((value: unknown) => {
       const count = typeof value === 'object' && value !== null && 'requestCount' in value
         ? (value as { requestCount?: number }).requestCount
         : undefined;
