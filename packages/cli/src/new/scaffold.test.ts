@@ -125,18 +125,93 @@ describe('scaffoldBootstrapApp', () => {
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
 
-    expect(readme).toContain('Starter contract: `src/main.ts` wires the maintained application starter that `fluo new` generates today: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readme).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readme).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readme).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
     expect(readme).not.toContain('Bun');
     expect(readme).not.toContain('Deno');
     expect(readme).not.toContain('Cloudflare');
     expect(readme).not.toContain('@fluojs/platform-nodejs');
-    expect(mainFile).toContain('// The generated starter wires the maintained fluo new application path today:');
+    expect(mainFile).toContain('// The generated starter wires the selected first-class fluo new application path:');
     expect(mainFile).toContain('// Node.js runtime + Fastify HTTP via createFastifyAdapter(...).');
     expect(mainFile).not.toContain('Bun');
     expect(mainFile).not.toContain('Deno');
     expect(mainFile).not.toContain('Cloudflare');
     expect(mainFile).not.toContain('@fluojs/platform-nodejs');
+  });
+
+  it('generates the Express application starter scaffold', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-express-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'express',
+      projectName: 'starter-express',
+      runtime: 'node',
+      shape: 'application',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'http',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/platform-express': expect.any(String),
+      '@fluojs/runtime': expect.any(String),
+    });
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-nodejs');
+    expect(readme).toContain('Node.js runtime + Express HTTP via `createExpressAdapter(...)`');
+    expect(mainFile).toContain("import { createExpressAdapter } from '@fluojs/platform-express';");
+    expect(mainFile).toContain('adapter: createExpressAdapter({ port })');
+  });
+
+  it('generates the raw Node.js application starter scaffold', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-nodejs-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'nodejs',
+      projectName: 'starter-nodejs',
+      runtime: 'node',
+      shape: 'application',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'http',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/platform-nodejs': expect.any(String),
+      '@fluojs/runtime': expect.any(String),
+    });
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
+    expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `createNodejsAdapter(...)`');
+    expect(mainFile).toContain("import { createNodejsAdapter } from '@fluojs/platform-nodejs';");
+    expect(mainFile).toContain('adapter: createNodejsAdapter({ port })');
   });
 
   it('generates a runnable TCP microservice starter scaffold', async () => {
