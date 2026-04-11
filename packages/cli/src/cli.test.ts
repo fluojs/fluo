@@ -255,6 +255,80 @@ describe('CLI command runner', () => {
     expect(mainFile).toContain("createFastifyAdapter({ port })");
   });
 
+  it('scaffolds the Express HTTP starter when the Express platform is selected explicitly', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      '--shape',
+      'application',
+      '--transport',
+      'http',
+      '--runtime',
+      'node',
+      '--platform',
+      'express',
+      '--tooling',
+      'standard',
+      '--topology',
+      'single-package',
+      'starter-express',
+    ], {
+      cwd: workspaceDirectory,
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const projectDirectory = join(workspaceDirectory, 'starter-express');
+    const packageJson = readFileSync(join(projectDirectory, 'package.json'), 'utf8');
+    const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
+    expect(packageJson).toContain('@fluojs/platform-express');
+    expect(mainFile).toContain('createExpressAdapter({ port })');
+  });
+
+  it('scaffolds the raw Node.js HTTP starter when the nodejs platform is selected explicitly', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      '--shape',
+      'application',
+      '--transport',
+      'http',
+      '--runtime',
+      'node',
+      '--platform',
+      'nodejs',
+      '--tooling',
+      'standard',
+      '--topology',
+      'single-package',
+      'starter-nodejs',
+    ], {
+      cwd: workspaceDirectory,
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const projectDirectory = join(workspaceDirectory, 'starter-nodejs');
+    const packageJson = readFileSync(join(projectDirectory, 'package.json'), 'utf8');
+    const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
+    expect(packageJson).toContain('@fluojs/platform-nodejs');
+    expect(mainFile).toContain('createNodejsAdapter({ port })');
+  });
+
   it('scaffolds the TCP microservice starter when shape and transport are selected explicitly', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -461,7 +535,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('--shape <application|microservice|mixed>');
     expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
     expect(stdoutBuffer.join('')).toContain('--runtime <node>');
-    expect(stdoutBuffer.join('')).toContain('--platform <fastify|none>');
+    expect(stdoutBuffer.join('')).toContain('--platform <fastify|express|nodejs|none>');
     expect(stdoutBuffer.join('')).toContain('--tooling <standard>');
     expect(stdoutBuffer.join('')).toContain('--topology <single-package>');
     expect(stdoutBuffer.join('')).toContain('--package-manager <pnpm|npm|yarn|bun>');
@@ -863,7 +937,8 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the maintained application starter that `fluo new` generates today: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the selected first-class application starter: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readmeContent).toContain('Default baseline: when you omit `--platform`, `fluo new` still generates the Node.js + Fastify HTTP starter by default');
     expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
     expect(readmeContent).not.toContain('@fluojs/runtime/node');
     expect(readmeContent).not.toContain('@fluojs/platform-nodejs');

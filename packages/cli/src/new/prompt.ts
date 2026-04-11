@@ -3,7 +3,11 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import { resolveBootstrapSchema } from './resolver.js';
-import { DOCUMENTED_MICROSERVICE_TRANSPORTS, STARTER_PROFILE_REGISTRY } from './starter-profiles.js';
+import {
+  DOCUMENTED_MICROSERVICE_TRANSPORTS,
+  getApplicationStarterProfiles,
+  STARTER_PROFILE_REGISTRY,
+} from './starter-profiles.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
 
 /** Default package manager used when detection has no signal. */
@@ -125,6 +129,7 @@ function shouldPromptForAnswers(
     || !hasOwnValue(partial, 'installDependencies')
     || !hasOwnValue(partial, 'initializeGit')
     || (partial.shape === 'application' && !hasOwnValue(partial, 'runtime'))
+    || (partial.shape === 'application' && !hasOwnValue(partial, 'platform'))
     || (partial.shape === 'microservice' && !hasOwnValue(partial, 'transport'))
   );
 }
@@ -155,6 +160,14 @@ async function resolveInteractiveBootstrapAnswers(
     answers.runtime = await prompt.select('Runtime', [
       { label: 'Node.js', value: 'node' },
     ] as const, 'node');
+  }
+
+  if (answers.shape === 'application' && !answers.platform) {
+    const applicationProfiles = getApplicationStarterProfiles();
+    answers.platform = await prompt.select('HTTP platform', applicationProfiles.map((profile) => ({
+      label: profile.platformPromptLabel ?? profile.schema.platform,
+      value: profile.schema.platform,
+    })), 'fastify');
   }
 
   if (answers.shape === 'microservice' && !answers.transport) {
