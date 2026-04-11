@@ -42,31 +42,17 @@ const PUBLISHED_DEV_DEPENDENCIES = {
 } as const;
 
 const PUBLISHED_RUNTIME_DEPENDENCIES = {
+  '@types/amqplib': '^0.10.7',
   '@grpc/grpc-js': '^1.0.0',
   '@grpc/proto-loader': '^0.8.0',
+  amqplib: '^0.10.5',
   ioredis: '^5.0.0',
+  kafkajs: '^2.2.4',
   mqtt: '^5.0.0',
+  nats: '^2.29.3',
 } as const;
 
 type LocalPackageName = keyof typeof PACKAGE_DIRECTORY_BY_NAME;
-
-const ALL_LOCAL_PACKAGE_NAMES: readonly LocalPackageName[] = [
-  '@fluojs/platform-bun',
-  '@fluojs/cli',
-  '@fluojs/config',
-  '@fluojs/core',
-  '@fluojs/di',
-  '@fluojs/http',
-  '@fluojs/platform-cloudflare-workers',
-  '@fluojs/platform-deno',
-  '@fluojs/microservices',
-  '@fluojs/platform-express',
-  '@fluojs/platform-fastify',
-  '@fluojs/platform-nodejs',
-  '@fluojs/runtime',
-  '@fluojs/testing',
-  '@fluojs/validation',
-];
 
 type ApplicationStarterDescriptor = {
   adapterCall?: string;
@@ -506,6 +492,51 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
         starterNote: 'the gRPC starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `GRPC_URL` is reachable for the generated protobuf contract',
         testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the gRPC entrypoint/build contract and the generated `proto/math.proto` file.',
       };
+    case 'nats':
+      return {
+        configLines: [
+          '- NATS broker: configure `NATS_SERVERS` in `.env` before you start the service',
+          '- Subject contract: keep `NATS_MESSAGE_SUBJECT` and `NATS_EVENT_SUBJECT` aligned with the peer services that share the broker namespace',
+        ],
+        entrypointNote: '`src/app.ts` opens one caller-owned `nats` client plus `JSONCodec()` and passes both into `NatsMicroserviceTransport` as the canonical starter bootstrap contract',
+        generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the NATS starter keeps the `nats` dependency, `.env` contract, and transport entrypoint wiring intact.',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a caller-owned client/bootstrap pair',
+        pattern: 'math.sum',
+        readmeTransportLabel: 'nats',
+        runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `nats` for the broker client and codec that `NatsMicroserviceTransport` expects the caller to supply',
+        starterNote: 'the NATS starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `NATS_SERVERS` points at a reachable broker cluster',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the NATS entrypoint/build contract and the caller-owned client bootstrap wiring.',
+      };
+    case 'kafka':
+      return {
+        configLines: [
+          '- Kafka brokers: configure `KAFKA_BROKERS` in `.env` before you start the service',
+          '- Topic/group contract: `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_MESSAGE_TOPIC`, `KAFKA_EVENT_TOPIC`, and `KAFKA_RESPONSE_TOPIC` stay explicit so the starter never hides its shared broker topology',
+        ],
+        entrypointNote: '`src/app.ts` opens canonical `kafkajs` producer/consumer collaborators and passes them into `KafkaMicroserviceTransport`, keeping the response-topic contract explicit in starter-owned config',
+        generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the Kafka starter keeps the `kafkajs` dependency, `.env` contract, and transport entrypoint wiring intact.',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus caller-owned producer/consumer collaborators',
+        pattern: 'math.sum',
+        readmeTransportLabel: 'kafka',
+        runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `kafkajs` for the generated producer/consumer/bootstrap contract used by `KafkaMicroserviceTransport`',
+        starterNote: 'the Kafka starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `KAFKA_BROKERS` points at a reachable broker set',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the Kafka entrypoint/build contract and the explicit topic/client bootstrap wiring.',
+      };
+    case 'rabbitmq':
+      return {
+        configLines: [
+          '- RabbitMQ broker: configure `RABBITMQ_URL` in `.env` before you start the service',
+          '- Queue contract: `RABBITMQ_MESSAGE_QUEUE`, `RABBITMQ_EVENT_QUEUE`, and `RABBITMQ_RESPONSE_QUEUE` stay explicit so the starter advertises exactly which queues and reply path it owns',
+        ],
+        entrypointNote: '`src/app.ts` opens a canonical `amqplib` connection/channel pair and passes caller-owned publisher/consumer collaborators into `RabbitMqMicroserviceTransport`',
+        generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the RabbitMQ starter keeps the `amqplib` dependency, `.env` contract, and transport entrypoint wiring intact.',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus caller-owned publisher/consumer collaborators',
+        pattern: 'math.sum',
+        readmeTransportLabel: 'rabbitmq',
+        runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices`, `amqplib`, and `@types/amqplib` for the generated queue client/bootstrap contract used by `RabbitMqMicroserviceTransport`',
+        starterNote: 'the RabbitMQ starter keeps TCP as the default microservice path when you omit `--transport`, but this scaffold becomes runnable as soon as `RABBITMQ_URL` points at a reachable broker',
+        testNote: '`src/app.test.ts` preserves a broker-free integration template via an in-memory transport, while generated-project verification still checks the RabbitMQ entrypoint/build contract and the explicit queue/bootstrap wiring.',
+      };
     default:
       return {
         configLines: ['- Local TCP listener: configure `MICROSERVICE_HOST` and `MICROSERVICE_PORT` in `.env`'],
@@ -556,7 +587,7 @@ Generated by @fluojs/cli.
 
 ${starter.configLines.join('\n')}
 - Default transport behavior: omitting \`--transport\` still resolves to the TCP starter path
-- Additional documented-but-not-yet-generated families stay validation-only in this release: \`redis\`, \`nats\`, \`kafka\`, \`rabbitmq\`
+- Additional documented-but-not-yet-generated families stay validation-only in this release: \`redis\`
 
 ## Official generated testing templates
 
@@ -1008,6 +1039,256 @@ const protoPath = resolve(process.cwd(), 'proto', 'math.proto');
         protoPath,
         services: ['MathService'],
         url,
+      }),
+    }),
+  ],
+  providers: [MathHandler],
+})
+export class AppModule {}
+`;
+    case 'nats':
+      return `import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+import { MicroservicesModule, NatsMicroserviceTransport } from '@fluojs/microservices';
+import { JSONCodec, connect } from 'nats';
+
+import { MathHandler } from './math/math.handler';
+
+const servers = (process.env.NATS_SERVERS ?? 'nats://127.0.0.1:4222')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+const eventSubject = process.env.NATS_EVENT_SUBJECT ?? 'fluo.microservices.events';
+const messageSubject = process.env.NATS_MESSAGE_SUBJECT ?? 'fluo.microservices.messages';
+const codec = JSONCodec();
+const connection = await connect({
+  name: 'fluo-microservice-starter',
+  servers,
+});
+const client = {
+  close() {
+    void connection.close();
+  },
+  publish(subject: string, payload: Uint8Array) {
+    connection.publish(subject, payload);
+  },
+  request(subject: string, payload: Uint8Array, options?: { timeout?: number }) {
+    return connection.request(subject, payload, options);
+  },
+  subscribe(subject: string, handler: (message: { data: Uint8Array; respond(data: Uint8Array): void }) => void) {
+    const subscription = connection.subscribe(subject);
+
+    void (async () => {
+      for await (const message of subscription) {
+        handler(message);
+      }
+    })();
+
+    return {
+      unsubscribe() {
+        subscription.unsubscribe();
+      },
+    };
+  },
+};
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      processEnv: process.env,
+    }),
+    MicroservicesModule.forRoot({
+      transport: new NatsMicroserviceTransport({
+        client,
+        codec,
+        eventSubject,
+        messageSubject,
+        requestTimeoutMs: 3_000,
+      }),
+    }),
+  ],
+  providers: [MathHandler],
+})
+export class AppModule {}
+`;
+    case 'kafka':
+      return `import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+import { Kafka, logLevel } from 'kafkajs';
+import { KafkaMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+
+import { MathHandler } from './math/math.handler';
+
+const brokers = (process.env.KAFKA_BROKERS ?? '127.0.0.1:9092')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+const clientId = process.env.KAFKA_CLIENT_ID ?? 'fluo-microservice-starter';
+const consumerGroup = process.env.KAFKA_CONSUMER_GROUP ?? 'fluo-handlers';
+const eventTopic = process.env.KAFKA_EVENT_TOPIC ?? 'fluo.microservices.events';
+const messageTopic = process.env.KAFKA_MESSAGE_TOPIC ?? 'fluo.microservices.messages';
+const responseTopic = process.env.KAFKA_RESPONSE_TOPIC ?? 'fluo.microservices.responses';
+const kafka = new Kafka({
+  brokers,
+  clientId,
+  logLevel: logLevel.NOTHING,
+});
+const producer = kafka.producer();
+const consumer = kafka.consumer({ groupId: consumerGroup });
+await Promise.all([producer.connect(), consumer.connect()]);
+
+const handlers = new Map<string, (message: string) => Promise<void> | void>();
+let consumerRunning = false;
+
+const producerClient = {
+  async publish(topic: string, message: string) {
+    await producer.send({
+      messages: [{ value: message }],
+      topic,
+    });
+  },
+};
+
+const consumerClient = {
+  async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
+    handlers.set(topic, handler);
+    await consumer.subscribe({ fromBeginning: false, topic });
+
+    if (consumerRunning) {
+      return;
+    }
+
+    consumerRunning = true;
+    void consumer.run({
+      eachMessage: async ({ topic, message }) => {
+        const value = message.value?.toString();
+
+        if (!value) {
+          return;
+        }
+
+        await handlers.get(topic)?.(value);
+      },
+    });
+  },
+  async unsubscribe(topic: string) {
+    handlers.delete(topic);
+
+    if (handlers.size > 0) {
+      return;
+    }
+
+    consumerRunning = false;
+    await consumer.stop();
+    await Promise.all([consumer.disconnect(), producer.disconnect()]);
+  },
+};
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      processEnv: process.env,
+    }),
+    MicroservicesModule.forRoot({
+      transport: new KafkaMicroserviceTransport({
+        consumer: consumerClient,
+        eventTopic,
+        messageTopic,
+        producer: producerClient,
+        requestTimeoutMs: 3_000,
+        responseTopic,
+      }),
+    }),
+  ],
+  providers: [MathHandler],
+})
+export class AppModule {}
+`;
+    case 'rabbitmq':
+      return `import { connect } from 'amqplib';
+
+import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+import { MicroservicesModule, RabbitMqMicroserviceTransport } from '@fluojs/microservices';
+
+import { MathHandler } from './math/math.handler';
+
+const url = process.env.RABBITMQ_URL ?? 'amqp://127.0.0.1:5672';
+const eventQueue = process.env.RABBITMQ_EVENT_QUEUE ?? 'fluo.microservices.events';
+const messageQueue = process.env.RABBITMQ_MESSAGE_QUEUE ?? 'fluo.microservices.messages';
+const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE ?? 'fluo.microservices.responses';
+const connection = await connect(url);
+const channel = await connection.createConfirmChannel();
+const consumerTags = new Map<string, string>();
+
+const publisher = {
+  async publish(queue: string, message: string) {
+    await channel.assertQueue(queue, { durable: true });
+    await new Promise<void>((resolve, reject) => {
+      channel.sendToQueue(queue, Buffer.from(message), { persistent: true }, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  },
+};
+
+const consumer = {
+  async cancel(queue: string) {
+    const consumerTag = consumerTags.get(queue);
+
+    if (!consumerTag) {
+      return;
+    }
+
+    consumerTags.delete(queue);
+    await channel.cancel(consumerTag);
+
+    if (consumerTags.size === 0) {
+      await channel.close();
+      await connection.close();
+    }
+  },
+  async consume(queue: string, handler: (message: string) => Promise<void> | void) {
+    await channel.assertQueue(queue, { durable: true });
+    const result = await channel.consume(queue, (message) => {
+      if (!message) {
+        return;
+      }
+
+      void Promise.resolve(handler(message.content.toString()))
+        .then(() => {
+          channel.ack(message);
+        })
+        .catch(() => {
+          channel.nack(message, false, false);
+        });
+    });
+
+    consumerTags.set(queue, result.consumerTag);
+  },
+};
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFile: '.env',
+      processEnv: process.env,
+    }),
+    MicroservicesModule.forRoot({
+      transport: new RabbitMqMicroserviceTransport({
+        consumer,
+        eventQueue,
+        messageQueue,
+        publisher,
+        requestTimeoutMs: 3_000,
+        responseQueue,
       }),
     }),
   ],
@@ -1615,6 +1896,34 @@ PORT=3000
 `;
   }
 
+  if (bootstrapPlan.profile.id === 'microservice-node-none-nats') {
+    return `NATS_SERVERS=nats://127.0.0.1:4222
+NATS_EVENT_SUBJECT=fluo.microservices.events
+NATS_MESSAGE_SUBJECT=fluo.microservices.messages
+PORT=3000
+`;
+  }
+
+  if (bootstrapPlan.profile.id === 'microservice-node-none-kafka') {
+    return `KAFKA_BROKERS=127.0.0.1:9092
+KAFKA_CLIENT_ID=fluo-microservice-starter
+KAFKA_CONSUMER_GROUP=fluo-handlers
+KAFKA_EVENT_TOPIC=fluo.microservices.events
+KAFKA_MESSAGE_TOPIC=fluo.microservices.messages
+KAFKA_RESPONSE_TOPIC=fluo.microservices.responses
+PORT=3000
+`;
+  }
+
+  if (bootstrapPlan.profile.id === 'microservice-node-none-rabbitmq') {
+    return `RABBITMQ_URL=amqp://127.0.0.1:5672
+RABBITMQ_EVENT_QUEUE=fluo.microservices.events
+RABBITMQ_MESSAGE_QUEUE=fluo.microservices.messages
+RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses
+PORT=3000
+`;
+  }
+
   return `PORT=3000
 `;
 }
@@ -1715,11 +2024,20 @@ function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: Starter
     || recipeId === 'microservice-node-none-redis-streams'
     || recipeId === 'microservice-node-none-mqtt'
     || recipeId === 'microservice-node-none-grpc'
+    || recipeId === 'microservice-node-none-nats'
+    || recipeId === 'microservice-node-none-kafka'
+    || recipeId === 'microservice-node-none-rabbitmq'
   ) {
     const transport = recipeId === 'microservice-node-none-redis-streams'
       ? 'redis-streams'
       : recipeId === 'microservice-node-none-mqtt'
         ? 'mqtt'
+        : recipeId === 'microservice-node-none-nats'
+          ? 'nats'
+          : recipeId === 'microservice-node-none-kafka'
+            ? 'kafka'
+            : recipeId === 'microservice-node-none-rabbitmq'
+              ? 'rabbitmq'
         : recipeId === 'microservice-node-none-grpc'
           ? 'grpc'
           : 'tcp';
