@@ -4,6 +4,8 @@
 
 fluo는 **런타임에 구애받지 않는 코어(Runtime-agnostic core)**를 기반으로 설계되었습니다. 즉, 비즈니스 로직을 한 번만 작성하면 전용 플랫폼 어댑터를 통해 TypeScript가 실행 가능한 거의 모든 환경에 배포할 수 있습니다.
 
+> 이 페이지는 부트스트랩 이후의 더 넓은 어댑터 생태계를 설명합니다. 현재 `fluo new`가 정확히 어떤 스타터를 스캐폴딩하는지는 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 확인하세요.
+
 ### 대상 독자
 로컬 Fastify 스타터를 넘어 Bun, Deno, 또는 Edge 함수와 같은 특정 환경을 타겟팅해야 하는 개발자.
 
@@ -36,6 +38,8 @@ Node.js 이외의 환경을 타겟팅하시나요? 어댑터만 교체하고 코
 - **Cloudflare Workers (`@fluojs/platform-cloudflare-workers`)**: Workers 환경 및 KV/Durable Objects와 통합됩니다.
 
 ### 런타임 선택 가이드
+아래 표는 어댑터 생태계 가이드이며, 현재 `fluo new` 스타터 프리셋 목록이 아닙니다.
+
 | 어댑터 | 패키지 | 최적의 용도 |
 | :--- | :--- | :--- |
 | **Fastify** | `@fluojs/platform-fastify` | 프로덕션급 Node.js 앱 (기본 선택). |
@@ -46,4 +50,5 @@ Node.js 이외의 환경을 타겟팅하시나요? 어댑터만 교체하고 코
 
 ### 다음 단계
 - **CLI 마스터하기**: [제너레이터 워크플로우](./generator-workflow.ko.md)가 모든 런타임에서 어떻게 동작하는지 확인해 보세요.
+- **현재 스타터 현실 먼저 확인하기**: 어떤 어댑터가 이미 스타터 프리셋인지 추정하기 전에 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 검토하세요.
 - **심화 탐구**: 사용 가능한 어댑터와 그 기능을 한눈에 보려면 [패키지 목록](../reference/package-surface.ko.md)을 참조하세요.

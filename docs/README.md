@@ -46,6 +46,7 @@ Practical, task-oriented documentation for day-to-day development.
 Detailed technical specifications and comparisons.
 
 - **[Package Chooser](./reference/package-chooser.md)**: Find the right tools for your specific task.
+- **[fluo new Support Matrix](./reference/fluo-new-support-matrix.md)**: The current starter contract versus the broader documented runtime/adapter ecosystem.
 - **[API Surface Overview](./reference/package-surface.md)**: The canonical inventory of public package families, runtime coverage, and package responsibilities.
 - **[Compatibility Matrix](./reference/toolchain-contract-matrix.md)**: Versions, runtimes, and platform support.
 

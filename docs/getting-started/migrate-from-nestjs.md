@@ -50,6 +50,8 @@ export class UsersService {
 ### 4. adapter-first factory
 Bootstrap feels similar, but fluo makes the platform choice (Fastify, Express, etc.) an explicit part of the factory call.
 
+That broader adapter choice does **not** mean every documented platform is already wired into `fluo new`. For the current starter contract, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
+
 **NestJS:**
 ```ts
 const app = await NestFactory.create(AppModule);
@@ -70,4 +72,5 @@ const app = await fluoFactory.create(AppModule, createFastifyAdapter());
 
 ### next steps
 - **Start Fresh**: Use the [Quick Start](./quick-start.md) to see a clean fluo project.
+- **Check starter coverage**: Review the [fluo new support matrix](../reference/fluo-new-support-matrix.md) before assuming an adapter already has a starter preset.
 - **Learn the Graph**: Read [DI and Modules](../concepts/di-and-modules.md) for a deep dive into explicit injection.

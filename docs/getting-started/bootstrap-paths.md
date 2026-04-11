@@ -4,6 +4,8 @@
 
 fluo is built on a **runtime-agnostic core**. This means you can write your business logic once and deploy it to virtually any TypeScript-capable environment using dedicated platform adapters.
 
+> This page describes the broader adapter ecosystem after bootstrapping. For the exact starter choices that `fluo new` scaffolds today, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
+
 ### who this is for
 Developers moving beyond the local Fastify starter who need to target specific environments like Bun, Deno, or Edge functions.
 
@@ -36,6 +38,8 @@ For "zero-cold-start" environments, fluo provides specialized adapters that hand
 - **Cloudflare Workers (`@fluojs/platform-cloudflare-workers`)**: Integrated with the Workers environment and KV/Durable Objects.
 
 ### choosing your runtime
+The table below is an adapter ecosystem guide, not a list of current `fluo new` starter presets.
+
 | adapter | package | best for |
 | :--- | :--- | :--- |
 | **Fastify** | `@fluojs/platform-fastify` | Production-grade Node.js apps, default choice. |
@@ -46,4 +50,5 @@ For "zero-cold-start" environments, fluo provides specialized adapters that hand
 
 ### next steps
 - **Master the CLI**: See how the [Generator Workflow](./generator-workflow.md) works across all runtimes.
+- **Check starter reality first**: Review the [fluo new support matrix](../reference/fluo-new-support-matrix.md) before assuming an adapter already has a starter preset.
 - **Deep Dive**: Read the [Package Surface](../reference/package-surface.md) for a full matrix of available adapters and their capabilities.

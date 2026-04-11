@@ -46,6 +46,7 @@ fluo의 설계 철학과 그 이면의 "왜"와 "어떻게"를 이해합니다.
 심층적인 기술 명세 및 비교 자료입니다.
 
 - **[패키지 선택 가이드](./reference/package-chooser.ko.md)**: 특정 작업에 적합한 도구 찾기.
+- **[fluo new 지원 매트릭스](./reference/fluo-new-support-matrix.ko.md)**: 현재 스타터 계약과 더 넓게 문서화된 런타임/어댑터 생태계의 구분.
 - **[API 요약](./reference/package-surface.ko.md)**: 공개 패키지 패밀리, 런타임 범위, 패키지 책임을 정리한 기준 인벤토리.
 - **[호환성 매트릭스](./reference/toolchain-contract-matrix.ko.md)**: 버전, 런타임, 플랫폼 지원 현황.
 

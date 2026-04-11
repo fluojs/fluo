@@ -50,6 +50,8 @@ export class UsersService {
 ### 4. 어댑터 우선 팩토리
 부트스트랩 과정은 비슷해 보이지만, fluo는 팩토리 호출 시 플랫폼 선택(Fastify, Express 등)을 명시적인 과정으로 만듭니다.
 
+다만 이런 더 넓은 어댑터 선택 가능성이 문서에 있는 모든 플랫폼이 이미 `fluo new`에 연결되어 있다는 뜻은 아닙니다. 현재 스타터 계약은 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 기준으로 보세요.
+
 **NestJS:**
 ```ts
 const app = await NestFactory.create(AppModule);
@@ -70,4 +72,5 @@ const app = await fluoFactory.create(AppModule, createFastifyAdapter());
 
 ### 다음 단계
 - **새롭게 시작하기**: [퀵 스타트](./quick-start.ko.md)를 통해 깨끗한 fluo 프로젝트를 확인해 보세요.
+- **현재 스타터 범위 확인하기**: 어떤 어댑터가 이미 스타터 프리셋인지 가정하기 전에 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 확인하세요.
 - **그래프 이해하기**: 명시적 주입에 대해 더 자세히 알고 싶다면 [DI와 모듈](../concepts/di-and-modules.ko.md)을 읽어보세요.

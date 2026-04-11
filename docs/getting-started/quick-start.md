@@ -38,6 +38,8 @@ fluo new my-fluo-microservice --shape microservice --transport tcp --runtime nod
 fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
+For a docs-level split between these published starter paths and the broader Express/Bun/Deno/Cloudflare ecosystem, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
+
 When `fluo new` runs in an interactive terminal, the wizard resolves onto this same shape-first model. It asks for the project name, starter shape, the maintained tooling preset, package manager, whether to install dependencies, and whether to initialize git.
 
 ### 3. start development

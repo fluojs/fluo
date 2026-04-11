@@ -4,6 +4,8 @@
 
 Use this guide to select the correct fluo packages for your specific task. This page is organized by goal to help you build your application stack efficiently.
 
+> Looking for what `fluo new` actually scaffolds today? See the [fluo new support matrix](./fluo-new-support-matrix.md). This chooser covers the broader package ecosystem, not just current starter presets.
+
 ## build a new web API (Node.js)
 
 > _"I want to build a standard REST or GraphQL API on Node.js."_
@@ -14,7 +16,7 @@ Use this guide to select the correct fluo packages for your specific task. This 
 | **HTTP Routing** | `@fluojs/http` |
 | **GraphQL API** | `@fluojs/graphql` |
 | **Fastify (Recommended)** | `@fluojs/platform-fastify` |
-| **Express Compatibility** | `@fluojs/platform-express` |
+| **Express Compatibility** | `@fluojs/platform-express` *(documented ecosystem support; not a current `fluo new` starter preset)* |
 | **Input Validation** | `@fluojs/validation` |
 | **Configuration** | `@fluojs/config` |
 
@@ -27,6 +29,8 @@ Use this guide to select the correct fluo packages for your specific task. This 
 | **Bun** | `@fluojs/platform-bun` |
 | **Deno** | `@fluojs/platform-deno` |
 | **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` |
+
+These adapter rows describe supported package paths after scaffolding or in hand-authored setups. They do **not** mean that Bun, Deno, or Cloudflare are currently chooser branches inside `fluo new`.
 
 ## add persistence & data access
 
