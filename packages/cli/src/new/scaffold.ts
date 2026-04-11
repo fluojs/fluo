@@ -1517,6 +1517,8 @@ async function resolvePackageSpecs(
 
   void bootstrapPlan;
 
+  void bootstrapPlan;
+
   const packageNames = ALL_LOCAL_PACKAGE_NAMES;
   const packageVersions = collectLocalPackageVersions(repoRoot, packageNames);
   const expectedCacheStamp = computeLocalPackageCacheStamp(repoRoot, packageNames, packageVersions);

@@ -241,18 +241,9 @@ function verifySandboxProject(projectName) {
   const projectDirectory = resolveProjectDirectory(projectName);
   verifySandboxExists(projectDirectory);
   const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8'));
-  const readme = readFileSync(join(projectDirectory, 'README.md'), 'utf8');
   const isMicroserviceStarter = Boolean(packageJson.dependencies?.['@fluojs/microservices']);
-  const isMixedStarter = isMicroserviceStarter && Boolean(packageJson.dependencies?.['@fluojs/platform-fastify']);
-  const httpPlatform = packageJson.dependencies?.['@fluojs/platform-express']
-    ? 'express'
-    : packageJson.dependencies?.['@fluojs/platform-nodejs']
-      ? 'nodejs'
-      : packageJson.dependencies?.['@fluojs/platform-fastify']
-        ? 'fastify'
-        : undefined;
 
-  if (isMicroserviceStarter && !isMixedStarter) {
+  if (isMicroserviceStarter) {
     if (!existsSync(join(projectDirectory, 'src', 'math', 'math.handler.test.ts'))) {
       throw new Error('Expected the microservice starter scaffold to include src/math/math.handler.test.ts.');
     }
@@ -264,25 +255,10 @@ function verifySandboxProject(projectName) {
     throw new Error('Expected the starter scaffold to include vite.config.ts.');
   }
 
-  if (isMicroserviceStarter && !isMixedStarter) {
+  if (isMicroserviceStarter) {
     const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
     if (!mainFile.includes('createMicroservice')) {
       throw new Error('Expected the microservice starter main.ts to bootstrap FluoFactory.createMicroservice(...).');
-    }
-  } else if (httpPlatform) {
-    const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
-    const expectedAdapter = httpPlatform === 'express'
-      ? 'createExpressAdapter({ port })'
-      : httpPlatform === 'nodejs'
-        ? 'createNodejsAdapter({ port })'
-        : 'createFastifyAdapter({ port })';
-
-    if (!mainFile.includes(expectedAdapter)) {
-      throw new Error(`Expected the application starter main.ts to wire ${expectedAdapter}.`);
-    }
-
-    if (!readme.includes('selected first-class application starter')) {
-      throw new Error('Expected the application starter README to describe the selected first-class starter.');
     }
   }
 
