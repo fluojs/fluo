@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_BOOTSTRAP_SCHEMA, resolveBootstrapPlan, resolveBootstrapSchema } from './resolver.js';
+import { STARTER_PROFILE_REGISTRY } from './starter-profiles.js';
 
 describe('resolveBootstrapSchema', () => {
   it('returns the shape-first compatibility baseline when no explicit schema is provided', () => {
@@ -37,6 +38,56 @@ describe('resolveBootstrapSchema', () => {
 });
 
 describe('resolveBootstrapPlan', () => {
+  it('locks the shipped starter registry to the current three supported matrix profiles', () => {
+    expect(STARTER_PROFILE_REGISTRY.map((profile) => ({
+      id: profile.id,
+      schema: profile.schema,
+    }))).toEqual([
+      {
+        id: 'application-node-fastify-http',
+        schema: {
+          platform: 'fastify',
+          runtime: 'node',
+          shape: 'application',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'http',
+        },
+      },
+      {
+        id: 'microservice-node-none-tcp',
+        schema: {
+          platform: 'none',
+          runtime: 'node',
+          shape: 'microservice',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'tcp',
+        },
+      },
+      {
+        id: 'mixed-node-fastify-tcp',
+        schema: {
+          platform: 'fastify',
+          runtime: 'node',
+          shape: 'mixed',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'tcp',
+        },
+      },
+    ]);
+  });
+
   it('keeps the current fluo new default path on the Node + Fastify HTTP starter', () => {
     expect(resolveBootstrapPlan({ packageManager: 'pnpm' as const })).toEqual({
       dependencies: {
@@ -61,6 +112,7 @@ describe('resolveBootstrapPlan', () => {
         transport: 'http',
         type: 'http',
       },
+      profile: STARTER_PROFILE_REGISTRY[0],
       schema: DEFAULT_BOOTSTRAP_SCHEMA,
     });
   });
@@ -114,6 +166,7 @@ describe('resolveBootstrapPlan', () => {
         transport: 'tcp',
         type: 'microservice',
       },
+      profile: STARTER_PROFILE_REGISTRY[1],
       schema: {
         platform: 'none',
         runtime: 'node',
@@ -156,6 +209,7 @@ describe('resolveBootstrapPlan', () => {
         transport: 'tcp',
         type: 'mixed',
       },
+      profile: STARTER_PROFILE_REGISTRY[2],
       schema: {
         platform: 'fastify',
         runtime: 'node',
