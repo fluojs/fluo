@@ -111,7 +111,7 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   if (schema.shape === 'application' && isDocumentedMicroserviceTransport(schema.transport)) {
     throw new Error(
       'Unsupported bootstrap schema "application/node/' + schema.transport + '/' + schema.platform + '/standard/single-package". '
-      + 'Application starters currently require the HTTP transport.',
+       + 'Application starters currently require the HTTP transport across the Fastify, Express, and raw Node.js starter profiles.',
     );
   }
 
@@ -165,12 +165,12 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   ) {
     throw new Error(
       `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-      + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
+       + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, the TCP microservice starter, and the mixed single-package starter.',
     );
   }
 
   throw new Error(
     `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-    + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
+    + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, the TCP microservice starter, and the mixed single-package starter.',
   );
 }

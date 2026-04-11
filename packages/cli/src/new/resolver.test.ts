@@ -38,7 +38,7 @@ describe('resolveBootstrapSchema', () => {
 });
 
 describe('resolveBootstrapPlan', () => {
-  it('locks the shipped starter registry to the current three supported matrix profiles', () => {
+  it('locks the shipped starter registry to the current five supported matrix profiles', () => {
     expect(STARTER_PROFILE_REGISTRY.map((profile) => ({
       id: profile.id,
       schema: profile.schema,
@@ -47,6 +47,34 @@ describe('resolveBootstrapPlan', () => {
         id: 'application-node-fastify-http',
         schema: {
           platform: 'fastify',
+          runtime: 'node',
+          shape: 'application',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'http',
+        },
+      },
+      {
+        id: 'application-node-express-http',
+        schema: {
+          platform: 'express',
+          runtime: 'node',
+          shape: 'application',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'http',
+        },
+      },
+      {
+        id: 'application-node-nodejs-http',
+        schema: {
+          platform: 'nodejs',
           runtime: 'node',
           shape: 'application',
           tooling: 'standard',
@@ -117,7 +145,7 @@ describe('resolveBootstrapPlan', () => {
     });
   });
 
-  it('accepts explicit HTTP shape flags without changing the compatibility baseline', () => {
+  it('accepts explicit Fastify HTTP shape flags without changing the compatibility baseline', () => {
     expect(resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
       platform: 'fastify',
@@ -130,6 +158,92 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'http',
     })).toEqual(resolveBootstrapPlan({ packageManager: 'pnpm' as const }));
+  });
+
+  it('resolves the Express application starter as a first-class HTTP path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'express',
+      shape: 'application',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/validation',
+          '@fluojs/di',
+          '@fluojs/http',
+          '@fluojs/platform-express',
+          '@fluojs/runtime',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'express',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'http',
+        type: 'http',
+      },
+      profile: STARTER_PROFILE_REGISTRY[1],
+      schema: {
+        platform: 'express',
+        runtime: 'node',
+        shape: 'application',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'http',
+      },
+    });
+  });
+
+  it('resolves the raw Node.js application starter as a first-class HTTP path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'nodejs',
+      shape: 'application',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/validation',
+          '@fluojs/di',
+          '@fluojs/http',
+          '@fluojs/platform-nodejs',
+          '@fluojs/runtime',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'nodejs',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'http',
+        type: 'http',
+      },
+      profile: STARTER_PROFILE_REGISTRY[2],
+      schema: {
+        platform: 'nodejs',
+        runtime: 'node',
+        shape: 'application',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'http',
+      },
+    });
   });
 
   it('does not treat package-manager choice as runtime or platform selection', () => {
@@ -166,7 +280,7 @@ describe('resolveBootstrapPlan', () => {
         transport: 'tcp',
         type: 'microservice',
       },
-      profile: STARTER_PROFILE_REGISTRY[1],
+      profile: STARTER_PROFILE_REGISTRY[3],
       schema: {
         platform: 'none',
         runtime: 'node',
@@ -209,7 +323,7 @@ describe('resolveBootstrapPlan', () => {
         transport: 'tcp',
         type: 'mixed',
       },
-      profile: STARTER_PROFILE_REGISTRY[2],
+      profile: STARTER_PROFILE_REGISTRY[4],
       schema: {
         platform: 'fastify',
         runtime: 'node',
@@ -238,6 +352,23 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
     })).toThrow(
       'Unsupported bootstrap schema "microservice/node/http/none/standard/single-package". Microservice starters require a transport-aware microservice transport such as tcp, redis, nats, kafka, rabbitmq, mqtt, or grpc.',
+    );
+  });
+
+  it('rejects application transport expansion outside the HTTP starter matrix', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'application',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+    })).toThrow(
+      'Unsupported bootstrap schema "application/node/tcp/fastify/standard/single-package". Application starters currently require the HTTP transport across the Fastify, Express, and raw Node.js starter profiles.',
     );
   });
 
@@ -288,7 +419,7 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
       platform: 'fastify',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, the TCP microservice starter, and the mixed single-package starter.',
     );
   });
 
@@ -305,7 +436,7 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'tcp',
     })).toThrow(
-      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, the TCP microservice starter, and the mixed single-package starter.',
     );
   });
 });

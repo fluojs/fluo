@@ -8,16 +8,16 @@ Use this page to distinguish what `fluo new` scaffolds today from the broader ru
 
 | surface | status today | what is wired into `fluo new` | where to go next |
 | --- | --- | --- | --- |
-| **Application starter** | **Scaffolded now** | Node.js + Fastify + HTTP via `fluo new my-app` or `--shape application --transport http --runtime node --platform fastify` | This is the default starter baseline today. |
+| **Application starter** | **Scaffolded now** | Node.js + HTTP via `--shape application --transport http --runtime node --platform fastify|express|nodejs` | Fastify remains the default starter baseline when you omit `--platform`; Express and raw Node.js are also first-class starters now. |
 | **Microservice starter** | **Scaffolded now** | Node.js + no HTTP platform + TCP via `--shape microservice --transport tcp --runtime node --platform none` | Additional transport families are documented separately, but the runnable starter emitted by `new` is TCP today. |
 | **Mixed starter** | **Scaffolded now** | Node.js + Fastify HTTP app + attached TCP microservice via `--shape mixed --transport tcp --runtime node --platform fastify` | This is the only published mixed starter variant today. |
-| **Broader adapter/runtime ecosystem** | **Documented, not wired into `fluo new` yet** | `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, and `@fluojs/platform-cloudflare-workers` are real package/runtime paths, but they are not current `fluo new` starter choices. | Use the runtime/package docs below to adopt these adapters after scaffolding or in hand-authored setups. |
+| **Broader adapter/runtime ecosystem** | **Partially scaffolded, partially docs-only** | `@fluojs/platform-bun`, `@fluojs/platform-deno`, and `@fluojs/platform-cloudflare-workers` remain documented runtime paths outside the current `fluo new` starter matrix. `@fluojs/platform-express` and `@fluojs/platform-nodejs` are now first-class application starter choices. | Use the runtime/package docs below to adopt the remaining docs-only adapters after scaffolding or in hand-authored setups. |
 
 ## how to read other docs
 
 - Treat `fluo new` docs as a starter contract, not as a promise that every documented adapter already has a starter preset.
 - Treat runtime and package reference docs as the broader ecosystem map for adapters, platforms, and deployment targets you can adopt outside the current starter matrix.
-- When a page mentions Express, Bun, Deno, or Cloudflare Workers, read that as ecosystem support unless it explicitly points back to one of the three starter rows above.
+- When a page mentions Bun, Deno, or Cloudflare Workers, read that as ecosystem support unless it explicitly points back to one of the three starter rows above. Express and raw Node.js now belong to the application starter row as well as the wider package ecosystem.
 
 ## authoritative sources
 

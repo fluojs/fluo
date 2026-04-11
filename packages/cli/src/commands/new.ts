@@ -63,8 +63,8 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Select the platform adapter explicitly (fastify for HTTP, none for microservices).',
-    option: '--platform <fastify|none>',
+    description: 'Select the platform adapter explicitly (fastify, express, or nodejs for HTTP applications; none for microservices).',
+    option: '--platform <fastify|express|nodejs|none>',
   },
   {
     aliases: [],
@@ -234,7 +234,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
 
         parsed.platform = readOptionValue(argv, index, '--platform') as BootstrapAnswers['platform'];
         if (!SUPPORTED_PLATFORMS.has(parsed.platform)) {
-          throw new Error(`Invalid --platform value "${parsed.platform}". Use one of: fastify, none.`);
+          throw new Error(`Invalid --platform value "${parsed.platform}". Use one of: fastify, express, nodejs, none.`);
         }
         index += 1;
         break;

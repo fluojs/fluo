@@ -5,6 +5,7 @@ import {
   FluoFactory,
   type BootstrapTimingDiagnostics,
   type ModuleType,
+  type PlatformShell,
   type PlatformShellSnapshot,
   PLATFORM_SHELL,
 } from '@fluojs/runtime';
@@ -286,7 +287,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     });
 
     try {
-      const platformShell = await context.get(PLATFORM_SHELL);
+      const platformShell = await context.get<PlatformShell>(PLATFORM_SHELL);
       const snapshot = await platformShell.snapshot();
 
       if (parsed.json) {

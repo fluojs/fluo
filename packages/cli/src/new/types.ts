@@ -7,7 +7,7 @@ export type BootstrapShape = 'application' | 'microservice' | 'mixed';
 /** Supported runtime families for the current starter matrix. */
 export type BootstrapRuntime = 'node';
 /** Supported platform adapters for the current starter matrix. */
-export type BootstrapPlatform = 'fastify' | 'none';
+export type BootstrapPlatform = 'express' | 'fastify' | 'nodejs' | 'none';
 /** Supported transport families for the current starter matrix. */
 export type BootstrapTransport = 'grpc' | 'http' | 'kafka' | 'mqtt' | 'nats' | 'rabbitmq' | 'redis' | 'redis-streams' | 'tcp';
 /** Supported tooling presets for the current starter matrix. */

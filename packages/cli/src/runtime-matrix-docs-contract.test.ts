@@ -41,8 +41,9 @@ describe('runtime matrix docs contract', () => {
       'Application starter',
       'Microservice starter',
       'Mixed starter',
-      'Documented, not wired into `fluo new` yet',
+      'Partially scaffolded, partially docs-only',
       '@fluojs/platform-express',
+      '@fluojs/platform-nodejs',
       '@fluojs/platform-bun',
       '@fluojs/platform-deno',
       '@fluojs/platform-cloudflare-workers',
@@ -51,8 +52,9 @@ describe('runtime matrix docs contract', () => {
       '애플리케이션 스타터',
       '마이크로서비스 스타터',
       'mixed 스타터',
-      '문서화됨, 아직 `fluo new`에는 연결되지 않음',
+      '일부는 스캐폴딩됨, 일부는 문서 전용',
       '@fluojs/platform-express',
+      '@fluojs/platform-nodejs',
       '@fluojs/platform-bun',
       '@fluojs/platform-deno',
       '@fluojs/platform-cloudflare-workers',
@@ -79,12 +81,16 @@ describe('runtime matrix docs contract', () => {
   it('keeps published fluo new v2 paths aligned across CLI and quick-start docs', () => {
     expectAll(read('packages/cli/README.md'), [
       '--shape application --transport http --runtime node --platform fastify',
+      '--shape application --transport http --runtime node --platform express',
+      '--shape application --transport http --runtime node --platform nodejs',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
       'interactive TTY',
     ]);
     expectAll(read('packages/cli/README.ko.md'), [
       '--shape application --transport http --runtime node --platform fastify',
+      '--shape application --transport http --runtime node --platform express',
+      '--shape application --transport http --runtime node --platform nodejs',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
       'interactive TTY',

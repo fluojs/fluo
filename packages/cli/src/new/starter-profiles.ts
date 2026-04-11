@@ -9,7 +9,12 @@ import type {
 } from './types.js';
 
 export type StarterEmitterType = 'http' | 'microservice' | 'mixed';
-export type StarterScaffoldRecipeId = 'application-node-fastify-http' | 'microservice-node-none-tcp' | 'mixed-node-fastify-tcp';
+export type StarterScaffoldRecipeId =
+  | 'application-node-express-http'
+  | 'application-node-fastify-http'
+  | 'application-node-nodejs-http'
+  | 'microservice-node-none-tcp'
+  | 'mixed-node-fastify-tcp';
 
 type StarterDependencies = {
   dependencies: readonly string[];
@@ -26,6 +31,7 @@ export interface StarterProfile {
     type: StarterEmitterType;
   };
   id: StarterScaffoldRecipeId;
+  platformPromptLabel?: string;
   promptLabel: string;
   schema: BootstrapSchema;
 }
@@ -95,8 +101,65 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       type: 'http',
     },
     id: 'application-node-fastify-http',
+    platformPromptLabel: 'Fastify',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'node', 'fastify', 'http'),
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/config',
+        '@fluojs/core',
+        '@fluojs/validation',
+        '@fluojs/di',
+        '@fluojs/http',
+        '@fluojs/platform-express',
+        '@fluojs/runtime',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+      ],
+    },
+    emitter: {
+      platform: 'express',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'http',
+      type: 'http',
+    },
+    id: 'application-node-express-http',
+    platformPromptLabel: 'Express',
+    promptLabel: 'Application (HTTP starter)',
+    schema: createSchema('application', 'node', 'express', 'http'),
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/config',
+        '@fluojs/core',
+        '@fluojs/validation',
+        '@fluojs/di',
+        '@fluojs/http',
+        '@fluojs/platform-nodejs',
+        '@fluojs/runtime',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+      ],
+    },
+    emitter: {
+      platform: 'nodejs',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'http',
+      type: 'http',
+    },
+    id: 'application-node-nodejs-http',
+    platformPromptLabel: 'Raw Node.js HTTP',
+    promptLabel: 'Application (HTTP starter)',
+    schema: createSchema('application', 'node', 'nodejs', 'http'),
   },
   {
     dependencies: {
@@ -155,7 +218,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
 
 export const SUPPORTED_BOOTSTRAP_SHAPES: readonly BootstrapShape[] = STARTER_PROFILE_REGISTRY.map((profile) => profile.schema.shape);
 export const SUPPORTED_BOOTSTRAP_RUNTIMES: readonly BootstrapRuntime[] = ['node'];
-export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = ['fastify', 'none'];
+export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = ['express', 'fastify', 'nodejs', 'none'];
 export const SUPPORTED_BOOTSTRAP_TRANSPORTS: readonly BootstrapTransport[] = ['http', ...DOCUMENTED_MICROSERVICE_TRANSPORTS];
 export const SUPPORTED_BOOTSTRAP_TOOLING_PRESETS: readonly BootstrapToolingPreset[] = ['standard'];
 export const SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES: readonly BootstrapTopology['mode'][] = ['single-package'];
@@ -164,6 +227,10 @@ export const DEFAULT_BOOTSTRAP_PROFILE = STARTER_PROFILE_REGISTRY[0]!;
 
 export function getStarterProfileForShape(shape: BootstrapShape): StarterProfile {
   return STARTER_PROFILE_REGISTRY.find((profile) => profile.schema.shape === shape) ?? DEFAULT_BOOTSTRAP_PROFILE;
+}
+
+export function getApplicationStarterProfiles(): readonly StarterProfile[] {
+  return STARTER_PROFILE_REGISTRY.filter((profile) => profile.schema.shape === 'application');
 }
 
 export function getDefaultBootstrapSchemaForShape(shape: BootstrapShape): BootstrapSchema {
