@@ -15,12 +15,30 @@ pnpm add -g @fluojs/cli
 ```
 
 ### 2. 첫 번째 프로젝트 생성
-새로운 애플리케이션을 초기화합니다. 기본적으로 Node.js 환경에서 고성능 **Fastify** 어댑터가 구성됩니다.
+새로운 애플리케이션을 초기화합니다. 기본적으로 v2 호환 기준선인 Node.js + **Fastify** HTTP 스타터가 생성됩니다.
 
 ```sh
 fluo new my-fluo-app
 cd my-fluo-app
 ```
+
+같은 HTTP 스타터 경로를 명시적으로 고르려면 flags-first v2 계약을 사용하세요.
+
+```sh
+fluo new my-fluo-app --shape application --transport http --runtime node --platform fastify
+```
+
+같은 명령 계열로 다른 공개 v2 스타터 경로도 선택할 수 있습니다.
+
+```sh
+# 실행 가능한 TCP microservice 스타터
+fluo new my-fluo-microservice --shape microservice --transport tcp --runtime node --platform none
+
+# Mixed single-package 스타터: Fastify HTTP 앱 + attached TCP microservice
+fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
+```
+
+`fluo new`가 interactive terminal에서 실행되면, wizard도 이와 동일한 shape-first 모델로 수렴합니다. wizard는 프로젝트 이름, starter shape, 유지보수되는 tooling preset, package manager, dependency 설치 여부, git 초기화 여부를 묻습니다.
 
 ### 3. 개발 시작
 fluo 스타터 앱에는 TypeScript 컴파일과 파일 변경 시 자동 재시작을 처리하는 최적화된 개발 환경이 포함되어 있습니다.
@@ -53,3 +71,4 @@ fluo는 **TypeScript의 표준 기본 설정**만으로 동작합니다. 지난 
 - **진짜 서비스 만들기**: [첫 번째 기능 구현 경로](./first-feature-path.ko.md)를 따라 나만의 로직을 추가해 보세요.
 - **CLI 마스터하기**: [제너레이터 워크플로우](./generator-workflow.ko.md)를 통해 기능 슬라이스 전체를 자동으로 생성하는 방법을 배워보세요.
 - **Node.js 그 너머로**: Bun, Deno, Edge 런타임을 위한 [부트스트랩 경로](./bootstrap-paths.ko.md)를 확인해 보세요.
+- **CLI 계약 확인하기**: 문서화된 스타터 매트릭스는 [toolchain contract matrix](../reference/toolchain-contract-matrix.ko.md)에서 확인할 수 있습니다.

@@ -15,12 +15,30 @@ pnpm add -g @fluojs/cli
 ```
 
 ### 2. create your first project
-Initialize a fresh application. By default, this bootstraps a high-performance **Fastify** adapter on Node.js.
+Initialize a fresh application. By default, this bootstraps the v2 compatibility baseline: a high-performance **Fastify** HTTP adapter on Node.js.
 
 ```sh
 fluo new my-fluo-app
 cd my-fluo-app
 ```
+
+If you want to select the same HTTP starter path explicitly, use the flags-first v2 contract:
+
+```sh
+fluo new my-fluo-app --shape application --transport http --runtime node --platform fastify
+```
+
+The same command family also exposes the other published v2 starter paths:
+
+```sh
+# Runnable TCP microservice starter
+fluo new my-fluo-microservice --shape microservice --transport tcp --runtime node --platform none
+
+# Mixed single-package starter: Fastify HTTP app + attached TCP microservice
+fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
+```
+
+When `fluo new` runs in an interactive terminal, the wizard resolves onto this same shape-first model. It asks for the project name, starter shape, the maintained tooling preset, package manager, whether to install dependencies, and whether to initialize git.
 
 ### 3. start development
 fluo's starter comes with a pre-configured development environment that handles TypeScript compilation and process restarts automatically.
@@ -53,3 +71,4 @@ fluo works with **standard TypeScript defaults**. You get full IDE support and t
 - **Build something real**: Follow the [First Feature Path](./first-feature-path.md) to add your own logic.
 - **Master the CLI**: Learn how to generate entire feature slices with the [Generator Workflow](./generator-workflow.md).
 - **Go beyond Node.js**: Check out [Bootstrap Paths](./bootstrap-paths.md) for Bun, Deno, and Edge runtimes.
+- **Review the CLI contract**: See the [toolchain contract matrix](../reference/toolchain-contract-matrix.md) for the documented starter matrix.
