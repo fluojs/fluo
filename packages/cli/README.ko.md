@@ -60,14 +60,19 @@ fluo new my-deno-app --shape application --transport http --runtime deno --platf
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
-`fluo new`는 이제 first-class microservice starter path도 제공합니다. `--transport`를 생략하면 여전히 TCP가 가장 단순한 기본 경로로 유지되며, 이제 microservice starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, MQTT, gRPC runnable 변형도 포함됩니다.
+`fluo new`는 이제 first-class microservice starter path도 제공합니다. `--transport`를 생략하면 여전히 TCP가 가장 단순한 기본 경로로 유지되며, 이제 microservice starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC runnable 변형도 포함됩니다.
 
 ```bash
 fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
 fluo new my-redis-streams-service --shape microservice --transport redis-streams --runtime node --platform none
+fluo new my-nats-service --shape microservice --transport nats --runtime node --platform none
+fluo new my-kafka-service --shape microservice --transport kafka --runtime node --platform none
+fluo new my-rabbitmq-service --shape microservice --transport rabbitmq --runtime node --platform none
 fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --platform none
 fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
 ```
+
+NATS/Kafka/RabbitMQ 스타터 계약은 외부 broker와 caller-owned client library 의존성을 숨기지 않고 명시적으로 유지합니다. 생성된 프로젝트는 `src/app.ts`에서 `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborator, `amqplib` publisher/consumer collaborator를 직접 연결하므로, 기본 fluo 패키지가 그 의존성을 감춘 것처럼 가장하지 않는 runnable starter 계약이 됩니다.
 
 v2 매트릭스에는 mixed single-package starter도 포함됩니다. 하나의 Fastify HTTP 앱과 attached TCP microservice를 같은 생성 프로젝트 안에 함께 배치합니다.
 

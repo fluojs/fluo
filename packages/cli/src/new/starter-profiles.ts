@@ -8,7 +8,9 @@ import type {
   BootstrapTransport,
 } from './types.js';
 
+/** Emitter families that decide which scaffold template tree renders the starter. */
 export type StarterEmitterType = 'http' | 'microservice' | 'mixed';
+/** Stable IDs for the scaffold recipes currently shipped by `fluo new`. */
 export type StarterScaffoldRecipeId =
   | 'application-bun-bun-http'
   | 'application-cloudflare-workers-cloudflare-workers-http'
@@ -17,7 +19,10 @@ export type StarterScaffoldRecipeId =
   | 'application-node-fastify-http'
   | 'application-node-nodejs-http'
   | 'microservice-node-none-grpc'
+  | 'microservice-node-none-kafka'
   | 'microservice-node-none-mqtt'
+  | 'microservice-node-none-nats'
+  | 'microservice-node-none-rabbitmq'
   | 'microservice-node-none-redis-streams'
   | 'microservice-node-none-tcp'
   | 'mixed-node-fastify-tcp';
@@ -27,6 +32,7 @@ type StarterDependencies = {
   devDependencies: readonly string[];
 };
 
+/** Fully resolved starter metadata used by schema resolution, prompts, and scaffold emission. */
 export interface StarterProfile {
   dependencies: StarterDependencies;
   emitter: {
@@ -71,6 +77,7 @@ function cloneBootstrapSchema(schema: BootstrapSchema): BootstrapSchema {
   };
 }
 
+/** Documented microservice transports recognized by schema validation. */
 export const DOCUMENTED_MICROSERVICE_TRANSPORTS: readonly BootstrapTransport[] = [
   'tcp',
   'redis',
@@ -82,6 +89,7 @@ export const DOCUMENTED_MICROSERVICE_TRANSPORTS: readonly BootstrapTransport[] =
   'grpc',
 ];
 
+/** Source-of-truth registry for starter dependencies, prompt labels, and emitted scaffold recipes. */
 export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
   {
     dependencies: {
@@ -358,6 +366,85 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
       dependencies: [
         '@fluojs/config',
         '@fluojs/core',
+        '@fluojs/di',
+        '@fluojs/microservices',
+        '@fluojs/runtime',
+        'nats',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+      ],
+    },
+    emitter: {
+      platform: 'none',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'nats',
+      type: 'microservice',
+    },
+    id: 'microservice-node-none-nats',
+    promptLabel: 'Microservice (NATS starter)',
+    schema: createSchema('microservice', 'node', 'none', 'nats'),
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/config',
+        '@fluojs/core',
+        '@fluojs/di',
+        '@fluojs/microservices',
+        '@fluojs/runtime',
+        'kafkajs',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+      ],
+    },
+    emitter: {
+      platform: 'none',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'kafka',
+      type: 'microservice',
+    },
+    id: 'microservice-node-none-kafka',
+    promptLabel: 'Microservice (Kafka starter)',
+    schema: createSchema('microservice', 'node', 'none', 'kafka'),
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/config',
+        '@fluojs/core',
+        '@fluojs/di',
+        '@fluojs/microservices',
+        '@fluojs/runtime',
+        'amqplib',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+        '@types/amqplib',
+      ],
+    },
+    emitter: {
+      platform: 'none',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'rabbitmq',
+      type: 'microservice',
+    },
+    id: 'microservice-node-none-rabbitmq',
+    promptLabel: 'Microservice (RabbitMQ starter)',
+    schema: createSchema('microservice', 'node', 'none', 'rabbitmq'),
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/config',
+        '@fluojs/core',
         '@fluojs/validation',
         '@fluojs/di',
         '@fluojs/http',
@@ -383,8 +470,11 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
   },
 ] as const;
 
+/** Supported scaffold shapes accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_SHAPES: readonly BootstrapShape[] = STARTER_PROFILE_REGISTRY.map((profile) => profile.schema.shape);
+/** Supported runtime families accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_RUNTIMES: readonly BootstrapRuntime[] = ['bun', 'cloudflare-workers', 'deno', 'node'];
+/** Supported platform adapters accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = [
   'bun',
   'cloudflare-workers',
@@ -394,12 +484,23 @@ export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = [
   'nodejs',
   'none',
 ];
+/** Supported transports accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_TRANSPORTS: readonly BootstrapTransport[] = ['http', ...DOCUMENTED_MICROSERVICE_TRANSPORTS];
+/** Supported tooling presets accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_TOOLING_PRESETS: readonly BootstrapToolingPreset[] = ['standard'];
+/** Supported topology modes accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES: readonly BootstrapTopology['mode'][] = ['single-package'];
 
+/** Default starter profile used for shape-less `fluo new` invocations. */
 export const DEFAULT_BOOTSTRAP_PROFILE = STARTER_PROFILE_REGISTRY.find((profile) => profile.id === 'application-node-fastify-http')!;
 
+/**
+ * Resolves the default starter profile for one shape/runtime branch.
+ *
+ * @param shape Shape requested by the caller.
+ * @param runtime Optional runtime override used to pick Bun/Deno/Workers application defaults.
+ * @returns The starter profile that defines the default contract for that branch.
+ */
 export function getStarterProfileForShape(shape: BootstrapShape, runtime?: BootstrapRuntime): StarterProfile {
   if (runtime !== undefined) {
     return STARTER_PROFILE_REGISTRY.find((profile) => (
@@ -422,20 +523,44 @@ export function getStarterProfileForShape(shape: BootstrapShape, runtime?: Boots
   return DEFAULT_BOOTSTRAP_PROFILE;
 }
 
+/**
+ * Lists the application starter profiles currently published by the registry.
+ *
+ * @param runtime Optional runtime filter.
+ * @returns Application starter profiles for the selected runtime, or all application starters when omitted.
+ */
 export function getApplicationStarterProfiles(runtime?: BootstrapRuntime): readonly StarterProfile[] {
   return STARTER_PROFILE_REGISTRY.filter((profile) => (
     profile.schema.shape === 'application' && (runtime === undefined || profile.schema.runtime === runtime)
   ));
 }
 
+/**
+ * Clones the default bootstrap schema for one shape/runtime branch.
+ *
+ * @param shape Shape requested by the caller.
+ * @param runtime Optional runtime override used for application starters.
+ * @returns A fresh schema object safe to mutate during resolution.
+ */
 export function getDefaultBootstrapSchemaForShape(shape: BootstrapShape, runtime?: BootstrapRuntime): BootstrapSchema {
   return cloneBootstrapSchema(getStarterProfileForShape(shape, runtime).schema);
 }
 
+/**
+ * Clones the global default bootstrap schema.
+ *
+ * @returns A fresh schema object for the default Node.js + Fastify HTTP starter.
+ */
 export function getDefaultBootstrapSchema(): BootstrapSchema {
   return cloneBootstrapSchema(DEFAULT_BOOTSTRAP_PROFILE.schema);
 }
 
+/**
+ * Finds the starter profile that exactly matches a resolved bootstrap schema.
+ *
+ * @param schema Fully resolved bootstrap schema.
+ * @returns The matching starter profile, or `undefined` when the schema is validation-only.
+ */
 export function getStarterProfileFromSchema(schema: BootstrapSchema): StarterProfile | undefined {
   return STARTER_PROFILE_REGISTRY.find((profile) => (
     profile.schema.shape === schema.shape
@@ -448,6 +573,12 @@ export function getStarterProfileFromSchema(schema: BootstrapSchema): StarterPro
   ));
 }
 
+/**
+ * Checks whether one transport belongs to the documented microservice transport family.
+ *
+ * @param transport Transport selected by the caller.
+ * @returns `true` when the transport is part of the documented microservice transport set.
+ */
 export function isDocumentedMicroserviceTransport(transport: BootstrapTransport): boolean {
   return DOCUMENTED_MICROSERVICE_TRANSPORTS.includes(transport);
 }

@@ -635,12 +635,12 @@ describe('CLI command runner', () => {
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
 
-  it('reports validated-but-not-yet-runnable microservice transport families through the CLI contract', async () => {
+  it('reports the remaining validation-only microservice transport families through the CLI contract', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['new', 'starter-app', '--shape', 'microservice', '--transport', 'kafka', '--platform', 'none'], {
+    const exitCode = await runCli(['new', 'starter-app', '--shape', 'microservice', '--transport', 'redis', '--platform', 'none'], {
       cwd: workspaceDirectory,
       skipInstall: true,
       stderr: { write: (message) => stderrBuffer.push(message) },
@@ -648,7 +648,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('The first-class microservice starters currently scaffold tcp, redis-streams, mqtt, and grpc');
+    expect(stderrBuffer.join('')).toContain('The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc');
   });
 
   it('scaffolds a local .env file while ignoring it from git by default', async () => {

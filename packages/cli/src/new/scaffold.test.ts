@@ -504,6 +504,130 @@ describe('scaffoldBootstrapApp', () => {
     expect(protoFile).toContain('rpc Sum (SumRequest) returns (SumResponse);');
   });
 
+  it('generates a runnable NATS microservice starter scaffold', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-microservice-nats-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'none',
+      projectName: 'starter-microservice-nats',
+      runtime: 'node',
+      shape: 'microservice',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'nats',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const envFile = readFileSync(join(targetDirectory, '.env'), 'utf8');
+    const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/microservices': expect.any(String),
+      nats: '^2.29.3',
+    });
+    expect(readme).toContain('Transport: `nats` is the generated runnable starter contract for this project');
+    expect(readme).toContain('caller-owned `nats` client plus `JSONCodec()`');
+    expect(envFile).toContain('NATS_SERVERS=nats://127.0.0.1:4222');
+    expect(envFile).toContain('NATS_MESSAGE_SUBJECT=fluo.microservices.messages');
+    expect(appFile).toContain("import { JSONCodec, connect } from 'nats';");
+    expect(appFile).toContain('new NatsMicroserviceTransport({');
+    expect(appFile).toContain("name: 'fluo-microservice-starter'");
+  });
+
+  it('generates a runnable Kafka microservice starter scaffold', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-microservice-kafka-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'none',
+      projectName: 'starter-microservice-kafka',
+      runtime: 'node',
+      shape: 'microservice',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'kafka',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const envFile = readFileSync(join(targetDirectory, '.env'), 'utf8');
+    const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/microservices': expect.any(String),
+      kafkajs: '^2.2.4',
+    });
+    expect(readme).toContain('Transport: `kafka` is the generated runnable starter contract for this project');
+    expect(readme).toContain('producer/consumer collaborators');
+    expect(envFile).toContain('KAFKA_BROKERS=127.0.0.1:9092');
+    expect(envFile).toContain('KAFKA_RESPONSE_TOPIC=fluo.microservices.responses');
+    expect(appFile).toContain("import { Kafka, logLevel } from 'kafkajs';");
+    expect(appFile).toContain('new KafkaMicroserviceTransport({');
+    expect(appFile).toContain('await Promise.all([producer.connect(), consumer.connect()]);');
+  });
+
+  it('generates a runnable RabbitMQ microservice starter scaffold', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-microservice-rabbitmq-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'none',
+      projectName: 'starter-microservice-rabbitmq',
+      runtime: 'node',
+      shape: 'microservice',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'rabbitmq',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const envFile = readFileSync(join(targetDirectory, '.env'), 'utf8');
+    const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/microservices': expect.any(String),
+      amqplib: '^0.10.5',
+    });
+    expect(packageJson.devDependencies).toMatchObject({
+      '@types/amqplib': '^0.10.7',
+    });
+    expect(readme).toContain('Transport: `rabbitmq` is the generated runnable starter contract for this project');
+    expect(readme).toContain('publisher/consumer collaborators');
+    expect(envFile).toContain('RABBITMQ_URL=amqp://127.0.0.1:5672');
+    expect(envFile).toContain('RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses');
+    expect(appFile).toContain("import { connect } from 'amqplib';");
+    expect(appFile).toContain('new RabbitMqMicroserviceTransport({');
+    expect(appFile).toContain('createConfirmChannel()');
+  });
+
   it('generates a mixed single-package scaffold with an attached TCP microservice', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-mixed-'));
     temporaryDirectories.push(targetDirectory);

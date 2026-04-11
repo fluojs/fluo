@@ -23,6 +23,9 @@ pnpm add @fluojs/microservices
 선택적 트랜스포트 의존성:
 
 - **gRPC**: `@grpc/grpc-js`, `@grpc/proto-loader`
+- **NATS**: `nats`
+- **Kafka**: `kafkajs`
+- **RabbitMQ**: `amqplib`
 - **Redis**: `ioredis`
 - **MQTT**: `mqtt`
 
@@ -60,6 +63,8 @@ class AppModule {}
 const microservice = await fluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
+
+`fluo new`는 NATS, Kafka, RabbitMQ를 숨겨진 내장 구현이 아니라 caller-owned bootstrap contract로 취급합니다. 생성된 스타터는 `src/app.ts`에서 `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborator, `amqplib` publisher/consumer collaborator를 직접 연결하고, 외부 broker 의존성은 `.env`와 생성된 README에 그대로 드러냅니다.
 
 ## 주요 기능
 

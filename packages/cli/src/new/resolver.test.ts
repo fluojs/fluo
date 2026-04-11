@@ -42,7 +42,7 @@ describe('resolveBootstrapSchema', () => {
 });
 
 describe('resolveBootstrapPlan', () => {
-  it('locks the shipped starter registry to the current eleven supported matrix profiles', () => {
+  it('locks the shipped starter registry to the current fourteen supported matrix profiles', () => {
     expect(STARTER_PROFILE_REGISTRY.map((profile) => ({
       id: profile.id,
       schema: profile.schema,
@@ -185,6 +185,48 @@ describe('resolveBootstrapPlan', () => {
             mode: 'single-package',
           },
           transport: 'grpc',
+        },
+      },
+      {
+        id: 'microservice-node-none-nats',
+        schema: {
+          platform: 'none',
+          runtime: 'node',
+          shape: 'microservice',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'nats',
+        },
+      },
+      {
+        id: 'microservice-node-none-kafka',
+        schema: {
+          platform: 'none',
+          runtime: 'node',
+          shape: 'microservice',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'kafka',
+        },
+      },
+      {
+        id: 'microservice-node-none-rabbitmq',
+        schema: {
+          platform: 'none',
+          runtime: 'node',
+          shape: 'microservice',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'rabbitmq',
         },
       },
       {
@@ -640,6 +682,136 @@ describe('resolveBootstrapPlan', () => {
     });
   });
 
+  it('resolves the NATS microservice starter as a first-class path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'none',
+      shape: 'microservice',
+      transport: 'nats',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/di',
+          '@fluojs/microservices',
+          '@fluojs/runtime',
+          'nats',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'none',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'nats',
+        type: 'microservice',
+      },
+      profile: profileById('microservice-node-none-nats'),
+      schema: {
+        platform: 'none',
+        runtime: 'node',
+        shape: 'microservice',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'nats',
+      },
+    });
+  });
+
+  it('resolves the Kafka microservice starter as a first-class path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'none',
+      shape: 'microservice',
+      transport: 'kafka',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/di',
+          '@fluojs/microservices',
+          '@fluojs/runtime',
+          'kafkajs',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+        ],
+      },
+      emitter: {
+        platform: 'none',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'kafka',
+        type: 'microservice',
+      },
+      profile: profileById('microservice-node-none-kafka'),
+      schema: {
+        platform: 'none',
+        runtime: 'node',
+        shape: 'microservice',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'kafka',
+      },
+    });
+  });
+
+  it('resolves the RabbitMQ microservice starter as a first-class path', () => {
+    expect(resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      platform: 'none',
+      shape: 'microservice',
+      transport: 'rabbitmq',
+    })).toEqual({
+      dependencies: {
+        dependencies: [
+          '@fluojs/config',
+          '@fluojs/core',
+          '@fluojs/di',
+          '@fluojs/microservices',
+          '@fluojs/runtime',
+          'amqplib',
+        ],
+        devDependencies: [
+          '@fluojs/cli',
+          '@fluojs/testing',
+          '@types/amqplib',
+        ],
+      },
+      emitter: {
+        platform: 'none',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'rabbitmq',
+        type: 'microservice',
+      },
+      profile: profileById('microservice-node-none-rabbitmq'),
+      schema: {
+        platform: 'none',
+        runtime: 'node',
+        shape: 'microservice',
+        tooling: 'standard',
+        topology: {
+          deferred: true,
+          mode: 'single-package',
+        },
+        transport: 'rabbitmq',
+      },
+    });
+  });
+
   it('resolves the mixed starter as one HTTP app with an attached TCP microservice', () => {
     expect(resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
@@ -728,9 +900,9 @@ describe('resolveBootstrapPlan', () => {
         deferred: true,
         mode: 'single-package',
       },
-      transport: 'kafka',
+      transport: 'redis',
     })).toThrow(
-      'Unsupported bootstrap schema "microservice/node/kafka/none/standard/single-package". The first-class microservice starters currently scaffold tcp, redis-streams, mqtt, and grpc, while transport validation also recognizes the remaining documented families: redis, nats, kafka, rabbitmq.',
+      'Unsupported bootstrap schema "microservice/node/redis/none/standard/single-package". The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc, while transport validation still recognizes the remaining documented family: redis.',
     );
   });
 
@@ -764,7 +936,7 @@ describe('resolveBootstrapPlan', () => {
       transport: 'http',
       platform: 'fastify',
     })).toThrow(
-      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/mqtt/grpc microservice starters, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "application/node/http/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
     );
   });
 
@@ -781,7 +953,7 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'tcp',
     })).toThrow(
-      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/mqtt/grpc microservice starters, and the mixed single-package starter.',
+      'Unsupported bootstrap schema "mixed/node/tcp/fastify/standard/single-package". The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
     );
   });
 });

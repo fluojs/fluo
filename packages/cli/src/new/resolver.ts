@@ -127,8 +127,8 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   if (schema.shape === 'microservice' && isDocumentedMicroserviceTransport(schema.transport) && schema.transport !== defaultProfile.schema.transport) {
     throw new Error(
       'Unsupported bootstrap schema "microservice/node/' + schema.transport + '/' + schema.platform + '/standard/single-package". '
-      + 'The first-class microservice starters currently scaffold tcp, redis-streams, mqtt, and grpc, while transport validation also recognizes the remaining documented families: '
-      + 'redis, nats, kafka, rabbitmq.',
+      + 'The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc, while transport validation still recognizes the remaining documented family: '
+      + 'redis.',
     );
   }
 
@@ -163,12 +163,12 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   if (schema.tooling !== 'standard' || schema.topology.deferred !== true) {
     throw new Error(
       `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-       + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/mqtt/grpc microservice starters, and the mixed single-package starter.',
+       + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
      );
   }
 
   throw new Error(
     `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-    + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/mqtt/grpc microservice starters, and the mixed single-package starter.',
+    + 'The current compatibility baseline supports the standard single-package Node + Fastify/Express/raw Node.js HTTP starters, Bun/Deno/Cloudflare Workers HTTP starters, the tcp/redis-streams/nats/kafka/rabbitmq/mqtt/grpc microservice starters, and the mixed single-package starter.',
   );
 }

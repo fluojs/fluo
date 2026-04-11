@@ -22,6 +22,9 @@ pnpm add @fluojs/microservices
 
 Optional transport-specific dependencies:
 - **gRPC**: `@grpc/grpc-js`, `@grpc/proto-loader`
+- **NATS**: `nats`
+- **Kafka**: `kafkajs`
+- **RabbitMQ**: `amqplib`
 - **Redis**: `ioredis`
 - **MQTT**: `mqtt`
 
@@ -61,6 +64,8 @@ class AppModule {}
 const microservice = await fluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
+
+`fluo new` treats NATS, Kafka, and RabbitMQ as explicit caller-owned bootstrap contracts rather than hidden built-ins. The generated starters wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators in `src/app.ts`, while still making the external broker dependency visible through `.env` and the generated README.
 
 ## Core Capabilities
 
