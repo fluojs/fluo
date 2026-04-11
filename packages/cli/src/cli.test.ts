@@ -863,8 +863,10 @@ describe('CLI command runner', () => {
     expect(existsSync(join(projectDirectory, 'src', 'health', 'health.controller.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.test.ts'))).toBe(true);
     expect(existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))).toBe(true);
-    expect(readmeContent).toContain('@fluojs/runtime/node');
-    expect(readmeContent).toContain('@fluojs/platform-nodejs');
+    expect(readmeContent).toContain('Starter contract: `src/main.ts` wires the maintained application starter that `fluo new` generates today: Node.js runtime + Fastify HTTP via `createFastifyAdapter(...)`');
+    expect(readmeContent).toContain('Broader runtime/adapter package coverage is documented in the fluo docs and package READMEs; this generated starter intentionally describes only the wired starter path above');
+    expect(readmeContent).not.toContain('@fluojs/runtime/node');
+    expect(readmeContent).not.toContain('@fluojs/platform-nodejs');
     expect(readmeContent).toContain('createFastifyAdapter');
     expect(readmeContent).toContain('runtime module entrypoints use governed canonical names');
     expect(mainContent).toContain("from '@fluojs/platform-fastify'");
