@@ -4,7 +4,7 @@
 
 이 디렉토리는 fluo의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, docs hub와 함께 읽는 것을 전제로 합니다.
 
-이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, MQTT, gRPC)과 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다. 공식 Bun, Deno, Cloudflare Workers 런타임 가이드는 대응하는 `@fluojs/platform-*` 패키지 README에서 다룹니다.
+이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
 ## 현재 공식 예제
 

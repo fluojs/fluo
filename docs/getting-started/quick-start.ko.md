@@ -31,6 +31,12 @@ fluo new my-fluo-app --shape application --transport http --runtime node --platf
 같은 명령 계열로 다른 공개 v2 스타터 경로도 선택할 수 있습니다.
 
 ```sh
+# Express 애플리케이션 스타터
+fluo new my-fluo-express --shape application --transport http --runtime node --platform express
+
+# Raw Node.js HTTP 애플리케이션 스타터
+fluo new my-fluo-node --shape application --transport http --runtime node --platform nodejs
+
 # Bun 애플리케이션 스타터
 fluo new my-fluo-bun --shape application --transport http --runtime bun --platform bun
 
@@ -46,6 +52,15 @@ fluo new my-fluo-microservice --shape microservice --transport tcp --runtime nod
 # 실행 가능한 Redis Streams microservice 스타터
 fluo new my-fluo-redis-streams --shape microservice --transport redis-streams --runtime node --platform none
 
+# 실행 가능한 NATS microservice 스타터
+fluo new my-fluo-nats --shape microservice --transport nats --runtime node --platform none
+
+# 실행 가능한 Kafka microservice 스타터
+fluo new my-fluo-kafka --shape microservice --transport kafka --runtime node --platform none
+
+# 실행 가능한 RabbitMQ microservice 스타터
+fluo new my-fluo-rabbitmq --shape microservice --transport rabbitmq --runtime node --platform none
+
 # 실행 가능한 MQTT microservice 스타터
 fluo new my-fluo-mqtt --shape microservice --transport mqtt --runtime node --platform none
 
@@ -56,7 +71,7 @@ fluo new my-fluo-grpc --shape microservice --transport grpc --runtime node --pla
 fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-이 공개 스타터 경로와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분해 보려면 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 확인하세요.
+현재 제공되는 스타터 매트릭스와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분해 보려면 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)를 확인하세요.
 
 `fluo new`가 interactive terminal에서 실행되면, wizard도 이와 동일한 shape-first 모델로 수렴합니다. wizard는 프로젝트 이름, starter shape, 유지보수되는 tooling preset, package manager, dependency 설치 여부, git 초기화 여부를 묻습니다.
 

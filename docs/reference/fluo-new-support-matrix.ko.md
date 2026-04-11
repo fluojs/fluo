@@ -17,10 +17,10 @@
 
 - `fluo new` 문서는 스타터 계약으로 읽고, 문서화된 모든 어댑터가 이미 스타터 프리셋을 가진다고 해석하지 마세요.
 - 런타임/패키지 참조 문서는 현재 스타터 매트릭스 밖에서 채택 가능한 어댑터, 플랫폼, 배포 대상을 설명하는 더 넓은 생태계 지도입니다.
-- 어떤 페이지가 Bun, Deno, Cloudflare Workers를 언급할 때 명시적인 `fluo new --shape application --transport http --runtime ... --platform ...` 명령이 함께 있다면 그것이 runnable starter 계약입니다. 그 밖의 어댑터 언급은 여전히 더 넓은 패키지 생태계를 설명합니다.
+- 어떤 페이지가 Node.js HTTP 플랫폼(Fastify, Express, raw Node.js), Bun, Deno, Cloudflare Workers를 언급할 때 명시적인 `fluo new --shape application --transport http --runtime ... --platform ...` 명령이 함께 있다면 그것이 runnable starter 계약입니다. 마이크로서비스의 경우 문서화된 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc` 명령 변형을 runnable starter 계약으로 읽으세요. 그 밖의 어댑터/패키지 언급은 여전히 더 넓은 패키지 생태계를 설명합니다.
 
 ## 기준 출처
 
 - `packages/cli/src/new/resolver.ts`는 현재 스캐폴딩되는 `fluo new` 매트릭스의 기준 소스입니다.
 - [Package Surface](./package-surface.ko.md#canonical-runtime-package-matrix)는 더 넓은 런타임/패키지 생태계의 기준 소스입니다.
-- [Bootstrap Paths](../getting-started/bootstrap-paths.ko.md), [Package Chooser](./package-chooser.ko.md), [NestJS에서 마이그레이션하기](../getting-started/migrate-from-nestjs.ko.md)는 아직 스타터 프리셋이 아닌 어댑터를 다룰 때 이 문서로 연결되어야 합니다.
+- [Bootstrap Paths](../getting-started/bootstrap-paths.ko.md), [Package Chooser](./package-chooser.ko.md), [NestJS에서 마이그레이션하기](../getting-started/migrate-from-nestjs.ko.md)는 제공 중인 스타터 매트릭스와 더 넓은 패키지 생태계를 구분해야 할 때 이 문서로 연결되어야 합니다.

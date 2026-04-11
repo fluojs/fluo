@@ -4,7 +4,7 @@
 
 This directory contains the official runnable example applications for fluo. Each example has its own README and is meant to be read alongside the docs hub rather than in isolation.
 
-These examples intentionally stay on the HTTP side of the published `fluo new` v2 matrix so the generated scaffold and the runnable examples keep matching. The other first-class starter contracts are the runnable microservice starter paths (TCP by default, plus Redis Streams, MQTT, and gRPC) and the mixed single-package path (Fastify HTTP app + attached TCP microservice). Official Bun, Deno, and Cloudflare Workers runtime guidance lives in the corresponding `@fluojs/platform-*` package READMEs.
+These examples intentionally stay on the HTTP side of the published `fluo new` v2 matrix so the generated scaffold and the runnable examples keep matching. The other first-class starter contracts are the runnable application starter variants for Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers; the runnable microservice starter paths (TCP by default, plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC); and the mixed single-package path (Fastify HTTP app + attached TCP microservice).
 
 ## current official examples
 

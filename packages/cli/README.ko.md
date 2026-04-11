@@ -82,7 +82,7 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 `fluo new`가 interactive TTY에서 실행되면, 이제 v2 wizard가 기존 flags/config 모델 위에 그대로 얹혀 동작합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime + HTTP platform, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. 반면 non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출은 동일한 resolved defaults를 유지하는 first-class path로 계속 동작합니다.
 
-이제 제공되는 애플리케이션/microservice 스타터 매트릭스와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요.
+현재 제공되는 스타터 매트릭스(Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요.
 
 ### 2. 기능 추가
 컨트롤러와 서비스가 포함된 새 리소스를 추가하고, 모듈에 자동으로 연결합니다.

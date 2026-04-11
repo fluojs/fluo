@@ -17,10 +17,10 @@ Use this page to distinguish what `fluo new` scaffolds today from the broader ru
 
 - Treat `fluo new` docs as a starter contract, not as a promise that every documented adapter already has a starter preset.
 - Treat runtime and package reference docs as the broader ecosystem map for adapters, platforms, and deployment targets you can adopt outside the current starter matrix.
-- When a page mentions Bun, Deno, or Cloudflare Workers, treat the explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands as the runnable starter contract. Other adapter mentions outside those starter rows still describe the broader package ecosystem.
+- When a page mentions Node.js HTTP platforms (Fastify, Express, raw Node.js), Bun, Deno, or Cloudflare Workers, treat the explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands as the runnable starter contract. For microservices, treat the documented `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc` command variants as the runnable starter contract. Other adapter/package mentions outside those starter rows still describe the broader package ecosystem.
 
 ## authoritative sources
 
 - `packages/cli/src/new/resolver.ts` is the source of truth for the currently scaffolded `fluo new` matrix.
 - [Package Surface](./package-surface.md#canonical-runtime-package-matrix) is the source of truth for the broader runtime/package ecosystem.
-- [Bootstrap Paths](../getting-started/bootstrap-paths.md), [Package Chooser](./package-chooser.md), and [Migrate from NestJS](../getting-started/migrate-from-nestjs.md) should link here whenever they discuss adapters that are not starter presets yet.
+- [Bootstrap Paths](../getting-started/bootstrap-paths.md), [Package Chooser](./package-chooser.md), and [Migrate from NestJS](../getting-started/migrate-from-nestjs.md) should link here whenever they need to distinguish the shipped starter matrix from the broader package ecosystem.

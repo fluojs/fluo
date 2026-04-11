@@ -17,6 +17,7 @@
 | **GraphQL API** | `@fluojs/graphql` |
 | **Fastify (권장)** | `@fluojs/platform-fastify` |
 | **Express 호환** | `@fluojs/platform-express` *(이제 Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됨)* |
+| **Raw Node.js HTTP** | `@fluojs/platform-nodejs` *(이제 Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됨)* |
 | **입력 유효성 검사** | `@fluojs/validation` |
 | **설정** | `@fluojs/config` |
 
@@ -31,6 +32,22 @@
 | **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` |
 
 이 어댑터 행들은 지원 패키지 경로를 설명하며, 이제 일치하는 runtime/platform 플래그를 사용하면 first-class `fluo new` 애플리케이션 스타터와도 직접 연결됩니다.
+
+## 마이크로서비스 스타터 만들기
+
+> _"HTTP 앱 대신 실행 가능한 `fluo new` microservice starter가 필요합니다."_
+
+| transport | 스타터 계약 |
+| --- | --- |
+| **TCP (기본값)** | `fluo new my-service --shape microservice --transport tcp --runtime node --platform none` |
+| **Redis Streams** | `fluo new my-service --shape microservice --transport redis-streams --runtime node --platform none` |
+| **NATS** | `fluo new my-service --shape microservice --transport nats --runtime node --platform none` |
+| **Kafka** | `fluo new my-service --shape microservice --transport kafka --runtime node --platform none` |
+| **RabbitMQ** | `fluo new my-service --shape microservice --transport rabbitmq --runtime node --platform none` |
+| **MQTT** | `fluo new my-service --shape microservice --transport mqtt --runtime node --platform none` |
+| **gRPC** | `fluo new my-service --shape microservice --transport grpc --runtime node --platform none` |
+
+이 표는 현재 실제로 제공되는 runnable starter 매트릭스를 설명합니다. 스타터 프리셋 밖의 더 넓은 문서화된 마이크로서비스 생태계에는 여전히 validation-only `redis` 참조가 포함됩니다.
 
 ## 영속성 및 데이터 접근 추가
 

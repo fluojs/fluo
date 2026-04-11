@@ -31,6 +31,12 @@ fluo new my-fluo-app --shape application --transport http --runtime node --platf
 The same command family also exposes the other published v2 starter paths:
 
 ```sh
+# Express application starter
+fluo new my-fluo-express --shape application --transport http --runtime node --platform express
+
+# Raw Node.js HTTP application starter
+fluo new my-fluo-node --shape application --transport http --runtime node --platform nodejs
+
 # Bun application starter
 fluo new my-fluo-bun --shape application --transport http --runtime bun --platform bun
 
@@ -46,6 +52,15 @@ fluo new my-fluo-microservice --shape microservice --transport tcp --runtime nod
 # Runnable Redis Streams microservice starter
 fluo new my-fluo-redis-streams --shape microservice --transport redis-streams --runtime node --platform none
 
+# Runnable NATS microservice starter
+fluo new my-fluo-nats --shape microservice --transport nats --runtime node --platform none
+
+# Runnable Kafka microservice starter
+fluo new my-fluo-kafka --shape microservice --transport kafka --runtime node --platform none
+
+# Runnable RabbitMQ microservice starter
+fluo new my-fluo-rabbitmq --shape microservice --transport rabbitmq --runtime node --platform none
+
 # Runnable MQTT microservice starter
 fluo new my-fluo-mqtt --shape microservice --transport mqtt --runtime node --platform none
 
@@ -56,7 +71,7 @@ fluo new my-fluo-grpc --shape microservice --transport grpc --runtime node --pla
 fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-For a docs-level split between these published starter paths and the remaining broader adapter ecosystem, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
+For a docs-level split between this shipped starter matrix and the remaining broader adapter ecosystem, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
 When `fluo new` runs in an interactive terminal, the wizard resolves onto this same shape-first model. It asks for the project name, starter shape, the maintained tooling preset, package manager, whether to install dependencies, and whether to initialize git.
 

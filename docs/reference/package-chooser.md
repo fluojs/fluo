@@ -17,6 +17,7 @@ Use this guide to select the correct fluo packages for your specific task. This 
 | **GraphQL API** | `@fluojs/graphql` |
 | **Fastify (Recommended)** | `@fluojs/platform-fastify` |
 | **Express Compatibility** | `@fluojs/platform-express` *(also available as a first-class `fluo new` application starter on Node.js)* |
+| **Raw Node.js HTTP** | `@fluojs/platform-nodejs` *(also available as a first-class `fluo new` application starter on Node.js)* |
 | **Input Validation** | `@fluojs/validation` |
 | **Configuration** | `@fluojs/config` |
 
@@ -31,6 +32,22 @@ Use this guide to select the correct fluo packages for your specific task. This 
 | **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` |
 
 These adapter rows describe supported package paths and now map directly to first-class `fluo new` application starters when you use the matching runtime/platform flags.
+
+## build a microservice starter
+
+> _"I want a runnable `fluo new` microservice starter instead of an HTTP app."_
+
+| transport | starter contract |
+| --- | --- |
+| **TCP (default)** | `fluo new my-service --shape microservice --transport tcp --runtime node --platform none` |
+| **Redis Streams** | `fluo new my-service --shape microservice --transport redis-streams --runtime node --platform none` |
+| **NATS** | `fluo new my-service --shape microservice --transport nats --runtime node --platform none` |
+| **Kafka** | `fluo new my-service --shape microservice --transport kafka --runtime node --platform none` |
+| **RabbitMQ** | `fluo new my-service --shape microservice --transport rabbitmq --runtime node --platform none` |
+| **MQTT** | `fluo new my-service --shape microservice --transport mqtt --runtime node --platform none` |
+| **gRPC** | `fluo new my-service --shape microservice --transport grpc --runtime node --platform none` |
+
+These rows describe the currently shipped runnable starter matrix. The broader documented microservice ecosystem still includes validation-only `redis` references outside the starter presets.
 
 ## add persistence & data access
 

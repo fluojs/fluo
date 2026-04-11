@@ -25,9 +25,19 @@ describe('runtime matrix docs contract', () => {
 
   it('keeps task and hub docs pointed at the canonical matrix', () => {
     expect(read('docs/reference/package-chooser.md')).toContain('./package-surface.md#canonical-runtime-package-matrix');
+    expectAll(read('docs/reference/package-chooser.md'), [
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
+    ]);
     expect(read('docs/reference/package-chooser.ko.md')).toContain(
       './package-surface.ko.md#canonical-runtime-package-matrix',
     );
+    expectAll(read('docs/reference/package-chooser.ko.md'), [
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
+    ]);
     expect(read('docs/README.md')).toContain('reference/package-surface.md');
     expect(read('docs/README.ko.md')).toContain('reference/package-surface.ko.md');
     expect(read('README.md')).toContain('docs/reference/package-surface.md');
@@ -43,6 +53,9 @@ describe('runtime matrix docs contract', () => {
       'Mixed starter',
       'Partially scaffolded, partially docs-only',
       '--transport redis-streams',
+      '--transport nats',
+      '--transport kafka',
+      '--transport rabbitmq',
       '--transport mqtt',
       '--transport grpc',
       '@fluojs/platform-express',
@@ -57,6 +70,9 @@ describe('runtime matrix docs contract', () => {
       'mixed 스타터',
       '일부는 스캐폴딩됨, 일부는 문서 전용',
       '--transport redis-streams',
+      '--transport nats',
+      '--transport kafka',
+      '--transport rabbitmq',
       '--transport mqtt',
       '--transport grpc',
       '@fluojs/platform-express',
@@ -94,6 +110,9 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
       '--shape microservice --transport mqtt --runtime node --platform none',
       '--shape microservice --transport grpc --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
@@ -108,6 +127,9 @@ describe('runtime matrix docs contract', () => {
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
       '--shape microservice --transport mqtt --runtime node --platform none',
       '--shape microservice --transport grpc --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
@@ -115,11 +137,16 @@ describe('runtime matrix docs contract', () => {
     ]);
     expectAll(read('docs/getting-started/quick-start.md'), [
       '--shape application --transport http --runtime node --platform fastify',
+      '--shape application --transport http --runtime node --platform express',
+      '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
       '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
       '--shape microservice --transport mqtt --runtime node --platform none',
       '--shape microservice --transport grpc --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
@@ -127,11 +154,16 @@ describe('runtime matrix docs contract', () => {
     ]);
     expectAll(read('docs/getting-started/quick-start.ko.md'), [
       '--shape application --transport http --runtime node --platform fastify',
+      '--shape application --transport http --runtime node --platform express',
+      '--shape application --transport http --runtime node --platform nodejs',
       '--shape application --transport http --runtime bun --platform bun',
       '--shape application --transport http --runtime deno --platform deno',
       '--shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers',
       '--shape microservice --transport tcp --runtime node --platform none',
       '--shape microservice --transport redis-streams --runtime node --platform none',
+      '--shape microservice --transport nats --runtime node --platform none',
+      '--shape microservice --transport kafka --runtime node --platform none',
+      '--shape microservice --transport rabbitmq --runtime node --platform none',
       '--shape microservice --transport mqtt --runtime node --platform none',
       '--shape microservice --transport grpc --runtime node --platform none',
       '--shape mixed --transport tcp --runtime node --platform fastify',
@@ -154,12 +186,14 @@ describe('runtime matrix docs contract', () => {
     ]);
     expectAll(read('examples/README.md'), [
       'HTTP side of the published `fluo new` v2 matrix',
-      'plus Redis Streams, MQTT, and gRPC',
+      'Express, raw Node.js HTTP, Bun, Deno, and Cloudflare Workers',
+      'plus Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC',
       'mixed single-package path',
     ]);
     expectAll(read('examples/README.ko.md'), [
       '공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로',
-      'Redis Streams, MQTT, gRPC',
+      'Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers',
+      'Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC',
       'mixed single-package 경로',
     ]);
     expectAll(read('examples/minimal/README.md'), [
