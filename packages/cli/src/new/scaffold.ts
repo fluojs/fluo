@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { initializeGitRepository, installDependencies } from './install.js';
 import { resolveBootstrapPlan, type ResolvedBootstrapPlan } from './resolver.js';
+import type { StarterScaffoldRecipeId } from './starter-profiles.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
 const PACKAGE_DIRECTORY_BY_NAME = {
@@ -323,11 +324,11 @@ Use the unit template for handler logic and the integration template when you ne
 }
 
 function createProjectReadme(options: BootstrapOptions, bootstrapPlan: ResolvedBootstrapPlan): string {
-  if (bootstrapPlan.emitter.type === 'microservice') {
+  if (bootstrapPlan.profile.id === 'microservice-node-none-tcp') {
     return createMicroserviceProjectReadme(options);
   }
 
-  if (bootstrapPlan.emitter.type === 'mixed') {
+  if (bootstrapPlan.profile.id === 'mixed-node-fastify-tcp') {
     return createMixedProjectReadme(options);
   }
 
@@ -951,7 +952,7 @@ describe('AppModule e2e', () => {
 }
 
 function createEnvFile(bootstrapPlan: ResolvedBootstrapPlan): string {
-  if (bootstrapPlan.emitter.type === 'microservice' || bootstrapPlan.emitter.type === 'mixed') {
+  if (bootstrapPlan.profile.id === 'microservice-node-none-tcp' || bootstrapPlan.profile.id === 'mixed-node-fastify-tcp') {
     return `MICROSERVICE_HOST=127.0.0.1
 MICROSERVICE_PORT=4000
 PORT=3000
@@ -1003,12 +1004,12 @@ function emitSharedScaffoldFiles(
   ];
 }
 
-function emitScaffoldFilesForPlan(options: BootstrapOptions, bootstrapPlan: ResolvedBootstrapPlan): ScaffoldFile[] {
-  if (bootstrapPlan.emitter.type === 'http') {
+function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: StarterScaffoldRecipeId): ScaffoldFile[] {
+  if (recipeId === 'application-node-fastify-http') {
     return emitStandardHttpNodeFastifyScaffoldFiles(options);
   }
 
-  if (bootstrapPlan.emitter.type === 'microservice') {
+  if (recipeId === 'microservice-node-none-tcp') {
     return [
       { content: createMicroserviceAppFile(), path: 'src/app.ts' },
       { content: createMicroserviceMainFile(), path: 'src/main.ts' },
@@ -1018,7 +1019,7 @@ function emitScaffoldFilesForPlan(options: BootstrapOptions, bootstrapPlan: Reso
     ];
   }
 
-  if (bootstrapPlan.emitter.type === 'mixed') {
+  if (recipeId === 'mixed-node-fastify-tcp') {
     return [
       { content: createMixedAppFile(), path: 'src/app.ts' },
       { content: createMixedMainFile(), path: 'src/main.ts' },
@@ -1037,6 +1038,10 @@ function emitScaffoldFilesForPlan(options: BootstrapOptions, bootstrapPlan: Reso
   }
 
   return [];
+}
+
+function emitScaffoldFilesForPlan(options: BootstrapOptions, bootstrapPlan: ResolvedBootstrapPlan): ScaffoldFile[] {
+  return emitScaffoldFilesForRecipe(options, bootstrapPlan.profile.id);
 }
 
 function buildScaffoldFiles(

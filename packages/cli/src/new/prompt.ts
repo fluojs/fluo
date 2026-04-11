@@ -3,13 +3,13 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import { resolveBootstrapSchema } from './resolver.js';
+import { DOCUMENTED_MICROSERVICE_TRANSPORTS, STARTER_PROFILE_REGISTRY } from './starter-profiles.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
 
 /** Default package manager used when detection has no signal. */
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
 const DEFAULT_INSTALL_DEPENDENCIES = true;
 const DEFAULT_INITIALIZE_GIT = false;
-const MICROSERVICE_TRANSPORTS = ['tcp', 'redis', 'redis-streams', 'nats', 'kafka', 'rabbitmq', 'mqtt', 'grpc'] as const;
 
 type WritableStream = {
   write(message: string): unknown;
@@ -144,9 +144,10 @@ async function resolveInteractiveBootstrapAnswers(
 
   if (!answers.shape) {
     answers.shape = await prompt.select('Starter shape', [
-      { label: 'Application (HTTP starter)', value: 'application' },
-      { label: 'Microservice (transport-first starter)', value: 'microservice' },
-      { label: 'Mixed (HTTP API + microservice starter)', value: 'mixed' },
+      ...STARTER_PROFILE_REGISTRY.map((profile) => ({
+        label: profile.promptLabel,
+        value: profile.schema.shape,
+      })),
     ] as const, 'application');
   }
 
@@ -159,7 +160,7 @@ async function resolveInteractiveBootstrapAnswers(
   if (answers.shape === 'microservice' && !answers.transport) {
     answers.transport = await prompt.select(
       'Microservice transport',
-      MICROSERVICE_TRANSPORTS.map((transport) => ({ label: transport, value: transport })),
+      DOCUMENTED_MICROSERVICE_TRANSPORTS.map((transport) => ({ label: transport, value: transport })),
       'tcp',
     ) as BootstrapAnswers['transport'];
   }

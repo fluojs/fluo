@@ -3,6 +3,14 @@ import { resolve } from 'node:path';
 import { renderAliasList, renderHelpTable } from '../help.js';
 import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
+import {
+  SUPPORTED_BOOTSTRAP_PLATFORMS,
+  SUPPORTED_BOOTSTRAP_RUNTIMES,
+  SUPPORTED_BOOTSTRAP_SHAPES,
+  SUPPORTED_BOOTSTRAP_TOOLING_PRESETS,
+  SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES,
+  SUPPORTED_BOOTSTRAP_TRANSPORTS,
+} from '../new/starter-profiles.js';
 import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
 
 type CliStream = {
@@ -111,22 +119,12 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
 ];
 
 const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['bun', 'npm', 'pnpm', 'yarn']);
-const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(['application', 'microservice', 'mixed']);
-const SUPPORTED_TRANSPORTS = new Set<BootstrapAnswers['transport']>([
-  'http',
-  'tcp',
-  'redis',
-  'redis-streams',
-  'nats',
-  'kafka',
-  'rabbitmq',
-  'mqtt',
-  'grpc',
-]);
-const SUPPORTED_RUNTIMES = new Set<BootstrapAnswers['runtime']>(['node']);
-const SUPPORTED_PLATFORMS = new Set<BootstrapAnswers['platform']>(['fastify', 'none']);
-const SUPPORTED_TOOLING_PRESETS = new Set<BootstrapAnswers['tooling']>(['standard']);
-const SUPPORTED_TOPOLOGY_MODES = new Set<BootstrapAnswers['topology']['mode']>(['single-package']);
+const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(SUPPORTED_BOOTSTRAP_SHAPES);
+const SUPPORTED_TRANSPORTS = new Set<BootstrapAnswers['transport']>(SUPPORTED_BOOTSTRAP_TRANSPORTS);
+const SUPPORTED_RUNTIMES = new Set<BootstrapAnswers['runtime']>(SUPPORTED_BOOTSTRAP_RUNTIMES);
+const SUPPORTED_PLATFORMS = new Set<BootstrapAnswers['platform']>(SUPPORTED_BOOTSTRAP_PLATFORMS);
+const SUPPORTED_TOOLING_PRESETS = new Set<BootstrapAnswers['tooling']>(SUPPORTED_BOOTSTRAP_TOOLING_PRESETS);
+const SUPPORTED_TOPOLOGY_MODES = new Set<BootstrapAnswers['topology']['mode']>(SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES);
 
 function readOptionValue(
   argv: string[],
