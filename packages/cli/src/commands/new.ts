@@ -40,8 +40,8 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Select the scaffold shape explicitly (application for HTTP, microservice for the transport-driven starter path).',
-    option: '--shape <application|microservice>',
+    description: 'Select the scaffold shape explicitly (application for HTTP, microservice for the transport-driven starter path, mixed for the API + microservice starter).',
+    option: '--shape <application|microservice|mixed>',
   },
   {
     aliases: [],
@@ -111,7 +111,7 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
 ];
 
 const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['bun', 'npm', 'pnpm', 'yarn']);
-const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(['application', 'microservice']);
+const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(['application', 'microservice', 'mixed']);
 const SUPPORTED_TRANSPORTS = new Set<BootstrapAnswers['transport']>([
   'http',
   'tcp',
@@ -200,7 +200,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
 
         parsed.shape = readOptionValue(argv, index, '--shape') as BootstrapAnswers['shape'];
         if (!SUPPORTED_SHAPES.has(parsed.shape)) {
-          throw new Error(`Invalid --shape value "${parsed.shape}". Use one of: application, microservice.`);
+          throw new Error(`Invalid --shape value "${parsed.shape}". Use one of: application, microservice, mixed.`);
         }
         index += 1;
         break;

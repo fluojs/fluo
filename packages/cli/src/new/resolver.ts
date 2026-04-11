@@ -11,7 +11,7 @@ import type {
 
 type BootstrapResolutionInput = Partial<BootstrapSchema> & Pick<Partial<BootstrapOptions>, 'packageManager'>;
 
-const SHAPES: readonly BootstrapShape[] = ['application', 'microservice'];
+const SHAPES: readonly BootstrapShape[] = ['application', 'microservice', 'mixed'];
 const RUNTIMES: readonly BootstrapRuntime[] = ['node'];
 const PLATFORMS: readonly BootstrapPlatform[] = ['fastify', 'none'];
 const TRANSPORTS: readonly BootstrapTransport[] = [
@@ -54,6 +54,14 @@ type ResolvedMicroserviceScaffoldEmitter = {
   type: 'microservice';
 };
 
+type ResolvedMixedScaffoldEmitter = {
+  platform: 'fastify';
+  preset: 'standard';
+  runtime: 'node';
+  transport: 'tcp';
+  type: 'mixed';
+ };
+
 type ResolvedBootstrapDependencies = {
   dependencies: readonly string[];
   devDependencies: readonly string[];
@@ -83,6 +91,18 @@ const DEFAULT_MICROSERVICE_BOOTSTRAP_SCHEMA: BootstrapSchema = {
   transport: 'tcp',
 };
 
+const DEFAULT_MIXED_BOOTSTRAP_SCHEMA: BootstrapSchema = {
+  platform: 'fastify',
+  runtime: 'node',
+  shape: 'mixed',
+  tooling: 'standard',
+  topology: {
+    deferred: true,
+    mode: 'single-package',
+  },
+  transport: 'tcp',
+};
+
 /**
  * Shape-first compatibility baseline for `fluo new` until additional starter variants ship.
  */
@@ -95,7 +115,7 @@ export const DEFAULT_BOOTSTRAP_SCHEMA: BootstrapSchema = {
  */
 export interface ResolvedBootstrapPlan {
   dependencies: ResolvedBootstrapDependencies;
-  emitter: ResolvedHttpScaffoldEmitter | ResolvedMicroserviceScaffoldEmitter;
+  emitter: ResolvedHttpScaffoldEmitter | ResolvedMicroserviceScaffoldEmitter | ResolvedMixedScaffoldEmitter;
   schema: BootstrapSchema;
 }
 
@@ -129,8 +149,33 @@ const DEFAULT_MICROSERVICE_DEPENDENCIES: ResolvedBootstrapDependencies = {
   ],
 };
 
+const DEFAULT_MIXED_DEPENDENCIES: ResolvedBootstrapDependencies = {
+  dependencies: [
+    '@fluojs/config',
+    '@fluojs/core',
+    '@fluojs/validation',
+    '@fluojs/di',
+    '@fluojs/http',
+    '@fluojs/microservices',
+    '@fluojs/platform-fastify',
+    '@fluojs/runtime',
+  ],
+  devDependencies: [
+    '@fluojs/cli',
+    '@fluojs/testing',
+  ],
+};
+
 function defaultSchemaForShape(shape: BootstrapShape): BootstrapSchema {
-  return shape === 'microservice' ? DEFAULT_MICROSERVICE_BOOTSTRAP_SCHEMA : DEFAULT_APPLICATION_BOOTSTRAP_SCHEMA;
+  if (shape === 'microservice') {
+    return DEFAULT_MICROSERVICE_BOOTSTRAP_SCHEMA;
+  }
+
+  if (shape === 'mixed') {
+    return DEFAULT_MIXED_BOOTSTRAP_SCHEMA;
+  }
+
+  return DEFAULT_APPLICATION_BOOTSTRAP_SCHEMA;
 }
 
 function assertOneOf<T extends string>(
@@ -225,6 +270,28 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
     };
   }
 
+  if (
+    schema.shape === 'mixed'
+    && schema.runtime === 'node'
+    && schema.transport === 'tcp'
+    && schema.platform === 'fastify'
+    && schema.tooling === 'standard'
+    && schema.topology.deferred === true
+    && schema.topology.mode === 'single-package'
+  ) {
+    return {
+      dependencies: DEFAULT_MIXED_DEPENDENCIES,
+      emitter: {
+        platform: 'fastify',
+        preset: 'standard',
+        runtime: 'node',
+        transport: 'tcp',
+        type: 'mixed',
+      },
+      schema,
+    };
+  }
+
   if (schema.shape === 'microservice' && schema.transport === 'http') {
     throw new Error(
       'Unsupported bootstrap schema "microservice/node/http/' + schema.platform + '/standard/single-package". '
@@ -239,6 +306,13 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
     );
   }
 
+  if (schema.shape === 'mixed' && schema.transport === 'http') {
+    throw new Error(
+      'Unsupported bootstrap schema "mixed/node/http/' + schema.platform + '/standard/' + schema.topology.mode + '". '
+      + 'The first mixed starter uses the HTTP API plus an attached TCP microservice; use tcp for the supported mixed contract.',
+    );
+  }
+
   if (schema.shape === 'microservice' && MICROSERVICE_TRANSPORTS.includes(schema.transport) && schema.transport !== 'tcp') {
     throw new Error(
       'Unsupported bootstrap schema "microservice/node/' + schema.transport + '/' + schema.platform + '/standard/single-package". '
@@ -247,20 +321,47 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
     );
   }
 
+  if (schema.shape === 'mixed' && MICROSERVICE_TRANSPORTS.includes(schema.transport) && schema.transport !== 'tcp') {
+    throw new Error(
+      'Unsupported bootstrap schema "mixed/node/' + schema.transport + '/' + schema.platform + '/standard/' + schema.topology.mode + '". '
+      + 'The first mixed starter currently supports only the attached TCP microservice contract.',
+    );
+  }
+
+  if (schema.shape === 'application' && schema.topology.mode !== 'single-package') {
+    throw new Error(
+      'Unsupported bootstrap schema "application/node/' + schema.transport + '/' + schema.platform + '/standard/' + schema.topology.mode + '". '
+      + 'Application starters currently support only the single-package HTTP topology; use --shape mixed for the API + microservice starter.',
+    );
+  }
+
+  if (schema.shape === 'microservice' && schema.topology.mode !== 'single-package') {
+    throw new Error(
+      'Unsupported bootstrap schema "microservice/node/' + schema.transport + '/' + schema.platform + '/standard/' + schema.topology.mode + '". '
+      + 'Microservice starters currently support only the single-package microservice topology.',
+    );
+  }
+
+  if (schema.shape === 'mixed' && schema.topology.mode !== 'single-package') {
+    throw new Error(
+      'Unsupported bootstrap schema "mixed/node/' + schema.transport + '/' + schema.platform + '/standard/' + schema.topology.mode + '". '
+      + 'Mixed starters currently support only the single-package contract: one Fastify HTTP application with an attached TCP microservice.',
+    );
+  }
+
   if (
     schema.runtime !== 'node'
     || schema.tooling !== 'standard'
     || schema.topology.deferred !== true
-    || schema.topology.mode !== 'single-package'
   ) {
     throw new Error(
       `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-      + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter and the TCP microservice starter.',
+      + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
     );
   }
 
   throw new Error(
     `Unsupported bootstrap schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
-    + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter and the TCP microservice starter.',
+    + 'The current compatibility baseline supports the standard single-package Node + Fastify HTTP starter, the TCP microservice starter, and the mixed single-package starter.',
   );
 }

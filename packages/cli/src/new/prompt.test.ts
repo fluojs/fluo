@@ -123,4 +123,34 @@ describe('collectBootstrapAnswers', () => {
       targetDirectory: './starter-app',
     });
   });
+
+  it('resolves the mixed wizard path onto the fixed mixed starter contract', async () => {
+    const prompt = createPrompt({
+      confirm: async (_message, defaultValue) => defaultValue,
+      select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (message === 'Starter shape') {
+          return 'mixed' as T;
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await expect(collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt })).resolves.toEqual({
+      initializeGit: false,
+      installDependencies: true,
+      packageManager: 'pnpm',
+      platform: 'fastify',
+      runtime: 'node',
+      shape: 'mixed',
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+      projectName: 'starter-app',
+      targetDirectory: './starter-app',
+    });
+  });
 });

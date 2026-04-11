@@ -146,6 +146,7 @@ async function resolveInteractiveBootstrapAnswers(
     answers.shape = await prompt.select('Starter shape', [
       { label: 'Application (HTTP starter)', value: 'application' },
       { label: 'Microservice (transport-first starter)', value: 'microservice' },
+      { label: 'Mixed (HTTP API + microservice starter)', value: 'mixed' },
     ] as const, 'application');
   }
 

@@ -294,6 +294,48 @@ describe('CLI command runner', () => {
     expect(mainFile).toContain('FluoFactory.createMicroservice(AppModule)');
   });
 
+  it('scaffolds the mixed starter when the mixed shape is selected explicitly', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      '--shape',
+      'mixed',
+      '--transport',
+      'tcp',
+      '--runtime',
+      'node',
+      '--platform',
+      'fastify',
+      '--tooling',
+      'standard',
+      '--topology',
+      'single-package',
+      'starter-mixed',
+    ], {
+      cwd: workspaceDirectory,
+      skipInstall: true,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const projectDirectory = join(workspaceDirectory, 'starter-mixed');
+    const packageJson = readFileSync(join(projectDirectory, 'package.json'), 'utf8');
+    const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
+    const appTestFile = readFileSync(join(projectDirectory, 'src', 'app.test.ts'), 'utf8');
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Skipping dependency installation.');
+    expect(stdoutBuffer.join('')).toContain('cd ./starter-mixed');
+    expect(packageJson).toContain('@fluojs/http');
+    expect(packageJson).toContain('@fluojs/microservices');
+    expect(mainFile).toContain('await app.connectMicroservice();');
+    expect(mainFile).toContain('await app.startAllMicroservices();');
+    expect(appTestFile).toContain('InMemoryLoopbackTransport');
+  });
+
   it('reports validated-but-not-yet-runnable microservice transport families through the CLI contract', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -416,7 +458,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Usage: fluo new|create [project-name] [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
-    expect(stdoutBuffer.join('')).toContain('--shape <application|microservice>');
+    expect(stdoutBuffer.join('')).toContain('--shape <application|microservice|mixed>');
     expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
     expect(stdoutBuffer.join('')).toContain('--runtime <node>');
     expect(stdoutBuffer.join('')).toContain('--platform <fastify|none>');

@@ -153,6 +153,54 @@ describe('scaffoldBootstrapApp', () => {
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
 
+  it('generates a mixed single-package scaffold with an attached TCP microservice', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-mixed-'));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      packageManager: 'pnpm',
+      platform: 'fastify',
+      projectName: 'starter-mixed',
+      runtime: 'node',
+      shape: 'mixed',
+      skipInstall: true,
+      targetDirectory,
+      tooling: 'standard',
+      topology: {
+        deferred: true,
+        mode: 'single-package',
+      },
+      transport: 'tcp',
+    });
+
+    const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
+    };
+    const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
+    const envFile = readFileSync(join(targetDirectory, '.env'), 'utf8');
+    const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+    const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
+    const appTestFile = readFileSync(join(targetDirectory, 'src', 'app.test.ts'), 'utf8');
+
+    expect(packageJson.dependencies).toMatchObject({
+      '@fluojs/http': expect.any(String),
+      '@fluojs/microservices': expect.any(String),
+      '@fluojs/platform-fastify': expect.any(String),
+      '@fluojs/runtime': expect.any(String),
+    });
+    expect(packageJson.scripts).not.toHaveProperty('dev:microservice');
+    expect(readme).toContain('Shape: `mixed`');
+    expect(readme).toContain('attached TCP microservice');
+    expect(envFile).toContain('PORT=3000');
+    expect(envFile).toContain('MICROSERVICE_PORT=4000');
+    expect(appFile).toContain('MicroservicesModule.forRoot');
+    expect(mainFile).toContain('await app.connectMicroservice();');
+    expect(mainFile).toContain('await app.startAllMicroservices();');
+    expect(appTestFile).toContain('InMemoryLoopbackTransport');
+    expect(readDirectorySnapshot(targetDirectory)).not.toHaveProperty('src/microservice.ts');
+  });
+
   it('can initialize git while skipping dependency installation', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-git-'));
     temporaryDirectories.push(targetDirectory);

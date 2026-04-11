@@ -3,7 +3,7 @@ export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
 /** Source for resolving starter package dependencies. */
 export type DependencySource = 'local' | 'published';
 /** Supported starter shapes for `fluo new`. */
-export type BootstrapShape = 'application' | 'microservice';
+export type BootstrapShape = 'application' | 'microservice' | 'mixed';
 /** Supported runtime families for the current starter matrix. */
 export type BootstrapRuntime = 'node';
 /** Supported platform adapters for the current starter matrix. */
