@@ -29,19 +29,29 @@ declare module '@fluojs/http' {
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
+const REQUEST_BODY_LIMIT_MESSAGE = 'Request body exceeds the size limit.';
 
+/**
+ * Configures Web request parsing, multipart handling, and raw body preservation.
+ */
 export interface CreateWebRequestResponseFactoryOptions {
   maxBodySize?: number;
   multipart?: MultipartOptions;
   rawBody?: boolean;
 }
 
+/**
+ * Describes a dispatched Web request and the runtime options used to handle it.
+ */
 export interface DispatchWebRequestOptions extends CreateWebRequestResponseFactoryOptions {
   dispatcher?: Dispatcher;
   dispatcherNotReadyMessage?: string;
   request: Request;
 }
 
+/**
+ * Represents a framework response that can be materialized as a native Web `Response`.
+ */
 export interface WebFrameworkResponse extends FrameworkResponse {
   toResponse(): Response;
 }
@@ -227,6 +237,12 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   }
 }
 
+/**
+ * Creates the request/response factory used by Web-standard adapters.
+ *
+ * @param options - Web parsing options for body limits, multipart handling, and raw body retention.
+ * @returns A request/response factory for Web requests and responses.
+ */
 export function createWebRequestResponseFactory(
   options: CreateWebRequestResponseFactoryOptions = {},
 ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
@@ -257,6 +273,12 @@ export function createWebRequestResponseFactory(
   };
 }
 
+/**
+ * Dispatches a native Web request through the shared runtime pipeline.
+ *
+ * @param options - Dispatch configuration including the request and runtime parsing options.
+ * @returns The native Web response produced by the dispatcher.
+ */
 export async function dispatchWebRequest({
   dispatcher,
   dispatcherNotReadyMessage = 'Web adapter received a request before dispatcher binding completed.',
@@ -274,6 +296,16 @@ export async function dispatchWebRequest({
   return frameworkResponse.toResponse();
 }
 
+/**
+ * Creates a framework request from a native Web request.
+ *
+ * @param request - Native Web request to normalize.
+ * @param signal - Abort signal propagated to the framework request.
+ * @param multipartOptions - Multipart parser options applied to multipart requests.
+ * @param maxBodySize - Maximum allowed non-multipart body size in bytes.
+ * @param preserveRawBody - Whether to retain the raw request body bytes.
+ * @returns The normalized framework request used by the dispatcher.
+ */
 export async function createWebFrameworkRequest(
   request: Request,
   signal: AbortSignal,
@@ -291,7 +323,10 @@ export async function createWebFrameworkRequest(
   let rawBody: Uint8Array | undefined;
 
   if (isMultipart) {
-    const result = await parseMultipart(request.clone(), multipartOptions);
+    const result = await parseMultipart(request.clone(), {
+      ...multipartOptions,
+      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+    });
     body = result.fields;
     files = result.files;
   } else {
@@ -398,18 +433,18 @@ async function readWebRequestBody(
     const parsedContentLength = Number(contentLength);
 
     if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
-      throw new PayloadTooLargeException('Request body exceeds the size limit.');
+      throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
     }
   }
 
-  const rawBody = new Uint8Array(await request.arrayBuffer());
-
-  if (rawBody.byteLength === 0) {
+  if (!request.body) {
     return { body: undefined };
   }
 
-  if (rawBody.byteLength > maxBodySize) {
-    throw new PayloadTooLargeException('Request body exceeds the size limit.');
+  const rawBody = await readByteLimitedStream(request.body, maxBodySize);
+
+  if (rawBody.byteLength === 0) {
+    return { body: undefined };
   }
 
   const bodyText = TEXT_DECODER.decode(rawBody);
@@ -433,6 +468,50 @@ async function readWebRequestBody(
     body: bodyText,
     rawBody: preserveRawBody ? rawBody : undefined,
   };
+}
+
+async function readByteLimitedStream(
+  stream: ReadableStream<Uint8Array>,
+  maxBodySize: number,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalSize = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      totalSize += value.byteLength;
+
+      if (totalSize > maxBodySize) {
+        await reader.cancel(REQUEST_BODY_LIMIT_MESSAGE);
+        throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
+      }
+
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return concatUint8Arrays(chunks, totalSize);
+}
+
+function concatUint8Arrays(chunks: Uint8Array[], totalSize: number): Uint8Array {
+  const rawBody = new Uint8Array(totalSize);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    rawBody.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return rawBody;
 }
 
 function mergeSetCookieHeader(

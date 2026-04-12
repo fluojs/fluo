@@ -23,6 +23,16 @@ type NodeFrameworkRequest = FrameworkRequest & {
   rawBody?: Uint8Array;
 };
 
+/**
+ * Creates a framework request from a raw Node incoming message.
+ *
+ * @param request - Raw Node request carrying headers, URL, and body stream.
+ * @param signal - Abort signal tied to the response lifecycle.
+ * @param multipartOptions - Multipart parser options applied to multipart requests.
+ * @param maxBodySize - Maximum allowed non-multipart body size in bytes.
+ * @param preserveRawBody - Whether to retain the raw request body bytes.
+ * @returns The normalized framework request used by the dispatcher.
+ */
 export async function createFrameworkRequest(
   request: IncomingMessage,
   signal: AbortSignal,
@@ -47,7 +57,10 @@ export async function createFrameworkRequest(
         method: request.method,
         url: url.toString(),
       },
-      multipartOptions,
+      {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      },
     );
     body = result.fields;
     files = result.files;
@@ -81,6 +94,12 @@ export async function createFrameworkRequest(
   return frameworkRequest;
 }
 
+/**
+ * Creates an abort signal that fires when the Node response closes unexpectedly.
+ *
+ * @param response - Raw Node server response associated with the request.
+ * @returns An abort signal for downstream request cancellation handling.
+ */
 export function createRequestSignal(response: ServerResponse): AbortSignal {
   const controller = new AbortController();
   const abort = (reason: string) => {
@@ -98,6 +117,12 @@ export function createRequestSignal(response: ServerResponse): AbortSignal {
   return controller.signal;
 }
 
+/**
+ * Resolves the request identifier from the preferred inbound headers.
+ *
+ * @param headers - Raw Node request headers.
+ * @returns The request identifier when present.
+ */
 export function resolveRequestIdFromHeaders(headers: IncomingHttpHeaders): string | undefined {
   const requestId = headers['x-request-id'] ?? headers['x-correlation-id'];
   return Array.isArray(requestId) ? requestId[0] : requestId;
