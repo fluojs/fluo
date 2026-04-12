@@ -1,7 +1,7 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
-import { REDIS_CLIENT } from '@fluojs/redis';
+import { getRedisClientToken, getRedisComponentId } from '@fluojs/redis';
 import { Cron as CronValidator } from 'croner';
 import {
   type ApplicationLogger,
@@ -415,6 +415,7 @@ export class CronLifecycleService
 
     return createCronPlatformStatusSnapshot({
       activeTicks: this.activeTasks.size,
+      dependencyId: this.options.distributed.enabled ? getRedisComponentId(this.options.distributed.clientName) : undefined,
       distributedEnabled: this.options.distributed.enabled,
       enabledTasks,
       lifecycleState: this.lifecycleState,
@@ -493,14 +494,16 @@ export class CronLifecycleService
       return;
     }
 
-    if (!this.runtimeContainer.has(REDIS_CLIENT)) {
-      throw new Error('Cron distributed mode requires REDIS_CLIENT to be registered.');
+    const redisToken = getRedisClientToken(this.options.distributed.clientName);
+
+    if (!this.runtimeContainer.has(redisToken)) {
+      throw new Error('Cron distributed mode requires the configured Redis client to be registered.');
     }
 
-    const redisClient = await this.runtimeContainer.resolve(REDIS_CLIENT);
+    const redisClient = await this.runtimeContainer.resolve(redisToken);
 
     if (!hasRedisLockClient(redisClient)) {
-      throw new Error('Cron distributed mode requires REDIS_CLIENT to implement set/eval lock operations.');
+      throw new Error('Cron distributed mode requires the configured Redis client to implement set/eval lock operations.');
     }
 
     this.redisClient = redisClient;

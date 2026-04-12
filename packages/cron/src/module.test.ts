@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
-import { REDIS_CLIENT } from '@fluojs/redis';
+import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import { Cron, Interval, Timeout } from './decorators.js';
@@ -644,7 +644,7 @@ describe('@fluojs/cron', () => {
     await appTwo.close();
   });
 
-  it('fails bootstrap before scheduling jobs when distributed mode is enabled without REDIS_CLIENT', async () => {
+  it('fails bootstrap before scheduling jobs when the configured Redis client is missing', async () => {
     const scheduler = createManualScheduler();
 
     class DistributedTaskService {
@@ -668,12 +668,12 @@ describe('@fluojs/cron', () => {
     });
 
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
-      'Cron distributed mode requires REDIS_CLIENT to be registered.',
+      'Cron distributed mode requires the configured Redis client to be registered.',
     );
     expect(scheduler.records).toHaveLength(0);
   });
 
-  it('fails bootstrap before scheduling jobs when REDIS_CLIENT cannot perform lock operations', async () => {
+  it('fails bootstrap before scheduling jobs when the configured Redis client cannot perform lock operations', async () => {
     const scheduler = createManualScheduler();
 
     class DistributedTaskService {
@@ -701,8 +701,55 @@ describe('@fluojs/cron', () => {
         providers: [{ provide: REDIS_CLIENT, useValue: {} }],
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('Cron distributed mode requires REDIS_CLIENT to implement set/eval lock operations.');
+    ).rejects.toThrow('Cron distributed mode requires the configured Redis client to implement set/eval lock operations.');
     expect(scheduler.records).toHaveLength(0);
+  });
+
+  it('uses a named Redis client for distributed locking when clientName is configured', async () => {
+    const NAMED_REDIS_CLIENT = getRedisClientToken('locks');
+    const scheduler = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+
+    class Store {
+      runs = 0;
+    }
+
+    @Inject(Store)
+    class DistributedTaskService {
+      constructor(private readonly store: Store) {}
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'named-distributed-task' })
+      async run() {
+        this.store.runs += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            clientName: 'locks',
+            enabled: true,
+            keyPrefix: 'named-locks',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduler.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService, Store],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: NAMED_REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    await scheduler.records[0]!.tick();
+
+    expect((await app.container.resolve(Store)).runs).toBe(1);
+
+    await app.close();
   });
 
   it('releases owned distributed locks during shutdown so another node can continue', async () => {

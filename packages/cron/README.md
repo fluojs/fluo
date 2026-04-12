@@ -87,6 +87,8 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
+To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRootNamed(...)`.
+
 ### Dynamic Scheduling
 
 You can manage tasks at runtime using the `SCHEDULING_REGISTRY`.

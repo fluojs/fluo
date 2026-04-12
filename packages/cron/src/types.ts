@@ -55,6 +55,7 @@ export type SchedulingTaskMetadata = CronTaskMetadata | IntervalTaskMetadata | T
 
 /** Distributed lock configuration for multi-instance scheduling. */
 export interface CronDistributedOptions {
+  clientName?: string;
   enabled?: boolean;
   keyPrefix?: string;
   lockTtlMs?: number;
@@ -88,7 +89,13 @@ export interface CronModuleOptions {
 
 /** Normalized scheduler configuration used internally by {@link CronLifecycleService}. */
 export interface NormalizedCronModuleOptions {
-  distributed: Required<CronDistributedOptions> & { enabled: boolean };
+  distributed: {
+    clientName?: string;
+    enabled: boolean;
+    keyPrefix: string;
+    lockTtlMs: number;
+    ownerId: string;
+  };
   scheduler: CronScheduler;
 }
 

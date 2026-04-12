@@ -4,15 +4,16 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { CronLifecycleService } from './service.js';
 import { defaultCronScheduler } from './scheduler.js';
 import { CRON_OPTIONS, SCHEDULING_REGISTRY } from './tokens.js';
-import type { CronDistributedOptions, CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
+import type { CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
 
 function randomId(): string {
   return `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): Required<CronDistributedOptions> & { enabled: boolean } {
+function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): NormalizedCronModuleOptions['distributed'] {
   if (distributed === undefined || distributed === false) {
     return {
+      clientName: undefined,
       enabled: false,
       keyPrefix: 'fluo:cron:lock',
       lockTtlMs: 30_000,
@@ -22,6 +23,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
 
   if (distributed === true) {
     return {
+      clientName: undefined,
       enabled: true,
       keyPrefix: 'fluo:cron:lock',
       lockTtlMs: 30_000,
@@ -30,6 +32,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
   }
 
   return {
+    clientName: distributed.clientName,
     enabled: distributed.enabled ?? true,
     keyPrefix: distributed.keyPrefix ?? 'fluo:cron:lock',
     lockTtlMs: distributed.lockTtlMs ?? 30_000,

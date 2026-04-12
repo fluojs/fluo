@@ -6,6 +6,7 @@ describe('createCronPlatformStatusSnapshot', () => {
   it('reports distributed dependency edge and ready/healthy state', () => {
     const snapshot = createCronPlatformStatusSnapshot({
       activeTicks: 0,
+      dependencyId: 'redis.locks',
       distributedEnabled: true,
       enabledTasks: 2,
       lifecycleState: 'ready',
@@ -20,7 +21,7 @@ describe('createCronPlatformStatusSnapshot', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
-      dependencies: ['redis.default'],
+      dependencies: ['redis.locks'],
       distributedEnabled: true,
       totalTasks: 3,
     });
@@ -29,6 +30,7 @@ describe('createCronPlatformStatusSnapshot', () => {
   it('marks lock renewal failures as degraded health', () => {
     const snapshot = createCronPlatformStatusSnapshot({
       activeTicks: 0,
+      dependencyId: 'redis.default',
       distributedEnabled: true,
       enabledTasks: 1,
       lifecycleState: 'ready',

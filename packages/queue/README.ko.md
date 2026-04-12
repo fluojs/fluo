@@ -78,6 +78,14 @@ export class OrderService {
 
 ## 일반적인 패턴
 
+### 이름 있는 Redis 클라이언트
+
+큐가 기본 Redis 대신 다른 연결을 사용해야 한다면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `clientName`에 지정하세요.
+
+```typescript
+QueueModule.forRoot({ clientName: 'jobs' })
+```
+
 ### 분산 재시도 (Distributed Retries)
 
 워커 설정에서 최대 시도 횟수와 백오프 전략을 지정하여 일시적인 실패를 자동으로 처리할 수 있습니다.
@@ -101,7 +109,7 @@ export class OrderService {
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 
 ### 타입
-- `QueueOptions`: 전역 큐 설정(동시성, 전송률 제한 등)을 위한 타입입니다.
+- `QueueOptions`: 전역 큐 설정(clientName, 동시성, 전송률 제한 등)을 위한 타입입니다.
 - `WorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 우선순위 등)을 위한 타입입니다.
 
 ## 관련 패키지

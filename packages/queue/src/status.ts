@@ -1,8 +1,11 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/** Lifecycle phases reported by the queue platform status adapter. */
 export type QueueLifecycleState = 'idle' | 'starting' | 'started' | 'stopping' | 'stopped';
 
+/** Input payload used to derive queue readiness, health, and dependency details. */
 export interface QueueStatusAdapterInput {
+  dependencyId?: string;
   lifecycleState: QueueLifecycleState;
   pendingDeadLetterWrites: number;
   queuesReady: number;
@@ -10,6 +13,7 @@ export interface QueueStatusAdapterInput {
   workersReady: number;
 }
 
+/** Queue-specific platform snapshot returned to health and readiness integrations. */
 export interface QueuePlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -97,11 +101,17 @@ function createHealth(input: QueueStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Creates the queue platform snapshot consumed by status reporters.
+ *
+ * @param input Normalized queue runtime metrics and dependency information.
+ * @returns Readiness, health, ownership, and queue detail fields.
+ */
 export function createQueuePlatformStatusSnapshot(input: QueueStatusAdapterInput): QueuePlatformStatusSnapshot {
   return {
     details: {
       deadLetterDrainTimeoutMs: 5_000,
-      dependencies: ['redis.default'],
+      dependencies: [input.dependencyId ?? 'redis.default'],
       lifecycleState: input.lifecycleState,
       pendingDeadLetterWrites: input.pendingDeadLetterWrites,
       queuesReady: input.queuesReady,

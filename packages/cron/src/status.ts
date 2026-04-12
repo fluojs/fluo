@@ -1,9 +1,12 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/** Lifecycle phases reported by the cron platform status adapter. */
 export type CronLifecycleState = 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
+/** Input payload used to derive cron readiness, health, and dependency details. */
 export interface CronStatusAdapterInput {
   activeTicks: number;
+  dependencyId?: string;
   distributedEnabled: boolean;
   enabledTasks: number;
   lifecycleState: CronLifecycleState;
@@ -15,6 +18,7 @@ export interface CronStatusAdapterInput {
   totalTasks: number;
 }
 
+/** Cron-specific platform snapshot returned to health and readiness integrations. */
 export interface CronPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -104,11 +108,17 @@ function createHealth(input: CronStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Creates the cron platform snapshot consumed by status reporters.
+ *
+ * @param input Normalized cron runtime metrics and dependency information.
+ * @returns Readiness, health, ownership, and cron detail fields.
+ */
 export function createCronPlatformStatusSnapshot(input: CronStatusAdapterInput): CronPlatformStatusSnapshot {
   return {
     details: {
       activeTicks: input.activeTicks,
-      dependencies: input.distributedEnabled ? ['redis.default'] : [],
+      dependencies: input.distributedEnabled ? [input.dependencyId ?? 'redis.default'] : [],
       distributedEnabled: input.distributedEnabled,
       enabledTasks: input.enabledTasks,
       lifecycleState: input.lifecycleState,

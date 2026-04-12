@@ -78,6 +78,14 @@ export class OrderService {
 
 ## Common Patterns
 
+### Named Redis Client
+
+If your queues should use a non-default Redis connection, set `clientName` to the name registered with `RedisModule.forRootNamed(...)`.
+
+```typescript
+QueueModule.forRoot({ clientName: 'jobs' })
+```
+
 ### Distributed Retries
 
 Workers can be configured with a maximum number of attempts and backoff strategies to handle transient failures automatically.
@@ -101,7 +109,7 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 
 ### Types
-- `QueueOptions`: Global queue settings (concurrency, rate limiting).
+- `QueueOptions`: Global queue settings (clientName, concurrency, rate limiting).
 - `WorkerOptions`: Per-job settings (attempts, backoff, priority).
 
 ## Related Packages

@@ -5,6 +5,7 @@ import { createQueuePlatformStatusSnapshot } from './status.js';
 describe('createQueuePlatformStatusSnapshot', () => {
   it('reports ready/healthy semantics with dependency visibility', () => {
     const snapshot = createQueuePlatformStatusSnapshot({
+      dependencyId: 'redis.jobs',
       lifecycleState: 'started',
       pendingDeadLetterWrites: 0,
       queuesReady: 2,
@@ -15,7 +16,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
-      dependencies: ['redis.default'],
+      dependencies: ['redis.jobs'],
       workersDiscovered: 2,
       workersReady: 2,
     });
@@ -23,6 +24,7 @@ describe('createQueuePlatformStatusSnapshot', () => {
 
   it('marks shutdown drain as degraded health and not-ready readiness', () => {
     const snapshot = createQueuePlatformStatusSnapshot({
+      dependencyId: 'redis.default',
       lifecycleState: 'stopping',
       pendingDeadLetterWrites: 1,
       queuesReady: 1,
