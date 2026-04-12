@@ -1597,6 +1597,61 @@ describe('@fluojs/cron', () => {
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
   });
 
+  it('bounds shutdown when an active cron task never settles', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+    const started = createDeferred<void>();
+
+    class TaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'hung-shutdown-cron' })
+      async run(): Promise<void> {
+        started.resolve();
+        await new Promise(() => {});
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          scheduler: scheduled.scheduler,
+          shutdown: {
+            timeoutMs: 50,
+          },
+        }),
+      ],
+      providers: [TaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+
+    void scheduled.records[0]?.tick();
+    await started.promise;
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(49);
+    expect(closeResolved).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await closePromise;
+
+    expect(closeResolved).toBe(true);
+    expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Cron shutdown timed out after 50ms with 1 active task(s) still pending.'),
+      ),
+    ).toBe(true);
+  });
+
   it('uses distributed lock path for dynamic interval tasks across nodes', async () => {
     vi.useFakeTimers();
 

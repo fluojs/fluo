@@ -62,6 +62,11 @@ export interface CronDistributedOptions {
   ownerId?: string;
 }
 
+/** Shutdown drain configuration for active cron tasks. */
+export interface CronShutdownOptions {
+  timeoutMs?: number;
+}
+
 /** Scheduler handle returned by the underlying cron engine. */
 export interface CronScheduledJob {
   stop(): void;
@@ -85,6 +90,7 @@ export type CronScheduler = (
 export interface CronModuleOptions {
   distributed?: boolean | CronDistributedOptions;
   scheduler?: CronScheduler;
+  shutdown?: CronShutdownOptions;
 }
 
 /** Normalized scheduler configuration used internally by {@link CronLifecycleService}. */
@@ -97,6 +103,9 @@ export interface NormalizedCronModuleOptions {
     ownerId: string;
   };
   scheduler: CronScheduler;
+  shutdown: {
+    timeoutMs: number;
+  };
 }
 
 /** Runtime descriptor for one discovered or dynamically registered task. */
