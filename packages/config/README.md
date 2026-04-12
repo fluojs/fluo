@@ -40,6 +40,9 @@ import { ConfigModule } from '@fluojs/config';
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
       defaults: { PORT: '3000' },
       validate: (config) => {
         if (!config.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -70,11 +73,11 @@ class MyService {
 ### Source Precedence
 Configuration is merged in the following order (highest precedence wins):
 1. **Runtime Overrides**: Values passed explicitly via `runtimeOverrides`.
-2. **Process Environment**: Values from `process.env`.
+2. **Process Environment Snapshot**: Values passed via the `processEnv` option.
 3. **Environment File**: Values from the `.env` file (or custom path).
 4. **Defaults**: Values provided in the `defaults` option.
 
-By default, `loadConfig(...)` and `ConfigModule.forRoot(...)` read from the live `process.env`. Pass `processEnv: {}` when you need to opt out of process-env precedence for a specific load.
+`@fluojs/config` does not scan ambient environment variables automatically. Pass an explicit `processEnv` snapshot at the bootstrap boundary when process-backed values should participate in precedence.
 
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.

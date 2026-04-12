@@ -37,6 +37,9 @@ import { Module } from '@fluojs/core';
   imports: [
     ConfigModule.forRoot({
       envFile: '.env',
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
       defaults: { PORT: '3000' },
       validate: (config) => {
         if (!config.DATABASE_URL) throw new Error('DATABASE_URL이 필요합니다');
@@ -65,9 +68,9 @@ class MyService {
 
 ### 명확한 소스 우선순위
 
-설정은 `runtimeOverrides` → `process.env` → env 파일 → `defaults` 순서로 병합됩니다.
+설정은 `runtimeOverrides` → `processEnv` 옵션으로 전달한 환경 스냅샷 → env 파일 → `defaults` 순서로 병합됩니다.
 
-기본적으로 `loadConfig(...)`와 `ConfigModule.forRoot(...)`는 현재 실행 중인 `process.env`를 읽습니다. 특정 로드에서 process-env 우선순위를 끄려면 `processEnv: {}`를 명시하세요.
+`@fluojs/config`는 주변 환경 변수를 자동으로 스캔하지 않습니다. 환경 기반 값을 우선순위에 포함하려면 부트스트랩 경계에서 `processEnv` 스냅샷을 명시적으로 전달하세요.
 
 ### 객체 단위 딥 머지
 
