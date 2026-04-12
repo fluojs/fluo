@@ -6,6 +6,8 @@ import { defaultCronScheduler } from './scheduler.js';
 import { CRON_OPTIONS, SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
 
+const DEFAULT_CRON_SHUTDOWN_TIMEOUT_MS = 10_000;
+
 function randomId(): string {
   return `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -40,6 +42,18 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
   };
 }
 
+function normalizeShutdownOptions(shutdown: CronModuleOptions['shutdown']): NormalizedCronModuleOptions['shutdown'] {
+  const timeoutMs = shutdown?.timeoutMs ?? DEFAULT_CRON_SHUTDOWN_TIMEOUT_MS;
+
+  if (!Number.isFinite(timeoutMs) || !Number.isInteger(timeoutMs) || timeoutMs < 0) {
+    throw new Error('Cron shutdown timeoutMs must be a non-negative integer.');
+  }
+
+  return {
+    timeoutMs,
+  };
+}
+
 /**
  * Normalizes module options so the runtime can rely on concrete scheduler and lock settings.
  *
@@ -50,6 +64,7 @@ export function normalizeCronModuleOptions(options: CronModuleOptions = {}): Nor
   return {
     distributed: normalizeDistributedOptions(options.distributed),
     scheduler: options.scheduler ?? defaultCronScheduler,
+    shutdown: normalizeShutdownOptions(options.shutdown),
   };
 }
 

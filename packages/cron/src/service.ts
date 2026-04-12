@@ -484,7 +484,15 @@ export class CronLifecycleService
     this.lifecycleState = 'stopping';
     this.started = false;
     this.stopAllScheduledTasks();
-    await this.waitForActiveTasks();
+    const shutdownTimedOut = await this.waitForActiveTasks();
+
+    if (shutdownTimedOut) {
+      this.logger.warn(
+        `Cron shutdown timed out after ${String(this.options.shutdown.timeoutMs)}ms with ${String(this.activeTasks.size)} active task(s) still pending.`,
+        'CronLifecycleService',
+      );
+    }
+
     await this.releaseOwnedLocks();
     this.lifecycleState = 'stopped';
   }
@@ -907,7 +915,34 @@ export class CronLifecycleService
     clearInterval(renewalTimer);
   }
 
-  private async waitForActiveTasks(): Promise<void> {
+  private async waitForActiveTasks(): Promise<boolean> {
+    if (this.activeTasks.size === 0) {
+      return false;
+    }
+
+    if (this.options.shutdown.timeoutMs === 0) {
+      return true;
+    }
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        this.drainActiveTasks().then(() => false),
+        new Promise<boolean>((resolve) => {
+          timeoutHandle = setTimeout(() => {
+            resolve(true);
+          }, this.options.shutdown.timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  }
+
+  private async drainActiveTasks(): Promise<void> {
     while (this.activeTasks.size > 0) {
       await Promise.allSettled(Array.from(this.activeTasks));
     }
