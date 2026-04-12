@@ -36,6 +36,7 @@ export interface QueueWorkerOptions {
 
 /** Module-wide defaults used when individual workers omit execution settings. */
 export interface QueueModuleOptions {
+  clientName?: string;
   defaultAttempts?: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency?: number;
@@ -44,6 +45,7 @@ export interface QueueModuleOptions {
 
 /** Normalized queue options resolved once during module registration. */
 export interface NormalizedQueueModuleOptions {
+  clientName?: string;
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;

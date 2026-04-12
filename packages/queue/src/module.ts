@@ -10,6 +10,7 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
   const defaultRateLimiter = normalizeRateLimiter(options.defaultRateLimiter);
 
   return {
+    clientName: options.clientName,
     defaultAttempts: normalizePositiveInteger(options.defaultAttempts, 1),
     defaultBackoff: options.defaultBackoff
       ? {
