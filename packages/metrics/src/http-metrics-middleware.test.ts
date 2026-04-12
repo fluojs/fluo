@@ -96,6 +96,39 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/users/:id",status="200"} 1');
   });
 
+  it('rejects raw path labels unless explicitly allowed', () => {
+    const registry = new Registry();
+
+    expect(() => {
+      new HttpMetricsMiddleware(registry, {
+        pathLabelMode: 'raw',
+      });
+    }).toThrow(
+      'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
+    );
+  });
+
+  it('allows raw path labels only behind an explicit unsafe opt-in', async () => {
+    const registry = new Registry();
+    const middleware = new HttpMetricsMiddleware(registry, {
+      allowUnsafeRawPathLabelMode: true,
+      pathLabelMode: 'raw',
+    });
+
+    const context = createContext('/users/123/orders/88', {
+      orderId: '88',
+      userId: '123',
+    });
+
+    await middleware.handle(context, async () => {
+      context.response.setStatus(200);
+    });
+
+    const metricsText = await registry.metrics();
+
+    expect(metricsText).toContain('http_requests_total{method="GET",path="/users/123/orders/88",status="200"} 1');
+  });
+
   it('does not reuse a param key when multiple params share the same value', async () => {
     const registry = new Registry();
     const middleware = new HttpMetricsMiddleware(registry);

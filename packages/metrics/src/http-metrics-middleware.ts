@@ -36,6 +36,7 @@ export interface HttpMetricsMiddlewareOptions {
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel?: string;
+  allowUnsafeRawPathLabelMode?: boolean;
 }
 
 function readErrorStatusCode(error: unknown): number | undefined {
@@ -70,6 +71,12 @@ export class HttpMetricsMiddleware implements Middleware {
   private readonly unknownPathLabel: string;
 
   constructor(registry: Registry, options: HttpMetricsMiddlewareOptions = {}) {
+    if (options.pathLabelMode === 'raw' && options.allowUnsafeRawPathLabelMode !== true) {
+      throw new Error(
+        'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
+      );
+    }
+
     this.pathLabelMode = options.pathLabelMode ?? 'template';
     this.pathLabelNormalizer = options.pathLabelNormalizer;
     this.unknownPathLabel = options.unknownPathLabel ?? 'UNKNOWN';
