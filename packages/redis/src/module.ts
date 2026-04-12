@@ -80,6 +80,10 @@ export class RedisModule {
    * @param options Redis client options used to construct the shared connection.
    * @returns A module definition that exports {@link REDIS_CLIENT} and {@link RedisService}.
    *
+   * @see RedisModule.forRootNamed
+   * @see getRedisClientToken
+   * @see getRedisServiceToken
+   *
    * @example
    * ```ts
    * import { Module } from '@fluojs/core';
@@ -101,6 +105,48 @@ export class RedisModule {
     });
   }
 
+  /**
+   * Registers one additional named Redis client without changing the default aliases.
+   *
+   * @param name Stable Redis client name used to derive named raw-client and facade tokens.
+   * @param options Redis client options used to construct the named connection.
+   * @returns A module definition that exports the named raw-client token and named `RedisService` token.
+   *
+   * @see getRedisClientToken
+   * @see getRedisServiceToken
+   *
+   * @example
+   * ```ts
+   * import { Module, Inject } from '@fluojs/core';
+   * import type Redis from 'ioredis';
+   * import {
+   *   getRedisClientToken,
+   *   getRedisServiceToken,
+   *   RedisModule,
+   *   RedisService,
+   * } from '@fluojs/redis';
+   *
+   * const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+   * const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
+   *
+   * @Module({
+   *   imports: [
+   *     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+   *     RedisModule.forRootNamed('analytics', { host: 'localhost', port: 6380 }),
+   *   ],
+   * })
+   * export class AppModule {}
+   *
+   * @Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
+   * export class AnalyticsStore {
+   *   constructor(
+   *     private readonly defaultRedis: RedisService,
+   *     private readonly analyticsRedis: RedisService,
+   *     private readonly analyticsClient: Redis,
+   *   ) {}
+   * }
+   * ```
+   */
   static forRootNamed(name: string, options: RedisModuleOptions): ModuleType {
     const clientToken = getRedisClientToken(name);
     const serviceToken = getRedisServiceToken(name);

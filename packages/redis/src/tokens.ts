@@ -1,4 +1,8 @@
-/** Injection token for the shared default `ioredis` client managed by {@link RedisModule}. */
+/**
+ * Injection token for the shared default `ioredis` client managed by {@link RedisModule}.
+ *
+ * @see getRedisClientToken For resolving the default or a named raw-client token through one helper.
+ */
 export const REDIS_CLIENT = Symbol.for('fluo.redis.client');
 
 /** Stable name used when callers request the default Redis client contract. */
@@ -23,6 +27,19 @@ function normalizeRedisClientName(name?: string): string | undefined {
  *
  * @param name Optional Redis client name registered through `RedisModule.forRootNamed(...)`.
  * @returns The default `REDIS_CLIENT` token when `name` is omitted, otherwise a stable named token.
+ *
+ * @example
+ * ```ts
+ * const CACHE_REDIS = getRedisClientToken('cache');
+ *
+ * @Inject(CACHE_REDIS)
+ * export class CacheInspector {
+ *   constructor(private readonly redis: Redis) {}
+ * }
+ * ```
+ *
+ * @see RedisModule.forRootNamed
+ * @see getRedisServiceToken
  */
 export function getRedisClientToken(name?: string): symbol {
   const normalizedName = normalizeRedisClientName(name);
@@ -39,6 +56,8 @@ export function getRedisClientToken(name?: string): symbol {
  *
  * @param name Optional Redis client name registered through `RedisModule.forRootNamed(...)`.
  * @returns A stable component id such as `redis.default` or `redis.jobs`.
+ *
+ * @see getRedisClientToken
  */
 export function getRedisComponentId(name?: string): string {
   return `redis.${normalizeRedisClientName(name) ?? DEFAULT_REDIS_CLIENT_NAME}`;

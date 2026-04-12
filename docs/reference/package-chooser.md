@@ -61,7 +61,7 @@ These rows describe the currently shipped runnable starter matrix. The broader d
 | **Caching** | `@fluojs/cache-manager` |
 | **Redis Shared Service** | `@fluojs/redis` |
 
-Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `RedisService`) with optional named clients layered on through `RedisModule.forRootNamed(...)`.
+Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `RedisService`) with optional named clients layered on through `RedisModule.forRootNamed(...)`. When app code needs to inject one named binding directly, resolve it with `getRedisClientToken(name)` or `getRedisServiceToken(name)`.
 
 ## implement security & auth
 

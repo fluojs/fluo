@@ -22,15 +22,17 @@ function decodeRedisValue(raw: string): unknown {
  * import { Inject } from '@fluojs/core';
  * import { RedisService } from '@fluojs/redis';
  *
+ * @Inject(RedisService)
  * export class SessionStore {
- *   @Inject(RedisService)
- *   private readonly redis: RedisService;
+ *   constructor(private readonly redis: RedisService) {}
  *
  *   async save(sessionId: string, value: object) {
  *     await this.redis.set(`session:${sessionId}`, value, 300);
  *   }
  * }
  * ```
+ *
+ * @see getRedisServiceToken For resolving a named `RedisService` binding.
  */
 @Inject(REDIS_CLIENT)
 export class RedisService {
@@ -93,6 +95,19 @@ export class RedisService {
  *
  * @param name Optional Redis client name registered through `RedisModule.forRootNamed(...)`.
  * @returns `RedisService` for the default client path, otherwise a stable named service token.
+ *
+ * @example
+ * ```ts
+ * const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+ *
+ * @Inject(ANALYTICS_REDIS)
+ * export class AnalyticsStore {
+ *   constructor(private readonly redis: RedisService) {}
+ * }
+ * ```
+ *
+ * @see RedisModule.forRootNamed
+ * @see getRedisClientToken
  */
 export function getRedisServiceToken(name?: string): Token<RedisService> {
   if (getRedisClientToken(name) === REDIS_CLIENT) {

@@ -53,9 +53,9 @@ Inject `RedisService` for high-level operations or `REDIS_CLIENT` for the raw `i
 import { Inject } from '@fluojs/core';
 import { RedisService } from '@fluojs/redis';
 
+@Inject(RedisService)
 export class CacheRepository {
-  @Inject(RedisService)
-  private readonly redis: RedisService;
+  constructor(private readonly redis: RedisService) {}
 
   async saveUser(id: string, user: object) {
     await this.redis.set(`user:${id}`, user, 3600);
@@ -73,15 +73,21 @@ export class CacheRepository {
 
 Use `RedisModule.forRootNamed(name, options)` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` still owns the default `REDIS_CLIENT` and `RedisService` aliases; named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
 
+- Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
+- Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
+import type Redis from 'ioredis';
 import {
+  getRedisClientToken,
   getRedisServiceToken,
   RedisModule,
   RedisService,
 } from '@fluojs/redis';
 
 const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
 
 @Module({
   imports: [
@@ -91,10 +97,12 @@ const ANALYTICS_REDIS = getRedisServiceToken('analytics');
 })
 export class AppModule {}
 
+@Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
 export class AnalyticsStore {
   constructor(
-    @Inject(RedisService) private readonly defaultRedis: RedisService,
-    @Inject(ANALYTICS_REDIS) private readonly analyticsRedis: RedisService,
+    private readonly defaultRedis: RedisService,
+    private readonly analyticsRedis: RedisService,
+    private readonly analyticsClient: Redis,
   ) {}
 }
 ```
@@ -108,9 +116,9 @@ import { Inject } from '@fluojs/core';
 import { REDIS_CLIENT } from '@fluojs/redis';
 import type Redis from 'ioredis';
 
+@Inject(REDIS_CLIENT)
 export class AdvancedService {
-  @Inject(REDIS_CLIENT)
-  private readonly client: Redis;
+  constructor(private readonly client: Redis) {}
 
   async executeComplex() {
     return await this.client.pipeline().set('foo', 'bar').get('foo').exec();
@@ -125,8 +133,10 @@ export class AdvancedService {
 - `RedisModule.forRootNamed(name, options)`: Registers an additional named Redis client without replacing the default aliases.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
-- `getRedisClientToken(name)`: DI token helper for a named raw client.
-- `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade.
+- `getRedisClientToken(name)`: DI token helper for a named raw client. Omitting `name` returns the default `REDIS_CLIENT` token.
+- `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade. Omitting `name` returns the default `RedisService` token.
+- `getRedisComponentId(name)`: Status/dependency id helper used by Redis-consuming packages (`redis.default`, `redis.cache`, etc.).
+- `createRedisPlatformStatusSnapshot(input)`: Adapts Redis connection state into Fluo's platform health/readiness snapshot contract.
 
 ### Types
 - `RedisModuleOptions`: Configuration options passed directly to the `ioredis` constructor.
@@ -140,4 +150,5 @@ export class AdvancedService {
 ## Example Sources
 
 - `packages/redis/src/module.test.ts`: Module lifecycle and DI wiring.
+- `packages/redis/src/public-api.test.ts`: Root-barrel export guard for the documented Redis surface.
 - `packages/redis/src/redis-service.ts`: Facade implementation and codec logic.

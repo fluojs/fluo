@@ -61,7 +61,7 @@
 | **캐싱** | `@fluojs/cache-manager` |
 | **Redis 공유 서비스** | `@fluojs/redis` |
 
-`@fluojs/redis`는 하나의 공유 기본 클라이언트(`REDIS_CLIENT` / `RedisService`)를 제공하고, 필요할 때 `RedisModule.forRootNamed(...)`로 이름 있는 클라이언트를 추가하는 기준 레이어입니다.
+`@fluojs/redis`는 하나의 공유 기본 클라이언트(`REDIS_CLIENT` / `RedisService`)를 제공하고, 필요할 때 `RedisModule.forRootNamed(...)`로 이름 있는 클라이언트를 추가하는 기준 레이어입니다. 앱 코드에서 특정 이름의 바인딩을 직접 주입해야 한다면 `getRedisClientToken(name)` 또는 `getRedisServiceToken(name)`으로 가져옵니다.
 
 ## 보안 및 인증 구현
 
