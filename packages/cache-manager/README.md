@@ -98,6 +98,17 @@ CacheModule.forRoot({
 })
 ```
 
+If you registered multiple Redis clients, set `redis.clientName` to target a named `@fluojs/redis` connection.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  redis: { clientName: 'cache' },
+})
+```
+
+`redis.client` remains the highest-precedence override. Use it only when you need to bypass DI-based client selection entirely.
+
 ### Query-Sensitive Caching
 
 By default, the cache key ignores query parameters. Enable `httpKeyStrategy: 'route+query'` to cache different responses for different search parameters.
