@@ -12,6 +12,7 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 - [Common Patterns](#common-patterns)
   - [Distributed Locking](#distributed-locking)
   - [Dynamic Scheduling](#dynamic-scheduling)
+  - [Bounded Shutdown](#bounded-shutdown)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -130,6 +131,25 @@ class TaskManager {
     this.registry.remove('dynamic-job');
   }
 }
+```
+
+### Bounded Shutdown
+
+`CronModule` drains active task executions during application shutdown, but it now does so with a bounded timeout so one hung task cannot block process termination forever.
+
+By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle.
+
+```typescript
+@Module({
+  imports: [
+    CronModule.forRoot({
+      shutdown: {
+        timeoutMs: 5_000,
+      },
+    }),
+  ],
+})
+class AppModule {}
 ```
 
 ## Public API Overview
