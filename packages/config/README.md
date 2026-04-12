@@ -74,6 +74,8 @@ Configuration is merged in the following order (highest precedence wins):
 3. **Environment File**: Values from the `.env` file (or custom path).
 4. **Defaults**: Values provided in the `defaults` option.
 
+By default, `loadConfig(...)` and `ConfigModule.forRoot(...)` read from the live `process.env`. Pass `processEnv: {}` when you need to opt out of process-env precedence for a specific load.
+
 ### Deep Merging
 Plain objects are deep-merged by key. Arrays and primitive values from higher-precedence sources completely replace lower-precedence ones.
 
@@ -99,4 +101,3 @@ The `validate` function runs after all sources are merged but before the applica
 - `packages/config/src/load.ts`
 - `packages/config/src/service.ts`
 - `packages/config/src/load.test.ts`
-

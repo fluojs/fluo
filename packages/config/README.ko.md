@@ -67,6 +67,8 @@ class MyService {
 
 설정은 `runtimeOverrides` → `process.env` → env 파일 → `defaults` 순서로 병합됩니다.
 
+기본적으로 `loadConfig(...)`와 `ConfigModule.forRoot(...)`는 현재 실행 중인 `process.env`를 읽습니다. 특정 로드에서 process-env 우선순위를 끄려면 `processEnv: {}`를 명시하세요.
+
 ### 객체 단위 딥 머지
 
 일반 객체는 키 기준으로 깊게 병합되고, 배열과 원시값은 더 높은 우선순위 소스가 전체를 덮어씁니다.

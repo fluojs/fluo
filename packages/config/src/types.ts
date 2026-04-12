@@ -32,6 +32,10 @@ export type DotValue<T, K extends string> = K extends keyof T
 export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
+  /**
+   * Process environment snapshot used for precedence over env-file values.
+   * Defaults to the live `process.env`; pass `{}` to disable process-env loading explicitly.
+   */
   processEnv?: NodeJS.ProcessEnv;
   validate?: (raw: ConfigDictionary) => ConfigDictionary;
   defaults?: ConfigDictionary;
