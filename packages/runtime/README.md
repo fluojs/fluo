@@ -10,6 +10,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Behavioral Contracts](#behavioral-contracts)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -119,6 +120,12 @@ class DatabaseModule {}
 class UsersModule {}
 ```
 
+## Behavioral Contracts
+
+- Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests.
+- Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
+- Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
+
 ## Public API Overview
 
 - `fluoFactory`: Static facade for application lifecycle management.
@@ -159,4 +166,3 @@ import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fl
 - [examples/minimal](../../examples/minimal): Smallest possible bootstrap.
 - [examples/realworld-api](../../examples/realworld-api): Full application with complex module wiring.
 - [packages/runtime/src/bootstrap.test.ts](./src/bootstrap.test.ts): Behavioral tests for bootstrap phases.
-
