@@ -2,7 +2,7 @@ import { createServer } from 'node:net';
 
 import { describe, expect, it } from 'vitest';
 
-import { Controller, Get } from '@fluojs/http';
+import { Controller, FromBody, Get, Post, RequestDto } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import {
   bootstrapNodeApplication,
@@ -93,6 +93,52 @@ describe('@fluojs/platform-nodejs', () => {
       });
     } finally {
       await adapter.close();
+    }
+  });
+
+  it('returns 413 when raw Node request bodies exceed maxBodySize', async () => {
+    class EchoBody {
+      @FromBody()
+      value!: string;
+    }
+
+    @Controller('/echo')
+    class EchoController {
+      @Post('/')
+      @RequestDto(EchoBody)
+      echo(input: EchoBody) {
+        return input.value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [EchoController] });
+
+    const port = await findAvailablePort();
+    const app = await FluoFactory.create(AppModule, {
+      adapter: createNodejsAdapter({ maxBodySize: 8, port }),
+    });
+
+    try {
+      await app.listen();
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/echo`, {
+        body: '0123456789',
+        headers: {
+          'content-type': 'text/plain',
+        },
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          message: 'Request body exceeds the size limit.',
+          status: 413,
+        },
+      });
+    } finally {
+      await app.close();
     }
   });
 });
