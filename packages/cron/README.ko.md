@@ -87,6 +87,8 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
+분산 락에 기본 Redis가 아닌 다른 연결을 쓰려면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `distributed.clientName`에 지정하세요.
+
 ### 동적 스케줄링
 
 `SCHEDULING_REGISTRY`를 사용하여 런타임에 작업을 관리할 수 있습니다.
