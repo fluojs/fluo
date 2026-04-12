@@ -1,4 +1,4 @@
-import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
+import { ForbiddenException, type FrameworkRequest, type FrameworkResponse, type MiddlewareContext, type Next } from '@fluojs/http';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
@@ -9,11 +9,11 @@ import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.j
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
-function createRequest(path: string): FrameworkRequest {
+function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
     body: undefined,
     cookies: {},
-    headers: {},
+    headers,
     method: 'GET',
     params: {},
     path,
@@ -50,6 +50,64 @@ function createResponse(): TestResponse {
 }
 
 describe('MetricsModule', () => {
+  it('can disable the scrape endpoint explicitly', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const response = createResponse();
+    await app.dispatch(createRequest('/metrics'), response);
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it('supports route-scoped endpoint middleware for scrape protection', async () => {
+    class MetricsAccessMiddleware {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+          throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+        }
+
+        await next();
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          endpointMiddleware: [MetricsAccessMiddleware],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const forbiddenResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), forbiddenResponse);
+    expect(forbiddenResponse.statusCode).toBe(403);
+
+    const metricsResponse = createResponse();
+    await app.dispatch(createRequest('/metrics', { 'x-metrics-token': 'secret-token' }), metricsResponse);
+
+    expect(metricsResponse.statusCode).toBe(200);
+    expect(String(metricsResponse.body)).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+
+    await app.close();
+  });
+
   it('serves Prometheus text with Node/process metrics', async () => {
     class AppModule {}
 
@@ -263,6 +321,19 @@ describe('MetricsModule', () => {
   it('rejects unsupported providers at runtime', () => {
     expect(() => MetricsModule.forRoot({ provider: 'otel' as unknown as 'prometheus' })).toThrow(
       'MetricsModule provider "otel" is not supported. Use provider "prometheus".',
+    );
+  });
+
+  it('rejects unsafe raw path labels unless explicitly enabled', () => {
+    expect(() =>
+      MetricsModule.forRoot({
+        defaultMetrics: false,
+        http: {
+          pathLabelMode: 'raw',
+        },
+      }),
+    ).toThrow(
+      'HttpMetricsMiddleware pathLabelMode "raw" is disabled by default. Pass allowUnsafeRawPathLabelMode: true only when you have bounded path cardinality.',
     );
   });
 

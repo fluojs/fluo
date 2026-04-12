@@ -38,6 +38,8 @@ import { Module } from '@fluojs/core';
 class AppModule {}
 ```
 
+`MetricsModule.forRoot()` still exposes `GET /metrics` by default. For production deployments, make that endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
+
 ## Common Patterns
 
 ### Normalize HTTP path labels
@@ -48,6 +50,32 @@ MetricsModule.forRoot({
     pathLabelMode: 'template',
     unknownPathLabel: 'UNKNOWN',
   },
+});
+```
+
+`pathLabelMode: 'raw'` is now treated as an unsafe opt-in. You must pass `allowUnsafeRawPathLabelMode: true` only when you can prove the path space is bounded.
+
+### Protect or disable the metrics endpoint
+
+```ts
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+      throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+    }
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
+});
+
+MetricsModule.forRoot({
+  path: false,
 });
 ```
 
@@ -81,6 +109,13 @@ Prometheus metric names must stay unique inside a registry. Shared-registry mode
 - `MetricsService`
 - `METER_PROVIDER`
 - Prometheus-backed helpers for counters, gauges, histograms, and registry access
+
+### Operational defaults
+
+- `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
+- `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
+- HTTP metrics default to template-normalized path labels.
+- Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 
 ## Related Packages
 

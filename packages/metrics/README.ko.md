@@ -47,6 +47,8 @@ class AppModule {}
 // GET /metrics → Prometheus 텍스트 형식
 ```
 
+`MetricsModule.forRoot()`는 기본적으로 `GET /metrics`를 노출합니다. 운영 환경에서는 이 경계를 명시적으로 다루세요. 플랫폼 프록시/네트워크 제어를 붙이기 전까지 `path: false`로 비활성화하거나, 전용 endpoint middleware를 연결하는 방식을 권장합니다.
+
 ## 공통 패턴
 
 ### HTTP 라벨 정규화
@@ -60,6 +62,32 @@ MetricsModule.forRoot({
     unknownPathLabel: 'UNKNOWN',
   },
 })
+```
+
+`pathLabelMode: 'raw'`는 이제 안전하지 않은 명시적 opt-in으로 취급됩니다. 경로 공간이 유한하다는 것을 보장할 수 있을 때만 `allowUnsafeRawPathLabelMode: true`와 함께 사용하세요.
+
+### 메트릭 엔드포인트 보호 또는 비활성화
+
+```typescript
+import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
+
+class MetricsTokenMiddleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (context.request.headers['x-metrics-token'] !== 'secret-token') {
+      throw new ForbiddenException('Metrics endpoint requires x-metrics-token.');
+    }
+
+    await next();
+  }
+}
+
+MetricsModule.forRoot({
+  endpointMiddleware: [MetricsTokenMiddleware],
+});
+
+MetricsModule.forRoot({
+  path: false,
+});
 ```
 
 특수한 경로 매핑이 필요한 경우 커스텀 normalizer를 제공할 수 있습니다.
@@ -121,6 +149,13 @@ MetricsModule.forRoot({
 
 - `static forRoot(options?: MetricsModuleOptions): ModuleType`
   - 메트릭 엔드포인트, 레지스트리 및 선택적 HTTP 모니터링을 설정합니다.
+
+### 운영 기본값
+
+- `path` 기본값은 `'/metrics'`이며, `path: false`를 주면 스크레이프 엔드포인트를 완전히 비활성화합니다.
+- `endpointMiddleware`는 스크레이프 엔드포인트에만 route-scoped middleware를 바인딩합니다.
+- HTTP 메트릭은 기본적으로 템플릿 기반 path label 정규화를 사용합니다.
+- raw path label은 `allowUnsafeRawPathLabelMode: true`가 필요하며, 반드시 경계가 있는 내부 경로에만 제한해야 합니다.
 
 ### `MetricsService`
 

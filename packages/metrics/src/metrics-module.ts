@@ -1,5 +1,5 @@
 import type { Provider } from '@fluojs/di';
-import { Controller, Get, type MiddlewareLike, type RequestContext } from '@fluojs/http';
+import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import { defineModule, type ModuleType, PLATFORM_SHELL, type PlatformShellSnapshot } from '@fluojs/runtime';
 import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Registry } from 'prom-client';
 
@@ -18,6 +18,7 @@ export interface MetricsHttpOptions {
   pathLabelMode?: HttpMetricsPathLabelMode;
   pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
   unknownPathLabel?: string;
+  allowUnsafeRawPathLabelMode?: boolean;
 }
 
 /**
@@ -25,10 +26,11 @@ export interface MetricsHttpOptions {
  */
 export interface MetricsModuleOptions {
   http?: boolean | MetricsHttpOptions;
-  path?: string;
+  path?: string | false;
   provider?: 'prometheus';
   defaultMetrics?: boolean;
   middleware?: MiddlewareLike[];
+  endpointMiddleware?: Array<new (...args: any[]) => Middleware>;
   platformTelemetry?: {
     env?: string;
     instance?: string;
@@ -62,7 +64,7 @@ export class MetricsModule {
     }
 
     const httpOptions = resolveHttpOptions(options.http);
-    const metricsPath = options.path ?? '/metrics';
+    const metricsPath = options.path === undefined ? '/metrics' : options.path;
     const registry = options.registry ?? new PrometheusRegistry();
     const metricsService = new MetricsService(registry);
     const meterProvider = new PrometheusMeterProvider(registry);
@@ -77,9 +79,14 @@ export class MetricsModule {
       collectDefaultMetrics({ register: registry });
     }
 
-    const middleware = httpOptions
-      ? [new HttpMetricsMiddleware(registry, httpOptions), ...(options.middleware ?? [])]
-      : (options.middleware ?? []);
+    const endpointMiddleware = metricsPath
+      ? (options.endpointMiddleware ?? []).map((middlewareClass) => forRoutes(middlewareClass, metricsPath))
+      : [];
+    const middleware = [
+      ...endpointMiddleware,
+      ...(httpOptions ? [new HttpMetricsMiddleware(registry, httpOptions)] : []),
+      ...(options.middleware ?? []),
+    ];
 
     const providers: Provider[] = [
       {
@@ -92,20 +99,28 @@ export class MetricsModule {
       },
     ];
 
-    @Controller('')
-    class MetricsController {
-      @Get(metricsPath)
-      async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
-        await platformTelemetry.refresh(ctx);
-        ctx.response.setHeader('content-type', registry.contentType);
-        return registry.metrics();
+    const controllers: Array<new () => object> = [];
+
+    if (typeof metricsPath === 'string') {
+      const metricsRoutePath = metricsPath;
+
+      @Controller('')
+      class MetricsController {
+        @Get(metricsRoutePath)
+        async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
+          await platformTelemetry.refresh(ctx);
+          ctx.response.setHeader('content-type', registry.contentType);
+          return registry.metrics();
+        }
       }
+
+      controllers.push(MetricsController);
     }
 
     class MetricsRuntimeModule {}
 
     defineModule(MetricsRuntimeModule, {
-      controllers: [MetricsController],
+      controllers,
       middleware,
       providers,
     });
@@ -229,6 +244,7 @@ function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMidd
   }
 
   return {
+    allowUnsafeRawPathLabelMode: http.allowUnsafeRawPathLabelMode,
     pathLabelMode: http.pathLabelMode,
     pathLabelNormalizer: http.pathLabelNormalizer,
     unknownPathLabel: http.unknownPathLabel,
