@@ -27,6 +27,7 @@ export interface RedisCompatibleClient {
  */
 export interface RedisCacheOptions {
   client?: RedisCompatibleClient;
+  clientName?: string;
   scanCount?: number;
 }
 

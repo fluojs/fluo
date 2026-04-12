@@ -1,4 +1,5 @@
 import type { Provider, Container } from '@fluojs/di';
+import { getRedisClientToken } from '@fluojs/redis';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -8,8 +9,6 @@ import { RedisStore } from './stores/redis-store.js';
 import { CacheService } from './service.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions, RedisCompatibleClient } from './types.js';
-
-const REDIS_CLIENT_TOKEN = Symbol.for('fluo.redis.client');
 
 function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): NormalizedCacheModuleOptions {
   return {
@@ -54,15 +53,19 @@ async function resolveRedisClient(
 ): Promise<RedisCompatibleClient> {
   let resolvedClient = options.redis?.client;
 
-  if (!resolvedClient && container.has(REDIS_CLIENT_TOKEN)) {
-    resolvedClient = await container.resolve<RedisCompatibleClient>(REDIS_CLIENT_TOKEN);
+  if (!resolvedClient) {
+    const redisToken = getRedisClientToken(options.redis?.clientName);
+
+    if (container.has(redisToken)) {
+      resolvedClient = await container.resolve<RedisCompatibleClient>(redisToken);
+    }
   }
 
   if (!resolvedClient) {
     throw new Error(
       [
         '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
-        'Install and import @fluojs/redis (createRedisModule) or provide options.redis.client directly.',
+        'Install and import @fluojs/redis, configure options.redis.clientName, or provide options.redis.client directly.',
       ].join(' '),
     );
   }
