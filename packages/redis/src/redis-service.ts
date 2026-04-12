@@ -1,7 +1,7 @@
-import { Inject } from '@fluojs/core';
+import { Inject, type Token } from '@fluojs/core';
 import type Redis from 'ioredis';
 
-import { REDIS_CLIENT } from './tokens.js';
+import { REDIS_CLIENT, getRedisClientToken } from './tokens.js';
 
 function decodeRedisValue(raw: string): unknown {
   try {
@@ -86,4 +86,18 @@ export class RedisService {
   getRawClient(): Redis {
     return this.client;
   }
+}
+
+/**
+ * Resolves the facade token for the default or a named `RedisService` binding.
+ *
+ * @param name Optional Redis client name registered through `RedisModule.forRootNamed(...)`.
+ * @returns `RedisService` for the default client path, otherwise a stable named service token.
+ */
+export function getRedisServiceToken(name?: string): Token<RedisService> {
+  if (getRedisClientToken(name) === REDIS_CLIENT) {
+    return RedisService;
+  }
+
+  return Symbol.for(`fluo.redis.service:${name?.trim()}`) as Token<RedisService>;
 }

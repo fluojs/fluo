@@ -69,6 +69,10 @@ export class CacheRepository {
 
 ## 일반적인 패턴
 
+### 이름 있는 클라이언트
+
+하나의 애플리케이션에서 여러 Redis 연결이 필요하면 `RedisModule.forRootNamed(name, options)`를 사용하세요. `RedisModule.forRoot(options)`는 계속 기본 `REDIS_CLIENT`와 `RedisService` 별칭을 유지하고, 이름 있는 등록은 `getRedisClientToken(name)`과 `getRedisServiceToken(name)`으로 해석합니다.
+
 ### 원시 클라이언트 접근 (Raw Client Access)
 
 파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.
@@ -92,8 +96,11 @@ export class AdvancedService {
 
 ### 핵심 구성 요소
 - `RedisModule`: 전역 Redis 클라이언트 등록 및 수명 주기 훅을 관리합니다.
+- `RedisModule.forRootNamed(name, options)`: 기본 별칭을 유지한 채 추가 Redis 클라이언트를 등록합니다.
 - `RedisService`: JSON 코덱 지원 및 `get`/`set`/`del` 메서드를 제공하는 파사드입니다.
 - `REDIS_CLIENT`: 내부 `ioredis` 인스턴스에 접근하기 위한 DI 토큰입니다.
+- `getRedisClientToken(name)`: 이름 있는 raw client 토큰 헬퍼입니다.
+- `getRedisServiceToken(name)`: 이름 있는 `RedisService` 토큰 헬퍼입니다.
 
 ### 타입
 - `RedisModuleOptions`: `ioredis` 생성자에 전달되는 설정 옵션입니다.

@@ -3,7 +3,7 @@ import type Redis from 'ioredis';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { createRedisPlatformStatusSnapshot } from './status.js';
-import { REDIS_CLIENT } from './tokens.js';
+import { getRedisComponentId, REDIS_CLIENT } from './tokens.js';
 
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
 const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'ready', 'reconnecting', 'wait']);
@@ -29,7 +29,10 @@ function isDisconnectable(status: string): boolean {
  */
 @Inject(REDIS_CLIENT)
 export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdown {
-  constructor(private readonly client: Redis) {}
+  constructor(
+    private readonly client: Redis,
+    private readonly clientName?: string,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     if (!this.shouldConnectOnInit()) {
@@ -57,6 +60,7 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
 
   createPlatformStatusSnapshot() {
     return createRedisPlatformStatusSnapshot({
+      componentId: getRedisComponentId(this.clientName),
       status: this.client.status,
     });
   }

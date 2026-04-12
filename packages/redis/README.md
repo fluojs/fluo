@@ -69,6 +69,10 @@ export class CacheRepository {
 
 ## Common Patterns
 
+### Named Clients
+
+Use `RedisModule.forRootNamed(name, options)` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` still owns the default `REDIS_CLIENT` and `RedisService` aliases; named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
+
 ### Raw Client Access
 
 If you need advanced Redis commands (pipelines, lua scripts, pub/sub), inject the raw client directly.
@@ -92,8 +96,11 @@ export class AdvancedService {
 
 ### Core
 - `RedisModule`: Registers the global Redis client and lifecycle hooks.
+- `RedisModule.forRootNamed(name, options)`: Registers an additional named Redis client without replacing the default aliases.
 - `RedisService`: Facade with JSON codec support and `get`/`set`/`del` methods.
 - `REDIS_CLIENT`: DI token for the underlying `ioredis` instance.
+- `getRedisClientToken(name)`: DI token helper for a named raw client.
+- `getRedisServiceToken(name)`: DI token helper for a named `RedisService` facade.
 
 ### Types
 - `RedisModuleOptions`: Configuration options passed directly to the `ioredis` constructor.

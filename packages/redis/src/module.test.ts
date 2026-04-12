@@ -78,6 +78,8 @@ vi.mock('ioredis', () => ({
 }));
 
 import {
+  getRedisClientToken,
+  getRedisServiceToken,
   RedisModule,
   createRedisPlatformStatusSnapshot,
   REDIS_CLIENT,
@@ -137,6 +139,60 @@ describe('@fluojs/redis', () => {
     await app.close();
 
     expect(mockRedisState.events).toEqual(['connect', 'quit']);
+  });
+
+  it('registers named Redis clients without changing the default aliases', async () => {
+    const NAMED_REDIS_CLIENT = getRedisClientToken('cache');
+    const NAMED_REDIS_SERVICE = getRedisServiceToken('cache');
+
+    @Inject(REDIS_CLIENT)
+    class DefaultClientConsumer {
+      constructor(readonly redis: MockRedisInstance) {}
+    }
+
+    @Inject(NAMED_REDIS_CLIENT)
+    class NamedClientConsumer {
+      constructor(readonly redis: MockRedisInstance) {}
+    }
+
+    @Inject(RedisService, NAMED_REDIS_SERVICE)
+    class RedisFacadeConsumer {
+      constructor(
+        readonly defaultRedis: RedisService,
+        readonly namedRedis: RedisService,
+      ) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [DefaultClientConsumer, NamedClientConsumer, RedisFacadeConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({ db: 0, host: '127.0.0.1', port: 6379 }),
+        RedisModule.forRootNamed('cache', { db: 1, host: '127.0.0.1', port: 6379 }),
+        FeatureModule,
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const defaultConsumer = await app.container.resolve(DefaultClientConsumer);
+    const namedConsumer = await app.container.resolve(NamedClientConsumer);
+    const facadeConsumer = await app.container.resolve(RedisFacadeConsumer);
+
+    expect(mockRedisState.instances).toHaveLength(2);
+    expect(defaultConsumer.redis).toBe(mockRedisState.instances[0]);
+    expect(namedConsumer.redis).toBe(mockRedisState.instances[1]);
+    expect(facadeConsumer.defaultRedis.getRawClient()).toBe(defaultConsumer.redis);
+    expect(facadeConsumer.namedRedis.getRawClient()).toBe(namedConsumer.redis);
+    expect(await app.container.resolve(NAMED_REDIS_SERVICE)).toBe(facadeConsumer.namedRedis);
+    expect(mockRedisState.events).toEqual(['connect', 'connect']);
+
+    await app.close();
+
+    expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
   });
 
   it('falls back to disconnect when quit fails during shutdown', async () => {
@@ -307,6 +363,7 @@ describe('@fluojs/redis', () => {
     expect(snapshot.readiness).toEqual({ critical: true, status: 'ready' });
     expect(snapshot.health).toEqual({ status: 'healthy' });
     expect(snapshot.details).toMatchObject({
+      componentId: undefined,
       connectionState: 'ready',
       lazyConnect: true,
     });

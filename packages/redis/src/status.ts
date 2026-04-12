@@ -1,6 +1,7 @@
 import type Redis from 'ioredis';
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+/** Normalized Redis platform snapshot shape used by health/readiness integrations. */
 export interface PersistencePlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -8,7 +9,9 @@ export interface PersistencePlatformStatusSnapshot {
   details: Record<string, unknown>;
 }
 
+/** Input consumed by the Redis status adapter when translating runtime state. */
 export interface RedisStatusAdapterInput {
+  componentId?: string;
   status: Redis['status'];
 }
 
@@ -66,9 +69,16 @@ function createHealth(input: RedisStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Adapts one Redis client status into Fluo's platform snapshot contract.
+ *
+ * @param input Redis client status and optional component identity.
+ * @returns A normalized snapshot describing readiness, health, ownership, and details.
+ */
 export function createRedisPlatformStatusSnapshot(input: RedisStatusAdapterInput): PersistencePlatformStatusSnapshot {
   return {
     details: {
+      componentId: input.componentId,
       connectionState: input.status,
       lazyConnect: true,
     },
