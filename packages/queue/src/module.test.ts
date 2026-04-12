@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
-import { REDIS_CLIENT } from '@fluojs/redis';
+import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 interface MockQueueConnection {
@@ -416,6 +416,56 @@ describe('@fluojs/queue', () => {
     expect(jobId).toBe('1');
     expect(workerStore.isPrototypeRehydrated).toBe(true);
     expect(workerStore.subject).toBe('welcome:user-1');
+
+    await app.close();
+  });
+
+  it('resolves a named Redis client when clientName is configured', async () => {
+    const NAMED_REDIS_CLIENT = getRedisClientToken('jobs');
+
+    class NamedJob {
+      constructor(public readonly userId: string) {}
+    }
+
+    class WorkerStore {
+      handled: string[] = [];
+    }
+
+    @Inject(WorkerStore)
+    @QueueWorker(NamedJob)
+    class NamedWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: NamedJob): Promise<void> {
+        this.store.handled.push(job.userId);
+      }
+    }
+
+    @Inject(QUEUE)
+    class UserService {
+      constructor(private readonly queue: Queue) {}
+
+      async enqueue(userId: string): Promise<string> {
+        return this.queue.enqueue(new NamedJob(userId));
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ clientName: 'jobs' })],
+      providers: [NamedWorker, UserService, WorkerStore],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: NAMED_REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const userService = await app.container.resolve(UserService);
+    const workerStore = await app.container.resolve(WorkerStore);
+
+    await expect(userService.enqueue('user-9')).resolves.toBe('1');
+    expect(workerStore.handled).toEqual(['user-9']);
 
     await app.close();
   });
