@@ -80,7 +80,7 @@ export class OrderService {
 
 ### 이름 있는 Redis 클라이언트
 
-큐가 기본 Redis 대신 다른 연결을 사용해야 한다면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `clientName`에 지정하세요.
+`clientName`을 생략하면 애플리케이션의 기본 `@fluojs/redis` 클라이언트를 계속 사용합니다. 큐가 기본 Redis 대신 다른 연결을 사용해야 한다면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `clientName`에 지정하세요.
 
 ```typescript
 QueueModule.forRoot({ clientName: 'jobs' })
