@@ -47,17 +47,17 @@ describe('loadConfig', () => {
     });
   });
 
-  it('reads live process.env by default', () => {
+  it('does not read live process.env unless it is passed explicitly', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-live-process-env-'));
     const previousValue = process.env.FLUO_CONFIG_TEST_ONLY;
     process.env.FLUO_CONFIG_TEST_ONLY = 'from-live-process-env';
 
     try {
       const implicit = loadConfig({ cwd });
-      const explicitOptOut = loadConfig({ cwd, processEnv: {} });
+      const explicit = loadConfig({ cwd, processEnv: process.env });
 
-      expect(implicit['FLUO_CONFIG_TEST_ONLY']).toBe('from-live-process-env');
-      expect(explicitOptOut['FLUO_CONFIG_TEST_ONLY']).toBeUndefined();
+      expect(implicit['FLUO_CONFIG_TEST_ONLY']).toBeUndefined();
+      expect(explicit['FLUO_CONFIG_TEST_ONLY']).toBe('from-live-process-env');
     } finally {
       if (previousValue === undefined) {
         delete process.env.FLUO_CONFIG_TEST_ONLY;
@@ -591,12 +591,12 @@ describe('ConfigService', () => {
 });
 
 describe('ConfigModule', () => {
-  it('reads live process.env by default through ConfigService registration', () => {
+  it('uses the provided processEnv snapshot through ConfigService registration', () => {
     const previousValue = process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
     process.env.FLUO_CONFIG_MODULE_TEST_ONLY = 'from-module-process-env';
 
     try {
-      const moduleRef = ConfigModule.forRoot();
+      const moduleRef = ConfigModule.forRoot({ processEnv: process.env });
       const providers = getModuleMetadata(moduleRef)?.providers as
         | Array<{ provide?: unknown; useFactory?: () => unknown }>
         | undefined;
@@ -613,12 +613,12 @@ describe('ConfigModule', () => {
     }
   });
 
-  it('lets ConfigModule callers disable process.env precedence explicitly', () => {
+  it('does not read live process.env when ConfigModule callers omit processEnv', () => {
     const previousValue = process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
     process.env.FLUO_CONFIG_MODULE_TEST_ONLY = 'from-module-process-env';
 
     try {
-      const moduleRef = ConfigModule.forRoot({ processEnv: {} });
+      const moduleRef = ConfigModule.forRoot();
       const providers = getModuleMetadata(moduleRef)?.providers as
         | Array<{ provide?: unknown; useFactory?: () => unknown }>
         | undefined;

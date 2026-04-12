@@ -45,7 +45,7 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
   const cwd = options.cwd ?? process.cwd();
   const envFile = options.envFilePath ?? options.envFile ?? join(cwd, '.env');
   const defaults = options.defaults ?? {};
-  const processEnv = options.processEnv ?? process.env;
+  const processEnv = options.processEnv ?? {};
   const safeProcessEnv = sanitizeProcessEnv(processEnv);
   const runtimeOverrides = options.runtimeOverrides ?? {};
 
