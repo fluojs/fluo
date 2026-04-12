@@ -15,7 +15,7 @@ Performance is a first-class citizen in fluo. The caching system provides a unif
 
 - **`@fluojs/cache-manager` (The Facade)**: Defines the `CacheService` for manual operations and the `CacheInterceptor` for HTTP. It manages the pluggable store architecture.
 - **`@fluojs/http` (The Hook)**: Provides the lifecycle hooks required for the interceptor to read from and write to the cache during request processing.
-- **`@fluojs/redis` (The Distributed Store)**: An optional package that allows your cache to persist across multiple application instances via Redis.
+- **`@fluojs/redis` (The Distributed Store)**: An optional package that allows your cache to persist across multiple application instances via Redis. Keep `CacheModule` on the default Redis path, or point it at a named registration with `redis.clientName` when cache traffic should use a dedicated connection.
 
 ## Typical Workflows
 
