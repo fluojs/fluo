@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { EventEmitter } from 'node:events';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +10,8 @@ type HeaderValue = string | string[] | number;
 function createMockServerResponse(): ServerResponse {
   const headers: Record<string, HeaderValue> = {};
 
-  return {
+  return Object.assign(new EventEmitter(), {
+    destroyed: false,
     end() {},
     getHeader(name: string) {
       return headers[name.toLowerCase()];
@@ -26,7 +28,7 @@ function createMockServerResponse(): ServerResponse {
     },
     statusCode: 200,
     writableEnded: false,
-  } as unknown as ServerResponse;
+  }) as unknown as ServerResponse;
 }
 
 describe('createFrameworkResponse', () => {
@@ -84,5 +86,25 @@ describe('createFrameworkResponse', () => {
     expect(compression.write).toHaveBeenCalledOnce();
     expect(endSpy).not.toHaveBeenCalled();
     expect(frameworkResponse.committed).toBe(true);
+  });
+
+  it('settles waitForDrain when the response closes before drain', async () => {
+    const rawResponse = createMockServerResponse();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    const waitForDrain = frameworkResponse.stream?.waitForDrain?.();
+    rawResponse.emit('close');
+
+    await expect(waitForDrain).resolves.toBeUndefined();
+  });
+
+  it('settles waitForDrain when the response errors before drain', async () => {
+    const rawResponse = createMockServerResponse();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    const waitForDrain = frameworkResponse.stream?.waitForDrain?.();
+    rawResponse.emit('error', new Error('socket failed'));
+
+    await expect(waitForDrain).resolves.toBeUndefined();
   });
 });

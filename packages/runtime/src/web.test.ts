@@ -94,4 +94,53 @@ describe('dispatchWebRequest', () => {
     expect(body).toContain('event: ready');
     expect(body).toContain('data: {"ready":true}');
   });
+
+  it('rejects oversized streaming request bodies before reading unlimited bytes', async () => {
+    let producedChunks = 0;
+
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch() {
+          throw new Error('should not dispatch oversized request');
+        },
+      },
+      maxBodySize: 1_000_000,
+      request: new Request(
+        'https://runtime.test/upload',
+        {
+          body: new ReadableStream<Uint8Array>({
+            pull(controller) {
+              producedChunks += 1;
+
+              if (producedChunks === 1) {
+                controller.enqueue(new Uint8Array(600_000));
+                return;
+              }
+
+              if (producedChunks === 2) {
+                controller.enqueue(new Uint8Array(600_000));
+                return;
+              }
+
+              controller.close();
+            },
+          }),
+          duplex: 'half',
+          headers: {
+            'content-type': 'text/plain',
+          },
+          method: 'POST',
+        } as RequestInit & { duplex: 'half' },
+      ),
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'Request body exceeds the size limit.',
+        status: 413,
+      },
+    });
+    expect(producedChunks).toBeLessThanOrEqual(3);
+  });
 });

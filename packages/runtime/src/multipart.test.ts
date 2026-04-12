@@ -97,4 +97,28 @@ describe('parseMultipart', () => {
     await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
     await expect(result).rejects.toThrow('Exceeded maximum file count of 1.');
   });
+
+  it('rejects multipart payloads that exceed the configured total size limit', async () => {
+    const form = new FormData();
+    form.append('name', 'Ada Lovelace');
+    form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+    const request = new Request('http://localhost/uploads', {
+      body: form,
+      method: 'POST',
+    });
+
+    const result = parseMultipart(
+      {
+        body: request.body,
+        headers: Object.fromEntries(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+      { maxTotalSize: 10 },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
+    await expect(result).rejects.toThrow('Multipart body exceeds the maximum size of 10 bytes.');
+  });
 });
