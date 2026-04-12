@@ -1,9 +1,8 @@
 import type { Provider } from '@fluojs/di';
+import { getRedisClientToken } from '@fluojs/redis';
 
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError, withIndicatorTimeout } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
-
-const REDIS_CLIENT = Symbol.for('fluo.redis.client');
 
 interface RedisClientLike {
   ping?: () => Promise<unknown>;
@@ -12,6 +11,7 @@ interface RedisClientLike {
 /** Options for probing Redis connectivity. */
 export interface RedisHealthIndicatorOptions {
   client?: RedisClientLike;
+  clientName?: string;
   key?: string;
   ping?: () => Promise<unknown> | unknown;
   timeoutMs?: number;
@@ -51,9 +51,11 @@ export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions 
  * @returns A factory provider that exposes `RedisHealthIndicator` from the DI container.
  */
 export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndicatorOptions, 'client'> = {}): Provider {
+  const indicatorProviderToken = Symbol('fluo.terminus.redis-health-indicator');
+
   return {
-    inject: [REDIS_CLIENT],
-    provide: RedisHealthIndicator,
+    inject: [getRedisClientToken(options.clientName)],
+    provide: indicatorProviderToken,
     useFactory: (client: unknown) => new RedisHealthIndicator({ ...options, client: client as RedisClientLike }),
   };
 }

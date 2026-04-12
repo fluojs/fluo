@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { REDIS_CLIENT } from '@fluojs/redis';
+import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule, type PlatformComponent } from '@fluojs/runtime';
 
 import { MemoryHealthIndicator } from './indicators/memory.js';
@@ -284,6 +284,76 @@ describe('TerminusModule.forRoot', () => {
     await app.dispatch(createRequest('/ready'), readyResponse);
     expect(readyResponse.statusCode).toBe(503);
     expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
+  it('supports default and named redis indicator providers without token collisions', async () => {
+    const namedRedisToken = getRedisClientToken('cache');
+
+    class RedisIndicatorModule {}
+    defineModule(RedisIndicatorModule, {
+      exports: [REDIS_CLIENT, namedRedisToken],
+      global: true,
+      providers: [
+        {
+          provide: REDIS_CLIENT,
+          useValue: {
+            ping: async () => 'PONG',
+          },
+        },
+        {
+          provide: namedRedisToken,
+          useValue: {
+            ping: async () => 'PONG',
+          },
+        },
+      ],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        RedisIndicatorModule,
+        TerminusModule.forRoot({
+          indicatorProviders: [
+            createRedisHealthIndicatorProvider({ key: 'redis' }),
+            createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+          ],
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+    expect(healthResponse.statusCode).toBe(200);
+    expect(healthResponse.body).toMatchObject({
+      details: {
+        'cache-redis': {
+          status: 'up',
+        },
+        redis: {
+          status: 'up',
+        },
+      },
+      status: 'ok',
+    });
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: [],
+      },
+    });
+    expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+      expect.arrayContaining(['redis', 'cache-redis']),
+    );
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+    expect(readyResponse.statusCode).toBe(200);
+    expect(readyResponse.body).toEqual({ status: 'ready' });
 
     await app.close();
   });
