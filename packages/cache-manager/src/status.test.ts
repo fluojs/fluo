@@ -24,7 +24,7 @@ describe('createCacheManagerPlatformStatusSnapshot', () => {
   it('keeps readiness degraded (not not-ready) when cache is non-critical and backing store is down', () => {
     const snapshot = createCacheManagerPlatformStatusSnapshot({
       backingStoreReady: false,
-      dependencyId: 'redis.default',
+      dependencyId: 'redis.cache',
       storeKind: 'redis',
     });
 
@@ -53,7 +53,7 @@ describe('createCacheManagerPlatformDiagnosticIssues', () => {
   it('emits warning diagnostics with fixHint for non-critical cache degradation', () => {
     const issues = createCacheManagerPlatformDiagnosticIssues({
       backingStoreReady: false,
-      dependencyId: 'redis.default',
+      dependencyId: 'redis.cache',
       storeKind: 'redis',
     });
 
@@ -61,7 +61,7 @@ describe('createCacheManagerPlatformDiagnosticIssues', () => {
     expect(issues[0]).toMatchObject({
       code: 'CACHE_MANAGER_BACKING_STORE_NOT_READY',
       componentId: 'cache-manager.default',
-      dependsOn: ['redis.default'],
+      dependsOn: ['redis.cache'],
       severity: 'warning',
     });
     expect(issues[0]?.fixHint).toContain('cacheCriticalPath');
