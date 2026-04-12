@@ -76,7 +76,7 @@ TerminusModule.forRoot({
 });
 ```
 
-이름 있는 Redis 연결을 점검하려면 `clientName`을 전달해 기본 클라이언트 대신 해당 named token을 해석하게 하세요.
+`clientName`을 생략하면 기본 Redis 클라이언트를 계속 점검합니다. 이름 있는 Redis 연결을 점검하려면 `clientName`을 전달해 기본 클라이언트 대신 해당 named token을 해석하게 하세요.
 
 ```typescript
 TerminusModule.forRoot({

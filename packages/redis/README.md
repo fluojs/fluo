@@ -73,6 +73,32 @@ export class CacheRepository {
 
 Use `RedisModule.forRootNamed(name, options)` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` still owns the default `REDIS_CLIENT` and `RedisService` aliases; named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
 
+```typescript
+import { Module, Inject } from '@fluojs/core';
+import {
+  getRedisServiceToken,
+  RedisModule,
+  RedisService,
+} from '@fluojs/redis';
+
+const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRootNamed('analytics', { host: 'localhost', port: 6380 }),
+  ],
+})
+export class AppModule {}
+
+export class AnalyticsStore {
+  constructor(
+    @Inject(RedisService) private readonly defaultRedis: RedisService,
+    @Inject(ANALYTICS_REDIS) private readonly analyticsRedis: RedisService,
+  ) {}
+}
+```
+
 ### Raw Client Access
 
 If you need advanced Redis commands (pipelines, lua scripts, pub/sub), inject the raw client directly.

@@ -87,7 +87,25 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
-분산 락에 기본 Redis가 아닌 다른 연결을 쓰려면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `distributed.clientName`에 지정하세요.
+`distributed.clientName`을 생략하면 위의 기본 Redis 등록을 계속 사용합니다. 분산 락에 기본 Redis가 아닌 다른 연결을 쓰려면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `distributed.clientName`에 지정하세요.
+
+```typescript
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRootNamed('locks', { host: 'localhost', port: 6380 }),
+    CronModule.forRoot({
+      distributed: {
+        clientName: 'locks',
+        enabled: true,
+        keyPrefix: 'fluo:cron:lock',
+        lockTtlMs: 30_000,
+      },
+    }),
+  ],
+})
+class MultiRedisCronModule {}
+```
 
 ### 동적 스케줄링
 

@@ -73,6 +73,32 @@ export class CacheRepository {
 
 하나의 애플리케이션에서 여러 Redis 연결이 필요하면 `RedisModule.forRootNamed(name, options)`를 사용하세요. `RedisModule.forRoot(options)`는 계속 기본 `REDIS_CLIENT`와 `RedisService` 별칭을 유지하고, 이름 있는 등록은 `getRedisClientToken(name)`과 `getRedisServiceToken(name)`으로 해석합니다.
 
+```typescript
+import { Module, Inject } from '@fluojs/core';
+import {
+  getRedisServiceToken,
+  RedisModule,
+  RedisService,
+} from '@fluojs/redis';
+
+const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRootNamed('analytics', { host: 'localhost', port: 6380 }),
+  ],
+})
+export class AppModule {}
+
+export class AnalyticsStore {
+  constructor(
+    @Inject(RedisService) private readonly defaultRedis: RedisService,
+    @Inject(ANALYTICS_REDIS) private readonly analyticsRedis: RedisService,
+  ) {}
+}
+```
+
 ### 원시 클라이언트 접근 (Raw Client Access)
 
 파이프라인, Lua 스크립트, Pub/Sub 등 복잡한 Redis 명령이 필요한 경우 원시 클라이언트를 직접 주입받아 사용합니다.

@@ -61,6 +61,8 @@
 | **캐싱** | `@fluojs/cache-manager` |
 | **Redis 공유 서비스** | `@fluojs/redis` |
 
+`@fluojs/redis`는 하나의 공유 기본 클라이언트(`REDIS_CLIENT` / `RedisService`)를 제공하고, 필요할 때 `RedisModule.forRootNamed(...)`로 이름 있는 클라이언트를 추가하는 기준 레이어입니다.
+
 ## 보안 및 인증 구현
 
 > _"라우트를 보호하고 인증을 처리해야 합니다."_
@@ -97,6 +99,8 @@
 | **OpenAPI / Swagger** | `@fluojs/openapi` |
 | **메트릭 (Prometheus)** | `@fluojs/metrics` |
 | **헬스 체크** | `@fluojs/terminus` |
+
+`@fluojs/queue`, `@fluojs/cron`, `@fluojs/cache-manager`, `@fluojs/terminus`는 모두 기본 Redis 경로와 함께 그대로 동작하며, 특정 패키지에서 이름 있는 Redis 등록을 써야 할 때만 `clientName`을 추가하면 됩니다.
 
 ---
 

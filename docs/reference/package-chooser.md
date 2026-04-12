@@ -61,6 +61,8 @@ These rows describe the currently shipped runnable starter matrix. The broader d
 | **Caching** | `@fluojs/cache-manager` |
 | **Redis Shared Service** | `@fluojs/redis` |
 
+Use `@fluojs/redis` when you want one shared default client (`REDIS_CLIENT` / `RedisService`) with optional named clients layered on through `RedisModule.forRootNamed(...)`.
+
 ## implement security & auth
 
 > _"I need to secure my routes and handle authentication."_
@@ -97,6 +99,8 @@ These rows describe the currently shipped runnable starter matrix. The broader d
 | **OpenAPI / Swagger** | `@fluojs/openapi` |
 | **Metrics (Prometheus)** | `@fluojs/metrics` |
 | **Health Checks** | `@fluojs/terminus` |
+
+`@fluojs/queue`, `@fluojs/cron`, `@fluojs/cache-manager`, and `@fluojs/terminus` all keep working with the default Redis path; add `clientName` only when a named Redis registration should take over that package's dependency edge.
 
 ---
 

@@ -87,7 +87,25 @@ import { RedisModule } from '@fluojs/redis';
 class AppModule {}
 ```
 
-To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRootNamed(...)`.
+Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRootNamed(...)`.
+
+```typescript
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRootNamed('locks', { host: 'localhost', port: 6380 }),
+    CronModule.forRoot({
+      distributed: {
+        clientName: 'locks',
+        enabled: true,
+        keyPrefix: 'fluo:cron:lock',
+        lockTtlMs: 30_000,
+      },
+    }),
+  ],
+})
+class MultiRedisCronModule {}
+```
 
 ### Dynamic Scheduling
 

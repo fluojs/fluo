@@ -100,6 +100,8 @@ CacheModule.forRoot({
 
 If you registered multiple Redis clients, set `redis.clientName` to target a named `@fluojs/redis` connection.
 
+Leave `redis.clientName` unset to keep using the default Redis client resolved through `REDIS_CLIENT`.
+
 ```typescript
 CacheModule.forRoot({
   store: 'redis',
