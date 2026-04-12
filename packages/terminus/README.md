@@ -76,6 +76,17 @@ TerminusModule.forRoot({
 });
 ```
 
+If the indicator should use a named Redis connection, pass `clientName` so the provider resolves that named client token instead of the default one.
+
+```typescript
+TerminusModule.forRoot({
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' }),
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
 ### Failure Semantics
 
 When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:

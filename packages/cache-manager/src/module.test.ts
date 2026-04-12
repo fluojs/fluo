@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Controller, Get, Post, UseInterceptors, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import { CacheEvict } from './decorators.js';
@@ -10,8 +11,6 @@ import { CacheInterceptor } from './interceptor.js';
 import { CacheService } from './service.js';
 import { CacheModule } from './module.js';
 import type { RedisCompatibleClient } from './types.js';
-
-const REDIS_CLIENT_TOKEN = Symbol.for('fluo.redis.client');
 
 class MockRedisClient implements RedisCompatibleClient {
   readonly storage = new Map<string, string>();
@@ -147,7 +146,7 @@ describe('CacheModule.forRoot', () => {
 
     const redisClient = new MockRedisClient();
     const app = await bootstrapApplication({
-      providers: [{ provide: REDIS_CLIENT_TOKEN, useValue: redisClient }],
+      providers: [{ provide: REDIS_CLIENT, useValue: redisClient }],
       rootModule: AppModule,
     });
     const consumer = await app.container.resolve(Consumer);
@@ -155,6 +154,75 @@ describe('CacheModule.forRoot', () => {
     await consumer.cache.set('/users', { count: 3 }, 30);
 
     await expect(consumer.cache.get('/users')).resolves.toEqual({ count: 3 });
+
+    await app.close();
+  });
+
+  it('uses a named redis client when redis.clientName is configured', async () => {
+    @Inject(CacheService)
+    class Consumer {
+      constructor(readonly cache: CacheService) {}
+    }
+
+    const namedRedisToken = getRedisClientToken('cache');
+    const redisClient = new MockRedisClient();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CacheModule.forRoot({ store: 'redis', redis: { clientName: 'cache' } })],
+      providers: [Consumer],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: namedRedisToken, useValue: redisClient }],
+      rootModule: AppModule,
+    });
+    const consumer = await app.container.resolve(Consumer);
+
+    await consumer.cache.set('/named', { count: 7 }, 30);
+
+    await expect(consumer.cache.get('/named')).resolves.toEqual({ count: 7 });
+    expect(JSON.parse(redisClient.storage.get('fluo:cache:/named') ?? 'null')).toMatchObject({
+      value: { count: 7 },
+    });
+
+    await app.close();
+  });
+
+  it('prefers an explicit redis client over redis.clientName', async () => {
+    @Inject(CacheService)
+    class Consumer {
+      constructor(readonly cache: CacheService) {}
+    }
+
+    const namedRedisToken = getRedisClientToken('cache');
+    const explicitClient = new MockRedisClient();
+    const namedClient = new MockRedisClient();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CacheModule.forRoot({
+        store: 'redis',
+        redis: {
+          client: explicitClient,
+          clientName: 'cache',
+        },
+      })],
+      providers: [Consumer],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: namedRedisToken, useValue: namedClient }],
+      rootModule: AppModule,
+    });
+    const consumer = await app.container.resolve(Consumer);
+
+    await consumer.cache.set('/override', { count: 11 }, 30);
+
+    expect(JSON.parse(explicitClient.storage.get('fluo:cache:/override') ?? 'null')).toMatchObject({
+      value: { count: 11 },
+    });
+    expect(namedClient.storage.has('fluo:cache:/override')).toBe(false);
 
     await app.close();
   });

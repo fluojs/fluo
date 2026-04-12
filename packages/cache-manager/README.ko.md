@@ -98,6 +98,17 @@ CacheModule.forRoot({
 })
 ```
 
+여러 Redis 클라이언트를 등록했다면 `redis.clientName`으로 사용할 `@fluojs/redis` 연결을 지정할 수 있습니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  redis: { clientName: 'cache' },
+})
+```
+
+`redis.client`는 여전히 가장 높은 우선순위의 명시적 override입니다. DI 기반 선택을 완전히 우회해야 할 때만 사용하세요.
+
 ### 쿼리 매개변수 기반 캐싱
 
 기본적으로 캐시 키는 쿼리 매개변수를 무시합니다. 검색 조건 등에 따라 다른 응답을 캐싱하려면 `httpKeyStrategy: 'route+query'`를 활성화하세요.
