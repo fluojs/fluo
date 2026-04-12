@@ -47,17 +47,17 @@ describe('loadConfig', () => {
     });
   });
 
-  it('does not read live process.env unless it is passed explicitly', () => {
+  it('reads live process.env by default', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-live-process-env-'));
     const previousValue = process.env.FLUO_CONFIG_TEST_ONLY;
     process.env.FLUO_CONFIG_TEST_ONLY = 'from-live-process-env';
 
     try {
       const implicit = loadConfig({ cwd });
-      const explicit = loadConfig({ cwd, processEnv: process.env });
+      const explicitOptOut = loadConfig({ cwd, processEnv: {} });
 
-      expect(implicit['FLUO_CONFIG_TEST_ONLY']).toBeUndefined();
-      expect(explicit['FLUO_CONFIG_TEST_ONLY']).toBe('from-live-process-env');
+      expect(implicit['FLUO_CONFIG_TEST_ONLY']).toBe('from-live-process-env');
+      expect(explicitOptOut['FLUO_CONFIG_TEST_ONLY']).toBeUndefined();
     } finally {
       if (previousValue === undefined) {
         delete process.env.FLUO_CONFIG_TEST_ONLY;
@@ -591,6 +591,50 @@ describe('ConfigService', () => {
 });
 
 describe('ConfigModule', () => {
+  it('reads live process.env by default through ConfigService registration', () => {
+    const previousValue = process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
+    process.env.FLUO_CONFIG_MODULE_TEST_ONLY = 'from-module-process-env';
+
+    try {
+      const moduleRef = ConfigModule.forRoot();
+      const providers = getModuleMetadata(moduleRef)?.providers as
+        | Array<{ provide?: unknown; useFactory?: () => unknown }>
+        | undefined;
+      const configProvider = providers?.find((provider) => provider.provide === ConfigService);
+      const service = configProvider?.useFactory?.() as ConfigService | undefined;
+
+      expect(service?.get('FLUO_CONFIG_MODULE_TEST_ONLY')).toBe('from-module-process-env');
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
+      } else {
+        process.env.FLUO_CONFIG_MODULE_TEST_ONLY = previousValue;
+      }
+    }
+  });
+
+  it('lets ConfigModule callers disable process.env precedence explicitly', () => {
+    const previousValue = process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
+    process.env.FLUO_CONFIG_MODULE_TEST_ONLY = 'from-module-process-env';
+
+    try {
+      const moduleRef = ConfigModule.forRoot({ processEnv: {} });
+      const providers = getModuleMetadata(moduleRef)?.providers as
+        | Array<{ provide?: unknown; useFactory?: () => unknown }>
+        | undefined;
+      const configProvider = providers?.find((provider) => provider.provide === ConfigService);
+      const service = configProvider?.useFactory?.() as ConfigService | undefined;
+
+      expect(service?.get('FLUO_CONFIG_MODULE_TEST_ONLY')).toBeUndefined();
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.FLUO_CONFIG_MODULE_TEST_ONLY;
+      } else {
+        process.env.FLUO_CONFIG_MODULE_TEST_ONLY = previousValue;
+      }
+    }
+  });
+
   it('registers as global by default', () => {
     const moduleRef = ConfigModule.forRoot();
 
