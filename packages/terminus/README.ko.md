@@ -76,6 +76,17 @@ TerminusModule.forRoot({
 });
 ```
 
+이름 있는 Redis 연결을 점검하려면 `clientName`을 전달해 기본 클라이언트 대신 해당 named token을 해석하게 하세요.
+
+```typescript
+TerminusModule.forRoot({
+  indicatorProviders: [
+    createRedisHealthIndicatorProvider({ key: 'redis' }),
+    createRedisHealthIndicatorProvider({ clientName: 'cache', key: 'cache-redis' }),
+  ],
+});
+```
+
 ### 실패 시맨틱
 
 인디케이터가 실패하면 `HealthCheckError`를 던집니다. `TerminusHealthService`는 이 실패들을 모아 보고서를 작성합니다.
