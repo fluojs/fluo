@@ -1,5 +1,5 @@
 import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http';
-import type { Application, ModuleType, MultipartOptions } from '@fluojs/runtime';
+import type { Application, ApplicationLogger, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
@@ -9,11 +9,13 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import { dispatchWebRequest } from '@fluojs/runtime/web';
 
+/** Listen target metadata reported by `Deno.serve(...)` callbacks. */
 export interface DenoServeOnListenInfo {
   hostname: string;
   port: number;
 }
 
+/** Options forwarded to the Deno-native `serve(...)` implementation. */
 export interface DenoServeOptions {
   hostname?: string;
   onListen?: (localAddr: DenoServeOnListenInfo) => void;
@@ -21,49 +23,65 @@ export interface DenoServeOptions {
   signal?: AbortSignal;
 }
 
+/** Minimal controller contract returned by `Deno.serve(...)`. */
 export interface DenoServeController {
   finished: Promise<void>;
   shutdown(): Promise<void> | void;
 }
 
+/** Deno shutdown signals supported by `runDenoApplication(...)`. */
+export type DenoApplicationSignal = 'SIGINT' | 'SIGTERM';
+
+/** Message payloads delivered through Deno server websocket bindings. */
 export type DenoWebSocketMessage = Blob | string;
 
+/** Server-side websocket shape used by the Deno platform binding seam. */
 export interface DenoServerWebSocket extends Pick<WebSocket, 'addEventListener' | 'close' | 'removeEventListener' | 'send'> {
   readonly readyState: number;
 }
 
+/** Result returned when the Deno runtime upgrades a request to websocket mode. */
 export interface DenoWebSocketUpgradeResult<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
   response: Response;
   socket: TSocket;
 }
 
+/** Function signature for `Deno.upgradeWebSocket(...)` style adapters. */
 export type DenoUpgradeWebSocketFunction<TSocket extends DenoServerWebSocket = DenoServerWebSocket> = (
   request: Request,
 ) => DenoWebSocketUpgradeResult<TSocket>;
 
+/** Host wrapper that exposes websocket upgrade support to binding integrations. */
 export interface DenoWebSocketUpgradeHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
   upgrade(request: Request): DenoWebSocketUpgradeResult<TSocket>;
 }
 
+/** Official Deno websocket binding contract consumed by `@fluojs/websockets/deno`. */
 export interface DenoWebSocketBinding<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
   fetch(request: Request, host: DenoWebSocketUpgradeHost<TSocket>): Response | Promise<Response>;
 }
 
+/** Hook surface exposed by the Deno HTTP adapter for websocket bindings. */
 export interface DenoWebSocketBindingHost<TSocket extends DenoServerWebSocket = DenoServerWebSocket> {
   configureWebSocketBinding(binding: DenoWebSocketBinding<TSocket> | undefined): void;
 }
 
+/** Native request handler shape accepted by Deno's HTTP server runtime. */
 export type DenoServeHandler = (request: Request) => Response | Promise<Response>;
+/** Function signature for a pluggable Deno serve implementation. */
 export type DenoServeFunction = (
   options: DenoServeOptions,
   handler: DenoServeHandler,
 ) => DenoServeController;
 
 type DenoGlobalLike = {
+  addSignalListener?: (signal: DenoApplicationSignal, handler: () => void) => void;
+  removeSignalListener?: (signal: DenoApplicationSignal, handler: () => void) => void;
   serve: DenoServeFunction;
   upgradeWebSocket: DenoUpgradeWebSocketFunction;
 };
 
+/** Transport and parsing options for the Deno HTTP adapter factory. */
 export interface DenoAdapterOptions {
   hostname?: string;
   maxBodySize?: number;
@@ -75,10 +93,13 @@ export interface DenoAdapterOptions {
   upgradeWebSocket?: DenoUpgradeWebSocketFunction;
 }
 
+/** Bootstrap options for creating a Deno-backed app without auto-running it. */
 export interface BootstrapDenoApplicationOptions extends BootstrapHttpAdapterApplicationOptions, DenoAdapterOptions {
 }
 
+/** Run-helper options for Deno apps, including optional signal wiring. */
 export interface RunDenoApplicationOptions extends RunHttpAdapterApplicationOptions, DenoAdapterOptions {
+  shutdownSignals?: false | readonly DenoApplicationSignal[];
 }
 
 const DEFAULT_HOSTNAME = '0.0.0.0';
@@ -91,6 +112,9 @@ declare global {
   }
 }
 
+/**
+ * Deno-backed HTTP adapter that preserves request draining and websocket binding seams.
+ */
 export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   private abortController?: AbortController;
   private closeInFlight?: Promise<void>;
@@ -246,6 +270,12 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 }
 
+/**
+ * Create the canonical Deno HTTP adapter instance.
+ *
+ * @param options Transport, parsing, and websocket-host configuration for the Deno runtime.
+ * @returns A Deno-backed `HttpApplicationAdapter`.
+ */
 export function createDenoAdapter(options: DenoAdapterOptions = {}): DenoHttpApplicationAdapter {
   return new DenoHttpApplicationAdapter({
     ...options,
@@ -254,6 +284,13 @@ export function createDenoAdapter(options: DenoAdapterOptions = {}): DenoHttpApp
   });
 }
 
+/**
+ * Bootstrap a Deno-backed application shell without the quick-start run helper.
+ *
+ * @param rootModule Root module compiled by the Fluo runtime.
+ * @param options Bootstrap-time Deno adapter and runtime options.
+ * @returns An initialized application shell that can be listened to later.
+ */
 export async function bootstrapDenoApplication(
   rootModule: ModuleType,
   options: BootstrapDenoApplicationOptions = {},
@@ -261,12 +298,63 @@ export async function bootstrapDenoApplication(
   return await bootstrapHttpAdapterApplication(rootModule, options, createDenoAdapter(options));
 }
 
+/**
+ * Bootstrap and run a Deno-backed application with optional shutdown signal wiring.
+ *
+ * @param rootModule Root module compiled by the Fluo runtime.
+ * @param options Runtime, adapter, and signal-registration options for Deno.
+ * @returns A running application shell ready to receive requests.
+ */
 export async function runDenoApplication(
   rootModule: ModuleType,
   options: RunDenoApplicationOptions = {},
 ): Promise<Application> {
   const adapter = createDenoAdapter(options);
-  return await runHttpAdapterApplication(rootModule, options, adapter);
+  return await runHttpAdapterApplication(rootModule, {
+    ...options,
+    shutdownRegistration: options.shutdownSignals === false
+      ? undefined
+      : createDenoShutdownSignalRegistration(options.shutdownSignals ?? defaultDenoShutdownSignals()),
+  }, adapter);
+}
+
+function defaultDenoShutdownSignals(): readonly DenoApplicationSignal[] {
+  return ['SIGINT', 'SIGTERM'];
+}
+
+function createDenoShutdownSignalRegistration(
+  signals: readonly DenoApplicationSignal[],
+): NonNullable<RunHttpAdapterApplicationOptions['shutdownRegistration']> {
+  return (app: Application, logger: ApplicationLogger) => {
+    const denoGlobal = resolveDenoSignalGlobal();
+
+    if (!denoGlobal) {
+      return () => {};
+    }
+
+    const bindings: Array<{ handler: () => void; signal: DenoApplicationSignal }> = [];
+    const seen = new Set<DenoApplicationSignal>();
+
+    for (const signal of signals) {
+      if (seen.has(signal)) {
+        continue;
+      }
+
+      seen.add(signal);
+      const handler = () => {
+        void closeDenoApplicationFromSignal(app, logger, signal);
+      };
+
+      bindings.push({ handler, signal });
+      denoGlobal.addSignalListener(signal, handler);
+    }
+
+    return () => {
+      for (const binding of bindings) {
+        denoGlobal.removeSignalListener(binding.signal, binding.handler);
+      }
+    };
+  };
 }
 
 function createListenTarget(hostname: string, port: number): HttpAdapterListenTarget {
@@ -354,14 +442,55 @@ function createShutdownResponse(): Response {
 }
 
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
-  return Promise.race([
-    closePromise,
-    new Promise<void>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Deno adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
-      }, timeoutMs);
-    }),
-  ]);
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Deno adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+
+    void closePromise.then(
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function resolveDenoSignalGlobal(): {
+  addSignalListener: (signal: DenoApplicationSignal, handler: () => void) => void;
+  removeSignalListener: (signal: DenoApplicationSignal, handler: () => void) => void;
+} | undefined {
+  const denoGlobal = (globalThis as typeof globalThis & { Deno?: DenoGlobalLike }).Deno;
+
+  if (!denoGlobal?.addSignalListener || !denoGlobal.removeSignalListener) {
+    return undefined;
+  }
+
+  return {
+    addSignalListener: denoGlobal.addSignalListener.bind(denoGlobal),
+    removeSignalListener: denoGlobal.removeSignalListener.bind(denoGlobal),
+  };
+}
+
+async function closeDenoApplicationFromSignal(
+  app: Application,
+  logger: ApplicationLogger,
+  signal: DenoApplicationSignal,
+): Promise<void> {
+  if (app.state === 'closed') {
+    return;
+  }
+
+  try {
+    await app.close(signal);
+    logger.log(`Application closed after receiving ${signal}.`, 'FluoFactory');
+  } catch (error: unknown) {
+    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');
+  }
 }
 
 interface Deferred<T> {

@@ -290,7 +290,82 @@ describe('DiscordModule', () => {
         },
         {},
       ),
-    ).rejects.toThrowError(new DiscordTransportError('Discord transport reported an unsuccessful delivery: denied'));
+    ).rejects.toThrowError(new DiscordTransportError('Discord transport reported an unsuccessful delivery.'));
+  });
+
+  it('retries transient webhook failures with exponential backoff before succeeding', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<DiscordFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          async text() {
+            return 'rate limited';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          statusText: 'Bad Gateway',
+          async text() {
+            return '{"message":"temporary outage"}';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ channel_id: 'chan-1', guild_id: 'guild-1', id: 'msg-1' });
+          },
+        });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send({ attachments: [], components: [], content: 'Retry path', embeds: [], threadId: 'thread-ops' }, {});
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({ messageId: 'msg-1', ok: true, statusCode: 200, threadId: 'thread-ops' });
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sanitizes webhook failure errors after bounded retries', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi.fn<DiscordFetchLike>().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        async text() {
+          return '{"token":"secret","detail":"should not leak"}';
+        },
+      });
+      const transport = createDiscordWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+      });
+
+      const pending = transport.send({ attachments: [], components: [], content: 'Retry path', embeds: [], threadId: 'thread-ops' }, {});
+      const expectation = expect(pending).rejects.toThrowError(
+        new DiscordTransportError(
+          'Discord webhook delivery failed with status 500 Internal Server Error after 3 attempt(s). Upstream response body was omitted from the caller-visible error.',
+        ),
+      );
+      await vi.runAllTimersAsync();
+
+      await expectation;
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('accepts custom provider-backed transports without bootstrap verification', async () => {

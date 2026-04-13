@@ -23,7 +23,11 @@ import {
 import { Server, type Namespace, type ServerOptions, type Socket } from 'socket.io';
 
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
-import type { SocketIoModuleOptions, SocketIoRoomService } from './types.js';
+import type {
+  SocketIoGuardRejection,
+  SocketIoModuleOptions,
+  SocketIoRoomService,
+} from './types.js';
 
 interface DiscoveryCandidate {
   moduleName: string;
@@ -112,9 +116,35 @@ type SocketIoBootstrapRuntime =
 const DEFAULT_SOCKETIO_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 128;
 const DEFAULT_SOCKETIO_ENGINE_PATH = '/socket.io/';
+const DEFAULT_SOCKETIO_MAX_HTTP_BUFFER_SIZE = 1_048_576;
 
 function isFinitePositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value > 0;
+}
+
+function normalizeGuardRejection(
+  result: boolean | SocketIoGuardRejection | void,
+  defaultMessage: string,
+): SocketIoGuardRejection | undefined {
+  if (result === undefined || result === true) {
+    return undefined;
+  }
+
+  if (result === false) {
+    return { message: defaultMessage };
+  }
+
+  return result;
+}
+
+function createGuardError(rejection: SocketIoGuardRejection, defaultMessage: string): Error & { data?: unknown } {
+  const error = new Error(rejection.message ?? defaultMessage) as Error & { data?: unknown };
+
+  if (rejection.data !== undefined) {
+    error.data = rejection.data;
+  }
+
+  return error;
 }
 
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
@@ -422,9 +452,9 @@ export class SocketIoLifecycleService
   private createServerOptions(): Partial<ServerOptions> {
     const options: Partial<ServerOptions> = {};
 
-    if (this.moduleOptions.cors !== undefined) {
-      options.cors = this.moduleOptions.cors;
-    }
+    options.cors = this.resolveCorsOptions();
+
+    options.maxHttpBufferSize = this.resolveMaxHttpBufferSize();
 
     if (this.moduleOptions.transports !== undefined) {
       options.transports = this.moduleOptions.transports;
@@ -441,11 +471,23 @@ export class SocketIoLifecycleService
       path: DEFAULT_SOCKETIO_ENGINE_PATH,
     };
 
-    if (this.moduleOptions.cors !== undefined) {
-      options.cors = normalizeCorsForBunEngine(this.moduleOptions.cors);
-    }
+    options.cors = normalizeCorsForBunEngine(this.resolveCorsOptions());
 
     return options;
+  }
+
+  private resolveCorsOptions(): NonNullable<ServerOptions['cors']> {
+    return this.moduleOptions.cors ?? { credentials: false, origin: false };
+  }
+
+  private resolveMaxHttpBufferSize(): number {
+    const configured = this.moduleOptions.engine?.maxHttpBufferSize;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_SOCKETIO_MAX_HTTP_BUFFER_SIZE;
+    }
+
+    return configured;
   }
 
   private installBunSocketIoBinding(runtime: Extract<SocketIoBootstrapRuntime, { kind: 'bun' }>, io: Server): void {
@@ -578,9 +620,41 @@ export class SocketIoLifecycleService
   }
 
   private bindNamespaceHandlers(attachment: NamespaceAttachment): void {
+    if (this.moduleOptions.auth?.connection) {
+      attachment.namespace.use((socket: Socket, next: (error?: Error) => void) => {
+        void this.runConnectionGuard(attachment.path, socket)
+          .then(() => next())
+          .catch((error) => {
+            next(error instanceof Error ? error : new Error('Socket.IO connection rejected.'));
+          });
+      });
+    }
+
     attachment.namespace.on('connection', (socket: Socket) => {
       void this.bindConnectionHandlers(attachment.descriptors, socket);
     });
+  }
+
+  private async runConnectionGuard(path: string, socket: Socket): Promise<void> {
+    const guard = this.moduleOptions.auth?.connection;
+
+    if (!guard) {
+      return;
+    }
+
+    const rejection = normalizeGuardRejection(
+      await guard({
+        activeConnectionCount: this.socketRegistry.size,
+        namespacePath: path,
+        request: socket.request as IncomingMessage,
+        socket,
+      }),
+      'Socket.IO connection rejected.',
+    );
+
+    if (rejection) {
+      throw createGuardError(rejection, 'Socket.IO connection rejected.');
+    }
   }
 
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
@@ -737,12 +811,75 @@ export class SocketIoLifecycleService
     payload: unknown,
     acknowledgement?: (...callbackArgs: unknown[]) => void,
   ): Promise<void> {
+    const hasMatchingHandlers = resolved.some(({ descriptor }) => this.selectMessageHandlers(descriptor, event).length > 0);
+
+    if (!hasMatchingHandlers) {
+      return;
+    }
+
+    const rejection = await this.resolveMessageGuardRejection(socket, request, event, payload);
+
+    if (rejection) {
+      this.reportRejectedMessage(socket, event, acknowledgement, rejection);
+      return;
+    }
+
     for (const { descriptor, instance } of resolved) {
       const handlers = this.selectMessageHandlers(descriptor, event);
 
       for (const handler of handlers) {
         await this.invokeGatewayMethod(instance, descriptor, handler, [payload, socket, request, acknowledgement]);
       }
+    }
+  }
+
+  private async resolveMessageGuardRejection(
+    socket: Socket,
+    request: IncomingMessage,
+    event: string,
+    payload: unknown,
+  ): Promise<SocketIoGuardRejection | undefined> {
+    const guard = this.moduleOptions.auth?.message;
+
+    if (!guard) {
+      return undefined;
+    }
+
+    const rejection = normalizeGuardRejection(
+      await guard({
+        activeConnectionCount: this.socketRegistry.size,
+        event,
+        namespacePath: socket.nsp.name,
+        payload,
+        request,
+        socket,
+      }),
+      'Socket.IO message rejected.',
+    );
+
+    return rejection;
+  }
+
+  private reportRejectedMessage(
+    socket: Socket,
+    event: string,
+    acknowledgement: ((...callbackArgs: unknown[]) => void) | undefined,
+    rejection: SocketIoGuardRejection,
+  ): void {
+    this.logger.warn(
+      `Socket.IO message ${event} for socket ${socket.id} was rejected before handler dispatch.`,
+      'SocketIoLifecycleService',
+    );
+
+    if (acknowledgement) {
+      acknowledgement({
+        data: rejection.data,
+        error: rejection.message ?? 'Socket.IO message rejected.',
+      });
+    }
+
+    if (rejection.disconnect === true) {
+      socket.disconnect(true);
     }
   }
 

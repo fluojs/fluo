@@ -8,6 +8,9 @@ import type {
   NormalizedDiscordMessage,
 } from './types.js';
 
+const DEFAULT_RETRY_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 250;
+
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -71,6 +74,44 @@ async function readResponseBody(response: DiscordFetchResponse): Promise<string>
   }
 }
 
+function createStatusFailureMessage(response: DiscordFetchResponse, attempt: number): string {
+  return `Discord webhook delivery failed with status ${response.status}${response.statusText ? ` ${response.statusText}` : ''} after ${String(attempt)} attempt(s). Upstream response body was omitted from the caller-visible error.`;
+}
+
+function createTransportFailureMessage(attempt: number): string {
+  return `Discord webhook delivery failed after ${String(attempt)} attempt(s). Upstream response details were omitted from the caller-visible error.`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  if (delayMs <= 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+
+    function onAbort() {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError'));
+    }
+
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
 function parseJsonRecord(body: string): Record<string, unknown> | undefined {
   if (!body) {
     return undefined;
@@ -114,41 +155,64 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
 
   return {
     async send(message: NormalizedDiscordMessage, context: DiscordTransportContext) {
-      const response = await fetchLike(resolveWebhookUrl(webhookUrl, message, wait), {
-        body: JSON.stringify(createWebhookPayload(message)),
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-        },
-        method: 'POST',
-        signal: context.signal,
-      });
+      for (let attempt = 1; attempt <= DEFAULT_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+          const response = await fetchLike(resolveWebhookUrl(webhookUrl, message, wait), {
+            body: JSON.stringify(createWebhookPayload(message)),
+            headers: {
+              'content-type': 'application/json; charset=utf-8',
+            },
+            method: 'POST',
+            signal: context.signal,
+          });
 
-      const body = await readResponseBody(response);
+          const body = await readResponseBody(response);
 
-      if (!response.ok) {
-        const suffix = body ? `: ${body}` : '';
-        throw new DiscordTransportError(
-          `Discord webhook delivery failed with status ${response.status}${response.statusText ? ` ${response.statusText}` : ''}${suffix}.`,
-        );
+          if (!response.ok) {
+            if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {
+              await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+              continue;
+            }
+
+            throw new DiscordTransportError(createStatusFailureMessage(response, attempt));
+          }
+
+          const parsed = parseJsonRecord(body);
+          const warnings: string[] = [];
+
+          if (body && !parsed) {
+            warnings.push('Discord webhook returned a non-JSON success body.');
+          }
+
+          return {
+            channelId: getStringField(parsed, 'channel_id'),
+            guildId: getStringField(parsed, 'guild_id'),
+            messageId: getStringField(parsed, 'id'),
+            ok: true,
+            response: body || undefined,
+            statusCode: response.status,
+            threadId: getStringField(parsed, 'thread_id') ?? message.threadId,
+            warnings,
+          };
+        } catch (error) {
+          if (isAbortError(error) || context.signal?.aborted) {
+            throw error;
+          }
+
+          if (attempt < DEFAULT_RETRY_ATTEMPTS) {
+            await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+            continue;
+          }
+
+          if (error instanceof DiscordTransportError) {
+            throw error;
+          }
+
+          throw new DiscordTransportError(createTransportFailureMessage(attempt));
+        }
       }
 
-      const parsed = parseJsonRecord(body);
-      const warnings: string[] = [];
-
-      if (body && !parsed) {
-        warnings.push('Discord webhook returned a non-JSON success body.');
-      }
-
-      return {
-        channelId: getStringField(parsed, 'channel_id'),
-        guildId: getStringField(parsed, 'guild_id'),
-        messageId: getStringField(parsed, 'id'),
-        ok: true,
-        response: body || undefined,
-        statusCode: response.status,
-        threadId: getStringField(parsed, 'thread_id') ?? message.threadId,
-        warnings,
-      };
+      throw new DiscordTransportError(createTransportFailureMessage(DEFAULT_RETRY_ATTEMPTS));
     },
   };
 }

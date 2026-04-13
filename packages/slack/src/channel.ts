@@ -38,9 +38,7 @@ export class SlackChannel implements NotificationChannel<SlackNotificationDispat
     const receipt = await this.slack.sendNotification(notification, { signal: context.signal });
 
     if (receipt.ok === false) {
-      throw new SlackTransportError(
-        `Slack transport reported an unsuccessful delivery${receipt.response ? `: ${receipt.response}` : '.'}`,
-      );
+      throw new SlackTransportError('Slack transport reported an unsuccessful delivery.');
     }
 
     return {

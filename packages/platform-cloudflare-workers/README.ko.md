@@ -24,6 +24,8 @@ npm install @fluojs/platform-cloudflare-workers
 
 fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)에 배포할 때 이 패키지를 사용합니다. 이 어댑터는 서버리스 엣지 환경에 맞게 설계되었으며, Worker isolate 제약 조건과 네이티브 Web API를 준수하는 가벼운 `fetch` 기반 어댑터를 제공합니다.
 
+이 어댑터는 각 요청 수명주기를 `executionContext.waitUntil(...)`에 연결하고, `close()` 중에도 진행 중인 디스패치를 유지하여 Worker 종료 도중 활성 작업이 중간에 잘리지 않도록 보장합니다.
+
 ## 빠른 시작
 
 ### 표준 어댑터 사용
@@ -95,4 +97,3 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `packages/platform-cloudflare-workers/src/adapter.test.ts`
 - `packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts`
-

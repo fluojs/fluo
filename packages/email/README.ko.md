@@ -150,6 +150,7 @@ EmailModule.forRootAsync({
 Behavioral contract 메모:
 
 - `EmailService.send(...)`는 전달 전에 `defaultFrom`과 `defaultReplyTo`를 해석합니다.
+- `EmailService.send(...)`는 `accepted`, `pending`, `rejected` 수신자를 분리해 보존하므로 provider의 부분 실패가 호출자에게 그대로 보입니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
 
@@ -188,6 +189,10 @@ export class AppModule {}
 - `to`, `cc`, `bcc`, `from`, `replyTo`
 - `text`, `html`, `attachments`, `headers`
 - 모듈에 renderer가 구성된 경우 `templateData`
+
+Behavioral contract 메모:
+
+- `EmailChannel`은 `pending` 또는 `rejected` 수신자가 하나라도 있으면 전달을 성공으로 보고하지 않고 notification dispatch를 실패로 처리합니다.
 
 ### 큐 기반 대량 전달
 

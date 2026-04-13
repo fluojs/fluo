@@ -241,6 +241,12 @@ function onceConnected(socket: ClientSocket): Promise<void> {
   });
 }
 
+function onceConnectError(socket: ClientSocket): Promise<Error & { data?: unknown }> {
+  return new Promise((resolve) => {
+    socket.once('connect_error', (error: Error & { data?: unknown }) => resolve(error));
+  });
+}
+
 function onceEvent<T>(socket: ClientSocket, event: string): Promise<T> {
   return new Promise((resolve) => {
     socket.once(event, (payload: T) => resolve(payload));
@@ -470,6 +476,247 @@ describe('@fluojs/socket.io', () => {
     await app.close();
   });
 
+  it('uses safe deny-by-default CORS and bounded engine defaults when options are omitted', () => {
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {},
+    );
+
+    const serverOptions = Reflect.get(service, 'createServerOptions').call(service) as {
+      cors?: unknown;
+      maxHttpBufferSize?: number;
+    };
+    const bunOptions = Reflect.get(service, 'createBunEngineOptions').call(service) as {
+      cors?: unknown;
+    };
+
+    expect(serverOptions.cors).toEqual({ credentials: false, origin: false });
+    expect(serverOptions.maxHttpBufferSize).toBe(1_048_576);
+    expect(bunOptions.cors).toEqual({ credentials: false, origin: false });
+  });
+
+  it('forwards configured engine payload bounds into Socket.IO server options', () => {
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]),
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return createServerBackedHttpAdapterRealtimeCapability({});
+        },
+      } as never,
+      {
+        engine: {
+          maxHttpBufferSize: 64,
+        },
+      },
+    );
+
+    const serverOptions = Reflect.get(service, 'createServerOptions').call(service) as {
+      maxHttpBufferSize?: number;
+    };
+
+    expect(serverOptions.maxHttpBufferSize).toBe(64);
+  });
+
+  it('rejects anonymous namespace connections before gateway handlers execute', async () => {
+    class GatewayState {
+      connectCount = 0;
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/guarded' })
+    class GuardedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connectCount += 1;
+      }
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          connection({ socket }) {
+            return socket.handshake.auth.token === 'demo-token'
+              ? true
+              : { data: { code: 'AUTH_REQUIRED' }, message: 'Authentication required.' };
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+
+    const rejectedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    const rejectedError = await onceConnectError(rejectedSocket);
+
+    expect(rejectedError.message).toBe('Authentication required.');
+    expect(rejectedError.data).toEqual({ code: 'AUTH_REQUIRED' });
+    expect(state.connectCount).toBe(0);
+
+    rejectedSocket.close();
+
+    const allowedSocket = createClient(`http://127.0.0.1:${String(port)}/guarded`, {
+      auth: { token: 'demo-token' },
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(allowedSocket);
+
+    allowedSocket.emit('ping', 'allowed');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.connectCount).toBe(1);
+    expect(state.messages).toEqual(['allowed']);
+
+    allowedSocket.close();
+    await app.close();
+  });
+
+  it('rejects guarded message events without invoking gateway handlers', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/message-guard' })
+    class GuardedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          message({ payload }) {
+            return payload === 'allowed'
+              ? true
+              : { data: { code: 'AUTH_REQUIRED' }, message: 'Forbidden event.' };
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/message-guard`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(socket);
+
+    const rejectedAck = await new Promise<unknown>((resolve) => {
+      socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+    });
+
+    expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
+    expect(state.messages).toEqual([]);
+
+    socket.emit('ping', 'allowed');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(state.messages).toEqual(['allowed']);
+
+    socket.close();
+    await app.close();
+  });
+
+  it('disconnects sockets when inbound payloads exceed the configured engine limit', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/payload-limit' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        engine: {
+          maxHttpBufferSize: 32,
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/payload-limit`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+    await onceConnected(socket);
+
+    const disconnected = onceDisconnected(socket);
+    socket.emit('ping', 'x'.repeat(256));
+
+    expect(['transport close', 'transport error']).toContain(await disconnected);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(state.messages).toEqual([]);
+
+    await app.close();
+  });
+
   for (const scenario of supportedSocketIoAdapterScenarios) {
     it(`boots a real ${scenario.name} app and handles connect, message, room broadcast, and disconnect`, async () => {
     class GatewayState {
@@ -674,7 +921,7 @@ describe('@fluojs/socket.io', () => {
     const socket = {
       id: 'socket-1',
       disconnect: () => undefined,
-      on(event: 'disconnect', listener: (reason: string, description: unknown) => void) {
+      on(_event: 'disconnect', listener: (reason: string, description: unknown) => void) {
         listeners.disconnect = listener;
         return this;
       },
@@ -769,7 +1016,7 @@ describe('@fluojs/socket.io', () => {
     const socket = {
       id: 'socket-1',
       disconnect: () => undefined,
-      on(event: 'disconnect', listener: (reason: string, description: unknown) => void) {
+      on(_event: 'disconnect', listener: (reason: string, description: unknown) => void) {
         listeners.disconnect = listener;
         return this;
       },
