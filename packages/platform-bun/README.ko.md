@@ -48,9 +48,8 @@ Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
-const handler = await createBunFetchHandler({ 
+const handler = await createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
-  port: 3000 
 });
 
 Bun.serve({

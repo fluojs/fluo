@@ -48,9 +48,8 @@ If you prefer to manage the Bun server yourself, you can use the fetch handler d
 ```typescript
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
-const handler = await createBunFetchHandler({ 
+const handler = await createBunFetchHandler({
   dispatcher: app.getHttpDispatcher(),
-  port: 3000 
 });
 
 Bun.serve({
