@@ -150,6 +150,17 @@ import { EMAIL } from './tokens.js';
 import { EmailConfigurationError } from './errors.js';
 import type { Email, EmailTransport, EmailTransportFactory, NormalizedEmailMessage } from './types.js';
 
+class PartialDeliveryTransport implements EmailTransport {
+  async send(): Promise<{ accepted: string[]; messageId: string; pending: string[]; rejected: string[] }> {
+    return {
+      accepted: ['accepted@example.com'],
+      messageId: 'partial-1',
+      pending: ['pending@example.com'],
+      rejected: ['rejected@example.com'],
+    };
+  }
+}
+
 class RecordingTransport implements EmailTransport {
   constructor(private readonly messagePrefix: string) {}
 
@@ -384,6 +395,32 @@ describe('EmailModule', () => {
     await worker.handle(enqueued[1] as EmailNotificationQueueJob);
 
     expect(transportState.sent).toHaveLength(2);
+  });
+
+  it('fails notifications delivery when the transport reports pending or rejected recipients', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new PartialDeliveryTransport(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const channel = await container.resolve(EmailChannel);
+
+    await expect(
+      channel.send(
+        {
+          channel: 'email',
+          payload: { text: 'Hello' },
+          recipients: ['user@example.com'],
+          subject: 'Subject',
+        },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      message: 'Email transport reported an incomplete delivery (accepted=1, pending=1, rejected=1).',
+      name: 'EmailDeliveryError',
+    });
   });
 
   it('accepts custom provider-backed transports without bootstrap verification', async () => {

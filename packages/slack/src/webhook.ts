@@ -8,6 +8,9 @@ import type {
   SlackWebhookTransportOptions,
 } from './types.js';
 
+const DEFAULT_RETRY_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 250;
+
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -52,6 +55,44 @@ async function readResponseBody(response: SlackFetchResponse): Promise<string> {
   }
 }
 
+function createStatusFailureMessage(response: SlackFetchResponse, attempt: number): string {
+  return `Slack webhook delivery failed with status ${response.status}${response.statusText ? ` ${response.statusText}` : ''} after ${String(attempt)} attempt(s). Upstream response body was omitted from the caller-visible error.`;
+}
+
+function createTransportFailureMessage(attempt: number): string {
+  return `Slack webhook delivery failed after ${String(attempt)} attempt(s). Upstream response details were omitted from the caller-visible error.`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+async function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  if (delayMs <= 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+
+    function onAbort() {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError'));
+    }
+
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
 /**
  * Creates a webhook-first Slack transport backed by an explicit fetch-compatible boundary.
  *
@@ -79,31 +120,54 @@ export function createSlackWebhookTransport(options: SlackWebhookTransportOption
 
   return {
     async send(message: NormalizedSlackMessage, context: SlackTransportContext) {
-      const response = await fetchLike(webhookUrl, {
-        body: JSON.stringify(createWebhookPayload(message)),
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-        },
-        method: 'POST',
-        signal: context.signal,
-      });
+      for (let attempt = 1; attempt <= DEFAULT_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+          const response = await fetchLike(webhookUrl, {
+            body: JSON.stringify(createWebhookPayload(message)),
+            headers: {
+              'content-type': 'application/json; charset=utf-8',
+            },
+            method: 'POST',
+            signal: context.signal,
+          });
 
-      const body = await readResponseBody(response);
+          const body = await readResponseBody(response);
 
-      if (!response.ok) {
-        const suffix = body ? `: ${body}` : '';
-        throw new SlackTransportError(
-          `Slack webhook delivery failed with status ${response.status}${response.statusText ? ` ${response.statusText}` : ''}${suffix}.`,
-        );
+          if (!response.ok) {
+            if (attempt < DEFAULT_RETRY_ATTEMPTS && isTransientStatus(response.status)) {
+              await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+              continue;
+            }
+
+            throw new SlackTransportError(createStatusFailureMessage(response, attempt));
+          }
+
+          return {
+            channel: message.channel,
+            ok: true,
+            response: body,
+            statusCode: response.status,
+            warnings: body && body !== 'ok' ? ['Slack webhook returned a non-standard success body.'] : [],
+          };
+        } catch (error) {
+          if (isAbortError(error) || context.signal?.aborted) {
+            throw error;
+          }
+
+          if (attempt < DEFAULT_RETRY_ATTEMPTS) {
+            await waitForRetry(DEFAULT_RETRY_DELAY_MS * 2 ** (attempt - 1), context.signal);
+            continue;
+          }
+
+          if (error instanceof SlackTransportError) {
+            throw error;
+          }
+
+          throw new SlackTransportError(createTransportFailureMessage(attempt));
+        }
       }
 
-      return {
-        channel: message.channel,
-        ok: true,
-        response: body,
-        statusCode: response.status,
-        warnings: body && body !== 'ok' ? ['Slack webhook returned a non-standard success body.'] : [],
-      };
+      throw new SlackTransportError(createTransportFailureMessage(DEFAULT_RETRY_ATTEMPTS));
     },
   };
 }

@@ -5,6 +5,14 @@ import { EmailService } from './service.js';
 import { EMAIL_OPTIONS } from './tokens.js';
 import type { EmailNotificationDispatchRequest, EmailSendResult, NormalizedEmailModuleOptions } from './types.js';
 
+function createIncompleteDeliveryError(receipt: EmailSendResult): Error {
+  const error = new Error(
+    `Email transport reported an incomplete delivery (accepted=${String(receipt.accepted.length)}, pending=${String(receipt.pending.length)}, rejected=${String(receipt.rejected.length)}).`,
+  );
+  error.name = 'EmailDeliveryError';
+  return error;
+}
+
 /**
  * Notification channel implementation that bridges `@fluojs/notifications` to {@link EmailService}.
  *
@@ -35,6 +43,10 @@ export class EmailChannel implements NotificationChannel<EmailNotificationDispat
     context: NotificationChannelContext,
   ): Promise<NotificationChannelDelivery<EmailSendResult>> {
     const receipt = await this.email.sendNotification(notification, { signal: context.signal });
+
+    if (receipt.accepted.length === 0 || receipt.pending.length > 0 || receipt.rejected.length > 0) {
+      throw createIncompleteDeliveryError(receipt);
+    }
 
     return {
       externalId: receipt.messageId,

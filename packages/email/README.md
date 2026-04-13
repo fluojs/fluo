@@ -150,6 +150,7 @@ EmailModule.forRootAsync({
 Behavioral contract notes:
 
 - `EmailService.send(...)` resolves `defaultFrom` and `defaultReplyTo` before delivery.
+- `EmailService.send(...)` preserves `accepted`, `pending`, and `rejected` recipients separately so partial provider failures stay caller-visible.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
@@ -188,6 +189,10 @@ Supported notification payload fields:
 - `to`, `cc`, `bcc`, `from`, `replyTo`
 - `text`, `html`, `attachments`, `headers`
 - `templateData` when a renderer is configured on the module
+
+Behavioral contract notes:
+
+- `EmailChannel` treats any `pending` or `rejected` recipients as a failed notification dispatch instead of reporting the delivery as successful.
 
 ### Queue-backed bulk delivery
 

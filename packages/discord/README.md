@@ -157,6 +157,11 @@ await discord.send({
 
 For richer API integrations such as bot-backed REST delivery, implement the exported `DiscordTransport` contract and inject it through `DiscordModule.forRoot(...)` or `forRootAsync(...)`.
 
+Behavioral contract notes:
+
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default.
+
 ### Intentional limitations
 
 The Discord package intentionally does **not**:

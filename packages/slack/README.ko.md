@@ -158,6 +158,11 @@ await slack.send({
 
 `chat.postMessage` 같은 더 풍부한 API 연동이 필요하다면 export된 `SlackTransport` 계약을 구현해 `SlackModule.forRoot(...)` 또는 `forRootAsync(...)`에 주입하면 됩니다.
 
+Behavioral contract 메모:
+
+- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패를 호출자에게 에러를 노출하기 전에 bounded exponential backoff로 재시도합니다.
+- 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
+
 ### 의도적인 제한 사항
 
 Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:

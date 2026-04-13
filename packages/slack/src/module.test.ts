@@ -286,7 +286,82 @@ describe('SlackModule', () => {
         },
         {},
       ),
-    ).rejects.toThrowError(new SlackTransportError('Slack transport reported an unsuccessful delivery: denied'));
+    ).rejects.toThrowError(new SlackTransportError('Slack transport reported an unsuccessful delivery.'));
+  });
+
+  it('retries transient webhook failures with exponential backoff before succeeding', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi
+        .fn<SlackFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          async text() {
+            return 'rate_limited';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          async text() {
+            return 'temporary outage';
+          },
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          async text() {
+            return 'ok';
+          },
+        });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Retry path' }, {});
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sanitizes webhook failure errors after bounded retries', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetchLike = vi.fn<SlackFetchLike>().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        async text() {
+          return '<html>secret upstream body</html>';
+        },
+      });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Retry path' }, {});
+      const expectation = expect(pending).rejects.toThrowError(
+        new SlackTransportError(
+          'Slack webhook delivery failed with status 500 Internal Server Error after 3 attempt(s). Upstream response body was omitted from the caller-visible error.',
+        ),
+      );
+      await vi.runAllTimersAsync();
+
+      await expectation;
+      expect(fetchLike).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('accepts custom provider-backed transports without bootstrap verification', async () => {
