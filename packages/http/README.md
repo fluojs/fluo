@@ -125,11 +125,9 @@ stream(_input: undefined, ctx: RequestContext) {
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
-The `./internal` subpath exports low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
+The `./internal` subpath exports only the low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
 
-- `createErrorResponse(error, requestId)`: Standardized JSON error response factory.
-- `HttpException`: Base class for all framework-level HTTP errors.
-- `PLATFORM_SHELL`: DI token for the active platform adapter.
+- `DefaultBinder`: Default DTO/request binder used by the runtime bootstrap path.
 - `resolveClientIdentity(request)`: Proxy-aware client identity resolver used by rate limiting and other runtime integrations.
 
 ## Related Packages

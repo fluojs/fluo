@@ -123,11 +123,9 @@ stream(_input: undefined, ctx: RequestContext) {
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 
-`./internal` 서브경로는 플랫폼 어댑터와 핵심 런타임에서 사용하는 저수준 유틸리티를 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
+`./internal` 서브경로는 플랫폼 어댑터와 핵심 런타임에서 사용하는 저수준 유틸리티만 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
 
-- `createErrorResponse(error, requestId)`: 표준화된 JSON 에러 응답 팩토리.
-- `HttpException`: 모든 프레임워크 수준 HTTP 에러의 기본 클래스.
-- `PLATFORM_SHELL`: 활성 플랫폼 어댑터를 위한 DI 토큰.
+- `DefaultBinder`: 런타임 부트스트랩 경로에서 사용하는 기본 DTO/요청 바인더.
 - `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 프록시 인지 클라이언트 식별 해석기.
 
 ## 관련 패키지

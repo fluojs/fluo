@@ -30,7 +30,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## 빠른 시작
 
-`GraphqlModule`을 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다.
+`GraphqlModule.forRoot(...)`를 등록하고 표준 데코레이터를 사용하여 resolver를 정의합니다. 현재 `@fluojs/graphql`는 동기 모듈 엔트리포인트만 제공하며 `GraphqlModule.forRootAsync(...)` 계약은 없습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -121,7 +121,7 @@ GraphqlModule.forRoot({
 
 ## 공개 API 개요
 
-- `GraphqlModule`: GraphQL 통합을 위한 메인 엔트리 포인트.
+- `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: 작업 데코레이터.
 - `Arg`: 인자 매핑 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`: DataLoader 팩토리 헬퍼.

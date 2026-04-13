@@ -29,7 +29,7 @@ pnpm add @fluojs/openapi
 
 ## Quick Start
 
-Register the `OpenApiModule` and annotate your controllers to generate the documentation.
+Register the `OpenApiModule` and pass `sources` (or prebuilt `descriptors`) so the document builder knows which HTTP handlers to include.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -51,6 +51,7 @@ class UsersController {
 @Module({
   imports: [
     OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
       title: 'My API',
       version: '1.0.0',
       ui: true, // Enable Swagger UI at /docs
@@ -65,6 +66,8 @@ await app.listen(3000);
 // OpenAPI JSON: http://localhost:3000/openapi.json
 // Swagger UI: http://localhost:3000/docs
 ```
+
+If you need to bypass controller discovery, pass `descriptors: createHandlerMapping([...]).descriptors` instead. `OpenApiModule` does not infer handlers from `@Module({ controllers: [...] })` on its own.
 
 ## Core Capabilities
 
