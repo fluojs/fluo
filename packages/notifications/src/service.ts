@@ -70,17 +70,22 @@ export class NotificationsService implements Notifications {
     if (this.shouldQueueSingleDispatch(options)) {
       this.requireChannel(notification.channel);
       const job = this.createQueueJob(notification);
-      const deliveryId = await this.requireQueueAdapter().enqueue(job);
-      const result: NotificationDispatchResult = {
-        channel: notification.channel,
-        deliveryId: this.normalizeDeliveryId(deliveryId, notification),
-        queued: true,
-        status: 'queued',
-      };
+      try {
+        const deliveryId = await this.requireQueueAdapter().enqueue(job);
+        const result: NotificationDispatchResult = {
+          channel: notification.channel,
+          deliveryId: this.normalizeDeliveryId(deliveryId, notification),
+          queued: true,
+          status: 'queued',
+        };
 
-      await this.publishLifecycleEventSafely('notification.dispatch.queued', notification, options, result.deliveryId);
+        await this.publishLifecycleEventSafely('notification.dispatch.queued', notification, options, result.deliveryId);
 
-      return result;
+        return result;
+      } catch (error) {
+        await this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error);
+        throw error;
+      }
     }
 
     const channel = this.requireChannel(notification.channel);
@@ -143,9 +148,20 @@ export class NotificationsService implements Notifications {
         await this.publishLifecycleEventSafely('notification.dispatch.requested', notification, options);
       }
 
-      const ids = queue.enqueueMany
-        ? await queue.enqueueMany(jobs)
-        : await Promise.all(jobs.map((job) => queue.enqueue(job)));
+      let ids: readonly string[];
+
+      try {
+        ids = queue.enqueueMany
+          ? await queue.enqueueMany(jobs)
+          : await Promise.all(jobs.map((job) => queue.enqueue(job)));
+      } catch (error) {
+        await Promise.all(
+          notifications.map((notification) =>
+            this.publishLifecycleEventSafely('notification.dispatch.failed', notification, options, undefined, error),
+          ),
+        );
+        throw error;
+      }
 
       const results = notifications.map((notification, index) => ({
         channel: notification.channel,

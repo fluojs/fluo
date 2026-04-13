@@ -44,13 +44,23 @@ class RecordingPublisher implements NotificationsEventPublisher {
 
 class RecordingQueueAdapter implements NotificationsQueueAdapter {
   readonly jobs: NotificationsQueueJob[] = [];
+  failOnEnqueue = false;
+  failOnEnqueueMany = false;
 
   async enqueue(job: NotificationsQueueJob): Promise<string> {
+    if (this.failOnEnqueue) {
+      throw new Error('queue enqueue failed');
+    }
+
     this.jobs.push(job);
     return `queued:${this.jobs.length}`;
   }
 
   async enqueueMany(jobs: readonly NotificationsQueueJob[]): Promise<readonly string[]> {
+    if (this.failOnEnqueueMany) {
+      throw new Error('queue enqueueMany failed');
+    }
+
     this.jobs.push(...jobs);
     return jobs.map((_, index) => `queued:${index + 1}`);
   }
@@ -154,6 +164,49 @@ describe('NotificationsModule', () => {
 
     expect(result).toMatchObject({ deliveryId: 'queued:1', queued: true, status: 'queued' });
     expect(queue.jobs).toHaveLength(1);
+  });
+
+  it('publishes a failed lifecycle event when explicit queue dispatch enqueue fails', async () => {
+    const queue = new RecordingQueueAdapter();
+    queue.failOnEnqueue = true;
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not run when queue is explicitly requested');
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: true,
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 50,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(service.dispatch({ channel: 'email', payload: { template: 'single' } }, { queue: true })).rejects.toThrow(
+      'queue enqueue failed',
+    );
+    expect(publisher.events).toMatchObject([
+      {
+        channel: 'email',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueue failed', name: 'Error' },
+        name: 'notification.dispatch.failed',
+      },
+    ]);
   });
 
   it('validates channels before queueing a single explicit queue dispatch', async () => {
@@ -296,6 +349,62 @@ describe('NotificationsModule', () => {
         channel: 'email',
         deliveryId: 'queued:2',
         name: 'notification.dispatch.queued',
+      },
+    ]);
+  });
+
+  it('publishes deterministic failed lifecycle events when bulk queue enqueue fails', async () => {
+    const queue = new RecordingQueueAdapter();
+    queue.failOnEnqueueMany = true;
+    const publisher = new RecordingPublisher();
+    const container = new Container();
+    const moduleType = NotificationsModule.forRoot({
+      channels: [
+        {
+          channel: 'email',
+          async send() {
+            throw new Error('direct delivery should not be used for queued bulk dispatch');
+          },
+        },
+      ],
+      events: {
+        publishLifecycleEvents: true,
+        publisher,
+      },
+      queue: {
+        adapter: queue,
+        bulkThreshold: 2,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(NotificationsService);
+
+    await expect(
+      service.dispatchMany([
+        { channel: 'email', payload: { template: 'digest', userId: 'u1' } },
+        { channel: 'email', payload: { template: 'digest', userId: 'u2' } },
+      ]),
+    ).rejects.toThrow('queue enqueueMany failed');
+
+    expect(publisher.events).toMatchObject([
+      {
+        channel: 'email',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'email',
+        name: 'notification.dispatch.requested',
+      },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueueMany failed', name: 'Error' },
+        name: 'notification.dispatch.failed',
+      },
+      {
+        channel: 'email',
+        error: { message: 'queue enqueueMany failed', name: 'Error' },
+        name: 'notification.dispatch.failed',
       },
     ]);
   });
