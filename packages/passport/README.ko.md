@@ -116,5 +116,5 @@ async refresh(input: never, ctx: RequestContext) {
 ## 예제 소스
 
 - `packages/passport/src/guard.test.ts`: 가드 실행 및 권한 강제 패턴 예제.
-- `packages/passport/src/passport-js.ts`: Passport.js 브릿지 구현체.
+- `packages/passport/src/adapters/passport-js.ts`: Passport.js 브릿지 구현체.
 - `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: 표준 JWT 전략 구현 예제.
