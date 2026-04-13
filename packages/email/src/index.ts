@@ -3,9 +3,7 @@ export {
   EmailMessageValidationError,
 } from './errors.js';
 export { EmailChannel } from './channel.js';
-export { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 export { EmailModule, createEmailProviders } from './module.js';
-export { createEmailNotificationsQueueAdapter } from './queue.js';
 export { EmailService } from './service.js';
 export { createEmailPlatformStatusSnapshot } from './status.js';
 export type { EmailLifecycleState, EmailPlatformStatusSnapshot, EmailStatusAdapterInput } from './status.js';
@@ -20,7 +18,6 @@ export type {
   EmailModuleOptions,
   EmailNotificationDispatchRequest,
   EmailNotificationPayload,
-  EmailQueueWorkerOptions,
   EmailSendBatchResult,
   EmailSendFailure,
   EmailSendManyOptions,
