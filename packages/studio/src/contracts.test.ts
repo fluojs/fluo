@@ -1,7 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
+
+const packageDir = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
 const snapshotFixture: PlatformShellSnapshot = {
   components: [
@@ -100,6 +106,26 @@ describe('parseStudioPayload', () => {
     );
     expect(parsed.payload.snapshot?.components).toHaveLength(2);
     expect(parsed.payload.timing?.phases).toHaveLength(1);
+  });
+
+  it('keeps the Studio release contract aligned across manifest and README docs', () => {
+    const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
+      name: string;
+      private?: boolean;
+      publishConfig?: { access?: string };
+    };
+    const readme = readFileSync(resolve(packageDir, 'README.md'), 'utf8');
+    const readmeKo = readFileSync(resolve(packageDir, 'README.ko.md'), 'utf8');
+    const releaseGovernance = readFileSync(resolve(packageDir, '../../docs/operations/release-governance.md'), 'utf8');
+
+    expect(packageManifest.name).toBe('@fluojs/studio');
+    expect(packageManifest.private).toBe(false);
+    expect(packageManifest.publishConfig?.access).toBe('public');
+    expect(releaseGovernance).toContain('- `@fluojs/studio`');
+    expect(readme).toContain('pnpm add @fluojs/studio');
+    expect(readme).toContain('intended public publish surface');
+    expect(readmeKo).toContain('pnpm add @fluojs/studio');
+    expect(readmeKo).toContain('공개 배포 패키지');
   });
 });
 
