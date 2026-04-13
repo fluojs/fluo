@@ -152,7 +152,8 @@ function installDeferredEviction(
     }
 
     completed = true;
-    void evict();
+    void evict().catch(() => {
+    });
   };
 
   const restore = () => {

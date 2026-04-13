@@ -273,6 +273,34 @@ describe('CacheInterceptor', () => {
     expect(value).toEqual({ refreshed: true });
   });
 
+  it('contains deferred eviction metadata failures after the response commits', async () => {
+    const unhandledRejection = vi.fn();
+    process.once('unhandledRejection', unhandledRejection);
+
+    class ProductController {
+      @CacheEvict(async () => {
+        throw new Error('evict metadata failed');
+      })
+      refresh() {}
+    }
+
+    const { interceptor } = createInterceptor();
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+
+    const value = await interceptor.intercept(context, next);
+    await expect(requestContext.response.send(value)).resolves.toBeUndefined();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(value).toEqual({ refreshed: true });
+    expect(unhandledRejection).not.toHaveBeenCalled();
+
+    process.removeListener('unhandledRejection', unhandledRejection);
+  });
+
   it('evicts immediately when the handler already committed the response before returning', async () => {
     class ProductController {
       @CacheEvict('/products')
