@@ -18,8 +18,10 @@ import {
   type OpenApiSecuritySchemeObject,
 } from './schema-builder.js';
 
-const SWAGGER_UI_CSS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css';
-const SWAGGER_UI_BUNDLE_JS_URL = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js';
+const SWAGGER_UI_DIST_VERSION = '5.32.2';
+const SWAGGER_UI_DIST_BASE_URL = `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}`;
+const SWAGGER_UI_CSS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui.css`;
+const SWAGGER_UI_BUNDLE_JS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui-bundle.js`;
 
 /**
  * Public options for `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
