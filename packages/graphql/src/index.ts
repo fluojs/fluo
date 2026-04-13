@@ -11,6 +11,7 @@ export type {
   GraphqlArgType,
   GraphqlListTypeRef,
   GraphqlModuleOptions,
+  GraphqlRequestLimitsOptions,
   GraphqlRequestContext,
   GraphqlRootOutputNamedType,
   GraphqlRootOutputType,

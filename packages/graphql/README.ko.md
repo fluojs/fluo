@@ -10,6 +10,7 @@ fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Graph
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [핵심 기능](#핵심-기능)
+- [운영 가드레일](#운영-가드레일)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -99,6 +100,25 @@ GraphqlModule.forRoot({
 })
 ```
 
+## 운영 가드레일
+
+- `graphiql`을 명시적으로 켜거나 `introspection: true`를 설정하지 않으면 스키마 introspection은 기본적으로 비활성화됩니다.
+- 문서 depth, field complexity, aggregate query cost에 대한 request validation budget이 기본적으로 보수적인 값으로 활성화됩니다.
+- 레거시 무제한 동작이 꼭 필요할 때만 `limits: false`를 사용하고, 그 경우에는 외부 제어 수단을 함께 두어야 합니다.
+
+```typescript
+GraphqlModule.forRoot({
+  graphiql: false,
+  introspection: false,
+  limits: {
+    maxDepth: 8,
+    maxComplexity: 120,
+    maxCost: 240,
+  },
+  resolvers: [HelloResolver],
+})
+```
+
 ## 공개 API 개요
 
 - `GraphqlModule`: GraphQL 통합을 위한 메인 엔트리 포인트.
@@ -117,4 +137,3 @@ GraphqlModule.forRoot({
 
 - `packages/graphql/src/module.test.ts`: 통합 테스트 및 사용 예제.
 - `examples/graphql-yoga`: 전체 GraphQL 애플리케이션 예제.
-

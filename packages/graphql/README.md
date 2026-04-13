@@ -10,6 +10,7 @@ Decorator-based GraphQL integration for fluo. Built on **GraphQL Yoga**, it prov
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Core Capabilities](#core-capabilities)
+- [Operational Guardrails](#operational-guardrails)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -96,6 +97,25 @@ GraphqlModule.forRoot({
   subscriptions: {
     websocket: { enabled: true }
   }
+})
+```
+
+## Operational Guardrails
+
+- Schema introspection is disabled by default unless you explicitly enable `graphiql` or set `introspection: true`.
+- Request validation budgets are enabled by default with conservative limits for document depth, field complexity, and aggregate query cost.
+- Pass `limits: false` only when you intentionally need legacy unbounded behavior and can compensate with external controls.
+
+```typescript
+GraphqlModule.forRoot({
+  graphiql: false,
+  introspection: false,
+  limits: {
+    maxDepth: 8,
+    maxComplexity: 120,
+    maxCost: 240,
+  },
+  resolvers: [HelloResolver],
 })
 ```
 

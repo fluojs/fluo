@@ -64,6 +64,15 @@ export interface GraphqlSubscriptionsOptions {
 }
 
 /**
+ * Per-request validation budgets enforced before GraphQL execution begins.
+ */
+export interface GraphqlRequestLimitsOptions {
+  maxComplexity?: number;
+  maxCost?: number;
+  maxDepth?: number;
+}
+
+/**
  * Resolver-level metadata captured by `@Resolver(...)`.
  */
 export interface ResolverMetadata {
@@ -199,6 +208,18 @@ export interface GraphqlModuleOptions {
   resolvers?: Function[];
   context?: (ctx: GraphqlRequestContext) => Record<string, unknown>;
   graphiql?: boolean;
+  /**
+   * Enables schema introspection queries.
+   *
+   * When omitted, introspection remains disabled unless `graphiql` is explicitly enabled.
+   */
+  introspection?: boolean;
+  /**
+   * Configures built-in request budgets for document depth, field complexity, and aggregate query cost.
+   *
+   * Pass `false` to disable these guardrails and preserve legacy unbounded behavior.
+   */
+  limits?: GraphqlRequestLimitsOptions | false;
   plugins?: unknown[];
   subscriptions?: GraphqlSubscriptionsOptions;
 }
