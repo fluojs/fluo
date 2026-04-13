@@ -24,6 +24,7 @@ import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
   WebSocketGatewayServerBackedOptions,
+  WebSocketUpgradeRejection,
   WebSocketRoomService,
 } from '../types.js';
 import type { WebSocketModuleOptions } from './node-types.js';
@@ -79,9 +80,61 @@ type BufferedDisconnectEvent = {
   reason: Buffer;
 };
 
+function resolveHttpStatusText(status: number): string {
+  switch (status) {
+    case 400:
+      return 'Bad Request';
+    case 401:
+      return 'Unauthorized';
+    case 403:
+      return 'Forbidden';
+    case 404:
+      return 'Not Found';
+    case 413:
+      return 'Payload Too Large';
+    case 426:
+      return 'Upgrade Required';
+    case 429:
+      return 'Too Many Requests';
+    case 500:
+      return 'Internal Server Error';
+    case 503:
+      return 'Service Unavailable';
+    default:
+      return 'Rejected';
+  }
+}
+
+function isUpgradeRejection(value: unknown): value is WebSocketUpgradeRejection {
+  return typeof value === 'object' && value !== null && 'status' in value;
+}
+
+function isHttpExceptionLike(error: unknown): error is { message: string; status: number } {
+  return typeof error === 'object' && error !== null && 'message' in error && 'status' in error;
+}
+
+function resolveMessageByteLength(data: RawData): number {
+  if (typeof data === 'string') {
+    return Buffer.byteLength(data);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+
+  if (Array.isArray(data)) {
+    return data.reduce((length, chunk) => length + chunk.byteLength, 0);
+  }
+
+  return data.byteLength;
+}
+
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
 const DEFAULT_MAX_BUFFERED_AMOUNT_BYTES = 1_048_576;
+const DEFAULT_MAX_WEBSOCKET_CONNECTIONS = 1_000;
+const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
+const DEFAULT_WEBSOCKET_HEARTBEAT_INTERVAL_MS = 30_000;
 
 type ServerBackedRealtimeCapability = {
   kind: 'server-backed';
@@ -154,6 +207,23 @@ function rejectBadUpgradeRequest(socket: Duplex): void {
   }
 
   socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+  socket.destroy();
+}
+
+function rejectUpgradeRequestWithStatus(socket: Duplex, rejection: WebSocketUpgradeRejection): void {
+  if (socket.destroyed || socket.writableEnded) {
+    return;
+  }
+
+  const body = rejection.body ?? '';
+  let response = `HTTP/1.1 ${String(rejection.status)} ${resolveHttpStatusText(rejection.status)}\r\n`;
+
+  for (const [header, value] of Object.entries(rejection.headers ?? {})) {
+    response += `${header}: ${value}\r\n`;
+  }
+
+  response += `Connection: close\r\nContent-Length: ${String(Buffer.byteLength(body))}\r\n\r\n${body}`;
+  socket.write(response);
   socket.destroy();
 }
 
@@ -273,12 +343,14 @@ export class NodeWebSocketGatewayLifecycleService
   }
 
   private startHeartbeatIfEnabled(): void {
-    if (this.moduleOptions.heartbeat?.enabled !== true) {
+    const heartbeat = this.moduleOptions.heartbeat;
+
+    if (heartbeat?.enabled === false) {
       return;
     }
 
-    const intervalMs = this.moduleOptions.heartbeat.intervalMs ?? 30_000;
-    const timeoutMs = this.moduleOptions.heartbeat.timeoutMs ?? intervalMs;
+    const intervalMs = heartbeat?.intervalMs ?? DEFAULT_WEBSOCKET_HEARTBEAT_INTERVAL_MS;
+    const timeoutMs = heartbeat?.timeoutMs ?? intervalMs;
     this.startHeartbeat(intervalMs, timeoutMs);
   }
 
@@ -302,7 +374,10 @@ export class NodeWebSocketGatewayLifecycleService
         bindingTarget,
         descriptors: [descriptor],
         path: descriptor.path,
-        server: new WebSocketServer({ noServer: true }),
+        server: new WebSocketServer({
+          maxPayload: this.resolveMaxPayloadBytes(),
+          noServer: true,
+        }),
       });
       attachmentGroups.set(bindingTarget.key, group);
     }
@@ -362,28 +437,60 @@ export class NodeWebSocketGatewayLifecycleService
     attachmentsByPath: Map<string, GatewayAttachment>,
   ): NodeUpgradeListener {
     return (request, socket, head) => {
-      let attachment: GatewayAttachment | undefined;
+      socket.pause();
 
-      try {
-        const url = new URL(request.url ?? '/', 'http://localhost');
-        const targetPath = normalizeGatewayPath(url.pathname);
-        attachment = attachmentsByPath.get(targetPath);
-      } catch {
-        rejectBadUpgradeRequest(socket);
-        return;
-      }
-
-      if (!attachment) {
-        if (upgradeServer.listenerCount('upgrade') === 1) {
-          rejectUpgradeRequest(socket);
-        }
-        return;
-      }
-
-      attachment.server.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
-        attachment.server.emit('connection', websocket, request);
-      });
+      void this.handleUpgradeRequest(upgradeServer, attachmentsByPath, request, socket, head)
+        .catch((error) => {
+          this.logger.error('WebSocket upgrade admission failed.', error, 'WebSocketGatewayLifecycleService');
+          rejectUpgradeRequestWithStatus(socket, {
+            body: 'Internal server error',
+            status: 500,
+          });
+        })
+        .finally(() => {
+          if (!socket.destroyed) {
+            socket.resume();
+          }
+        });
     };
+  }
+
+  private async handleUpgradeRequest(
+    upgradeServer: NodeUpgradeServer,
+    attachmentsByPath: Map<string, GatewayAttachment>,
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ): Promise<void> {
+    let attachment: GatewayAttachment | undefined;
+    let targetPath: string;
+
+    try {
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      targetPath = normalizeGatewayPath(url.pathname);
+      attachment = attachmentsByPath.get(targetPath);
+    } catch {
+      rejectBadUpgradeRequest(socket);
+      return;
+    }
+
+    if (!attachment) {
+      if (upgradeServer.listenerCount('upgrade') === 1) {
+        rejectUpgradeRequest(socket);
+      }
+      return;
+    }
+
+    const rejection = await this.resolveUpgradeRejection(request, targetPath);
+
+    if (rejection) {
+      rejectUpgradeRequestWithStatus(socket, rejection);
+      return;
+    }
+
+    attachment.server.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
+      attachment.server.emit('connection', websocket, request);
+    });
   }
 
   private resolveUpgradeServer(): NodeUpgradeServer {
@@ -612,6 +719,10 @@ export class NodeWebSocketGatewayLifecycleService
     request: IncomingMessage,
   ): void {
     socket.on('message', (data: RawData) => {
+      if (this.closeOversizedPayload(state.socketId, socket, data)) {
+        return;
+      }
+
       if (!state.handlersReady) {
         this.bufferIncomingMessage(state, socket, data);
         return;
@@ -762,6 +873,84 @@ export class NodeWebSocketGatewayLifecycleService
       this.logger,
       'WebSocketGatewayLifecycleService',
     );
+  }
+
+  private async resolveUpgradeRejection(
+    request: IncomingMessage,
+    path: string,
+  ): Promise<WebSocketUpgradeRejection | undefined> {
+    if (this.socketRegistry.size >= this.resolveMaxConnectionCount()) {
+      return {
+        body: 'WebSocket connection limit exceeded.',
+        status: 429,
+      };
+    }
+
+    const guard = this.moduleOptions.upgrade?.guard;
+
+    if (!guard) {
+      return undefined;
+    }
+
+    try {
+      const result = await guard(request, {
+        activeConnectionCount: this.socketRegistry.size,
+        path,
+      });
+
+      if (result === false) {
+        return {
+          body: 'WebSocket upgrade rejected.',
+          status: 403,
+        };
+      }
+
+      return isUpgradeRejection(result) ? result : undefined;
+    } catch (error) {
+      if (isHttpExceptionLike(error)) {
+        return {
+          body: error.message,
+          status: error.status,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  private closeOversizedPayload(socketId: string, socket: WebSocket, data: RawData): boolean {
+    const maxPayloadBytes = this.resolveMaxPayloadBytes();
+
+    if (resolveMessageByteLength(data) <= maxPayloadBytes) {
+      return false;
+    }
+
+    socket.close(1009, 'Payload too large');
+    this.logger.warn(
+      `WebSocket connection ${socketId} exceeded payload limit (${String(maxPayloadBytes)} bytes). Connection closed.`,
+      'WebSocketGatewayLifecycleService',
+    );
+    return true;
+  }
+
+  private resolveMaxConnectionCount(): number {
+    const configured = this.moduleOptions.limits?.maxConnections;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_CONNECTIONS;
+    }
+
+    return configured;
+  }
+
+  private resolveMaxPayloadBytes(): number {
+    const configured = this.moduleOptions.limits?.maxPayloadBytes;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES;
+    }
+
+    return configured;
   }
 
   private resolveShutdownTimeoutMs(): number {

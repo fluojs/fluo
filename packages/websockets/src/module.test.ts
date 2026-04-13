@@ -111,6 +111,12 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
+function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Buffer }> {
+  return new Promise((resolve) => {
+    socket.once('close', (code: number, reason: Buffer) => resolve({ code, reason }));
+  });
+}
+
 type ServerBackedGatewayScenario = {
   bootstrap: typeof bootstrapNodeApplication | typeof bootstrapFastifyApplication | typeof bootstrapExpressApplication;
   name: string;
@@ -781,6 +787,179 @@ describe('@fluojs/websockets', () => {
     await app.close();
   });
 
+  it('rejects anonymous websocket upgrades before the handshake completes', async () => {
+    @WebSocketGateway({ path: '/guarded' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        upgrade: {
+          guard(request) {
+            if ('headers' in request && typeof request.headers === 'object') {
+              const authorization = 'get' in request.headers && typeof request.headers.get === 'function'
+                ? request.headers.get('authorization')
+                : (request.headers as Record<string, string | string[] | undefined>).authorization;
+
+              return authorization === 'Bearer node'
+                ? true
+                : { body: 'Authentication required.', status: 401 };
+            }
+
+            return { body: 'Authentication required.', status: 401 };
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = createConnection({ host: '127.0.0.1', port }, () => {
+        socket.write(
+          'GET /guarded HTTP/1.1\r\n'
+            + 'Host: 127.0.0.1\r\n'
+            + 'Connection: Upgrade\r\n'
+            + 'Upgrade: websocket\r\n'
+            + 'Sec-WebSocket-Version: 13\r\n'
+            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+            + '\r\n',
+        );
+      });
+      const chunks: Buffer[] = [];
+
+      socket.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      socket.on('end', () => {
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+      socket.on('error', reject);
+    });
+
+    expect(response).toContain('HTTP/1.1 401 Unauthorized');
+    expect(response).toContain('Authentication required.');
+
+    await app.close();
+  });
+
+  it('rejects websocket upgrades that exceed the configured connection limit', async () => {
+    @WebSocketGateway({ path: '/limited' })
+    class LimitedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        limits: {
+          maxConnections: 1,
+        },
+      })],
+      providers: [LimitedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const firstSocket = new WebSocket(`ws://127.0.0.1:${String(port)}/limited`);
+    await onceOpen(firstSocket);
+
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = createConnection({ host: '127.0.0.1', port }, () => {
+        socket.write(
+          'GET /limited HTTP/1.1\r\n'
+            + 'Host: 127.0.0.1\r\n'
+            + 'Connection: Upgrade\r\n'
+            + 'Upgrade: websocket\r\n'
+            + 'Sec-WebSocket-Version: 13\r\n'
+            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+            + '\r\n',
+        );
+      });
+      const chunks: Buffer[] = [];
+
+      socket.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      socket.on('end', () => {
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+      socket.on('error', reject);
+    });
+
+    expect(response).toContain('HTTP/1.1 429 Too Many Requests');
+
+    firstSocket.close();
+    await onceClosed(firstSocket);
+    await app.close();
+  });
+
+  it('closes websocket connections when inbound payloads exceed the configured limit', async () => {
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/payload-limit' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 8,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    const state = await app.container.resolve(GatewayState);
+
+    await app.listen();
+
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/payload-limit`);
+    await onceOpen(socket);
+    const closed = onceCloseDetails(socket);
+
+    socket.send('hello world');
+
+    const { code } = await closed;
+
+    expect(code).toBe(1009);
+    expect(state.messages).toEqual([]);
+
+    await app.close();
+  });
+
   it('caps pre-ready buffered websocket messages with drop-oldest policy', async () => {
     const connected = createDeferred<void>();
 
@@ -989,6 +1168,18 @@ describe('@fluojs/websockets', () => {
 
     const shutdown = Reflect.get(service, 'shutdown') as () => Promise<void>;
     await shutdown.call(service);
+  });
+
+  it('starts heartbeat by default when not explicitly disabled', () => {
+    const service = createTestLifecycleService();
+    const startHeartbeatSpy = vi.fn();
+
+    Reflect.set(service, 'startHeartbeat', startHeartbeatSpy);
+
+    const startHeartbeatIfEnabled = Reflect.get(service, 'startHeartbeatIfEnabled') as () => void;
+    startHeartbeatIfEnabled.call(service);
+
+    expect(startHeartbeatSpy).toHaveBeenCalledWith(30_000, 30_000);
   });
 
   it('caps ready-state message queue and drops newest queued messages when saturated', async () => {
