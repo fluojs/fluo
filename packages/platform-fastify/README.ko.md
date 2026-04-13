@@ -42,14 +42,18 @@ await app.listen();
 ## 주요 패턴
 
 ### 멀티파트 및 Raw Body
-Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다.
+Fastify 어댑터는 내부 Fastify 플러그인을 통해 멀티파트 form-data 및 raw body 파싱을 기본적으로 지원하며, 이는 표준 fluo 요청 인터페이스를 통해 노출됩니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapFastifyApplication(...)` 및 `runFastifyApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
 
 ```typescript
-const adapter = createFastifyAdapter({
-  port: 3000,
-  multipart: true,
-  rawBody: true,
-});
+const adapter = createFastifyAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
 ```
 
 ### 서버 기반 실시간 통신 (Real-Time)
@@ -89,4 +93,3 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - `packages/platform-fastify/src/adapter.test.ts`
 - `examples/minimal/src/main.ts`
 - `examples/realworld-api/src/main.ts`
-
