@@ -28,6 +28,7 @@ interface ScheduledRecord {
 
 class InMemoryLockRedisClient {
   private readonly locks = new Map<string, string>();
+  renewalCalls = 0;
 
   async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
     if (this.locks.has(key)) {
@@ -44,6 +45,7 @@ class InMemoryLockRedisClient {
     }
 
     if (script.includes('PEXPIRE')) {
+      this.renewalCalls += 1;
       return 1;
     }
 
@@ -1401,6 +1403,70 @@ describe('@fluojs/cron', () => {
       'error:Distributed cron lock ownership lost for lock-due-renewal-task.',
       'after',
     ]);
+
+    await app.close();
+  });
+
+  it('renews distributed locks before the minimum supported ttl expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T00:00:00.000Z'));
+
+    const scheduled = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const events: string[] = [];
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        afterRun: () => {
+          events.push('after');
+        },
+        distributed: true,
+        lockTtlMs: 1_000,
+        name: 'lock-min-ttl-task',
+        onError: (error) => {
+          events.push(`error:${error instanceof Error ? error.message : 'unknown'}`);
+        },
+        onSuccess: () => {
+          events.push('success');
+        },
+      })
+      async run() {
+        events.push('run');
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-lock-min-ttl',
+            lockTtlMs: 1_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    const tickPromise = scheduled.records[0]!.tick();
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(500);
+    release.resolve();
+    await tickPromise;
+
+    expect(redis.renewalCalls).toBeGreaterThanOrEqual(1);
+    expect(events).toEqual(['run', 'success', 'after']);
 
     await app.close();
   });
