@@ -62,11 +62,19 @@
     "@fluojs/core": "workspace:*",
     "@fluojs/di": "workspace:*",
     "@fluojs/notifications": "workspace:*",
-    "@fluojs/queue": "workspace:*",
     "@fluojs/runtime": "workspace:*",
     "nodemailer": "^6.10.1"
   },
+  "peerDependencies": {
+    "@fluojs/queue": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@fluojs/queue": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@fluojs/queue": "workspace:*",
     "@types/nodemailer": "^8.0.0",
     "vitest": "^3.2.4"
   }

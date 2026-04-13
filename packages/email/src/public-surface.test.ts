@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as emailPublicApi from './index.js';
@@ -33,6 +36,26 @@ describe('@fluojs/email public API surface', () => {
     expect(emailQueuePublicApi).toHaveProperty('DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS');
     expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('attempts');
     expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('concurrency');
+  });
+
+  it('keeps queue install requirements behind an optional peer dependency', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/queue');
+    expect(packageJson.peerDependencies).toMatchObject({
+      '@fluojs/queue': 'workspace:*',
+    });
+    expect(packageJson.peerDependenciesMeta).toMatchObject({
+      '@fluojs/queue': {
+        optional: true,
+      },
+    });
   });
 
   it('keeps documented TypeScript-only contracts stable enough for downstream packages', () => {
