@@ -26,6 +26,12 @@ pnpm add -g @fluojs/cli
 pnpm dlx @fluojs/cli new my-app
 ```
 
+## 릴리스 계약
+
+- `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
+- 지원되는 설치 경로는 전역 패키지(`pnpm add -g @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
+- 배포되는 `fluo` bin은 `package.json`에 선언된 dist 빌드 CLI 엔트리포인트를 기준으로 동작합니다.
+
 ## 사용 시점
 
 - **부트스트랩**: 표준적이고 검증 가능한 구조로 새 프로젝트를 시작할 때.
@@ -118,7 +124,7 @@ fluo migrate ./src --apply
 # 의존성 그래프를 Mermaid 형식으로 내보내기
 fluo inspect ./src/app.module.ts --mermaid
 
-### @fluojs/studio용 snapshot 내보내기
+# @fluojs/studio용 snapshot 내보내기
 fluo inspect ./src/app.module.ts --json > snapshot.json
 ```
 

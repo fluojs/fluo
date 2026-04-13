@@ -26,6 +26,12 @@ Or run directly without installation:
 pnpm dlx @fluojs/cli new my-app
 ```
 
+## Release Contract
+
+- `@fluojs/cli` is a public package in the intended publish surface.
+- The supported install paths are the global package (`pnpm add -g @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
+- The published `fluo` bin is backed by the dist-built CLI entrypoint declared in `package.json`.
+
 ## When to Use
 
 - **Bootstrapping**: When starting a new project with a standard, verifiable structure.

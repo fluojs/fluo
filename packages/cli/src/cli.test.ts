@@ -28,12 +28,28 @@ describe('CLI command runner', () => {
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
       bin: Record<string, string>;
+      exports: Record<string, { import: string; types: string }>;
+      files: string[];
+      main?: string;
+      private?: boolean;
+      publishConfig?: { access?: string };
     };
 
     expect(manifest.bin).toEqual({
       fluo: './bin/fluo.mjs',
     });
+    expect(manifest.private).toBe(false);
+    expect(manifest.publishConfig?.access).toBe('public');
+    expect(manifest.main).toBe('./dist/index.js');
+    expect(manifest.exports['.']).toEqual({
+      import: './dist/index.js',
+      types: './dist/index.d.ts',
+    });
+    expect(manifest.files).toEqual(['dist', 'bin']);
     expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('The canonical CLI for fluo');
+    expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('dist-built CLI entrypoint');
+    expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('dist 빌드 CLI 엔트리포인트');
+    expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('# @fluojs/studio용 snapshot 내보내기');
   });
 
   it('uses the default target directory from a single-app workspace root', async () => {

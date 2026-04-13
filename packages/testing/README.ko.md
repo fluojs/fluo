@@ -24,6 +24,12 @@ pnpm add -D @fluojs/testing vitest
 
 `vitest`는 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다.
 
+`@fluojs/testing/vitest`를 사용할 때는 `fluoBabelDecoratorsPlugin()`이 런타임에 Babel을 호출하므로, 사용하는 워크스페이스에 `@babel/core`도 함께 설치해야 합니다.
+
+```bash
+pnpm add -D @babel/core
+```
+
 ## 사용 시점
 
 - 프로덕션 모듈 트리를 모방하는 테스트 컨테이너를 생성해야 할 때.
@@ -96,7 +102,7 @@ const mailer = createDeepMock(MailService);
 - **Mock 서브패스**: `@fluojs/testing/mock`
 - **HTTP 헬퍼**: `@fluojs/testing/http`
 - **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
-- **도구 지원**: `@fluojs/testing/vitest`와 `fluoBabelDecoratorsPlugin()`
+- **도구 지원**: `@fluojs/testing/vitest`와 `fluoBabelDecoratorsPlugin()` (`vitest`와 `@babel/core`를 함께 요구)
 
 ## 관련 패키지
 

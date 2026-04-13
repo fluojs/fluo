@@ -22,6 +22,12 @@ npm install --save-dev @fluojs/testing vitest
 
 `vitest` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint.
 
+If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime:
+
+```bash
+npm install --save-dev @babel/core
+```
+
 ## When to Use
 
 - when you want to compile a real module graph but replace a few explicit providers with fakes
@@ -94,7 +100,7 @@ Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-
 - **Mock subpath**: `@fluojs/testing/mock`
 - **HTTP helpers**: `@fluojs/testing/http`
 - **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
-- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()`
+- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` (requires `vitest` and `@babel/core` in the consuming workspace)
 
 ## Related Packages
 

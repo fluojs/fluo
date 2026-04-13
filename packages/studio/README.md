@@ -21,6 +21,11 @@ File-first shared platform snapshot viewer for fluo runtime exports.
 pnpm add @fluojs/studio
 ```
 
+The published package serves two caller-facing entrypoints:
+
+- `@fluojs/studio` / `@fluojs/studio/contracts` for snapshot parsing, filtering, and Mermaid export helpers.
+- `@fluojs/studio/viewer` for the packaged browser viewer HTML entry file.
+
 ## Release Policy
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
@@ -65,12 +70,21 @@ Use the **Diagnostics** tab to see issues collected during the runtime bootstrap
 
 ## Public API Overview
 
-Studio is primarily a web application, but it defines contracts for consuming platform snapshots.
+Studio is primarily a web application, but the published package also exposes the documented snapshot-consumption helpers used by tooling and automation.
 
 | Contract | Description |
 |---|---|
 | `PlatformShellSnapshot` | The core data structure representing the application state. |
 | `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
+| `parseStudioPayload(rawJson)` | Validates CLI/exported JSON into the Studio snapshot/timing envelope. |
+| `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
+| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph. |
+
+### Published package entrypoints
+
+- `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering.
+- `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
+- `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the browser viewer bundle.
 
 ## Related Packages
 
