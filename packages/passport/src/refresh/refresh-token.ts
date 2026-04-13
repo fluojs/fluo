@@ -1,5 +1,6 @@
 import type { GuardContext, RequestContext } from '@fluojs/http';
 import { Inject, InvariantError, type Token } from '@fluojs/core';
+import type { Provider } from '@fluojs/di';
 import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import {
@@ -140,11 +141,11 @@ export class RefreshTokenStrategy implements AuthStrategy {
  */
 export function createRefreshTokenProviders(
   service: Token<RefreshTokenService>,
-): Array<{ provide: Token<unknown>; useToken: Token<unknown> }> {
+): Provider[] {
   return [
     {
       provide: REFRESH_TOKEN_SERVICE,
-      useToken: service,
+      useExisting: service,
     },
   ];
 }
