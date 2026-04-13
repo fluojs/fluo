@@ -29,7 +29,7 @@ pnpm add @fluojs/openapi
 
 ## 빠른 시작
 
-`OpenApiModule`을 등록하고 컨트롤러에 어노테이션을 달아 문서를 생성합니다.
+`OpenApiModule`을 등록하고 `sources`(또는 미리 만든 `descriptors`)를 전달해 문서에 포함할 HTTP 핸들러를 명시합니다.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -51,6 +51,7 @@ class UsersController {
 @Module({
   imports: [
     OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
       title: 'My API',
       version: '1.0.0',
       ui: true, // /docs에서 Swagger UI 활성화
@@ -65,6 +66,8 @@ await app.listen(3000);
 // OpenAPI JSON: http://localhost:3000/openapi.json
 // Swagger UI: http://localhost:3000/docs
 ```
+
+컨트롤러 탐색을 직접 건너뛰고 싶다면 `descriptors: createHandlerMapping([...]).descriptors`를 대신 전달할 수 있습니다. `OpenApiModule`은 `@Module({ controllers: [...] })`만으로 핸들러를 자동 추론하지 않습니다.
 
 ## 핵심 기능
 
