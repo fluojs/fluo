@@ -20,6 +20,11 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('isGraphqlListTypeRef');
   });
 
+  it('keeps GraphqlModule limited to the documented synchronous entrypoint', () => {
+    expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRoot');
+    expect(graphqlPublicApi.GraphqlModule).not.toHaveProperty('forRootAsync');
+  });
+
   it('does not expose internal metadata, lifecycle, or descriptor internals', () => {
     expect(graphqlPublicApi).not.toHaveProperty('createGraphqlModule');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_MODULE_OPTIONS');

@@ -30,7 +30,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 ## Quick Start
 
-Register the `GraphqlModule` and define a resolver using standard decorators.
+Register `GraphqlModule.forRoot(...)` and define a resolver using standard decorators. `@fluojs/graphql` currently exposes a synchronous module entrypoint only; there is no `GraphqlModule.forRootAsync(...)` contract.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -121,7 +121,7 @@ GraphqlModule.forRoot({
 
 ## Public API Overview
 
-- `GraphqlModule`: Main entry point for GraphQL integration.
+- `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Operation decorators.
 - `Arg`: Argument mapping decorator.
 - `createDataLoader`, `createDataLoaderMap`: DataLoader factory helpers.
