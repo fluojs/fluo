@@ -108,9 +108,8 @@ export class MetricsModule {
       class MetricsController {
         @Get(metricsRoutePath)
         async getMetrics(_input: undefined, ctx: RequestContext): Promise<string> {
-          await platformTelemetry.refresh(ctx);
           ctx.response.setHeader('content-type', registry.contentType);
-          return registry.metrics();
+          return platformTelemetry.collectMetrics(ctx, registry);
         }
       }
 
@@ -130,9 +129,19 @@ export class MetricsModule {
 }
 
 type RegistryMode = 'isolated' | 'shared';
+type PlatformHealthStatus = PlatformShellSnapshot['health']['status'];
+type PlatformReadinessStatus = PlatformShellSnapshot['readiness']['status'];
+type RuntimeTelemetryComponent = {
+  id: string;
+  kind: string;
+  health: PlatformHealthStatus;
+  readiness: PlatformReadinessStatus;
+};
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
+const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
+const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 
 function toReadinessValue(status: PlatformShellSnapshot['readiness']['status']): number {
   return status === 'ready' ? 1 : 0;
@@ -168,6 +177,9 @@ class RuntimePlatformTelemetry {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
   private readonly registryModeGauge: Gauge<string>;
+  private readonly lastHealthStatuses = new Map<string, PlatformHealthStatus>();
+  private readonly lastReadinessStatuses = new Map<string, PlatformReadinessStatus>();
+  private scrapeChain: Promise<unknown> = Promise.resolve();
 
   constructor(
     registry: Registry,
@@ -189,11 +201,25 @@ class RuntimePlatformTelemetry {
       labelNames: REGISTRY_MODE_LABELS,
       name: 'fluo_metrics_registry_mode',
     });
+
+    this.registryModeGauge.labels(this.registryMode).set(1);
+  }
+
+  async collectMetrics(ctx: RequestContext, registry: Registry): Promise<string> {
+    const collect = this.scrapeChain.then(async () => {
+      await this.refresh(ctx);
+      return registry.metrics();
+    });
+
+    this.scrapeChain = collect.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return collect;
   }
 
   async refresh(ctx: RequestContext): Promise<void> {
-    this.registryModeGauge.reset();
-    this.registryModeGauge.labels(this.registryMode).set(1);
 
     const platformShell = await this.resolvePlatformShell(ctx);
     if (!platformShell) {
@@ -204,25 +230,96 @@ class RuntimePlatformTelemetry {
     const env = this.labels?.env ?? 'unknown';
     const instance = this.labels?.instance ?? 'local';
 
-    this.readinessGauge.reset();
-    this.healthGauge.reset();
+    const components: RuntimeTelemetryComponent[] = [
+      {
+        health: snapshot.health.status,
+        id: 'runtime.shell',
+        kind: 'runtime',
+        readiness: snapshot.readiness.status,
+      },
+      ...snapshot.components.map((component: PlatformShellSnapshot['components'][number]) => ({
+        health: component.health.status,
+        id: component.id,
+        kind: component.kind,
+        readiness: component.readiness.status,
+      })),
+    ];
 
-    this.readinessGauge.labels('runtime.shell', 'runtime', 'readiness', snapshot.readiness.status, env, instance).set(
-      toReadinessValue(snapshot.readiness.status),
-    );
-    this.healthGauge.labels('runtime.shell', 'runtime', 'health', snapshot.health.status, env, instance).set(
-      toHealthValue(snapshot.health.status),
-    );
+    this.syncGaugeStatuses({
+      currentStatuses: new Map(components.map((component) => [this.toComponentKey(component.id, component.kind), component.health])),
+      env,
+      gauge: this.healthGauge,
+      instance,
+      lastStatuses: this.lastHealthStatuses,
+      operation: 'health',
+      statuses: HEALTH_STATUSES,
+      toMetricValue: toHealthValue,
+    });
+    this.syncGaugeStatuses({
+      currentStatuses: new Map(components.map((component) => [this.toComponentKey(component.id, component.kind), component.readiness])),
+      env,
+      gauge: this.readinessGauge,
+      instance,
+      lastStatuses: this.lastReadinessStatuses,
+      operation: 'readiness',
+      statuses: READINESS_STATUSES,
+      toMetricValue: toReadinessValue,
+    });
+  }
 
-    for (const component of snapshot.components) {
-      this.readinessGauge
-        .labels(component.id, component.kind, 'readiness', component.readiness.status, env, instance)
-        .set(toReadinessValue(component.readiness.status));
+  private syncGaugeStatuses<TStatus extends string>({
+    currentStatuses,
+    env,
+    gauge,
+    instance,
+    lastStatuses,
+    operation,
+    statuses,
+    toMetricValue,
+  }: {
+    currentStatuses: Map<string, TStatus>;
+    env: string;
+    gauge: Gauge<string>;
+    instance: string;
+    lastStatuses: Map<string, TStatus>;
+    operation: 'health' | 'readiness';
+    statuses: readonly TStatus[];
+    toMetricValue(status: TStatus): number;
+  }): void {
+    for (const [componentKey, previousStatus] of lastStatuses) {
+      const nextStatus = currentStatuses.get(componentKey);
+      if (nextStatus === previousStatus) {
+        continue;
+      }
 
-      this.healthGauge
-        .labels(component.id, component.kind, 'health', component.health.status, env, instance)
-        .set(toHealthValue(component.health.status));
+      const [componentId, componentKind] = this.fromComponentKey(componentKey);
+      for (const status of statuses) {
+        if (status !== previousStatus) {
+          continue;
+        }
+
+        gauge.remove(componentId, componentKind, operation, status, env, instance);
+      }
     }
+
+    for (const [componentKey, currentStatus] of currentStatuses) {
+      const [componentId, componentKind] = this.fromComponentKey(componentKey);
+      gauge.labels(componentId, componentKind, operation, currentStatus, env, instance).set(toMetricValue(currentStatus));
+    }
+
+    lastStatuses.clear();
+    for (const [componentKey, currentStatus] of currentStatuses) {
+      lastStatuses.set(componentKey, currentStatus);
+    }
+  }
+
+  private fromComponentKey(componentKey: string): [string, string] {
+    const separatorIndex = componentKey.indexOf('::');
+    return [componentKey.slice(0, separatorIndex), componentKey.slice(separatorIndex + 2)];
+  }
+
+  private toComponentKey(componentId: string, componentKind: string): string {
+    return `${componentId}::${componentKind}`;
   }
 
   private async resolvePlatformShell(ctx: RequestContext): Promise<{ snapshot(): Promise<PlatformShellSnapshot> } | undefined> {

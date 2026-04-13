@@ -428,6 +428,116 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('serializes overlapping scrapes and removes stale platform status series', async () => {
+    let currentReadiness: 'ready' | 'degraded' = 'ready';
+    let currentHealth: 'healthy' | 'degraded' = 'healthy';
+    let firstProbe = true;
+    let startFirstProbe: (() => void) | undefined;
+    let releaseFirstProbe: (() => void) | undefined;
+
+    const firstProbeStarted = new Promise<void>((resolve) => {
+      startFirstProbe = resolve;
+    });
+    const firstProbeReleased = new Promise<void>((resolve) => {
+      releaseFirstProbe = resolve;
+    });
+
+    async function waitForFirstProbeRelease(): Promise<void> {
+      if (!firstProbe) {
+        return;
+      }
+
+      firstProbe = false;
+      startFirstProbe?.();
+      await firstProbeReleased;
+    }
+
+    const component: PlatformComponent = {
+      async health() {
+        const status = currentHealth;
+        await waitForFirstProbeRelease();
+        return { status };
+      },
+      id: 'cache.default',
+      kind: 'cache',
+      async ready() {
+        const status = currentReadiness;
+        await waitForFirstProbeRelease();
+        return { critical: false, status };
+      },
+      snapshot() {
+        return {
+          dependencies: [],
+          details: { mode: 'memory' },
+          health: { status: currentHealth },
+          id: 'cache.default',
+          kind: 'cache',
+          ownership: { externallyManaged: false, ownsResources: true },
+          readiness: { critical: false, status: currentReadiness },
+          state: 'ready',
+          telemetry: { namespace: 'cache', tags: {} },
+        };
+      },
+      async start() {},
+      state() {
+        return 'ready';
+      },
+      async stop() {},
+      async validate() {
+        return { issues: [], ok: true };
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    const firstResponse = createResponse();
+    const secondResponse = createResponse();
+
+    const firstDispatch = app.dispatch(createRequest('/metrics'), firstResponse);
+    await firstProbeStarted;
+
+    currentReadiness = 'degraded';
+    currentHealth = 'degraded';
+
+    const secondDispatch = app.dispatch(createRequest('/metrics'), secondResponse);
+    releaseFirstProbe?.();
+
+    await Promise.all([firstDispatch, secondDispatch]);
+
+    const firstMetrics = String(firstResponse.body);
+    const secondMetrics = String(secondResponse.body);
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(firstMetrics).toContain(
+      'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="ready",env="unknown",instance="local"} 1',
+    );
+    expect(firstMetrics).toContain(
+      'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="healthy",env="unknown",instance="local"} 1',
+    );
+    expect(firstMetrics).not.toContain('result="degraded"');
+
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondMetrics).toContain(
+      'fluo_component_ready{component_id="cache.default",component_kind="cache",operation="readiness",result="degraded",env="unknown",instance="local"} 0',
+    );
+    expect(secondMetrics).toContain(
+      'fluo_component_health{component_id="cache.default",component_kind="cache",operation="health",result="degraded",env="unknown",instance="local"} 0',
+    );
+    expect(secondMetrics).not.toContain('result="ready"');
+    expect(secondMetrics).not.toContain('result="healthy"');
+
+    await app.close();
+  });
+
   it('emits both framework and custom metrics from shared registry', async () => {
     const sharedRegistry = new Registry();
 
