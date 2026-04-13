@@ -7,6 +7,7 @@ fluo 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 
 ## 목차
 
 - [설치](#설치)
+- [릴리스 정책](#릴리스-정책)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
@@ -19,6 +20,12 @@ fluo 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 
 ```bash
 pnpm add @fluojs/studio
 ```
+
+## 릴리스 정책
+
+- `@fluojs/studio`는 fluo의 intended public publish surface에 포함되는 공개 배포 패키지입니다.
+- Studio의 npm 설치 계약은 `pnpm add @fluojs/studio`이며, 저장소 내부 개발 경로는 계속 `pnpm --dir packages/studio dev`를 사용합니다.
+- 이번 릴리스에서 지원하는 공개 패키지 표면은 파일 기반 뷰어와 문서화된 snapshot 소비 계약까지입니다. 내부 workspace 연결 방식은 지원되는 설치 경로가 아닙니다.
 
 ## 사용 시점
 

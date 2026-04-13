@@ -7,6 +7,7 @@ File-first shared platform snapshot viewer for fluo runtime exports.
 ## Table of Contents
 
 - [Installation](#installation)
+- [Release Policy](#release-policy)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
@@ -19,6 +20,12 @@ File-first shared platform snapshot viewer for fluo runtime exports.
 ```bash
 pnpm add @fluojs/studio
 ```
+
+## Release Policy
+
+- `@fluojs/studio` is part of the intended public publish surface for fluo.
+- The npm install contract for Studio is `pnpm add @fluojs/studio`; local repo development still uses `pnpm --dir packages/studio dev`.
+- Studio's public package surface in this release is the file-first viewer and its documented snapshot-consumption contracts. Internal workspace wiring is not a supported install path.
 
 ## When to Use
 
