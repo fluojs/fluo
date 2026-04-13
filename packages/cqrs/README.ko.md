@@ -82,7 +82,7 @@ Saga를 사용하면 이벤트를 구독하고 새로운 Command를 트리거하
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Saga, ISaga, IEvent, CommandBusLifecycleService } from '@fluojs/cqrs';
+import { Saga, ISaga, IEvent, ICommand, CommandBusLifecycleService } from '@fluojs/cqrs';
 
 class UserCreatedEvent implements IEvent {
   constructor(public readonly userId: string) {}
@@ -148,4 +148,4 @@ class LegacyService {
 ## 예제 소스
 
 - `packages/cqrs/src/module.test.ts`: 모듈 등록 및 기본 버스 사용 예제.
-- `packages/cqrs/src/buses/saga-bus.test.ts`: 복잡한 Saga 워크플로우 예제.
+- `packages/cqrs/src/public-api.test.ts`: 루트 배럴 공개 API 계약 검증 예제.
