@@ -13,6 +13,7 @@ import {
   DuplicateQueryHandlerError,
   QueryHandlerNotFoundException,
   SagaExecutionError,
+  SagaTopologyError,
 } from './errors.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
@@ -552,6 +553,128 @@ describe('@fluojs/cqrs', () => {
 
     await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toBeInstanceOf(SagaExecutionError);
     await expect(eventBus.publish(new PaymentFailedEvent('order-2'))).rejects.toThrow('saga exploded');
+
+    await app.close();
+  });
+
+  it('fails fast when a saga republishes an event that re-enters the same saga token', async () => {
+    class LoopEvent implements IEvent {
+      constructor(public readonly loopId: string) {}
+    }
+
+    @Inject(EVENT_BUS)
+    @Saga(LoopEvent)
+    class SelfTriggeringSaga implements ISaga<LoopEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(event: LoopEvent): Promise<void> {
+        await this.eventBus.publish(new LoopEvent(event.loopId));
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [SelfTriggeringSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(eventBus.publish(new LoopEvent('loop-1'))).rejects.toBeInstanceOf(SagaTopologyError);
+    await expect(eventBus.publish(new LoopEvent('loop-1'))).rejects.toThrow('unsafe cycle');
+
+    await app.close();
+  });
+
+  it('fails fast when saga graphs form a cyclic re-entrant topology', async () => {
+    class StepOneEvent implements IEvent {
+      constructor(public readonly workflowId: string) {}
+    }
+
+    class StepTwoEvent implements IEvent {
+      constructor(public readonly workflowId: string) {}
+    }
+
+    @Inject(EVENT_BUS)
+    @Saga(StepOneEvent)
+    class StepOneSaga implements ISaga<StepOneEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(event: StepOneEvent): Promise<void> {
+        await this.eventBus.publish(new StepTwoEvent(event.workflowId));
+      }
+    }
+
+    @Inject(EVENT_BUS)
+    @Saga(StepTwoEvent)
+    class StepTwoSaga implements ISaga<StepTwoEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(event: StepTwoEvent): Promise<void> {
+        await this.eventBus.publish(new StepOneEvent(event.workflowId));
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [StepOneSaga, StepTwoSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(eventBus.publish(new StepOneEvent('wf-1'))).rejects.toBeInstanceOf(SagaTopologyError);
+    await expect(eventBus.publish(new StepOneEvent('wf-1'))).rejects.toThrow(
+      'StepOneSaga(StepOneEvent) -> StepTwoSaga(StepTwoEvent) -> StepOneSaga(StepOneEvent)',
+    );
+
+    await app.close();
+  });
+
+  it('fails fast when nested in-process saga dispatch exceeds the depth guard', async () => {
+    const chainLength = 33;
+    const eventTypes = Array.from({ length: chainLength }, (_, index) => {
+      class DepthEvent implements IEvent {
+        constructor(public readonly hop: number = index + 1) {}
+      }
+
+      return DepthEvent;
+    });
+
+    function createDepthSaga<TEvent extends IEvent>(
+      EventType: new (...args: never[]) => TEvent,
+      NextEventType: (new (...args: never[]) => IEvent) | undefined,
+    ) {
+      @Inject(EVENT_BUS)
+      @Saga(EventType)
+      class DepthSaga implements ISaga<TEvent> {
+        constructor(private readonly eventBus: CqrsEventBus) {}
+
+        async handle(): Promise<void> {
+          if (NextEventType) {
+            await this.eventBus.publish(new NextEventType());
+          }
+        }
+      }
+
+      return DepthSaga;
+    }
+
+    const sagaProviders = eventTypes.map((EventType, index) => createDepthSaga(EventType, eventTypes[index + 1]));
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: sagaProviders,
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    await expect(eventBus.publish(new eventTypes[0]!())).rejects.toBeInstanceOf(SagaTopologyError);
+    await expect(eventBus.publish(new eventTypes[0]!())).rejects.toThrow('maximum nested saga depth of 32');
 
     await app.close();
   });
