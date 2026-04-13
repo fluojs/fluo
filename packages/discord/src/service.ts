@@ -275,7 +275,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     if (recipients.length > 1) {
       throw new DiscordMessageValidationError(
-        'Discord notifications accept exactly one target thread per dispatch. Use `dispatchMany(...)` for fan-out delivery.',
+      'Discord notifications accept exactly one target thread per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
     }
 

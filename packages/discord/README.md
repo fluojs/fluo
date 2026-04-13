@@ -137,7 +137,7 @@ Behavioral contract notes:
 
 - One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
 - If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
-- If a notification needs fan-out across multiple Discord threads, call `dispatchMany(...)` instead of one multi-recipient dispatch.
+- If a notification needs fan-out across multiple Discord threads, call `sendMany(...)` instead of one multi-recipient dispatch.
 
 ### Webhook-first delivery with explicit fetch injection
 
