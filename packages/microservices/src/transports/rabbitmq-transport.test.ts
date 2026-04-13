@@ -4,17 +4,21 @@ import { RabbitMqMicroserviceTransport } from './rabbitmq-transport.js';
 
 class InMemoryQueueBus {
   private readonly listeners = new Map<string, Set<(message: string) => Promise<void> | void>>();
+  private readonly deliveryIndex = new Map<string, number>();
 
   async publish(queue: string, message: string): Promise<void> {
     const handlers = this.listeners.get(queue);
 
-    if (!handlers) {
+    if (!handlers || handlers.size === 0) {
       return;
     }
 
-    for (const handler of handlers) {
-      await handler(message);
-    }
+    const orderedHandlers = [...handlers];
+    const nextIndex = this.deliveryIndex.get(queue) ?? 0;
+    const handler = orderedHandlers[nextIndex % orderedHandlers.length];
+
+    this.deliveryIndex.set(queue, (nextIndex + 1) % orderedHandlers.length);
+    await handler(message);
   }
 
   async subscribe(queue: string, handler: (message: string) => Promise<void> | void): Promise<void> {
@@ -25,6 +29,7 @@ class InMemoryQueueBus {
 
   async unsubscribe(queue: string): Promise<void> {
     this.listeners.delete(queue);
+    this.deliveryIndex.delete(queue);
   }
 }
 
@@ -63,6 +68,57 @@ describe('RabbitMqMicroserviceTransport', () => {
     expect(events).toEqual(['ok']);
 
     await transport.close();
+  });
+
+  it('uses instance-scoped default response queues so concurrent instances do not steal replies', async () => {
+    const bus = new InMemoryQueueBus();
+    const createTransport = () => new RabbitMqMicroserviceTransport({
+      consumer: {
+        async cancel(queue) {
+          await bus.unsubscribe(queue);
+        },
+        async consume(queue, handler) {
+          await bus.subscribe(queue, handler);
+        },
+      },
+      publisher: {
+        async publish(queue, message) {
+          await bus.publish(queue, message);
+        },
+      },
+      requestTimeoutMs: 200,
+    });
+
+    const firstTransport = createTransport();
+    const secondTransport = createTransport();
+
+    await firstTransport.listen(async (packet) => {
+      if (packet.kind !== 'message') {
+        return undefined;
+      }
+
+      const input = packet.payload as { delayMs: number; value: string };
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      return input.value;
+    });
+
+    await secondTransport.listen(async (packet) => {
+      if (packet.kind !== 'message') {
+        return undefined;
+      }
+
+      const input = packet.payload as { delayMs: number; value: string };
+      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      return input.value;
+    });
+
+    await expect(Promise.all([
+      firstTransport.send('reply.safe', { delayMs: 40, value: 'first' }),
+      secondTransport.send('reply.safe', { delayMs: 5, value: 'second' }),
+    ])).resolves.toEqual(['first', 'second']);
+
+    await firstTransport.close();
+    await secondTransport.close();
   });
 
   it('round-trips handler failures to send() caller', async () => {

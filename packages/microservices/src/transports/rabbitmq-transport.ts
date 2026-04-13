@@ -57,7 +57,7 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
   constructor(private readonly options: RabbitMqMicroserviceTransportOptions) {
     this.eventQueue = options.eventQueue ?? 'fluo.microservices.events';
     this.messageQueue = options.messageQueue ?? 'fluo.microservices.messages';
-    this.responseQueue = options.responseQueue ?? 'fluo.microservices.responses';
+    this.responseQueue = options.responseQueue ?? `fluo.microservices.responses.${crypto.randomUUID()}`;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
