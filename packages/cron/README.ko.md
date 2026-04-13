@@ -90,6 +90,8 @@ class AppModule {}
 
 `distributed.clientName`을 생략하면 위의 기본 Redis 등록을 계속 사용합니다. 분산 락에 기본 Redis가 아닌 다른 연결을 쓰려면 `RedisModule.forRootNamed(...)`로 등록한 이름을 `distributed.clientName`에 지정하세요.
 
+`distributed.lockTtlMs`는 `1_000ms` 이상이어야 합니다. fluo는 최소 지원 경계인 `1_000ms`를 포함해 TTL이 만료되기 전에 Redis 락을 갱신합니다.
+
 ```typescript
 @Module({
   imports: [
