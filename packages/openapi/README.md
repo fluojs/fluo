@@ -80,6 +80,9 @@ Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI pat
 ### Security Documentation
 Easily document authentication requirements like Bearer tokens or API keys using `@ApiBearerAuth()` and `@ApiSecurity()`.
 
+### Deterministic Swagger UI Assets
+When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates.
+
 ## Public API Overview
 
 - `OpenApiModule`: Main entry point for OpenAPI integration.
@@ -96,5 +99,5 @@ Easily document authentication requirements like Bearer tokens or API keys using
 
 ## Example Sources
 
-- `packages/openapi/src/module.test.ts`: Integration tests and usage examples.
+- `packages/openapi/src/openapi-module.test.ts`: Integration tests and usage examples.
 - `examples/openapi-swagger`: Complete OpenAPI application example.
