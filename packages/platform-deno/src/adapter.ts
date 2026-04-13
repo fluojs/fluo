@@ -359,13 +359,17 @@ function createDenoShutdownSignalRegistration(
 
 function createListenTarget(hostname: string, port: number): HttpAdapterListenTarget {
   const isWildcard = hostname === '0.0.0.0' || hostname === '::';
-  const bindTarget = `${hostname}:${String(port)}`;
-  const publicHostname = isWildcard ? 'localhost' : hostname;
+  const bindTarget = `${formatHostForAuthority(hostname)}:${String(port)}`;
+  const publicHostname = isWildcard ? 'localhost' : formatHostForAuthority(hostname);
 
   return {
     bindTarget,
     url: `http://${publicHostname}:${String(port)}`,
   };
+}
+
+function formatHostForAuthority(hostname: string): string {
+  return hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
 }
 
 function resolveServe(serve: DenoServeFunction | undefined): DenoServeFunction {

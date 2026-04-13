@@ -42,14 +42,18 @@ await app.listen();
 ## Common Patterns
 
 ### Multipart and Raw Body
-The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface.
+The Fastify adapter includes built-in support for multipart form-data and raw body parsing via internal Fastify plugins, exposed through the standard fluo request interface. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same multipart settings under `options.multipart`.
 
 ```typescript
-const adapter = createFastifyAdapter({
-  port: 3000,
-  multipart: true,
-  rawBody: true,
-});
+const adapter = createFastifyAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
 ```
 
 ### Server-Backed Real-Time
@@ -89,4 +93,3 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 - `packages/platform-fastify/src/adapter.test.ts`
 - `examples/minimal/src/main.ts`
 - `examples/realworld-api/src/main.ts`
-

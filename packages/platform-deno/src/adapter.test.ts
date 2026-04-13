@@ -298,6 +298,30 @@ describe('@fluojs/platform-deno', () => {
     await app.close();
   });
 
+  it('formats explicit IPv6 listen targets with brackets', () => {
+    const adapter = createDenoAdapter({
+      hostname: '::1',
+      port: 3000,
+    });
+
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '[::1]:3000',
+      url: 'http://[::1]:3000',
+    });
+  });
+
+  it('formats IPv6 wildcard listen targets with a bracketed bind target and localhost URL', () => {
+    const adapter = createDenoAdapter({
+      hostname: '::',
+      port: 3000,
+    });
+
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '[::]:3000',
+      url: 'http://localhost:3000',
+    });
+  });
+
   it('registers and removes Deno shutdown signal listeners through the run helper', async () => {
     const signals = installDenoSignalMock();
 
