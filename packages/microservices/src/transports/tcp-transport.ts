@@ -10,9 +10,12 @@ interface WireResponse {
 
 interface TcpMicroserviceTransportOptions {
   host?: string;
+  maxFrameBytes?: number;
   port: number;
   requestTimeoutMs?: number;
 }
+
+const DEFAULT_MAX_FRAME_BYTES = 1_048_576;
 
 /**
  * Lightweight TCP transport for request-response messages and fire-and-forget events.
@@ -25,6 +28,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private listenPromise: Promise<void> | undefined;
   private readonly sockets = new Set<Socket>();
   private readonly host: string;
+  private readonly maxFrameBytes: number;
   private readonly requestTimeoutMs: number;
   private readonly server = createServer((socket) => {
     this.sockets.add(socket);
@@ -39,6 +43,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
    */
   constructor(private readonly options: TcpMicroserviceTransportOptions) {
     this.host = options.host ?? '127.0.0.1';
+    this.maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
   }
 
@@ -149,14 +154,21 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
     try {
       const payload = await this.handler(packet);
-      this.writeLine(socket, JSON.stringify({ payload, requestId } satisfies WireResponse));
+      this.writeLine(socket, this.serializeFrame({ payload, requestId } satisfies WireResponse));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unhandled microservice error';
-      this.writeLine(socket, JSON.stringify({ error: message, requestId } satisfies WireResponse));
+
+      try {
+        this.writeLine(socket, this.serializeFrame({ error: message, requestId } satisfies WireResponse));
+      } catch {
+        socket.destroy();
+      }
     }
   }
 
   private async sendWirePacket(packet: TransportPacket, signal?: AbortSignal): Promise<unknown> {
+    const serializedPacket = this.serializeFrame(packet);
+
     return await new Promise<unknown>((resolve, reject) => {
       const socket = new Socket();
       let settled = false;
@@ -210,11 +222,15 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
       if (packet.kind === 'event') {
         socket.once('connect', () => {
-          this.writeLine(socket, JSON.stringify(packet));
-          settle(() => {
-            socket.end();
-            resolve(undefined);
-          });
+          try {
+            this.writeLine(socket, serializedPacket);
+            settle(() => {
+              socket.end();
+              resolve(undefined);
+            });
+          } catch (error) {
+            fail(error);
+          }
         });
       } else {
         this.bindSocketParser<WireResponse>(socket, (value) => {
@@ -236,7 +252,11 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
         });
 
         socket.once('connect', () => {
-          this.writeLine(socket, JSON.stringify(packet));
+          try {
+            this.writeLine(socket, serializedPacket);
+          } catch (error) {
+            fail(error);
+          }
         });
       }
 
@@ -247,19 +267,36 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
   private bindSocketParser<TPacket>(socket: Socket, onPacket: (packet: TPacket) => void): void {
     let buffer = '';
+    let bufferBytes = 0;
 
     socket.on('data', (chunk: Buffer | string) => {
-      buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const chunkString = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      buffer += chunkString;
+      bufferBytes += Buffer.byteLength(chunkString, 'utf8');
+
+      if (bufferBytes > this.maxFrameBytes) {
+        socket.destroy();
+        return;
+      }
+
       let newLineIndex = buffer.indexOf('\n');
 
       while (newLineIndex >= 0) {
-        const line = buffer.slice(0, newLineIndex).trim();
+        const rawLine = buffer.slice(0, newLineIndex);
+        const line = rawLine.trim();
         buffer = buffer.slice(newLineIndex + 1);
+        bufferBytes = Buffer.byteLength(buffer, 'utf8');
+
+        if (Buffer.byteLength(rawLine, 'utf8') > this.maxFrameBytes) {
+          socket.destroy();
+          return;
+        }
 
         if (line.length > 0) {
           try {
             void Promise.resolve(onPacket(JSON.parse(line) as TPacket)).catch(() => undefined);
           } catch {
+            socket.destroy();
             return;
           }
         }
@@ -272,8 +309,18 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private writeLine(socket: Socket, line: string): void {
     socket.write(`${line}\n`);
   }
+
+  private serializeFrame(value: unknown): string {
+    const line = JSON.stringify(value);
+
+    if (Buffer.byteLength(line, 'utf8') > this.maxFrameBytes) {
+      throw new Error(`Microservice TCP frame exceeded ${String(this.maxFrameBytes)} bytes.`);
+    }
+
+    return line;
+  }
 }
 
 function randomRequestId(): string {
-  return Math.random().toString(36).slice(2, 14);
+  return crypto.randomUUID();
 }
