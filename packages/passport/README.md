@@ -86,8 +86,17 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 The package provides a built-in `RefreshTokenStrategy` and `RefreshTokenService` to handle secure token rotation and revocation.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
-import { UseAuth } from '@fluojs/passport';
+import { UseAuth, createRefreshTokenProviders } from '@fluojs/passport';
+
+@Module({
+  providers: [
+    MyRefreshTokenService,
+    ...createRefreshTokenProviders(MyRefreshTokenService),
+  ],
+})
+export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -98,6 +107,8 @@ export class AuthController {
   }
 }
 ```
+
+`createRefreshTokenProviders(...)` returns standard DI alias providers, so resolving `REFRESH_TOKEN_SERVICE` yields the same concrete service instance you registered.
 
 ## Public API Overview
 

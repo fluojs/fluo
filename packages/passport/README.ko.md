@@ -86,8 +86,17 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 패키지에서 제공하는 `RefreshTokenStrategy`와 `RefreshTokenService`를 사용하여 안전한 토큰 로테이션 및 폐기 기능을 구현할 수 있습니다.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
-import { UseAuth } from '@fluojs/passport';
+import { UseAuth, createRefreshTokenProviders } from '@fluojs/passport';
+
+@Module({
+  providers: [
+    MyRefreshTokenService,
+    ...createRefreshTokenProviders(MyRefreshTokenService),
+  ],
+})
+export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -98,6 +107,8 @@ export class AuthController {
   }
 }
 ```
+
+`createRefreshTokenProviders(...)`는 표준 DI alias provider를 반환하므로, `REFRESH_TOKEN_SERVICE`를 해석하면 등록한 구체 서비스 인스턴스와 동일한 객체를 받게 됩니다.
 
 ## 공개 API 개요
 
