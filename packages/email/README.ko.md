@@ -28,7 +28,11 @@ npm install @fluojs/email nodemailer
 
 내장 notifications 채널과 queue worker 연동이 필요할 때만 `@fluojs/notifications`, `@fluojs/queue`를 함께 설치하면 됩니다.
 
-Node 전용 SMTP 전달은 이제 명시적인 `@fluojs/email/node` 서브패스에 위치합니다. queue 기반 notifications 통합도 `@fluojs/email/queue` 서브패스로 분리되었습니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
+```bash
+npm install @fluojs/notifications @fluojs/queue
+```
+
+Node 전용 SMTP 전달은 이제 명시적인 `@fluojs/email/node` 서브패스에 위치합니다. queue 기반 notifications 통합도 `@fluojs/email/queue` 서브패스로 분리되었고, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
 
 ## 사용 시점
 

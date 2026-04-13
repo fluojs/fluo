@@ -28,7 +28,11 @@ npm install @fluojs/email nodemailer
 
 Install `@fluojs/notifications` and `@fluojs/queue` only when you want the built-in notifications channel and queue worker integration.
 
-Node-specific SMTP delivery now lives behind the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration likewise lives behind `@fluojs/email/queue`. The root `@fluojs/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
+```bash
+npm install @fluojs/notifications @fluojs/queue
+```
+
+Node-specific SMTP delivery now lives behind the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration likewise lives behind `@fluojs/email/queue`, and `@fluojs/queue` is declared as an optional peer for that subpath instead of a root install requirement. The root `@fluojs/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
 
 ## When to Use
 
