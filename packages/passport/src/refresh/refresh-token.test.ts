@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { Container } from '@fluojs/di';
 import type { DefaultJwtVerifier } from '@fluojs/jwt';
 import { JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
-import { RefreshTokenStrategy, type RefreshTokenService } from './refresh-token.js';
+import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, createRefreshTokenProviders, type RefreshTokenService } from './refresh-token.js';
 import type { AuthStrategyResult } from '../types.js';
 import type { GuardContext, RequestContext } from '@fluojs/http';
 
@@ -286,5 +287,34 @@ describe('RefreshTokenService contract', () => {
     await service.revokeAllForSubject('user-1');
 
     expect(service.revokeAllForSubject).toHaveBeenCalledWith('user-1');
+  });
+
+  it('creates valid DI alias providers for shared refresh-token service access', async () => {
+    class RefreshTokenServiceImpl implements RefreshTokenService {
+      async issueRefreshToken(): Promise<string> {
+        return 'refresh-token';
+      }
+
+      async rotateRefreshToken(): Promise<{ accessToken: string; refreshToken: string }> {
+        return {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+        };
+      }
+
+      async revokeRefreshToken(): Promise<void> {}
+
+      async revokeAllForSubject(): Promise<void> {}
+    }
+
+    const container = new Container().register(
+      RefreshTokenServiceImpl,
+      ...createRefreshTokenProviders(RefreshTokenServiceImpl),
+    );
+
+    const byClass = await container.resolve(RefreshTokenServiceImpl);
+    const bySharedToken = await container.resolve(REFRESH_TOKEN_SERVICE);
+
+    expect(bySharedToken).toBe(byClass);
   });
 });
