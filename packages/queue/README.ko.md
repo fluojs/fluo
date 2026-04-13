@@ -39,7 +39,7 @@ export class ProcessOrderJob {
   constructor(public readonly orderId: string) {}
 }
 
-@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: 5000 })
+@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: { type: 'fixed', delayMs: 5000 } })
 export class OrderWorker {
   async handle(job: ProcessOrderJob) {
     console.log(`주문 처리 중: ${job.orderId}`);
@@ -109,8 +109,9 @@ QueueModule.forRoot({ clientName: 'jobs' })
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 
 ### 타입
-- `QueueOptions`: 전역 큐 설정(clientName, 동시성, 전송률 제한 등)을 위한 타입입니다.
-- `WorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 우선순위 등)을 위한 타입입니다.
+- `QueueModuleOptions`: 전역 큐 설정(clientName, 기본 시도 횟수, 동시성, 전송률 제한 등)을 위한 타입입니다.
+- `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, 우선순위 등)을 위한 타입입니다.
+- `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
 
 ## 관련 패키지
 

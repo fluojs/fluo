@@ -39,7 +39,7 @@ export class ProcessOrderJob {
   constructor(public readonly orderId: string) {}
 }
 
-@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: 5000 })
+@QueueWorker(ProcessOrderJob, { attempts: 3, backoff: { type: 'fixed', delayMs: 5000 } })
 export class OrderWorker {
   async handle(job: ProcessOrderJob) {
     console.log(`Processing order: ${job.orderId}`);
@@ -109,8 +109,9 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 
 ### Types
-- `QueueOptions`: Global queue settings (clientName, concurrency, rate limiting).
-- `WorkerOptions`: Per-job settings (attempts, backoff, priority).
+- `QueueModuleOptions`: Global queue settings (clientName, default attempts, concurrency, rate limiting).
+- `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, priority).
+- `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
 
 ## Related Packages
 
