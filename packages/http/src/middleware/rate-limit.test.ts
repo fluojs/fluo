@@ -3,7 +3,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRateLimitStore, createRateLimitMiddleware } from './rate-limit.js';
 import type { MiddlewareContext } from '../types.js';
 
-function createContext(remoteAddress = '127.0.0.1') {
+function createContext(
+  options:
+    | string
+    | {
+        headers?: Record<string, string | string[]>;
+        raw?: unknown;
+      } = '127.0.0.1',
+) {
+  const headers = typeof options === 'string' ? {} : (options.headers ?? {});
+  const raw =
+    typeof options === 'string'
+      ? {
+          socket: {
+            remoteAddress: options,
+          },
+        }
+      : (options.raw ?? {
+          socket: {
+            remoteAddress: '127.0.0.1',
+          },
+        });
   const response = {
     committed: false,
     headers: {} as Record<string, string | string[]>,
@@ -22,11 +42,8 @@ function createContext(remoteAddress = '127.0.0.1') {
 
   return {
     request: {
-      raw: {
-        socket: {
-          remoteAddress,
-        },
-      },
+      headers,
+      raw,
     },
     requestContext: {},
     response,
@@ -108,6 +125,49 @@ describe('createRateLimitMiddleware', () => {
     await middleware.handle(contextB, next);
 
     expect(next).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses forwarded headers before the proxy socket address', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.11, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+    expect(firstContext.response.statusCode).toBe(200);
+    expect(secondContext.response.statusCode).toBe(200);
+  });
+
+  it('accepts proxied requests when the raw socket address is unavailable', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const context = createContext({
+      headers: { forwarded: 'for="[2001:db8:cafe::17]";proto=https' },
+      raw: {},
+    });
+
+    await middleware.handle(context, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(context.response.statusCode).toBe(200);
+  });
+
+  it('throws when no proxy or socket client identity is available', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const context = createContext({ headers: {}, raw: {} });
+
+    await expect(middleware.handle(context, next)).rejects.toThrow(/resolve client identity/i);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('accepts a custom store implementation', async () => {
