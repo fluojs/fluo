@@ -138,7 +138,7 @@ Behavioral contract notes:
 
 - One notification dispatch maps to exactly one Slack destination. Use `payload.channel` or a single entry in `recipients`.
 - If `payload.channel` is omitted, `SlackService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultChannel`.
-- If a notification needs fan-out across multiple Slack destinations, call `dispatchMany(...)` instead of one multi-recipient dispatch.
+- If a notification needs fan-out across multiple Slack destinations, call `sendMany(...)` instead of one multi-recipient dispatch.
 
 ### Webhook-first delivery with explicit fetch injection
 
