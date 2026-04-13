@@ -250,6 +250,17 @@ describe('DiscordModule', () => {
     ]);
   });
 
+  it('classifies malformed webhook configuration as a configuration error before delivery starts', () => {
+    expect(() =>
+      createDiscordWebhookTransport({
+        fetch: vi.fn<DiscordFetchLike>(),
+        webhookUrl: 'not-a-valid-webhook-url',
+      }),
+    ).toThrowError(
+      new DiscordConfigurationError('Discord webhook transport requires a valid absolute `webhookUrl`.'),
+    );
+  });
+
   it('rejects multi-recipient notification fan-out inside one Discord dispatch', async () => {
     const container = new Container();
     const moduleType = DiscordModule.forRoot({
