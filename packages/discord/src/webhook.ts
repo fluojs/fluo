@@ -51,12 +51,20 @@ function resolveFetch(fetchLike: DiscordFetchLike | undefined): DiscordFetchLike
   return (input, init) => globalThis.fetch(input, init as never) as Promise<DiscordFetchResponse>;
 }
 
+function parseWebhookUrl(webhookUrl: string): URL {
+  try {
+    return new URL(webhookUrl);
+  } catch {
+    throw new DiscordConfigurationError('Discord webhook transport requires a valid absolute `webhookUrl`.');
+  }
+}
+
 function resolveWebhookUrl(
-  webhookUrl: string,
+  webhookUrl: URL,
   message: NormalizedDiscordMessage,
   wait: boolean,
 ): string {
-  const url = new URL(webhookUrl);
+  const url = new URL(webhookUrl.toString());
   url.searchParams.set('wait', String(wait));
 
   if (message.threadId) {
@@ -150,6 +158,7 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
     throw new DiscordConfigurationError('Discord webhook transport requires a non-empty `webhookUrl`.');
   }
 
+  const parsedWebhookUrl = parseWebhookUrl(webhookUrl);
   const fetchLike = resolveFetch(options.fetch);
   const wait = options.wait ?? true;
 
@@ -157,7 +166,7 @@ export function createDiscordWebhookTransport(options: DiscordWebhookTransportOp
     async send(message: NormalizedDiscordMessage, context: DiscordTransportContext) {
       for (let attempt = 1; attempt <= DEFAULT_RETRY_ATTEMPTS; attempt += 1) {
         try {
-          const response = await fetchLike(resolveWebhookUrl(webhookUrl, message, wait), {
+          const response = await fetchLike(resolveWebhookUrl(parsedWebhookUrl, message, wait), {
             body: JSON.stringify(createWebhookPayload(message)),
             headers: {
               'content-type': 'application/json; charset=utf-8',
