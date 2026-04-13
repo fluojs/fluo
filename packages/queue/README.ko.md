@@ -110,7 +110,7 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 ### 타입
 - `QueueModuleOptions`: 전역 큐 설정(clientName, 기본 시도 횟수, 동시성, 전송률 제한 등)을 위한 타입입니다.
-- `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, 우선순위 등)을 위한 타입입니다.
+- `QueueWorkerOptions`: 개별 작업 설정(시도 횟수, 백오프, 동시성, jobName, 전송률 제한 등)을 위한 타입입니다.
 - `QueueBackoffOptions`: 재시도 백오프 설정(`type`, `delayMs`)을 위한 타입입니다.
 
 ## 관련 패키지
