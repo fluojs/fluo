@@ -110,7 +110,7 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 
 ### Types
 - `QueueModuleOptions`: Global queue settings (clientName, default attempts, concurrency, rate limiting).
-- `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, priority).
+- `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
 
 ## Related Packages
