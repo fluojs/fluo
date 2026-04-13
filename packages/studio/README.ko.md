@@ -21,6 +21,11 @@ fluo 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 
 pnpm add @fluojs/studio
 ```
 
+배포된 패키지는 두 가지 caller-facing entrypoint를 제공합니다.
+
+- `@fluojs/studio` / `@fluojs/studio/contracts`: snapshot 파싱, 필터링, Mermaid 내보내기 헬퍼
+- `@fluojs/studio/viewer`: 패키징된 브라우저 뷰어 HTML 진입 파일
+
 ## 릴리스 정책
 
 - `@fluojs/studio`는 fluo의 intended public publish surface에 포함되는 공개 배포 패키지입니다.
@@ -65,12 +70,21 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다.
 
 ## 공개 API 개요
 
-Studio는 주로 웹 애플리케이션이지만, 플랫폼 snapshot을 소비하기 위한 규격을 정의합니다.
+Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 snapshot 소비 헬퍼도 함께 공개합니다.
 
 | 규격 | 설명 |
 |---|---|
 | `PlatformShellSnapshot` | 애플리케이션 상태를 나타내는 핵심 데이터 구조입니다. |
 | `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
+| `parseStudioPayload(rawJson)` | CLI/export JSON을 Studio snapshot/timing envelope로 검증합니다. |
+| `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query 필터를 적용합니다. |
+| `renderMermaid(snapshot)` | 로드된 플랫폼 그래프를 Mermaid 텍스트로 변환합니다. |
+
+### 배포 패키지 entrypoint
+
+- `@fluojs/studio`: snapshot 파싱/필터링/렌더링용 루트 헬퍼 배럴
+- `@fluojs/studio/contracts`: 계약 헬퍼를 직접 가져오고 싶은 도구용 명시적 서브패스
+- `@fluojs/studio/viewer`: 브라우저 뷰어 번들의 `dist/index.html` 진입 파일
 
 ## 관련 패키지
 
