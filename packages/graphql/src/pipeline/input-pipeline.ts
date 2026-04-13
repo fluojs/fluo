@@ -6,6 +6,11 @@ import { isGraphqlListTypeRef } from '../types.js';
 import type { GraphqlArgType, GraphqlRootOutputType, GraphqlScalarTypeName, ResolverHandlerDescriptor } from '../types.js';
 
 const defaultValidator = new DefaultValidator();
+const blockedGraphqlInputKeys = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isSafeGraphqlInputKey(fieldName: string): boolean {
+  return !blockedGraphqlInputKeys.has(fieldName);
+}
 
 function hasRule(rules: readonly DtoFieldValidationRule[], kind: DtoFieldValidationRule['kind']): boolean {
   return rules.some((rule) => rule.kind === kind);
@@ -51,6 +56,13 @@ function toPropertyKey(fieldName: string): MetadataPropertyKey {
   return fieldName;
 }
 
+/**
+ * Infers the scalar GraphQL type for one resolver argument from explicit metadata or DTO validation rules.
+ *
+ * @param handler Resolver descriptor that carries explicit arg metadata and DTO bindings.
+ * @param argName GraphQL argument name to inspect.
+ * @returns The inferred scalar type name used by the schema builder.
+ */
 export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName: string): GraphqlScalarTypeName {
   const explicit = handler.argTypes?.[argName];
 
@@ -86,6 +98,13 @@ export function resolveArgScalarType(handler: ResolverHandlerDescriptor, argName
   }
 }
 
+/**
+ * Resolves the scalar GraphQL argument type for one resolver argument.
+ *
+ * @param handler Resolver descriptor that carries explicit arg metadata and DTO bindings.
+ * @param argName GraphQL argument name to inspect.
+ * @returns The inferred scalar type name used by the schema builder.
+ */
 export function resolveArgType(handler: ResolverHandlerDescriptor, argName: string): GraphqlArgType {
   const explicit = handler.argTypes?.[argName];
   if (explicit) {
@@ -95,10 +114,24 @@ export function resolveArgType(handler: ResolverHandlerDescriptor, argName: stri
   return resolveArgScalarType(handler, argName);
 }
 
+/**
+ * Resolves the GraphQL output type for one resolver handler.
+ *
+ * @param handler Resolver descriptor that may define an explicit output type.
+ * @returns The configured output type, or the default `string` scalar fallback.
+ */
 export function resolveOutputType(handler: ResolverHandlerDescriptor): GraphqlRootOutputType {
   return handler.outputType ?? 'string';
 }
 
+/**
+ * Materializes and validates one resolver input object from GraphQL arguments.
+ *
+ * @param inputClass Optional DTO constructor used for instantiation and validation.
+ * @param args GraphQL argument payload received for the resolver call.
+ * @param argFieldDescriptors Mapping between GraphQL argument names and DTO field names.
+ * @returns The validated DTO instance, raw argument record, or `undefined` when no input was provided.
+ */
 export async function createGraphqlInput(
   inputClass: Function | undefined,
   args: Record<string, unknown>,
@@ -111,10 +144,16 @@ export async function createGraphqlInput(
   const instance = new (inputClass as Constructor)() as Record<string, unknown>;
 
   if (argFieldDescriptors.length === 0) {
-    Object.assign(instance, args);
+    for (const [fieldName, value] of Object.entries(args)) {
+      if (!isSafeGraphqlInputKey(fieldName)) {
+        continue;
+      }
+
+      instance[fieldName] = value;
+    }
   } else {
     for (const descriptor of argFieldDescriptors) {
-      if (Object.hasOwn(args, descriptor.argName)) {
+      if (isSafeGraphqlInputKey(descriptor.fieldName) && Object.hasOwn(args, descriptor.argName)) {
         instance[descriptor.fieldName] = args[descriptor.argName];
       }
     }

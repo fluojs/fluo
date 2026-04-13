@@ -60,4 +60,22 @@ it('infers scalar types from dto metadata', () => {
 
     expect(resolveArgType(handler, 'value')).toEqual(listOf('string'));
   });
+
+  it('skips unsafe keys when materializing DTO input without explicit arg descriptors', async () => {
+    class UnsafeInput {
+      value = 'safe';
+    }
+
+    const maliciousArgs = Object.create(null) as Record<string, unknown>;
+    maliciousArgs.__proto__ = {
+      polluted: true,
+    };
+    maliciousArgs.value = 'updated';
+
+    const input = (await createGraphqlInput(UnsafeInput, maliciousArgs, [])) as UnsafeInput & { polluted?: boolean };
+
+    expect(input.value).toBe('updated');
+    expect(Object.getPrototypeOf(input)).toBe(UnsafeInput.prototype);
+    expect(input.polluted).toBeUndefined();
+  });
 });
