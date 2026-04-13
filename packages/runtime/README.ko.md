@@ -142,6 +142,7 @@ class UsersModule {}
 | `@fluojs/runtime/node` | Node.js 전용 로거 팩토리 (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) 및 종료 시그널 등록. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 웹 표준 요청/응답 유틸리티. |
 | `@fluojs/runtime/internal` | 저수준 오케스트레이션 헬퍼 및 HTTP 어댑터 기본 로직. |
+| `@fluojs/runtime/internal-node` | 어댑터/패키지 호환 계층이 사용하는 Node 전용 내부 seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 
 ### Node 전용 서브경로 (`@fluojs/runtime/node`)
 

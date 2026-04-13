@@ -55,11 +55,19 @@ describe('runtime export boundaries', () => {
   it('declares the narrowed package export map', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-    ) as { exports: Record<string, unknown> };
+    ) as {
+      exports: Record<string, unknown>;
+      typesVersions?: Record<string, Record<string, string[]>>;
+    };
 
+    expect(packageJson.exports).toHaveProperty('./node');
     expect(packageJson.exports).toHaveProperty('./web');
     expect(packageJson.exports).toHaveProperty('./internal');
     expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
     expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
+    expect(packageJson.exports).toHaveProperty('./internal-node');
+    expect(packageJson.typesVersions?.['*']).toMatchObject({
+      'internal-node': ['./dist/internal-node.d.ts'],
+    });
   });
 });
