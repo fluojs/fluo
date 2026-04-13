@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CallHandler, HttpMethod, InterceptorContext, Principal, RequestContext } from '@fluojs/http';
 
@@ -115,6 +115,10 @@ function createInterceptor(overrides: Partial<NormalizedCacheModuleOptions> = {}
 }
 
 describe('CacheInterceptor', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns cached GET values on cache hit', async () => {
     class ProductController {
       @CacheTTL(120)
@@ -288,6 +292,33 @@ describe('CacheInterceptor', () => {
     await interceptor.intercept(context, next);
 
     await expect(cacheService.get('/products')).resolves.toBeUndefined();
+  });
+
+  it('falls back to timed deferred eviction when a successful write never calls response.send', async () => {
+    vi.useFakeTimers();
+
+    class ProductController {
+      @CacheEvict('GET:/products')
+      refresh() {}
+    }
+
+    const { cacheService, interceptor } = createInterceptor();
+    await cacheService.set('GET:/products', { count: 1 }, 120);
+
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+
+    await expect(interceptor.intercept(context, next)).resolves.toEqual({ refreshed: true });
+    await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(cacheService.get('GET:/products')).resolves.toBeUndefined();
   });
 
   describe('httpKeyStrategy', () => {
