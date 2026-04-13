@@ -24,6 +24,8 @@ npm install @fluojs/platform-cloudflare-workers
 
 Use this package when deploying fluo applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.
 
+The adapter binds each request lifecycle to `executionContext.waitUntil(...)` and keeps in-flight dispatches alive during `close()` so Worker shutdown does not drop active work mid-request.
+
 ## Quick Start
 
 ### Standard Adapter Usage
@@ -95,4 +97,3 @@ const adapter = createCloudflareWorkerAdapter({
 
 - `packages/platform-cloudflare-workers/src/adapter.test.ts`
 - `packages/websockets/src/cloudflare-workers/cloudflare-workers.test.ts`
-
