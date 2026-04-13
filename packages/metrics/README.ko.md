@@ -143,6 +143,16 @@ MetricsModule.forRoot({
 })
 ```
 
+### 기본 프로세스/Node 메트릭 비활성화
+
+`defaultMetrics`의 기본값은 `true`입니다. 따라서 별도 설정이 없으면 Registry마다 Prometheus 기본 프로세스/Node.js collector를 한 번 등록합니다. 최소 Registry만 노출하고 싶다면 비활성화하세요.
+
+```typescript
+MetricsModule.forRoot({
+  defaultMetrics: false,
+})
+```
+
 ## 공개 API 개요
 
 ### `MetricsModule`
@@ -153,6 +163,7 @@ MetricsModule.forRoot({
 ### 운영 기본값
 
 - `path` 기본값은 `'/metrics'`이며, `path: false`를 주면 스크레이프 엔드포인트를 완전히 비활성화합니다.
+- `defaultMetrics` 기본값은 `true`이며, `defaultMetrics: false`를 주면 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 비활성화합니다.
 - `endpointMiddleware`는 스크레이프 엔드포인트에만 route-scoped middleware를 바인딩합니다.
 - HTTP 메트릭은 기본적으로 템플릿 기반 path label 정규화를 사용합니다.
 - raw path label은 `allowUnsafeRawPathLabelMode: true`가 필요하며, 반드시 경계가 있는 내부 경로에만 제한해야 합니다.

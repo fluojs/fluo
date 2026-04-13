@@ -103,6 +103,16 @@ class AppModule {}
 
 Prometheus metric names must stay unique inside a registry. Shared-registry mode keeps that behavior intact instead of silently shadowing metrics.
 
+### Disable default process and Node metrics
+
+`defaultMetrics` defaults to `true`, so `MetricsModule.forRoot()` registers Prometheus default process and Node.js collectors once per registry unless you opt out.
+
+```ts
+MetricsModule.forRoot({
+  defaultMetrics: false,
+});
+```
+
 ## Public API Overview
 
 - `MetricsModule.forRoot(options)`
@@ -113,6 +123,7 @@ Prometheus metric names must stay unique inside a registry. Shared-registry mode
 ### Operational defaults
 
 - `path` defaults to `'/metrics'`, and `path: false` disables the scrape endpoint entirely.
+- `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
 - HTTP metrics default to template-normalized path labels.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
