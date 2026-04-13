@@ -226,6 +226,73 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 
+  it('registers request lifecycle work with executionContext.waitUntil', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+    const deferred = createDeferred<Response>();
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise);
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        const settled = await deferred.promise;
+        response.setStatus(settled.status);
+        await response.send({ ok: true });
+      },
+    });
+
+    const fetchPromise = adapter.fetch(
+      new Request('https://worker.test/lifecycle'),
+      {},
+      { waitUntil },
+    );
+
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+
+    deferred.resolve(new Response(null, { status: 200 }));
+    await fetchPromise;
+  });
+
+  it('keeps the dispatcher until an in-flight Worker request settles during close', async () => {
+    const adapter = createCloudflareWorkerAdapter();
+    const deferred = createDeferred<void>();
+    const dispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    };
+    let closeSettled = false;
+
+    await adapter.listen(dispatcher);
+
+    const responsePromise = adapter.fetch(new Request('https://worker.test/drain'), {}, createExecutionContext());
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+
+    const shutdownResponse = await adapter.fetch(new Request('https://worker.test/closing'), {}, createExecutionContext());
+
+    expect(shutdownResponse.status).toBe(503);
+    await expect(shutdownResponse.json()).resolves.toMatchObject({
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+      },
+    });
+
+    deferred.resolve();
+
+    await responsePromise;
+    await closePromise;
+
+    expect(closeSettled).toBe(true);
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+  });
+
   it('creates a lazy Worker entrypoint that bootstraps once and reuses the bound dispatcher', async () => {
     let bootstrapCount = 0;
 
@@ -269,3 +336,14 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     }
   });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}

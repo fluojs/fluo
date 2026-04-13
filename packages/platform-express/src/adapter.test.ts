@@ -630,6 +630,39 @@ describe('@fluojs/platform-express', () => {
     await expect(adapter.close()).rejects.toThrow(/shutdown timeout/i);
   });
 
+  it('clears the express shutdown timer once close settles', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const adapter = new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+      const deferred = createDeferred<void>();
+      const server = {
+        close(callback: (error?: Error | null) => void) {
+          void deferred.promise.then(() => {
+            callback(undefined);
+          });
+          return this;
+        },
+        listening: true,
+      } as unknown as ReturnType<typeof createHttpServer>;
+
+      Reflect.set(adapter, 'server', server);
+      Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+      const closePromise = adapter.close();
+
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      deferred.resolve();
+      await Promise.resolve();
+      await closePromise;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries startup after EADDRINUSE until the port becomes available', async () => {
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;

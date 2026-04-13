@@ -38,9 +38,7 @@ export class DiscordChannel implements NotificationChannel<DiscordNotificationDi
     const receipt = await this.discord.sendNotification(notification, { signal: context.signal });
 
     if (receipt.ok === false) {
-      throw new DiscordTransportError(
-        `Discord transport reported an unsuccessful delivery${receipt.response ? `: ${receipt.response}` : '.'}`,
-      );
+      throw new DiscordTransportError('Discord transport reported an unsuccessful delivery.');
     }
 
     return {

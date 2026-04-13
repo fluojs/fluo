@@ -26,6 +26,8 @@ Use this package when running fluo applications on the [Deno](https://deno.com/)
 
 During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before the Deno server lifecycle completes.
 
+When `runDenoApplication(...)` runs inside Deno with signal APIs available, it also registers `SIGINT`/`SIGTERM` listeners and removes them once the application closes.
+
 ## Quick Start
 
 ```typescript

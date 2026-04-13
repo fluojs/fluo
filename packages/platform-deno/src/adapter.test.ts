@@ -77,6 +77,45 @@ function createUpgradeWebSocketStub() {
   };
 }
 
+function installDenoSignalMock() {
+  const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+  const listeners = new Map<string, () => void>();
+  const addSignalListener = vi.fn((signal: string, handler: () => void) => {
+    listeners.set(signal, handler);
+  });
+  const removeSignalListener = vi.fn((signal: string, handler: () => void) => {
+    if (listeners.get(signal) === handler) {
+      listeners.delete(signal);
+    }
+  });
+
+  (globalThis as typeof globalThis & {
+    Deno?: {
+      addSignalListener: typeof addSignalListener;
+      removeSignalListener: typeof removeSignalListener;
+    };
+  }).Deno = {
+    addSignalListener,
+    removeSignalListener,
+  };
+
+  return {
+    addSignalListener,
+    emit(signal: string) {
+      listeners.get(signal)?.();
+    },
+    removeSignalListener,
+    restore() {
+      if (originalDeno === undefined) {
+        delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+        return;
+      }
+
+      (globalThis as typeof globalThis & { Deno?: unknown }).Deno = originalDeno;
+    },
+  };
+}
+
 function createMockDenoSocket(): DenoServerWebSocket {
   const listeners = {
     close: [] as Array<(event: Event) => void>,
@@ -259,6 +298,54 @@ describe('@fluojs/platform-deno', () => {
     await app.close();
   });
 
+  it('registers and removes Deno shutdown signal listeners through the run helper', async () => {
+    const signals = installDenoSignalMock();
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+      const app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+        shutdownSignals: ['SIGTERM'],
+      });
+
+      expect(signals.addSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+
+      await app.close();
+
+      expect(signals.removeSignalListener).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    } finally {
+      signals.restore();
+    }
+  });
+
+  it('closes the Deno application when a registered shutdown signal fires', async () => {
+    const signals = installDenoSignalMock();
+
+    try {
+      class AppModule {}
+      defineModule(AppModule, {});
+
+      const server = createServeStub();
+      const app = await runDenoApplication(AppModule, {
+        serve: server.serve,
+        shutdownSignals: ['SIGTERM'],
+      });
+      const closeSpy = vi.spyOn(app, 'close');
+
+      signals.emit('SIGTERM');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(closeSpy).toHaveBeenCalledWith('SIGTERM');
+      await app.close();
+    } finally {
+      signals.restore();
+    }
+  });
+
   it('drains in-flight requests before Deno close resolves', async () => {
     const server = createServeStub();
     const adapter = new DenoHttpApplicationAdapter({
@@ -333,6 +420,44 @@ describe('@fluojs/platform-deno', () => {
       });
 
       expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the Deno shutdown timer once close settles', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const shutdownDeferred = createDeferred<void>();
+      const finishedDeferred = createDeferred<void>();
+      const adapter = new DenoHttpApplicationAdapter({
+        hostname: '0.0.0.0',
+        port: 3000,
+        serve: vi.fn(() => ({
+          finished: finishedDeferred.promise,
+          shutdown: async () => {
+            await shutdownDeferred.promise;
+          },
+        })),
+      });
+
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          response.setStatus(204);
+        },
+      });
+
+      const closePromise = adapter.close();
+
+      expect(vi.getTimerCount()).toBe(1);
+
+      shutdownDeferred.resolve();
+      finishedDeferred.resolve();
+      await Promise.resolve();
+      await closePromise;
+
+      expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }

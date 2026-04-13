@@ -158,6 +158,11 @@ await slack.send({
 
 For richer API integrations such as `chat.postMessage`, implement the exported `SlackTransport` contract and inject it through `SlackModule.forRoot(...)` or `forRootAsync(...)`.
 
+Behavioral contract notes:
+
+- The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- Caller-visible `SlackTransportError` messages omit raw upstream response bodies by default.
+
 ### Intentional limitations
 
 The Slack package intentionally does **not**:

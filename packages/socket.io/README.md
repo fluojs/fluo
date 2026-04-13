@@ -72,9 +72,38 @@ class MyService {
 }
 ```
 
+### Auth guards, safe CORS defaults, and bounded payloads
+Use `SocketIoModule.forRoot(...)` to require explicit namespace/message auth, keep CORS in a deny-by-default posture, and cap inbound Engine.IO payload size.
+
+```typescript
+SocketIoModule.forRoot({
+  auth: {
+    connection({ socket }) {
+      return socket.handshake.auth.token === 'demo-token'
+        ? true
+        : { message: 'Authentication required.' };
+    },
+    message({ payload }) {
+      return payload === 'allowed'
+        ? true
+        : { message: 'Forbidden event.' };
+    },
+  },
+  cors: {
+    origin: ['https://app.example.com'],
+  },
+  engine: {
+    maxHttpBufferSize: 65_536,
+  },
+});
+```
+
+When `cors` is omitted, `@fluojs/socket.io` now defaults to `origin: false` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit.
+
 ## Public API Overview
 
 - `SocketIoModule.forRoot(options)`: Main module for Socket.IO integration.
+- `SocketIoModule.forRoot({ auth, cors, engine, ... })`: Configures namespace/message guards plus explicit CORS and Engine.IO payload bounds.
 - `SOCKETIO_SERVER`: Token to inject the raw Socket.IO `Server`.
 - `SOCKETIO_ROOM_SERVICE`: Token to inject the `SocketIoRoomService`.
 - `createSocketIoProviders(options)`: Helper for custom provider composition.
