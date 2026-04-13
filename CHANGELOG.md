@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Breaking changes
 
+- `@fluojs/http`, `@fluojs/throttler`: default request identity resolution for rate limiting is now proxy-aware and no longer falls back to a shared `unknown` bucket. Migration note: ensure proxied/serverless adapters forward `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, or configure an explicit `keyResolver`/`keyGenerator` when no socket identity is available.
 - `@fluojs/runtime`: Node-specific startup helpers are no longer exported from the root barrel. Migration note: import `createNodeHttpAdapter`, `bootstrapNodeApplication`, and `runNodeApplication` from `@fluojs/runtime/node`.
 - `@fluojs/cli`, `examples/*`, `docs/*`: the canonical starter/examples/migration story now uses adapter-first Fastify startup on the runtime facade. Migration note: align generated or copied `src/main.ts` files to `createFastifyAdapter(...)` (or another explicit transport adapter), and reserve `@fluojs/runtime/node` for Node compatibility helper flows.
 - `@fluojs/cli`, `examples/*`, `docs/*`: public onboarding/governance guidance now treats Node.js, Bun, Deno, and Cloudflare Workers as the official runtime matrix. Migration note: keep the default Fastify starter path for Node.js, but point runtime-specific startup choices to the corresponding published `@fluojs/platform-*` package README and adapter entrypoint.
