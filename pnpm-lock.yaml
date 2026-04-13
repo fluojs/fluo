@@ -308,9 +308,6 @@ importers:
       '@fluojs/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@fluojs/queue':
-        specifier: workspace:*
-        version: link:../queue
       '@fluojs/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -318,6 +315,9 @@ importers:
         specifier: ^6.10.1
         version: 6.10.1
     devDependencies:
+      '@fluojs/queue':
+        specifier: workspace:*
+        version: link:../queue
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0

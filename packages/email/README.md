@@ -16,7 +16,7 @@ Transport-agnostic email delivery core for fluo. It provides a Nest-like module 
   - [Queue-backed bulk delivery](#queue-backed-bulk-delivery)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
-- [Runtime-Specific Subpaths](#runtime-specific-subpaths)
+- [Runtime-Specific and Integration Subpaths](#runtime-specific-and-integration-subpaths)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -28,7 +28,11 @@ npm install @fluojs/email nodemailer
 
 Install `@fluojs/notifications` and `@fluojs/queue` only when you want the built-in notifications channel and queue worker integration.
 
-Node-specific SMTP delivery now lives behind the explicit `@fluojs/email/node` subpath. The root `@fluojs/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only behavior.
+```bash
+npm install @fluojs/notifications @fluojs/queue
+```
+
+Node-specific SMTP delivery now lives behind the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration likewise lives behind `@fluojs/email/queue`, and `@fluojs/queue` is declared as an optional peer for that subpath instead of a root install requirement. The root `@fluojs/email` entrypoint remains transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
 
 ## When to Use
 
@@ -203,8 +207,8 @@ import { Module } from '@fluojs/core';
 import {
   EmailModule,
   EMAIL_CHANNEL,
-  createEmailNotificationsQueueAdapter,
 } from '@fluojs/email';
+import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
@@ -242,7 +246,7 @@ The built-in queue worker contract uses these defaults:
 - `rateLimiter: { max: 50, duration: 1000 }`
 - `jobName: 'fluo.email.notification'`
 
-These defaults are exported as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` so callers can document or mirror them when they build custom queue adapters/workers.
+These defaults are exported from `@fluojs/email/queue` as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` so callers can document or mirror them when they build custom queue adapters/workers.
 
 ### Intentional limitations
 
@@ -272,8 +276,10 @@ These limitations are part of the package contract so transport selection, templ
 - `EmailTransport`
 - `EmailTransportFactory`
 - `EmailTemplateRenderer`
-- `createEmailNotificationsQueueAdapter(queue)`
-- `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+
+### Integration subpaths
+
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### Status and errors
 
@@ -287,11 +293,15 @@ These limitations are part of the package contract so transport selection, templ
 - `createNodemailerEmailTransportFactory(...)`
 - `NodemailerEmailTransport`
 
-## Runtime-Specific Subpaths
+## Runtime-Specific and Integration Subpaths
 
 | Runtime | Subpath | Exports |
 | --- | --- | --- |
 | Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+
+| Concern | Subpath | Exports |
+| --- | --- | --- |
+| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## Related Packages
 

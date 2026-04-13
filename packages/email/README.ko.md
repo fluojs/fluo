@@ -16,7 +16,7 @@ fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like
   - [큐 기반 대량 전달](#큐-기반-대량-전달)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
-- [런타임 전용 서브패스](#런타임-전용-서브패스)
+- [런타임 전용 및 통합 서브패스](#런타임-전용-및-통합-서브패스)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
 
@@ -28,7 +28,11 @@ npm install @fluojs/email nodemailer
 
 내장 notifications 채널과 queue worker 연동이 필요할 때만 `@fluojs/notifications`, `@fluojs/queue`를 함께 설치하면 됩니다.
 
-Node 전용 SMTP 전달은 이제 명시적인 `@fluojs/email/node` 서브패스에 위치합니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 동작을 함께 끌어오지 않습니다.
+```bash
+npm install @fluojs/notifications @fluojs/queue
+```
+
+Node 전용 SMTP 전달은 이제 명시적인 `@fluojs/email/node` 서브패스에 위치합니다. queue 기반 notifications 통합도 `@fluojs/email/queue` 서브패스로 분리되었고, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
 
 ## 사용 시점
 
@@ -203,8 +207,8 @@ import { Module } from '@fluojs/core';
 import {
   EmailModule,
   EMAIL_CHANNEL,
-  createEmailNotificationsQueueAdapter,
 } from '@fluojs/email';
+import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
@@ -242,7 +246,7 @@ export class AppModule {}
 - `rateLimiter: { max: 50, duration: 1000 }`
 - `jobName: 'fluo.email.notification'`
 
-이 기본값은 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되므로, 호출 측에서 커스텀 queue adapter/worker를 만들 때 동일한 계약을 문서화하거나 반영할 수 있습니다.
+이 기본값은 `@fluojs/email/queue`에서 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되므로, 호출 측에서 커스텀 queue adapter/worker를 만들 때 동일한 계약을 문서화하거나 반영할 수 있습니다.
 
 ### 의도적인 제한 사항
 
@@ -272,8 +276,10 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `EmailTransport`
 - `EmailTransportFactory`
 - `EmailTemplateRenderer`
-- `createEmailNotificationsQueueAdapter(queue)`
-- `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+
+### 통합 서브패스
+
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### 상태 및 에러
 
@@ -287,11 +293,15 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `createNodemailerEmailTransportFactory(...)`
 - `NodemailerEmailTransport`
 
-## 런타임 전용 서브패스
+## 런타임 전용 및 통합 서브패스
 
 | 런타임 | 서브패스 | export |
 | --- | --- | --- |
 | Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport` |
+
+| 관심사 | 서브패스 | export |
+| --- | --- | --- |
+| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## 관련 패키지
 

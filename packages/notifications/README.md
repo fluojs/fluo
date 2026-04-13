@@ -114,6 +114,7 @@ Behavioral contract notes:
 - Bulk queue delegation starts when the notification count reaches `bulkThreshold`.
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Queue-backed delivery is opt-in for single dispatch and threshold-driven for `dispatchMany(...)`.
+- When queue enqueue fails, the service emits deterministic `notification.dispatch.failed` lifecycle events before rethrowing the enqueue error to the caller.
 - The foundation package does not assume or import a concrete queue implementation.
 
 ### Lifecycle publication through an event publisher

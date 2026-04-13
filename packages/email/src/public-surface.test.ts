@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as emailPublicApi from './index.js';
@@ -6,11 +9,12 @@ import type {
   EmailMessage,
   EmailModuleOptions,
   EmailNotificationDispatchRequest,
-  EmailQueueWorkerOptions,
   EmailStatusAdapterInput,
   EmailTransport,
   EmailTransportFactory,
 } from './index.js';
+import * as emailQueuePublicApi from './queue-entry.js';
+import type { EmailQueueWorkerOptions } from './queue-entry.js';
 
 describe('@fluojs/email public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
@@ -20,11 +24,38 @@ describe('@fluojs/email public API surface', () => {
     expect(emailPublicApi).toHaveProperty('EmailChannel');
     expect(emailPublicApi).toHaveProperty('EMAIL');
     expect(emailPublicApi).toHaveProperty('EMAIL_CHANNEL');
-    expect(emailPublicApi).toHaveProperty('createEmailNotificationsQueueAdapter');
-    expect(emailPublicApi).toHaveProperty('DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS');
     expect(emailPublicApi).toHaveProperty('createEmailPlatformStatusSnapshot');
     expect(emailPublicApi).toHaveProperty('EmailConfigurationError');
     expect(emailPublicApi).toHaveProperty('EmailMessageValidationError');
+  });
+
+  it('keeps queue integration exports isolated behind the queue subpath', () => {
+    expect(emailPublicApi).not.toHaveProperty('createEmailNotificationsQueueAdapter');
+    expect(emailPublicApi).not.toHaveProperty('DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS');
+    expect(emailQueuePublicApi).toHaveProperty('createEmailNotificationsQueueAdapter');
+    expect(emailQueuePublicApi).toHaveProperty('DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS');
+    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('attempts');
+    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('concurrency');
+  });
+
+  it('keeps queue install requirements behind an optional peer dependency', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+
+    expect(packageJson.dependencies).not.toHaveProperty('@fluojs/queue');
+    expect(packageJson.peerDependencies).toMatchObject({
+      '@fluojs/queue': 'workspace:*',
+    });
+    expect(packageJson.peerDependenciesMeta).toMatchObject({
+      '@fluojs/queue': {
+        optional: true,
+      },
+    });
   });
 
   it('keeps documented TypeScript-only contracts stable enough for downstream packages', () => {
@@ -40,8 +71,6 @@ describe('@fluojs/email public API surface', () => {
     expectTypeOf<EmailTransportFactory>().toHaveProperty('create');
     expectTypeOf<EmailTransportFactory>().toHaveProperty('kind');
     expectTypeOf<EmailNotificationDispatchRequest>().toHaveProperty('channel');
-    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('attempts');
-    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('concurrency');
     expectTypeOf<EmailStatusAdapterInput>().toHaveProperty('channelName');
     expectTypeOf<EmailStatusAdapterInput>().toHaveProperty('lifecycleState');
     expectTypeOf<EmailStatusAdapterInput>().toHaveProperty('transportKind');
