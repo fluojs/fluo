@@ -43,8 +43,20 @@ function normalizeClientIdentity(value: string | undefined): string | undefined 
     normalized = normalized.slice(1, -1).trim();
   }
 
+  const bracketedHostPort = normalized.match(/^\[(.+)]:(\d+)$/);
+
+  if (bracketedHostPort) {
+    return bracketedHostPort[1]?.trim() || undefined;
+  }
+
   if (normalized.startsWith('[') && normalized.endsWith(']')) {
     normalized = normalized.slice(1, -1).trim();
+  }
+
+  const ipv4HostPort = normalized.match(/^((?:\d{1,3}\.){3}\d{1,3}):(\d+)$/);
+
+  if (ipv4HostPort) {
+    return ipv4HostPort[1]?.trim() || undefined;
   }
 
   return normalized || undefined;

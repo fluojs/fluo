@@ -147,6 +147,63 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(200);
   });
 
+  it('normalizes ipv4 forwarded identities that include client ports', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { forwarded: 'for=198.51.100.10:1234;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { forwarded: 'for=198.51.100.10:5678;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(secondContext.response.statusCode).toBe(429);
+  });
+
+  it('normalizes bracketed ipv6 forwarded identities that include client ports', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { forwarded: 'for="[2001:db8::1]:1234";proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { forwarded: 'for="[2001:db8::1]:5678";proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(secondContext.response.statusCode).toBe(429);
+  });
+
+  it('normalizes comma-separated proxy identities when the first hop includes a port', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10:1234, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10:5678, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(secondContext.response.statusCode).toBe(429);
+  });
+
   it('accepts proxied requests when the raw socket address is unavailable', async () => {
     const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
     const next = vi.fn(async () => {});

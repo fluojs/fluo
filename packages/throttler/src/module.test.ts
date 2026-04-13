@@ -427,6 +427,27 @@ describe('ThrottlerGuard — in-memory store', () => {
     await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
   });
 
+  it('normalizes forwarded client identity ports before building throttler keys', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const firstContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.10:1234;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.10:5678;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).rejects.toThrow(
+      'Too Many Requests',
+    );
+  });
+
   it('rejects when no proxy or socket client identity is available', async () => {
     class TestController {
       action() {}
