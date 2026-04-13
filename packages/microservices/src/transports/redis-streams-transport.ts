@@ -299,17 +299,16 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         for (const entry of entries) {
           const parsed = this.parseFields(entry.fields);
 
-          if (parsed) {
-            if (stream === this.messageStream) {
-              this.handleInboundRequest(parsed);
-            } else if (stream === this.eventStream) {
-              this.handleInboundEvent(parsed);
-            } else if (stream === this.responseStream) {
-              this.handleInboundResponse(parsed);
-            }
+          if (!parsed) {
+            await this.options.readerClient.xack(stream, group, entry.id);
+            continue;
           }
 
-          await this.options.readerClient.xack(stream, group, entry.id);
+          const shouldAcknowledge = await this.handleStreamEntry(stream, parsed);
+
+          if (shouldAcknowledge) {
+            await this.options.readerClient.xack(stream, group, entry.id);
+          }
         }
       } catch {
         if (!this.closing) {
@@ -319,7 +318,21 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     }
   }
 
-  private handleInboundRequest(message: RedisStreamTransportMessage): void {
+  private async handleStreamEntry(stream: string, message: RedisStreamTransportMessage): Promise<boolean> {
+    if (stream === this.messageStream) {
+      await this.handleInboundRequest(message);
+      return true;
+    }
+
+    if (stream === this.eventStream) {
+      return await this.handleInboundEvent(message);
+    }
+
+    this.handleInboundResponse(message);
+    return true;
+  }
+
+  private async handleInboundRequest(message: RedisStreamTransportMessage): Promise<void> {
     if (!this.handler) {
       return;
     }
@@ -333,54 +346,57 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
       ? message.replyStream
       : this.responseStream;
 
-    void Promise.resolve().then(async () => {
-      if (!this.handler) {
-        return;
-      }
-
-      try {
-        const payload = await this.handler({
-          kind: 'message',
-          pattern: message.pattern,
-          payload: message.payload,
-          requestId: message.requestId,
-        });
-
-        await this.options.writerClient.xadd(replyStream, {
-          kind: 'response',
-          pattern: message.pattern,
-          payload: JSON.stringify(payload),
-          requestId,
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unhandled microservice error';
-
-        await this.options.writerClient.xadd(replyStream, {
-          error: errorMessage,
-          kind: 'response',
-          pattern: message.pattern,
-          requestId,
-        });
-      }
-    }).catch(() => undefined);
-  }
-
-  private handleInboundEvent(message: RedisStreamTransportMessage): void {
     if (!this.handler) {
       return;
     }
 
-    if (message.kind !== 'event') {
-      return;
+    try {
+      const payload = await this.handler({
+        kind: 'message',
+        pattern: message.pattern,
+        payload: message.payload,
+        requestId: message.requestId,
+      });
+
+      await this.options.writerClient.xadd(replyStream, {
+        kind: 'response',
+        pattern: message.pattern,
+        payload: JSON.stringify(payload),
+        requestId,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unhandled microservice error';
+
+      await this.options.writerClient.xadd(replyStream, {
+        error: errorMessage,
+        kind: 'response',
+        pattern: message.pattern,
+        requestId,
+      });
+    }
+  }
+
+  private async handleInboundEvent(message: RedisStreamTransportMessage): Promise<boolean> {
+    if (!this.handler) {
+      return true;
     }
 
-    void this.handler({
-      kind: 'event',
-      pattern: message.pattern,
-      payload: message.payload,
-    }).catch((error) => {
+    if (message.kind !== 'event') {
+      return true;
+    }
+
+    try {
+      await this.handler({
+        kind: 'event',
+        pattern: message.pattern,
+        payload: message.payload,
+      });
+
+      return true;
+    } catch (error) {
       this.logEventHandlerFailure(error);
-    });
+      return false;
+    }
   }
 
   private handleInboundResponse(message: RedisStreamTransportMessage): void {

@@ -81,6 +81,11 @@ First-party support for all gRPC streaming modes: Server-side, Client-side, and 
 ### Request-Scoped DI
 Microservice handlers fully support fluo's DI scopes. Request-scoped providers are isolated per message or per event, ensuring safe state management in concurrent processing.
 
+### Delivery Safety Defaults
+- TCP frames are bounded to 1 MiB per newline-delimited message by default; oversized frames close the socket instead of growing the request buffer without limit.
+- Redis Streams acknowledges request/event entries only after handler-side processing finishes. Failed events stay pending for broker-managed recovery instead of being acknowledged early.
+- RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
+
 ## Public API Overview
 
 ### Root barrel (`@fluojs/microservices`)

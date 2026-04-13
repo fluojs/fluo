@@ -256,6 +256,136 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('acks request entries only after the handler finishes', async () => {
+    const bus = new InMemoryStreamBus();
+    const acknowledgements: Array<{ group: string; id: string; stream: string }> = [];
+    let releaseHandler: (() => void) | undefined;
+    const handlerFinished = new Promise<void>((resolve) => {
+      releaseHandler = resolve;
+    });
+
+    const transport = new RedisStreamsMicroserviceTransport({
+      pollBlockMs: 1,
+      readerClient: {
+        xadd: async (stream, fields) => {
+          return await bus.xadd(stream, fields);
+        },
+        xreadgroup: async (group, consumer, streams, options) => {
+          return await bus.xreadgroup(group, consumer, streams, options);
+        },
+        xack: async (stream, group, id) => {
+          acknowledgements.push({ group, id, stream });
+          await bus.xack(stream, group, id);
+        },
+        xgroupCreate: async (stream, group, startId, mkstream) => {
+          await bus.xgroupCreate(stream, group, startId, mkstream);
+        },
+        xgroupDestroy: async (stream, group) => {
+          await bus.xgroupDestroy(stream, group);
+        },
+      },
+      requestTimeoutMs: 1_000,
+      writerClient: {
+        xadd: async (stream, fields) => {
+          return await bus.xadd(stream, fields);
+        },
+        xreadgroup: async (group, consumer, streams, options) => {
+          return await bus.xreadgroup(group, consumer, streams, options);
+        },
+        xack: async (stream, group, id) => {
+          await bus.xack(stream, group, id);
+        },
+        xgroupCreate: async (stream, group, startId, mkstream) => {
+          await bus.xgroupCreate(stream, group, startId, mkstream);
+        },
+        xgroupDestroy: async (stream, group) => {
+          await bus.xgroupDestroy(stream, group);
+        },
+      },
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        await handlerFinished;
+        return 'ok';
+      }
+
+      return undefined;
+    });
+
+    const pending = transport.send('delayed.ack', { value: 1 });
+    await sleep(20);
+    expect(acknowledgements).toEqual([]);
+
+    releaseHandler?.();
+
+    await expect(pending).resolves.toBe('ok');
+    await sleep(20);
+
+    expect(acknowledgements.some((entry) => entry.stream === 'fluo:streams:messages')).toBe(true);
+
+    await transport.close();
+  });
+
+  it('keeps failed events pending by skipping ack when the handler rejects', async () => {
+    const bus = new InMemoryStreamBus();
+    const acknowledgements: string[] = [];
+    const transport = new RedisStreamsMicroserviceTransport({
+      pollBlockMs: 1,
+      readerClient: {
+        xadd: async (stream, fields) => {
+          return await bus.xadd(stream, fields);
+        },
+        xreadgroup: async (group, consumer, streams, options) => {
+          return await bus.xreadgroup(group, consumer, streams, options);
+        },
+        xack: async (stream, group, id) => {
+          acknowledgements.push(`${stream}:${group}:${id}`);
+          await bus.xack(stream, group, id);
+        },
+        xgroupCreate: async (stream, group, startId, mkstream) => {
+          await bus.xgroupCreate(stream, group, startId, mkstream);
+        },
+        xgroupDestroy: async (stream, group) => {
+          await bus.xgroupDestroy(stream, group);
+        },
+      },
+      requestTimeoutMs: 1_000,
+      writerClient: {
+        xadd: async (stream, fields) => {
+          return await bus.xadd(stream, fields);
+        },
+        xreadgroup: async (group, consumer, streams, options) => {
+          return await bus.xreadgroup(group, consumer, streams, options);
+        },
+        xack: async (stream, group, id) => {
+          await bus.xack(stream, group, id);
+        },
+        xgroupCreate: async (stream, group, startId, mkstream) => {
+          await bus.xgroupCreate(stream, group, startId, mkstream);
+        },
+        xgroupDestroy: async (stream, group) => {
+          await bus.xgroupDestroy(stream, group);
+        },
+      },
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('event failed');
+      }
+
+      return undefined;
+    });
+
+    await transport.emit('audit.failed', { value: 1 });
+    await sleep(20);
+
+    expect(acknowledgements.some((entry) => entry.startsWith('fluo:streams:events:'))).toBe(false);
+
+    await transport.close();
+  });
+
   it('rejects send() with AbortSignal before publish', async () => {
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
