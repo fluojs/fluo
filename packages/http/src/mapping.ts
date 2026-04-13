@@ -3,6 +3,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { extractRoutePathParams, matchRoutePath, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import { VersioningType } from './types.js';
 import type {
   FrameworkRequest,
@@ -28,20 +29,13 @@ interface CreateHandlerMappingOptions {
 
 type IndexedDescriptor = {
   descriptor: HandlerDescriptor;
-  segments: readonly string[];
+  segments: readonly RoutePathSegment[];
 };
 
 type DescriptorIndex = Map<HttpMethod, Map<number, IndexedDescriptor[]>>;
 
-function normalizePath(path: string): string {
-  const segments = path.split('/').filter(Boolean);
-  const normalized = `/${segments.join('/')}`;
-
-  return normalized === '' ? '/' : normalized;
-}
-
 function joinPaths(basePath: string, routePath: string): string {
-  return normalizePath(`${basePath}/${routePath}`);
+  return normalizeRoutePath(`${basePath}/${routePath}`);
 }
 
 function normalizeVersionSegment(version: string): string {
@@ -192,40 +186,8 @@ function getControllerMethodNames(controllerToken: Constructor): MetadataPropert
   return Object.getOwnPropertyNames(controllerToken.prototype).filter((propertyKey) => propertyKey !== 'constructor');
 }
 
-function extractPathParams(path: string): string[] {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .filter((segment) => segment.startsWith(':'))
-    .map((segment) => segment.slice(1));
-}
-
-function splitPathSegments(path: string): string[] {
-  return normalizePath(path).split('/').filter(Boolean);
-}
-
-function matchPath(registeredSegments: readonly string[], incomingSegments: readonly string[]): Readonly<Record<string, string>> | undefined {
-
-  if (registeredSegments.length !== incomingSegments.length) {
-    return undefined;
-  }
-
-  const params: Record<string, string> = {};
-
-  for (const [index, segment] of registeredSegments.entries()) {
-    const incoming = incomingSegments[index];
-
-    if (segment.startsWith(':')) {
-      params[segment.slice(1)] = incoming;
-      continue;
-    }
-
-    if (segment !== incoming) {
-      return undefined;
-    }
-  }
-
-  return params;
+function splitIncomingPathSegments(path: string): string[] {
+  return normalizeRoutePath(path).split('/').filter(Boolean);
 }
 
 function buildDescriptorIndex(descriptors: HandlerDescriptor[]): DescriptorIndex {
@@ -233,7 +195,7 @@ function buildDescriptorIndex(descriptors: HandlerDescriptor[]): DescriptorIndex
 
   for (const descriptor of descriptors) {
     const method = descriptor.route.method;
-    const segments = splitPathSegments(descriptor.route.path);
+    const segments = parseRoutePath(descriptor.route.path, `Registered ${descriptor.route.method} route path`);
     const segmentCount = segments.length;
 
     let methodMap = index.get(method);
@@ -275,14 +237,14 @@ function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVer
 
     descriptors.push({
       controllerToken: source.controllerToken,
-      metadata: {
-        controllerPath: controllerMetadata.basePath,
-        effectivePath,
-        effectiveVersion,
-        moduleMiddleware: [...(source.moduleMiddleware ?? [])],
-        moduleType: source.moduleType,
-        pathParams: extractPathParams(effectivePath),
-      },
+        metadata: {
+          controllerPath: controllerMetadata.basePath,
+          effectivePath,
+          effectiveVersion,
+          moduleMiddleware: [...(source.moduleMiddleware ?? [])],
+          moduleType: source.moduleType,
+          pathParams: extractRoutePathParams(effectivePath),
+        },
       methodName: String(propertyKey),
       route: {
         ...routeMetadata,
@@ -332,7 +294,7 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase() as HttpMethod;
       const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
-      const incomingSegments = splitPathSegments(request.path);
+      const incomingSegments = splitIncomingPathSegments(request.path);
       const candidates = [
         ...(descriptorIndex.get(method)?.get(incomingSegments.length) ?? []),
         ...(descriptorIndex.get('ALL' as HttpMethod)?.get(incomingSegments.length) ?? []),
@@ -340,7 +302,7 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       let firstUnversionedMatch: HandlerMatch | undefined;
 
       for (const candidate of candidates) {
-        const params = matchPath(candidate.segments, incomingSegments);
+        const params = matchRoutePath(candidate.segments, incomingSegments);
 
         if (!params) {
           continue;

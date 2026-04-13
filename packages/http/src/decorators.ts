@@ -9,6 +9,7 @@ import {
   type DtoFieldBindingMetadata,
 } from '@fluojs/core/internal';
 
+import { validateRoutePath } from './route-path.js';
 import type { ConverterLike, GuardLike, HttpMethod, InterceptorLike } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
@@ -136,6 +137,8 @@ function mergeStandardDtoBinding(
 
 function createRouteDecorator(method: HttpMethod) {
   return (path: string): MethodDecoratorLike => {
+    validateRoutePath(path, `@${method}() path`);
+
     const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
       const route = getStandardRouteRecord(context.metadata, context.name);
       route.method = method;
@@ -176,6 +179,8 @@ function createDtoFieldDecorator(source: MetadataSource) {
  * @returns A class decorator that writes controller metadata for route mapping.
  */
 export function Controller(basePath = ''): ClassDecoratorLike {
+  validateRoutePath(basePath, '@Controller() base path');
+
   const decorator = (_target: Function, context: ClassDecoratorContext) => {
     getStandardControllerRecord(context.metadata).basePath = basePath;
   };

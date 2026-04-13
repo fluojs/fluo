@@ -31,6 +31,8 @@ Decorators in fluo serve as "declarations" that populate a central **Framework R
 2. **Routing Tables**: Which methods handle which HTTP paths.
 3. **Validation Schemas**: How incoming JSON should be parsed and checked.
 
+For HTTP routing, that registry uses a deliberately small path contract: each route segment is either a literal string or a full-segment `:param` placeholder. Wildcards, regex-like syntax, and mixed segments such as `user-:id` are intentionally excluded from route decorators so the same handler mapping works consistently across runtimes. Middleware route filters keep their own `forRoutes('/prefix/*')` wildcard support and should not be confused with controller route syntax.
+
 ## decorator families
 
 - **Structural (`@Module`)**: Defines the boundaries of a feature and its exported providers.

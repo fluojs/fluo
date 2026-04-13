@@ -31,6 +31,8 @@ fluo의 decorator는 중앙 **Framework Registry**를 채우는 “선언” 역
 2. **Routing Table**: 어떤 method가 어떤 HTTP path를 처리하는지
 3. **Validation Schema**: 들어오는 JSON을 어떻게 파싱하고 검사해야 하는지
 
+HTTP 라우팅에서는 이 registry가 의도적으로 작은 경로 계약을 사용합니다. 각 route segment는 literal 문자열이거나 full-segment `:param` placeholder여야 합니다. `user-:id` 같은 mixed segment, wildcard, regex 유사 문법은 런타임마다 의미가 갈리지 않도록 route decorator에서 의도적으로 제외합니다. 와일드카드가 필요한 경우에는 계속 `forRoutes('/prefix/*')` 같은 미들웨어 route filter를 사용해야 하며, 이는 controller route 문법과 별개의 기능입니다.
+
 ## 데코레이터 계열
 
 - **Structural (`@Module`)**: feature의 경계와 export된 provider를 정의합니다.

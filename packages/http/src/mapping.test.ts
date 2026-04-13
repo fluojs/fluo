@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
+
 import { Controller, Get, Version } from './decorators.js';
-import { RouteConflictError } from './errors.js';
+import { InvalidRoutePathError, RouteConflictError } from './errors.js';
 import { createHandlerMapping } from './mapping.js';
 import { VersioningType } from './types.js';
 
@@ -71,6 +73,22 @@ describe('handler mapping', () => {
         { controllerToken: DuplicateHealthController },
       ]),
     ).toThrow(RouteConflictError);
+  });
+
+  it('rejects unsupported syntax in imperatively defined route metadata', () => {
+    class InvalidController {
+      list() {
+        return { ok: true };
+      }
+    }
+
+    defineControllerMetadata(InvalidController, { basePath: '/reports' });
+    defineRouteMetadata(InvalidController.prototype, 'list', {
+      method: 'GET',
+      path: '/summary/:reportId.json',
+    });
+
+    expect(() => createHandlerMapping([{ controllerToken: InvalidController }])).toThrow(InvalidRoutePathError);
   });
 
   it('applies controller and route version metadata to URI paths', () => {

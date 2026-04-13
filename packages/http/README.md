@@ -57,6 +57,17 @@ export class UserController {
 }
 ```
 
+### Route path contract
+
+HTTP route decorators such as `@Controller()`, `@Get()`, and `@Post()` accept only:
+
+- literal path segments like `/users` or `/healthz`
+- full-segment path params like `/:id` or `/users/:userId/posts/:postId`
+
+Trailing slashes and duplicate slashes are normalized during route mapping, so `//users///:id/` resolves to `/users/:id`.
+
+Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes('/users/*')`.
+
 ## Common Patterns
 
 ### Guards and interceptors

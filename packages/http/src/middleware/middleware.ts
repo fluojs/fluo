@@ -1,5 +1,6 @@
 import type { Constructor, Token } from '@fluojs/core';
 
+import { normalizeRoutePath } from '../route-path.js';
 import type { Middleware, MiddlewareContext, MiddlewareLike, MiddlewareRouteConfig, Next, RequestContext } from '../types.js';
 
 function isMiddleware(value: MiddlewareLike): value is Middleware {
@@ -15,10 +16,7 @@ export function normalizeRoutePattern(path: string): string {
     return `${normalizeRoutePattern(path.slice(0, -2))}/*`;
   }
 
-  const segments = path.split('/').filter(Boolean);
-  const normalized = `/${segments.join('/')}`;
-
-  return normalized === '' ? '/' : normalized;
+  return normalizeRoutePath(path);
 }
 
 export function matchRoutePattern(pattern: string, path: string): boolean {

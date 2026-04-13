@@ -23,6 +23,7 @@ import {
   UseInterceptors,
   getRouteProducesMetadata,
 } from './decorators.js';
+import { InvalidRoutePathError } from './errors.js';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
 import { IsString, MinLength, ValidateClass } from '@fluojs/validation';
 
@@ -152,6 +153,38 @@ describe('http decorators', () => {
     }
 
     expect(getRouteProducesMetadata(FeedController, 'getFeed')).toEqual(['application/json', 'text/plain']);
+  });
+
+  it('rejects unsupported controller and route path syntax at decoration time', () => {
+    expect(() => {
+      @Controller('/files/*')
+      class InvalidController {
+      }
+
+      return InvalidController;
+    }).toThrow(InvalidRoutePathError);
+
+    expect(() => {
+      class InvalidRouteController {
+        @Get('/files/:id.json')
+        getFile() {
+          return { ok: true };
+        }
+      }
+
+      return InvalidRouteController;
+    }).toThrow(InvalidRoutePathError);
+
+    expect(() => {
+      class InvalidMixedSegmentController {
+        @Get('/users/user-:id')
+        getUser() {
+          return { ok: true };
+        }
+      }
+
+      return InvalidMixedSegmentController;
+    }).toThrow(InvalidRoutePathError);
   });
 
   it('preserves binding and validator metadata for PickType, OmitType, and IntersectionType', () => {

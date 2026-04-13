@@ -9,6 +9,12 @@ export class RouteConflictError extends FluoError {
   }
 }
 
+export class InvalidRoutePathError extends FluoError {
+  constructor(message: string) {
+    super(message, { code: 'INVALID_ROUTE_PATH' });
+  }
+}
+
 /**
  * Error thrown when no handler matches the incoming request path or method.
  */

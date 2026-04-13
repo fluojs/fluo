@@ -55,6 +55,17 @@ export class UserController {
 }
 ```
 
+### 라우트 경로 계약
+
+`@Controller()`, `@Get()`, `@Post()` 같은 HTTP 라우트 데코레이터는 다음만 허용합니다.
+
+- `/users`, `/healthz` 같은 literal 세그먼트
+- `/:id`, `/users/:userId/posts/:postId` 같은 full-segment path param
+
+트레일링 슬래시와 중복 슬래시는 라우트 매핑 단계에서 정규화되므로 `//users///:id/`는 `/users/:id`로 해석됩니다.
+
+라우트 데코레이터는 `*`, `?`, `/(.*)`, `user-:id`, `:id.json` 같은 wildcard, regex 유사 문법, mixed segment를 지원하지 않습니다. 와일드카드 매칭은 계속 `forRoutes('/users/*')` 같은 미들웨어 설정에서만 지원됩니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터
