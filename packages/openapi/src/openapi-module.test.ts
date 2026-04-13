@@ -307,6 +307,9 @@ describe('OpenApiModule', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toEqual(expect.stringContaining('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui.css'));
+    expect(response.body).toEqual(expect.stringContaining('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui-bundle.js'));
+    expect(response.body).not.toEqual(expect.stringContaining('https://unpkg.com/swagger-ui-dist@5/'));
     expect(response.body).toEqual(expect.stringContaining('const specUrl = window.location.pathname.replace('));
     expect(response.body).toEqual(expect.stringContaining("url: specUrl"));
     expect(response.body).toEqual(expect.stringContaining('SwaggerUIBundle'));
@@ -355,9 +358,13 @@ describe('OpenApiModule', () => {
     const docsTrailingHtml = await docsTrailingSlashResponse.text();
 
     expect(docsResponse.status).toBe(200);
+    expect(docsHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui.css');
+    expect(docsHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui-bundle.js');
     expect(docsHtml).toContain('const specUrl = window.location.pathname.replace(');
     expect(docsHtml).toContain('url: specUrl');
     expect(docsTrailingSlashResponse.status).toBe(200);
+    expect(docsTrailingHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui.css');
+    expect(docsTrailingHtml).toContain('https://unpkg.com/swagger-ui-dist@5.32.2/swagger-ui-bundle.js');
     expect(docsTrailingHtml).toContain('const specUrl = window.location.pathname.replace(');
     expect(docsTrailingHtml).toContain('url: specUrl');
     expect(specResponse.status).toBe(200);

@@ -80,6 +80,9 @@ fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를
 ### 보안 문서화
 `@ApiBearerAuth()` 및 `@ApiSecurity()`를 사용하여 Bearer 토큰이나 API 키와 같은 보안 요구사항을 쉽게 문서화할 수 있습니다.
 
+### 결정적인 Swagger UI 자산
+`ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다.
+
 ## 공개 API 개요
 
 - `OpenApiModule`: OpenAPI 통합을 위한 메인 엔트리 포인트.
@@ -96,5 +99,5 @@ fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를
 
 ## 예제 소스
 
-- `packages/openapi/src/module.test.ts`: 통합 테스트 및 사용 예제.
+- `packages/openapi/src/openapi-module.test.ts`: 통합 테스트 및 사용 예제.
 - `examples/openapi-swagger`: 전체 OpenAPI 애플리케이션 예제.
