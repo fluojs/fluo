@@ -17,7 +17,7 @@ fluo 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 ## 설치
 
 ```bash
-npm install @fluojs/socket.io @fluojs/websockets socket.io
+npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io
 ```
 
 ## 사용 시점

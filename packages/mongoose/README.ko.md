@@ -55,14 +55,13 @@ class AppModule {}
 
 ## 공통 패턴
 
-### MongooseConnection과 current()
+### `MongooseConnection`을 통한 연결 접근
 
 `MongooseConnection` 래퍼는 기본 Mongoose 연결에 대한 접근을 제공합니다.
 
 ```typescript
 import { MongooseConnection } from '@fluojs/mongoose';
 
-@Inject(MongooseConnection)
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
@@ -96,35 +95,23 @@ import { UseInterceptors } from '@fluojs/http';
 import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
-class UserController {
-  @Post()
-  async create() {
-    // 리포지토리에서 this.conn.currentSession()을 통해 세션을 획득하여 사용합니다.
-  }
-}
+class UserController {}
 ```
 
 ## 공개 API 개요
 
-### `MongooseModule`
+- `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
+- `MongooseConnection`
+- `MongooseTransactionInterceptor`
+- `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
+- `createMongooseProviders(options)`
+- `createMongoosePlatformStatusSnapshot(...)`
 
-- `static forRoot(options: MongooseModuleOptions): ModuleType`
-- `static forRootAsync(options: MongooseModuleAsyncOptions): ModuleType`
+### 관련 export 타입
 
-### `MongooseConnection`
-
-- `current(): Connection`
-  - 기본 Mongoose 연결을 반환합니다.
-- `currentSession(): ClientSession | undefined`
-  - 현재 ALS 컨텍스트에서 활성화된 세션을 반환합니다.
-- `transaction(fn, options?): Promise<T>`
-  - 관리되는 세션 및 트랜잭션 내에서 함수를 실행합니다.
-- `requestTransaction(fn, signal?, options?): Promise<T>`
-  - HTTP 요청 라이프사이클에 특화된 세션 경계를 실행합니다.
-
-### `MONGOOSE_CONNECTION` (Token)
-
-원시 Mongoose `Connection`을 위한 주입 토큰입니다.
+- `MongooseModuleOptions<TConnection>`
+- `MongooseConnectionLike`
+- `MongooseSessionLike`
 
 ## 관련 패키지
 
@@ -135,3 +122,5 @@ class UserController {
 ## 예제 소스
 
 - `packages/mongoose/src/vertical-slice.test.ts`: 표준 DTO → 서비스 → 리포지토리 → Mongoose 흐름 예제.
+- `packages/mongoose/src/module.test.ts`: 모듈 등록과 수명 주기 계약 예제.
+- `packages/mongoose/src/public-api.test.ts`: 공개 export 검증 예제.

@@ -57,6 +57,7 @@ class AppModule {}
 `PrismaService`는 Prisma와 상호작용하는 기본 방법입니다. `current()` 메서드는 트랜잭션 범위 내에 있으면 자동으로 트랜잭션용 클라이언트를, 그렇지 않으면 루트 클라이언트를 반환합니다.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
@@ -87,7 +88,7 @@ await this.prisma.transaction(async () => {
 컨트롤러나 메서드에 `PrismaTransactionInterceptor`를 적용하면 전체 요청을 자동으로 트랜잭션으로 감쌉니다.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
 
 @UseInterceptors(PrismaTransactionInterceptor)
@@ -103,13 +104,13 @@ class UserController {
 
 ### `PrismaModule`
 
-- `static forRoot(options: PrismaModuleOptions): ModuleType`
-- `static forRootAsync(options: PrismaModuleAsyncOptions): ModuleType`
-  - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
+- `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
+- `forRootAsync(...)`는 `AsyncModuleOptions<PrismaModuleOptions<...>>`를 받습니다.
+- `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
 
 ### `PrismaService<TClient>`
 
-- `current(): TClient`
+- `current(): TClient | PrismaTransactionClient<TClient>`
   - 현재 컨텍스트에 맞는 트랜잭션 클라이언트 또는 루트 클라이언트를 반환합니다.
 - `transaction(fn, options?): Promise<T>`
   - 대화형 트랜잭션 내에서 함수를 실행합니다.
@@ -119,6 +120,13 @@ class UserController {
 ### `PRISMA_CLIENT` (Token)
 
 원시 `PrismaClient` 인스턴스를 위한 주입 토큰입니다.
+
+### 관련 export 타입
+
+- `PrismaModuleOptions`
+- `PrismaTransactionClient<TClient>`
+- `InferPrismaTransactionClient<TClient>`
+- `InferPrismaTransactionOptions<TClient>`
 
 ## 관련 패키지
 

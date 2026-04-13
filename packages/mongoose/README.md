@@ -94,6 +94,12 @@ class UserController {}
 - `createMongooseProviders(options)`
 - `createMongoosePlatformStatusSnapshot(...)`
 
+### Related exported types
+
+- `MongooseModuleOptions<TConnection>`
+- `MongooseConnectionLike`
+- `MongooseSessionLike`
+
 ## Related Packages
 
 - `@fluojs/runtime`: manages startup and shutdown hooks

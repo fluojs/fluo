@@ -17,7 +17,7 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 ## Installation
 
 ```bash
-npm install @fluojs/socket.io @fluojs/websockets socket.io
+npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io
 ```
 
 ## When to Use
