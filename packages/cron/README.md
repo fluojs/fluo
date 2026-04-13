@@ -90,6 +90,8 @@ class AppModule {}
 
 Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRootNamed(...)`.
 
+`distributed.lockTtlMs` must stay at or above `1_000ms`. fluo renews the Redis lock before that TTL expires, including the minimum supported `1_000ms` boundary.
+
 ```typescript
 @Module({
   imports: [
