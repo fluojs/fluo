@@ -116,5 +116,5 @@ async refresh(input: never, ctx: RequestContext) {
 ## Example Sources
 
 - `packages/passport/src/guard.test.ts`: Guard execution and scope enforcement patterns.
-- `packages/passport/src/passport-js.ts`: Implementation of the Passport.js bridge.
+- `packages/passport/src/adapters/passport-js.ts`: Implementation of the Passport.js bridge.
 - `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: Canonical JWT strategy implementation.
