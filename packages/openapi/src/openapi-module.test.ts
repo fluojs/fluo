@@ -1786,6 +1786,53 @@ describe('OpenApiModule', () => {
     );
   });
 
+  it('README quick start stays executable when sources are provided explicitly', async () => {
+    @ApiTag('Users')
+    @Controller('/users')
+    class UsersController {
+      @ApiOperation({ summary: 'List all users' })
+      @ApiResponse(200, { description: 'Success' })
+      @Get('/')
+      list() {
+        return [];
+      }
+    }
+
+    const openApiModule = OpenApiModule.forRoot({
+      sources: [{ controllerToken: UsersController }],
+      title: 'My API',
+      version: '1.0.0',
+      ui: true,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [UsersController],
+      imports: [openApiModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const response = createResponse();
+
+    await app.dispatch(createRequest('GET', '/openapi.json'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        info: {
+          title: 'My API',
+          version: '1.0.0',
+        },
+        paths: expect.objectContaining({
+          '/users': expect.objectContaining({
+            get: expect.any(Object),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('forRootAsync composes descriptors and sources when both are provided', async () => {
     @Controller('/async-sources')
     class AsyncSourcesController {
