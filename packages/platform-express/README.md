@@ -53,14 +53,18 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### Body Parsing and Multipart
-The adapter handles `rawBody` and multipart form-data parsing out of the box when configured in the adapter options.
+The adapter handles `rawBody` and multipart form-data parsing out of the box. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`.
 
 ```typescript
-const adapter = createExpressAdapter({
-  port: 3000,
-  rawBody: true,
-  multipart: true,
-});
+const adapter = createExpressAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
 ```
 
 ## Public API Overview
@@ -80,4 +84,3 @@ const adapter = createExpressAdapter({
 
 - `packages/platform-express/src/adapter.test.ts`
 - `examples/minimal/src/main.ts` (Fastify-based, but demonstrates the shared `fluoFactory` pattern)
-

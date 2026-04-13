@@ -53,14 +53,18 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### 바디 파싱 및 멀티파트
-어댑터 옵션에서 설정하면 `rawBody` 및 멀티파트 form-data 파싱을 즉시 사용할 수 있습니다.
+`rawBody` 및 멀티파트 form-data 파싱을 즉시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
 
 ```typescript
-const adapter = createExpressAdapter({
-  port: 3000,
-  rawBody: true,
-  multipart: true,
-});
+const adapter = createExpressAdapter(
+  {
+    port: 3000,
+    rawBody: true,
+  },
+  {
+    maxTotalSize: 10 * 1024 * 1024,
+  },
+);
 ```
 
 ## 공개 API 개요
@@ -80,4 +84,3 @@ const adapter = createExpressAdapter({
 
 - `packages/platform-express/src/adapter.test.ts`
 - `examples/minimal/src/main.ts` (Fastify 기반이지만 공유 `fluoFactory` 패턴을 보여줌)
-
