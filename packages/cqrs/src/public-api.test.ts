@@ -18,6 +18,7 @@ describe('@fluojs/cqrs public API surface', () => {
     expect(cqrsPublicApi).toHaveProperty('Saga');
     expect(cqrsPublicApi).toHaveProperty('CommandHandlerNotFoundException');
     expect(cqrsPublicApi).toHaveProperty('QueryHandlerNotFoundException');
+    expect(cqrsPublicApi).toHaveProperty('SagaTopologyError');
     expect(cqrsPublicApi).toHaveProperty('createCqrsPlatformStatusSnapshot');
   });
 

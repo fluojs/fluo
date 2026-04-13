@@ -5,10 +5,18 @@ import type { OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runt
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
-import { SagaExecutionError } from '../errors.js';
+import { SagaExecutionError, SagaTopologyError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
 import { getSagaMetadata } from '../metadata.js';
 import type { CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
+
+const MAX_NESTED_SAGA_DEPTH = 32;
+
+interface SagaDispatchContext {
+  activeRoutes: Array<{ eventType: CqrsEventType; token: Token }>;
+  depth: number;
+  path: string[];
+}
 
 function isSaga(value: unknown): value is ISaga<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -40,7 +48,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private readonly executionChains = new Map<Token, Promise<void>>();
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private readonly pendingDispatches = new Set<Promise<void>>();
-  private readonly dispatchContext = new AsyncLocalStorage<Set<Token>>();
+  private readonly dispatchContext = new AsyncLocalStorage<SagaDispatchContext>();
 
   async onApplicationBootstrap(): Promise<void> {
     this.lifecycleState = 'discovering';
@@ -121,19 +129,38 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent): Promise<void> {
-    const activeTokens = this.dispatchContext.getStore();
+    const activeContext = this.dispatchContext.getStore();
 
-    if (activeTokens?.has(descriptor.token)) {
-      await this.invokeSaga(descriptor, event);
+    const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
+    const isActiveRoute = activeContext?.activeRoutes.some(
+      (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
+    );
+    const isActiveToken = activeContext?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
+
+    if (isActiveRoute) {
+      throw new SagaTopologyError(
+        `Saga ${descriptor.targetType.name} re-entered an unsafe cycle while handling ${descriptor.eventType.name}. `
+          + `Active saga path: ${[...(activeContext?.path ?? []), routeLabel].join(' -> ')}.`,
+      );
+    }
+
+    if ((activeContext?.depth ?? 0) >= MAX_NESTED_SAGA_DEPTH) {
+      throw new SagaTopologyError(
+        `Saga ${descriptor.targetType.name} exceeded the maximum nested saga depth of ${MAX_NESTED_SAGA_DEPTH} while handling ${descriptor.eventType.name}. `
+          + 'Keep in-process saga graphs acyclic and externally bounded.',
+      );
+    }
+
+    if (isActiveToken) {
+      await this.runInDispatchContext(activeContext, descriptor, routeLabel, async () => {
+        await this.invokeSaga(descriptor, event);
+      });
       return;
     }
 
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
-      const nextTokens = new Set(activeTokens ?? []);
-      nextTokens.add(descriptor.token);
-
-      await this.dispatchContext.run(nextTokens, async () => {
+      await this.runInDispatchContext(activeContext, descriptor, routeLabel, async () => {
         await this.invokeSaga(descriptor, event);
       });
     });
@@ -146,6 +173,21 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     } finally {
       this.pendingDispatches.delete(current);
     }
+  }
+
+  private async runInDispatchContext(
+    activeContext: SagaDispatchContext | undefined,
+    descriptor: SagaDescriptor,
+    routeLabel: string,
+    callback: () => Promise<void>,
+  ): Promise<void> {
+    const nextContext: SagaDispatchContext = {
+      activeRoutes: [...(activeContext?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
+      depth: (activeContext?.depth ?? 0) + 1,
+      path: [...(activeContext?.path ?? []), routeLabel],
+    };
+
+    await this.dispatchContext.run(nextContext, callback);
   }
 
   private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent): Promise<void> {

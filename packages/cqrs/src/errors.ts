@@ -71,3 +71,15 @@ export class SagaExecutionError extends FluoError {
     super(message, { code: 'CQRS_SAGA_EXECUTION_FAILED' });
   }
 }
+
+/** Raised when saga orchestration re-enters an unsafe in-process topology. */
+export class SagaTopologyError extends FluoError {
+  /**
+   * Creates a saga-topology guard error.
+   *
+   * @param message Human-readable failure description.
+   */
+  constructor(message: string) {
+    super(message, { code: 'CQRS_SAGA_UNSAFE_TOPOLOGY' });
+  }
+}

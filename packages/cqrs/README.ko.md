@@ -103,6 +103,8 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
+이제 saga 실행은 같은 프로세스 안에서 동일 saga route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
+
 ### 호환성 토큰
 
 Class-first DI로 전환 중이거나 명시적 Symbol 토큰이 필요한 경우 다음을 사용할 수 있습니다.
@@ -134,6 +136,9 @@ class LegacyService {
 ### 인터페이스
 - `ICommand`, `IQuery<T>`, `IEvent`: 메시지 마커 인터페이스입니다.
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: 핸들러 계약입니다.
+
+### 오류
+- `SagaTopologyError`: 자기 트리거, 순환, 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 
 ## 관련 패키지
 

@@ -6,6 +6,7 @@ export {
   CommandHandlerNotFoundException,
   QueryHandlerNotFoundException,
   SagaExecutionError,
+  SagaTopologyError,
 } from './errors.js';
 export {
   commandHandlerMetadataSymbol,

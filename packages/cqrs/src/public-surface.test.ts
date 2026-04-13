@@ -17,6 +17,7 @@ describe('@fluojs/cqrs root barrel public surface', () => {
     expect(cqrs).toHaveProperty('QueryHandler');
     expect(cqrs).toHaveProperty('EventHandler');
     expect(cqrs).toHaveProperty('Saga');
+    expect(cqrs).toHaveProperty('SagaTopologyError');
     expect(cqrs).toHaveProperty('createCqrsPlatformStatusSnapshot');
     expect(cqrs).not.toHaveProperty('CommandHandlerNotFoundError');
     expect(cqrs).not.toHaveProperty('QueryHandlerNotFoundError');
