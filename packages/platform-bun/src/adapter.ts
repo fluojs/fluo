@@ -453,14 +453,22 @@ function createShutdownResponse(): Response {
 }
 
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
-  return Promise.race([
-    closePromise,
-    new Promise<void>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Bun adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
-      }, timeoutMs);
-    }),
-  ]);
+  return new Promise<void>((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      reject(new Error(`Bun adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+
+    void closePromise.then(
+      () => {
+        clearTimeout(timeoutHandle);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timeoutHandle);
+        reject(error);
+      },
+    );
+  });
 }
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
