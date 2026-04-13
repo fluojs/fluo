@@ -113,6 +113,8 @@ CacheModule.forRoot({
 
 `redis.client`는 여전히 가장 높은 우선순위의 명시적 override입니다. DI 기반 선택을 완전히 우회해야 할 때만 사용하세요.
 
+내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
+
 ### 쿼리 매개변수 기반 캐싱
 
 기본적으로 캐시 키는 쿼리 매개변수를 무시합니다. 검색 조건 등에 따라 다른 응답을 캐싱하려면 `httpKeyStrategy: 'route+query'`를 활성화하세요.
@@ -131,6 +133,10 @@ CacheModule.forRoot({
 - 기본 메모리 경로에서 `ttl`을 생략하면 `CacheModule.forRoot()`는 300초 TTL을 사용합니다.
 - `ttl: 0`은 만료 없는 엔트리로 계속 지원되지만, 메모리 저장소는 가장 최근의 live 키 1,000개만 유지합니다.
 - 키 종류가 매우 많거나 여러 인스턴스가 캐시를 공유해야 한다면 프로세스 로컬 메모리 대신 Redis 저장소를 사용하세요.
+
+### 지연 삭제 시점
+
+`@CacheEvict(...)`가 붙은 non-GET 핸들러는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다.
 
 ## 공개 API 개요
 

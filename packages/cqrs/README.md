@@ -82,7 +82,7 @@ Sagas allow you to listen for events and trigger new commands, enabling complex 
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { Saga, ISaga, IEvent, CommandBusLifecycleService } from '@fluojs/cqrs';
+import { Saga, ISaga, IEvent, ICommand, CommandBusLifecycleService } from '@fluojs/cqrs';
 
 class UserCreatedEvent implements IEvent {
   constructor(public readonly userId: string) {}
@@ -148,4 +148,4 @@ class LegacyService {
 ## Example Sources
 
 - `packages/cqrs/src/module.test.ts`: Module registration and basic bus usage.
-- `packages/cqrs/src/buses/saga-bus.test.ts`: Complex saga workflow examples.
+- `packages/cqrs/src/public-api.test.ts`: Root-barrel public API contract coverage.

@@ -212,4 +212,29 @@ describe('serialize', () => {
     expect(serialized.regular).toBe('value');
     expect(serialized[token]).toEqual({ nested: true });
   });
+
+  it('preserves non-JSON leaf values instead of coercing them implicitly', () => {
+    const createdAt = new Date('2026-03-24T00:00:00.000Z');
+    const onSerialize = () => 'ok';
+    const marker = Symbol.for('fluo.serialization.marker');
+    const input = {
+      createdAt,
+      nested: {
+        handler: onSerialize,
+        marker,
+      },
+      total: 1n,
+    };
+
+    const serialized = serialize(input) as {
+      createdAt: Date;
+      nested: { handler: typeof onSerialize; marker: symbol };
+      total: bigint;
+    };
+
+    expect(serialized.createdAt).toBe(createdAt);
+    expect(serialized.nested.handler).toBe(onSerialize);
+    expect(serialized.nested.marker).toBe(marker);
+    expect(serialized.total).toBe(1n);
+  });
 });

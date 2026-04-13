@@ -111,4 +111,34 @@ describe('RedisStore', () => {
       value: JSON.stringify({ value: { id: 'u1' } }),
     });
   });
+
+  it('round-trips values using JSON serialization semantics', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
+
+    const client = new MockRedisClient();
+    const store = new RedisStore(client, { keyPrefix: 'cache:' });
+    const createdAt = new Date('2026-03-24T12:34:56.000Z');
+
+    await store.set('users:json', {
+      createdAt,
+      nested: {
+        keep: true,
+        omit: undefined,
+      },
+      onHit: () => 'ignored',
+    });
+
+    await expect(store.get<{ createdAt: string; nested: { keep: boolean } }>('users:json')).resolves.toEqual({
+      createdAt: createdAt.toJSON(),
+      nested: { keep: true },
+    });
+  });
+
+  it('rejects values that JSON cannot serialize', async () => {
+    const client = new MockRedisClient();
+    const store = new RedisStore(client, { keyPrefix: 'cache:' });
+
+    await expect(store.set('users:bigint', { total: 1n })).rejects.toThrow();
+  });
 });

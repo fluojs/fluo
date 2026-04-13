@@ -113,6 +113,8 @@ CacheModule.forRoot({
 
 `redis.client` remains the highest-precedence override. Use it only when you need to bypass DI-based client selection entirely.
 
+The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache values therefore need to be JSON-compatible: plain objects, arrays, strings, numbers, booleans, and `null` round-trip cleanly, while values such as `Date` come back as JSON output (for example ISO strings), functions/`undefined`/symbols do not survive, and non-serializable values like `bigint` or cyclic graphs should be normalized before caching.
+
 ### Query-Sensitive Caching
 
 By default, the cache key ignores query parameters. Enable `httpKeyStrategy: 'route+query'` to cache different responses for different search parameters.
@@ -131,6 +133,10 @@ The built-in memory store is designed for single-process, bounded caching:
 - If you omit `ttl` on the default memory path, `CacheModule.forRoot()` uses a 300-second TTL.
 - `ttl: 0` is still supported for no-expiry entries, but the memory store keeps only the most recent 1,000 live keys.
 - High-cardinality or multi-instance deployments should use the Redis store instead of relying on process-local memory.
+
+### Deferred eviction timing
+
+For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred until the response successfully commits. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely.
 
 ## Public API Overview
 
