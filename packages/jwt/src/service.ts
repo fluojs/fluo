@@ -179,7 +179,7 @@ export class JwtService {
       aud: options?.audience ?? (payload as JwtClaims).aud,
       exp:
         expiresInSeconds !== undefined
-          ? ((payload as JwtClaims).exp ?? now + expiresInSeconds)
+          ? now + expiresInSeconds
           : (payload as JwtClaims).exp,
       iss: options?.issuer ?? (payload as JwtClaims).iss,
       nbf: options?.notBefore ?? (payload as JwtClaims).nbf,
