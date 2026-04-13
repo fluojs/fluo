@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Class-based response serialization and output shaping for fluo.
+Class-based response serialization and output shaping for fluo with decorator-aware recursive object walking.
 
 ## Table of Contents
 
@@ -99,11 +99,11 @@ class UsersController {
 
 ### Cycle-safe serialization
 
-The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into JSON-safe plain objects.
+The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion.
 
 ### Non-JSON leaf values
 
-`serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Values such as `Date`, `bigint`, functions, and symbols are passed through as-is unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
+`serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Values such as `Date`, `bigint`, functions, and symbols can pass through unchanged unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
 
 ## Public API Overview
 

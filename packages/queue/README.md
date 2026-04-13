@@ -93,7 +93,7 @@ Workers can be configured with a maximum number of attempts and backoff strategi
 ```typescript
 @QueueWorker(MyJob, { 
   attempts: 5, 
-  backoff: { type: 'exponential', delay: 1000 } 
+  backoff: { type: 'exponential', delayMs: 1000 } 
 })
 ```
 
