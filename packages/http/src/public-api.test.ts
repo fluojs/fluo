@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as httpPublicApi from './index.js';
+import * as httpInternalApi from './internal.js';
 
 describe('@fluojs/http public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -42,5 +43,11 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).not.toHaveProperty('DefaultConverter');
     expect(httpPublicApi).not.toHaveProperty('DefaultBinder');
     expect(httpPublicApi).not.toHaveProperty('getRouteProducesMetadata');
+  });
+
+  it('keeps the internal subpath limited to the documented exported helpers', () => {
+    expect(httpInternalApi).toHaveProperty('DefaultBinder');
+    expect(httpInternalApi).toHaveProperty('resolveClientIdentity');
+    expect(Object.keys(httpInternalApi).sort()).toEqual(['DefaultBinder', 'resolveClientIdentity']);
   });
 });
