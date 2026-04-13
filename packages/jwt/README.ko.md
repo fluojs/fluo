@@ -69,6 +69,8 @@ const principal = await verifier.verifyAccessToken(token);
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
 
+`JwtService.sign(payload, { expiresIn })`를 사용할 때는 payload 안에 기존 `exp` 값이 있더라도 호출 시점의 `expiresIn` 재정의가 항상 우선합니다. 따라서 토큰 수명은 호출 위치에서 결정적으로 제어됩니다.
+
 ## 일반적인 패턴
 
 ### 비대칭 서명 (RS256/ES256)

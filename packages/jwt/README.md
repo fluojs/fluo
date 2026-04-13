@@ -69,6 +69,8 @@ const principal = await verifier.verifyAccessToken(token);
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
 
+When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site.
+
 ## Common Patterns
 
 ### Asymmetric Signing (RS256/ES256)
