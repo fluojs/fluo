@@ -136,7 +136,7 @@ CacheModule.forRoot({
 
 ### 지연 삭제 시점
 
-`@CacheEvict(...)`가 붙은 non-GET 핸들러는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다.
+`@CacheEvict(...)`가 붙은 non-GET 핸들러는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
 
 ## 공개 API 개요
 
