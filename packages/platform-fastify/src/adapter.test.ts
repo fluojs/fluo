@@ -616,6 +616,36 @@ describe('@fluojs/platform-fastify', () => {
     await Promise.resolve();
   });
 
+  it('clears the fastify shutdown timer once close settles', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+      const deferred = createDeferred<void>();
+      const app = {
+        close: () => deferred.promise,
+        server: {
+          listening: true,
+        },
+      };
+
+      Reflect.set(adapter, 'app', app);
+      Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+      const closePromise = adapter.close();
+
+      expect(vi.getTimerCount()).toBe(1);
+
+      deferred.resolve();
+      await Promise.resolve();
+      await closePromise;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('forces process exit when signal-driven shutdown exceeds forceExitTimeoutMs', async () => {
     vi.useFakeTimers();
 
