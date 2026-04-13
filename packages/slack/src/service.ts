@@ -274,7 +274,7 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
     if (recipients.length > 1) {
       throw new SlackMessageValidationError(
-        'Slack notifications accept exactly one target channel per dispatch. Use `dispatchMany(...)` for fan-out delivery.',
+      'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
     }
 

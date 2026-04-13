@@ -138,7 +138,7 @@ Behavioral contract 메모:
 
 - 하나의 notification dispatch는 정확히 하나의 Slack 대상지로 매핑됩니다. `payload.channel` 또는 `recipients`의 단일 항목을 사용해야 합니다.
 - `payload.channel`이 없으면 `SlackService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultChannel`로 폴백합니다.
-- 여러 Slack 대상지로 fan-out이 필요하다면 하나의 multi-recipient dispatch 대신 `dispatchMany(...)`를 사용해야 합니다.
+- 여러 Slack 대상지로 fan-out이 필요하다면 하나의 multi-recipient dispatch 대신 `sendMany(...)`를 사용해야 합니다.
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
 
