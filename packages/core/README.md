@@ -90,7 +90,7 @@ console.log(metadata.providers);
 ## Public API Overview
 
 - **Decorators**: `Module`, `Global`, `Inject`, `Scope`
-- **Errors**: `fluoError`, `InvariantError`, `fluoCodeError`
+- **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`
 - **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
 - **Internal subpath**: metadata helpers via `@fluojs/core/internal`
 
