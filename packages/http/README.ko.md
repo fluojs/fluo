@@ -84,6 +84,10 @@ function someDeepHelper() {
 }
 ```
 
+### 프록시 뒤의 속도 제한
+
+`createRateLimitMiddleware(...)`는 클라이언트 식별자를 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, 마지막으로 raw socket `remoteAddress` 순서로 해석합니다. 어댑터가 프록시 헤더도 raw socket 접근도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
+
 ### 서버 전송 이벤트
 
 ```ts
@@ -104,7 +108,7 @@ stream(_input: undefined, ctx: RequestContext) {
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`
 - **핵심 런타임 타입**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
 - **예외**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `createRateLimitMiddleware`, `getCurrentRequestContext`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 
@@ -113,6 +117,7 @@ stream(_input: undefined, ctx: RequestContext) {
 - `createErrorResponse(error, requestId)`: 표준화된 JSON 에러 응답 팩토리.
 - `HttpException`: 모든 프레임워크 수준 HTTP 에러의 기본 클래스.
 - `PLATFORM_SHELL`: 활성 플랫폼 어댑터를 위한 DI 토큰.
+- `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 프록시 인지 클라이언트 식별 해석기.
 
 ## 관련 패키지
 

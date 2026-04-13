@@ -86,6 +86,10 @@ function someDeepHelper() {
 }
 ```
 
+### Rate limiting behind proxies
+
+`createRateLimitMiddleware(...)` resolves client identity from `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, and finally the raw socket `remoteAddress`. If your adapter runs without proxy headers or raw socket access, provide an explicit `keyResolver` instead of relying on a shared fallback bucket.
+
 ### Server-sent events
 
 ```ts
@@ -106,7 +110,7 @@ stream(_input: undefined, ctx: RequestContext) {
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`
 - **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
 - **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `getCurrentRequestContext`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `createRateLimitMiddleware`, `getCurrentRequestContext`
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
@@ -115,6 +119,7 @@ The `./internal` subpath exports low-level utilities used by platform adapters a
 - `createErrorResponse(error, requestId)`: Standardized JSON error response factory.
 - `HttpException`: Base class for all framework-level HTTP errors.
 - `PLATFORM_SHELL`: DI token for the active platform adapter.
+- `resolveClientIdentity(request)`: Proxy-aware client identity resolver used by rate limiting and other runtime integrations.
 
 ## Related Packages
 
