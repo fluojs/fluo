@@ -57,6 +57,7 @@ class AppModule {}
 The `PrismaService` is the primary way to interact with Prisma. Its `current()` method automatically returns the active transaction client if inside a transaction scope, or the root client otherwise.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
@@ -87,7 +88,7 @@ await this.prisma.transaction(async () => {
 Apply the `PrismaTransactionInterceptor` to a controller or method to wrap the entire request in a transaction automatically.
 
 ```typescript
-import { UseInterceptors } from '@fluojs/http';
+import { Post, UseInterceptors } from '@fluojs/http';
 import { PrismaTransactionInterceptor } from '@fluojs/prisma';
 
 @UseInterceptors(PrismaTransactionInterceptor)
@@ -103,13 +104,13 @@ class UserController {
 
 ### `PrismaModule`
 
-- `static forRoot(options: PrismaModuleOptions): ModuleType`
-- `static forRootAsync(options: PrismaModuleAsyncOptions): ModuleType`
-  - Supports `strictTransactions: true` to throw if transaction support is missing.
+- `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
+- `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
+- Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ### `PrismaService<TClient>`
 
-- `current(): TClient`
+- `current(): TClient | PrismaTransactionClient<TClient>`
   - Returns the ambient transaction client or the root client.
 - `transaction(fn, options?): Promise<T>`
   - Runs a function within an interactive transaction.
@@ -119,6 +120,13 @@ class UserController {
 ### `PRISMA_CLIENT` (Token)
 
 Injectable token for the raw `PrismaClient` instance.
+
+### Related exported types
+
+- `PrismaModuleOptions`
+- `PrismaTransactionClient<TClient>`
+- `InferPrismaTransactionClient<TClient>`
+- `InferPrismaTransactionOptions<TClient>`
 
 ## Related Packages
 

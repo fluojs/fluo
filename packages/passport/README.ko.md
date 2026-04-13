@@ -55,7 +55,7 @@ export class AuthModule {}
 `@UseAuth()`와 `@RequireScopes()`를 사용하여 인증을 강제합니다.
 
 ```typescript
-import { Controller, Get } from '@fluojs/http';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { UseAuth, RequireScopes } from '@fluojs/passport';
 
 @Controller('/profile')
@@ -86,10 +86,16 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 패키지에서 제공하는 `RefreshTokenStrategy`와 `RefreshTokenService`를 사용하여 안전한 토큰 로테이션 및 폐기 기능을 구현할 수 있습니다.
 
 ```typescript
-@Post('/refresh')
-@UseAuth('refresh-token')
-async refresh(input: never, ctx: RequestContext) {
-  return ctx.principal; // 새 토큰 쌍이 포함된 principal 반환
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { UseAuth } from '@fluojs/passport';
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal; // 새 토큰 쌍이 포함된 principal 반환
+  }
 }
 ```
 
@@ -116,5 +122,5 @@ async refresh(input: never, ctx: RequestContext) {
 ## 예제 소스
 
 - `packages/passport/src/guard.test.ts`: 가드 실행 및 권한 강제 패턴 예제.
-- `packages/passport/src/passport-js.ts`: Passport.js 브릿지 구현체.
+- `packages/passport/src/adapters/passport-js.ts`: Passport.js 브릿지 구현체.
 - `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: 표준 JWT 전략 구현 예제.

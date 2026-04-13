@@ -267,7 +267,7 @@ describe('DiscordModule', () => {
       }),
     ).rejects.toThrowError(
       new DiscordMessageValidationError(
-        'Discord notifications accept exactly one target thread per dispatch. Use `dispatchMany(...)` for fan-out delivery.',
+        'Discord notifications accept exactly one target thread per dispatch. Use `sendMany(...)` for fan-out delivery.',
       ),
     );
   });
