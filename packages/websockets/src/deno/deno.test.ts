@@ -202,6 +202,17 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe('@fluojs/websockets/deno', () => {
   it('exposes the explicit Deno websocket seam', () => {
     expect(denoPublicApi).toHaveProperty('DenoWebSocketModule');
@@ -286,7 +297,7 @@ describe('@fluojs/websockets/deno', () => {
       adapter,
       rootModule: AppModule,
     });
-    const state = await app.container.resolve(GatewayState);
+    const state = await app.container.resolve<GatewayState>(GatewayState);
 
     await app.listen();
 
@@ -315,6 +326,180 @@ describe('@fluojs/websockets/deno', () => {
     expect(state.messages).toEqual([{ value: 'hello' }]);
     expect(socket.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
     expect(state.disconnectCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('rejects anonymous upgrade requests before the Deno websocket upgrade completes', async () => {
+    const adapter = new TestDenoAdapter();
+
+    @WebSocketGateway({ path: '/guarded' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({
+        upgrade: {
+          guard(request) {
+            return request instanceof Request && request.headers.get('authorization') === 'Bearer deno'
+              ? true
+              : { body: 'Authentication required.', status: 401 };
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/guarded', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(response?.status).toBe(401);
+    expect(await response?.text()).toBe('Authentication required.');
+
+    await app.close();
+  });
+
+  it('rejects Deno upgrades that exceed the configured connection limit', async () => {
+    const adapter = new TestDenoAdapter();
+
+    @WebSocketGateway({ path: '/limited' })
+    class LimitedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({
+        limits: {
+          maxConnections: 1,
+        },
+      })],
+      providers: [LimitedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const server = adapter.getServer();
+    const firstUpgrade = await server?.fetch(new Request('https://runtime.test/limited', {
+      headers: { upgrade: 'websocket' },
+    }));
+    const secondUpgrade = await server?.fetch(new Request('https://runtime.test/limited', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(firstUpgrade?.status).toBe(200);
+    expect(secondUpgrade?.status).toBe(429);
+
+    await app.close();
+  });
+
+  it('rejects concurrent Deno upgrades once one pending upgrade already reserved the last slot', async () => {
+    const adapter = new TestDenoAdapter();
+    const guardGate = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/limited-race' })
+    class LimitedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({
+        limits: {
+          maxConnections: 1,
+        },
+        upgrade: {
+          async guard() {
+            await guardGate.promise;
+            return true;
+          },
+        },
+      })],
+      providers: [LimitedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const server = adapter.getServer();
+    const firstUpgradePromise = server?.fetch(new Request('https://runtime.test/limited-race', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    await flushAsyncWork();
+
+    const secondUpgrade = await server?.fetch(new Request('https://runtime.test/limited-race', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(secondUpgrade?.status).toBe(429);
+
+    guardGate.resolve();
+
+    expect((await firstUpgradePromise)?.status).toBe(200);
+
+    await app.close();
+  });
+
+  it('closes Deno sockets when inbound payloads exceed the configured limit', async () => {
+    const adapter = new TestDenoAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/payload' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('https://runtime.test/payload', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    const socket = server?.lastSocket;
+
+    if (!socket) {
+      throw new Error('Expected Deno test socket to be available after websocket upgrade.');
+    }
+
+    socket.emitMessage('hello');
+    await flushAsyncWork();
+
+    expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+    expect(state.messages).toEqual([]);
 
     await app.close();
   });

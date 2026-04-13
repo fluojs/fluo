@@ -15,7 +15,7 @@ import {
   type ResolvedGatewayInstance,
 } from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
-import type { WebSocketGatewayDescriptor, WebSocketRoomService } from '../types.js';
+import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgradeRejection } from '../types.js';
 import type {
   DenoServerWebSocket,
   DenoWebSocketBinding,
@@ -46,6 +46,8 @@ interface ConnectionHandlerState {
 }
 
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
+const DEFAULT_MAX_WEBSOCKET_CONNECTIONS = 1_000;
+const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 const WEBSOCKET_OPEN_READY_STATE = 1;
 
@@ -110,6 +112,18 @@ function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
+function isHttpExceptionLike(error: unknown): error is { message: string; status: number } {
+  return typeof error === 'object' && error !== null && 'message' in error && 'status' in error;
+}
+
+function resolveMessageByteLength(message: DenoWebSocketMessage): number {
+  if (typeof message === 'string') {
+    return Buffer.byteLength(message);
+  }
+
+  return message.size;
+}
+
 /**
  * Boots Deno-backed websocket gateways and manages their room lifecycle state.
  */
@@ -117,6 +131,7 @@ function isWebSocketUpgradeRequest(request: Request): boolean {
 export class DenoWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {
+  private pendingUpgradeReservations = 0;
   private readonly roomSockets = new Map<string, Set<string>>();
   private shutdownPromise: Promise<void> | undefined;
   private readonly socketRegistry = new Map<string, DenoServerWebSocket>();
@@ -195,7 +210,25 @@ export class DenoWebSocketGatewayLifecycleService
           return new Response(null, { status: 404 });
         }
 
-        const { response, socket } = host.upgrade(request);
+        const rejection = await this.resolveUpgradeRejection(request, targetPath);
+
+        if (rejection) {
+          return new Response(rejection.body ?? null, {
+            headers: rejection.headers,
+            status: rejection.status,
+          });
+        }
+
+        let response: Response;
+        let socket: DenoServerWebSocket;
+
+        try {
+          ({ response, socket } = host.upgrade(request));
+        } catch (error) {
+          this.releaseUpgradeReservation();
+          throw error;
+        }
+
         void this.bindConnectionHandlers(socket, request, descriptors).catch((error) => {
           this.unregisterSocket(this.findSocketId(socket));
           this.logger.error('WebSocket gateway open lifecycle failed.', error, LIFECYCLE_LOG_CONTEXT);
@@ -232,6 +265,7 @@ export class DenoWebSocketGatewayLifecycleService
   ): Promise<void> {
     const state = this.createConnectionHandlerState(request, descriptors);
 
+    this.releaseUpgradeReservation();
     this.socketRegistry.set(state.socketId, socket);
     this.attachConnectionListeners(state, socket, request);
 
@@ -267,6 +301,10 @@ export class DenoWebSocketGatewayLifecycleService
     request: Request,
   ): void {
     socket.addEventListener('message', (event: MessageEvent<DenoWebSocketMessage>) => {
+      if (this.closeOversizedPayload(state.socketId, socket, event.data)) {
+        return;
+      }
+
       if (!state.handlersReady) {
         this.bufferIncomingMessage(state, socket, event.data);
         return;
@@ -555,6 +593,115 @@ export class DenoWebSocketGatewayLifecycleService
     return '';
   }
 
+  private async resolveUpgradeRejection(
+    request: Request,
+    path: string,
+  ): Promise<WebSocketUpgradeRejection | undefined> {
+    if (!this.tryReserveUpgradeSlot()) {
+      return {
+        body: 'WebSocket connection limit exceeded.',
+        status: 429,
+      };
+    }
+
+    const guard = this.moduleOptions.upgrade?.guard;
+
+    if (!guard) {
+      return undefined;
+    }
+
+    try {
+      const result = await guard(request, {
+        activeConnectionCount: this.resolveReservedConnectionCount() - 1,
+        path,
+      });
+
+      if (result === false) {
+        this.releaseUpgradeReservation();
+        return {
+          body: 'WebSocket upgrade rejected.',
+          status: 403,
+        };
+      }
+
+      if (typeof result === 'object' && result !== null && 'status' in result) {
+        this.releaseUpgradeReservation();
+        return result as WebSocketUpgradeRejection;
+      }
+
+      return undefined;
+    } catch (error) {
+      this.releaseUpgradeReservation();
+
+      if (isHttpExceptionLike(error)) {
+        return {
+          body: error.message,
+          status: error.status,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  private closeOversizedPayload(
+    socketId: string,
+    socket: DenoServerWebSocket,
+    message: DenoWebSocketMessage,
+  ): boolean {
+    const maxPayloadBytes = this.resolveMaxPayloadBytes();
+
+    if (resolveMessageByteLength(message) <= maxPayloadBytes) {
+      return false;
+    }
+
+    socket.close(1009, 'Payload too large');
+    this.logger.warn(
+      `WebSocket connection ${socketId} exceeded payload limit (${String(maxPayloadBytes)} bytes). Connection closed.`,
+      LIFECYCLE_LOG_CONTEXT,
+    );
+    return true;
+  }
+
+  private resolveMaxConnectionCount(): number {
+    const configured = this.moduleOptions.limits?.maxConnections;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_CONNECTIONS;
+    }
+
+    return configured;
+  }
+
+  private resolveReservedConnectionCount(): number {
+    return this.socketRegistry.size + this.pendingUpgradeReservations;
+  }
+
+  private tryReserveUpgradeSlot(): boolean {
+    if (this.resolveReservedConnectionCount() >= this.resolveMaxConnectionCount()) {
+      return false;
+    }
+
+    this.pendingUpgradeReservations += 1;
+    return true;
+  }
+
+  private releaseUpgradeReservation(): void {
+    if (this.pendingUpgradeReservations > 0) {
+      this.pendingUpgradeReservations -= 1;
+    }
+  }
+
+  private resolveMaxPayloadBytes(): number {
+    const configured = this.moduleOptions.limits?.maxPayloadBytes;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES;
+    }
+
+    return configured;
+  }
+
   private async shutdown(): Promise<void> {
     if (this.shutdownPromise) {
       await this.shutdownPromise;
@@ -570,6 +717,7 @@ export class DenoWebSocketGatewayLifecycleService
       this.adapter.configureWebSocketBinding(undefined);
     }
 
+    this.pendingUpgradeReservations = 0;
     this.socketRegistry.clear();
     this.socketRooms.clear();
     this.roomSockets.clear();

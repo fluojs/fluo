@@ -3,6 +3,9 @@ import type {
   TypedOnMessageHandler as NodeTypedOnMessageHandler,
   WebSocketGatewayContext as NodeWebSocketGatewayContext,
   WebSocketModuleOptions as NodeWebSocketModuleOptions,
+  WebSocketUpgradeContext as NodeWebSocketUpgradeContext,
+  WebSocketUpgradeGuard as NodeWebSocketUpgradeGuard,
+  WebSocketUpgradeRejection as NodeWebSocketUpgradeRejection,
 } from './node/node-types.js';
 
 /**
@@ -106,6 +109,21 @@ export interface WebSocketGatewayDescriptor {
  * Runtime context passed to gateway handlers on the default Node.js adapter surface.
  */
 export type WebSocketGatewayContext = NodeWebSocketGatewayContext;
+
+/**
+ * Upgrade-time context shared with pre-upgrade websocket guards.
+ */
+export type WebSocketUpgradeContext = NodeWebSocketUpgradeContext;
+
+/**
+ * Structured rejection returned by a pre-upgrade websocket guard.
+ */
+export type WebSocketUpgradeRejection = NodeWebSocketUpgradeRejection;
+
+/**
+ * Hook that can allow or reject a websocket upgrade before the adapter accepts it.
+ */
+export type WebSocketUpgradeGuard = NodeWebSocketUpgradeGuard;
 
 /**
  * Room management API shared by WebSocket protocol adapters.

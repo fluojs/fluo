@@ -24,6 +24,7 @@ import {
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
+  WebSocketUpgradeRejection,
   WebSocketRoomService,
 } from '../types.js';
 import type { WebSocketModuleOptions } from './bun-types.js';
@@ -54,6 +55,8 @@ interface BunSocketData {
 }
 
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
+const DEFAULT_MAX_WEBSOCKET_CONNECTIONS = 1_000;
+const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 
 type FetchStyleRealtimeCapability = {
@@ -113,6 +116,18 @@ function resolveSupportedFetchStyleRealtimeCapability(
   return capability;
 }
 
+function isHttpExceptionLike(error: unknown): error is { message: string; status: number } {
+  return typeof error === 'object' && error !== null && 'message' in error && 'status' in error;
+}
+
+function resolveMessageByteLength(message: BunWebSocketMessage): number {
+  if (typeof message === 'string') {
+    return Buffer.byteLength(message);
+  }
+
+  return message.byteLength;
+}
+
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
@@ -124,6 +139,7 @@ function isWebSocketUpgradeRequest(request: Request): boolean {
 export class BunWebSocketGatewayLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, WebSocketRoomService
 {
+  private pendingUpgradeReservations = 0;
   private readonly roomSockets = new Map<string, Set<string>>();
   private shutdownPromise: Promise<void> | undefined;
   private readonly socketRegistry = new Map<string, BunServerWebSocket<BunSocketData>>();
@@ -197,6 +213,7 @@ export class BunWebSocketGatewayLifecycleService
           this.logger.error('WebSocket gateway socket emitted an error.', error, LIFECYCLE_LOG_CONTEXT);
         },
         idleTimeout: this.resolveIdleTimeoutSeconds(),
+        maxPayloadLength: this.resolveMaxPayloadBytes(),
         message: (socket, message) => {
           this.handleSocketMessage(socket, message);
         },
@@ -254,10 +271,27 @@ export class BunWebSocketGatewayLifecycleService
       return new Response(null, { status: 426 });
     }
 
+    const rejection = await this.resolveUpgradeRejection(request, targetPath);
+
+    if (rejection) {
+      return new Response(rejection.body ?? null, {
+        headers: rejection.headers,
+        status: rejection.status,
+      });
+    }
+
     const state = this.createConnectionHandlerState(request, [...descriptors]);
-    const upgraded = server.upgrade(request, { data: { state } });
+    let upgraded = false;
+
+    try {
+      upgraded = server.upgrade(request, { data: { state } });
+    } catch (error) {
+      this.releaseUpgradeReservation();
+      throw error;
+    }
 
     if (!upgraded) {
+      this.releaseUpgradeReservation();
       return new Response(null, { status: 400 });
     }
 
@@ -267,6 +301,7 @@ export class BunWebSocketGatewayLifecycleService
   private async bindConnectionHandlers(socket: BunServerWebSocket<BunSocketData>): Promise<void> {
     const { state } = socket.data;
 
+    this.releaseUpgradeReservation();
     this.socketRegistry.set(state.socketId, socket);
 
     await this.resolveConnectionGateways(state);
@@ -334,6 +369,10 @@ export class BunWebSocketGatewayLifecycleService
 
   private handleSocketMessage(socket: BunServerWebSocket<BunSocketData>, message: BunWebSocketMessage): void {
     const { state } = socket.data;
+
+    if (this.closeOversizedPayload(state.socketId, socket, message)) {
+      return;
+    }
 
     if (!state.handlersReady) {
       this.bufferIncomingMessage(state, socket, message);
@@ -556,6 +595,115 @@ export class BunWebSocketGatewayLifecycleService
     return configured;
   }
 
+  private async resolveUpgradeRejection(
+    request: Request,
+    path: string,
+  ): Promise<WebSocketUpgradeRejection | undefined> {
+    if (!this.tryReserveUpgradeSlot()) {
+      return {
+        body: 'WebSocket connection limit exceeded.',
+        status: 429,
+      };
+    }
+
+    const guard = this.moduleOptions.upgrade?.guard;
+
+    if (!guard) {
+      return undefined;
+    }
+
+    try {
+      const result = await guard(request, {
+        activeConnectionCount: this.resolveReservedConnectionCount() - 1,
+        path,
+      });
+
+      if (result === false) {
+        this.releaseUpgradeReservation();
+        return {
+          body: 'WebSocket upgrade rejected.',
+          status: 403,
+        };
+      }
+
+      if (typeof result === 'object' && result !== null && 'status' in result) {
+        this.releaseUpgradeReservation();
+        return result as WebSocketUpgradeRejection;
+      }
+
+      return undefined;
+    } catch (error) {
+      this.releaseUpgradeReservation();
+
+      if (isHttpExceptionLike(error)) {
+        return {
+          body: error.message,
+          status: error.status,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  private closeOversizedPayload(
+    socketId: string,
+    socket: BunServerWebSocket<BunSocketData>,
+    message: BunWebSocketMessage,
+  ): boolean {
+    const maxPayloadBytes = this.resolveMaxPayloadBytes();
+
+    if (resolveMessageByteLength(message) <= maxPayloadBytes) {
+      return false;
+    }
+
+    socket.close(1009, 'Payload too large');
+    this.logger.warn(
+      `WebSocket connection ${socketId} exceeded payload limit (${String(maxPayloadBytes)} bytes). Connection closed.`,
+      LIFECYCLE_LOG_CONTEXT,
+    );
+    return true;
+  }
+
+  private resolveMaxConnectionCount(): number {
+    const configured = this.moduleOptions.limits?.maxConnections;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_CONNECTIONS;
+    }
+
+    return configured;
+  }
+
+  private resolveReservedConnectionCount(): number {
+    return this.socketRegistry.size + this.pendingUpgradeReservations;
+  }
+
+  private tryReserveUpgradeSlot(): boolean {
+    if (this.resolveReservedConnectionCount() >= this.resolveMaxConnectionCount()) {
+      return false;
+    }
+
+    this.pendingUpgradeReservations += 1;
+    return true;
+  }
+
+  private releaseUpgradeReservation(): void {
+    if (this.pendingUpgradeReservations > 0) {
+      this.pendingUpgradeReservations -= 1;
+    }
+  }
+
+  private resolveMaxPayloadBytes(): number {
+    const configured = this.moduleOptions.limits?.maxPayloadBytes;
+
+    if (!isFinitePositiveInteger(configured)) {
+      return DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES;
+    }
+
+    return configured;
+  }
+
   private resolveIdleTimeoutSeconds(): number {
     if (this.moduleOptions.heartbeat?.enabled === false) {
       return 0;
@@ -586,6 +734,7 @@ export class BunWebSocketGatewayLifecycleService
       bunAdapter.configureWebSocketBinding(undefined);
     }
 
+    this.pendingUpgradeReservations = 0;
     this.socketRegistry.clear();
     this.socketRooms.clear();
     this.roomSockets.clear();

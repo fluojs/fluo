@@ -75,6 +75,33 @@ For Node-based adapters (Express/Fastify), you can opt into a dedicated listener
 class DedicatedChatGateway {}
 ```
 
+### Pre-upgrade guards and bounded defaults
+Use `WebSocketModule.forRoot(...)` to reject anonymous upgrades before the handshake completes and to tune the shared connection/payload limits.
+
+```typescript
+import { UnauthorizedException } from '@fluojs/http';
+
+WebSocketModule.forRoot({
+  limits: {
+    maxConnections: 500,
+    maxPayloadBytes: 65_536,
+  },
+  upgrade: {
+    guard(request) {
+      const authorization = request instanceof Request
+        ? request.headers.get('authorization')
+        : request.headers.authorization;
+
+      if (authorization !== 'Bearer demo-token') {
+        throw new UnauthorizedException('Authentication required.');
+      }
+    },
+  },
+});
+```
+
+When omitted, `@fluojs/websockets` now applies bounded defaults for concurrent connections and inbound payload size. Server-backed Node listeners also enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`.
+
 ## Public API Overview
 
 - `@WebSocketGateway(options)`: Marks a class as a WebSocket gateway.
@@ -82,6 +109,7 @@ class DedicatedChatGateway {}
 - `@OnMessage(event?)`: Decorator for inbound message handlers.
 - `@OnDisconnect()`: Decorator for disconnection handlers.
 - `WebSocketModule`: Root module for WebSocket integration.
+- `WebSocketModule.forRoot({ upgrade, limits, heartbeat, ... })`: Configures pre-upgrade guards and bounded runtime defaults.
 
 ## Runtime-Specific Subpaths
 
@@ -97,4 +125,3 @@ class DedicatedChatGateway {}
 - `packages/websockets/src/module.test.ts`
 - `packages/websockets/src/node/node.test.ts`
 - `packages/websockets/src/bun/bun.test.ts`
-

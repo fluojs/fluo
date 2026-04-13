@@ -18,6 +18,7 @@ import {
 } from './bun.js';
 
 type MockSocket = BunServerWebSocket<unknown> & {
+  closeCalls: Array<{ code?: number; reason?: string }>;
   sentMessages: string[];
 };
 
@@ -100,7 +101,10 @@ class TestBunServer implements BunServerLike {
 function createMockSocket(data: unknown): MockSocket {
   const subscriptions = new Set<string>();
   const socket: MockSocket = {
-    close() {},
+    close(code?: number, reason?: string) {
+      socket.closeCalls.push({ code, reason });
+    },
+    closeCalls: [],
     cork(callback: (target: BunServerWebSocket<unknown>) => void) {
       callback(socket);
     },
@@ -139,6 +143,17 @@ function createMockSocket(data: unknown): MockSocket {
 
 async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
 }
 
 describe('@fluojs/websockets/bun', () => {
@@ -225,7 +240,7 @@ describe('@fluojs/websockets/bun', () => {
       adapter,
       rootModule: AppModule,
     });
-    const state = await app.container.resolve(GatewayState);
+    const state = await app.container.resolve<GatewayState>(GatewayState);
 
     await app.listen();
 
@@ -254,6 +269,180 @@ describe('@fluojs/websockets/bun', () => {
     expect(state.messages).toEqual([{ value: 'hello' }]);
     expect(socket?.sentMessages).toEqual(['{"event":"pong","data":{"value":"hello"}}']);
     expect(state.disconnectCount).toBe(1);
+
+    await app.close();
+  });
+
+  it('rejects anonymous upgrade requests before the Bun websocket upgrade completes', async () => {
+    const adapter = new TestBunAdapter();
+
+    @WebSocketGateway({ path: '/guarded' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        upgrade: {
+          guard(request) {
+            return request instanceof Request && request.headers.get('authorization') === 'Bearer bun'
+              ? true
+              : { body: 'Authentication required.', status: 401 };
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const response = await adapter.getServer()?.fetch(new Request('http://127.0.0.1:3000/guarded', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(response?.status).toBe(401);
+    expect(await response?.text()).toBe('Authentication required.');
+
+    await app.close();
+  });
+
+  it('rejects Bun upgrades that exceed the configured connection limit', async () => {
+    const adapter = new TestBunAdapter();
+
+    @WebSocketGateway({ path: '/limited' })
+    class LimitedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxConnections: 1,
+        },
+      })],
+      providers: [LimitedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const server = adapter.getServer();
+    const firstUpgrade = await server?.fetch(new Request('http://127.0.0.1:3000/limited', {
+      headers: { upgrade: 'websocket' },
+    }));
+    const secondUpgrade = await server?.fetch(new Request('http://127.0.0.1:3000/limited', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(firstUpgrade).toBeUndefined();
+    expect(secondUpgrade?.status).toBe(429);
+
+    await app.close();
+  });
+
+  it('rejects concurrent Bun upgrades once one pending upgrade already reserved the last slot', async () => {
+    const adapter = new TestBunAdapter();
+    const guardGate = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/limited-race' })
+    class LimitedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxConnections: 1,
+        },
+        upgrade: {
+          async guard() {
+            await guardGate.promise;
+            return true;
+          },
+        },
+      })],
+      providers: [LimitedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+
+    const server = adapter.getServer();
+    const firstUpgradePromise = server?.fetch(new Request('http://127.0.0.1:3000/limited-race', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    await flushAsyncWork();
+
+    const secondUpgrade = await server?.fetch(new Request('http://127.0.0.1:3000/limited-race', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(secondUpgrade?.status).toBe(429);
+
+    guardGate.resolve();
+
+    expect(await firstUpgradePromise).toBeUndefined();
+
+    await app.close();
+  });
+
+  it('closes Bun sockets when inbound payloads exceed the configured limit', async () => {
+    const adapter = new TestBunAdapter();
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/payload' })
+    class PayloadGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({
+        limits: {
+          maxPayloadBytes: 4,
+        },
+      })],
+      providers: [GatewayState, PayloadGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+    await app.listen();
+
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/payload', {
+      headers: { upgrade: 'websocket' },
+    }));
+    await flushAsyncWork();
+
+    const socket = server?.lastSocket;
+
+    if (!server || !socket) {
+      throw new Error('Expected Bun test socket to be available after websocket upgrade.');
+    }
+
+    await server.emitMessage('hello');
+    await flushAsyncWork();
+
+    expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
+    expect(state.messages).toEqual([]);
 
     await app.close();
   });
