@@ -7,19 +7,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-<!-- release-readiness-draft:start -->
-### Draft release readiness entry (2026-04-13)
-
-- Breaking changes:
-  - _Describe public contract changes and include migration notes._
-- New features by package:
-  - _List package-level additions (for example `@fluojs/http`, `@fluojs/cli`)._
-- Bug fixes:
-  - _List notable fixes by package._
-- Deprecations:
-  - _List newly deprecated APIs and removal timelines._
-<!-- release-readiness-draft:end -->
-
 ### Breaking changes
 
 - `@fluojs/graphql`: schema introspection is now disabled unless `graphiql` or `introspection: true` is explicitly enabled, and built-in request budgets now cap GraphQL document depth, field complexity, and aggregate query cost by default. Migration note: enable `introspection: true` for trusted tooling flows that still need schema discovery, or set `limits` to explicit higher values (or `false` for a temporary legacy escape hatch) before rolling this update into existing large-query workloads.
