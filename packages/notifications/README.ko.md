@@ -114,6 +114,7 @@ Behavioral contract 메모:
 - 알림 개수가 `bulkThreshold` 이상이면 대량 큐 위임이 시작됩니다.
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
 - 큐 기반 전달은 단건 dispatch에서는 opt-in이고, `dispatchMany(...)`에서는 threshold 기반으로 동작합니다.
+- queue enqueue가 실패하면 서비스는 enqueue 에러를 다시 던지기 전에 결정적인 `notification.dispatch.failed` 라이프사이클 이벤트를 발행합니다.
 - foundation 패키지는 특정 큐 구현을 가정하거나 import하지 않습니다.
 
 ### 이벤트 발행자를 통한 라이프사이클 발행
