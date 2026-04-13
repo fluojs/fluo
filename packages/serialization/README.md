@@ -51,6 +51,7 @@ const user = Object.assign(new UserEntity(), {
 });
 
 console.log(serialize(user));
+// { id: '1', username: 'FLUO' }
 ```
 
 ## Common Patterns
@@ -99,6 +100,10 @@ class UsersController {
 ### Cycle-safe serialization
 
 The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into JSON-safe plain objects.
+
+### Non-JSON leaf values
+
+`serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Values such as `Date`, `bigint`, functions, and symbols are passed through as-is unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
 
 ## Public API Overview
 

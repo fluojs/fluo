@@ -60,7 +60,7 @@ const user = new UserEntity({ id: '1', username: 'fluo', passwordHash: 'secret' 
 const result = serialize(user);
 
 console.log(result); 
-// 출력: { id: "1", username: "fluo" }
+// 출력: { id: "1", username: "FLUO" }
 // passwordHash는 제외됩니다.
 ```
 
@@ -98,6 +98,10 @@ class ProductDto {
 ### 순환 참조 처리
 
 fluo의 직렬화 엔진은 순환 참조를 자동으로 감지하고, 반복되는 참조에 대해 `undefined`를 반환하여 절단함으로써 무한 루프와 스택 오버플로를 방지합니다.
+
+### 비JSON leaf 값
+
+`serialize()`는 데코레이터 메타데이터를 적용하고 배열/일반 객체를 재귀적으로 순회하지만, 모든 leaf 값을 엄격한 JSON 타입으로 강제 변환하지는 않습니다. `Date`, `bigint`, 함수, `symbol` 같은 값은 `@Transform(...)`이나 최종 HTTP 응답 작성 전에 직접 정규화하지 않으면 그대로 유지됩니다.
 
 ### HTTP 인터셉터와 함께 사용
 
@@ -137,4 +141,3 @@ class UsersController {
 
 - `packages/serialization/src/serialize.test.ts`: 다양한 직렬화 시나리오에 대한 상세 예제.
 - `packages/serialization/src/serializer-interceptor.test.ts`: HTTP 컨텍스트 내에서의 사용법.
-
