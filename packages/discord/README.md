@@ -160,6 +160,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 Behavioral contract notes:
 
 - The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 - Caller-visible `DiscordTransportError` messages omit raw upstream response bodies by default.
 
 ### Intentional limitations
