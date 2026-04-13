@@ -1,6 +1,7 @@
 import { Inject } from '@fluojs/core';
 import { metadataSymbol } from '@fluojs/core/internal';
 import { TooManyRequestsException, type Guard, type GuardContext, type MiddlewareContext } from '@fluojs/http';
+import { resolveClientIdentity } from '@fluojs/http/internal';
 
 import {
   getClassSkipThrottleMetadata,
@@ -33,8 +34,7 @@ function getMethodMetadataBag(controllerToken: Function, methodName: string): Me
 }
 
 function defaultKeyGenerator(ctx: MiddlewareContext): string {
-  const raw = ctx.request.raw as { socket?: { remoteAddress?: string } } | undefined;
-  return raw?.socket?.remoteAddress ?? 'unknown';
+  return resolveClientIdentity(ctx.request);
 }
 
 function buildStoreKey(handlerKey: string, clientKey: string): string {

@@ -15,8 +15,19 @@ import type {
   ThrottlerStoreEntry,
 } from './types.js';
 
-function createRequestContext(remoteAddress = '127.0.0.1'): RequestContext {
-  const headers: Record<string, string | string[]> = {};
+function createRequestContext(
+  options:
+    | string
+    | {
+        headers?: Record<string, string | string[]>;
+        raw?: unknown;
+      } = '127.0.0.1',
+): RequestContext {
+  const headers: Record<string, string | string[]> = typeof options === 'string' ? {} : (options.headers ?? {});
+  const raw =
+    typeof options === 'string'
+      ? { socket: { remoteAddress: options } }
+      : (options.raw ?? { socket: { remoteAddress: '127.0.0.1' } });
   const response = {
     committed: false,
     headers,
@@ -37,12 +48,12 @@ function createRequestContext(remoteAddress = '127.0.0.1'): RequestContext {
     request: {
       body: undefined,
       cookies: {},
-      headers: {},
+      headers,
       method: 'GET',
       params: {},
       path: '/test',
       query: {},
-      raw: { socket: { remoteAddress } },
+      raw,
       url: '/test',
     },
     response: response as unknown as RequestContext['response'],
@@ -395,6 +406,38 @@ describe('ThrottlerGuard — in-memory store', () => {
     await guard.canActivate(createGuardContext(TestController, 'other', ctx1));
 
     expect(true).toBe(true);
+  });
+
+  it('uses forwarded client identity before the proxy socket address', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const firstContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.10;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.11;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
+  });
+
+  it('rejects when no proxy or socket client identity is available', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard(options);
+    const ctx = createRequestContext({ headers: {}, raw: {} });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      /resolve client identity/i,
+    );
   });
 
   it('separates throttling state for handlers with identical class and method names', async () => {

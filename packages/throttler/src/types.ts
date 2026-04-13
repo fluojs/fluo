@@ -42,7 +42,7 @@ export interface ThrottlerModuleOptions {
   /** Maximum number of requests allowed within the window (module-wide default). */
   limit: number;
   /**
-   * Key generator function. Defaults to remote IP.
+   * Key generator function. Defaults to proxy-aware client identity resolution.
    * Receives the raw middleware context so custom headers (e.g. x-api-key) can be used.
    */
   keyGenerator?: (ctx: MiddlewareContext) => string;
