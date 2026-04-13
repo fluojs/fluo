@@ -103,6 +103,8 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
+Saga execution now fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
+
 ### Compatibility Tokens
 
 For codebases transitioning to class-first DI or requiring explicit symbol tokens, the following are available:
@@ -134,6 +136,9 @@ class LegacyService {
 ### Interfaces
 - `ICommand`, `IQuery<T>`, `IEvent`: Marker interfaces for messages.
 - `ICommandHandler<C, R>`, `IQueryHandler<Q, R>`, `IEventHandler<E>`, `ISaga<E>`: Handler contracts.
+
+### Errors
+- `SagaTopologyError`: Raised when saga orchestration detects a self-triggering, cyclic, or over-deep in-process saga graph.
 
 ## Related Packages
 
