@@ -33,6 +33,7 @@ import type { Extra as GraphqlWsExtra } from 'graphql-ws/lib/use/ws';
 import { WebSocketServer, type WebSocket } from 'ws';
 
 import { discoverResolverDescriptors } from './discovery.js';
+import { createGraphqlValidationPlugin, resolveGraphqlRequestLimits } from './guardrails.js';
 import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
 import { createCodeFirstSchema, resolveSchema } from './schema/schema.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport/transport.js';
@@ -357,7 +358,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     private readonly compiledModules: readonly CompiledModule[],
     private readonly logger: ApplicationLogger,
     private readonly adapter: HttpApplicationAdapter,
-    private readonly options: GraphqlModuleOptions,
+  private readonly options: GraphqlModuleOptions,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -369,13 +370,25 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
     const schema = this.resolveSchema(deps);
     this.executeGraphqlOperation = deps.execute;
     this.subscribeGraphqlOperation = deps.subscribe;
+    const requestLimits = resolveGraphqlRequestLimits(this.options.limits);
+    const validationPlugin = createGraphqlValidationPlugin({
+      introspection: this.resolveIntrospectionEnabled(),
+      limits: requestLimits,
+    });
 
     this.yoga = deps.createYoga({
       context: (contextValue: { request: Request; [GRAPHQL_CONTEXT_OVERRIDE]?: GraphQLContext }) =>
         contextValue[GRAPHQL_CONTEXT_OVERRIDE] ?? this.buildGraphqlContext(contextValue.request),
       graphqlEndpoint: '/graphql',
       graphiql: this.resolveGraphiqlEnabled(),
-      ...(this.options.plugins && this.options.plugins.length > 0 ? { plugins: this.options.plugins } : {}),
+      ...((validationPlugin || (this.options.plugins && this.options.plugins.length > 0))
+        ? {
+            plugins: [
+              ...(validationPlugin ? [validationPlugin] : []),
+              ...(this.options.plugins ?? []),
+            ],
+          }
+        : {}),
       schema,
     });
 
@@ -396,6 +409,10 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
   private resolveGraphiqlEnabled(): boolean {
     return this.options.graphiql ?? false;
+  }
+
+  private resolveIntrospectionEnabled(): boolean {
+    return this.options.introspection ?? this.resolveGraphiqlEnabled();
   }
 
   private resolveSchema(deps: GraphqlDeps): GraphQLSchemaType {
