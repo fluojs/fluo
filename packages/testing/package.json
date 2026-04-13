@@ -46,20 +46,20 @@
       "import": "./dist/mock.js"
     },
     "./platform-conformance": {
-      "types": "./dist/platform-conformance.d.ts",
-      "import": "./dist/platform-conformance.js"
+      "types": "./dist/conformance/platform-conformance.d.ts",
+      "import": "./dist/conformance/platform-conformance.js"
     },
     "./http-adapter-portability": {
-      "types": "./dist/http-adapter-portability.d.ts",
-      "import": "./dist/http-adapter-portability.js"
+      "types": "./dist/portability/http-adapter-portability.d.ts",
+      "import": "./dist/portability/http-adapter-portability.js"
     },
     "./web-runtime-adapter-portability": {
-      "types": "./dist/web-runtime-adapter-portability.d.ts",
-      "import": "./dist/web-runtime-adapter-portability.js"
+      "types": "./dist/portability/web-runtime-adapter-portability.d.ts",
+      "import": "./dist/portability/web-runtime-adapter-portability.js"
     },
     "./fetch-style-websocket-conformance": {
-      "types": "./dist/fetch-style-websocket-conformance.d.ts",
-      "import": "./dist/fetch-style-websocket-conformance.js"
+      "types": "./dist/conformance/fetch-style-websocket-conformance.d.ts",
+      "import": "./dist/conformance/fetch-style-websocket-conformance.js"
     },
     "./types": {
       "types": "./dist/types.d.ts",

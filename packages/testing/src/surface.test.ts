@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -9,6 +12,27 @@ import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
+
+const packageRoot = new URL('..', import.meta.url);
+const packageRootPath = fileURLToPath(packageRoot);
+const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
+const packageJsonPath = new URL('../package.json', import.meta.url);
+const emittedHarnessSubpaths = [
+  './platform-conformance',
+  './http-adapter-portability',
+  './web-runtime-adapter-portability',
+  './fetch-style-websocket-conformance',
+] as const;
+
+function runBuild(): void {
+  const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  const result = spawnSync(command, ['--filter', '@fluojs/testing...', 'build'], {
+    cwd: repoRootPath,
+    encoding: 'utf8',
+  });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
 
 describe('@fluojs/testing surface', () => {
   it('keeps the root barrel focused on module/app helpers', () => {
@@ -35,27 +59,42 @@ describe('@fluojs/testing surface', () => {
   });
 
   it('keeps published subpath metadata aligned with the built surface', () => {
-    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       exports: Record<string, { import: string; types: string }>;
       peerDependencies: Record<string, string>;
     };
 
     expect(packageJson.exports['./platform-conformance']).toEqual({
-      types: './dist/platform-conformance.d.ts',
-      import: './dist/platform-conformance.js',
+      types: './dist/conformance/platform-conformance.d.ts',
+      import: './dist/conformance/platform-conformance.js',
     });
     expect(packageJson.exports['./http-adapter-portability']).toEqual({
-      types: './dist/http-adapter-portability.d.ts',
-      import: './dist/http-adapter-portability.js',
+      types: './dist/portability/http-adapter-portability.d.ts',
+      import: './dist/portability/http-adapter-portability.js',
     });
     expect(packageJson.exports['./web-runtime-adapter-portability']).toEqual({
-      types: './dist/web-runtime-adapter-portability.d.ts',
-      import: './dist/web-runtime-adapter-portability.js',
+      types: './dist/portability/web-runtime-adapter-portability.d.ts',
+      import: './dist/portability/web-runtime-adapter-portability.js',
     });
     expect(packageJson.exports['./fetch-style-websocket-conformance']).toEqual({
-      types: './dist/fetch-style-websocket-conformance.d.ts',
-      import: './dist/fetch-style-websocket-conformance.js',
+      types: './dist/conformance/fetch-style-websocket-conformance.d.ts',
+      import: './dist/conformance/fetch-style-websocket-conformance.js',
     });
     expect(packageJson.peerDependencies.vitest).toBe('^3.0.8');
   });
+
+  it('build emits the published harness subpath files', () => {
+    runBuild();
+
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      exports: Record<string, { import: string; types: string }>;
+    };
+
+    for (const subpath of emittedHarnessSubpaths) {
+      const entry = packageJson.exports[subpath];
+
+      expect(existsSync(resolve(packageRootPath, entry.import)), `${subpath} import output is missing`).toBe(true);
+      expect(existsSync(resolve(packageRootPath, entry.types)), `${subpath} types output is missing`).toBe(true);
+    }
+  }, 60_000);
 });
