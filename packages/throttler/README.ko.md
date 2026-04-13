@@ -86,7 +86,7 @@ ThrottlerModule.forRoot({
 
 ### 커스텀 키 생성
 
-기본적으로 클라이언트의 IP 주소를 기준으로 제한합니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수 있습니다.
+기본적으로 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, 마지막으로 raw socket `remoteAddress` 순서로 클라이언트 식별자를 해석합니다. 어느 것도 없으면 서로 다른 호출자를 같은 버킷으로 합치지 않도록 예외를 던집니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수도 있습니다.
 
 ```typescript
 ThrottlerModule.forRoot({

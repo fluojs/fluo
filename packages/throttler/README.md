@@ -86,7 +86,7 @@ ThrottlerModule.forRoot({
 
 ### Custom Key Generation
 
-By default, the throttler uses the client's IP address. You can customize this to use API keys, user IDs, or other identifiers.
+By default, the throttler resolves client identity from `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, and finally the raw socket `remoteAddress`. If none are available, it throws instead of collapsing unrelated callers into a shared bucket. You can customize this to use API keys, user IDs, or other identifiers.
 
 ```typescript
 ThrottlerModule.forRoot({
