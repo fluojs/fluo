@@ -101,6 +101,14 @@ class UsersController {
 
 The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion.
 
+### Inherited decorator contracts
+
+Serialization metadata declared on a base class is inherited by derived DTOs. `@Expose()`, `@Exclude()`, and `@Transform()` rules applied to shared base fields still take effect when you serialize subclass instances.
+
+### Plain-object safety
+
+`serialize()` treats plain objects and null-prototype records as data containers, not decorated class instances. Objects with custom or unsafe `constructor` fields are walked safely without throwing.
+
 ### Non-JSON leaf values
 
 `serialize()` applies decorator metadata and recursively walks arrays/plain objects, but it does not coerce every leaf into strict JSON types. Values such as `Date`, `bigint`, functions, and symbols can pass through unchanged unless you normalize them with `@Transform(...)` or before writing the final HTTP response.
