@@ -95,12 +95,7 @@ import { UseInterceptors } from '@fluojs/http';
 import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
 
 @UseInterceptors(MongooseTransactionInterceptor)
-class UserController {
-  @Post()
-  async create() {
-    // 리포지토리에서 this.conn.currentSession()을 통해 세션을 획득하여 사용합니다.
-  }
-}
+class UserController {}
 ```
 
 ## 공개 API 개요
