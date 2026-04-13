@@ -820,14 +820,22 @@ function delay(ms: number): Promise<void> {
 }
 
 function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
-  return Promise.race([
-    closePromise,
-    new Promise<void>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Express adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
-      }, timeoutMs);
-    }),
-  ]);
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Express adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+
+    void closePromise.then(
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
 
 function mergeSetCookieHeader(
