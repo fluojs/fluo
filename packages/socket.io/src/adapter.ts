@@ -147,6 +147,26 @@ function createGuardError(rejection: SocketIoGuardRejection, defaultMessage: str
   return error;
 }
 
+function normalizeRejectedGuardError(error: unknown, defaultMessage: string): SocketIoGuardRejection {
+  if (error instanceof Error) {
+    return {
+      data: (error as Error & { data?: unknown }).data,
+      message: error.message || defaultMessage,
+    };
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as SocketIoGuardRejection;
+    return {
+      data: candidate.data,
+      disconnect: candidate.disconnect,
+      message: candidate.message ?? defaultMessage,
+    };
+  }
+
+  return { message: defaultMessage };
+}
+
 function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
   if (typeof provider === 'function') {
     return getClassDiMetadata(provider)?.scope ?? 'singleton';
@@ -817,7 +837,18 @@ export class SocketIoLifecycleService
       return;
     }
 
-    const rejection = await this.resolveMessageGuardRejection(socket, request, event, payload);
+    let rejection: SocketIoGuardRejection | undefined;
+
+    try {
+      rejection = await this.resolveMessageGuardRejection(socket, request, event, payload);
+    } catch (error) {
+      this.logger.error(
+        `Socket.IO message guard for event ${event} on socket ${socket.id} rejected unexpectedly.`,
+        error,
+        'SocketIoLifecycleService',
+      );
+      rejection = normalizeRejectedGuardError(error, 'Socket.IO message rejected.');
+    }
 
     if (rejection) {
       this.reportRejectedMessage(socket, event, acknowledgement, rejection);

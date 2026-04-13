@@ -665,6 +665,89 @@ describe('@fluojs/socket.io', () => {
     await app.close();
   });
 
+  it('contains async message-guard rejections inside adapter reporting flow', async () => {
+    const loggerEvents: string[] = [];
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+
+    class GatewayState {
+      messages: unknown[] = [];
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/async-message-guard' })
+    class GuardedGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnMessage('ping')
+      onPing(payload: unknown) {
+        this.state.messages.push(payload);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          async message({ payload }) {
+            if (payload === 'allowed') {
+              return true;
+            }
+
+            const error = new Error('Forbidden event.') as Error & { data?: unknown };
+            error.data = { code: 'AUTH_REQUIRED' };
+            return await Promise.reject(error);
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardedGateway],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      logger: createLogger(loggerEvents),
+      port,
+    });
+    const state = await app.container.resolve<GatewayState>(GatewayState);
+
+    await app.listen();
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    const socket = createClient(`http://127.0.0.1:${String(port)}/async-message-guard`, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+
+    try {
+      await onceConnected(socket);
+
+      const rejectedAck = await new Promise<unknown>((resolve) => {
+        socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
+      expect(state.messages).toEqual([]);
+      expect(unhandledRejections).toEqual([]);
+      expect(
+        loggerEvents.some((event) =>
+          event.includes(
+            'error:SocketIoLifecycleService:Socket.IO message guard for event ping on socket',
+          ) && event.endsWith(':Forbidden event.'),
+        ),
+      ).toBe(true);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+      socket.close();
+      await app.close();
+    }
+  });
+
   it('disconnects sockets when inbound payloads exceed the configured engine limit', async () => {
     class GatewayState {
       messages: unknown[] = [];
