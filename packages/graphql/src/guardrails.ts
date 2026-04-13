@@ -42,6 +42,12 @@ interface GraphqlDocumentMetrics {
   maxDepth: number;
 }
 
+interface GraphqlLimitCheck {
+  actual: number;
+  label: 'depth' | 'complexity' | 'cost';
+  limit: number;
+}
+
 /**
  * Resolve the effective GraphQL request budget configuration for one module instance.
  *
@@ -130,25 +136,35 @@ function evaluateGraphqlRequestLimits(
     return [];
   }
 
-  const errors: GraphQLError[] = [];
+  const checks: GraphqlLimitCheck[] = [
+    {
+      actual: metrics.maxDepth,
+      label: 'depth',
+      limit: limits.maxDepth,
+    },
+    {
+      actual: metrics.complexity,
+      label: 'complexity',
+      limit: limits.maxComplexity,
+    },
+    {
+      actual: metrics.cost,
+      label: 'cost',
+      limit: limits.maxCost,
+    },
+  ];
 
-  if (metrics.maxDepth > limits.maxDepth) {
-    errors.push(new GraphQLError(`GraphQL query depth ${String(metrics.maxDepth)} exceeds the configured limit of ${String(limits.maxDepth)}.`));
-  }
+  return checks.flatMap((check) => {
+    if (check.actual <= check.limit) {
+      return [];
+    }
 
-  if (metrics.complexity > limits.maxComplexity) {
-    errors.push(
+    return [
       new GraphQLError(
-        `GraphQL query complexity ${String(metrics.complexity)} exceeds the configured limit of ${String(limits.maxComplexity)}.`,
+        `GraphQL query ${check.label} ${String(check.actual)} exceeds the configured limit of ${String(check.limit)}.`,
       ),
-    );
-  }
-
-  if (metrics.cost > limits.maxCost) {
-    errors.push(new GraphQLError(`GraphQL query cost ${String(metrics.cost)} exceeds the configured limit of ${String(limits.maxCost)}.`));
-  }
-
-  return errors;
+    ];
+  });
 }
 
 function analyzeGraphqlOperation(
