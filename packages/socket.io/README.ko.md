@@ -70,9 +70,38 @@ class MyService {
 }
 ```
 
+### auth guard, 안전한 CORS 기본값, bounded payload
+`SocketIoModule.forRoot(...)`로 namespace/message 인증을 명시하고, CORS를 deny-by-default로 유지하며, 인바운드 Engine.IO payload 크기를 제한할 수 있습니다.
+
+```ts
+SocketIoModule.forRoot({
+  auth: {
+    connection({ socket }) {
+      return socket.handshake.auth.token === 'demo-token'
+        ? true
+        : { message: 'Authentication required.' };
+    },
+    message({ payload }) {
+      return payload === 'allowed'
+        ? true
+        : { message: 'Forbidden event.' };
+    },
+  },
+  cors: {
+    origin: ['https://app.example.com'],
+  },
+  engine: {
+    maxHttpBufferSize: 65_536,
+  },
+});
+```
+
+이제 `cors`를 생략하면 `@fluojs/socket.io`는 `origin: false`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다.
+
 ## 공개 API 개요
 
 - `SocketIoModule.forRoot(options)`
+- `SocketIoModule.forRoot({ auth, cors, engine, ... })`
 - `SOCKETIO_SERVER`
 - `SOCKETIO_ROOM_SERVICE`
 - `createSocketIoProviders(options)`
