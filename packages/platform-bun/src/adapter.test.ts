@@ -311,6 +311,37 @@ describe('@fluojs/platform-bun', () => {
     expect(adapter.getServer()).toBeUndefined();
   });
 
+  it('clears the shutdown timeout handle after close resolves', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mockBun = installMockBun();
+      const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+      const deferred = createDeferred<void>();
+
+      await adapter.listen({
+        async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          await deferred.promise;
+          response.setStatus(200);
+        },
+      });
+
+      const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/timer-cleanup'));
+      const closePromise = adapter.close();
+
+      expect(vi.getTimerCount()).toBe(1);
+
+      deferred.resolve();
+      await Promise.resolve();
+      await responsePromise;
+      await closePromise;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the Bun dispatcher until drain settles even when close() times out', async () => {
     vi.useFakeTimers();
 
