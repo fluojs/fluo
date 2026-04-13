@@ -57,7 +57,7 @@ class AppModule {}
 패키지에서 기본으로 제공하는 인디케이터들은 다음과 같습니다.
 
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
-- `RedisHealthIndicator`
+- `RedisHealthIndicator` (`@fluojs/terminus/redis`에서 제공)
 - `HttpHealthIndicator`
 - `MemoryHealthIndicator`
 - `DiskHealthIndicator`
@@ -67,7 +67,8 @@ class AppModule {}
 Redis나 DB 클라이언트와 같이 DI 컨테이너의 의존성이 필요한 인디케이터를 사용할 때는, 모듈 로드 시점에 피어 의존성을 import하지 않도록 제공되는 provider 팩토리를 사용하세요.
 
 ```typescript
-import { createRedisHealthIndicatorProvider, TerminusModule } from '@fluojs/terminus';
+import { TerminusModule } from '@fluojs/terminus';
+import { createRedisHealthIndicatorProvider } from '@fluojs/terminus/redis';
 
 TerminusModule.forRoot({
   indicatorProviders: [
@@ -104,8 +105,15 @@ TerminusModule.forRoot({
 
 ### `TerminusHealthService`
 
-- `runHealthCheck(indicators: HealthIndicator[]): Promise<HealthCheckReport>`
-  - 수동으로 헬스 체크 집계를 실행합니다.
+- `check(): Promise<HealthCheckReport>`
+  - 현재 등록된 인디케이터를 실행해 집계된 보고서를 반환합니다.
+- `isHealthy(): Promise<boolean>`
+  - 현재 집계 결과가 완전히 healthy 상태인지 반환합니다.
+
+### `@fluojs/terminus/redis`
+
+- `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
+  - Redis 전용 인디케이터 헬퍼는 선택적 Redis 피어가 설치되지 않은 환경에서도 루트 패키지 import가 안전하도록 전용 subpath에서 export됩니다.
 
 ### `HealthCheckError`
 
