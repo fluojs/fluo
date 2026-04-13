@@ -54,6 +54,36 @@ describe('JwtService', () => {
     });
   });
 
+  it('prefers per-call expiresIn over a pre-existing payload exp claim', async () => {
+    const service = createJwtService({
+      algorithms: ['HS256'],
+      issuer: 'jwt-service-tests',
+      secret: 'service-secret',
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const token = await service.sign(
+      {
+        exp: now + 3600,
+        role: 'reader',
+        sub: 'service-overrides-user',
+      },
+      {
+        expiresIn: 60,
+      },
+    );
+
+    const decoded = service.decode(token);
+
+    expect(decoded).toMatchObject({
+      exp: expect.any(Number),
+      role: 'reader',
+      sub: 'service-overrides-user',
+    });
+
+    expect((decoded as { exp: number }).exp).toBeLessThanOrEqual(now + 60);
+    expect((decoded as { exp: number }).exp).toBeGreaterThanOrEqual(now + 59);
+  });
+
   it('decodes payload without signature verification', async () => {
     const service = createJwtService({
       algorithms: ['HS256'],
