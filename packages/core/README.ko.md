@@ -88,7 +88,7 @@ console.log(metadata.providers);
 ## 공개 API 개요
 
 - **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
-- **에러**: `fluoError`, `InvariantError`, `fluoCodeError`
+- **에러**: `FluoError`, `InvariantError`, `FluoCodeError`
 - **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 메타데이터 헬퍼
 
