@@ -50,6 +50,41 @@ async function postGraphql(port: number, query: string): Promise<unknown> {
   return response.json();
 }
 
+function createGuardrailSchema(): GraphQLSchema {
+  const limitLeafType = new GraphQLObjectType({
+    fields: {
+      value: {
+        type: GraphQLString,
+      },
+    },
+    name: 'GuardrailLeaf',
+  });
+  const limitChildType = new GraphQLObjectType({
+    fields: {
+      child: {
+        type: limitLeafType,
+      },
+    },
+    name: 'GuardrailChild',
+  });
+  const limitRootType = new GraphQLObjectType({
+    fields: {
+      child: {
+        type: limitChildType,
+      },
+      greeting: {
+        resolve: () => 'hello',
+        type: GraphQLString,
+      },
+    },
+    name: 'Query',
+  });
+
+  return new GraphQLSchema({
+    query: limitRootType,
+  });
+}
+
 function decodeChunk(value: Uint8Array): string {
   return Buffer.from(value).toString('utf8');
 }
@@ -225,7 +260,7 @@ const UnionErrorPayloadType = new GraphQLObjectType({
 
 const OperationResultUnionType = new GraphQLUnionType({
   name: 'OperationResultUnion',
-  resolveType: (value) => {
+  resolveType: (value: unknown) => {
     const candidate = value as { __typename?: string };
     return candidate.__typename;
   },
@@ -463,6 +498,97 @@ describe('@fluojs/graphql', () => {
     expect(missingArgResult.errors[0]?.message).toBe('Validation failed.');
     expect(missingArgResult.errors[0]?.extensions?.code).toBe('BAD_USER_INPUT');
     expect(missingArgResult.data.echo).toBeNull();
+
+    await app.close();
+  });
+
+  it('blocks schema introspection queries by default', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [GraphqlResolver],
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const result = (await postGraphql(port, '{ __schema { queryType { name } } }')) as {
+      errors?: Array<{ message: string }>;
+    };
+
+    expect(result.errors?.[0]?.message).toContain('introspection');
+
+    await app.close();
+  });
+
+  it('allows schema introspection when explicitly enabled', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          introspection: true,
+          resolvers: [GraphqlResolver],
+        }),
+      ],
+      providers: [ResolverState, GraphqlResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(postGraphql(port, '{ __schema { queryType { name } } }')).resolves.toEqual({
+      data: {
+        __schema: {
+          queryType: {
+            name: 'Query',
+          },
+        },
+      },
+    });
+
+    await app.close();
+  });
+
+  it('enforces configured request depth limits before execution', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          limits: {
+            maxDepth: 2,
+          },
+          schema: createGuardrailSchema(),
+        }),
+      ],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const result = (await postGraphql(port, '{ child { child { value } } }')) as {
+      errors?: Array<{ message: string }>;
+    };
+
+    expect(result.errors?.[0]?.message).toBe('GraphQL query depth 3 exceeds the configured limit of 2.');
 
     await app.close();
   });

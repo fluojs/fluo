@@ -38,6 +38,16 @@ function resolveGraphiqlEnabled(service: GraphqlLifecycleService): boolean {
   return Reflect.apply(resolver, service, []) as boolean;
 }
 
+function resolveIntrospectionEnabled(service: GraphqlLifecycleService): boolean {
+  const resolver = Reflect.get(service, 'resolveIntrospectionEnabled');
+
+  if (typeof resolver !== 'function') {
+    throw new Error('Expected resolveIntrospectionEnabled method to exist.');
+  }
+
+  return Reflect.apply(resolver, service, []) as boolean;
+}
+
 describe('GraphqlLifecycleService graphiql defaults', () => {
   it('defaults to false when graphiql option is not set', () => {
     const service = createService({});
@@ -68,5 +78,25 @@ describe('GraphqlLifecycleService graphiql defaults', () => {
 
     expect(resolveGraphiqlEnabled(disabled)).toBe(false);
     expect(resolveGraphiqlEnabled(enabled)).toBe(true);
+  });
+
+  it('keeps introspection disabled by default', () => {
+    const service = createService({});
+
+    expect(resolveIntrospectionEnabled(service)).toBe(false);
+  });
+
+  it('enables introspection when graphiql is explicitly enabled', () => {
+    const service = createService({ graphiql: true });
+
+    expect(resolveIntrospectionEnabled(service)).toBe(true);
+  });
+
+  it('respects explicit introspection overrides', () => {
+    const disabled = createService({ graphiql: true, introspection: false });
+    const enabled = createService({ introspection: true });
+
+    expect(resolveIntrospectionEnabled(disabled)).toBe(false);
+    expect(resolveIntrospectionEnabled(enabled)).toBe(true);
   });
 });
