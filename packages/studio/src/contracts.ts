@@ -8,17 +8,26 @@ import type {
 export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
 export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];
 
+/**
+ * Serializable Studio payload envelope built from inspect snapshot/timing exports.
+ */
 export interface StudioPayload {
   snapshot?: PlatformShellSnapshot;
   timing?: BootstrapTimingDiagnostics;
 }
 
+/**
+ * Filter state applied to the loaded platform snapshot inside Studio.
+ */
 export interface FilterState {
   query: string;
   readinessStatuses: PlatformReadinessStatus[];
   severities: PlatformDiagnosticSeverity[];
 }
 
+/**
+ * Parsed Studio payload together with the original JSON source.
+ */
 export interface ParsedPayload {
   payload: StudioPayload;
   rawJson: string;
@@ -153,6 +162,13 @@ function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
   return value as unknown as BootstrapTimingDiagnostics;
 }
 
+/**
+ * Parses a Studio JSON file into the documented snapshot/timing envelope.
+ *
+ * @param rawJson - Raw JSON emitted by `fluo inspect` or a Studio-compatible producer.
+ * @returns The validated Studio payload plus the original JSON string.
+ * @throws Error when the JSON does not match the supported Studio file contracts.
+ */
 export function parseStudioPayload(rawJson: string): ParsedPayload {
   const parsed = JSON.parse(rawJson) as unknown;
   const envelope = isRecord(parsed) ? parsed : undefined;
@@ -173,6 +189,13 @@ export function parseStudioPayload(rawJson: string): ParsedPayload {
   };
 }
 
+/**
+ * Applies Studio filter state to a platform snapshot without mutating the input.
+ *
+ * @param snapshot - The loaded platform snapshot.
+ * @param filter - Active readiness, severity, and query filters.
+ * @returns A filtered snapshot containing only the matching components and diagnostics.
+ */
 export function applyFilters(snapshot: PlatformShellSnapshot, filter: FilterState): PlatformShellSnapshot {
   const query = filter.query.trim().toLowerCase();
 
@@ -219,6 +242,12 @@ function escapeMermaidText(value: string): string {
   return value.replaceAll('"', '\\"');
 }
 
+/**
+ * Renders the loaded platform snapshot as a Mermaid dependency graph.
+ *
+ * @param snapshot - The platform snapshot to render.
+ * @returns Mermaid graph text suitable for docs or clipboard export.
+ */
 export function renderMermaid(snapshot: PlatformShellSnapshot): string {
   const lines: string[] = ['graph TD'];
   const nodeByComponent = new Map<string, string>();

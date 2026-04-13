@@ -1,13 +1,26 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
+import * as studio from './index.js';
 import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
 
 const packageDir = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+const repoRoot = resolve(packageDir, '..', '..');
+
+function runBuild(): void {
+  const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  const result = spawnSync(command, ['--filter', '@fluojs/studio...', 'build'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+
+  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+}
 
 const snapshotFixture: PlatformShellSnapshot = {
   components: [
@@ -87,6 +100,12 @@ const snapshotFixture: PlatformShellSnapshot = {
 };
 
 describe('parseStudioPayload', () => {
+  it('publishes contract helpers from the root package entrypoint', () => {
+    expect(studio.parseStudioPayload).toBeTypeOf('function');
+    expect(studio.applyFilters).toBeTypeOf('function');
+    expect(studio.renderMermaid).toBeTypeOf('function');
+  });
+
   it('parses platform snapshot payload', () => {
     const parsed = parseStudioPayload(JSON.stringify(snapshotFixture));
     expect(parsed.payload.snapshot?.components[0]?.id).toBe('redis.default');
@@ -112,6 +131,9 @@ describe('parseStudioPayload', () => {
     const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
       name: string;
       private?: boolean;
+      main?: string;
+      types?: string;
+      exports?: Record<string, unknown>;
       publishConfig?: { access?: string };
     };
     const readme = readFileSync(resolve(packageDir, 'README.md'), 'utf8');
@@ -120,13 +142,40 @@ describe('parseStudioPayload', () => {
 
     expect(packageManifest.name).toBe('@fluojs/studio');
     expect(packageManifest.private).toBe(false);
+    expect(packageManifest.main).toBe('./dist/index.js');
+    expect(packageManifest.types).toBe('./dist/index.d.ts');
     expect(packageManifest.publishConfig?.access).toBe('public');
+    expect(packageManifest.exports).toEqual({
+      '.': {
+        types: './dist/index.d.ts',
+        import: './dist/index.js',
+      },
+      './contracts': {
+        types: './dist/contracts.d.ts',
+        import: './dist/contracts.js',
+      },
+      './viewer': './dist/index.html',
+    });
     expect(releaseGovernance).toContain('- `@fluojs/studio`');
     expect(readme).toContain('pnpm add @fluojs/studio');
+    expect(readme).toContain('@fluojs/studio/contracts');
+    expect(readme).toContain('@fluojs/studio/viewer');
     expect(readme).toContain('intended public publish surface');
     expect(readmeKo).toContain('pnpm add @fluojs/studio');
+    expect(readmeKo).toContain('@fluojs/studio/contracts');
+    expect(readmeKo).toContain('@fluojs/studio/viewer');
     expect(readmeKo).toContain('공개 배포 패키지');
   });
+
+  it('build emits the published helper and viewer entrypoints', () => {
+    runBuild();
+
+    expect(existsSync(resolve(packageDir, 'dist', 'index.html')), 'viewer HTML entrypoint is missing').toBe(true);
+    expect(existsSync(resolve(packageDir, 'dist', 'index.js')), 'root helper barrel output is missing').toBe(true);
+    expect(existsSync(resolve(packageDir, 'dist', 'index.d.ts')), 'root helper barrel types are missing').toBe(true);
+    expect(existsSync(resolve(packageDir, 'dist', 'contracts.js')), 'contracts helper output is missing').toBe(true);
+    expect(existsSync(resolve(packageDir, 'dist', 'contracts.d.ts')), 'contracts helper types are missing').toBe(true);
+  }, 60_000);
 });
 
 describe('applyFilters', () => {
