@@ -812,7 +812,7 @@ export class CronLifecycleService
   }
 
   private createLockRenewalState(lockTtlMs: number): LockRenewalState {
-    const renewalIntervalMs = Math.max(1_000, Math.floor(lockTtlMs / 2));
+    const renewalIntervalMs = Math.max(250, Math.floor(lockTtlMs / 2));
 
     return {
       lockPostRunError: undefined,
