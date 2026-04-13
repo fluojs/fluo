@@ -42,10 +42,16 @@ await runDenoApplication(AppModule, {
 ## 주요 패턴
 
 ### 수동 요청 디스패칭
-테스트나 커스텀 `Deno.serve` 구현을 위해 어댑터의 `handle` 메서드를 사용하여 네이티브 웹 요청을 수동으로 디스패치할 수 있습니다.
+테스트나 커스텀 `Deno.serve` 구현을 위해 어댑터의 `handle` 메서드를 사용하여 네이티브 웹 요청을 수동으로 디스패치할 수 있습니다. 다만 `handle(...)`은 런타임 dispatcher가 바인딩된 뒤에만 동작하므로, 먼저 `app.listen()`(또는 `runDenoApplication(...)`)으로 부트스트랩을 완료해야 합니다.
 
 ```typescript
+import { fluoFactory } from '@fluojs/runtime';
+
 const adapter = createDenoAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
 const response = await adapter.handle(new Request('http://localhost:3000/health'));
 ```
 

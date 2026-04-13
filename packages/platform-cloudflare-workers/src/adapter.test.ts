@@ -335,6 +335,62 @@ describe('@fluojs/platform-cloudflare-workers', () => {
       await entrypoint.close();
     }
   });
+
+  it('does not reopen a lazy Worker entrypoint while close is draining the current application', async () => {
+    let bootstrapCount = 0;
+    const deferred = createDeferred<void>();
+
+    class StartupProbe {
+      onApplicationBootstrap() {
+        bootstrapCount += 1;
+      }
+    }
+
+    @Controller('/slow')
+    class SlowController {
+      @Get('/')
+      async getSlow() {
+        await deferred.promise;
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [SlowController],
+      providers: [StartupProbe],
+    });
+
+    const entrypoint = createCloudflareWorkerEntrypoint(AppModule, {
+      cors: false,
+    });
+
+    try {
+      await entrypoint.ready();
+
+      const firstFetch = entrypoint.fetch(new Request('https://worker.test/slow'), {}, createExecutionContext());
+
+      await Promise.resolve();
+
+      const closePromise = entrypoint.close();
+      const secondFetch = await entrypoint.fetch(new Request('https://worker.test/slow'), {}, createExecutionContext());
+
+      expect(secondFetch.status).toBe(503);
+      expect(bootstrapCount).toBe(1);
+
+      deferred.resolve();
+
+      const firstResponse = await firstFetch;
+      await closePromise;
+
+      expect(firstResponse.status).toBe(200);
+      await expect(firstResponse.json()).resolves.toEqual({ ok: true });
+      expect(bootstrapCount).toBe(1);
+    } finally {
+      deferred.resolve();
+      await entrypoint.close();
+    }
+  });
 });
 
 function createDeferred<T>() {

@@ -148,6 +148,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
     this.requestResponseFactory = createFastifyRequestResponseFactory(
       this.multipartOptions,
+      this.maxBodySize,
       this.preserveRawBody,
     );
   }
@@ -249,11 +250,12 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
 function createFastifyRequestResponseFactory(
   multipartOptions?: MultipartOptions,
+  maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): RequestResponseFactory<FastifyRequest, FastifyReply, FastifyFrameworkResponse> {
   return {
     async createRequest(request: FastifyRequest, signal: AbortSignal) {
-      return createFrameworkRequest(request, signal, multipartOptions, preserveRawBody);
+      return createFrameworkRequest(request, signal, multipartOptions, maxBodySize, preserveRawBody);
     },
     createRequestSignal(reply: FastifyReply) {
       return createRequestSignal(reply.raw);
@@ -456,6 +458,7 @@ async function createFrameworkRequest(
   request: FastifyRequest,
   signal: AbortSignal,
   multipartOptions?: MultipartOptions,
+  maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const rawUrl = request.raw.url ?? '/';
@@ -468,7 +471,10 @@ async function createFrameworkRequest(
   let files: UploadedFile[] | undefined;
 
   if (isMultipart) {
-    const parsed = await parseMultipartRequest(request, multipartOptions);
+    const parsed = await parseMultipartRequest(request, {
+      ...multipartOptions,
+      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+    });
     body = parsed.fields;
     files = parsed.files;
   }
@@ -509,6 +515,13 @@ async function parseMultipartRequest(
   const files: UploadedFile[] = [];
   const maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024;
   const maxFiles = options.maxFiles ?? 10;
+  const maxTotalSize = options.maxTotalSize ?? 10 * 1024 * 1024;
+  const contentLength = Number(request.headers['content-length']);
+  let totalSize = 0;
+
+  if (Number.isFinite(contentLength) && contentLength > maxTotalSize) {
+    throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
+  }
 
   try {
     for await (const part of request.parts({
@@ -518,7 +531,17 @@ async function parseMultipartRequest(
       },
     })) {
       if (part.type === 'file') {
+        if (files.length >= maxFiles) {
+          throw new PayloadTooLargeException(`Exceeded maximum file count of ${String(maxFiles)}.`);
+        }
+
         const buffer = await part.toBuffer();
+        totalSize += buffer.byteLength;
+
+        if (totalSize > maxTotalSize) {
+          throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
+        }
+
         files.push({
           buffer,
           fieldname: part.fieldname,
@@ -527,14 +550,17 @@ async function parseMultipartRequest(
           size: buffer.byteLength,
         });
 
-        if (files.length > maxFiles) {
-          throw new PayloadTooLargeException(`Exceeded maximum file count of ${String(maxFiles)}.`);
-        }
-
         continue;
       }
 
-      setMultiValue(fields, part.fieldname, String(part.value ?? ''));
+      const value = String(part.value ?? '');
+      totalSize += Buffer.byteLength(value, 'utf8');
+
+      if (totalSize > maxTotalSize) {
+        throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
+      }
+
+      setMultiValue(fields, part.fieldname, value);
     }
   } catch (error: unknown) {
     if (isFastifyMultipartTooLargeError(error)) {

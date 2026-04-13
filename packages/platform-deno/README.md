@@ -42,10 +42,16 @@ await runDenoApplication(AppModule, {
 ## Common Patterns
 
 ### Manual Request Dispatching
-For testing or custom `Deno.serve` implementations, you can use the adapter's `handle` method to dispatch native web requests manually.
+For testing or custom `Deno.serve` implementations, you can use the adapter's `handle` method to dispatch native web requests manually. Bind the dispatcher first via `app.listen()` (or `runDenoApplication(...)`), because `handle(...)` only works after the runtime has been bootstrapped.
 
 ```typescript
+import { fluoFactory } from '@fluojs/runtime';
+
 const adapter = createDenoAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
 const response = await adapter.handle(new Request('http://localhost:3000/health'));
 ```
 
