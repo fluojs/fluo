@@ -21,12 +21,9 @@ pnpm add @fluojs/microservices
 ```
 
 Optional transport-specific dependencies:
-- **gRPC**: `@grpc/grpc-js`, `@grpc/proto-loader`
-- **NATS**: `nats`
-- **Kafka**: `kafkajs`
-- **RabbitMQ**: `amqplib`
-- **Redis**: `ioredis`
-- **MQTT**: `mqtt`
+
+- Package-managed optional peers loaded by `@fluojs/microservices`: `@grpc/grpc-js`, `@grpc/proto-loader`, `ioredis`, `mqtt`
+- Caller-owned broker clients passed explicitly to transports: `nats`, `kafkajs`, `amqplib`
 
 ## When to Use
 
@@ -65,7 +62,7 @@ const microservice = await fluoFactory.createMicroservice(AppModule);
 await microservice.listen();
 ```
 
-`fluo new` treats NATS, Kafka, and RabbitMQ as explicit caller-owned bootstrap contracts rather than hidden built-ins. The generated starters wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators in `src/app.ts`, while still making the external broker dependency visible through `.env` and the generated README.
+`fluo new` treats NATS, Kafka, and RabbitMQ as explicit caller-owned bootstrap contracts rather than hidden built-ins. The generated starters wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators in `src/app.ts`, while still making the external broker dependency visible through `.env` and the generated README. Those packages are not loaded from `@fluojs/microservices` itself and therefore are not declared as package peers here.
 
 ## Core Capabilities
 
