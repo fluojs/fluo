@@ -57,7 +57,7 @@ class AppModule {}
 The package provides several indicators out of the box:
 
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
-- `RedisHealthIndicator`
+- `RedisHealthIndicator` (from `@fluojs/terminus/redis`)
 - `HttpHealthIndicator`
 - `MemoryHealthIndicator`
 - `DiskHealthIndicator`
@@ -67,7 +67,8 @@ The package provides several indicators out of the box:
 To use indicators that require dependencies from the DI container (like Redis or Database clients) without importing peer dependencies at module load time, use the provider factories.
 
 ```typescript
-import { createRedisHealthIndicatorProvider, TerminusModule } from '@fluojs/terminus';
+import { TerminusModule } from '@fluojs/terminus';
+import { createRedisHealthIndicatorProvider } from '@fluojs/terminus/redis';
 
 TerminusModule.forRoot({
   indicatorProviders: [
@@ -104,8 +105,15 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 ### `TerminusHealthService`
 
-- `runHealthCheck(indicators: HealthIndicator[]): Promise<HealthCheckReport>`
-  - Manually trigger a health check aggregation.
+- `check(): Promise<HealthCheckReport>`
+  - Runs the currently registered indicators and returns the aggregated report.
+- `isHealthy(): Promise<boolean>`
+  - Returns whether the current aggregated report is fully healthy.
+
+### `@fluojs/terminus/redis`
+
+- `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
+  - Redis-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe without the optional Redis peer installed.
 
 ### `HealthCheckError`
 
