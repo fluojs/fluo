@@ -20,6 +20,7 @@ interface GrpcServerLike {
 }
 
 interface GrpcWritableStreamLike {
+  destroy?(err?: Error): void;
   end(): void;
   write(data: unknown): boolean;
 }
@@ -443,13 +444,18 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
 
       if (methodDefinition.responseStream) {
         implementation[methodName] = (
-          call: { metadata?: GrpcMetadataLike; request: unknown; write(data: unknown): boolean; end(): void },
+          call: GrpcWritableStreamLike & { metadata?: GrpcMetadataLike; request: unknown },
         ) => {
           void this.handleInboundServerStream(serviceName, methodName, call).catch((error) => {
             try {
               const grpcError = this.mapGrpcHandlerError(error);
-              call.end();
-              void grpcError;
+              const mapped = Object.assign(new Error(grpcError.message), { code: grpcError.code });
+
+              if (call.destroy) {
+                call.destroy(mapped);
+              } else {
+                call.end();
+              }
             } catch {
               call.end();
             }
@@ -514,7 +520,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private async handleInboundServerStream(
     serviceName: string,
     methodName: string,
-    call: { metadata?: GrpcMetadataLike; request: unknown; write(data: unknown): boolean; end(): void },
+    call: GrpcWritableStreamLike & { metadata?: GrpcMetadataLike; request: unknown },
   ): Promise<void> {
     const handler = this.serverStreamHandler;
 
@@ -526,6 +532,11 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     }
 
     const pattern = `${serviceName}.${methodName}`;
+    const mapHandlerError = (error: unknown): Error => {
+      const grpcError = this.mapGrpcHandlerError(error);
+      return Object.assign(new Error(grpcError.message), { code: grpcError.code });
+    };
+
     const writer: ServerStreamWriter = {
       write(data: unknown): void {
         call.write(data);
@@ -534,8 +545,13 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
         call.end();
       },
       error(err: Error): void {
-        void err;
-        call.end();
+        const mapped = mapHandlerError(err);
+
+        if (call.destroy) {
+          call.destroy(mapped);
+        } else {
+          call.end();
+        }
       },
     };
 

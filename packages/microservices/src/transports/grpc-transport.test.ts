@@ -26,7 +26,7 @@ type UnaryImplementation = (
 ) => void;
 
 type ServerStreamImplementation = (
-  call: { metadata?: FakeGrpcMetadata; request: unknown; write(data: unknown): boolean; end(): void },
+  call: { metadata?: FakeGrpcMetadata; request: unknown; write(data: unknown): boolean; end(): void; destroy(err?: Error): void },
 ) => void;
 
 type ClientStreamImplementation = (
@@ -474,6 +474,14 @@ class FakeGrpcRuntime {
       end(): void {
         stream.emit('end');
       },
+      destroy(err?: Error): void {
+        if (err) {
+          stream.emit('error', err);
+          return;
+        }
+
+        stream.emit('end');
+      },
     };
 
     (implementation as ServerStreamImplementation)(call);
@@ -876,6 +884,61 @@ describe('GrpcMicroserviceTransport', () => {
     }
 
     expect(results).toEqual([{ value: 'first' }, { value: 'second' }]);
+
+    await transport.close();
+  });
+
+  it('server-stream handler throw surfaces as an error on the client iterator, not a clean EOF', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenServerStreaming(async () => {
+      throw new Error('server-stream explosion');
+    });
+
+    await transport.listen(async () => undefined);
+
+    const collected: unknown[] = [];
+    let caughtError: Error | undefined;
+
+    try {
+      for await (const item of transport.serverStream('MathService.StreamData', { count: 1 })) {
+        collected.push(item);
+      }
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError!.message).toContain('server-stream explosion');
+    expect(collected).toEqual([]);
+
+    await transport.close();
+  });
+
+  it('server-stream writer.error() surfaces as an error on the client iterator', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      writer.write({ value: 'first' });
+      writer.error(new Error('server-stream writer failure'));
+    });
+
+    await transport.listen(async () => undefined);
+
+    const collected: unknown[] = [];
+    let caughtError: Error | undefined;
+
+    try {
+      for await (const item of transport.serverStream('MathService.StreamData', {})) {
+        collected.push(item);
+      }
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError!.message).toContain('server-stream writer failure');
+    expect(collected).toEqual([{ value: 'first' }]);
 
     await transport.close();
   });
