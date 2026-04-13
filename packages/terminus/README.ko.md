@@ -94,7 +94,8 @@ TerminusModule.forRoot({
 
 - 하나 이상의 인디케이터가 실패하면 `/health`는 HTTP `503`을 반환합니다.
 - 준비 상태(readiness)와 관련된 인디케이터가 실패하면 `/ready`는 HTTP `503`을 반환합니다.
-- 응답 본문은 `status`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
+- 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
+- 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
 
 ## 공개 API 개요
 

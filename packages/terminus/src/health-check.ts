@@ -24,18 +24,10 @@ function hasIndicatorStatus(value: unknown): value is HealthIndicatorState {
 }
 
 function normalizeIndicatorResult(key: string, result: HealthIndicatorResult): HealthIndicatorResult {
-  const candidate = result[key];
+  const normalizedEntries = Object.entries(result).filter(([, entryValue]) => hasIndicatorStatus(entryValue));
 
-  if (hasIndicatorStatus(candidate)) {
-    return result;
-  }
-
-  for (const [entryKey, entryValue] of Object.entries(result)) {
-    if (hasIndicatorStatus(entryValue)) {
-      return {
-        [entryKey]: entryValue,
-      };
-    }
+  if (normalizedEntries.length > 0) {
+    return Object.fromEntries(normalizedEntries);
   }
 
   return {
@@ -72,33 +64,22 @@ function inferIndicatorKey(indicator: HealthIndicator, index: number): string {
  * @returns A structured report containing `info`, `error`, and full `details` maps.
  */
 export async function runHealthCheck(indicators: readonly HealthIndicator[]): Promise<HealthCheckReport> {
-  const checks = await Promise.all(
+  const checks = (await Promise.all(
     indicators.map(async (indicator, index) => {
       const key = inferIndicatorKey(indicator, index);
 
       try {
         const result = await indicator.check(key);
-        const normalized = normalizeIndicatorResult(key, result);
-        const [normalizedKey, normalizedState] = Object.entries(normalized)[0] ?? [key, {
-          message: 'Indicator did not return a valid result.',
-          status: 'down',
-        }];
-        return [normalizedKey, normalizedState] as const;
+        return Object.entries(normalizeIndicatorResult(key, result));
       } catch (error: unknown) {
         if (error instanceof HealthCheckError) {
-          const causes = normalizeIndicatorResult(key, error.causes);
-          const [causeKey, causeState] = Object.entries(causes)[0] ?? [key, {
-            message: error.message,
-            status: 'down',
-          }];
-
-          return [causeKey, causeState] as const;
+          return Object.entries(normalizeIndicatorResult(key, error.causes));
         }
 
-        return [key, toFailureResult(key, error)[key]] as const;
+        return Object.entries(toFailureResult(key, error));
       }
     }),
-  );
+  )).flat();
 
   const details = Object.fromEntries(checks);
   const infoEntries = checks.filter(([, result]) => result.status === 'up');

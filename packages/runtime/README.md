@@ -142,6 +142,7 @@ class UsersModule {}
 | `@fluojs/runtime/node` | Node.js-specific logger factories (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers. |
 | `@fluojs/runtime/internal` | Low-level orchestration helpers and HTTP adapter base logic. |
+| `@fluojs/runtime/internal-node` | Node-only internal seam used by adapter/package compatibility layers; prefer `@fluojs/runtime/node` in application code. |
 
 ### Node-Specific Subpath (`@fluojs/runtime/node`)
 

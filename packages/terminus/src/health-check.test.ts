@@ -99,6 +99,36 @@ describe('runHealthCheck', () => {
       status: 'down',
     });
   });
+
+  it('preserves every keyed entry returned by a multi-result indicator', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'dependencies',
+        check: async () => ({
+          database: { latencyMs: 4, status: 'up' },
+          redis: { message: 'timeout', status: 'down' },
+        }),
+      },
+    ];
+
+    const report = await runHealthCheck(indicators);
+
+    expect(report.status).toBe('error');
+    expect(report.contributors).toEqual({
+      down: ['redis'],
+      up: ['database'],
+    });
+    expect(report.info).toEqual({
+      database: { latencyMs: 4, status: 'up' },
+    });
+    expect(report.error).toEqual({
+      redis: { message: 'timeout', status: 'down' },
+    });
+    expect(report.details).toEqual({
+      database: { latencyMs: 4, status: 'up' },
+      redis: { message: 'timeout', status: 'down' },
+    });
+  });
 });
 
 describe('assertHealthCheck', () => {
