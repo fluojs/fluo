@@ -22,26 +22,3 @@ exports[`@fluojs/microservices root barrel public surface > keeps the documented
   "createMicroservicesProviders",
 ]
 `;
-
-exports[`@fluojs/microservices root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
-[
-  "BidiStreamPattern",
-  "ClientStreamPattern",
-  "EventPattern",
-  "GrpcMicroserviceTransport",
-  "KafkaMicroserviceTransport",
-  "MICROSERVICE",
-  "MessagePattern",
-  "MicroserviceLifecycleService",
-  "MicroservicesModule",
-  "MqttMicroserviceTransport",
-  "NatsMicroserviceTransport",
-  "RabbitMqMicroserviceTransport",
-  "RedisPubSubMicroserviceTransport",
-  "RedisStreamsMicroserviceTransport",
-  "ServerStreamPattern",
-  "TcpMicroserviceTransport",
-  "createMicroservicePlatformStatusSnapshot",
-  "createMicroservicesProviders",
-]
-`;

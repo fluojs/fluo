@@ -10,14 +10,3 @@ exports[`@fluojs/event-bus root barrel public surface > keeps the documented roo
   "createEventBusProviders",
 ]
 `;
-
-exports[`@fluojs/event-bus root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
-[
-  "EVENT_BUS",
-  "EventBusLifecycleService",
-  "EventBusModule",
-  "OnEvent",
-  "createEventBusPlatformStatusSnapshot",
-  "createEventBusProviders",
-]
-`;
