@@ -267,12 +267,62 @@ describe('RedisStreamsMicroserviceTransport', () => {
     expect(requestFrame?.stream).toBe('fluo:streams:messages');
     expect(requestFrame?.fields.replyStream).toMatch(/^fluo:streams:responses:/);
     expect(typeof requestFrame?.fields.requestId).toBe('string');
-    expect(requestFrame?.options?.maxLenApproximate).toBe(10_000);
+
+    const responseFrame = published.find((entry) => entry.stream.startsWith('fluo:streams:responses:'));
+
+    expect(requestFrame?.options?.maxLenApproximate).toBeUndefined();
+    expect(responseFrame?.options?.maxLenApproximate).toBe(1_000);
 
     await transport.close();
   });
 
-  it('applies bounded retention defaults to request, event, and response streams', async () => {
+  it('keeps live request and event streams untrimmed by default while cleaning up acked request/reply entries', async () => {
+    const bus = new InMemoryStreamBus();
+    const { published, transport } = createTransport(bus, {
+      requestTimeoutMs: 1_000,
+      responseRetentionMaxLen: 1,
+    });
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await transport.emit('audit.event', { value: 1 });
+    await transport.emit('audit.event', { value: 2 });
+    await transport.emit('audit.event', { value: 3 });
+
+    await expect(transport.send('audit.message', { value: 1 })).resolves.toEqual({ value: 1 });
+    await sleep(50);
+
+    expect(bus.getStreamEntries('fluo:streams:events')).toHaveLength(3);
+    expect(bus.getStreamEntries('fluo:streams:messages')).toHaveLength(0);
+
+    const eventFrames = published.filter((entry) => entry.stream === 'fluo:streams:events');
+    const requestFrame = published.find((entry) => entry.stream === 'fluo:streams:messages');
+    const responseFrame = published.find((entry) => entry.stream.startsWith('fluo:streams:responses:'));
+
+    expect(eventFrames).toHaveLength(3);
+    expect(eventFrames.every((entry) => entry.options?.maxLenApproximate === undefined)).toBe(true);
+    expect(requestFrame?.options?.maxLenApproximate).toBeUndefined();
+    expect(responseFrame?.options?.maxLenApproximate).toBe(1);
+
+    const responseStream = bus.getStreamNames().find((name) => name.startsWith('fluo:streams:responses:'));
+    expect(responseStream).toBeTypeOf('string');
+
+    if (!responseStream) {
+      throw new Error('expected a response stream to exist');
+    }
+
+    expect(bus.getStreamEntries(responseStream)).toHaveLength(0);
+
+    await transport.close();
+  });
+
+  it('allows callers to opt into publish-time trimming overrides for live request and event streams', async () => {
     const bus = new InMemoryStreamBus();
     const { published, transport } = createTransport(bus, {
       eventRetentionMaxLen: 2,
@@ -296,26 +346,14 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await expect(transport.send('audit.message', { value: 1 })).resolves.toEqual({ value: 1 });
     await sleep(50);
 
-    expect(bus.getStreamEntries('fluo:streams:events')).toHaveLength(2);
-    expect(bus.getStreamEntries('fluo:streams:messages')).toHaveLength(0);
-
     const eventFrames = published.filter((entry) => entry.stream === 'fluo:streams:events');
     const requestFrame = published.find((entry) => entry.stream === 'fluo:streams:messages');
     const responseFrame = published.find((entry) => entry.stream.startsWith('fluo:streams:responses:'));
 
-    expect(eventFrames).toHaveLength(3);
+    expect(bus.getStreamEntries('fluo:streams:events')).toHaveLength(2);
     expect(eventFrames.every((entry) => entry.options?.maxLenApproximate === 2)).toBe(true);
     expect(requestFrame?.options?.maxLenApproximate).toBe(2);
     expect(responseFrame?.options?.maxLenApproximate).toBe(1);
-
-    const responseStream = bus.getStreamNames().find((name) => name.startsWith('fluo:streams:responses:'));
-    expect(responseStream).toBeTypeOf('string');
-
-    if (!responseStream) {
-      throw new Error('expected a response stream to exist');
-    }
-
-    expect(bus.getStreamEntries(responseStream)).toHaveLength(0);
 
     await transport.close();
   });

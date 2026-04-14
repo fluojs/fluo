@@ -31,9 +31,17 @@ export interface RedisStreamClientLike {
 export interface RedisStreamsMicroserviceTransportOptions {
   readerClient: RedisStreamClientLike;
   writerClient: RedisStreamClientLike;
-  /** Approximate maximum request stream length. Defaults to `10_000`. */
+  /**
+   * Approximate maximum request stream length applied at publish time.
+   *
+   * Disabled by default so pending request entries are never trimmed before `xack`/recovery.
+   */
   messageRetentionMaxLen?: number;
-  /** Approximate maximum event stream length. Defaults to `10_000`. */
+  /**
+   * Approximate maximum event stream length applied at publish time.
+   *
+   * Disabled by default so pending event entries are never trimmed before consumer-group recovery.
+   */
   eventRetentionMaxLen?: number;
   /** Approximate maximum per-consumer response stream length. Defaults to `1_000`. */
   responseRetentionMaxLen?: number;
@@ -82,8 +90,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private readonly consumerGroup: string;
   private readonly requestTimeoutMs: number;
   private readonly pollBlockMs: number;
-  private readonly messageRetentionMaxLen: number;
-  private readonly eventRetentionMaxLen: number;
+  private readonly messageRetentionMaxLen: number | undefined;
+  private readonly eventRetentionMaxLen: number | undefined;
   private readonly responseRetentionMaxLen: number;
 
   /**
@@ -97,8 +105,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     this.consumerGroup = options.consumerGroup ?? 'fluo-handlers';
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.pollBlockMs = options.pollBlockMs ?? 500;
-    this.messageRetentionMaxLen = options.messageRetentionMaxLen ?? 10_000;
-    this.eventRetentionMaxLen = options.eventRetentionMaxLen ?? 10_000;
+    this.messageRetentionMaxLen = options.messageRetentionMaxLen;
+    this.eventRetentionMaxLen = options.eventRetentionMaxLen;
     this.responseRetentionMaxLen = options.responseRetentionMaxLen ?? 1_000;
   }
 
@@ -406,11 +414,16 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private async publishFrame(
     stream: string,
     fields: Record<string, string>,
-    maxLenApproximate: number,
+    maxLenApproximate?: number,
   ): Promise<void> {
-    await this.options.writerClient.xadd(stream, fields, {
-      maxLenApproximate,
-    });
+    if (typeof maxLenApproximate === 'number' && maxLenApproximate > 0) {
+      await this.options.writerClient.xadd(stream, fields, {
+        maxLenApproximate,
+      });
+      return;
+    }
+
+    await this.options.writerClient.xadd(stream, fields);
   }
 
   private async cleanupAcknowledgedEntry(stream: string, id: string): Promise<void> {
