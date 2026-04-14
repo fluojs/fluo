@@ -24,7 +24,7 @@ npm install @fluojs/platform-bun
 
 fluo 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Bun의 고성능 `Request`/`Response` 브리지와 네이티브 `fetch` 방식의 아키텍처를 활용하여 Bun 사용자에게 원활하고 빠른 경험을 제공합니다.
 
-애플리케이션 종료 중에는 새 유입을 중단하고, Bun이 서버를 강제로 내리기 전에 활성 HTTP 핸들러가 bounded drain window 안에서 마무리될 수 있도록 동작합니다.
+애플리케이션 종료 중에는 새 유입을 중단하고, Bun이 서버를 강제로 내리기 전에 활성 HTTP 핸들러가 bounded drain window 안에서 마무리될 수 있도록 동작합니다. 시그널 기반 종료가 `forceExitTimeoutMs`를 넘기거나 실패하면 fluo는 그 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 Bun 또는 주변 호스트에 맡깁니다.
 
 ## 빠른 시작
 

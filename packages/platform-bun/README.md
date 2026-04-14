@@ -24,7 +24,7 @@ npm install @fluojs/platform-bun
 
 Use this package when running fluo applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.
 
-During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before Bun forcefully tears the server down.
+During application shutdown, the adapter stops new ingress and gives active HTTP handlers a bounded drain window before Bun forcefully tears the server down. If signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, fluo reports that condition through logging and `process.exitCode` while leaving final process termination to Bun or the surrounding host.
 
 ## Quick Start
 
