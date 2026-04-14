@@ -125,6 +125,7 @@ class UsersModule {}
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
+- Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 
 ## Public API Overview
 

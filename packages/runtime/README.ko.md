@@ -125,6 +125,7 @@ class UsersModule {}
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
+- 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
 
 ## 공개 API 개요
 
