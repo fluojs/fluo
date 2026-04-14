@@ -20,6 +20,8 @@
 npm install @fluojs/platform-cloudflare-workers
 ```
 
+이 패키지는 Cloudflare Workers에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Workers 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js 20+ 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
+
 ## 사용 시점
 
 fluo 애플리케이션을 [Cloudflare Workers](https://workers.cloudflare.com/)에 배포할 때 이 패키지를 사용합니다. 이 어댑터는 서버리스 엣지 환경에 맞게 설계되었으며, Worker isolate 제약 조건과 네이티브 Web API를 준수하는 가벼운 `fetch` 기반 어댑터를 제공합니다.

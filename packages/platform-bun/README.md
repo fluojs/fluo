@@ -20,6 +20,8 @@ Bun-backed HTTP adapter for the fluo runtime, built on native `Bun.serve()`.
 npm install @fluojs/platform-bun
 ```
 
+This package is intended to run on Bun. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Bun runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+
 ## When to Use
 
 Use this package when running fluo applications on the [Bun](https://bun.sh/) runtime. This adapter leverages Bun's high-performance `Request`/`Response` bridge and native `fetch`-style architecture, providing a seamless and fast experience for Bun users.

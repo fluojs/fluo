@@ -20,6 +20,8 @@ Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 npm install @fluojs/platform-cloudflare-workers
 ```
 
+This package is intended to run on Cloudflare Workers. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Workers runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+
 ## When to Use
 
 Use this package when deploying fluo applications to [Cloudflare Workers](https://workers.cloudflare.com/). It is designed for the serverless edge environment, providing a lightweight `fetch`-based adapter that respects Worker isolate constraints and native Web APIs.

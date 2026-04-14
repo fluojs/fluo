@@ -12,7 +12,7 @@
 | **Babel** | `v7.26+` | `@babel/plugin-proposal-decorators` (`{ version: '2023-11' }`) |
 | **Vite** | `v6.2+` | 개발 번들링 및 빌드 오케스트레이션에 사용. |
 | **Vitest** | `v3.0+` | 유닛 및 E2E 테스트용 표준 테스트 러너. |
-| **Node.js** | `v20+` | 루트 워크스페이스와 배포 패키지 manifest가 선언하는 Node 기반 어댑터의 최소 지원 런타임 기준선. |
+| **Node.js** | `v20+` | 루트 워크스페이스와 배포 패키지 manifest가 선언하는 Node 기반 어댑터의 최소 지원 런타임 기준선. Bun, Deno, Cloudflare Workers 어댑터는 패키지 메타데이터가 비-Node 런타임 계약과 일치하도록 `engines.node`를 의도적으로 생략합니다. |
 
 ## CLI 및 스캐폴딩 계약
 

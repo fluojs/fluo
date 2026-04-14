@@ -20,6 +20,8 @@
 npm install @fluojs/platform-bun
 ```
 
+이 패키지는 Bun에서 실행하는 것을 전제로 합니다. 배포 manifest는 npm 메타데이터가 Bun 런타임 계약과 어긋나지 않도록 의도적으로 `engines.node`를 선언하지 않으며, 저장소의 Node.js 20+ 요구사항은 메인테이너용 빌드/테스트 툴체인에만 적용됩니다.
+
 ## 사용 시점
 
 fluo 애플리케이션을 [Bun](https://bun.sh/) 런타임에서 실행할 때 이 패키지를 사용합니다. 이 어댑터는 Bun의 고성능 `Request`/`Response` 브리지와 네이티브 `fetch` 방식의 아키텍처를 활용하여 Bun 사용자에게 원활하고 빠른 경험을 제공합니다.

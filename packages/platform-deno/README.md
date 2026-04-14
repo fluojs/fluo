@@ -20,6 +20,8 @@ Deno-backed HTTP adapter for the fluo runtime, built on native `Deno.serve`.
 deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 ```
 
+This package is intended to run on Deno. The published manifest intentionally does not declare `engines.node`, so npm metadata stays aligned with the Deno runtime contract; the repository's Node.js 20+ requirement only applies to the maintainer build/test toolchain.
+
 ## When to Use
 
 Use this package when running fluo applications on the [Deno](https://deno.com/) runtime. This adapter leverages Deno's native `fetch`-standard `Request` and `Response` objects, providing a secure and high-performance environment for TypeScript backend development.
