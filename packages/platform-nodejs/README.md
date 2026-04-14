@@ -59,6 +59,8 @@ const adapter = createNodejsAdapter({
 ### Direct Application Execution
 You can use `runNodejsApplication` for a zero-boilerplate startup that includes graceful shutdown and logging.
 
+When signal-driven shutdown exceeds `forceExitTimeoutMs` or fails, the helper logs the condition and sets `process.exitCode`, but leaves final process termination to the host process owner.
+
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';

@@ -59,6 +59,8 @@ const adapter = createNodejsAdapter({
 ### 직접 애플리케이션 실행
 `runNodejsApplication`을 사용하여 graceful shutdown 및 로깅이 포함된 보일러플레이트 없는 시작이 가능합니다.
 
+시그널 기반 종료가 `forceExitTimeoutMs`를 넘기거나 실패하면 헬퍼는 해당 상태를 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료는 호스트 프로세스 소유자에게 맡깁니다.
+
 ```typescript
 import { runNodejsApplication } from '@fluojs/platform-nodejs';
 import { AppModule } from './app.module';
