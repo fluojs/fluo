@@ -95,7 +95,14 @@ class UserResolver {
 ```typescript
 GraphqlModule.forRoot({
   subscriptions: {
-    websocket: { enabled: true }
+    websocket: {
+      enabled: true,
+      limits: {
+        maxConnections: 100,
+        maxPayloadBytes: 64 * 1024,
+        maxOperationsPerConnection: 25,
+      },
+    }
   }
 })
 ```
@@ -104,6 +111,8 @@ GraphqlModule.forRoot({
 
 - Schema introspection is disabled by default unless you explicitly enable `graphiql` or set `introspection: true`.
 - Request validation budgets are enabled by default with conservative limits for document depth, field complexity, and aggregate query cost.
+- WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.
+- Set `subscriptions.websocket.limits = false` only when you intentionally need legacy unbounded websocket behavior and can enforce equivalent controls elsewhere.
 - Pass `limits: false` only when you intentionally need legacy unbounded behavior and can compensate with external controls.
 
 ```typescript
@@ -114,6 +123,16 @@ GraphqlModule.forRoot({
     maxDepth: 8,
     maxComplexity: 120,
     maxCost: 240,
+  },
+  subscriptions: {
+    websocket: {
+      enabled: true,
+      limits: {
+        maxConnections: 100,
+        maxPayloadBytes: 64 * 1024,
+        maxOperationsPerConnection: 25,
+      },
+    },
   },
   resolvers: [HelloResolver],
 })

@@ -95,7 +95,14 @@ class UserResolver {
 ```typescript
 GraphqlModule.forRoot({
   subscriptions: {
-    websocket: { enabled: true }
+    websocket: {
+      enabled: true,
+      limits: {
+        maxConnections: 100,
+        maxPayloadBytes: 64 * 1024,
+        maxOperationsPerConnection: 25,
+      },
+    }
   }
 })
 ```
@@ -104,6 +111,8 @@ GraphqlModule.forRoot({
 
 - `graphiql`을 명시적으로 켜거나 `introspection: true`를 설정하지 않으면 스키마 introspection은 기본적으로 비활성화됩니다.
 - 문서 depth, field complexity, aggregate query cost에 대한 request validation budget이 기본적으로 보수적인 값으로 활성화됩니다.
+- WebSocket 구독 경로에는 별도의 전송 budget이 기본 적용됩니다: 동시 연결 `100`, 최대 payload 크기 `64 KiB`, 연결당 활성 operation `25`개입니다.
+- 레거시 무제한 WebSocket 동작이 정말 필요할 때만 `subscriptions.websocket.limits = false`를 사용하고, 그 경우에도 동일한 수준의 외부 제어 수단을 마련해야 합니다.
 - 레거시 무제한 동작이 꼭 필요할 때만 `limits: false`를 사용하고, 그 경우에는 외부 제어 수단을 함께 두어야 합니다.
 
 ```typescript
@@ -114,6 +123,16 @@ GraphqlModule.forRoot({
     maxDepth: 8,
     maxComplexity: 120,
     maxCost: 240,
+  },
+  subscriptions: {
+    websocket: {
+      enabled: true,
+      limits: {
+        maxConnections: 100,
+        maxPayloadBytes: 64 * 1024,
+        maxOperationsPerConnection: 25,
+      },
+    },
   },
   resolvers: [HelloResolver],
 })
