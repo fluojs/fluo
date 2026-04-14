@@ -86,7 +86,15 @@ ThrottlerModule.forRoot({
 
 ### 커스텀 키 생성
 
-기본적으로 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, 마지막으로 raw socket `remoteAddress` 순서로 클라이언트 식별자를 해석합니다. 어느 것도 없으면 서로 다른 호출자를 같은 버킷으로 합치지 않도록 예외를 던집니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수도 있습니다.
+기본적으로 throttler는 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. 배포가 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 덮어쓰는 신뢰 가능한 리버스 프록시 뒤에 있다면 `trustProxyHeaders: true`로 명시적으로 opt-in 하세요. 신뢰 가능한 소켓 식별자나 프록시 식별자가 없으면 서로 다른 호출자를 같은 버킷으로 합치지 않도록 예외를 던집니다. API 키나 사용자 ID 등 다른 식별자를 사용하도록 커스터마이징할 수도 있습니다.
+
+```typescript
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  trustProxyHeaders: true,
+});
+```
 
 ```typescript
 ThrottlerModule.forRoot({

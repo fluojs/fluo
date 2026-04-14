@@ -4,6 +4,10 @@ const FORWARDED_HEADER = 'forwarded';
 const X_FORWARDED_FOR_HEADER = 'x-forwarded-for';
 const X_REAL_IP_HEADER = 'x-real-ip';
 
+interface ClientIdentityResolutionOptions {
+  trustProxyHeaders?: boolean;
+}
+
 function readHeader(
   headers: Readonly<Record<string, string | string[] | undefined>>,
   name: string,
@@ -131,27 +135,33 @@ function resolveSocketClientIdentity(raw: unknown): string | undefined {
 /**
  * Resolve one stable client identity from the normalized request contract.
  *
- * Resolution order is `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, then the
- * raw socket's `remoteAddress`. If none are available, callers must provide an
- * explicit resolver because falling back to a shared `unknown` bucket is not
- * safe in proxied or serverless environments.
+ * By default, resolution uses only the raw socket's `remoteAddress`. When
+ * `trustProxyHeaders` is enabled, resolution order becomes `Forwarded`,
+ * `X-Forwarded-For`, `X-Real-IP`, then the raw socket fallback. If none are
+ * available, callers must provide an explicit resolver because falling back to
+ * a shared `unknown` bucket is not safe in proxied or serverless environments.
  *
  * @param request Adapter-normalized request whose headers/raw transport state should be inspected.
- * @returns A proxy-aware client identity string suitable for rate limiting.
- * @throws Error When the request exposes no trustworthy proxy header or socket identity.
+ * @param options Client-identity trust settings for proxy-header handling.
+ * @returns A stable client identity string suitable for rate limiting.
+ * @throws Error When the request exposes no trusted proxy header or socket identity.
  */
-export function resolveClientIdentity(request: FrameworkRequest): string {
-  const clientIdentity =
-    resolveForwardedClientIdentity(request.headers) ??
-    resolveCommaSeparatedClientIdentity(request.headers, X_FORWARDED_FOR_HEADER) ??
-    normalizeClientIdentity(readHeader(request.headers, X_REAL_IP_HEADER)) ??
-    resolveSocketClientIdentity(request.raw);
+export function resolveClientIdentity(
+  request: FrameworkRequest,
+  options: ClientIdentityResolutionOptions = {},
+): string {
+  const proxyClientIdentity = options.trustProxyHeaders
+    ? resolveForwardedClientIdentity(request.headers) ??
+      resolveCommaSeparatedClientIdentity(request.headers, X_FORWARDED_FOR_HEADER) ??
+      normalizeClientIdentity(readHeader(request.headers, X_REAL_IP_HEADER))
+    : undefined;
+  const clientIdentity = proxyClientIdentity ?? resolveSocketClientIdentity(request.raw);
 
   if (clientIdentity) {
     return clientIdentity;
   }
 
   throw new Error(
-    'Unable to resolve client identity from Forwarded, X-Forwarded-For, X-Real-IP, or raw socket remoteAddress. Provide an explicit keyResolver/keyGenerator for this environment.',
+    'Unable to resolve client identity from the trusted request transport. Enable trustProxyHeaders only behind a trusted proxy, or provide an explicit keyResolver/keyGenerator for this environment.',
   );
 }

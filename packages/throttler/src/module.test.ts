@@ -408,7 +408,7 @@ describe('ThrottlerGuard — in-memory store', () => {
     expect(true).toBe(true);
   });
 
-  it('uses forwarded client identity before the proxy socket address', async () => {
+  it('uses raw socket identity by default even when proxy headers are present', async () => {
     class TestController {
       action() {}
     }
@@ -424,15 +424,36 @@ describe('ThrottlerGuard — in-memory store', () => {
     });
 
     await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
-    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).rejects.toThrow(
+      'Too Many Requests',
+    );
   });
 
-  it('normalizes forwarded client identity ports before building throttler keys', async () => {
+  it('trusts forwarded client identity when trustProxyHeaders is enabled', async () => {
     class TestController {
       action() {}
     }
 
-    const guard = new ThrottlerGuard({ ...options, limit: 1 });
+    const guard = new ThrottlerGuard({ ...options, limit: 1, trustProxyHeaders: true });
+    const firstContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.10;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createRequestContext({
+      headers: { forwarded: 'for=198.51.100.11;proto=https' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', firstContext))).resolves.toBe(true);
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', secondContext))).resolves.toBe(true);
+  });
+
+  it('normalizes forwarded client identity ports before building throttler keys when trustProxyHeaders is enabled', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, limit: 1, trustProxyHeaders: true });
     const firstContext = createRequestContext({
       headers: { forwarded: 'for=198.51.100.10:1234;proto=https' },
       raw: { socket: { remoteAddress: '10.0.0.1' } },
@@ -448,6 +469,36 @@ describe('ThrottlerGuard — in-memory store', () => {
     );
   });
 
+  it('rejects spoofable proxy headers by default when no raw socket identity is available', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard(options);
+    const ctx = createRequestContext({
+      headers: { 'x-real-ip': '198.51.100.10' },
+      raw: {},
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
+      /trusted request transport/i,
+    );
+  });
+
+  it('uses trusted proxy headers when opted in and no raw socket identity is available', async () => {
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ ...options, trustProxyHeaders: true });
+    const ctx = createRequestContext({
+      headers: { 'x-real-ip': '198.51.100.10' },
+      raw: {},
+    });
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).resolves.toBe(true);
+  });
+
   it('rejects when no proxy or socket client identity is available', async () => {
     class TestController {
       action() {}
@@ -457,7 +508,7 @@ describe('ThrottlerGuard — in-memory store', () => {
     const ctx = createRequestContext({ headers: {}, raw: {} });
 
     await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(
-      /resolve client identity/i,
+      /trusted request transport/i,
     );
   });
 

@@ -33,8 +33,8 @@ function getMethodMetadataBag(controllerToken: Function, methodName: string): Me
   return routeMap?.get(methodName);
 }
 
-function defaultKeyGenerator(ctx: MiddlewareContext): string {
-  return resolveClientIdentity(ctx.request);
+function defaultKeyGenerator(ctx: MiddlewareContext, trustProxyHeaders: boolean): string {
+  return resolveClientIdentity(ctx.request, { trustProxyHeaders });
 }
 
 function buildStoreKey(handlerKey: string, clientKey: string): string {
@@ -105,7 +105,7 @@ export class ThrottlerGuard implements Guard {
 
     const clientKey = this.options.keyGenerator
       ? this.options.keyGenerator(middlewareCtx)
-      : defaultKeyGenerator(middlewareCtx);
+      : defaultKeyGenerator(middlewareCtx, this.options.trustProxyHeaders ?? false);
 
     const handlerKey = buildHandlerKey(handler);
     const storeKey = buildStoreKey(handlerKey, clientKey);

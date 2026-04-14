@@ -97,7 +97,7 @@ function someDeepHelper() {
 
 ### 프록시 뒤의 속도 제한
 
-`createRateLimitMiddleware(...)`는 클라이언트 식별자를 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, 마지막으로 raw socket `remoteAddress` 순서로 해석합니다. 어댑터가 프록시 헤더도 raw socket 접근도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
+`createRateLimitMiddleware(...)`는 기본적으로 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 해당 헤더를 신뢰 가능한 프록시가 덮어쓰는 환경에서만 `trustProxyHeaders: true`를 명시적으로 켜세요. 어댑터가 신뢰 가능한 프록시 체인도 raw socket 식별자도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
 
 ### 서버 전송 이벤트
 
@@ -126,7 +126,7 @@ stream(_input: undefined, ctx: RequestContext) {
 `./internal` 서브경로는 플랫폼 어댑터와 핵심 런타임에서 사용하는 저수준 유틸리티만 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
 
 - `DefaultBinder`: 런타임 부트스트랩 경로에서 사용하는 기본 DTO/요청 바인더.
-- `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 프록시 인지 클라이언트 식별 해석기.
+- `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 보수적 클라이언트 식별 해석기.
 
 ## 관련 패키지
 

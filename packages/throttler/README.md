@@ -86,7 +86,15 @@ ThrottlerModule.forRoot({
 
 ### Custom Key Generation
 
-By default, the throttler resolves client identity from `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, and finally the raw socket `remoteAddress`. If none are available, it throws instead of collapsing unrelated callers into a shared bucket. You can customize this to use API keys, user IDs, or other identifiers.
+By default, the throttler resolves client identity from the raw socket `remoteAddress` only. If your deployment sits behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true`. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
+
+```typescript
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  trustProxyHeaders: true,
+});
+```
 
 ```typescript
 ThrottlerModule.forRoot({
