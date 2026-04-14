@@ -717,7 +717,7 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('forces process exit when signal-driven shutdown exceeds forceExitTimeoutMs', async () => {
+  it('marks shutdown timeout via exitCode without forcing process termination', async () => {
     vi.useFakeTimers();
 
     const loggerEvents: string[] = [];
@@ -763,8 +763,11 @@ describe('@fluojs/platform-express', () => {
       process.emit('SIGTERM', 'SIGTERM');
       await vi.advanceTimersByTimeAsync(26);
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(loggerEvents).toContain('error:FluoFactory:Forced exit after 25ms shutdown timeout.:none');
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      expect(loggerEvents).toContain(
+        'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
+      );
     } finally {
       app.close = originalClose;
       await app.close();

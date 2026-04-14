@@ -77,7 +77,6 @@ export interface ExpressAdapterOptions {
 export type ExpressApplicationSignal = 'SIGINT' | 'SIGTERM';
 export type CorsInput = false | string | string[] | CorsOptions;
 
-const DEFAULT_FORCE_EXIT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -632,76 +631,6 @@ function resolvePort(value: number | undefined): number {
   }
 
   return port;
-}
-
-function defaultShutdownSignals(): false | readonly ExpressApplicationSignal[] {
-  return ['SIGINT', 'SIGTERM'];
-}
-
-function registerShutdownSignals(
-  app: Application,
-  logger: ApplicationLogger,
-  signals: false | readonly ExpressApplicationSignal[],
-  forceExitTimeoutMs: number = DEFAULT_FORCE_EXIT_TIMEOUT_MS,
-): () => void {
-  if (signals === false || signals.length === 0) {
-    return () => {};
-  }
-
-  const seen = new Set<ExpressApplicationSignal>();
-  const bindings: Array<{ signal: ExpressApplicationSignal; handler: () => void }> = [];
-
-  for (const signal of signals) {
-    if (seen.has(signal)) {
-      continue;
-    }
-
-    seen.add(signal);
-    const handler = () => {
-      void closeFromSignal(app, logger, signal, forceExitTimeoutMs);
-    };
-
-    bindings.push({ signal, handler });
-    process.once(signal, handler);
-  }
-
-  return () => {
-    for (const binding of bindings) {
-      process.off(binding.signal, binding.handler);
-    }
-  };
-}
-
-async function closeFromSignal(
-  app: Application,
-  logger: ApplicationLogger,
-  signal: ExpressApplicationSignal,
-  forceExitTimeoutMs: number,
-): Promise<void> {
-  if (app.state === 'closed') {
-    process.exitCode = 0;
-    return;
-  }
-
-  const forceExitTimer = setTimeout(() => {
-    logger.error(`Forced exit after ${String(forceExitTimeoutMs)}ms shutdown timeout.`, undefined, 'FluoFactory');
-    process.exit(1);
-  }, forceExitTimeoutMs);
-
-  if (forceExitTimer.unref) {
-    forceExitTimer.unref();
-  }
-
-  try {
-    await app.close(signal);
-    clearTimeout(forceExitTimer);
-    logger.log(`Application closed after receiving ${signal}.`, 'FluoFactory');
-    process.exitCode = 0;
-  } catch (error: unknown) {
-    clearTimeout(forceExitTimer);
-    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');
-    process.exitCode = 1;
-  }
 }
 
 async function listenServer(server: ExpressServer, port: number, host: string | undefined): Promise<void> {
