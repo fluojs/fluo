@@ -63,7 +63,7 @@ export interface BootstrapHttpAdapterApplicationOptions
  * Options for running an HTTP adapter application with shutdown management.
  */
 export interface RunHttpAdapterApplicationOptions extends BootstrapHttpAdapterApplicationOptions {
-  /** Timeout for forced exit during shutdown in milliseconds. */
+  /** Timeout for marking shutdown as failed during signal-driven teardown in milliseconds. */
   forceExitTimeoutMs?: number;
   /** Custom shutdown registration logic. */
   shutdownRegistration?: HttpAdapterShutdownRegistration;

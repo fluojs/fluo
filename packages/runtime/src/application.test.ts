@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
@@ -1219,6 +1219,64 @@ describe('bootstrapApplication', () => {
     await app.close();
 
     expect(process.listeners(signal).length).toBe(listenersBefore);
+  });
+
+  it('marks signal-driven shutdown timeouts without terminating the host process directly', async () => {
+    vi.useFakeTimers();
+
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message, error, context) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+      },
+      log() {},
+      warn() {},
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const originalExitCode = process.exitCode;
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
+    const port = await findAvailablePort();
+    const app = await runNodeApplication(AppModule, {
+      cors: false,
+      forceExitTimeoutMs: 25,
+      logger,
+      port,
+      shutdownSignals: ['SIGTERM'],
+    });
+
+    const originalClose = app.close.bind(app);
+    app.close = () => new Promise<void>(() => {});
+
+    try {
+      process.emit('SIGTERM', 'SIGTERM');
+      await vi.advanceTimersByTimeAsync(26);
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      expect(loggerEvents).toContain(
+        'error:FluoFactory:Shutdown timeout exceeded after 25ms; leaving process termination to the host.:none',
+      );
+    } finally {
+      app.close = originalClose;
+      await app.close();
+      exitSpy.mockRestore();
+      process.exitCode = originalExitCode;
+      vi.useRealTimers();
+    }
   });
 
   it('supports https startup and reports the https listen URL', async () => {
