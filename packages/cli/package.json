@@ -46,6 +46,7 @@
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts",
     "sandbox:create": "node ./scripts/local-test-env.mjs create",
+    "sandbox:matrix": "node ./scripts/local-test-env.mjs matrix",
     "sandbox:verify": "node ./scripts/local-test-env.mjs verify",
     "sandbox:test": "node ./scripts/local-test-env.mjs test",
     "sandbox:clean": "node ./scripts/local-test-env.mjs clean"

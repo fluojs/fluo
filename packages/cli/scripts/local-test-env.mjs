@@ -9,6 +9,36 @@ const sandboxMetadataFileName = '.fluo-cli-sandbox.json';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, '..');
 const repoRoot = resolve(packageRoot, '..', '..');
+const representativeStarterSmokeScenarios = [
+  {
+    env: {},
+    label: 'default Node.js + Fastify application',
+    projectName: 'starter-app',
+  },
+  {
+    env: {
+      FLUO_CLI_SANDBOX_PLATFORM: 'none',
+      FLUO_CLI_SANDBOX_RUNTIME: 'node',
+      FLUO_CLI_SANDBOX_SHAPE: 'microservice',
+      FLUO_CLI_SANDBOX_TRANSPORT: 'tcp',
+    },
+    label: 'TCP microservice starter',
+    projectName: 'starter-microservice',
+  },
+  {
+    env: {
+      FLUO_CLI_SANDBOX_PLATFORM: 'fastify',
+      FLUO_CLI_SANDBOX_RUNTIME: 'node',
+      FLUO_CLI_SANDBOX_SHAPE: 'mixed',
+      FLUO_CLI_SANDBOX_TRANSPORT: 'tcp',
+    },
+    label: 'mixed Fastify + TCP starter',
+    projectName: 'starter-mixed',
+  },
+];
+
+let runCliPromise;
+
 function isPathInsideDirectory(parentDirectory, candidatePath) {
   const resolvedParentDirectory = resolve(parentDirectory);
   const resolvedCandidatePath = resolve(candidatePath);
@@ -190,17 +220,69 @@ function verifySandboxExists(projectDirectory) {
 }
 
 async function loadRunCli() {
-  log('Building @fluojs/cli dist for the local harness');
-  run('pnpm', ['build'], packageRoot);
+  if (!runCliPromise) {
+    runCliPromise = (async () => {
+      log('Building @fluojs/cli dist for the local harness');
+      run('pnpm', ['build'], packageRoot);
 
-  const cliModuleUrl = pathToFileURL(join(packageRoot, 'dist', 'cli.js')).href;
-  const cliModule = await import(cliModuleUrl);
+      const cliModuleUrl = pathToFileURL(join(packageRoot, 'dist', 'cli.js')).href;
+      const cliModule = await import(cliModuleUrl);
 
-  if (typeof cliModule.runCli !== 'function') {
-    throw new Error('Unable to load runCli from packages/cli/dist/cli.js.');
+      if (typeof cliModule.runCli !== 'function') {
+        throw new Error('Unable to load runCli from packages/cli/dist/cli.js.');
+      }
+
+      return cliModule.runCli;
+    })();
   }
 
-  return cliModule.runCli;
+  return runCliPromise;
+}
+
+async function withStarterEnv(envOverrides, action) {
+  const keys = [
+    'FLUO_CLI_SANDBOX_PLATFORM',
+    'FLUO_CLI_SANDBOX_RUNTIME',
+    'FLUO_CLI_SANDBOX_SHAPE',
+    'FLUO_CLI_SANDBOX_TRANSPORT',
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+
+  for (const key of keys) {
+    const next = envOverrides[key];
+
+    if (typeof next === 'string') {
+      process.env[key] = next;
+      continue;
+    }
+
+    delete process.env[key];
+  }
+
+  try {
+    return await action();
+  } finally {
+    for (const key of keys) {
+      const value = previous.get(key);
+
+      if (typeof value === 'string') {
+        process.env[key] = value;
+        continue;
+      }
+
+      delete process.env[key];
+    }
+  }
+}
+
+async function runRepresentativeStarterSmokeMatrix() {
+  for (const scenario of representativeStarterSmokeScenarios) {
+    await withStarterEnv(scenario.env, async () => {
+      log(`Running representative starter smoke: ${scenario.label}`);
+      await createSandboxProject(scenario.projectName);
+      verifySandboxProject(scenario.projectName);
+    });
+  }
 }
 
 async function createSandboxProject(projectName) {
@@ -241,13 +323,21 @@ function verifySandboxProject(projectName) {
   const projectDirectory = resolveProjectDirectory(projectName);
   verifySandboxExists(projectDirectory);
   const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8'));
-  const isMicroserviceStarter = Boolean(packageJson.dependencies?.['@fluojs/microservices']);
+  const hasHttpStarter = Boolean(packageJson.dependencies?.['@fluojs/http']);
+  const hasMicroserviceStarter = Boolean(packageJson.dependencies?.['@fluojs/microservices']);
+  const starterContract = hasHttpStarter && hasMicroserviceStarter
+    ? 'mixed'
+    : hasMicroserviceStarter
+      ? 'microservice'
+      : 'application';
 
-  if (isMicroserviceStarter) {
+  if (starterContract === 'microservice' || starterContract === 'mixed') {
     if (!existsSync(join(projectDirectory, 'src', 'math', 'math.handler.test.ts'))) {
-      throw new Error('Expected the microservice starter scaffold to include src/math/math.handler.test.ts.');
+      throw new Error(`Expected the ${starterContract} starter scaffold to include src/math/math.handler.test.ts.`);
     }
-  } else if (!existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))) {
+  }
+
+  if (starterContract === 'application' && !existsSync(join(projectDirectory, 'src', 'app.e2e.test.ts'))) {
     throw new Error('Expected the starter scaffold to include src/app.e2e.test.ts.');
   }
 
@@ -255,11 +345,20 @@ function verifySandboxProject(projectName) {
     throw new Error('Expected the starter scaffold to include vite.config.ts.');
   }
 
-  if (isMicroserviceStarter) {
+  if (starterContract === 'microservice' || starterContract === 'mixed') {
     const mainFile = readFileSync(join(projectDirectory, 'src', 'main.ts'), 'utf8');
-    if (!mainFile.includes('createMicroservice')) {
+
+    if (starterContract === 'microservice' && !mainFile.includes('createMicroservice')) {
       throw new Error('Expected the microservice starter main.ts to bootstrap FluoFactory.createMicroservice(...).');
     }
+
+    if (
+      starterContract === 'mixed'
+      && (!mainFile.includes('await app.connectMicroservice();') || !mainFile.includes('await app.startAllMicroservices();'))
+    ) {
+      throw new Error('Expected the mixed starter main.ts to attach and start the TCP microservice from the HTTP app bootstrap.');
+    }
+
   }
 
   for (const configPath of ['tsconfig.json', 'tsconfig.build.json', 'vite.config.ts', 'vitest.config.ts']) {
@@ -301,6 +400,7 @@ function printUsage() {
   process.stdout.write(
     [
       'Usage: node ./scripts/local-test-env.mjs <create|verify|test|clean> [project-name]',
+      'Use `matrix` to run the representative generated-project smoke suite (default app, TCP microservice, mixed app).',
       'Defaults project-name to starter-app and uses the sandbox root itself as the generated app directory.',
       'Set FLUO_CLI_SANDBOX_ROOT to override the sandbox root outside the repo workspace.',
     ].join('\n') + '\n',
@@ -325,6 +425,10 @@ async function main() {
       logSandboxRoot();
       await createSandboxProject(projectName);
       verifySandboxProject(projectName);
+      break;
+    case 'matrix':
+      logSandboxRoot();
+      await runRepresentativeStarterSmokeMatrix();
       break;
     case 'clean':
       logSandboxRoot();

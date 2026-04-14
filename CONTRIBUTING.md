@@ -64,6 +64,7 @@ When modifying `@fluojs/cli` or core runtime packages, use the sandbox scripts t
 
 Inside `packages/cli/`:
 - `pnpm sandbox:create`: Generates a fresh starter app in a temporary directory.
+- `pnpm sandbox:matrix`: Runs the representative generated-project smoke suite for the default app, TCP microservice, and mixed starter baselines.
 - `pnpm sandbox:verify`: Runs `build`, `typecheck`, and `test` inside the sandbox app.
 - `pnpm sandbox:test`: Runs integration tests against the sandbox app.
 - `pnpm sandbox:clean`: Removes the sandbox directory.
