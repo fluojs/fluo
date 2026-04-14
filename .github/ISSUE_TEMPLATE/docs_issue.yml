@@ -1,0 +1,40 @@
+name: Documentation Issue
+description: Report missing, incorrect, or confusing documentation
+labels: ["documentation", "priority:p2"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to report documentation gaps or propose a docs improvement.
+  - type: textarea
+    id: page
+    attributes:
+      label: Affected Page or Area
+      description: Which README, guide, example, or package page needs attention?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing, incorrect, outdated, or confusing?
+    validations:
+      required: true
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: Suggested Improvement
+      description: What would make this documentation clearer or more accurate?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Documentation Area
+      options:
+        - getting started
+        - package README
+        - concepts
+        - operations
+        - reference
+        - examples
+    validations:
+      required: true

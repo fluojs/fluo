@@ -1,0 +1,57 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for fluo
+labels: ["enhancement", "priority:p2"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. Please describe the problem and the outcome you want.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What is hard, missing, or confusing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: What should fluo do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe the concrete workflow, project, or constraint this would help with.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What workarounds or competing approaches have you tried?
+  - type: dropdown
+    id: nestjs-parity
+    attributes:
+      label: NestJS Parity
+      description: Does NestJS have an equivalent feature?
+      options:
+        - Yes — NestJS has this feature
+        - Partial — NestJS has something similar
+        - No — This is new to fluo
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - framework core
+        - cli
+        - documentation
+        - tooling/ci
+        - examples
+    validations:
+      required: true

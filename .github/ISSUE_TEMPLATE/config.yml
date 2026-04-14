@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and support
+    url: https://github.com/fluojs/fluo/discussions/categories/q-a
+    about: Ask usage questions, request guidance, or share ideas in GitHub Discussions.
+  - name: Security vulnerability
+    url: https://github.com/fluojs/fluo/security/advisories/new
+    about: Report vulnerabilities privately through GitHub Security Advisories.
