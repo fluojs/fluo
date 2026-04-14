@@ -24,6 +24,8 @@ Webhook-first, transport-agnostic Discord delivery core for fluo. It provides a 
 npm install @fluojs/discord @fluojs/notifications
 ```
 
+This package follows the repo-wide Node.js 20+ install baseline reflected in published package metadata, while keeping its delivery contract transport-agnostic at runtime through explicit fetch-compatible boundaries.
+
 ## When to Use
 
 - When you want one package that can send Discord messages directly and also plug into `@fluojs/notifications`.
