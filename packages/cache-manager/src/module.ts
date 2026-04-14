@@ -1,5 +1,5 @@
+import type { Token } from '@fluojs/core';
 import type { Provider, Container } from '@fluojs/di';
-import { getRedisClientToken } from '@fluojs/redis';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -11,6 +11,42 @@ import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions, RedisCompatibleClient } from './types.js';
 
 const DEFAULT_MEMORY_STORE_TTL_SECONDS = 300;
+
+interface RedisPeerModule {
+  getRedisClientToken(clientName?: string): Token<RedisCompatibleClient>;
+}
+
+function isMissingRedisPeer(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code = 'code' in error ? (error as { code?: unknown }).code : undefined;
+
+  return code === 'ERR_MODULE_NOT_FOUND' && error.message.includes('@fluojs/redis');
+}
+
+function createRedisBootstrapError(): Error {
+  return new Error(
+    [
+      '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
+      'Install and import @fluojs/redis, configure options.redis.clientName, or provide options.redis.client directly.',
+    ].join(' '),
+  );
+}
+
+async function resolveRedisPeerModule(): Promise<RedisPeerModule> {
+  try {
+    // @ts-ignore -- optional peer is resolved only when the Redis path is selected at runtime.
+    return await import('@fluojs/redis');
+  } catch (error) {
+    if (isMissingRedisPeer(error)) {
+      throw createRedisBootstrapError();
+    }
+
+    throw error;
+  }
+}
 
 function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): NormalizedCacheModuleOptions {
   const store = options.store ?? 'memory';
@@ -58,7 +94,18 @@ async function resolveRedisClient(
   let resolvedClient = options.redis?.client;
 
   if (!resolvedClient) {
-    const redisToken = getRedisClientToken(options.redis?.clientName);
+    let redisToken: Token<RedisCompatibleClient>;
+
+    try {
+      const { getRedisClientToken } = await resolveRedisPeerModule();
+      redisToken = getRedisClientToken(options.redis?.clientName);
+    } catch (error) {
+      if (isMissingRedisPeer(error)) {
+        throw createRedisBootstrapError();
+      }
+
+      throw error;
+    }
 
     if (container.has(redisToken)) {
       resolvedClient = await container.resolve<RedisCompatibleClient>(redisToken);
@@ -66,12 +113,7 @@ async function resolveRedisClient(
   }
 
   if (!resolvedClient) {
-    throw new Error(
-      [
-        '@fluojs/cache-manager redis store requires a Redis client at bootstrap.',
-        'Install and import @fluojs/redis, configure options.redis.clientName, or provide options.redis.client directly.',
-      ].join(' '),
-    );
+    throw createRedisBootstrapError();
   }
 
   return resolvedClient;
