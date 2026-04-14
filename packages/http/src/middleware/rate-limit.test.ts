@@ -127,7 +127,7 @@ describe('createRateLimitMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(2);
   });
 
-  it('uses forwarded headers before the proxy socket address', async () => {
+  it('uses raw socket identity by default even when proxy headers are present', async () => {
     const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const firstContext = createContext({
@@ -142,13 +142,31 @@ describe('createRateLimitMiddleware', () => {
     await middleware.handle(firstContext, next);
     await middleware.handle(secondContext, next);
 
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(secondContext.response.statusCode).toBe(429);
+  });
+
+  it('trusts forwarded headers when trustProxyHeaders is enabled', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.11, 10.0.0.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+
     expect(next).toHaveBeenCalledTimes(2);
-    expect(firstContext.response.statusCode).toBe(200);
     expect(secondContext.response.statusCode).toBe(200);
   });
 
-  it('normalizes ipv4 forwarded identities that include client ports', async () => {
-    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+  it('normalizes ipv4 forwarded identities that include client ports when trustProxyHeaders is enabled', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const firstContext = createContext({
       headers: { forwarded: 'for=198.51.100.10:1234;proto=https' },
@@ -166,8 +184,8 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(429);
   });
 
-  it('normalizes bracketed ipv6 forwarded identities that include client ports', async () => {
-    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+  it('normalizes bracketed ipv6 forwarded identities that include client ports when trustProxyHeaders is enabled', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const firstContext = createContext({
       headers: { forwarded: 'for="[2001:db8::1]:1234";proto=https' },
@@ -185,8 +203,8 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(429);
   });
 
-  it('normalizes comma-separated proxy identities when the first hop includes a port', async () => {
-    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+  it('normalizes comma-separated proxy identities when the first hop includes a port and trustProxyHeaders is enabled', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const firstContext = createContext({
       headers: { 'x-forwarded-for': '198.51.100.10:1234, 10.0.0.10' },
@@ -204,8 +222,8 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(429);
   });
 
-  it('accepts proxied requests when the raw socket address is unavailable', async () => {
-    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+  it('accepts proxied requests when trustProxyHeaders is enabled and the raw socket address is unavailable', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const context = createContext({
       headers: { forwarded: 'for="[2001:db8:cafe::17]";proto=https' },
@@ -218,12 +236,24 @@ describe('createRateLimitMiddleware', () => {
     expect(context.response.statusCode).toBe(200);
   });
 
+  it('rejects spoofable proxy headers by default when the raw socket address is unavailable', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const context = createContext({
+      headers: { 'x-forwarded-for': '198.51.100.10, 10.0.0.10' },
+      raw: {},
+    });
+
+    await expect(middleware.handle(context, next)).rejects.toThrow(/trusted request transport/i);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('throws when no proxy or socket client identity is available', async () => {
     const middleware = createRateLimitMiddleware({ limit: 1, windowMs: 1_000 });
     const next = vi.fn(async () => {});
     const context = createContext({ headers: {}, raw: {} });
 
-    await expect(middleware.handle(context, next)).rejects.toThrow(/resolve client identity/i);
+    await expect(middleware.handle(context, next)).rejects.toThrow(/trusted request transport/i);
     expect(next).not.toHaveBeenCalled();
   });
 

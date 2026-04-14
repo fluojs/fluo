@@ -2,11 +2,13 @@ import type { MiddlewareContext, Middleware } from '../types.js';
 import { TooManyRequestsException, createErrorResponse } from '../exceptions.js';
 import { resolveClientIdentity } from '../client-identity.js';
 
+/** Snapshot of one key's current rate-limit window state. */
 export interface RateLimitStoreEntry {
   count: number;
   resetAt: number;
 }
 
+/** Store contract used by `createRateLimitMiddleware(...)` request windows. */
 export interface RateLimitStore {
   get(key: string): RateLimitStoreEntry | undefined | Promise<RateLimitStoreEntry | undefined>;
   set(key: string, entry: RateLimitStoreEntry): void | Promise<void>;
@@ -14,17 +16,30 @@ export interface RateLimitStore {
   evict(now: number): void | Promise<void>;
 }
 
+/** Public configuration contract for `createRateLimitMiddleware(...)`. */
 export interface RateLimitOptions {
   limit: number;
   windowMs: number;
   keyResolver?: (ctx: MiddlewareContext) => string;
   store?: RateLimitStore;
+  /**
+   * Trust `Forwarded`, `X-Forwarded-For`, and `X-Real-IP` before the raw socket address.
+   * Enable this only when the adapter sits behind a trusted proxy that overwrites spoofable headers.
+   */
+  trustProxyHeaders?: boolean;
 }
 
-function defaultKeyResolver(ctx: MiddlewareContext): string {
-  return resolveClientIdentity(ctx.request);
+function defaultKeyResolver(ctx: MiddlewareContext, options: RateLimitOptions): string {
+  return resolveClientIdentity(ctx.request, {
+    trustProxyHeaders: options.trustProxyHeaders ?? false,
+  });
 }
 
+/**
+ * Create the built-in in-memory store for request rate-limit windows.
+ *
+ * @returns Store instance that tracks request counts in process memory.
+ */
 export function createMemoryRateLimitStore(): RateLimitStore {
   const map = new Map<string, RateLimitStoreEntry>();
   let nextSweepAt = 0;
@@ -67,14 +82,18 @@ export function createMemoryRateLimitStore(): RateLimitStore {
   };
 }
 
+/**
+ * Create middleware that rejects requests once a per-key window exceeds its limit.
+ *
+ * @param options Limit, window, trust, and storage settings for one middleware instance.
+ * @returns Middleware that enforces the configured request budget.
+ */
 export function createRateLimitMiddleware(options: RateLimitOptions): Middleware {
   const store = options.store ?? createMemoryRateLimitStore();
 
   return {
     async handle(context, next) {
-      const key = options.keyResolver
-        ? options.keyResolver(context)
-        : defaultKeyResolver(context);
+      const key = options.keyResolver ? options.keyResolver(context) : defaultKeyResolver(context, options);
 
       const now = Date.now();
 

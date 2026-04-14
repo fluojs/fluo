@@ -99,7 +99,7 @@ function someDeepHelper() {
 
 ### Rate limiting behind proxies
 
-`createRateLimitMiddleware(...)` resolves client identity from `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, and finally the raw socket `remoteAddress`. If your adapter runs without proxy headers or raw socket access, provide an explicit `keyResolver` instead of relying on a shared fallback bucket.
+`createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
 
 ### Server-sent events
 
@@ -128,7 +128,7 @@ stream(_input: undefined, ctx: RequestContext) {
 The `./internal` subpath exports only the low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
 
 - `DefaultBinder`: Default DTO/request binder used by the runtime bootstrap path.
-- `resolveClientIdentity(request)`: Proxy-aware client identity resolver used by rate limiting and other runtime integrations.
+- `resolveClientIdentity(request)`: Conservative client identity resolver used by rate limiting and other runtime integrations.
 
 ## Related Packages
 
