@@ -22,6 +22,7 @@ describe('@fluojs/queue root barrel public surface', () => {
     const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
 
     expect(readme).toContain('QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).');
+    expect(readme).toContain('defaultDeadLetterMaxEntries');
     expect(readme).not.toContain('QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, priority).');
   });
 });

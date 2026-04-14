@@ -46,6 +46,7 @@ type QueueOwnedConnection = ConnectionOptions & {
 
 interface QueueRedisClient {
   duplicate(): QueueOwnedConnection;
+  ltrim(key: string, start: number, stop: number): Promise<unknown>;
   rpush(key: string, value: string): Promise<unknown>;
 }
 
@@ -75,9 +76,9 @@ function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
     return false;
   }
 
-  const client = value as { duplicate?: unknown; rpush?: unknown };
+  const client = value as { duplicate?: unknown; ltrim?: unknown; rpush?: unknown };
 
-  return typeof client.duplicate === 'function' && typeof client.rpush === 'function';
+  return typeof client.duplicate === 'function' && typeof client.rpush === 'function' && typeof client.ltrim === 'function';
 }
 
 function isQueuePayload(value: unknown): value is QueuePayload {
@@ -256,13 +257,13 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     const redisToken = getRedisClientToken(this.options.clientName);
 
     if (!this.runtimeContainer.has(redisToken)) {
-      throw new Error('@fluojs/queue requires a registered Redis client with duplicate() and rpush() methods.');
+      throw new Error('@fluojs/queue requires a registered Redis client with duplicate(), rpush(), and ltrim() methods.');
     }
 
     const redisClient = await this.runtimeContainer.resolve(redisToken);
 
     if (!hasQueueRedisClient(redisClient)) {
-      throw new Error('@fluojs/queue requires a Redis client with duplicate() and rpush() methods.');
+      throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
     }
 
     return redisClient;
@@ -569,6 +570,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
     }
 
     try {
+      const key = deadLetterKey(descriptor.jobName);
       const deadLetter = {
         attemptsMade: job.attemptsMade,
         errorMessage: error.message,
@@ -578,7 +580,12 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
         payload: isQueuePayload(job.data) ? cloneWithFallback(job.data) : job.data,
       };
 
-      await this.getRedisClient().rpush(deadLetterKey(descriptor.jobName), JSON.stringify(deadLetter));
+      const redis = this.getRedisClient();
+      await redis.rpush(key, JSON.stringify(deadLetter));
+
+      if (this.options.defaultDeadLetterMaxEntries !== false) {
+        await redis.ltrim(key, -this.options.defaultDeadLetterMaxEntries, -1);
+      }
     } catch (deadLetterError) {
       this.logger.error(
         `Failed to append dead-letter record for queue job ${descriptor.jobName}.`,

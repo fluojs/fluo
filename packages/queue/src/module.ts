@@ -1,7 +1,7 @@
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
-import { normalizePositiveInteger, normalizeRateLimiter } from './helpers.js';
+import { normalizePositiveInteger, normalizePositiveIntegerOrFalse, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
 import { QUEUE, QUEUE_OPTIONS } from './tokens.js';
 import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
@@ -19,6 +19,7 @@ function normalizeQueueModuleOptions(options: QueueModuleOptions = {}): Normaliz
         }
       : undefined,
     defaultConcurrency: normalizePositiveInteger(options.defaultConcurrency, 1),
+    defaultDeadLetterMaxEntries: normalizePositiveIntegerOrFalse(options.defaultDeadLetterMaxEntries, 1_000),
     defaultRateLimiter,
   };
 }

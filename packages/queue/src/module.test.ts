@@ -269,6 +269,34 @@ class MockRedisClient {
     this.deadLetters.set(key, entries);
     return entries.length;
   }
+
+  async ltrim(key: string, start: number, stop: number): Promise<'OK'> {
+    const entries = this.deadLetters.get(key) ?? [];
+
+    const resolveIndex = (index: number): number => {
+      if (index < 0) {
+        return Math.max(entries.length + index, 0);
+      }
+
+      return Math.min(index, entries.length - 1);
+    };
+
+    if (entries.length === 0) {
+      this.deadLetters.set(key, []);
+      return 'OK';
+    }
+
+    const startIndex = resolveIndex(start);
+    const stopIndex = resolveIndex(stop);
+
+    if (startIndex > stopIndex) {
+      this.deadLetters.set(key, []);
+      return 'OK';
+    }
+
+    this.deadLetters.set(key, entries.slice(startIndex, stopIndex + 1));
+    return 'OK';
+  }
 }
 
 function createLogger(events: string[]): ApplicationLogger {
@@ -625,6 +653,79 @@ describe('@fluojs/queue', () => {
         },
       },
     });
+
+    await app.close();
+  });
+
+  it('trims dead-letter lists to the configured module retention budget', async () => {
+    class TrimmedDeadLetterJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(TrimmedDeadLetterJob, { attempts: 1, jobName: 'trimmed-dead-letter-job' })
+    class TrimmedDeadLetterWorker {
+      async handle(_job: TrimmedDeadLetterJob): Promise<void> {
+        throw new Error('trim me');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ defaultDeadLetterMaxEntries: 2 })],
+      providers: [TrimmedDeadLetterWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+
+    await queue.enqueue(new TrimmedDeadLetterJob('job-1'));
+    await queue.enqueue(new TrimmedDeadLetterJob('job-2'));
+    await queue.enqueue(new TrimmedDeadLetterJob('job-3'));
+
+    const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:trimmed-dead-letter-job') ?? [];
+
+    expect(deadLetters).toHaveLength(2);
+    expect(deadLetters.map((entry) => JSON.parse(entry).payload.id)).toEqual(['job-2', 'job-3']);
+
+    await app.close();
+  });
+
+  it('allows opting out of dead-letter trimming with defaultDeadLetterMaxEntries: false', async () => {
+    class UnboundedDeadLetterJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(UnboundedDeadLetterJob, { attempts: 1, jobName: 'unbounded-dead-letter-job' })
+    class UnboundedDeadLetterWorker {
+      async handle(_job: UnboundedDeadLetterJob): Promise<void> {
+        throw new Error('keep all dead letters');
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ defaultDeadLetterMaxEntries: false })],
+      providers: [UnboundedDeadLetterWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+
+    await queue.enqueue(new UnboundedDeadLetterJob('job-1'));
+    await queue.enqueue(new UnboundedDeadLetterJob('job-2'));
+    await queue.enqueue(new UnboundedDeadLetterJob('job-3'));
+
+    const deadLetters = redis.deadLetters.get('fluo:queue:dead-letter:unbounded-dead-letter-job') ?? [];
+
+    expect(deadLetters).toHaveLength(3);
 
     await app.close();
   });

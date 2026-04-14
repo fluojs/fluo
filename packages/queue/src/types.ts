@@ -40,6 +40,7 @@ export interface QueueModuleOptions {
   defaultAttempts?: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency?: number;
+  defaultDeadLetterMaxEntries?: number | false;
   defaultRateLimiter?: QueueRateLimiterOptions;
 }
 
@@ -49,6 +50,7 @@ export interface NormalizedQueueModuleOptions {
   defaultAttempts: number;
   defaultBackoff?: QueueBackoffOptions;
   defaultConcurrency: number;
+  defaultDeadLetterMaxEntries: number | false;
   defaultRateLimiter?: QueueRateLimiterOptions;
 }
 

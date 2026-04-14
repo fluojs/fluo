@@ -82,6 +82,27 @@ export function normalizePositiveInteger(value: number | undefined, fallback: nu
   return normalized;
 }
 
+export function normalizePositiveIntegerOrFalse(
+  value: number | false | undefined,
+  fallback: number | false,
+): number | false {
+  if (value === false) {
+    return false;
+  }
+
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  const normalized = Math.trunc(value);
+
+  if (normalized < 1) {
+    return fallback;
+  }
+
+  return normalized;
+}
+
 export function normalizeRateLimiter(rateLimiter: QueueRateLimiterOptions | undefined): QueueRateLimiterOptions | undefined {
   if (!rateLimiter) {
     return undefined;
