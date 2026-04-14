@@ -71,7 +71,7 @@ const adapter = createExpressAdapter(
 
 - `createExpressAdapter(options)`: Factory for the Express HTTP adapter.
 - `bootstrapExpressApplication(module, options)`: Advanced bootstrap helper for manual control.
-- `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
+- `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class.
 
 ## Related Packages

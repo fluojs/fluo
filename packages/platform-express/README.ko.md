@@ -71,7 +71,7 @@ const adapter = createExpressAdapter(
 
 - `createExpressAdapter(options)`: Express HTTP 어댑터를 위한 팩토리입니다.
 - `bootstrapExpressApplication(module, options)`: 수동 제어를 위한 고급 부트스트랩 헬퍼입니다.
-- `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다.
+- `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 
 ## 관련 패키지
