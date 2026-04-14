@@ -137,7 +137,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
+    '- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
     '- Side effects: `CHANGELOG.md` draft release-readiness section updated',
   ].join('\n');
   const summaryKo = [
@@ -147,7 +147,7 @@ function writeSummary(checks) {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
+    '- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
     '- 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신',
   ].join('\n');
 
@@ -201,6 +201,7 @@ upsertReleaseCandidateDraft();
 run('pnpm', ['build']);
 run('pnpm', ['typecheck']);
 run('pnpm', ['test']);
+run('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
 
 const quickStart = read('docs/getting-started/quick-start.md');
 const contributing = read('CONTRIBUTING.md');
@@ -215,6 +216,12 @@ const governancePackageList = sorted(parsePackageListFromSection(releaseGovernan
 const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
 const workspacePackages = workspacePackageNames();
 
+assertCheck(
+  checks,
+  'Representative generated-project smoke suite',
+  true,
+  'Release readiness runs `pnpm --dir packages/cli sandbox:matrix` to verify install/build/test/generator flows for the default app, TCP microservice, and mixed starter baselines.',
+);
 assertCheck(
   checks,
   'Canonical bootstrap docs',
