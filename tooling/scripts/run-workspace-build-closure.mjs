@@ -183,7 +183,29 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
       throw result.error;
     }
 
-    if (typeof result.status === 'number' && result.status !== 0) {
+    if (result.signal) {
+      stderr = `${stderr}\nBuild for ${packageName} terminated by signal ${result.signal}.`.trim();
+      return {
+        order,
+        packageManager,
+        status: 1,
+        stderr,
+        stdout: stdout.trim(),
+      };
+    }
+
+    if (typeof result.status !== 'number') {
+      stderr = `${stderr}\nBuild for ${packageName} exited without a numeric status.`.trim();
+      return {
+        order,
+        packageManager,
+        status: 1,
+        stderr,
+        stdout: stdout.trim(),
+      };
+    }
+
+    if (result.status !== 0) {
       return {
         order,
         packageManager,
