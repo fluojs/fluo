@@ -24,6 +24,8 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
 npm install @fluojs/discord @fluojs/notifications
 ```
 
+이 패키지는 published package metadata에 반영된 저장소 전반의 Node.js 20+ 설치 baseline을 따르지만, 런타임 전달 계약 자체는 명시적인 fetch-compatible 경계를 통해 계속 transport-agnostic하게 유지됩니다.
+
 ## 사용 시점
 
 - Discord 메시지를 직접 보내는 기능과 `@fluojs/notifications` 채널 연동을 한 패키지에서 처리하고 싶을 때.
