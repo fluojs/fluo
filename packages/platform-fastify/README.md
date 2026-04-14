@@ -79,7 +79,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 - `createFastifyAdapter(options)`: Recommended factory for the Fastify adapter.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening.
-- `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management.
+- `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.
 
 ## Related Packages

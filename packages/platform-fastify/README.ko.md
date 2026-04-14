@@ -79,7 +79,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 - `createFastifyAdapter(options)`: Fastify 어댑터를 위한 권장 팩토리입니다.
 - `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다.
-- `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼입니다.
+- `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `FastifyHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 
 ## 관련 패키지
