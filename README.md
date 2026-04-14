@@ -12,6 +12,13 @@
     &nbsp;&middot;&nbsp;
     <a href="./README.ko.md">한국어</a>
   </p>
+
+  <p>
+    <a href="https://github.com/fluojs/fluo/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/fluojs/fluo?style=social" /></a>
+    <a href="https://github.com/fluojs/fluo/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/fluojs/fluo" /></a>
+    <a href="https://github.com/fluojs/fluo/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/fluojs/fluo/ci.yml?branch=main&label=ci" /></a>
+    <a href="https://github.com/fluojs/fluo/issues"><img alt="Issues" src="https://img.shields.io/github/issues/fluojs/fluo" /></a>
+  </p>
 </div>
 
 <br/>
@@ -86,6 +93,14 @@ fluo isn't a monolith. It's a collection of precision-engineered modules:
 - 🧭 **[Canonical Runtime Package Matrix](./docs/reference/package-surface.md)**: The source of truth for official runtime/package coverage.
 - 💡 **[Example Apps](./examples/README.md)**: From minimal setups to complex RealWorld APIs.
 - 🛠️ **[CLI Guide](./packages/cli/README.md)**: Master the `fluo` command for rapid development.
+
+## Community
+
+- 💬 **[Discussions](https://github.com/fluojs/fluo/discussions)**: Questions, ideas, RFCs, and showcase posts.
+- 🐛 **[Issues](https://github.com/fluojs/fluo/issues)**: Bug reports, documentation gaps, and feature requests.
+- 🤝 **[Contributing](./CONTRIBUTING.md)**: Local setup, verification steps, and PR process.
+- 🛟 **[Support](./SUPPORT.md)**: Which channel to use for usage help and triage.
+- 🔒 **[Security](./SECURITY.md)**: Private vulnerability reporting policy.
 
 ## Our Philosophy
 
