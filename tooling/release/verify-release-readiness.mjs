@@ -9,6 +9,18 @@ const summaryPath = join(scriptDirectory, 'release-readiness-summary.md');
 const summaryKoPath = join(scriptDirectory, 'release-readiness-summary.ko.md');
 const changelogPath = join(repoRoot, 'CHANGELOG.md');
 
+function parseCliOptions(argv = process.argv.slice(2)) {
+  const writeDrafts = argv.includes('--write-drafts');
+
+  for (const argument of argv) {
+    if (argument !== '--write-drafts') {
+      throw new Error(`Unknown option: ${argument}`);
+    }
+  }
+
+  return { writeDrafts };
+}
+
 function languageToggle(current) {
   const english = current === 'en' ? '<strong><kbd>English</kbd></strong>' : '<a href="./release-readiness-summary.md"><kbd>English</kbd></a>';
   const korean = current === 'ko' ? '<strong><kbd>한국어</kbd></strong>' : '<a href="./release-readiness-summary.ko.md"><kbd>한국어</kbd></a>';
@@ -128,8 +140,13 @@ function workspacePackageNames() {
   return sorted(names);
 }
 
-function writeSummary(checks) {
-  mkdirSync(scriptDirectory, { recursive: true });
+export function buildSummary(checks, writeDrafts) {
+  const sideEffects = writeDrafts
+    ? '- Side effects: `CHANGELOG.md`, `tooling/release/release-readiness-summary.md`, and `tooling/release/release-readiness-summary.ko.md` updated'
+    : '- Side effects: none by default; use `pnpm generate:release-readiness-drafts` to refresh draft artifacts explicitly.';
+  const sideEffectsKo = writeDrafts
+    ? '- 부수 효과: `CHANGELOG.md`, `tooling/release/release-readiness-summary.md`, `tooling/release/release-readiness-summary.ko.md` 갱신'
+    : '- 부수 효과: 기본값은 없음; 초안 산출물을 갱신하려면 `pnpm generate:release-readiness-drafts`를 명시적으로 실행하세요.';
   const summary = [
     '# release readiness summary',
     '',
@@ -138,7 +155,7 @@ function writeSummary(checks) {
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
     '- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
-    '- Side effects: `CHANGELOG.md` draft release-readiness section updated',
+    sideEffects,
   ].join('\n');
   const summaryKo = [
     '# 릴리즈 준비도 검증 요약',
@@ -148,20 +165,21 @@ function writeSummary(checks) {
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
     '- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
-    '- 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신',
+    sideEffectsKo,
   ].join('\n');
 
-  writeFileSync(summaryPath, `${summary}\n`, 'utf8');
-  writeFileSync(summaryKoPath, `${summaryKo}\n`, 'utf8');
+  return { summary, summaryKo };
 }
 
-function upsertReleaseCandidateDraft() {
-  if (!existsSync(changelogPath)) {
-    throw new Error('Release readiness check failed: CHANGELOG.md is missing at the repository root.');
-  }
+function writeSummary(checks, writeDrafts, dependencies = {}) {
+  const { mkdirSync: createDirectory = mkdirSync, writeFileSync: writeFile = writeFileSync } = dependencies;
+  createDirectory(scriptDirectory, { recursive: true });
+  const { summary, summaryKo } = buildSummary(checks, writeDrafts);
+  writeFile(summaryPath, `${summary}\n`, 'utf8');
+  writeFile(summaryKoPath, `${summaryKo}\n`, 'utf8');
+}
 
-  const changelog = readFileSync(changelogPath, 'utf8');
-  const draftDate = new Date().toISOString().slice(0, 10);
+export function withReleaseCandidateDraft(changelog, draftDate = new Date().toISOString().slice(0, 10)) {
   const startMarker = '<!-- release-readiness-draft:start -->';
   const endMarker = '<!-- release-readiness-draft:end -->';
   const draftBlock = [
@@ -192,131 +210,178 @@ function upsertReleaseCandidateDraft() {
     next = changelog.replace('## [Unreleased]', `## [Unreleased]\n\n${draftBlock}`);
   }
 
-  writeFileSync(changelogPath, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
+  return next.endsWith('\n') ? next : `${next}\n`;
 }
 
-const checks = [];
+function upsertReleaseCandidateDraft(dependencies = {}) {
+  const {
+    existsSync: pathExists = existsSync,
+    readFileSync: readFile = readFileSync,
+    writeFileSync: writeFile = writeFileSync,
+  } = dependencies;
 
-upsertReleaseCandidateDraft();
-run('pnpm', ['build']);
-run('pnpm', ['typecheck']);
-run('pnpm', ['test']);
-run('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
+  if (!pathExists(changelogPath)) {
+    throw new Error('Release readiness check failed: CHANGELOG.md is missing at the repository root.');
+  }
 
-const quickStart = read('docs/getting-started/quick-start.md');
-const contributing = read('CONTRIBUTING.md');
-const releaseGovernance = read('docs/operations/release-governance.md');
-const packageSurface = read('docs/reference/package-surface.md');
-const toolchainContract = read('docs/reference/toolchain-contract-matrix.md');
-const cliReadme = read('packages/cli/README.md');
-const scaffoldSource = read('packages/cli/src/new/scaffold.ts');
-const cliPackage = JSON.parse(read('packages/cli/package.json'));
-const changelog = read('CHANGELOG.md');
-const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
-const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
-const workspacePackages = workspacePackageNames();
+  const changelog = readFile(changelogPath, 'utf8');
+  const next = withReleaseCandidateDraft(changelog);
 
-assertCheck(
-  checks,
-  'Representative generated-project smoke suite',
-  true,
-  'Release readiness runs `pnpm --dir packages/cli sandbox:matrix` to verify install/build/test/generator flows for the default app, TCP microservice, and mixed starter baselines.',
-);
-assertCheck(
-  checks,
-  'Canonical bootstrap docs',
-  quickStart.includes('pnpm add -g @fluojs/cli') &&
-    quickStart.includes('fluo new my-fluo-app') &&
-    quickStart.includes('The fluo CLI is your central tool for project scaffolding and component generation.'),
-  'The quick start guide documents the public `pnpm add -g @fluojs/cli` + `fluo new` path.',
-);
-assertCheck(
-  checks,
-  'Repo-local smoke path docs',
-  contributing.includes('pnpm sandbox:create') &&
-    contributing.includes('pnpm sandbox:verify') &&
-    contributing.includes('pnpm sandbox:test'),
-  'The repo-local sandbox path is documented in CONTRIBUTING.md as monorepo verification support.',
-);
-assertCheck(
-  checks,
-  'Starter shape and runtime ownership',
-  scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
-    scaffoldSource.includes('@Controller(\'/health-info\')') &&
-    scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
-    scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
-    scaffoldSource.includes('await app.listen();') &&
-    scaffoldSource.includes('createHealthModule') &&
-    scaffoldSource.includes('createFastifyAdapter') &&
-    !scaffoldSource.includes('MetricsModule.forRoot') &&
-    !scaffoldSource.includes('OpenApiModule.forRoot') &&
-    !scaffoldSource.includes('src/node-http-adapter.ts'),
-  'The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.',
-);
-assertCheck(
-  checks,
-  'Generic-first bootstrap contract',
-  !quickStart.includes('ORM') &&
-    !quickStart.includes('Database') &&
-    !scaffoldSource.includes('@fluojs/prisma') &&
-    !scaffoldSource.includes('@fluojs/drizzle') &&
-    !scaffoldSource.includes('@fluojs/mongoose') &&
-    !scaffoldSource.includes('createTierNote'),
-  'Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.',
-);
-assertCheck(
-  checks,
-  'Toolchain contract lock',
-  toolchainContract.includes('## generated app baseline') &&
-    toolchainContract.includes('## CLI & scaffolding contracts') &&
-    toolchainContract.includes('## naming conventions (CLI output)') &&
-    toolchainContract.includes('fluo new') &&
-    toolchainContract.includes('fluo inspect'),
-  'The toolchain contract matrix documents the generated app baseline plus the canonical fluo command surfaces.',
-);
-assertCheck(
-  checks,
-  'Manifest benchmark evidence',
-  releaseGovernance.includes('## intended publish surface') &&
-    releaseGovernance.includes('pnpm verify:release-readiness') &&
-    releaseGovernance.includes('pnpm verify:platform-consistency-governance'),
-  'Release governance documents the canonical publish surface and the automated release gates.',
-);
-assertCheck(
-  checks,
-  'Dist-based package entrypoints',
-  cliPackage.bin.fluo === './bin/fluo.mjs' &&
+  writeFile(changelogPath, next, 'utf8');
+}
+
+export function runReleaseReadinessVerification(options = {}, dependencies = {}) {
+  const { writeDrafts = false } = options;
+  const {
+    run: runCommand = run,
+    read: readText = read,
+    existsSync: pathExists = existsSync,
+    workspacePackageNames: listWorkspacePackageNames = workspacePackageNames,
+    mkdirSync: createDirectory = mkdirSync,
+    readFileSync: readFile = readFileSync,
+    writeFileSync: writeFile = writeFileSync,
+  } = dependencies;
+  const checks = [];
+
+  runCommand('pnpm', ['build']);
+  runCommand('pnpm', ['typecheck']);
+  runCommand('pnpm', ['test']);
+  runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
+
+  const quickStart = readText('docs/getting-started/quick-start.md');
+  const contributing = readText('CONTRIBUTING.md');
+  const releaseGovernance = readText('docs/operations/release-governance.md');
+  const packageSurface = readText('docs/reference/package-surface.md');
+  const toolchainContract = readText('docs/reference/toolchain-contract-matrix.md');
+  const cliReadme = readText('packages/cli/README.md');
+  const scaffoldSource = readText('packages/cli/src/new/scaffold.ts');
+  const cliPackage = JSON.parse(readText('packages/cli/package.json'));
+  const changelog = readText('CHANGELOG.md');
+  const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
+  const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
+  const workspacePackages = listWorkspacePackageNames();
+
+  assertCheck(
+    checks,
+    'Representative generated-project smoke suite',
+    true,
+    'Release readiness runs `pnpm --dir packages/cli sandbox:matrix` to verify install/build/test/generator flows for the default app, TCP microservice, and mixed starter baselines.',
+  );
+  assertCheck(
+    checks,
+    'Canonical bootstrap docs',
+    quickStart.includes('pnpm add -g @fluojs/cli') &&
+      quickStart.includes('fluo new my-fluo-app') &&
+      quickStart.includes('The fluo CLI is your central tool for project scaffolding and component generation.'),
+    'The quick start guide documents the public `pnpm add -g @fluojs/cli` + `fluo new` path.',
+  );
+  assertCheck(
+    checks,
+    'Repo-local smoke path docs',
+    contributing.includes('pnpm sandbox:create') &&
+      contributing.includes('pnpm sandbox:verify') &&
+      contributing.includes('pnpm sandbox:test'),
+    'The repo-local sandbox path is documented in CONTRIBUTING.md as monorepo verification support.',
+  );
+  assertCheck(
+    checks,
+    'Starter shape and runtime ownership',
+    scaffoldSource.includes('const RuntimeHealthModule = createHealthModule();') &&
+      scaffoldSource.includes('@Controller(\'/health-info\')') &&
+      scaffoldSource.includes('const app = await FluoFactory.create(AppModule, {') &&
+      scaffoldSource.includes('adapter: createFastifyAdapter({ port })') &&
+      scaffoldSource.includes('await app.listen();') &&
+      scaffoldSource.includes('createHealthModule') &&
+      scaffoldSource.includes('createFastifyAdapter') &&
+      !scaffoldSource.includes('MetricsModule.forRoot') &&
+      !scaffoldSource.includes('OpenApiModule.forRoot') &&
+      !scaffoldSource.includes('src/node-http-adapter.ts'),
+    'The generated starter uses runtime-owned bootstrap helpers plus a starter-owned health module, without default metrics or OpenAPI surfaces.',
+  );
+  assertCheck(
+    checks,
+    'Generic-first bootstrap contract',
+    !quickStart.includes('ORM') &&
+      !quickStart.includes('Database') &&
+      !scaffoldSource.includes('@fluojs/prisma') &&
+      !scaffoldSource.includes('@fluojs/drizzle') &&
+      !scaffoldSource.includes('@fluojs/mongoose') &&
+      !scaffoldSource.includes('createTierNote'),
+    'Bootstrap docs and scaffold source no longer encode ORM/DB prompts, support tiers, or starter-time ORM adapter injection.',
+  );
+  assertCheck(
+    checks,
+    'Toolchain contract lock',
+    toolchainContract.includes('## generated app baseline') &&
+      toolchainContract.includes('## CLI & scaffolding contracts') &&
+      toolchainContract.includes('## naming conventions (CLI output)') &&
+      toolchainContract.includes('fluo new') &&
+      toolchainContract.includes('fluo inspect'),
+    'The toolchain contract matrix documents the generated app baseline plus the canonical fluo command surfaces.',
+  );
+  assertCheck(
+    checks,
+    'Manifest benchmark evidence',
+    releaseGovernance.includes('## intended publish surface') &&
+      releaseGovernance.includes('pnpm verify:release-readiness') &&
+      releaseGovernance.includes('pnpm verify:platform-consistency-governance'),
+    'Release governance documents the canonical publish surface and the automated release gates.',
+  );
+  assertCheck(
+    checks,
+    'Dist-based package entrypoints',
     cliPackage.bin.fluo === './bin/fluo.mjs' &&
-    cliPackage.main === './dist/index.js' &&
-    cliReadme.includes('canonical CLI'),
-  'CLI manifest and bin prove a dist-backed public `fluo` entrypoint with a subordinate compatibility alias.',
-);
-assertCheck(
-  checks,
-  'Root OSS license file',
-  existsSync(join(repoRoot, 'LICENSE')) || existsSync(join(repoRoot, 'LICENSE.md')),
-  'A repository-level OSS license file exists at the root.',
-);
-assertCheck(
-  checks,
-  'Public changelog baseline',
-  changelog.includes('# Changelog') && changelog.includes('## [Unreleased]') && changelog.includes('## [0.0.0]'),
-  'CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.',
-);
-assertCheck(
-  checks,
-  'Public package surface docs are synchronized',
-  governancePackageList.length > 0 &&
-    packageSurfaceList.length > 0 &&
-    areSameStringArrays(governancePackageList, packageSurfaceList),
-  'release-governance and package-surface docs declare the same @fluojs public package list.',
-);
-assertCheck(
-  checks,
-  'Documented public packages exist in workspace',
-  governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
-  'Every documented public package maps to an existing workspace package manifest.',
-);
+      cliPackage.bin.fluo === './bin/fluo.mjs' &&
+      cliPackage.main === './dist/index.js' &&
+      cliReadme.includes('canonical CLI'),
+    'CLI manifest and bin prove a dist-backed public `fluo` entrypoint with a subordinate compatibility alias.',
+  );
+  assertCheck(
+    checks,
+    'Root OSS license file',
+    pathExists(join(repoRoot, 'LICENSE')) || pathExists(join(repoRoot, 'LICENSE.md')),
+    'A repository-level OSS license file exists at the root.',
+  );
+  assertCheck(
+    checks,
+    'Public changelog baseline',
+    changelog.includes('# Changelog') && changelog.includes('## [Unreleased]') && changelog.includes('## [0.0.0]'),
+    'CHANGELOG.md exists with Keep a Changelog baseline sections for Unreleased and current 0.x history.',
+  );
+  assertCheck(
+    checks,
+    'Public package surface docs are synchronized',
+    governancePackageList.length > 0 &&
+      packageSurfaceList.length > 0 &&
+      areSameStringArrays(governancePackageList, packageSurfaceList),
+    'release-governance and package-surface docs declare the same @fluojs public package list.',
+  );
+  assertCheck(
+    checks,
+    'Documented public packages exist in workspace',
+    governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
+    'Every documented public package maps to an existing workspace package manifest.',
+  );
 
-writeSummary(checks);
-console.log(`Release readiness summary written to ${summaryPath}`);
+  if (writeDrafts) {
+    upsertReleaseCandidateDraft({ existsSync: pathExists, readFileSync: readFile, writeFileSync: writeFile });
+    writeSummary(checks, true, { mkdirSync: createDirectory, writeFileSync: writeFile });
+  }
+
+  return { checks, writeDrafts };
+}
+
+export function main(argv = process.argv.slice(2)) {
+  const options = parseCliOptions(argv);
+  const result = runReleaseReadinessVerification(options);
+
+  if (result.writeDrafts) {
+    console.log(`Release readiness drafts written to ${summaryPath}, ${summaryKoPath}, and ${changelogPath}`);
+  } else {
+    console.log('Release readiness checks passed without writing draft artifacts.');
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

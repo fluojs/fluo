@@ -1,0 +1,70 @@
+import { describe, expect, it, vi } from 'vitest';
+
+function createDependencies() {
+  const docs = new Map([
+    ['docs/getting-started/quick-start.md', 'pnpm add -g @fluojs/cli\nfluo new my-fluo-app\nThe fluo CLI is your central tool for project scaffolding and component generation.'],
+    ['CONTRIBUTING.md', 'pnpm sandbox:create\npnpm sandbox:verify\npnpm sandbox:test'],
+    [
+      'docs/operations/release-governance.md',
+      '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance',
+    ],
+    ['docs/reference/package-surface.md', '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` |'],
+    ['docs/reference/toolchain-contract-matrix.md', '## generated app baseline\n## CLI & scaffolding contracts\n## naming conventions (CLI output)\nfluo new\nfluo inspect'],
+    ['packages/cli/README.md', 'canonical CLI'],
+    [
+      'packages/cli/src/new/scaffold.ts',
+      "const RuntimeHealthModule = createHealthModule();\n@Controller('/health-info')\nconst app = await FluoFactory.create(AppModule, {\nadapter: createFastifyAdapter({ port })\nawait app.listen();\ncreateHealthModule\ncreateFastifyAdapter",
+    ],
+    ['packages/cli/package.json', JSON.stringify({ bin: { fluo: './bin/fluo.mjs' }, main: './dist/index.js' })],
+    ['CHANGELOG.md', '# Changelog\n\n## [Unreleased]\n\n## [0.0.0]\n'],
+  ]);
+
+  return {
+    run: vi.fn(),
+    read: vi.fn((relativePath) => {
+      const value = docs.get(relativePath);
+      if (typeof value !== 'string') {
+        throw new Error(`Unexpected read: ${relativePath}`);
+      }
+
+      return value;
+    }),
+    existsSync: vi.fn((targetPath) => targetPath.endsWith('/LICENSE') || targetPath.endsWith('/CHANGELOG.md')),
+    workspacePackageNames: vi.fn(() => ['@fluojs/cli', '@fluojs/core']),
+    mkdirSync: vi.fn(),
+    readFileSync: vi.fn(() => '# Changelog\n\n## [Unreleased]\n'),
+    writeFileSync: vi.fn(),
+  };
+}
+
+describe('runReleaseReadinessVerification', () => {
+  it('keeps default verification read-only', async () => {
+    // @ts-ignore tooling script is exercised via runtime import.
+    const releaseModule = (await import('./verify-release-readiness.mjs')) as any;
+    const dependencies = createDependencies();
+
+    const result = releaseModule.runReleaseReadinessVerification({}, dependencies);
+
+    expect(result.writeDrafts).toBe(false);
+    expect(dependencies.run).toHaveBeenCalledTimes(4);
+    expect(dependencies.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('writes draft artifacts only when explicitly requested', async () => {
+    // @ts-ignore tooling script is exercised via runtime import.
+    const releaseModule = (await import('./verify-release-readiness.mjs')) as any;
+    const dependencies = createDependencies();
+
+    const result = releaseModule.runReleaseReadinessVerification({ writeDrafts: true }, dependencies);
+
+    expect(result.writeDrafts).toBe(true);
+    expect(dependencies.writeFileSync).toHaveBeenCalledTimes(3);
+    expect(dependencies.writeFileSync.mock.calls.some(([targetPath]) => String(targetPath).endsWith('/CHANGELOG.md'))).toBe(true);
+    expect(
+      dependencies.writeFileSync.mock.calls.some(([, content]) =>
+        String(content).includes('use `pnpm generate:release-readiness-drafts`') ||
+        String(content).includes('`CHANGELOG.md`, `tooling/release/release-readiness-summary.md`'),
+      ),
+    ).toBe(true);
+  });
+});
