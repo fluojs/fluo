@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
 
 interface RedisPubSubMessage {
   kind: 'event';
@@ -30,6 +30,7 @@ export interface RedisPubSubMicroserviceTransportOptions {
  */
 export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
   private readonly messageListener = (channel: string, message: string) => {
@@ -38,6 +39,11 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
   private readonly namespace: string;
 
   private logEventHandlerFailure(error: unknown): void {
+    if (this.logger) {
+      this.logger.error('Event handler failed.', error, 'RedisPubSubMicroserviceTransport');
+      return;
+    }
+
     console.error('[fluo][RedisPubSubMicroserviceTransport] event handler failed:', error);
   }
 
@@ -48,6 +54,10 @@ export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
    */
   constructor(private readonly options: RedisPubSubMicroserviceTransportOptions) {
     this.namespace = options.namespace ?? 'fluo:microservices';
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
