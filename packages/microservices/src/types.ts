@@ -1,5 +1,6 @@
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import type { Scope } from '@fluojs/di';
+import type { ApplicationLogger } from '@fluojs/runtime';
 
 /** Pattern matcher used to route messages and events to handler methods. */
 export type Pattern = RegExp | string;
@@ -34,6 +35,9 @@ export interface TransportPacket {
 
 /** Async entrypoint used by transports to hand packets to the runtime. */
 export type TransportHandler = (packet: TransportPacket) => Promise<unknown>;
+
+/** Narrow logger seam transports use for non-fatal handler failure reporting. */
+export interface MicroserviceTransportLogger extends Pick<ApplicationLogger, 'error'> {}
 
 /** Writer contract used for server-side and bidirectional streaming responses. */
 export interface ServerStreamWriter {
@@ -89,6 +93,7 @@ export interface MicroserviceTransport {
   listenBidiStreaming?(handler: TransportBidiStreamHandler): void;
   listenClientStreaming?(handler: TransportClientStreamHandler): void;
   listenServerStreaming?(handler: TransportServerStreamHandler): void;
+  setLogger?(logger: MicroserviceTransportLogger): void;
   send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown>;
   serverStream?(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown>;
 }
