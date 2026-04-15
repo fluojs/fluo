@@ -94,9 +94,11 @@ fluo는 엄격한 **유의적 버전(Semantic Versioning, Semver)**을 따릅니
 거버넌스는 자동화된 게이트와 수동 체크리스트를 통해 강제됩니다.
 
 ### CI/CD 강제 사항
-- **`pnpm verify:release-readiness`**: 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 검증합니다.
+- **`pnpm verify:release-readiness`**: 기본적으로 `CHANGELOG.md`나 release-readiness summary 파일을 변경하지 않고 패키징된 CLI 엔트리포인트와 스타터 스캐폴딩을 검증합니다.
+- **`pnpm generate:release-readiness-drafts`**: 릴리스 노트를 준비할 때 release-readiness summary 산출물과 `CHANGELOG.md` 드래프트 블록을 명시적으로 갱신합니다.
 - **`pnpm verify:platform-consistency-governance`**: 영어와 한국어 문서 간의 구조적 일관성을 강제합니다.
 - **`pnpm verify:public-export-tsdoc`**: `packages/*/src` 아래 변경된 public export가 repo-wide TSDoc 최소 기준을 놓치면 실패합니다.
+- **`pnpm verify:public-export-tsdoc:baseline`**: 동일한 TSDoc 기준을 전체 governed `packages/*/src` 표면에 적용해 아직 수정되지 않은 누락 파일도 탐지합니다.
 - **동작 계약 체크**: `process.env`가 승인된 패턴(`@fluojs/config`) 외부에서 액세스될 경우 릴리스를 차단합니다.
 
 ### 변경 이력 표준 (Changelog Standards)

@@ -4,7 +4,7 @@
   <a href="./public-export-tsdoc-baseline.md">English</a> | <strong>한국어</strong>
 </p>
 
-이 문서는 `@fluojs/*` 패키지에서 변경되는 public export에 적용할 소스 레벨 TSDoc 최소 기준을 정의합니다. 이후 패키지군별 확장 작업 전에 IDE hover 도움말, 코드 리뷰 기대치, 패키지 README 예제를 같은 기준으로 맞추기 위한 출발점입니다.
+이 문서는 `@fluojs/*` 패키지의 public export에 적용할 소스 레벨 TSDoc 최소 기준을 정의합니다. 기본 PR 게이트는 변경 파일에 집중하고, 별도의 전체 기준선 모드는 전체 governed 표면을 감사할 수 있게 합니다.
 
 ## 이 문서가 중요한 경우
 
@@ -16,7 +16,7 @@
 
 ## 최소 기준
 
-변경된 모든 public export는 반드시 다음을 포함해야 합니다.
+선택한 모드에서 검사되는 모든 governed public export는 반드시 다음을 포함해야 합니다.
 
 - 계약을 평이한 언어로 설명하는 한 줄 이상의 summary.
 - 이름이 있는 각 함수 파라미터에 대한 `@param`.
@@ -57,7 +57,8 @@
 ## 자동화
 
 - `pnpm lint`는 이제 `pnpm verify:public-export-tsdoc`를 함께 실행합니다.
-- 게이트는 `packages/*/src` 아래 변경 파일만 대상으로 하므로, repo-wide rollout을 패키지군 단위로 현실적으로 진행할 수 있습니다.
+- `pnpm verify:public-export-tsdoc`는 빠른 PR 게이트를 위해 `packages/*/src` 아래 변경 파일만 대상으로 유지하므로, repo-wide rollout을 패키지군 단위로 현실적으로 진행할 수 있습니다.
+- `pnpm verify:public-export-tsdoc:baseline`은 동일한 규칙을 전체 governed `packages/*/src` 표면에 적용해 아직 손대지 않은 누락 파일도 탐지합니다.
 - re-export barrel은 자동 검사에서 제외되며, 실제 심볼이 정의된 위치에 문서를 작성해야 합니다.
 
 ## 관련 문서

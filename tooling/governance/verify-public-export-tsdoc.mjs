@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import ts from 'typescript';
@@ -55,6 +55,26 @@ function changedFilesFromGit() {
   addDiffFiles(['diff', '--name-only', '--cached']);
 
   return [...changedFiles].sort((left, right) => left.localeCompare(right));
+}
+
+function workspaceFilesFromPackagesDirectory(directory = join(repoRoot, 'packages')) {
+  const files = [];
+
+  function visit(currentDirectory) {
+    for (const entry of readdirSync(currentDirectory, { withFileTypes: true })) {
+      const nextPath = join(currentDirectory, entry.name);
+
+      if (entry.isDirectory()) {
+        visit(nextPath);
+        continue;
+      }
+
+      files.push(relative(repoRoot, nextPath).replaceAll('\\', '/'));
+    }
+  }
+
+  visit(directory);
+  return files.sort((left, right) => left.localeCompare(right));
 }
 
 function preferredBaseRefFromGit() {
@@ -343,6 +363,26 @@ export function changedPublicExportSourcePathsFromGit(
   });
 }
 
+export function governedPublicExportSourcePathsFromWorkspace(relativePaths = workspaceFilesFromPackagesDirectory()) {
+  return relativePaths.filter((relativePath) => isGovernedPublicExportSourcePath(relativePath));
+}
+
+export function publicExportTSDocTargetPaths(
+  mode = 'changed',
+  changedPaths = changedPublicExportSourcePathsFromGit(),
+  workspacePaths = governedPublicExportSourcePathsFromWorkspace(),
+) {
+  if (mode === 'changed') {
+    return changedPaths;
+  }
+
+  if (mode === 'full') {
+    return workspacePaths;
+  }
+
+  throw new Error(`Unsupported public export TSDoc mode: ${mode}`);
+}
+
 function scriptKindForPath(relativePath) {
   const extension = extname(relativePath);
 
@@ -385,13 +425,15 @@ export function collectPublicExportTSDocViolations(relativePaths, readSource = r
 export function enforcePublicExportTSDocBaseline(
   relativePaths = changedPublicExportSourcePathsFromGit(),
   readSource = read,
+  mode = 'changed',
 ) {
   const violations = collectPublicExportTSDocViolations(relativePaths, readSource);
+  const scopeDescription = mode === 'full' ? 'governed public exports' : 'changed public exports';
 
   assert(
     violations.length === 0,
     [
-      'changed public exports must include a TSDoc summary and matching @param/@returns tags when applicable.',
+      `${scopeDescription} must include a TSDoc summary and matching @param/@returns tags when applicable.`,
       'Use docs/operations/public-export-tsdoc-baseline.md for the authoring checklist and golden examples.',
       ...violations.map(
         (violation) => `${violation.path}:${violation.line} ${violation.kind} ${violation.name} is missing ${violation.reason}`,
@@ -400,9 +442,40 @@ export function enforcePublicExportTSDocBaseline(
   );
 }
 
-export function main() {
-  enforcePublicExportTSDocBaseline();
-  console.log('Public export TSDoc checks passed.');
+export function enforcePublicExportTSDocBaselineForMode(
+  mode = 'changed',
+  readSource = read,
+  changedPaths = changedPublicExportSourcePathsFromGit(),
+  workspacePaths = governedPublicExportSourcePathsFromWorkspace(),
+) {
+  const relativePaths = publicExportTSDocTargetPaths(mode, changedPaths, workspacePaths);
+  enforcePublicExportTSDocBaseline(relativePaths, readSource, mode);
+}
+
+function parseCliOptions(argv = process.argv.slice(2)) {
+  let mode = 'changed';
+
+  for (const argument of argv) {
+    if (argument === '--all' || argument === '--mode=full') {
+      mode = 'full';
+      continue;
+    }
+
+    if (argument === '--mode=changed') {
+      mode = 'changed';
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${argument}`);
+  }
+
+  return { mode };
+}
+
+export function main(argv = process.argv.slice(2)) {
+  const { mode } = parseCliOptions(argv);
+  enforcePublicExportTSDocBaselineForMode(mode);
+  console.log(`Public export TSDoc checks passed (${mode} mode).`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

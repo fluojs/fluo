@@ -94,9 +94,11 @@ During the `0.x` phase, the **Minor** version is used for breaking changes. Ever
 Governance is enforced through automated gates and manual checklists.
 
 ### CI/CD Enforcement
-- **`pnpm verify:release-readiness`**: Validates the packed CLI entrypoints and starter scaffolding.
+- **`pnpm verify:release-readiness`**: Validates the packed CLI entrypoints and starter scaffolding without mutating `CHANGELOG.md` or release-readiness summary files by default.
+- **`pnpm generate:release-readiness-drafts`**: Explicitly refreshes the release-readiness summary artifacts and the draft `CHANGELOG.md` block when maintainers are preparing release notes.
 - **`pnpm verify:platform-consistency-governance`**: Enforces structural parity between English and Korean documentation.
 - **`pnpm verify:public-export-tsdoc`**: Fails when changed public exports in `packages/*/src` miss the repo-wide TSDoc minimum baseline.
+- **`pnpm verify:public-export-tsdoc:baseline`**: Runs the same TSDoc baseline against the full governed `packages/*/src` surface to catch untouched backlog files.
 - **Behavioral Contract Check**: Blocks releases if `process.env` is accessed outside of the sanctioned `@fluojs/config` patterns.
 
 ### Changelog Standards

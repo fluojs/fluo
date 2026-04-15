@@ -4,7 +4,7 @@
   <strong>English</strong> | <a href="./public-export-tsdoc-baseline.ko.md">한국어</a>
 </p>
 
-This guide defines the minimum source-level TSDoc baseline for changed public exports in `@fluojs/*` packages. It keeps IDE hover help, code review expectations, and package README examples aligned before the package-group rollout begins.
+This guide defines the minimum source-level TSDoc baseline for public exports in `@fluojs/*` packages. The default PR gate stays focused on changed files, while a separate full-baseline mode lets maintainers audit the entire governed surface.
 
 ## When this document matters
 
@@ -16,7 +16,7 @@ This guide defines the minimum source-level TSDoc baseline for changed public ex
 
 ## Minimum baseline
 
-Every changed public export MUST include:
+Every governed public export checked by the selected mode MUST include:
 
 - A one-line-or-better summary that explains the contract in plain language.
 - `@param` for every named function parameter.
@@ -57,7 +57,8 @@ Use these repo-local references as the preferred writing style:
 ## Automation
 
 - `pnpm lint` now includes `pnpm verify:public-export-tsdoc`.
-- The gate scopes itself to changed files under `packages/*/src` so the repo-wide rollout can proceed package-group by package-group.
+- `pnpm verify:public-export-tsdoc` keeps the fast PR gate scoped to changed files under `packages/*/src` so the repo-wide rollout can proceed package-group by package-group.
+- `pnpm verify:public-export-tsdoc:baseline` runs the same rule set against the full governed `packages/*/src` surface to catch untouched backlog files.
 - Re-export barrels are ignored by the automated check; document the underlying declaration where the symbol is defined.
 
 ## Related Docs

@@ -54,7 +54,13 @@ Use the following repo-local references before inventing a new style:
 - `packages/di/src/container.ts`
 - [docs/operations/public-export-tsdoc-baseline.md](docs/operations/public-export-tsdoc-baseline.md)
 
-`pnpm lint` now includes `pnpm verify:public-export-tsdoc`, which checks changed package source files for this minimum baseline.
+`pnpm lint` now includes `pnpm verify:public-export-tsdoc`, which keeps PR-time enforcement scoped to changed package source files.
+Use `pnpm verify:public-export-tsdoc:baseline` when you need to audit the full governed `packages/*/src` surface for backlog TSDoc gaps.
+
+Release-readiness verification is now read-only by default:
+
+- `pnpm verify:release-readiness` validates release gates without dirtying the working tree.
+- `pnpm generate:release-readiness-drafts` explicitly refreshes `CHANGELOG.md` draft content plus the release-readiness summary artifacts when maintainers want writable outputs.
 
 ## maintainer workflows
 

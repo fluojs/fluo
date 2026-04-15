@@ -25,7 +25,9 @@
     "lint": "biome lint && pnpm verify:public-export-tsdoc",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
     "verify:release-readiness": "node tooling/release/verify-release-readiness.mjs",
+    "generate:release-readiness-drafts": "node tooling/release/verify-release-readiness.mjs --write-drafts",
     "verify:public-export-tsdoc": "node tooling/governance/verify-public-export-tsdoc.mjs",
+    "verify:public-export-tsdoc:baseline": "node tooling/governance/verify-public-export-tsdoc.mjs --mode=full",
     "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs"
   },
   "pnpm": {

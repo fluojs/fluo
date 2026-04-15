@@ -103,7 +103,9 @@ Keep the module wiring real but override the low-level client tokens to avoid ne
 | :--- | :--- |
 | `pnpm test` | Runs the full Vitest suite across the workspace. |
 | `pnpm verify` | Sequential execution: Build → Typecheck → Lint → Test. |
-| `pnpm verify:release-readiness` | Comprehensive gate for public releases, including packed CLI verification. |
+| `pnpm verify:release-readiness` | Comprehensive read-only gate for public releases, including packed CLI verification. |
+| `pnpm generate:release-readiness-drafts` | Explicitly writes release-readiness summary artifacts and the draft changelog block for release prep. |
+| `pnpm verify:public-export-tsdoc:baseline` | Runs the public-export TSDoc baseline against the full governed package source surface. |
 
 ### Generated Templates
 When using the CLI (`fluo g repo <Name>`), the following templates are provided as the baseline:
