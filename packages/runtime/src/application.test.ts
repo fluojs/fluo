@@ -2054,6 +2054,93 @@ describe('bootstrapApplication', () => {
     expect(loggerEvents).toContain('error:FluoApplication:Failed to start the HTTP adapter.:port already in use');
   });
 
+  it('threads the runtime logger into dispatcher observer and disposal failure paths', async () => {
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message, error, context) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+      },
+      log() {},
+      warn() {},
+    };
+    const observer = {
+      onRequestStart() {
+        throw new Error('observer seam failed');
+      },
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [HealthController],
+    });
+
+    const app = await bootstrapApplication({
+      logger,
+      observers: [observer],
+      rootModule: AppModule,
+    });
+    const createRequestScope = app.container.createRequestScope.bind(app.container);
+
+    vi.spyOn(app.container, 'createRequestScope').mockImplementation(() => {
+      const scope = createRequestScope();
+      const dispose = scope.dispose.bind(scope);
+
+      scope.dispose = async () => {
+        await dispose();
+        throw new Error('scope dispose failed');
+      };
+
+      return scope;
+    });
+    const request: FrameworkRequest = {
+      body: undefined,
+      cookies: {},
+      headers: { 'x-request-id': 'req-app-logger' },
+      method: 'GET',
+      params: {},
+      path: '/health',
+      query: {},
+      raw: {},
+      url: '/health',
+    };
+    const response: FrameworkResponse & { body?: unknown } = {
+      committed: false,
+      headers: {},
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('Location', location);
+        this.committed = true;
+      },
+      send(body) {
+        this.body = body;
+        this.committed = true;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+      setStatus(code) {
+        this.statusCode = code;
+      },
+      statusCode: undefined,
+    };
+
+    await app.dispatch(request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(loggerEvents).toContain('error:HttpDispatcher:Request observer threw an unhandled error.:observer seam failed');
+    expect(loggerEvents).toContain('error:HttpDispatcher:Request-scoped container dispose threw an error.:scope dispose failed');
+  });
+
   it('parses Cookie header and exposes individual cookies via FromCookie', async () => {
     class TokenInput {
       @FromCookie()

@@ -868,12 +868,14 @@ function createRuntimeDispatcherOptions(
   options: BootstrapApplicationOptions,
   handlerMapping: ReturnType<typeof createHandlerMapping>,
   errorHandler: ErrorHandler | undefined,
+  logger: ApplicationLogger,
 ): ErrorAwareDispatcherOptions {
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
     binder: new DefaultBinder(options.converters ?? []),
     handlerMapping,
     interceptors: options.interceptors ?? [],
+    logger,
     observers: options.observers ?? [],
     rootContainer: bootstrapped.container,
   };
@@ -901,6 +903,7 @@ function createRuntimeDispatcher(
     options,
     handlerMapping,
     errorHandler,
+    logger,
   );
 
   return createDispatcher(dispatcherOptions);
