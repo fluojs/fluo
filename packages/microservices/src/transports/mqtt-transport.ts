@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -93,6 +93,7 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
   private readonly internallyOwnedClient: boolean;
+  private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
   private readonly messageListener = (topic: string, payload: Buffer) => {
@@ -131,6 +132,10 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.client = options.client;
     this.internallyOwnedClient = !options.client;
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -571,6 +576,11 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
   }
 
   private logEventHandlerFailure(error: unknown): void {
+    if (this.logger) {
+      this.logger.error('Event handler failed.', error, 'MqttMicroserviceTransport');
+      return;
+    }
+
     console.error('[fluo][MqttMicroserviceTransport] event handler failed:', error);
   }
 }
