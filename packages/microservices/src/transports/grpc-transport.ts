@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from '../types.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -135,6 +135,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   private readonly clients = new Map<string, ServiceRuntime>();
   private grpc: GrpcJsLike | undefined;
   private handler: TransportHandler | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
   private readonly pending = new Map<string, PendingRequest>();
@@ -152,6 +153,10 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   constructor(private readonly options: GrpcMicroserviceTransportOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.server = options.server;
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -1271,6 +1276,11 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   }
 
   private logEventHandlerFailure(error: unknown): void {
+    if (this.logger) {
+      this.logger.error('Event handler failed.', error, 'GrpcMicroserviceTransport');
+      return;
+    }
+
     console.error('[fluo][GrpcMicroserviceTransport] event handler failed:', error);
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MqttMicroserviceTransport } from './mqtt-transport.js';
 
@@ -311,6 +311,32 @@ describe('MqttMicroserviceTransport', () => {
 
     await transport.listen(async () => 'second');
     await expect(transport.send('health.ping', {})).resolves.toBe('second');
+    await transport.close();
+  });
+
+  it('routes event handler failures through the injected logger without rejecting emit()', async () => {
+    const broker = new InMemoryMqttBroker();
+    const transport = new MqttMicroserviceTransport({ client: new InMemoryMqttClient(broker) });
+    const logger = { error: vi.fn() };
+
+    transport.setLogger(logger);
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('mqtt event failed');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('audit.event', { value: 'bad' })).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'mqtt event failed' }),
+      'MqttMicroserviceTransport',
+    );
+
     await transport.close();
   });
 

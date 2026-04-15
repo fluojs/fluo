@@ -93,6 +93,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       this.descriptors.push(...this.discoverHandlerDescriptors());
 
       const transport = this.moduleOptions.transport;
+      transport.setLogger?.(this.logger);
 
       if (transport.listenServerStreaming) {
         transport.listenServerStreaming(

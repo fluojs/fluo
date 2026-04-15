@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
+import type { ApplicationLogger } from '@fluojs/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
@@ -13,6 +14,7 @@ import { RedisPubSubMicroserviceTransport } from './transports/redis-transport.j
 import { TcpMicroserviceTransport } from './transports/tcp-transport.js';
 import type {
   MicroserviceTransport,
+  MicroserviceTransportLogger,
   ServerStreamWriter,
   TransportBidiStreamHandler,
   TransportClientStreamHandler,
@@ -542,6 +544,67 @@ describe('@fluojs/microservices', () => {
     await Promise.all([microservice.listen(), microservice.listen()]);
 
     expect(listenCalls).toBe(1);
+
+    await microservice.close();
+  });
+
+  it('injects the framework logger into transports without changing non-fatal event semantics', async () => {
+    const loggerEvents: string[] = [];
+    const logger: ApplicationLogger = {
+      debug() {},
+      error(message: string, error?: unknown, context?: string) {
+        loggerEvents.push(`error:${context}:${message}:${error instanceof Error ? error.message : 'none'}`);
+      },
+      log() {},
+      warn() {},
+    };
+
+    class LoggerAwareTransport implements MicroserviceTransport {
+      private handler: TransportHandler | undefined;
+      private logger: MicroserviceTransportLogger | undefined;
+
+      setLogger(loggerInstance: MicroserviceTransportLogger): void {
+        this.logger = loggerInstance;
+      }
+
+      async close(): Promise<void> {}
+
+      async emit(pattern: string, payload: unknown): Promise<void> {
+        void pattern;
+        void payload;
+        this.logger?.error('Event handler failed.', new Error('event boom'), 'LoggerAwareTransport');
+      }
+
+      async listen(handler: TransportHandler): Promise<void> {
+        this.handler = handler;
+      }
+
+      async send(): Promise<unknown> {
+        return undefined;
+      }
+    }
+
+    const transport = new LoggerAwareTransport();
+
+    class Handler {
+      @EventPattern('audit.fail')
+      onAudit() {
+        throw new Error('event boom');
+      }
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+      providers: [Handler],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule, { logger });
+    await microservice.listen();
+
+    await expect(microservice.emit('audit.fail', { ok: false })).resolves.toBeUndefined();
+
+    expect(loggerEvents).toContain('error:LoggerAwareTransport:Event handler failed.:event boom');
 
     await microservice.close();
   });

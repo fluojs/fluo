@@ -211,6 +211,11 @@ export interface Dispatcher {
   dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void>;
 }
 
+/** Logger seam used by the dispatcher for non-fatal internal failure reporting. */
+export interface DispatcherLogger {
+  error(message: string, error?: unknown, context?: string): void;
+}
+
 /** Observation payload delivered to request observers throughout one dispatch. */
 export interface RequestObservationContext {
   handler?: HandlerDescriptor;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GrpcMicroserviceTransport } from './grpc-transport.js';
 import type { ServerStreamWriter } from '../types.js';
@@ -701,6 +701,30 @@ describe('GrpcMicroserviceTransport', () => {
 
     expect(first).toBe(2);
     expect(second).toBe(4);
+
+    await transport.close();
+  });
+
+  it('routes event handler failures through the injected logger without rejecting emit()', async () => {
+    const { transport } = createGrpcTransport();
+    const logger = { error: vi.fn() };
+
+    transport.setLogger(logger);
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('grpc event failed');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('MathService.Notify', { value: 'bad' })).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'grpc event failed' }),
+      'GrpcMicroserviceTransport',
+    );
 
     await transport.close();
   });

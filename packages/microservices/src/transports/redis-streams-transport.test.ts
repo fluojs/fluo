@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   RedisStreamsMicroserviceTransport,
@@ -516,6 +516,9 @@ describe('RedisStreamsMicroserviceTransport', () => {
         },
       },
     });
+    const logger = { error: vi.fn() };
+
+    transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
@@ -529,6 +532,11 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await sleep(20);
 
     expect(acknowledgements.some((entry) => entry.startsWith('fluo:streams:events:'))).toBe(false);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'event failed' }),
+      'RedisStreamsMicroserviceTransport',
+    );
 
     await transport.close();
   });
@@ -716,13 +724,21 @@ describe('RedisStreamsMicroserviceTransport', () => {
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
     });
+    const logger = { error: vi.fn() };
 
+    transport.setLogger(logger);
     await transport.listen(async () => {
       throw new Error('redis streams event handler failed');
     });
 
     await expect(transport.emit('audit.login', { message: 'ok' })).resolves.toBeUndefined();
     await sleep(30);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'redis streams event handler failed' }),
+      'RedisStreamsMicroserviceTransport',
+    );
 
     await transport.close();
   });

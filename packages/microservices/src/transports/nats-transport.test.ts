@@ -126,9 +126,10 @@ describe('NatsMicroserviceTransport', () => {
         return new TextEncoder().encode(value);
       },
     };
-    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const logger = { error: vi.fn() };
 
     const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    transport.setLogger(logger);
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
         throw new Error('nats event failed');
@@ -140,7 +141,11 @@ describe('NatsMicroserviceTransport', () => {
     await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(logger).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'nats event failed' }),
+      'NatsMicroserviceTransport',
+    );
 
     await transport.close();
   });
@@ -155,15 +160,20 @@ describe('NatsMicroserviceTransport', () => {
         return new TextEncoder().encode(value);
       },
     };
-    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const logger = { error: vi.fn() };
 
     const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    transport.setLogger(logger);
     await transport.listen(async () => undefined);
 
     nats.publish('fluo.microservices.events', new TextEncoder().encode('{not-json'));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(logger).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.any(Error),
+      'NatsMicroserviceTransport',
+    );
 
     await transport.close();
   });

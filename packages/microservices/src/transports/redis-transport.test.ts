@@ -116,7 +116,8 @@ describe('RedisPubSubMicroserviceTransport', () => {
       publishClient,
       subscribeClient,
     });
-    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const logger = { error: vi.fn() };
+    transport.setLogger(logger);
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
@@ -129,7 +130,11 @@ describe('RedisPubSubMicroserviceTransport', () => {
     await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(logger).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      'Event handler failed.',
+      expect.objectContaining({ message: 'redis event failed' }),
+      'RedisPubSubMicroserviceTransport',
+    );
 
     await transport.close();
   });

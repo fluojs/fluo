@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
 
 interface NatsMessageLike {
   readonly data: Uint8Array;
@@ -55,6 +55,7 @@ interface PendingRequest {
 export class NatsMicroserviceTransport implements MicroserviceTransport {
   private closing = false;
   private handler: TransportHandler | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private readonly eventSubject: string;
   private readonly messageSubject: string;
@@ -63,6 +64,11 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   private subscriptions: NatsSubscriptionLike[] = [];
 
   private logEventHandlerFailure(error: unknown): void {
+    if (this.logger) {
+      this.logger.error('Event handler failed.', error, 'NatsMicroserviceTransport');
+      return;
+    }
+
     console.error('[fluo][NatsMicroserviceTransport] event handler failed:', error);
   }
 
@@ -81,6 +87,10 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     this.eventSubject = options.eventSubject ?? 'fluo.microservices.events';
     this.messageSubject = options.messageSubject ?? 'fluo.microservices.messages';
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
