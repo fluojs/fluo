@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { spinner as clackSpinner, log as clackLog } from '@clack/prompts';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
+import { installDependencies } from '../new/install.js';
 import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import {
@@ -18,6 +19,23 @@ import type { BootstrapAnswers, NewCommandOptions } from '../new/types.js';
 type CliStream = {
   write(message: string): unknown;
 };
+
+function shouldUseInteractiveShell(runtime: NewCommandRuntimeOptions): boolean {
+  return runtime.prompt === undefined
+    && runtime.stdout === undefined
+    && runtime.stderr === undefined
+    && (runtime.interactive ?? true)
+    && Boolean(runtime.stdin?.isTTY ?? process.stdin.isTTY);
+}
+
+function extractDependencyInstallationOutput(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !('output' in error)) {
+    return undefined;
+  }
+
+  const output = error.output;
+  return typeof output === 'string' && output.trim().length > 0 ? output : undefined;
+}
 
 function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
@@ -401,37 +419,63 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       stdin: runtime.stdin,
       stdout,
     });
+    const targetDirectory = resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory);
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,
       force: parsed.force ?? runtime.force,
       initializeGit: answers.initializeGit,
-      installDependencies: answers.installDependencies,
+      installDependencies: false,
       repoRoot: runtime.repoRoot,
-      skipInstall: runtime.skipInstall,
-      targetDirectory: resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory),
+      skipInstall: true,
+      targetDirectory,
     };
 
-    if (answers.installDependencies) {
-      stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
-    } else {
+    const isInteractiveShell = shouldUseInteractiveShell(runtime);
+    let scaffoldSpinner: ReturnType<typeof clackSpinner> | undefined;
+
+    if (!answers.installDependencies && !isInteractiveShell) {
       stdout.write('Skipping dependency installation.\n');
     }
 
-    const isInteractiveShell = runtime.prompt === undefined && !runtime.interactive;
-    let s: ReturnType<typeof clackSpinner> | undefined;
-
-    if (isInteractiveShell && !answers.installDependencies) {
-      s = clackSpinner();
-      s.start('Scaffolding project files');
+    if (isInteractiveShell) {
+      scaffoldSpinner = clackSpinner();
+      scaffoldSpinner.start('Scaffolding project files');
     }
 
     await scaffoldBootstrapApp(options);
 
-    if (s) {
-      s.stop('Project files written');
-    } else if (isInteractiveShell && answers.installDependencies) {
-      clackLog.step('Scaffolding complete. Installing dependencies...');
+    if (scaffoldSpinner) {
+      scaffoldSpinner.stop('Project files written');
+    }
+
+    if (answers.installDependencies) {
+      if (!isInteractiveShell) {
+        stdout.write(`Installing dependencies with ${answers.packageManager}...\n`);
+        await installDependencies(targetDirectory, answers.packageManager, { stderr });
+      } else {
+        const installSpinner = clackSpinner();
+        installSpinner.start(`Installing dependencies with ${answers.packageManager}`);
+
+        try {
+          await installDependencies(targetDirectory, answers.packageManager, {
+            stderr,
+            stdio: 'capture',
+          });
+          installSpinner.stop('Dependencies installed');
+        } catch (error: unknown) {
+          installSpinner.error('Dependency installation failed');
+
+          const output = extractDependencyInstallationOutput(error);
+          if (output) {
+            stderr.write(`\n[fluo] Full installation log:\n${output}${output.endsWith('\n') ? '' : '\n'}`);
+          }
+
+          throw error;
+        }
+      }
+    } else if (isInteractiveShell) {
+      clackLog.step('Dependency installation skipped');
     }
 
     stdout.write('Done.\n');
