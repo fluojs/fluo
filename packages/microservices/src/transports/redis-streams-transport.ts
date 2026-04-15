@@ -1,4 +1,4 @@
-import type { MicroserviceTransport, TransportHandler } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
 
 interface StreamReadGroupResult {
   readonly id: string;
@@ -81,6 +81,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private closing = false;
   private readonly consumerId: string;
   private handler: TransportHandler | undefined;
+  private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
   private readonly pending = new Map<string, PendingRequest>();
@@ -108,6 +109,10 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     this.messageRetentionMaxLen = options.messageRetentionMaxLen;
     this.eventRetentionMaxLen = options.eventRetentionMaxLen;
     this.responseRetentionMaxLen = options.responseRetentionMaxLen ?? 1_000;
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -509,6 +514,11 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   }
 
   private logEventHandlerFailure(error: unknown): void {
+    if (this.logger) {
+      this.logger.error('Event handler failed.', error, 'RedisStreamsMicroserviceTransport');
+      return;
+    }
+
     console.error('[fluo][RedisStreamsMicroserviceTransport] event handler failed:', error);
   }
 
