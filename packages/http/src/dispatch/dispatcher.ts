@@ -14,6 +14,7 @@ import type {
   Binder,
   ContentNegotiationOptions,
   Dispatcher,
+  DispatcherLogger,
   FrameworkRequest,
   FrameworkResponse,
   GuardContext,
@@ -52,8 +53,22 @@ export interface CreateDispatcherOptions {
   observers?: RequestObserverLike[];
   /** Optional global error handler. */
   onError?: ErrorHandler;
+  logger?: DispatcherLogger;
   /** Root DI container for creating request scopes. */
   rootContainer: Container;
+}
+
+function logDispatchFailure(
+  logger: DispatcherLogger | undefined,
+  message: string,
+  error: unknown,
+): void {
+  if (logger) {
+    logger.error(message, error, 'HttpDispatcher');
+    return;
+  }
+
+  console.error(`[fluo][HttpDispatcher] ${message}`, error);
 }
 
 function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
@@ -127,12 +142,13 @@ async function notifyObserversSafely(
   observers: RequestObserverLike[],
   requestContext: RequestContext,
   callback: (observer: RequestObserver, context: RequestObservationContext) => Promise<void> | void,
+  logger: DispatcherLogger | undefined,
   handler?: HandlerDescriptor,
 ): Promise<void> {
   try {
     await notifyObservers(observers, requestContext, callback, handler);
   } catch (error) {
-    console.error('[fluo] request observer threw an unhandled error:', error);
+    logDispatchFailure(logger, 'Request observer threw an unhandled error.', error);
   }
 }
 
@@ -143,6 +159,7 @@ async function dispatchMatchedHandler(
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
   globalInterceptors: InterceptorLike[] | undefined,
+  logger: DispatcherLogger | undefined,
 ): Promise<void> {
   const guardContext: GuardContext = {
     handler,
@@ -177,6 +194,7 @@ async function dispatchMatchedHandler(
     async (observer, context) => {
       await observer.onRequestSuccess?.(context, result);
     },
+    logger,
     handler,
   );
 }
@@ -191,9 +209,14 @@ interface DispatchPhaseContext {
 }
 
 async function notifyRequestStart(context: DispatchPhaseContext): Promise<void> {
-  await notifyObserversSafely(context.observers, context.requestContext, async (observer, observationContext) => {
-    await observer.onRequestStart?.(observationContext);
-  });
+  await notifyObserversSafely(
+    context.observers,
+    context.requestContext,
+    async (observer, observationContext) => {
+      await observer.onRequestStart?.(observationContext);
+    },
+    context.options.logger,
+  );
 }
 
 async function notifyHandlerMatched(context: DispatchPhaseContext, descriptor: HandlerDescriptor): Promise<void> {
@@ -203,6 +226,7 @@ async function notifyHandlerMatched(context: DispatchPhaseContext, descriptor: H
     async (observer, observationContext) => {
       await observer.onHandlerMatched?.(observationContext);
     },
+    context.options.logger,
     descriptor,
   );
 }
@@ -214,6 +238,7 @@ async function notifyRequestError(context: DispatchPhaseContext, error: unknown)
     async (observer, observationContext) => {
       await observer.onRequestError?.(observationContext, error);
     },
+    context.options.logger,
     context.matchedHandler,
   );
 }
@@ -225,6 +250,7 @@ async function notifyRequestFinish(context: DispatchPhaseContext): Promise<void>
     async (observer, observationContext) => {
       await observer.onRequestFinish?.(observationContext);
     },
+    context.options.logger,
     context.matchedHandler,
   );
 }
@@ -262,6 +288,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.contentNegotiation,
         context.options.binder,
         context.options.interceptors,
+        context.options.logger,
       );
     });
   });
@@ -318,8 +345,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
           try {
             await phaseContext.requestContext.container.dispose();
           } catch (error) {
-            // dispose errors are logged but must not mask the original request error
-            console.error('[fluo] request-scoped container dispose threw an error:', error);
+            logDispatchFailure(options.logger, 'Request-scoped container dispose threw an error.', error);
           }
         }
       });

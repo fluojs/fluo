@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Container } from '@fluojs/di';
 
@@ -773,6 +773,65 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(events).toEqual(['start', 'match', 'handler', 'finish']);
+  });
+
+  it('routes observer and request-scope disposal failures through the dispatcher logger', async () => {
+    const logger = {
+      error: vi.fn(),
+    };
+    const observer = {
+      onRequestStart() {
+        throw new Error('observer seam failed');
+      },
+    };
+
+    @Controller('/health')
+    class HealthController {
+      @Get('/')
+      getHealth() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(HealthController);
+    const createRequestScope = root.createRequestScope.bind(root);
+
+    vi.spyOn(root, 'createRequestScope').mockImplementation(() => {
+      const scope = createRequestScope();
+      const dispose = scope.dispose.bind(scope);
+
+      scope.dispose = async () => {
+        await dispose();
+        throw new Error('scope dispose failed');
+      };
+
+      return scope;
+    });
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: HealthController }]),
+      logger,
+      observers: [observer],
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/health', 'GET', { 'x-request-id': 'req-logger-seam' }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(logger.error).toHaveBeenNthCalledWith(
+      1,
+      'Request observer threw an unhandled error.',
+      expect.objectContaining({ message: 'observer seam failed' }),
+      'HttpDispatcher',
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      2,
+      'Request-scoped container dispose threw an error.',
+      expect.objectContaining({ message: 'scope dispose failed' }),
+      'HttpDispatcher',
+    );
   });
 
   it('sets the correlation response header before downstream code commits the response', async () => {
