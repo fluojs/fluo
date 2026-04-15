@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 
 import type { PackageManager } from './types.js';
 
@@ -22,7 +23,56 @@ type WritableStream = {
   write(message: string): unknown;
 };
 
+type InstallStdioMode = 'capture' | 'inherit';
+
+type InstallDependenciesOptions = {
+  env?: NodeJS.ProcessEnv;
+  isCorepackAvailable?: boolean;
+  stderr?: WritableStream;
+  stdio?: InstallStdioMode;
+};
+
 const COREPACK_DOCS_URL = 'https://nodejs.org/api/corepack.html';
+
+class DependencyInstallationError extends Error {
+  readonly output: string;
+
+  constructor(exitCode: number | null, output: string) {
+    super(
+      exitCode === null
+        ? 'Dependency installation failed without an exit code.'
+        : `Dependency installation failed with exit code ${exitCode}.`,
+    );
+    this.name = 'DependencyInstallationError';
+    this.output = output;
+  }
+}
+
+function appendStreamOutput(
+  stream: NodeJS.ReadableStream | null | undefined,
+  output: string[],
+): void {
+  stream?.on('data', (chunk) => {
+    output.push(typeof chunk === 'string' ? chunk : chunk.toString());
+  });
+}
+
+function waitForChildProcess(
+  child: ChildProcess,
+  capturedOutput?: string[],
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new DependencyInstallationError(code, capturedOutput?.join('') ?? ''));
+    });
+  });
+}
 
 function checkCommandAvailability(command: string): boolean {
   const checker = process.platform === 'win32' ? 'where' : 'which';
@@ -76,34 +126,48 @@ export function resolveInstallCommand(
  *
  * @param targetDirectory Generated project directory.
  * @param packageManager Package manager selected for the generated starter.
- * @param stderr Optional stream for diagnostic messages.
+ * @param options Runtime overrides for install execution and diagnostics.
  * @returns A promise that resolves when installation succeeds.
  */
-export async function installDependencies(targetDirectory: string, packageManager: PackageManager, stderr?: WritableStream): Promise<void> {
-  const hasCorepack = packageManager === 'yarn' ? checkCommandAvailability('corepack') : undefined;
+export async function installDependencies(
+  targetDirectory: string,
+  packageManager: PackageManager,
+  options: InstallDependenciesOptions = {},
+): Promise<void> {
+  const hasCorepack = packageManager === 'yarn'
+    ? (options.isCorepackAvailable ?? checkCommandAvailability('corepack'))
+    : undefined;
   const { args, command } = resolveInstallCommand(packageManager, { isCorepackAvailable: hasCorepack });
 
   if (packageManager === 'yarn' && hasCorepack === false) {
     const message = `[fluo] corepack was not found in PATH, falling back to "yarn install". See ${COREPACK_DOCS_URL}\n`;
-    (stderr ?? process.stderr).write(message);
+    (options.stderr ?? process.stderr).write(message);
   }
 
-  await new Promise<void>((resolve, reject) => {
+  const stdio = options.stdio ?? 'inherit';
+
+  if (stdio === 'capture') {
+    const capturedOutput: string[] = [];
     const child = spawn(command, args, {
       cwd: targetDirectory,
-      stdio: 'inherit',
+      env: options.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    child.on('error', reject);
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
+    appendStreamOutput(child.stdout, capturedOutput);
+    appendStreamOutput(child.stderr, capturedOutput);
 
-      reject(new Error(`Dependency installation failed with exit code ${code}.`));
-    });
+    await waitForChildProcess(child, capturedOutput);
+    return;
+  }
+
+  const child = spawn(command, args, {
+    cwd: targetDirectory,
+    env: options.env,
+    stdio: 'inherit',
   });
+
+  await waitForChildProcess(child);
 }
 
 /**
