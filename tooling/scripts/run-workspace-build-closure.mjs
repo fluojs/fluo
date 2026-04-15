@@ -1,9 +1,42 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+const WORKSPACE_BUILD_LOCK_DIRECTORY = '.workspace-build-closure.lock';
+const WORKSPACE_BUILD_LOCK_TIMEOUT_MS = 120_000;
+const WORKSPACE_BUILD_LOCK_POLL_MS = 50;
+
+function sleep(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function acquireWorkspaceBuildLock(rootDirectory) {
+  const lockDirectory = join(rootDirectory, WORKSPACE_BUILD_LOCK_DIRECTORY);
+  const deadline = Date.now() + WORKSPACE_BUILD_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      mkdirSync(lockDirectory);
+
+      return () => {
+        rmSync(lockDirectory, { force: true, recursive: true });
+      };
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
+        throw error;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for workspace build lock at ${lockDirectory}.`);
+      }
+
+      sleep(WORKSPACE_BUILD_LOCK_POLL_MS);
+    }
+  }
+}
 
 function detectPackageManager() {
   const userAgent = process.env.npm_config_user_agent ?? '';
@@ -157,72 +190,77 @@ export function runWorkspaceBuildClosure(targetPackageName, rootDirectory, optio
   const order = resolveWorkspaceBuildOrder(targetPackageName, rootDirectory);
   const workspaceManifests = collectWorkspaceManifests(rootDirectory);
   const manifestByName = new Map(workspaceManifests.map((entry) => [entry.name, entry]));
+  const releaseLock = acquireWorkspaceBuildLock(rootDirectory);
 
   let stdout = '';
   let stderr = '';
 
-  for (const packageName of order) {
-    const entry = manifestByName.get(packageName);
-    if (!entry || typeof entry.manifest.scripts?.build !== 'string') {
-      continue;
+  try {
+    for (const packageName of order) {
+      const entry = manifestByName.get(packageName);
+      if (!entry || typeof entry.manifest.scripts?.build !== 'string') {
+        continue;
+      }
+
+      const args = packageManager.startsWith('npm') ? ['run', 'build'] : ['run', 'build'];
+      const result = spawnSync(packageManager, args, {
+        cwd: entry.directory,
+        encoding: 'utf8',
+        stdio,
+      });
+
+      if (stdio === 'pipe') {
+        stdout += `\n[build:${packageName}]\n${result.stdout ?? ''}`;
+        stderr += `\n[build:${packageName}]\n${result.stderr ?? ''}`;
+      }
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      if (result.signal) {
+        stderr = `${stderr}\nBuild for ${packageName} terminated by signal ${result.signal}.`.trim();
+        return {
+          order,
+          packageManager,
+          status: 1,
+          stderr,
+          stdout: stdout.trim(),
+        };
+      }
+
+      if (typeof result.status !== 'number') {
+        stderr = `${stderr}\nBuild for ${packageName} exited without a numeric status.`.trim();
+        return {
+          order,
+          packageManager,
+          status: 1,
+          stderr,
+          stdout: stdout.trim(),
+        };
+      }
+
+      if (result.status !== 0) {
+        return {
+          order,
+          packageManager,
+          status: result.status,
+          stderr: stderr.trim(),
+          stdout: stdout.trim(),
+        };
+      }
     }
 
-    const args = packageManager.startsWith('npm') ? ['run', 'build'] : ['run', 'build'];
-    const result = spawnSync(packageManager, args, {
-      cwd: entry.directory,
-      encoding: 'utf8',
-      stdio,
-    });
-
-    if (stdio === 'pipe') {
-      stdout += `\n[build:${packageName}]\n${result.stdout ?? ''}`;
-      stderr += `\n[build:${packageName}]\n${result.stderr ?? ''}`;
-    }
-
-    if (result.error) {
-      throw result.error;
-    }
-
-    if (result.signal) {
-      stderr = `${stderr}\nBuild for ${packageName} terminated by signal ${result.signal}.`.trim();
-      return {
-        order,
-        packageManager,
-        status: 1,
-        stderr,
-        stdout: stdout.trim(),
-      };
-    }
-
-    if (typeof result.status !== 'number') {
-      stderr = `${stderr}\nBuild for ${packageName} exited without a numeric status.`.trim();
-      return {
-        order,
-        packageManager,
-        status: 1,
-        stderr,
-        stdout: stdout.trim(),
-      };
-    }
-
-    if (result.status !== 0) {
-      return {
-        order,
-        packageManager,
-        status: result.status,
-        stderr: stderr.trim(),
-        stdout: stdout.trim(),
-      };
-    }
+    return {
+      order,
+      packageManager,
+      status: 0,
+      stderr: stderr.trim(),
+      stdout: stdout.trim(),
+    };
+  } finally {
+    releaseLock();
   }
-
-  return {
-    order,
-    packageManager,
-    status: 0,
-    stderr: stderr.trim(),
-    stdout: stdout.trim(),
-  };
 }
 
 function main() {

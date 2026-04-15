@@ -171,7 +171,7 @@ describe('parseStudioPayload', () => {
     expect(existsSync(resolve(packageDir, 'dist', 'index.d.ts')), 'root helper barrel types are missing').toBe(true);
     expect(existsSync(resolve(packageDir, 'dist', 'contracts.js')), 'contracts helper output is missing').toBe(true);
     expect(existsSync(resolve(packageDir, 'dist', 'contracts.d.ts')), 'contracts helper types are missing').toBe(true);
-  }, 60_000);
+  }, 120_000);
 });
 
 describe('applyFilters', () => {
