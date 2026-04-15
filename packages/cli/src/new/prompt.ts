@@ -7,7 +7,6 @@ import { resolveBootstrapSchema } from './resolver.js';
 import {
   DOCUMENTED_MICROSERVICE_TRANSPORTS,
   getApplicationStarterProfiles,
-  STARTER_PROFILE_REGISTRY,
 } from './starter-profiles.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
 
@@ -28,6 +27,12 @@ type PromptChoice<T extends string> = {
   label: string;
   value: T;
 };
+
+const STARTER_SHAPE_CHOICES = [
+  { label: 'Application', value: 'application' },
+  { label: 'Microservice', value: 'microservice' },
+  { label: 'Mixed', value: 'mixed' },
+] as const;
 
 /** Prompt contract used by the interactive `fluo new` wizard. */
 export interface BootstrapPrompter {
@@ -133,12 +138,7 @@ async function resolveInteractiveBootstrapAnswers(
   }
 
   if (!answers.shape) {
-    answers.shape = await prompt.select('Starter shape', [
-      ...STARTER_PROFILE_REGISTRY.map((profile) => ({
-        label: profile.promptLabel,
-        value: profile.schema.shape,
-      })),
-    ] as const, 'application');
+    answers.shape = await prompt.select('Starter shape', STARTER_SHAPE_CHOICES, 'application');
   }
 
   if (answers.shape === 'application' && !answers.runtime) {

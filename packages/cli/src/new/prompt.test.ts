@@ -68,6 +68,30 @@ describe('collectBootstrapAnswers', () => {
     };
   }
 
+  it('presents exactly three deduplicated starter-shape choices', async () => {
+    let starterShapeChoices: readonly { label: string; value: string }[] = [];
+
+    const prompt = createPrompt({
+      confirm: async (_message, defaultValue) => defaultValue,
+      select: async <T extends string>(message: string, choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        if (message === 'Starter shape') {
+          starterShapeChoices = choices;
+          return 'application' as T;
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt });
+
+    expect(starterShapeChoices).toEqual([
+      { label: 'Application', value: 'application' },
+      { label: 'Microservice', value: 'microservice' },
+      { label: 'Mixed', value: 'mixed' },
+    ]);
+  });
+
   it('collects the application wizard path without terminal emulation', async () => {
     const prompt = createPrompt({
       confirm: async (_message, defaultValue) => defaultValue,
