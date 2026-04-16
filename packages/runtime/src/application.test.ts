@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
@@ -66,6 +66,42 @@ function createDeferred<T = void>() {
 
   return { promise, reject, resolve };
 }
+
+type TestCloseable = {
+  close(signal?: string): Promise<void>;
+};
+
+const teardownCallbacks: Array<() => Promise<void>> = [];
+
+function registerAppForCleanup<T extends TestCloseable>(app: T): T {
+  teardownCallbacks.push(async () => {
+    try {
+      await app.close();
+    } catch {}
+  });
+
+  return app;
+}
+
+function registerResponseForCleanup<T extends Response>(response: T): T {
+  teardownCallbacks.push(async () => {
+    try {
+      await response.body?.cancel();
+    } catch {}
+  });
+
+  return response;
+}
+
+async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response> {
+  return registerResponseForCleanup(await fetch(...args));
+}
+
+afterEach(async () => {
+  while (teardownCallbacks.length > 0) {
+    await teardownCallbacks.pop()?.();
+  }
+});
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
@@ -171,10 +207,10 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       rootModule: AppModule,
-    });
+    }));
 
     expect(events).toEqual(['module:init', 'app:bootstrap']);
     expect(app.state).toBe('bootstrapped');
@@ -219,10 +255,10 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       rootModule: AppModule,
-    });
+    }));
 
     await app.listen();
     await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
@@ -245,9 +281,9 @@ describe('bootstrapApplication', () => {
       providers: [AppService],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
 
     await expect(app.close('SIGTERM')).rejects.toThrow('shutdown hook failed');
     expect(app.state).toBe('bootstrapped');
@@ -276,11 +312,11 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {});
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       logger,
       rootModule: AppModule,
-    });
+    }));
 
     await expect(app.listen()).rejects.toThrow('listen failed');
     expect(loggerEvents).toContain('error:FluoApplication:Failed to start the HTTP adapter.:listen failed');
@@ -300,9 +336,9 @@ describe('bootstrapApplication', () => {
       providers: [DisposableResource],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const resource = await app.container.resolve(DisposableResource);
 
     await app.close('SIGTERM');
@@ -345,10 +381,10 @@ describe('bootstrapApplication', () => {
       providers: [RuntimeTokenProbe],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       rootModule: AppModule,
-    });
+    }));
     const probe = await app.container.resolve(RuntimeTokenProbe);
 
     expect(probe.seenContainer).toBe(app.container);
@@ -483,14 +519,14 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
       body: JSON.stringify({ name: 'Ada' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -517,14 +553,14 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/search?page=1&tag=a&tag=b&tag=c`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/search?page=1&tag=a&tag=b&tag=c`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -573,7 +609,7 @@ describe('bootstrapApplication', () => {
       shutdownSignals: false,
     });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/search?id=42`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/search?id=42`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
@@ -614,21 +650,21 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       rawBody: true,
-    });
+    }));
 
     await app.listen();
 
     const [jsonResponse, textResponse] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+      fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/json`, {
         body: JSON.stringify({ provider: 'stripe' }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       }),
-      fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
+      fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/text`, {
         body: 'ping=1',
         headers: { 'content-type': 'text/plain; charset=utf-8' },
         method: 'POST',
@@ -668,14 +704,14 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/webhooks/json`, {
       body: JSON.stringify({ provider: 'stripe' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -709,11 +745,11 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       rawBody: true,
-    });
+    }));
 
     await app.listen();
 
@@ -721,7 +757,7 @@ describe('bootstrapApplication', () => {
     form.set('name', 'Ada');
     form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/uploads`, {
       body: form,
       method: 'POST',
     });
@@ -761,16 +797,16 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
     const [docsResponse, metricsResponse] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/docs`),
-      fetch(`http://127.0.0.1:${String(port)}/metrics`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/docs`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/metrics`),
     ]);
 
     expect(docsResponse.status).toBe(200);
@@ -799,15 +835,15 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       middleware: [createSecurityHeadersMiddleware()],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-security-policy')).toBe("default-src 'self'");
@@ -846,14 +882,14 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       observers: [new StatusObserver()],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/created`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/created`);
 
     expect(response.status).toBe(201);
     expect(observedStatusCodes).toEqual([201]);
@@ -883,15 +919,15 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       maxBodySize: 8,
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
       body: JSON.stringify({ name: 'Ada Lovelace' }),
       headers: { 'content-type': 'application/json', 'x-request-id': 'req-oversized-body' },
       method: 'POST',
@@ -928,16 +964,16 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
     const [versioned, unversioned] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/v1/users`),
-      fetch(`http://127.0.0.1:${String(port)}/users`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/v1/users`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/users`),
     ]);
 
     expect(versioned.status).toBe(200);
@@ -969,25 +1005,25 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       versioning: {
         header: 'X-API-Version',
         type: VersioningType.HEADER,
       },
-    });
+    }));
 
     await app.listen();
 
     const [v1, v2, missing] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/users`, {
+      fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
         headers: { 'x-api-version': '1' },
       }),
-      fetch(`http://127.0.0.1:${String(port)}/users`, {
+      fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
         headers: { 'X-API-Version': '2' },
       }),
-      fetch(`http://127.0.0.1:${String(port)}/users`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/users`),
     ]);
 
     expect(v1.status).toBe(200);
@@ -1021,18 +1057,18 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       versioning: {
         key: 'v=',
         type: VersioningType.MEDIA_TYPE,
       },
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
       headers: {
         accept: 'application/json;v=2',
       },
@@ -1066,7 +1102,7 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       versioning: {
@@ -1076,11 +1112,11 @@ describe('bootstrapApplication', () => {
         },
         type: VersioningType.CUSTOM,
       },
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/users`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/users`, {
       headers: {
         'x-custom-version': '2',
       },
@@ -1124,8 +1160,8 @@ describe('bootstrapApplication', () => {
       port,
     });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
-    const corsPreflight = await fetch(`http://127.0.0.1:${String(port)}/health`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
+    const corsPreflight = await fetchForTest(`http://127.0.0.1:${String(port)}/health`, {
       headers: { origin: 'https://example.com' },
       method: 'OPTIONS',
     });
@@ -1174,7 +1210,7 @@ describe('bootstrapApplication', () => {
       port,
     });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
@@ -1360,7 +1396,7 @@ describe('bootstrapApplication', () => {
       port,
     });
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/health`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
@@ -1408,24 +1444,24 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       port,
-    });
+    }));
 
     await app.listen();
 
     const [prefixedApp, unprefixedApp, prefixedHealth, prefixedReady, prefixedDocs, prefixedMetrics, prefixedOpenapi, health, docs] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/api/health`),
-      fetch(`http://127.0.0.1:${String(port)}/api/ready`),
-      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
-      fetch(`http://127.0.0.1:${String(port)}/api/metrics`),
-      fetch(`http://127.0.0.1:${String(port)}/api/openapi.json`),
-      fetch(`http://127.0.0.1:${String(port)}/health`),
-      fetch(`http://127.0.0.1:${String(port)}/docs`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/app/info`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/health`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/ready`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/metrics`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/openapi.json`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/health`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/docs`),
     ]);
 
     expect(prefixedApp.status).toBe(200);
@@ -1474,21 +1510,21 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/health', '/ready'],
       port,
-    });
+    }));
 
     await app.listen();
 
     const [health, ready, prefixedHealth, prefixedReady, prefixedDocs] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/health`),
-      fetch(`http://127.0.0.1:${String(port)}/ready`),
-      fetch(`http://127.0.0.1:${String(port)}/api/health`),
-      fetch(`http://127.0.0.1:${String(port)}/api/ready`),
-      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/health`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/ready`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/health`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/ready`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
     ]);
 
     expect(health.status).toBe(200);
@@ -1526,16 +1562,16 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       observers: [new PathObserver()],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/api/app/info`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
@@ -1567,20 +1603,20 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       globalPrefixExclude: ['/internal/*'],
       port,
-    });
+    }));
 
     await app.listen();
 
     const [internal, prefixedInternal, prefixedApp, unprefixedApp] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/internal/ping`),
-      fetch(`http://127.0.0.1:${String(port)}/api/internal/ping`),
-      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/app/info`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/internal/ping`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/internal/ping`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/app/info`),
     ]);
 
     expect(internal.status).toBe(200);
@@ -1616,19 +1652,19 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '///api//',
       globalPrefixExclude: ['//internal//*'],
       port,
-    });
+    }));
 
     await app.listen();
 
     const [prefixedApp, internal, prefixedInternal] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/api/app/info`),
-      fetch(`http://127.0.0.1:${String(port)}/internal/ping`),
-      fetch(`http://127.0.0.1:${String(port)}/api/internal/ping`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/app/info`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/internal/ping`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/internal/ping`),
     ]);
 
     expect(prefixedApp.status).toBe(200);
@@ -1655,15 +1691,15 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/',
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/app/info`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/app/info`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, route: 'app-info' });
@@ -1691,15 +1727,15 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       shutdownTimeoutMs: 1_000,
-    });
+    }));
 
     await app.listen();
 
-    const responsePromise = fetch(`http://127.0.0.1:${String(port)}/slow`);
+    const responsePromise = fetchForTest(`http://127.0.0.1:${String(port)}/slow`);
     await requestStarted.promise;
 
     let closeResolved = false;
@@ -1739,15 +1775,15 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
       shutdownTimeoutMs: 50,
-    });
+    }));
 
     await app.listen();
 
-    const responsePromise = fetch(`http://127.0.0.1:${String(port)}/hang`);
+    const responsePromise = fetchForTest(`http://127.0.0.1:${String(port)}/hang`);
     await requestStarted.promise;
 
     await expect(app.close()).resolves.toBeUndefined();
@@ -1795,10 +1831,10 @@ describe('bootstrapApplication', () => {
       },
     };
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       rootModule: AppModule,
-    });
+    }));
     const request: FrameworkRequest = {
       body: undefined,
       cookies: {},
@@ -1872,10 +1908,10 @@ describe('bootstrapApplication', () => {
       providers: [SerializerInterceptor],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       interceptors: [SerializerInterceptor],
       rootModule: AppModule,
-    });
+    }));
 
     const requestOne: FrameworkRequest = {
       body: undefined,
@@ -2037,11 +2073,11 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       logger,
       rootModule: AppModule,
-    });
+    }));
 
     expect(loggerEvents).toEqual([
       'log:FluoFactory:Starting fluo application...',
@@ -2083,11 +2119,11 @@ describe('bootstrapApplication', () => {
       controllers: [HealthController],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       logger,
       observers: [observer],
       rootModule: AppModule,
-    });
+    }));
     const createRequestScope = app.container.createRequestScope.bind(app.container);
 
     vi.spyOn(app.container, 'createRequestScope').mockImplementation(() => {
@@ -2162,14 +2198,14 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/cookie-test`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/cookie-test`, {
       headers: { cookie: 'session=abc123; other=value' },
     });
 
@@ -2191,14 +2227,14 @@ describe('bootstrapApplication', () => {
     defineModule(AppModule, { controllers: [PingController] });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: 'https://my-frontend.com',
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
       headers: { origin: 'https://my-frontend.com' },
     });
 
@@ -2222,17 +2258,17 @@ describe('bootstrapApplication', () => {
     defineModule(AppModule, { controllers: [PingController] });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: ['https://a.com', 'https://b.com'],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const responseA = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+    const responseA = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
       headers: { origin: 'https://a.com' },
     });
-    const responseB = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+    const responseB = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
       headers: { origin: 'https://c.com' },
     });
 
@@ -2256,14 +2292,14 @@ describe('bootstrapApplication', () => {
     defineModule(AppModule, { controllers: [PingController] });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: { allowOrigin: 'https://my-frontend.com', maxAge: 600 },
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/ping`, {
       headers: { origin: 'https://my-frontend.com' },
     });
 
@@ -2293,10 +2329,10 @@ describe('bootstrapApplication', () => {
     defineModule(AppModule, { controllers: [SlowController] });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
@@ -2364,10 +2400,10 @@ describe('bootstrapApplication', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       port,
-    });
+    }));
 
     await app.listen();
 
@@ -2448,15 +2484,15 @@ describe('exception filter pipeline', () => {
     };
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [filter],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
 
     expect(response.status).toBe(418);
     await expect(response.json()).resolves.toEqual({ handled: true });
@@ -2486,15 +2522,15 @@ describe('exception filter pipeline', () => {
     };
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [filter],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
 
     expect(response.status).toBe(500);
 
@@ -2535,15 +2571,15 @@ describe('exception filter pipeline', () => {
     };
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       filters: [firstFilter, secondFilter],
       port,
-    });
+    }));
 
     await app.listen();
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/boom`);
+    const response = await fetchForTest(`http://127.0.0.1:${String(port)}/boom`);
 
     expect(response.status).toBe(400);
     expect(callOrder).toEqual(['first']);

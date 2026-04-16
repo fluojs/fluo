@@ -1,6 +1,6 @@
 import { createServer } from 'node:net';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
@@ -25,6 +25,42 @@ import {
 import { OpenApiModule } from './openapi-module.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
+
+type TestCloseable = {
+  close(signal?: string): Promise<void>;
+};
+
+const teardownCallbacks: Array<() => Promise<void>> = [];
+
+function registerAppForCleanup<T extends TestCloseable>(app: T): T {
+  teardownCallbacks.push(async () => {
+    try {
+      await app.close();
+    } catch {}
+  });
+
+  return app;
+}
+
+function registerResponseForCleanup<T extends Response>(response: T): T {
+  teardownCallbacks.push(async () => {
+    try {
+      await response.body?.cancel();
+    } catch {}
+  });
+
+  return response;
+}
+
+async function fetchForTest(...args: Parameters<typeof fetch>): Promise<Response> {
+  return registerResponseForCleanup(await fetch(...args));
+}
+
+afterEach(async () => {
+  while (teardownCallbacks.length > 0) {
+    await teardownCallbacks.pop()?.();
+  }
+});
 
 function createRequest(method: string, path: string): FrameworkRequest {
   return {
@@ -156,9 +192,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -298,9 +334,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/docs'), response);
@@ -340,19 +376,19 @@ describe('OpenApiModule', () => {
     });
 
     const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, {
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
       cors: false,
       globalPrefix: '/api',
       port,
-    });
+    }));
 
     await app.listen();
 
     const [docsResponse, docsTrailingSlashResponse, specResponse, unprefixedSpecResponse] = await Promise.all([
-      fetch(`http://127.0.0.1:${String(port)}/api/docs`),
-      fetch(`http://127.0.0.1:${String(port)}/api/docs/`),
-      fetch(`http://127.0.0.1:${String(port)}/api/openapi.json`),
-      fetch(`http://127.0.0.1:${String(port)}/openapi.json`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/docs/`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/api/openapi.json`),
+      fetchForTest(`http://127.0.0.1:${String(port)}/openapi.json`),
     ]);
     const docsHtml = await docsResponse.text();
     const docsTrailingHtml = await docsTrailingSlashResponse.text();
@@ -415,9 +451,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -489,9 +525,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -571,9 +607,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -714,9 +750,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -813,9 +849,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -887,9 +923,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1010,9 +1046,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1087,9 +1123,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1178,9 +1214,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1258,9 +1294,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1359,9 +1395,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1408,9 +1444,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1495,9 +1531,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1562,9 +1598,9 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1628,10 +1664,10 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({
+    const app = registerAppForCleanup(await bootstrapApplication({
       providers: [{ provide: OPENAPI_TITLE, useValue: 'Async OpenAPI' }],
       rootModule: AppModule,
-    });
+    }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1691,7 +1727,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1766,7 +1802,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1812,7 +1848,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1866,7 +1902,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
@@ -1919,7 +1955,7 @@ describe('OpenApiModule', () => {
       imports: [openApiModule],
     });
 
-    const app = await bootstrapApplication({ rootModule: AppModule });
+    const app = registerAppForCleanup(await bootstrapApplication({ rootModule: AppModule }));
     const response = createResponse();
 
     await app.dispatch(createRequest('GET', '/openapi.json'), response);
