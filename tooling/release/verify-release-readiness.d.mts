@@ -5,6 +5,11 @@ export type ReleaseReadinessCheck = {
 };
 
 export type ReleaseReadinessDependencies = {
+  workspacePackageManifests?: () => Array<{
+    manifest: Record<string, unknown> & { name: string };
+    packageJsonPath: string;
+  }>;
+  isPublishedVersion?: (packageName: string, version: string) => boolean;
   run?: (command: string, args: string[]) => void;
   read?: (relativePath: string) => string;
   existsSync?: (targetPath: string) => boolean;
@@ -20,6 +25,11 @@ export type ReleaseReadinessResult = {
 };
 
 export function runReleaseReadinessVerification(
-  options?: { writeDrafts?: boolean },
+  options?: {
+    distTag?: string;
+    targetPackage?: string;
+    targetVersion?: string;
+    writeDrafts?: boolean;
+  },
   dependencies?: ReleaseReadinessDependencies,
 ): ReleaseReadinessResult;

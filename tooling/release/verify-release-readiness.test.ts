@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runReleaseReadinessVerification } from './verify-release-readiness.mjs';
 
+type WorkspacePackageManifestRecord = {
+  manifest: Record<string, unknown> & { name: string };
+  packageJsonPath: string;
+};
+
 function createDependencies() {
   const docs = new Map([
     ['docs/getting-started/quick-start.md', 'pnpm add -g @fluojs/cli\nfluo new my-fluo-app\nThe fluo CLI is your central tool for project scaffolding and component generation.'],
@@ -21,6 +26,7 @@ function createDependencies() {
   ]);
 
   return {
+    isPublishedVersion: vi.fn(() => false),
     run: vi.fn(),
     read: vi.fn((relativePath) => {
       const value = docs.get(relativePath);
@@ -32,10 +38,12 @@ function createDependencies() {
     }),
     existsSync: vi.fn((targetPath) => targetPath.endsWith('/LICENSE') || targetPath.endsWith('/CHANGELOG.md')),
     workspacePackageNames: vi.fn(() => ['@fluojs/cli', '@fluojs/core']),
-    workspacePackageManifests: vi.fn(() => [
+    workspacePackageManifests: vi.fn<() => WorkspacePackageManifestRecord[]>(() => [
       {
         manifest: {
           name: '@fluojs/cli',
+          private: false,
+          publishConfig: { access: 'public' },
           dependencies: {
             '@fluojs/core': 'workspace:^',
           },
@@ -45,6 +53,8 @@ function createDependencies() {
       {
         manifest: {
           name: '@fluojs/core',
+          private: false,
+          publishConfig: { access: 'public' },
         },
         packageJsonPath: '/repo/packages/core/package.json',
       },
@@ -88,6 +98,8 @@ describe('runReleaseReadinessVerification', () => {
       {
         manifest: {
           name: '@fluojs/cli',
+          private: false,
+          publishConfig: { access: 'public' },
           dependencies: {
             '@fluojs/core': invalidRange,
           },
@@ -97,6 +109,8 @@ describe('runReleaseReadinessVerification', () => {
       {
         manifest: {
           name: '@fluojs/core',
+          private: false,
+          publishConfig: { access: 'public' },
         },
         packageJsonPath: '/repo/packages/core/package.json',
       },
@@ -105,5 +119,142 @@ describe('runReleaseReadinessVerification', () => {
     expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
       'Release readiness check failed: Public internal dependency ranges use workspace:^.',
     );
+  });
+
+  it('accepts single-package publish preflight for a public prerelease target', () => {
+    const dependencies = createDependencies();
+
+    const result = runReleaseReadinessVerification(
+      {
+        distTag: 'next',
+        targetPackage: '@fluojs/cli',
+        targetVersion: '0.1.0-beta.1',
+      },
+      dependencies,
+    );
+
+    expect(result.checks.some((check) => check.label === 'Single-package release internal dependency shape')).toBe(true);
+    expect(dependencies.isPublishedVersion).toHaveBeenCalledWith('@fluojs/cli', '0.1.0-beta.1');
+  });
+
+  it('fails when a single-package prerelease tries to use the latest dist-tag', () => {
+    const dependencies = createDependencies();
+
+    expect(() =>
+      runReleaseReadinessVerification(
+        {
+          distTag: 'latest',
+          targetPackage: '@fluojs/cli',
+          targetVersion: '0.1.0-beta.1',
+        },
+        dependencies,
+      ),
+    ).toThrowError('Release readiness check failed: Single-package release prerelease alignment.');
+  });
+
+  it('fails when the single-package target is outside the intended publish surface', () => {
+    const dependencies = createDependencies();
+    dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/private-devtool']);
+    dependencies.workspacePackageManifests = vi.fn(() => [
+      {
+        manifest: {
+          name: '@fluojs/cli',
+          dependencies: {
+            '@fluojs/core': 'workspace:^',
+          },
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/cli/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/core',
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/core/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/private-devtool',
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/private-devtool/package.json',
+      },
+    ]);
+
+    expect(() =>
+      runReleaseReadinessVerification(
+        {
+          distTag: 'latest',
+          targetPackage: '@fluojs/private-devtool',
+          targetVersion: '0.1.0',
+        },
+        dependencies,
+      ),
+    ).toThrowError('Release readiness check failed: Single-package release intended publish surface membership.');
+  });
+
+  it('fails when a single-package target depends on a non-public internal workspace package', () => {
+    const dependencies = createDependencies();
+    dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/private-devtool']);
+    dependencies.workspacePackageManifests = vi.fn(() => [
+      {
+        manifest: {
+          name: '@fluojs/cli',
+          dependencies: {
+            '@fluojs/core': 'workspace:^',
+            '@fluojs/private-devtool': 'workspace:^',
+          },
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/cli/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/core',
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/core/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/private-devtool',
+          private: true,
+        },
+        packageJsonPath: '/repo/packages/private-devtool/package.json',
+      },
+    ]);
+
+    expect(() =>
+      runReleaseReadinessVerification(
+        {
+          distTag: 'latest',
+          targetPackage: '@fluojs/cli',
+          targetVersion: '0.1.0',
+        },
+        dependencies,
+      ),
+    ).toThrowError('Release readiness check failed: Single-package release internal dependency shape.');
+  });
+
+  it('fails when the target version is already published', () => {
+    const dependencies = createDependencies();
+    dependencies.isPublishedVersion = vi.fn(() => true);
+
+    expect(() =>
+      runReleaseReadinessVerification(
+        {
+          distTag: 'latest',
+          targetPackage: '@fluojs/cli',
+          targetVersion: '0.1.0',
+        },
+        dependencies,
+      ),
+    ).toThrowError('Release readiness check failed: Single-package release version publishability.');
   });
 });

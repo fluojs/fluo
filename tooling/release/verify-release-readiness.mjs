@@ -10,15 +10,69 @@ const summaryKoPath = join(scriptDirectory, 'release-readiness-summary.ko.md');
 const changelogPath = join(repoRoot, 'CHANGELOG.md');
 
 function parseCliOptions(argv = process.argv.slice(2)) {
-  const writeDrafts = argv.includes('--write-drafts');
+  let writeDrafts = false;
+  let targetPackage;
+  let targetVersion;
+  let distTag;
 
-  for (const argument of argv) {
-    if (argument !== '--write-drafts') {
-      throw new Error(`Unknown option: ${argument}`);
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+
+    if (argument === '--write-drafts') {
+      writeDrafts = true;
+      continue;
     }
+
+    if (argument === '--target-package') {
+      targetPackage = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith('--target-package=')) {
+      targetPackage = argument.slice('--target-package='.length);
+      continue;
+    }
+
+    if (argument === '--target-version') {
+      targetVersion = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith('--target-version=')) {
+      targetVersion = argument.slice('--target-version='.length);
+      continue;
+    }
+
+    if (argument === '--dist-tag') {
+      distTag = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith('--dist-tag=')) {
+      distTag = argument.slice('--dist-tag='.length);
+      continue;
+    }
+
+    throw new Error(`Unknown option: ${argument}`);
   }
 
-  return { writeDrafts };
+  const preflightInputs = [targetPackage, targetVersion, distTag].filter((value) => typeof value === 'string');
+
+  if (preflightInputs.length > 0 && preflightInputs.length < 3) {
+    throw new Error(
+      'Single-package release preflight requires --target-package, --target-version, and --dist-tag together.',
+    );
+  }
+
+  return {
+    distTag,
+    targetPackage,
+    targetVersion,
+    writeDrafts,
+  };
 }
 
 function languageToggle(current) {
@@ -41,6 +95,53 @@ function run(command, args) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function packageRelativePath(packageName) {
+  return packageName.startsWith('@fluojs/') ? `packages/${packageName.slice('@fluojs/'.length)}` : null;
+}
+
+function workspaceManifestByName(packageManifests) {
+  return new Map(packageManifests.map(({ manifest, packageJsonPath }) => [manifest.name, { manifest, packageJsonPath }]));
+}
+
+function isValidSemver(version) {
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+    version,
+  );
+}
+
+function isPrereleaseVersion(version) {
+  return version.includes('-');
+}
+
+function isValidDistTag(distTag) {
+  return /^[A-Za-z][A-Za-z0-9._-]*$/.test(distTag) && !isValidSemver(distTag);
+}
+
+function isPublishedVersion(packageName, version) {
+  const result = spawnSync('npm', ['view', `${packageName}@${version}`, 'version', '--json'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (result.status === 0) {
+    return true;
+  }
+
+  const stderr = `${result.stderr ?? ''}${result.stdout ?? ''}`;
+
+  if (
+    result.status === 1 &&
+    (stderr.includes('E404') || stderr.includes('No match found for version') || stderr.includes('not in this registry'))
+  ) {
+    return false;
+  }
+
+  throw new Error(
+    `Release readiness check failed: Unable to query npm for ${packageName}@${version}. ${stderr.trim() || 'npm view failed.'}`,
+  );
 }
 
 function assertCheck(checks, label, condition, detail) {
@@ -201,6 +302,123 @@ function collectWorkspaceProtocolViolations(packageManifests, publicPackageNames
   return sorted(violations);
 }
 
+function collectSinglePackageDependencyShapeViolations(targetManifest, workspaceManifestMap, publicPackageNames) {
+  const dependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+  const publicPackageSet = new Set(publicPackageNames);
+  const violations = [];
+
+  for (const field of dependencyFields) {
+    const dependencies = targetManifest[field];
+
+    if (!dependencies || typeof dependencies !== 'object') {
+      continue;
+    }
+
+    for (const [dependencyName, dependencyRange] of Object.entries(dependencies)) {
+      if (!dependencyName.startsWith('@fluojs/')) {
+        continue;
+      }
+
+      if (!workspaceManifestMap.has(dependencyName)) {
+        violations.push(`${targetManifest.name} → ${dependencyName} in ${field}: not a workspace package name`);
+        continue;
+      }
+
+      if (!publicPackageSet.has(dependencyName)) {
+        violations.push(`${targetManifest.name} → ${dependencyName} in ${field}: dependency is outside the intended publish surface`);
+        continue;
+      }
+
+      if (dependencyRange !== 'workspace:^') {
+        violations.push(`${targetManifest.name} → ${dependencyName} in ${field}: expected workspace:^ but found ${String(dependencyRange)}`);
+      }
+    }
+  }
+
+  return sorted(violations);
+}
+
+function verifySinglePackageReleasePreflight(checks, options, packageManifests, publicPackageNames, dependencies = {}) {
+  const { targetPackage, targetVersion, distTag } = options;
+
+  if (!targetPackage && !targetVersion && !distTag) {
+    return;
+  }
+
+  const manifestMap = workspaceManifestByName(packageManifests);
+  const publicPackageSet = new Set(publicPackageNames);
+  const registryVersionExists = dependencies.isPublishedVersion ?? isPublishedVersion;
+  const targetPackageRecord = manifestMap.get(targetPackage);
+  const targetPackagePath = packageRelativePath(targetPackage);
+  const isPrerelease = isPrereleaseVersion(targetVersion);
+
+  assertCheck(
+    checks,
+    'Single-package release target identity',
+    typeof targetPackage === 'string' && targetPackage.length > 0,
+    'Single-package release mode requires an explicit target package name.',
+  );
+  assertCheck(
+    checks,
+    'Single-package release target version',
+    typeof targetVersion === 'string' && isValidSemver(targetVersion),
+    'Single-package release mode requires a valid SemVer target version.',
+  );
+  assertCheck(
+    checks,
+    'Single-package release dist-tag',
+    typeof distTag === 'string' && isValidDistTag(distTag),
+    'Single-package release mode requires an npm dist-tag such as `latest`, `next`, `beta`, or `rc`.',
+  );
+  assertCheck(
+    checks,
+    'Single-package release prerelease alignment',
+    (isPrerelease && distTag !== 'latest') || (!isPrerelease && distTag === 'latest'),
+    isPrerelease
+      ? 'Prerelease versions must publish under a non-`latest` dist-tag.'
+      : 'Stable versions must publish under the `latest` dist-tag.',
+  );
+  assertCheck(
+    checks,
+    'Single-package release target workspace package',
+    Boolean(targetPackageRecord) && Boolean(targetPackagePath),
+    `The release target must match a workspace package manifest under packages/* (received ${targetPackage}).`,
+  );
+  assertCheck(
+    checks,
+    'Single-package release intended publish surface membership',
+    Boolean(targetPackageRecord) && publicPackageSet.has(targetPackage),
+    `${targetPackage} must be listed in docs/operations/release-governance.md intended publish surface before CI-only publish.`,
+  );
+  assertCheck(
+    checks,
+    'Single-package release public manifest contract',
+    Boolean(targetPackageRecord) &&
+      targetPackageRecord.manifest.private !== true &&
+      targetPackageRecord.manifest.publishConfig?.access === 'public',
+    `${targetPackage} must remain a public workspace package with publishConfig.access set to \`public\`.`,
+  );
+  assertCheck(
+    checks,
+    'Single-package release version publishability',
+    !registryVersionExists(targetPackage, targetVersion),
+    `${targetPackage}@${targetVersion} is already published on npm and cannot be republished.`,
+  );
+
+  const dependencyShapeViolations = targetPackageRecord
+    ? collectSinglePackageDependencyShapeViolations(targetPackageRecord.manifest, manifestMap, publicPackageNames)
+    : [];
+
+  assertCheck(
+    checks,
+    'Single-package release internal dependency shape',
+    dependencyShapeViolations.length === 0,
+    dependencyShapeViolations.length === 0
+      ? 'The target package only references intended public `@fluojs/*` packages through publish-safe `workspace:^` ranges.'
+      : dependencyShapeViolations.join('; '),
+  );
+}
+
 export function buildSummary(checks, writeDrafts) {
   const sideEffects = writeDrafts
     ? '- Side effects: `CHANGELOG.md`, `tooling/release/release-readiness-summary.md`, and `tooling/release/release-readiness-summary.ko.md` updated'
@@ -292,8 +510,9 @@ function upsertReleaseCandidateDraft(dependencies = {}) {
 }
 
 export function runReleaseReadinessVerification(options = {}, dependencies = {}) {
-  const { writeDrafts = false } = options;
+  const { distTag, targetPackage, targetVersion, writeDrafts = false } = options;
   const {
+    isPublishedVersion: registryVersionExists = isPublishedVersion,
     run: runCommand = run,
     read: readText = read,
     existsSync: pathExists = existsSync,
@@ -304,6 +523,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     writeFileSync: writeFile = writeFileSync,
   } = dependencies;
   const checks = [];
+  const packageManifests = listWorkspacePackageManifests();
 
   runCommand('pnpm', ['build']);
   runCommand('pnpm', ['typecheck']);
@@ -323,7 +543,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
   const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
   const workspacePackages = listWorkspacePackageNames();
   const publicWorkspaceProtocolViolations = collectWorkspaceProtocolViolations(
-    listWorkspacePackageManifests(),
+    packageManifests,
     governancePackageList,
   );
 
@@ -436,6 +656,9 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       ? 'Intended public package manifests use `workspace:^` for internal `@fluojs/*` dependencies across dependency, optional, peer, and dev dependency fields.'
       : `Use exact \`workspace:^\` ranges for internal public package dependencies in: ${publicWorkspaceProtocolViolations.join('; ')}`,
   );
+  verifySinglePackageReleasePreflight(checks, { distTag, targetPackage, targetVersion }, packageManifests, governancePackageList, {
+    isPublishedVersion: registryVersionExists,
+  });
 
   if (writeDrafts) {
     upsertReleaseCandidateDraft({ existsSync: pathExists, readFileSync: readFile, writeFileSync: writeFile });

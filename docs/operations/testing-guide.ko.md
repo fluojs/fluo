@@ -103,7 +103,7 @@ await app.close();
 | :--- | :--- |
 | `pnpm test` | 워크스페이스 전체에서 Vitest 스위트를 실행합니다. |
 | `pnpm verify` | Build → Typecheck → Lint → Test 순서로 실행합니다. |
-| `pnpm verify:release-readiness` | 패키징된 CLI 검증을 포함한 공개 릴리스를 위한 읽기 전용 최종 관문입니다. |
+| `pnpm verify:release-readiness` | 패키징된 CLI 검증을 포함한 공개 릴리스를 위한 읽기 전용 최종 관문입니다. 같은 verifier는 CI 전용 단건 publish preflight를 위해 `--target-package`, `--target-version`, `--dist-tag`도 받습니다. |
 | `pnpm generate:release-readiness-drafts` | 릴리스 준비를 위해 release-readiness summary 산출물과 changelog 드래프트 블록을 명시적으로 씁니다. |
 | `pnpm verify:public-export-tsdoc:baseline` | public-export TSDoc 기준을 전체 governed 패키지 소스 표면에 적용합니다. |
 

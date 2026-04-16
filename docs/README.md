@@ -43,6 +43,8 @@ Practical, task-oriented documentation for day-to-day development.
 
 Use [Release Governance](./operations/release-governance.md) when you need the canonical intended publish surface, release-readiness gates, or the enforced internal `workspace:^` dependency-range policy for public packages.
 
+Use [Testing Strategies](./operations/testing-guide.md) alongside Release Governance when you need the canonical verification path for CI-only single-package publish preflight checks via `pnpm verify:release-readiness --target-package --target-version --dist-tag`.
+
 ## 📚 Reference
 
 Detailed technical specifications and comparisons.

@@ -43,6 +43,8 @@ fluo의 설계 철학과 그 이면의 "왜"와 "어떻게"를 이해합니다.
 
 [Release Governance](./operations/release-governance.ko.md)는 공개 패키지의 기준 intended publish surface, release-readiness gate, 그리고 내부 `workspace:^` dependency-range 정책을 확인할 때 기준 문서로 사용하세요.
 
+CI 전용 단건 publish preflight 검증 경로(`pnpm verify:release-readiness --target-package --target-version --dist-tag`)를 확인할 때는 [테스트 전략](./operations/testing-guide.ko.md)을 Release Governance와 함께 기준 문서로 사용하세요.
+
 ## 📚 참조 자료
 
 심층적인 기술 명세 및 비교 자료입니다.
