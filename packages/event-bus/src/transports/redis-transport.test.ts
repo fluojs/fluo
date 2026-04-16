@@ -118,6 +118,21 @@ describe('RedisEventBusTransport', () => {
     expect(subscribeClient.messageListeners).toHaveLength(0);
   });
 
+  it('ignores late messages after close detaches transport listeners', async () => {
+    const transport = new RedisEventBusTransport({
+      publishClient: new MockRedisClient() as never,
+      subscribeClient: new MockRedisClient() as never,
+    });
+    const handler = vi.fn(async (_payload: unknown) => undefined);
+    const subscribeClient = (transport as unknown as { subscribeClient: MockRedisClient }).subscribeClient;
+
+    await transport.subscribe('AuditEvent', handler);
+    await transport.close();
+    subscribeClient.emitMessage('AuditEvent', JSON.stringify({ ignored: true }));
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('still detaches listeners when unsubscribe fails during close', async () => {
     const publishClient = new MockRedisClient();
     const subscribeClient = new MockRedisClient();

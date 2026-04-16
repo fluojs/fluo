@@ -173,6 +173,21 @@ function createDeferred<T = void>(): Deferred<T> {
   return { promise, reject, resolve };
 }
 
+async function settleCronTeardown(): Promise<void> {
+  await Promise.resolve();
+
+  if (vi.isFakeTimers()) {
+    await vi.runOnlyPendingTimersAsync();
+  }
+
+  await Promise.resolve();
+}
+
+async function closeApplication(app: { close(): Promise<void> }): Promise<void> {
+  await app.close();
+  await settleCronTeardown();
+}
+
 function createManualScheduler(): { records: ScheduledRecord[]; scheduler: CronScheduler } {
   const records: ScheduledRecord[] = [];
   const scheduler: CronScheduler = (expression, options, callback): CronScheduledJob => {
@@ -226,7 +241,8 @@ describe('@fluojs/cron', () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settleCronTeardown();
     vi.useRealTimers();
   });
 
@@ -365,7 +381,7 @@ describe('@fluojs/cron', () => {
 
     expect(store.count).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('isolates task errors so a failing cron task does not block others', async () => {
@@ -417,7 +433,7 @@ describe('@fluojs/cron', () => {
     expect(store.count).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Cron task failing-task failed.'))).toBe(true);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('stops all scheduled jobs during application shutdown', async () => {
@@ -438,7 +454,7 @@ describe('@fluojs/cron', () => {
 
     expect(scheduled.records).toHaveLength(1);
 
-    await app.close();
+    await closeApplication(app);
 
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
   });
@@ -516,7 +532,7 @@ describe('@fluojs/cron', () => {
       ),
     ).toBe(true);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('warns when @Cron() is declared on non-singleton controllers and skips scheduling', async () => {
@@ -565,7 +581,7 @@ describe('@fluojs/cron', () => {
       ),
     ).toBe(true);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('uses distributed Redis locking so only one app executes the same task tick', async () => {
@@ -751,7 +767,7 @@ describe('@fluojs/cron', () => {
 
     expect((await app.container.resolve(Store)).runs).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('releases owned distributed locks during shutdown so another node can continue', async () => {
@@ -874,7 +890,7 @@ describe('@fluojs/cron', () => {
     await vi.advanceTimersByTimeAsync(200);
     expect(store.count).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(store.count).toBe(1);
@@ -957,7 +973,7 @@ describe('@fluojs/cron', () => {
 
     expect(events).toEqual(['before', 'run', 'success', 'after']);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('runs error lifecycle hooks when cron task fails', async () => {
@@ -995,7 +1011,7 @@ describe('@fluojs/cron', () => {
 
     expect(events).toEqual(['before', 'run', 'error:hook boom', 'after']);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('runs onError and afterRun when beforeRun throws', async () => {
@@ -1036,7 +1052,7 @@ describe('@fluojs/cron', () => {
 
     expect(events).toEqual(['before', 'error:before boom', 'after']);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('keeps afterRun deterministic when onError throws', async () => {
@@ -1078,7 +1094,7 @@ describe('@fluojs/cron', () => {
     expect(events).toEqual(['before', 'error:before boom', 'after']);
     expect(loggerEvents.some((event) => event.includes('Cron onError hook on-error-throwing-task failed.'))).toBe(true);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('treats lock ownership loss during renewal as a failed tick', async () => {
@@ -1145,7 +1161,7 @@ describe('@fluojs/cron', () => {
       'after',
     ]);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('treats lock renewal errors as a failed tick', async () => {
@@ -1212,7 +1228,7 @@ describe('@fluojs/cron', () => {
       'after',
     ]);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('logs successful distributed lock renewals and releases for operational tracing', async () => {
@@ -1267,7 +1283,7 @@ describe('@fluojs/cron', () => {
     expect(loggerEvents.some((event) => event.includes('log:CronLifecycleService:Renewed distributed cron lock for lock-trace-task.'))).toBe(true);
     expect(loggerEvents.some((event) => event.includes('log:CronLifecycleService:Released distributed cron lock for lock-trace-task.'))).toBe(true);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('awaits in-flight lock renewal attempts before deciding task success', async () => {
@@ -1337,7 +1353,7 @@ describe('@fluojs/cron', () => {
       'after',
     ]);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('evaluates due lock renewal even when interval callback has not fired yet', async () => {
@@ -1404,7 +1420,7 @@ describe('@fluojs/cron', () => {
       'after',
     ]);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('renews distributed locks before the minimum supported ttl expires', async () => {
@@ -1468,7 +1484,7 @@ describe('@fluojs/cron', () => {
     expect(redis.renewalCalls).toBeGreaterThanOrEqual(1);
     expect(events).toEqual(['run', 'success', 'after']);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('schedules @Interval() and @Timeout() tasks through lifecycle bootstrap', async () => {
@@ -1514,7 +1530,7 @@ describe('@fluojs/cron', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(store.timeoutCount).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('fails bootstrap on duplicate task names across cron/interval/timeout decorators', async () => {
@@ -1583,7 +1599,7 @@ describe('@fluojs/cron', () => {
     expect(registry.remove('dynamic-timeout')).toBe(true);
     expect(registry.get('dynamic-timeout')).toBeUndefined();
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('keeps timeout definitions in registry after firing and allows re-enable with full delay', async () => {
@@ -1655,7 +1671,7 @@ describe('@fluojs/cron', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(store.intervalCount).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(store.intervalCount).toBe(1);
@@ -1708,6 +1724,7 @@ describe('@fluojs/cron', () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await closePromise;
+    await settleCronTeardown();
 
     expect(closeResolved).toBe(true);
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
@@ -1788,8 +1805,13 @@ describe('@fluojs/cron', () => {
 
     expect(storeOne.count + storeTwo.count).toBe(1);
 
-    await appOne.close();
-    await appTwo.close();
+    await closeApplication(appOne);
+    await closeApplication(appTwo);
+    const countAfterShutdown = storeOne.count + storeTwo.count;
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(storeOne.count + storeTwo.count).toBe(countAfterShutdown);
   });
 
   it('warns and skips @Interval/@Timeout on non-singleton providers', async () => {

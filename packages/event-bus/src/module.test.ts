@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
@@ -40,6 +40,26 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function settleEventBusTeardown(): Promise<void> {
+  await flushAsyncWork();
+
+  if (vi.isFakeTimers()) {
+    await vi.runOnlyPendingTimersAsync();
+  }
+
+  await flushAsyncWork();
+}
+
+async function closeApplication(app: { close(): Promise<void> }): Promise<void> {
+  await app.close();
+  await settleEventBusTeardown();
+}
+
 class UserCreatedEvent {
   constructor(public readonly userId: string) {}
 }
@@ -55,6 +75,15 @@ class PasswordResetEvent {
 }
 
 describe('@fluojs/event-bus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await settleEventBusTeardown();
+    vi.useRealTimers();
+  });
+
   it('writes event metadata from @OnEvent() using standard decorators', () => {
     class EventHandler {
       @OnEvent(UserCreatedEvent)
@@ -255,8 +284,10 @@ describe('@fluojs/event-bus', () => {
   });
 
   it('keeps publish bounded and predictable with mixed success, failure, and hanging handlers', async () => {
+    vi.useFakeTimers();
     const loggerEvents: string[] = [];
     const gate = createDeferred<void>();
+    const completed = createDeferred<void>();
 
     class EventStore {
       successCalls = 0;
@@ -283,6 +314,7 @@ describe('@fluojs/event-bus', () => {
       @OnEvent(UserCreatedEvent)
       async onUserCreated(_event: UserCreatedEvent) {
         await gate.promise;
+        completed.resolve();
       }
     }
 
@@ -299,18 +331,25 @@ describe('@fluojs/event-bus', () => {
     const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
     const store = await app.container.resolve(EventStore);
 
-    await expect(eventBus.publish(new UserCreatedEvent('user-2-timeout'))).resolves.toBeUndefined();
+    const publishPromise = eventBus.publish(new UserCreatedEvent('user-2-timeout'));
+
+    await flushAsyncWork();
+    await vi.advanceTimersByTimeAsync(20);
+    await expect(publishPromise).resolves.toBeUndefined();
 
     expect(store.successCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.onUserCreated failed.'))).toBe(true);
     expect(loggerEvents.some((event) => event.includes('exceeded publish timeout of 20ms.'))).toBe(true);
 
     gate.resolve();
-    await app.close();
+    await completed.promise;
+    await closeApplication(app);
   });
 
   it('supports non-blocking publish option without waiting for handler completion', async () => {
     const gate = createDeferred<void>();
+    const started = createDeferred<void>();
+    const completed = createDeferred<void>();
 
     class EventStore {
       completedCalls = 0;
@@ -324,8 +363,10 @@ describe('@fluojs/event-bus', () => {
       @OnEvent(UserCreatedEvent)
       async onUserCreated(_event: UserCreatedEvent) {
         this.store.startedCalls += 1;
+        started.resolve();
         await gate.promise;
         this.store.completedCalls += 1;
+        completed.resolve();
       }
     }
 
@@ -343,22 +384,25 @@ describe('@fluojs/event-bus', () => {
       eventBus.publish(new UserCreatedEvent('user-non-blocking'), { waitForHandlers: false }),
     ).resolves.toBeUndefined();
 
-    await Promise.resolve();
+    await started.promise;
 
     expect(store.startedCalls).toBe(1);
     expect(store.completedCalls).toBe(0);
 
     gate.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await completed.promise;
 
     expect(store.completedCalls).toBe(1);
 
-    await app.close();
+    await closeApplication(app);
   });
 
   it('does not apply timeout bounds when publish is non-blocking', async () => {
+    vi.useFakeTimers();
     const loggerEvents: string[] = [];
     const gate = createDeferred<void>();
+    const started = createDeferred<void>();
+    const completed = createDeferred<void>();
 
     class EventStore {
       startedCalls = 0;
@@ -371,7 +415,9 @@ describe('@fluojs/event-bus', () => {
       @OnEvent(UserCreatedEvent)
       async onUserCreated(_event: UserCreatedEvent) {
         this.store.startedCalls += 1;
+        started.resolve();
         await gate.promise;
+        completed.resolve();
       }
     }
 
@@ -389,13 +435,15 @@ describe('@fluojs/event-bus', () => {
     const store = await app.container.resolve(EventStore);
 
     await expect(eventBus.publish(new UserCreatedEvent('user-non-blocking-timeout'))).resolves.toBeUndefined();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(20);
 
     expect(store.startedCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('exceeded publish timeout'))).toBe(false);
 
     gate.resolve();
-    await app.close();
+    await completed.promise;
+    await closeApplication(app);
   });
 
   it('supports publish cancellation signal before handler dispatch', async () => {
@@ -827,6 +875,7 @@ describe('@fluojs/event-bus', () => {
 
     it('does not block on transport.publish() when waitForHandlers is false', async () => {
       const gate = createDeferred<void>();
+      const completed = createDeferred<void>();
       const transport = {
         publishCompleted: false,
         published: [] as Array<{ channel: string; payload: unknown }>,
@@ -834,6 +883,7 @@ describe('@fluojs/event-bus', () => {
           this.published.push({ channel, payload });
           await gate.promise;
           this.publishCompleted = true;
+          completed.resolve();
         },
         async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
         async close() {},
@@ -858,11 +908,11 @@ describe('@fluojs/event-bus', () => {
       expect(transport.publishCompleted).toBe(false);
 
       gate.resolve();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await completed.promise;
 
       expect(transport.publishCompleted).toBe(true);
 
-      await app.close();
+      await closeApplication(app);
     });
 
     it('subscribes to a channel per discovered local handler event type on bootstrap', async () => {
@@ -1243,8 +1293,43 @@ describe('@fluojs/event-bus', () => {
       const app = await bootstrapApplication({ rootModule: AppModule });
 
       expect(transport.closeCalls).toBe(0);
-      await app.close();
+      await closeApplication(app);
       expect(transport.closeCalls).toBe(1);
+    });
+
+    it('awaits transport.close() before shutdown resolves', async () => {
+      const releaseClose = createDeferred<void>();
+      let closeStarted = false;
+      const transport = {
+        async close() {
+          closeStarted = true;
+          await releaseClose.promise;
+        },
+        async publish(_channel: string, _payload: unknown) {},
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      } satisfies EventBusTransport;
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      let shutdownResolved = false;
+      const closePromise = app.close().then(() => {
+        shutdownResolved = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closeStarted).toBe(true);
+      expect(shutdownResolved).toBe(false);
+
+      releaseClose.resolve();
+      await closePromise;
+      await settleEventBusTeardown();
+
+      expect(shutdownResolved).toBe(true);
     });
 
     it('does not call transport when no transport is configured (backward compat)', async () => {
