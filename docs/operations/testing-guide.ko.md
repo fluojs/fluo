@@ -115,6 +115,8 @@ await app.close();
 - 출력 디렉터리가 필요하면 `FLUO_VITEST_SHUTDOWN_DEBUG_DIR`로 덮어쓸 수 있으며, 기본값은 `.artifacts/vitest-shutdown-debug`입니다.
 - 이 Vitest 통합은 실행이 unhandled error로 끝나거나 `onProcessTimeout`에 걸릴 때 현재 실행(current-run)의 JSON evidence를 남기며, 마지막 active module/test와 active handle/request class 요약을 함께 기록합니다.
 - worker 프로세스도 signal-time snapshot을 남기므로, 메인 프로세스가 워커를 정리할 때 CI가 해당 워커의 마지막 file/suite/test 문맥을 보존할 수 있습니다.
+- canonical full-suite CI 경로는 이제 workspace Vitest project(`packages`, `apps`, `examples`, `tooling`)를 각각 `pnpm vitest run --project ...`로 분리 실행하므로, 하나의 shutdown leak 때문에 전체 workspace가 단일 장수 실행으로 묶이지 않게 합니다.
+- CI는 `.artifacts/vitest-shutdown-debug/` 아래 project별 하위 디렉터리에 attribution artifact를 저장해 #1134 evidence path를 유지하면서도 각 workspace project의 shutdown trace를 분리 보존합니다.
 
 이 경로는 attribution 전용으로 취급해야 합니다. 특정 leak 또는 teardown contract를 겨냥한 후속 이슈 전까지는 runtime behavior, pool 선택, timeout 값은 보존하십시오.
 

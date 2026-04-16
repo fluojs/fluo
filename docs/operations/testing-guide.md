@@ -115,6 +115,8 @@ The canonical CI attribution path for the recurring Vitest worker-timeout shutdo
 - Optionally override the output directory with `FLUO_VITEST_SHUTDOWN_DEBUG_DIR`; the default is `.artifacts/vitest-shutdown-debug`.
 - The Vitest integration writes current-run JSON evidence when the run ends with unhandled errors or hits `onProcessTimeout`, including the last active module/test and active handle/request class summaries.
 - Worker processes also emit a signal-time snapshot so CI can preserve the lingering worker's final file/suite/test context when the main process tears it down.
+- The canonical full-suite CI path now runs the workspace Vitest projects (`packages`, `apps`, `examples`, `tooling`) as separate `pnpm vitest run --project ...` invocations so one shutdown leak does not collapse the entire workspace into a single long-lived run.
+- CI stores attribution artifacts under per-project subdirectories of `.artifacts/vitest-shutdown-debug/` to preserve the #1134 evidence path while keeping each workspace project's shutdown traces isolated.
 
 Treat this path as attribution only: preserve runtime behavior, pool selection, and timeout values until a follow-up issue is targeting a specific leak or teardown contract.
 
