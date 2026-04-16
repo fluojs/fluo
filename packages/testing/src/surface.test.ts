@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,7 +13,6 @@ import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
-import { runWorkspaceBuildClosure } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
@@ -24,10 +25,37 @@ const emittedHarnessSubpaths = [
   './fetch-style-websocket-conformance',
 ] as const;
 
-function runBuild(): void {
-  const result = runWorkspaceBuildClosure('@fluojs/testing', repoRootPath);
+async function runBuild(): Promise<void> {
+  const scriptPath = fileURLToPath(new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url));
 
-  expect(result.status, [result.stdout, result.stderr].filter(Boolean).join('\n')).toBe(0);
+  await new Promise<void>((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [scriptPath, '@fluojs/testing'], {
+      cwd: repoRootPath,
+      env: process.env,
+      stdio: 'pipe',
+    });
+    const childEvents = child as unknown as NodeJS.EventEmitter;
+
+    let stderr = '';
+    let stdout = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+
+    void once(childEvents, 'error').then(([error]) => {
+      reject(error);
+    });
+
+    void once(childEvents, 'exit').then(([code, signal]) => {
+      expect(code, [stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')).toBe(0);
+      resolvePromise();
+    });
+  });
 }
 
 describe('@fluojs/testing surface', () => {
@@ -84,8 +112,8 @@ describe('@fluojs/testing surface', () => {
     expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');
   });
 
-  it('build emits the published harness subpath files', () => {
-    runBuild();
+  it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
+    await runBuild();
 
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
       exports: Record<string, { import: string; types: string }>;
