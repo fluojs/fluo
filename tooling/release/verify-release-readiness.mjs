@@ -8,6 +8,15 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 const summaryPath = join(scriptDirectory, 'release-readiness-summary.md');
 const summaryKoPath = join(scriptDirectory, 'release-readiness-summary.ko.md');
 const changelogPath = join(repoRoot, 'CHANGELOG.md');
+const releaseReadinessVitestProjects = ['packages', 'apps', 'examples', 'tooling'];
+const releaseReadinessVerificationCommands = [
+  '`pnpm build`',
+  '`pnpm typecheck`',
+  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName}\``),
+  '`pnpm --dir packages/cli sandbox:matrix`',
+  '`pnpm verify:platform-consistency-governance`',
+  '`pnpm verify:release-readiness`',
+];
 
 function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
   return {
@@ -122,6 +131,17 @@ function run(command, args) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function runCanonicalReleaseReadinessVerificationCommands(runCommand) {
+  runCommand('pnpm', ['build']);
+  runCommand('pnpm', ['typecheck']);
+
+  for (const projectName of releaseReadinessVitestProjects) {
+    runCommand('pnpm', ['vitest', 'run', '--project', projectName]);
+  }
+
+  runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
 }
 
 function packageRelativePath(packageName) {
@@ -466,7 +486,7 @@ export function buildSummary(checks, sideEffectMode = 'none') {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
+    `- Commands executed: ${releaseReadinessVerificationCommands.join(', ')}`,
     sideEffects,
   ].join('\n');
   const summaryKo = [
@@ -476,7 +496,7 @@ export function buildSummary(checks, sideEffectMode = 'none') {
     '',
     ...checks.map((check) => `- [${check.pass ? 'x' : ' '}] ${check.label} — ${check.detail}`),
     '',
-    '- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`',
+    `- 실행한 명령: ${releaseReadinessVerificationCommands.join(', ')}`,
     sideEffectsKo,
   ].join('\n');
 
@@ -560,10 +580,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
   const checks = [];
   const packageManifests = listWorkspacePackageManifests();
 
-  runCommand('pnpm', ['build']);
-  runCommand('pnpm', ['typecheck']);
-  runCommand('pnpm', ['test']);
-  runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
+  runCanonicalReleaseReadinessVerificationCommands(runCommand);
 
   const quickStart = readText('docs/getting-started/quick-start.md');
   const contributing = readText('CONTRIBUTING.md');

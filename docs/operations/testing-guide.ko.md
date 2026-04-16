@@ -103,7 +103,7 @@ await app.close();
 | :--- | :--- |
 | `pnpm test` | 워크스페이스 전체에서 Vitest 스위트를 실행합니다. |
 | `pnpm verify` | Build → Typecheck → Lint → Test 순서로 실행합니다. |
-| `pnpm verify:release-readiness` | 패키징된 CLI 검증을 포함한 공개 릴리스를 위한 읽기 전용 최종 관문입니다. 같은 verifier는 CI 전용 단건 publish preflight를 위해 `--target-package`, `--target-version`, `--dist-tag`도 받습니다. |
+| `pnpm verify:release-readiness` | 패키징된 CLI 검증을 포함한 공개 릴리스를 위한 읽기 전용 최종 관문입니다. canonical full-suite 테스트 단계는 monolithic `pnpm test`로 되돌아가지 않고 main 브랜치 CI와 동일하게 `pnpm vitest run --project packages`, `apps`, `examples`, `tooling`을 순차 실행합니다. 같은 verifier는 CI 전용 단건 publish preflight를 위해 `--target-package`, `--target-version`, `--dist-tag`도 받습니다. |
 | `pnpm generate:release-readiness-drafts` | 릴리스 준비를 위해 release-readiness summary 산출물과 changelog 드래프트 블록을 명시적으로 씁니다. |
 | `pnpm verify:public-export-tsdoc:baseline` | public-export TSDoc 기준을 전체 governed 패키지 소스 표면에 적용합니다. |
 
@@ -131,6 +131,8 @@ await app.close();
 - [ ] 로컬에서 `pnpm verify`를 실행하여 통과했는지 확인하십시오.
 - [ ] public export가 TSDoc 기준을 따르는지 확인하십시오 (`pnpm lint`에 의해 검증됨).
 - [ ] `pnpm verify:release-readiness`를 실행하여 intended publish surface에 대한 오류가 없는지 확인하십시오.
+
+로컬에서 release readiness를 검증할 때도 full-suite 테스트 단계는 CI의 split workspace 모델과 일치해야 합니다. canonical `pnpm vitest run --project packages|apps|examples|tooling` 순서를 monolithic `pnpm test`로 대체하면 #1141에서 분리한 동일한 worker-timeout 실패 경로를 release gate가 다시 들여오게 됩니다.
 
 ### 2. CI 전용 Preflight 실행
 수동 워크플로 `.github/workflows/release-single-package.yml`은 한 번에 하나의 패키지를 배포하는 canonical publisher입니다. 이 워크플로는 특정 입력값으로 `pnpm verify:release-readiness`를 재사용합니다.

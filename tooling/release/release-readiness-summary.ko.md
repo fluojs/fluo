@@ -14,5 +14,5 @@
 - [x] Public package surface docs are synchronized — release-governance and package-surface docs declare the same @fluojs public package list.
 - [x] Documented public packages exist in workspace — Every documented public package maps to an existing workspace package manifest.
 
-- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm test`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`
+- 실행한 명령: `pnpm build`, `pnpm typecheck`, `pnpm vitest run --project packages`, `pnpm vitest run --project apps`, `pnpm vitest run --project examples`, `pnpm vitest run --project tooling`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`
 - 부수 효과: `CHANGELOG.md` 릴리즈 준비도 드래프트 섹션 갱신

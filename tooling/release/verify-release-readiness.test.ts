@@ -72,7 +72,16 @@ describe('runReleaseReadinessVerification', () => {
     const result = runReleaseReadinessVerification({}, dependencies);
 
     expect(result.writeDrafts).toBe(false);
-    expect(dependencies.run).toHaveBeenCalledTimes(4);
+    expect(dependencies.run).toHaveBeenCalledTimes(7);
+    expect(dependencies.run.mock.calls).toEqual([
+      ['pnpm', ['build']],
+      ['pnpm', ['typecheck']],
+      ['pnpm', ['vitest', 'run', '--project', 'packages']],
+      ['pnpm', ['vitest', 'run', '--project', 'apps']],
+      ['pnpm', ['vitest', 'run', '--project', 'examples']],
+      ['pnpm', ['vitest', 'run', '--project', 'tooling']],
+      ['pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']],
+    ]);
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -113,6 +122,26 @@ describe('runReleaseReadinessVerification', () => {
         String(content).includes('current-run release-readiness summary artifacts generated without mutating `CHANGELOG.md`.'),
       ),
     ).toBe(true);
+  });
+
+  it('describes split workspace vitest projects in release-readiness summaries', () => {
+    const dependencies = createDependencies();
+
+    runReleaseReadinessVerification(
+      {
+        summaryOutputDirectory: '/tmp/release-readiness',
+        writeSummary: true,
+      },
+      dependencies,
+    );
+
+    const summaryContents = dependencies.writeFileSync.mock.calls.map(([, content]) => String(content)).join('\n');
+
+    expect(summaryContents).toContain('`pnpm vitest run --project packages`');
+    expect(summaryContents).toContain('`pnpm vitest run --project apps`');
+    expect(summaryContents).toContain('`pnpm vitest run --project examples`');
+    expect(summaryContents).toContain('`pnpm vitest run --project tooling`');
+    expect(summaryContents).not.toContain('`pnpm test`');
   });
 
   it.each(['workspace:*', 'workspace:~', 'workspace:^1.2.3'])('fails when a documented public package uses %s instead of workspace:^', (invalidRange) => {

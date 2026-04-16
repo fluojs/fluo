@@ -103,7 +103,7 @@ Keep the module wiring real but override the low-level client tokens to avoid ne
 | :--- | :--- |
 | `pnpm test` | Runs the full Vitest suite across the workspace. |
 | `pnpm verify` | Sequential execution: Build → Typecheck → Lint → Test. |
-| `pnpm verify:release-readiness` | Comprehensive read-only gate for public releases, including packed CLI verification. The same verifier also accepts `--target-package`, `--target-version`, and `--dist-tag` for CI-only single-package publish preflight checks. |
+| `pnpm verify:release-readiness` | Comprehensive read-only gate for public releases, including packed CLI verification. Its canonical full-suite test phase mirrors main-branch CI by running `pnpm vitest run --project packages`, `apps`, `examples`, and `tooling` instead of falling back to a monolithic `pnpm test`; the same verifier also accepts `--target-package`, `--target-version`, and `--dist-tag` for CI-only single-package publish preflight checks. |
 | `pnpm generate:release-readiness-drafts` | Explicitly writes release-readiness summary artifacts and the draft changelog block for release prep. |
 | `pnpm verify:public-export-tsdoc:baseline` | Runs the public-export TSDoc baseline against the full governed package source surface. |
 
@@ -131,6 +131,8 @@ Maintainers must ensure verification passes before triggering automated releases
 - [ ] `pnpm verify` passes locally.
 - [ ] Public exports follow TSDoc baseline (verified by `pnpm lint`).
 - [ ] `pnpm verify:release-readiness` returns no errors for the intended publish surface.
+
+When you are validating release readiness locally, keep the full-suite test phase aligned with CI's split workspace model. Do not replace the canonical `pnpm vitest run --project packages|apps|examples|tooling` sequence with a monolithic `pnpm test`, or the release gate will reintroduce the same worker-timeout failure mode that #1141 split apart.
 
 ### 2. CI-only Preflight Execution
 The manual workflow `.github/workflows/release-single-package.yml` is the canonical publisher for one public package per run. It reuses `pnpm verify:release-readiness` with specific inputs:
