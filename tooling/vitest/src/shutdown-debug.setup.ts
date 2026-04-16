@@ -23,6 +23,23 @@ interface WorkerDebugState {
   lastActivity?: WorkerActivity;
 }
 
+interface SuiteLike {
+  file?: {
+    filepath?: string;
+  };
+  filepath?: string;
+  name?: string;
+}
+
+interface ContextLike {
+  task?: {
+    file?: {
+      filepath?: string;
+    };
+    name?: string;
+  };
+}
+
 const workerDebugStateKey = Symbol.for('fluo.vitest.shutdownDebugState');
 
 function getWorkerDebugState(): WorkerDebugState {
@@ -41,6 +58,32 @@ function getWorkerDebugState(): WorkerDebugState {
 
 function normalizeFilePath(filePath: string): string {
   return filePath.startsWith(process.cwd()) ? filePath.slice(process.cwd().length + 1) : filePath;
+}
+
+export function resolveWorkerActivitySuiteName(suite: SuiteLike | undefined): string | null {
+  const name = suite?.name;
+  return typeof name === 'string' && name.length > 0 ? name : null;
+}
+
+export function resolveWorkerActivityFilePath(
+  source: SuiteLike | ContextLike | undefined,
+  fallbackFilePath = '[unknown-file]',
+): string {
+  const candidate = source as (SuiteLike & ContextLike) | undefined;
+  const suiteFilePath = candidate?.filepath;
+  const nestedFilePath = candidate?.file?.filepath;
+  const taskFilePath = candidate?.task?.file?.filepath;
+
+  const filePath = [suiteFilePath, nestedFilePath, taskFilePath, fallbackFilePath].find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+
+  return normalizeFilePath(filePath ?? fallbackFilePath);
+}
+
+export function resolveWorkerActivityTestName(context: ContextLike | undefined): string | null {
+  const name = context?.task?.name;
+  return typeof name === 'string' && name.length > 0 ? name : null;
 }
 
 function updateLastActivity(activity: WorkerActivity) {
@@ -86,12 +129,11 @@ if (isFluoVitestShutdownDebugEnabled()) {
   installProcessListeners();
 
   beforeAll((suite) => {
-    const filePath = 'filepath' in suite ? suite.filepath : suite.file.filepath;
     updateLastActivity({
       at: new Date().toISOString(),
-      file: normalizeFilePath(filePath),
+      file: resolveWorkerActivityFilePath(suite),
       phase: 'beforeAll',
-      suite: suite.name.length > 0 ? suite.name : null,
+      suite: resolveWorkerActivitySuiteName(suite),
       test: null,
     });
   });
@@ -99,30 +141,29 @@ if (isFluoVitestShutdownDebugEnabled()) {
   beforeEach((context, suite) => {
     updateLastActivity({
       at: new Date().toISOString(),
-      file: normalizeFilePath(context.task.file.filepath),
+      file: resolveWorkerActivityFilePath(context),
       phase: 'beforeEach',
-      suite: suite.name.length > 0 ? suite.name : null,
-      test: context.task.name,
+      suite: resolveWorkerActivitySuiteName(suite),
+      test: resolveWorkerActivityTestName(context),
     });
   });
 
   afterEach((context, suite) => {
     updateLastActivity({
       at: new Date().toISOString(),
-      file: normalizeFilePath(context.task.file.filepath),
+      file: resolveWorkerActivityFilePath(context),
       phase: 'afterEach',
-      suite: suite.name.length > 0 ? suite.name : null,
-      test: context.task.name,
+      suite: resolveWorkerActivitySuiteName(suite),
+      test: resolveWorkerActivityTestName(context),
     });
   });
 
   afterAll((suite) => {
-    const filePath = 'filepath' in suite ? suite.filepath : suite.file.filepath;
     updateLastActivity({
       at: new Date().toISOString(),
-      file: normalizeFilePath(filePath),
+      file: resolveWorkerActivityFilePath(suite),
       phase: 'afterAll',
-      suite: suite.name.length > 0 ? suite.name : null,
+      suite: resolveWorkerActivitySuiteName(suite),
       test: null,
     });
   });

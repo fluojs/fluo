@@ -11,6 +11,11 @@ import {
   resolveFluoVitestShutdownDebugDirectory,
   writeVitestShutdownDebugSnapshot,
 } from './shutdown-debug.js';
+import {
+  resolveWorkerActivityFilePath,
+  resolveWorkerActivitySuiteName,
+  resolveWorkerActivityTestName,
+} from './shutdown-debug.setup.js';
 
 describe('shutdown debug helpers', () => {
   it('treats the attribution path as opt-in', () => {
@@ -51,5 +56,34 @@ describe('shutdown debug helpers', () => {
       reason: 'failed',
       schemaVersion: 1,
     });
+  });
+
+  it('tolerates missing hook metadata when deriving worker activity', () => {
+    expect(resolveWorkerActivitySuiteName(undefined)).toBeNull();
+    expect(resolveWorkerActivitySuiteName({})).toBeNull();
+    expect(resolveWorkerActivityTestName(undefined)).toBeNull();
+    expect(resolveWorkerActivityTestName({})).toBeNull();
+    expect(resolveWorkerActivityFilePath(undefined)).toBe('[unknown-file]');
+    expect(resolveWorkerActivityFilePath({})).toBe('[unknown-file]');
+  });
+
+  it('prefers available suite and task paths when metadata exists', () => {
+    expect(
+      resolveWorkerActivityFilePath({
+        filepath: '/repo/root/tooling/vitest/src/example.test.ts',
+      }),
+    ).toContain('tooling/vitest/src/example.test.ts');
+    expect(
+      resolveWorkerActivityFilePath({
+        task: {
+          file: {
+            filepath: '/repo/root/packages/runtime/src/application.test.ts',
+          },
+          name: 'example test',
+        },
+      }),
+    ).toContain('packages/runtime/src/application.test.ts');
+    expect(resolveWorkerActivitySuiteName({ name: 'example suite' })).toBe('example suite');
+    expect(resolveWorkerActivityTestName({ task: { name: 'example test' } })).toBe('example test');
   });
 });
