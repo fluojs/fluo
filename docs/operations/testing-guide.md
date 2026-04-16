@@ -107,6 +107,17 @@ Keep the module wiring real but override the low-level client tokens to avoid ne
 | `pnpm generate:release-readiness-drafts` | Explicitly writes release-readiness summary artifacts and the draft changelog block for release prep. |
 | `pnpm verify:public-export-tsdoc:baseline` | Runs the public-export TSDoc baseline against the full governed package source surface. |
 
+### CI shutdown-flake attribution
+
+The canonical CI attribution path for the recurring Vitest worker-timeout shutdown flake is opt-in and evidence-only:
+
+- Set `FLUO_VITEST_SHUTDOWN_DEBUG=1` on the `pnpm test`/`pnpm vitest run ...` invocation that you want to inspect.
+- Optionally override the output directory with `FLUO_VITEST_SHUTDOWN_DEBUG_DIR`; the default is `.artifacts/vitest-shutdown-debug`.
+- The Vitest integration writes current-run JSON evidence when the run ends with unhandled errors or hits `onProcessTimeout`, including the last active module/test and active handle/request class summaries.
+- Worker processes also emit a signal-time snapshot so CI can preserve the lingering worker's final file/suite/test context when the main process tears it down.
+
+Treat this path as attribution only: preserve runtime behavior, pool selection, and timeout values until a follow-up issue is targeting a specific leak or teardown contract.
+
 ---
 
 ## Release Pre-flight Runbook

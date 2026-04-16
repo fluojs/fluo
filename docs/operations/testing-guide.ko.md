@@ -107,6 +107,17 @@ await app.close();
 | `pnpm generate:release-readiness-drafts` | 릴리스 준비를 위해 release-readiness summary 산출물과 changelog 드래프트 블록을 명시적으로 씁니다. |
 | `pnpm verify:public-export-tsdoc:baseline` | public-export TSDoc 기준을 전체 governed 패키지 소스 표면에 적용합니다. |
 
+### CI shutdown flake attribution
+
+반복되는 Vitest worker-timeout shutdown flake에 대한 canonical CI attribution 경로는 opt-in이며 evidence-only입니다.
+
+- 조사할 `pnpm test` 또는 `pnpm vitest run ...` 실행에 `FLUO_VITEST_SHUTDOWN_DEBUG=1`을 설정합니다.
+- 출력 디렉터리가 필요하면 `FLUO_VITEST_SHUTDOWN_DEBUG_DIR`로 덮어쓸 수 있으며, 기본값은 `.artifacts/vitest-shutdown-debug`입니다.
+- 이 Vitest 통합은 실행이 unhandled error로 끝나거나 `onProcessTimeout`에 걸릴 때 현재 실행(current-run)의 JSON evidence를 남기며, 마지막 active module/test와 active handle/request class 요약을 함께 기록합니다.
+- worker 프로세스도 signal-time snapshot을 남기므로, 메인 프로세스가 워커를 정리할 때 CI가 해당 워커의 마지막 file/suite/test 문맥을 보존할 수 있습니다.
+
+이 경로는 attribution 전용으로 취급해야 합니다. 특정 leak 또는 teardown contract를 겨냥한 후속 이슈 전까지는 runtime behavior, pool 선택, timeout 값은 보존하십시오.
+
 ---
 
 ## 릴리스 Pre-flight 런북 (Release Pre-flight Runbook)
