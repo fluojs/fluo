@@ -6,6 +6,7 @@ export default mergeConfig(
   createFluoVitestWorkspaceConfig(new URL('.', import.meta.url)),
   defineConfig({
     test: {
+      passWithNoTests: true,
       projects: [
         {
           extends: true,

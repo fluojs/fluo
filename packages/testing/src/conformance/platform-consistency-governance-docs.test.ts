@@ -183,6 +183,7 @@ describe('platform consistency governance docs', () => {
 
   it('keeps PR CI governance-gated while reserving release-readiness for main pushes', () => {
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+    const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
 
     expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
     expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
@@ -198,6 +199,7 @@ describe('platform consistency governance docs', () => {
     expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/packages');
     expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
     expect(ciWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");
+    expect(vitestConfig).toContain('passWithNoTests: true');
     expect(ciWorkflow).toContain('build-and-typecheck:');
     expect(ciWorkflow).toContain("if: github.event_name == 'pull_request'");
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
