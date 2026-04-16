@@ -1,3 +1,5 @@
+# Release single package
+# Governance: documents/operators runbook updated in issue #1128
 name: Release single package
 
 on:

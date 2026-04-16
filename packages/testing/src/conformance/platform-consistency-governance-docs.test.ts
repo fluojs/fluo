@@ -132,6 +132,14 @@ describe('platform consistency governance docs', () => {
     expect(docsReadmeKo).toContain('operations/public-export-tsdoc-baseline.ko.md');
   });
 
+  it('verifies CI-only single-package release runbook discoverability', () => {
+    const docsReadme = readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf8');
+    const docsReadmeKo = readFileSync(resolve(repoRoot, 'docs/README.ko.md'), 'utf8');
+
+    expect(docsReadme).toContain('CI-only single-package release operator flow');
+    expect(docsReadmeKo).toContain('CI 전용 단건 패키지 릴리스 운영 절차');
+  });
+
   it('keeps intended publish surface synchronized between English and Korean release-governance docs', () => {
     const releaseGovernance = readFileSync(resolve(repoRoot, 'docs/operations/release-governance.md'), 'utf8');
     const releaseGovernanceKo = readFileSync(resolve(repoRoot, 'docs/operations/release-governance.ko.md'), 'utf8');
