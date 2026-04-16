@@ -82,14 +82,14 @@ describe('runReleaseReadinessVerification', () => {
     ).toBe(true);
   });
 
-  it('fails when a documented public package keeps workspace:* for an internal dependency', () => {
+  it.each(['workspace:*', 'workspace:~', 'workspace:^1.2.3'])('fails when a documented public package uses %s instead of workspace:^', (invalidRange) => {
     const dependencies = createDependencies();
     dependencies.workspacePackageManifests = vi.fn(() => [
       {
         manifest: {
           name: '@fluojs/cli',
           dependencies: {
-            '@fluojs/core': 'workspace:*',
+            '@fluojs/core': invalidRange,
           },
         },
         packageJsonPath: '/repo/packages/cli/package.json',

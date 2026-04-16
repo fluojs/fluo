@@ -172,6 +172,7 @@ function collectWorkspaceProtocolViolations(packageManifests, publicPackageNames
   const dependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
   const publicPackageSet = new Set(publicPackageNames);
   const violations = [];
+  const requiredRange = 'workspace:^';
 
   for (const { manifest, packageJsonPath } of packageManifests) {
     if (!publicPackageSet.has(manifest.name)) {
@@ -189,9 +190,9 @@ function collectWorkspaceProtocolViolations(packageManifests, publicPackageNames
         if (
           dependencyName !== manifest.name &&
           publicPackageSet.has(dependencyName) &&
-          dependencyRange === 'workspace:*'
+          dependencyRange !== requiredRange
         ) {
-          violations.push(`${manifest.name} → ${dependencyName} in ${field} (${packageJsonPath})`);
+          violations.push(`${manifest.name} → ${dependencyName} in ${field}: ${String(dependencyRange)} (${packageJsonPath})`);
         }
       }
     }
@@ -433,7 +434,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     publicWorkspaceProtocolViolations.length === 0,
     publicWorkspaceProtocolViolations.length === 0
       ? 'Intended public package manifests use `workspace:^` for internal `@fluojs/*` dependencies across dependency, optional, peer, and dev dependency fields.'
-      : `Replace \`workspace:*\` with \`workspace:^\` for: ${publicWorkspaceProtocolViolations.join('; ')}`,
+      : `Use exact \`workspace:^\` ranges for internal public package dependencies in: ${publicWorkspaceProtocolViolations.join('; ')}`,
   );
 
   if (writeDrafts) {

@@ -41,6 +41,8 @@ fluo의 설계 철학과 그 이면의 "왜"와 "어떻게"를 이해합니다.
 - **[보안 미들웨어](./concepts/security-middleware.ko.md)**: API 보호를 위한 최선의 실천 방법.
 - **[프로덕션 배포](./operations/deployment.ko.md)**: `pnpm dev`에서 실제 운영 환경으로의 전환.
 
+[Release Governance](./operations/release-governance.ko.md)는 공개 패키지의 기준 intended publish surface, release-readiness gate, 그리고 내부 `workspace:^` dependency-range 정책을 확인할 때 기준 문서로 사용하세요.
+
 ## 📚 참조 자료
 
 심층적인 기술 명세 및 비교 자료입니다.

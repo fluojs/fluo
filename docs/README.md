@@ -41,6 +41,8 @@ Practical, task-oriented documentation for day-to-day development.
 - **[Security Middleware](./concepts/security-middleware.md)**: Best practices for protecting your API.
 - **[Production Deployment](./operations/deployment.md)**: Moving from `pnpm dev` to a production environment.
 
+Use [Release Governance](./operations/release-governance.md) when you need the canonical intended publish surface, release-readiness gates, or the enforced internal `workspace:^` dependency-range policy for public packages.
+
 ## 📚 Reference
 
 Detailed technical specifications and comparisons.
