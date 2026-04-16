@@ -59,13 +59,13 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/core": "workspace:*",
-    "@fluojs/di": "workspace:*",
-    "@fluojs/notifications": "workspace:*",
-    "@fluojs/runtime": "workspace:*"
+    "@fluojs/core": "workspace:^",
+    "@fluojs/di": "workspace:^",
+    "@fluojs/notifications": "workspace:^",
+    "@fluojs/runtime": "workspace:^"
   },
   "peerDependencies": {
-    "@fluojs/queue": "workspace:*",
+    "@fluojs/queue": "workspace:^",
     "nodemailer": "^6.10.1"
   },
   "peerDependenciesMeta": {
@@ -77,7 +77,7 @@
     }
   },
   "devDependencies": {
-    "@fluojs/queue": "workspace:*",
+    "@fluojs/queue": "workspace:^",
     "@types/nodemailer": "^8.0.0",
     "vitest": "^3.2.4"
   }

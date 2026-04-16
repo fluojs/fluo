@@ -43,7 +43,7 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/core": "workspace:*"
+    "@fluojs/core": "workspace:^"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

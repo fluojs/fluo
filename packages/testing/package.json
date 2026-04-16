@@ -83,20 +83,20 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/config": "workspace:*",
-    "@fluojs/core": "workspace:*",
-    "@fluojs/http": "workspace:*",
-    "@fluojs/di": "workspace:*",
-    "@fluojs/runtime": "workspace:*"
+    "@fluojs/config": "workspace:^",
+    "@fluojs/core": "workspace:^",
+    "@fluojs/http": "workspace:^",
+    "@fluojs/di": "workspace:^",
+    "@fluojs/runtime": "workspace:^"
   },
   "peerDependencies": {
     "@babel/core": ">=7.0.0",
     "vitest": "^3.0.8"
   },
   "devDependencies": {
-    "@fluojs/platform-nodejs": "workspace:*",
-    "@fluojs/platform-express": "workspace:*",
-    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/platform-nodejs": "workspace:^",
+    "@fluojs/platform-express": "workspace:^",
+    "@fluojs/platform-fastify": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

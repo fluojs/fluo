@@ -44,19 +44,19 @@
   },
   "dependencies": {
     "@socket.io/bun-engine": "^0.1.0",
-    "@fluojs/core": "workspace:*",
-    "@fluojs/di": "workspace:*",
-    "@fluojs/http": "workspace:*",
-    "@fluojs/runtime": "workspace:*",
-    "@fluojs/websockets": "workspace:*"
+    "@fluojs/core": "workspace:^",
+    "@fluojs/di": "workspace:^",
+    "@fluojs/http": "workspace:^",
+    "@fluojs/runtime": "workspace:^",
+    "@fluojs/websockets": "workspace:^"
   },
   "peerDependencies": {
     "socket.io": "^4.0.0"
   },
   "devDependencies": {
-    "@fluojs/platform-express": "workspace:*",
-    "@fluojs/platform-fastify": "workspace:*",
-    "@fluojs/platform-nodejs": "workspace:*",
+    "@fluojs/platform-express": "workspace:^",
+    "@fluojs/platform-fastify": "workspace:^",
+    "@fluojs/platform-nodejs": "workspace:^",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "vitest": "^3.2.4"

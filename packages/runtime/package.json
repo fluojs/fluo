@@ -74,13 +74,13 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/config": "workspace:*",
-    "@fluojs/core": "workspace:*",
-    "@fluojs/di": "workspace:*",
-    "@fluojs/http": "workspace:*"
+    "@fluojs/config": "workspace:^",
+    "@fluojs/core": "workspace:^",
+    "@fluojs/di": "workspace:^",
+    "@fluojs/http": "workspace:^"
   },
   "devDependencies": {
-    "@fluojs/serialization": "workspace:*",
+    "@fluojs/serialization": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

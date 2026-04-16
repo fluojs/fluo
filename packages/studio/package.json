@@ -50,10 +50,10 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/runtime": "workspace:*"
+    "@fluojs/runtime": "workspace:^"
   },
   "devDependencies": {
-    "@fluojs-internal/tooling-vite": "workspace:*",
+    "@fluojs-internal/tooling-vite": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

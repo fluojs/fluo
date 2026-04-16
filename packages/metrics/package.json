@@ -42,9 +42,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/di": "workspace:*",
-    "@fluojs/http": "workspace:*",
-    "@fluojs/runtime": "workspace:*",
+    "@fluojs/di": "workspace:^",
+    "@fluojs/http": "workspace:^",
+    "@fluojs/runtime": "workspace:^",
     "prom-client": "^15.1.3"
   },
   "devDependencies": {

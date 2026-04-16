@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@fluojs/runtime": "workspace:*",
+    "@fluojs/runtime": "workspace:^",
     "ejs": "^3.1.10",
     "tsx": "^4.20.4",
     "typescript": "^6.0.2"
