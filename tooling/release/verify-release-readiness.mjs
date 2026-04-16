@@ -140,6 +140,66 @@ function workspacePackageNames() {
   return sorted(names);
 }
 
+function workspacePackageManifests() {
+  const packagesDirectory = join(repoRoot, 'packages');
+  const manifests = [];
+
+  for (const entry of readdirSync(packagesDirectory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const packageJsonPath = join(packagesDirectory, entry.name, 'package.json');
+
+    if (!existsSync(packageJsonPath)) {
+      continue;
+    }
+
+    const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+
+    if (typeof manifest.name === 'string') {
+      manifests.push({
+        manifest,
+        packageJsonPath,
+      });
+    }
+  }
+
+  return manifests.sort((left, right) => left.manifest.name.localeCompare(right.manifest.name));
+}
+
+function collectWorkspaceProtocolViolations(packageManifests, publicPackageNames) {
+  const dependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
+  const publicPackageSet = new Set(publicPackageNames);
+  const violations = [];
+
+  for (const { manifest, packageJsonPath } of packageManifests) {
+    if (!publicPackageSet.has(manifest.name)) {
+      continue;
+    }
+
+    for (const field of dependencyFields) {
+      const dependencies = manifest[field];
+
+      if (!dependencies || typeof dependencies !== 'object') {
+        continue;
+      }
+
+      for (const [dependencyName, dependencyRange] of Object.entries(dependencies)) {
+        if (
+          dependencyName !== manifest.name &&
+          publicPackageSet.has(dependencyName) &&
+          dependencyRange === 'workspace:*'
+        ) {
+          violations.push(`${manifest.name} → ${dependencyName} in ${field} (${packageJsonPath})`);
+        }
+      }
+    }
+  }
+
+  return sorted(violations);
+}
+
 export function buildSummary(checks, writeDrafts) {
   const sideEffects = writeDrafts
     ? '- Side effects: `CHANGELOG.md`, `tooling/release/release-readiness-summary.md`, and `tooling/release/release-readiness-summary.ko.md` updated'
@@ -237,6 +297,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     read: readText = read,
     existsSync: pathExists = existsSync,
     workspacePackageNames: listWorkspacePackageNames = workspacePackageNames,
+    workspacePackageManifests: listWorkspacePackageManifests = workspacePackageManifests,
     mkdirSync: createDirectory = mkdirSync,
     readFileSync: readFile = readFileSync,
     writeFileSync: writeFile = writeFileSync,
@@ -260,6 +321,10 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
   const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
   const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
   const workspacePackages = listWorkspacePackageNames();
+  const publicWorkspaceProtocolViolations = collectWorkspaceProtocolViolations(
+    listWorkspacePackageManifests(),
+    governancePackageList,
+  );
 
   assertCheck(
     checks,
@@ -361,6 +426,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     'Documented public packages exist in workspace',
     governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
     'Every documented public package maps to an existing workspace package manifest.',
+  );
+  assertCheck(
+    checks,
+    'Public internal dependency ranges use workspace:^',
+    publicWorkspaceProtocolViolations.length === 0,
+    publicWorkspaceProtocolViolations.length === 0
+      ? 'Intended public package manifests use `workspace:^` for internal `@fluojs/*` dependencies across dependency, optional, peer, and dev dependency fields.'
+      : `Replace \`workspace:*\` with \`workspace:^\` for: ${publicWorkspaceProtocolViolations.join('; ')}`,
   );
 
   if (writeDrafts) {

@@ -32,6 +32,23 @@ function createDependencies() {
     }),
     existsSync: vi.fn((targetPath) => targetPath.endsWith('/LICENSE') || targetPath.endsWith('/CHANGELOG.md')),
     workspacePackageNames: vi.fn(() => ['@fluojs/cli', '@fluojs/core']),
+    workspacePackageManifests: vi.fn(() => [
+      {
+        manifest: {
+          name: '@fluojs/cli',
+          dependencies: {
+            '@fluojs/core': 'workspace:^',
+          },
+        },
+        packageJsonPath: '/repo/packages/cli/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/core',
+        },
+        packageJsonPath: '/repo/packages/core/package.json',
+      },
+    ]),
     mkdirSync: vi.fn(),
     readFileSync: vi.fn(() => '# Changelog\n\n## [Unreleased]\n'),
     writeFileSync: vi.fn(),
@@ -63,5 +80,30 @@ describe('runReleaseReadinessVerification', () => {
         String(content).includes('`CHANGELOG.md`, `tooling/release/release-readiness-summary.md`'),
       ),
     ).toBe(true);
+  });
+
+  it('fails when a documented public package keeps workspace:* for an internal dependency', () => {
+    const dependencies = createDependencies();
+    dependencies.workspacePackageManifests = vi.fn(() => [
+      {
+        manifest: {
+          name: '@fluojs/cli',
+          dependencies: {
+            '@fluojs/core': 'workspace:*',
+          },
+        },
+        packageJsonPath: '/repo/packages/cli/package.json',
+      },
+      {
+        manifest: {
+          name: '@fluojs/core',
+        },
+        packageJsonPath: '/repo/packages/core/package.json',
+      },
+    ]);
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      'Release readiness check failed: Public internal dependency ranges use workspace:^.',
+    );
   });
 });
