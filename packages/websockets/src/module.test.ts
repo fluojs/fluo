@@ -111,6 +111,85 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
+async function closeWebSocket(socket: WebSocket): Promise<void> {
+  if (socket.readyState === WebSocket.CLOSED) {
+    return;
+  }
+
+  const closed = onceClosed(socket);
+
+  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+    socket.close();
+  }
+
+  await closed;
+}
+
+async function waitForAssertion(assertion: () => void | Promise<void>): Promise<void> {
+  const timeoutMs = 500;
+  const intervalMs = 5;
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw error;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, intervalMs);
+      });
+    }
+  }
+}
+
+function createUpgradeRequest(path: string): string {
+  return 'GET ' + path + ' HTTP/1.1\r\n'
+    + 'Host: 127.0.0.1\r\n'
+    + 'Connection: Upgrade\r\n'
+    + 'Upgrade: websocket\r\n'
+    + 'Sec-WebSocket-Version: 13\r\n'
+    + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
+    + '\r\n';
+}
+
+async function readUpgradeResponse(port: number, request: string): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const socket = createConnection({ host: '127.0.0.1', port });
+    const chunks: Buffer[] = [];
+    let settled = false;
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      callback();
+    };
+
+    socket.once('connect', () => {
+      socket.write(request);
+    });
+    socket.on('data', (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    socket.once('close', (hadError) => {
+      if (hadError) {
+        return;
+      }
+
+      settle(() => resolve(Buffer.concat(chunks).toString('utf8')));
+    });
+    socket.once('error', (error) => {
+      settle(() => reject(error));
+    });
+  });
+}
+
 function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Buffer }> {
   return new Promise((resolve) => {
     socket.once('close', (code: number, reason: Buffer) => resolve({ code, reason }));
@@ -504,14 +583,14 @@ describe('@fluojs/websockets', () => {
     const incoming = await onceMessage(socket);
     expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    socket.close();
-    await onceClosed(socket);
+    await closeWebSocket(socket);
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForAssertion(() => {
+      expect(state.disconnectCount).toBe(1);
+    });
 
     expect(state.connectCount).toBe(1);
     expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(state.disconnectCount).toBe(1);
 
     await app.close();
   });
@@ -567,14 +646,14 @@ describe('@fluojs/websockets', () => {
     const incoming = await onceMessage(socket);
     expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    socket.close();
-    await onceClosed(socket);
+    await closeWebSocket(socket);
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForAssertion(() => {
+      expect(state.disconnectCount).toBe(1);
+    });
 
     expect(state.connectCount).toBe(1);
     expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(state.disconnectCount).toBe(1);
 
     await app.close();
   });
@@ -630,14 +709,14 @@ describe('@fluojs/websockets', () => {
     const incoming = await onceMessage(socket);
     expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    socket.close();
-    await onceClosed(socket);
+    await closeWebSocket(socket);
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForAssertion(() => {
+      expect(state.disconnectCount).toBe(1);
+    });
 
     expect(state.connectCount).toBe(1);
     expect(state.messages).toEqual([{ value: 'hello' }]);
-    expect(state.disconnectCount).toBe(1);
 
     await app.close();
   });
@@ -708,9 +787,11 @@ describe('@fluojs/websockets', () => {
       const incoming = await onceMessage(socket);
       expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: scenario.name } });
 
-      socket.close();
-      await onceClosed(socket);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await closeWebSocket(socket);
+
+      await waitForAssertion(() => {
+        expect(state.disconnectCount).toBe(1);
+      });
 
       const healthResponse = await fetch(`http://127.0.0.1:${String(appPort)}/health`);
       expect(healthResponse.status).toBe(200);
@@ -721,9 +802,10 @@ describe('@fluojs/websockets', () => {
 
       expect(state.connectCount).toBe(1);
       expect(state.messages).toEqual([{ value: scenario.name }]);
-      expect(state.disconnectCount).toBe(1);
 
       await app.close();
+
+      expect((Reflect.get(state, 'disconnectCount') as number)).toBe(1);
     });
   }
 
@@ -775,14 +857,13 @@ describe('@fluojs/websockets', () => {
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/async-connect`);
     await onceOpen(socket);
     socket.send(JSON.stringify({ event: 'ping', data: 'early' }));
-    socket.close();
-    await onceClosed(socket);
+    await closeWebSocket(socket);
 
     connected.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.messages).toEqual(['early']);
-    expect(state.disconnects).toBe(1);
+    await waitForAssertion(() => {
+      expect(state.messages).toEqual(['early']);
+      expect(state.disconnects).toBe(1);
+    });
 
     await app.close();
   });
@@ -824,28 +905,7 @@ describe('@fluojs/websockets', () => {
 
     await app.listen();
 
-    const response = await new Promise<string>((resolve, reject) => {
-      const socket = createConnection({ host: '127.0.0.1', port }, () => {
-        socket.write(
-          'GET /guarded HTTP/1.1\r\n'
-            + 'Host: 127.0.0.1\r\n'
-            + 'Connection: Upgrade\r\n'
-            + 'Upgrade: websocket\r\n'
-            + 'Sec-WebSocket-Version: 13\r\n'
-            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
-            + '\r\n',
-        );
-      });
-      const chunks: Buffer[] = [];
-
-      socket.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      socket.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf8'));
-      });
-      socket.on('error', reject);
-    });
+    const response = await readUpgradeResponse(port, createUpgradeRequest('/guarded'));
 
     expect(response).toContain('HTTP/1.1 401 Unauthorized');
     expect(response).toContain('Authentication required.');
@@ -881,33 +941,11 @@ describe('@fluojs/websockets', () => {
     const firstSocket = new WebSocket(`ws://127.0.0.1:${String(port)}/limited`);
     await onceOpen(firstSocket);
 
-    const response = await new Promise<string>((resolve, reject) => {
-      const socket = createConnection({ host: '127.0.0.1', port }, () => {
-        socket.write(
-          'GET /limited HTTP/1.1\r\n'
-            + 'Host: 127.0.0.1\r\n'
-            + 'Connection: Upgrade\r\n'
-            + 'Upgrade: websocket\r\n'
-            + 'Sec-WebSocket-Version: 13\r\n'
-            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
-            + '\r\n',
-        );
-      });
-      const chunks: Buffer[] = [];
-
-      socket.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      socket.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf8'));
-      });
-      socket.on('error', reject);
-    });
+    const response = await readUpgradeResponse(port, createUpgradeRequest('/limited'));
 
     expect(response).toContain('HTTP/1.1 429 Too Many Requests');
 
-    firstSocket.close();
-    await onceClosed(firstSocket);
+    await closeWebSocket(firstSocket);
     await app.close();
   });
 
@@ -1040,19 +1078,19 @@ describe('@fluojs/websockets', () => {
     socket.send(JSON.stringify({ event: 'ping', data: 'a' }));
     socket.send(JSON.stringify({ event: 'ping', data: 'b' }));
     socket.send(JSON.stringify({ event: 'ping', data: 'c' }));
-    socket.close();
-    await onceClosed(socket);
+    await closeWebSocket(socket);
 
     connected.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.messages).toEqual(['b', 'c']);
+    await waitForAssertion(() => {
+      expect(state.messages).toEqual(['b', 'c']);
+    });
 
     await app.close();
   });
 
   it('delivers messages and disconnects that arrive after async onConnect completes', async () => {
     const connected = createDeferred<void>();
+    const connectedHandled = createDeferred<void>();
 
     class GatewayState {
       disconnects = 0;
@@ -1067,6 +1105,7 @@ describe('@fluojs/websockets', () => {
       @OnConnect()
       async onConnect() {
         await connected.promise;
+        connectedHandled.resolve();
       }
 
       @OnMessage('ping')
@@ -1100,16 +1139,16 @@ describe('@fluojs/websockets', () => {
 
     // Resolve onConnect first, then send message and disconnect.
     connected.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await connectedHandled.promise;
 
     socket.send(JSON.stringify({ event: 'ping', data: 'hello' }));
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    socket.close();
-    await onceClosed(socket);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-
-    expect(state.messages).toEqual(['hello']);
-    expect(state.disconnects).toBe(1);
+    await waitForAssertion(() => {
+      expect(state.messages).toEqual(['hello']);
+    });
+    await closeWebSocket(socket);
+    await waitForAssertion(() => {
+      expect(state.disconnects).toBe(1);
+    });
 
     await app.close();
   });
@@ -1159,11 +1198,11 @@ describe('@fluojs/websockets', () => {
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ordered`);
     await onceOpen(socket);
-    socket.close();
-    await onceClosed(socket);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await closeWebSocket(socket);
 
-    expect(state.steps).toEqual(['first', 'second-after-first']);
+    await waitForAssertion(() => {
+      expect(state.steps).toEqual(['first', 'second-after-first']);
+    });
 
     await app.close();
   });
@@ -1575,34 +1614,13 @@ describe('@fluojs/websockets', () => {
 
     await app.listen();
 
-    const malformedResponse = await new Promise<string>((resolve, reject) => {
-      const socket = createConnection({ host: '127.0.0.1', port }, () => {
-        socket.write(
-          'GET http://%zz HTTP/1.1\r\n'
-            + 'Host: 127.0.0.1\r\n'
-            + 'Connection: Upgrade\r\n'
-            + 'Upgrade: websocket\r\n'
-            + 'Sec-WebSocket-Version: 13\r\n'
-            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
-            + '\r\n',
-        );
-      });
-      const chunks: Buffer[] = [];
-
-      socket.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      socket.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf8'));
-      });
-      socket.on('error', reject);
-    });
+    const malformedResponse = await readUpgradeResponse(port, createUpgradeRequest('http://%zz'));
 
     expect(malformedResponse).toContain('HTTP/1.1 400 Bad Request');
 
     const followup = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
     await onceOpen(followup);
-    followup.close();
+    await closeWebSocket(followup);
 
     await app.close();
   });
@@ -1630,6 +1648,7 @@ describe('@fluojs/websockets', () => {
       port,
       shutdownTimeoutMs: 200,
     });
+    const service = await app.container.resolve(WebSocketGatewayLifecycleService);
 
     await app.listen();
 
@@ -1642,6 +1661,11 @@ describe('@fluojs/websockets', () => {
     await closed;
 
     expect(socket.readyState).toBe(WebSocket.CLOSED);
+    expect((Reflect.get(service, 'attachments') as unknown[])).toHaveLength(0);
+    expect((Reflect.get(service, 'ownedUpgradeServers') as unknown[])).toHaveLength(0);
+    expect((Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>).size).toBe(0);
+    expect((Reflect.get(service, 'pingPending') as Set<string>).size).toBe(0);
+    expect((Reflect.get(service, 'heartbeatTimer') as ReturnType<typeof setInterval> | undefined)).toBeUndefined();
   });
 
   it('attaches a socket error listener so websocket error events do not escape', () => {
