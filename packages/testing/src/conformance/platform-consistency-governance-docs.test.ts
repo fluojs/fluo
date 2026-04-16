@@ -150,6 +150,8 @@ describe('platform consistency governance docs', () => {
     expect(englishPublishSurface.length).toBeGreaterThan(0);
     expect(koreanPublishSurface.length).toBeGreaterThan(0);
     expect(koreanPublishSurface).toEqual(englishPublishSurface);
+    expect(releaseGovernance).toContain('pnpm verify:platform-consistency-governance');
+    expect(releaseGovernanceKo).toContain('pnpm verify:platform-consistency-governance');
   });
 
   it('keeps canonical package-surface inventory synchronized with release-governance in both languages', () => {

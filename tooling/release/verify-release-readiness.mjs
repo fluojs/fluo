@@ -663,7 +663,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     releaseGovernance.includes('## intended publish surface') &&
       releaseGovernance.includes('pnpm verify:release-readiness') &&
       releaseGovernance.includes('pnpm verify:platform-consistency-governance'),
-    'Release governance documents the canonical publish surface and the automated release gates.',
+    'Release governance documents the canonical publish surface plus the companion automated release/governance gates.',
   );
   assertCheck(
     checks,
