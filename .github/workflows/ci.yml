@@ -97,6 +97,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - resolve-pr-verification-scope
+    env:
+      FLUO_VITEST_SHUTDOWN_DEBUG: '1'
+      FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug
 
     steps:
       - name: Checkout
@@ -125,6 +128,61 @@ jobs:
       - name: Test (full)
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm test
+
+      - name: Print Vitest shutdown debug summary
+        if: ${{ always() }}
+        run: |
+          if [ ! -d "$FLUO_VITEST_SHUTDOWN_DEBUG_DIR" ]; then
+            echo "No Vitest shutdown debug artifacts were produced."
+            exit 0
+          fi
+
+          node --input-type=module <<'EOF'
+          import { existsSync, readdirSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const directory = process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR;
+          if (!directory || !existsSync(directory)) {
+            console.log('No Vitest shutdown debug artifacts were produced.');
+            process.exit(0);
+          }
+
+          const files = readdirSync(directory)
+            .filter((entry) => entry.endsWith('.json'))
+            .sort();
+
+          if (files.length === 0) {
+            console.log('No Vitest shutdown debug artifacts were produced.');
+            process.exit(0);
+          }
+
+          for (const file of files) {
+            const artifact = JSON.parse(readFileSync(join(directory, file), 'utf8'));
+            const activeHandleSummary = Array.isArray(artifact.process?.activeHandles?.types)
+              ? artifact.process.activeHandles.types.map((entry) => `${entry.constructorName}x${String(entry.count)}`).join(', ')
+              : '';
+
+            console.log(`artifact: ${file}`);
+            console.log(`  kind: ${String(artifact.kind ?? 'unknown')}`);
+            if (artifact.lastTestReady?.fullName) {
+              console.log(`  last ready test: ${artifact.lastTestReady.fullName}`);
+            }
+            if (artifact.lastActivity?.file) {
+              console.log(`  worker last activity: ${artifact.lastActivity.file} (${artifact.lastActivity.phase})`);
+            }
+            if (activeHandleSummary.length > 0) {
+              console.log(`  active handles: ${activeHandleSummary}`);
+            }
+          }
+          EOF
+
+      - name: Upload Vitest shutdown debug artifacts
+        if: ${{ always() && hashFiles('.artifacts/vitest-shutdown-debug/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-shutdown-debug-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .artifacts/vitest-shutdown-debug/*.json
+          if-no-files-found: error
 
   official-web-runtime-adapter-portability:
     name: Official web runtime adapter portability (${{ matrix.adapter }})
