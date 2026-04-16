@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, mergeConfig, type UserConfig } from 'vitest/config';
 
 import { fluoBabelDecoratorsPlugin } from '../../vite/src';
+import {
+  createFluoVitestShutdownDebugReporter,
+  isFluoVitestShutdownDebugEnabled,
+} from './shutdown-debug.js';
 
 function collectWorkspaceAliasesFromRoot(repoRoot: string): Record<string, string> {
   const packagesRoot = join(repoRoot, 'packages');
@@ -53,6 +57,15 @@ export function collectWorkspaceAliases(repoRootUrl: string | URL): Record<strin
 }
 
 export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overrides: UserConfig = {}) {
+  const repoRoot = fileURLToPath(repoRootUrl);
+  const shutdownDebugEnabled = isFluoVitestShutdownDebugEnabled();
+  const shutdownDebugConfig = shutdownDebugEnabled
+    ? {
+        reporters: ['default', createFluoVitestShutdownDebugReporter(repoRoot)],
+        setupFiles: [fileURLToPath(new URL('./shutdown-debug.setup.ts', import.meta.url))],
+      }
+    : {};
+
   return mergeConfig(
     defineConfig({
       plugins: [fluoBabelDecoratorsPlugin()],
@@ -61,6 +74,7 @@ export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overr
       },
       test: {
         environment: 'node',
+        ...shutdownDebugConfig,
       },
     }),
     defineConfig(overrides),
