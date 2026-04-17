@@ -104,13 +104,14 @@ class UserController {
 ### Manual Module Composition
 
 `PrismaModule.forRoot(...)` / `forRootAsync(...)` remain the canonical application
-entrypoints. When you need to wire the same Prisma providers into a custom
-`defineModule(...)` registration, `createPrismaProviders(...)` remains a supported
-public helper for manual composition.
+entrypoints. When you need to compose Prisma support inside a custom
+`defineModule(...)` registration, import the module entrypoint there as well.
+Provider-array assembly is an internal implementation detail rather than part of
+the supported root-barrel contract.
 
 ```typescript
 import { defineModule } from '@fluojs/runtime';
-import { PrismaService, PrismaTransactionInterceptor, createPrismaProviders } from '@fluojs/prisma';
+import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -119,7 +120,7 @@ class ManualPrismaModule {}
 
 defineModule(ManualPrismaModule, {
   exports: [PrismaService, PrismaTransactionInterceptor],
-  providers: createPrismaProviders({ client: prisma }),
+  imports: [PrismaModule.forRoot({ client: prisma })],
 });
 ```
 
@@ -130,10 +131,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
-
-### Provider composition
-
-- `createPrismaProviders(options)`: Returns the provider set used by `PrismaModule.forRoot(...)` for supported manual `defineModule(...)` composition.
+- Root-level registration is intentionally centered on `PrismaModule.forRoot(...)` / `forRootAsync(...)`; low-level provider wiring is not part of the documented root-barrel contract.
 
 ### `PrismaService<TClient>`
 
