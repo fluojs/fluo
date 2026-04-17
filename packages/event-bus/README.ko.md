@@ -51,6 +51,8 @@ export class NotificationService {
 
 `EventBusModule`을 등록하고 `EventBusLifecycleService`를 주입받아 이벤트를 발행합니다.
 
+`EventBusModule.forRoot(...)`가 인프로세스 이벤트 버스를 구성하는 지원되는 root 진입점입니다. root만 소비하는 사용자는 저수준 provider 조합을 root barrel API의 일부가 아니라 내부 구현 상세로 취급해야 합니다.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
@@ -105,6 +107,7 @@ class UserRegisteredEvent {
 - `EventBusModule`: 이벤트 버스 기능을 위한 기본 모듈입니다.
 - `EventBusLifecycleService`: 이벤트를 발행(`publish(event)`)하기 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
+- root 수준 등록은 의도적으로 `EventBusModule.forRoot(...)` 중심이며, 저수준 provider helper는 문서화된 root barrel 계약에 포함되지 않습니다.
 
 ### 인터페이스
 - `EventBusTransport`: 외부 트랜스포트 어댑터 구현을 위한 계약입니다.
