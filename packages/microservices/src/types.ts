@@ -1,5 +1,5 @@
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
-import type { Scope } from '@fluojs/di';
+import type { Provider, Scope } from '@fluojs/di';
 import type { ApplicationLogger } from '@fluojs/runtime';
 
 /** Pattern matcher used to route messages and events to handler methods. */
@@ -98,8 +98,20 @@ export interface MicroserviceTransport {
   serverStream?(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown>;
 }
 
+/** Optional module-definition overrides for callers that want module-first custom registration. */
+export interface MicroserviceModuleRegistrationOptions {
+  /** Extra tokens exported in addition to `MicroserviceLifecycleService` and `MICROSERVICE`. */
+  additionalExports?: Token[];
+  /** Whether the configured microservice module should register globally. Defaults to `true`. */
+  global?: boolean;
+  /** Additional providers appended after the built-in microservice runtime wiring. */
+  providers?: Provider[];
+}
+
 /** Module options accepted by {@link MicroservicesModule.forRoot}. */
 export interface MicroserviceModuleOptions {
+  /** Optional module-definition overrides that provide a module-first alternative to raw provider-array composition. */
+  module?: MicroserviceModuleRegistrationOptions;
   transport: MicroserviceTransport;
 }
 

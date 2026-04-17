@@ -53,10 +53,17 @@ export class MicroservicesModule {
   static forRoot(options: MicroserviceModuleOptions): ModuleType {
     class MicroservicesModuleDefinition {}
 
+    const additionalExports = options.module?.additionalExports ?? [];
+    const additionalProviders = options.module?.providers ?? [];
+    const global = options.module?.global ?? true;
+
     return defineModule(MicroservicesModuleDefinition, {
-      exports: [MicroserviceLifecycleService, MICROSERVICE],
-      global: true,
-      providers: createMicroservicesProviders(options),
+      exports: [MicroserviceLifecycleService, MICROSERVICE, ...additionalExports],
+      global,
+      providers: [
+        ...createMicroservicesProviders({ transport: options.transport }),
+        ...additionalProviders,
+      ],
     });
   }
 }

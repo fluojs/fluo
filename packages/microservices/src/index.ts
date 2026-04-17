@@ -27,4 +27,11 @@ export {
 export * from './status.js';
 export { TcpMicroserviceTransport } from './transports/tcp-transport.js';
 export { MICROSERVICE } from './tokens.js';
-export type { Microservice, MicroserviceModuleOptions, MicroserviceTransport, Pattern, ServerStreamWriter } from './types.js';
+export type {
+  Microservice,
+  MicroserviceModuleOptions,
+  MicroserviceModuleRegistrationOptions,
+  MicroserviceTransport,
+  Pattern,
+  ServerStreamWriter,
+} from './types.js';

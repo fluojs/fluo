@@ -6,6 +6,7 @@ import type {
   KafkaMicroserviceTransportOptions,
   Microservice,
   MicroserviceModuleOptions,
+  MicroserviceModuleRegistrationOptions,
   MicroserviceTransport,
   MqttMicroserviceTransportOptions,
   NatsMicroserviceTransportOptions,
@@ -49,6 +50,10 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<MicroserviceTransport>().toHaveProperty('emit');
     expectTypeOf<Microservice>().toHaveProperty('listen');
     expectTypeOf<MicroserviceModuleOptions>().toMatchTypeOf<{ transport: MicroserviceTransport }>();
+    expectTypeOf<MicroserviceModuleOptions>().toHaveProperty('module');
+    expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('additionalExports');
+    expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('global');
+    expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('providers');
     expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('protoPath');
     expectTypeOf<KafkaMicroserviceTransportOptions>().toHaveProperty('consumer');
     expectTypeOf<MqttMicroserviceTransportOptions>().toHaveProperty('requestTimeoutMs');

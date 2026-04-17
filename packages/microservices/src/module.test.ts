@@ -2,14 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata, defineModuleMetadata } from '@fluojs/core/internal';
+import type { Provider } from '@fluojs/di';
 import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
-import type { ApplicationLogger } from '@fluojs/runtime';
+import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
 import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
-import { MicroservicesModule } from './module.js';
+import { MicroservicesModule, createMicroservicesProviders } from './module.js';
 import { MicroserviceLifecycleService } from './service.js';
-import { MICROSERVICE } from './tokens.js';
+import { MICROSERVICE, MICROSERVICE_OPTIONS } from './tokens.js';
 import { RedisPubSubMicroserviceTransport } from './transports/redis-transport.js';
 import { TcpMicroserviceTransport } from './transports/tcp-transport.js';
 import type {
@@ -21,6 +22,8 @@ import type {
   TransportHandler,
   TransportServerStreamHandler,
 } from './types.js';
+
+const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
 
 async function* streamFrom(values: readonly unknown[]): AsyncIterable<unknown> {
   for (const value of values) {
@@ -247,6 +250,80 @@ describe('@fluojs/microservices', () => {
     expect(typeof microserviceByToken.close).toBe('function');
     expect(typeof microserviceByToken.send).toBe('function');
     expect(typeof microserviceByToken.emit).toBe('function');
+
+    await app.close();
+  });
+
+  it('supports module-first custom registration through MicroservicesModule.forRoot module overrides', async () => {
+    const transport = new InMemoryLoopbackTransport();
+    const customProvider: Provider = {
+      provide: EXTRA_MICROSERVICE_EXPORT,
+      useValue: 'module-first-registration',
+    };
+    const microserviceModule = MicroservicesModule.forRoot({
+      module: {
+        additionalExports: [EXTRA_MICROSERVICE_EXPORT],
+        global: false,
+        providers: [customProvider],
+      },
+      transport,
+    });
+
+    class FeatureModule {}
+    defineModuleMetadata(FeatureModule, {
+      imports: [microserviceModule],
+    });
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [FeatureModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const exportedValue = await app.container.resolve(EXTRA_MICROSERVICE_EXPORT);
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+    const compiledMicroserviceModule = app.modules.find((compiledModule: CompiledModule) => compiledModule.type === microserviceModule);
+
+    expect(exportedValue).toBe('module-first-registration');
+    expect(lifecycleService).toBeInstanceOf(MicroserviceLifecycleService);
+    expect(compiledMicroserviceModule?.definition.global).toBe(false);
+    expect(compiledMicroserviceModule?.definition.exports).toContain(EXTRA_MICROSERVICE_EXPORT);
+
+    await app.close();
+  });
+
+  it('keeps createMicroservicesProviders aligned with the built-in runtime wiring', async () => {
+    const transport = new InMemoryLoopbackTransport();
+    const helperProviders = createMicroservicesProviders({ transport });
+    const optionsProvider = helperProviders.find(
+      (provider) => typeof provider === 'object' && provider !== null && 'provide' in provider && provider.provide === MICROSERVICE_OPTIONS,
+    );
+
+    expect(helperProviders).toHaveLength(3);
+    expect(optionsProvider).toMatchObject({
+      provide: MICROSERVICE_OPTIONS,
+      useValue: { transport },
+    });
+
+    class HelperModule {}
+    defineModuleMetadata(HelperModule, {
+      exports: [MicroserviceLifecycleService, MICROSERVICE],
+      providers: helperProviders,
+    });
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [HelperModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
+    const compatibilityToken = await app.container.resolve(MICROSERVICE);
+    const configuredOptions = await app.container.resolve(MICROSERVICE_OPTIONS);
+
+    expect(lifecycleService).toBeInstanceOf(MicroserviceLifecycleService);
+    expect(typeof compatibilityToken.listen).toBe('function');
+    expect(configuredOptions.transport).toBe(transport);
 
     await app.close();
   });
