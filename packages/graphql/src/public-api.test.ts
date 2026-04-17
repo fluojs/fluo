@@ -10,7 +10,6 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('Subscription');
     expect(graphqlPublicApi).toHaveProperty('Resolver');
     expect(graphqlPublicApi).toHaveProperty('GraphqlModule');
-    expect(graphqlPublicApi).toHaveProperty('createGraphqlProviders');
     expect(graphqlPublicApi).toHaveProperty('createDataLoader');
     expect(graphqlPublicApi).toHaveProperty('createDataLoaderMap');
     expect(graphqlPublicApi).toHaveProperty('DataLoader');
@@ -23,6 +22,10 @@ describe('@fluojs/graphql public API surface', () => {
   it('keeps GraphqlModule limited to the documented synchronous entrypoint', () => {
     expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRoot');
     expect(graphqlPublicApi.GraphqlModule).not.toHaveProperty('forRootAsync');
+  });
+
+  it('keeps low-level registration helpers out of the documented root barrel', () => {
+    expect(graphqlPublicApi).not.toHaveProperty('createGraphqlProviders');
   });
 
   it('does not expose internal metadata, lifecycle, or descriptor internals', () => {

@@ -141,6 +141,7 @@ GraphqlModule.forRoot({
 ## Public API Overview
 
 - `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
+- Root-level registration support is intentionally centered on `GraphqlModule.forRoot(...)`; low-level provider helpers like `createGraphqlProviders(...)` are not part of the documented root-barrel contract.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Operation decorators.
 - `Arg`: Argument mapping decorator.
 - `createDataLoader`, `createDataLoaderMap`: DataLoader factory helpers.
