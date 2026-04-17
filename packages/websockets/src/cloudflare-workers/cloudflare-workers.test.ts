@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
@@ -9,7 +10,6 @@ import * as workerPublicApi from './cloudflare-workers.js';
 import {
   CloudflareWorkersWebSocketGatewayLifecycleService,
   CloudflareWorkersWebSocketModule,
-  createCloudflareWorkersWebSocketProviders,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
   type CloudflareWorkerWebSocketBindingHost,
@@ -214,16 +214,16 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
   it('exposes the explicit Cloudflare Workers websocket seam', () => {
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketModule');
     expect(workerPublicApi).toHaveProperty('CloudflareWorkersWebSocketGatewayLifecycleService');
-    expect(workerPublicApi).toHaveProperty('createCloudflareWorkersWebSocketProviders');
+    expect(workerPublicApi).not.toHaveProperty('createCloudflareWorkersWebSocketProviders');
   });
 
   it('wires the Cloudflare Workers lifecycle service through Worker-only providers', () => {
     const options = {
       shutdown: { timeoutMs: 1234 },
     };
-    const providers = createCloudflareWorkersWebSocketProviders(options);
+    const providers = getModuleMetadata(CloudflareWorkersWebSocketModule.forRoot(options))?.providers ?? [];
     const optionsProvider = providers.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
 
     expect(providers).toContain(CloudflareWorkersWebSocketGatewayLifecycleService);
