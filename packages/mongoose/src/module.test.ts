@@ -4,7 +4,10 @@ import { Global, Inject, Module } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import {
+  MONGOOSE_CONNECTION,
+  MONGOOSE_OPTIONS,
   MongooseModule,
+  MongooseTransactionInterceptor,
   createMongoosePlatformStatusSnapshot,
   MongooseConnection,
 } from './index.js';
@@ -105,6 +108,52 @@ describe('@fluojs/mongoose', () => {
       'session:end',
       'dispose:true',
     ]);
+  });
+
+  it('supports manual defineModule composition via MongooseModule.forRoot imports', async () => {
+    const events: string[] = [];
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({ connection });
+
+    class ManualMongooseModule {}
+
+    defineModule(ManualMongooseModule, {
+      exports: [MongooseConnection, MongooseTransactionInterceptor],
+      imports: [mongooseModule],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [ManualMongooseModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+    const rawConnection = await app.container.resolve(MONGOOSE_CONNECTION);
+    const moduleOptions = await app.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
+
+    expect(mongoose).toBeInstanceOf(MongooseConnection);
+    expect(rawConnection).toBe(connection);
+    expect(moduleOptions).toEqual({ strictTransactions: false });
+
+    await expect(mongoose.transaction(async () => 'ok')).resolves.toBe('ok');
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'transaction:commit',
+      'session:end',
+    ]);
+
+    await app.close();
   });
 
   it('rolls back open request transactions before dispose on shutdown', async () => {
@@ -227,6 +276,121 @@ describe('@fluojs/mongoose', () => {
       'session:end:done',
       'dispose',
     ]);
+  });
+
+  it('defaults strictTransactions to false for sync and async module entrypoints', async () => {
+    const connection = {};
+
+    const SyncModule = MongooseModule.forRoot({
+      connection,
+    });
+
+    class SyncAppModule {}
+
+    defineModule(SyncAppModule, {
+      imports: [SyncModule],
+    });
+
+    const syncApp = await bootstrapApplication({
+      rootModule: SyncAppModule,
+    });
+    const syncMongoose = await syncApp.container.resolve(MongooseConnection<typeof connection>);
+    const syncOptions = await syncApp.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
+
+    await expect(syncMongoose.transaction(async () => 'sync-fallback')).resolves.toBe('sync-fallback');
+    await expect(syncMongoose.requestTransaction(async () => 'sync-request-fallback')).resolves.toBe('sync-request-fallback');
+    expect(syncOptions).toEqual({ strictTransactions: false });
+    expect(syncMongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        sessionStrategy: 'none',
+        strictTransactions: false,
+        supportsStartSession: false,
+      },
+      health: { status: 'healthy' },
+      readiness: { critical: true, status: 'ready' },
+    });
+
+    await syncApp.close();
+
+    const AsyncModule = MongooseModule.forRootAsync({
+      useFactory: () => ({
+        connection,
+      }),
+    });
+
+    class AsyncAppModule {}
+
+    defineModule(AsyncAppModule, {
+      imports: [AsyncModule],
+    });
+
+    const asyncApp = await bootstrapApplication({
+      rootModule: AsyncAppModule,
+    });
+    const asyncMongoose = await asyncApp.container.resolve(MongooseConnection<typeof connection>);
+    const asyncOptions = await asyncApp.container.resolve<{ strictTransactions: boolean }>(MONGOOSE_OPTIONS);
+
+    await expect(asyncMongoose.transaction(async () => 'async-fallback')).resolves.toBe('async-fallback');
+    await expect(asyncMongoose.requestTransaction(async () => 'async-request-fallback')).resolves.toBe('async-request-fallback');
+    expect(asyncOptions).toEqual({ strictTransactions: false });
+    expect(asyncMongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        sessionStrategy: 'none',
+        strictTransactions: false,
+        supportsStartSession: false,
+      },
+      health: { status: 'healthy' },
+      readiness: { critical: true, status: 'ready' },
+    });
+
+    await asyncApp.close();
+  });
+
+  it('awaits async dispose hooks registered through module entrypoints', async () => {
+    const events: string[] = [];
+    const connection = {};
+    let signalDisposeStarted!: () => void;
+    let releaseDispose!: () => void;
+
+    const disposeStarted = new Promise<void>((resolve) => {
+      signalDisposeStarted = resolve;
+    });
+    const disposeReleased = new Promise<void>((resolve) => {
+      releaseDispose = resolve;
+    });
+
+    const mongooseModule = MongooseModule.forRootAsync({
+      useFactory: async () => ({
+        connection,
+        dispose: async () => {
+          events.push('dispose:start');
+          signalDisposeStarted();
+          await disposeReleased;
+          events.push('dispose:end');
+        },
+      }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [mongooseModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const closePromise = app.close();
+
+    await disposeStarted;
+    expect(events).toEqual(['dispose:start']);
+
+    releaseDispose();
+
+    await closePromise;
+
+    expect(events).toEqual(['dispose:start', 'dispose:end']);
   });
 
   it('enforces strictTransactions for sync and async module builders', async () => {
