@@ -76,13 +76,7 @@ function createNotificationsRuntimeProviders(optionsProvider: Provider): Provide
   ];
 }
 
-/**
- * Creates notifications providers for manual module composition.
- *
- * @param options Static notifications module options including channels and optional integrations.
- * @returns Provider definitions equivalent to {@link NotificationsModule.forRoot} wiring.
- */
-export function createNotificationsProviders(options: NotificationsModuleOptions = {}): Provider[] {
+function buildNotificationsProviders(options: NotificationsModuleOptions = {}): Provider[] {
   return createNotificationsRuntimeProviders({
     provide: NOTIFICATIONS_OPTIONS,
     useValue: normalizeNotificationsModuleOptions(options),
@@ -95,7 +89,7 @@ function buildNotificationsModule(options: NotificationsModuleOptions): ModuleTy
   return defineModule(NotificationsRootModuleDefinition, {
     exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
     global: true,
-    providers: createNotificationsProviders(options),
+    providers: buildNotificationsProviders(options),
   });
 }
 

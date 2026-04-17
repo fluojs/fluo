@@ -10,7 +10,6 @@ Channel-agnostic notification orchestration for fluo. It freezes the shared cont
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
-  - [Manual provider composition with `createNotificationsProviders`](#manual-provider-composition-with-createnotificationsproviders)
   - [Queue-backed bulk delivery](#queue-backed-bulk-delivery)
   - [Lifecycle publication through an event publisher](#lifecycle-publication-through-an-event-publisher)
   - [Intentional limitations](#intentional-limitations)
@@ -34,6 +33,8 @@ npm install @fluojs/notifications
 ## Quick Start
 
 ### 1. Register the foundation module
+
+`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` are the supported registration seams for application and custom module composition. Low-level provider arrays are internal implementation details and not part of the root public API contract.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -88,38 +89,6 @@ export class WelcomeService {
 ```
 
 ## Common Patterns
-
-### Manual provider composition with `createNotificationsProviders`
-
-`createNotificationsProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `NotificationsModule.forRoot(...)`.
-
-```typescript
-import { Module } from '@fluojs/core';
-import { createNotificationsProviders } from '@fluojs/notifications';
-
-@Module({
-  providers: [
-    ...createNotificationsProviders({
-      channels: [emailChannel],
-      events: {
-        publisher: eventPublisher,
-      },
-      queue: {
-        adapter: queueAdapter,
-        bulkThreshold: 25,
-      },
-    }),
-  ],
-  exports: [],
-})
-export class NotificationsProvidersModule {}
-```
-
-Behavioral contract notes:
-
-- The helper preserves the same `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`, and `NotificationsService` wiring that `NotificationsModule.forRoot(...)` installs.
-- `createNotificationsProviders(...)` applies the same option normalization as `NotificationsModule.forRoot(...)`, including frozen channel arrays, default lifecycle publication enablement when an events publisher is configured, and the minimum bulk queue threshold of `1`.
-- The helper does not narrow the package contract: direct dispatch stays the default path, and optional queue/event seams remain explicit application-boundary choices.
 
 ### Queue-backed bulk delivery
 
@@ -191,7 +160,6 @@ These limitations are part of the package contract so leaf packages can evolve i
 ### Core
 
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
-- `createNotificationsProviders(options)`
 - `NotificationsService`
 - `NOTIFICATIONS`
 - `NOTIFICATION_CHANNELS`
@@ -219,6 +187,6 @@ These limitations are part of the package contract so leaf packages can evolve i
 
 ## Example Sources
 
-- `packages/notifications/src/module.test.ts`: Module registration, `createNotificationsProviders(...)` helper parity, async wiring, queue seam, and tolerant bulk dispatch examples.
+- `packages/notifications/src/module.test.ts`: Module registration, async wiring, queue seam, and tolerant bulk dispatch examples.
 - `packages/notifications/src/public-surface.test.ts`: Public contract verification for root exports and TypeScript-only types.
 - `packages/notifications/src/status.test.ts`: Health/readiness contract examples.

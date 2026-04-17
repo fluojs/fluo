@@ -5,7 +5,7 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 
 import { NotificationChannelNotFoundError } from './errors.js';
-import { NotificationsModule, createNotificationsProviders } from './module.js';
+import { NotificationsModule } from './module.js';
 import { NotificationsService } from './service.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 import type {
@@ -27,10 +27,6 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   }
 
   return metadata.providers as Provider[];
-}
-
-function providerToken(provider: Provider): unknown {
-  return typeof provider === 'function' ? provider : provider.provide;
 }
 
 class RecordingPublisher implements NotificationsEventPublisher {
@@ -519,66 +515,6 @@ describe('NotificationsModule', () => {
       ]),
     ).rejects.toBeInstanceOf(NotificationChannelNotFoundError);
     expect(queue.jobs).toHaveLength(0);
-  });
-
-  it('creates helper providers with the same runtime wiring and normalized behavior as NotificationsModule.forRoot', async () => {
-    const publisher = new RecordingPublisher();
-    const queue = new RecordingQueueAdapter();
-    const options = {
-      channels: [
-        {
-          channel: 'email',
-          async send(notification: NotificationDispatchRequest) {
-            return {
-              externalId: `helper-${String(notification.payload.template)}`,
-            };
-          },
-        },
-      ],
-      events: {
-        publisher,
-      },
-      queue: {
-        adapter: queue,
-        bulkThreshold: 0,
-      },
-    };
-    const moduleType = NotificationsModule.forRoot(options);
-    const helperProviders = createNotificationsProviders(options);
-    const moduleRuntimeProviders = moduleProviders(moduleType);
-    const helperContainer = new Container();
-
-    expect(helperProviders).toHaveLength(moduleRuntimeProviders.length);
-    expect(helperProviders.map(providerToken)).toEqual(moduleRuntimeProviders.map(providerToken));
-
-    helperContainer.register(...helperProviders);
-
-    const service = await helperContainer.resolve(NotificationsService);
-    const facade = await helperContainer.resolve<Notifications>(NOTIFICATIONS);
-    const channels = await helperContainer.resolve(NOTIFICATION_CHANNELS);
-
-    await expect(facade.dispatch({ channel: 'email', payload: { template: 'helper-contract' } })).resolves.toMatchObject({
-      deliveryId: 'helper-helper-contract',
-      queued: false,
-      status: 'delivered',
-    });
-
-    expect(service).toBeInstanceOf(NotificationsService);
-    expect(channels.map((channel: NotificationChannel) => channel.channel)).toEqual(['email']);
-    expect(Object.isFrozen(channels)).toBe(true);
-    expect(queue.jobs).toHaveLength(0);
-    expect(publisher.events.map((event) => event.name)).toEqual([
-      'notification.dispatch.requested',
-      'notification.dispatch.delivered',
-    ]);
-
-    // Prove helper normalizes bulkThreshold: 0 → minimum 1 (single-item bulk gets queued)
-    publisher.events.length = 0;
-    const bulkResult = await service.dispatchMany([{ channel: 'email', payload: { template: 'helper-bulk' } }]);
-
-    expect(bulkResult.results).toHaveLength(1);
-    expect(bulkResult.results[0]!.queued).toBe(true);
-    expect(queue.jobs).toHaveLength(1);
   });
 
   it('preserves direct delivery results when lifecycle publication fails', async () => {
