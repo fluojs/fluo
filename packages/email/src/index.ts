@@ -3,7 +3,7 @@ export {
   EmailMessageValidationError,
 } from './errors.js';
 export { EmailChannel } from './channel.js';
-export { EmailModule, createEmailProviders } from './module.js';
+export { EmailModule } from './module.js';
 export { EmailService } from './service.js';
 export { createEmailPlatformStatusSnapshot } from './status.js';
 export type { EmailLifecycleState, EmailPlatformStatusSnapshot, EmailStatusAdapterInput } from './status.js';
