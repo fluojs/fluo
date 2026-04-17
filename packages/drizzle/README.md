@@ -10,6 +10,7 @@ Drizzle ORM integration for fluo with a transaction-aware database wrapper and a
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -95,14 +96,44 @@ import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 class UsersController {}
 ```
 
+## Manual Module Composition
+
+`DrizzleModule.forRoot(...)` / `forRootAsync(...)` remain the canonical application
+entrypoints. When you need to compose Drizzle support inside a custom
+`defineModule(...)` registration, import the module entrypoint there as well.
+Provider-array assembly is an internal implementation detail rather than part of
+the supported root-barrel contract.
+
+```ts
+import { defineModule } from '@fluojs/runtime';
+import { DrizzleDatabase, DrizzleModule, DrizzleTransactionInterceptor } from '@fluojs/drizzle';
+
+const database = {
+  transaction: async <T>(callback: (tx: typeof database) => Promise<T>) => callback(database),
+};
+
+class ManualDrizzleModule {}
+
+defineModule(ManualDrizzleModule, {
+  exports: [DrizzleDatabase, DrizzleTransactionInterceptor],
+  imports: [DrizzleModule.forRoot({ database })],
+});
+```
+
 ## Public API Overview
 
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
-- `createDrizzleProviders(options)`
 - `DrizzleDatabase`
 - `DrizzleTransactionInterceptor`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`
 - `createDrizzlePlatformStatusSnapshot(...)`
+
+### `DrizzleModule`
+
+- `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
+- `forRootAsync(...)` accepts `AsyncModuleOptions<DrizzleModuleOptions<...>>`.
+- Supports `strictTransactions: true` to throw if transaction support is missing.
+- Root-level registration is intentionally centered on `DrizzleModule.forRoot(...)` / `forRootAsync(...)`; low-level provider wiring is not part of the documented root-barrel contract.
 
 ## Related Packages
 
