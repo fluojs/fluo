@@ -14,16 +14,69 @@ fluo CLI를 사용하여 반복적인 코드를 줄이고 일관된 프로젝트
 fluo g module catalog
 ```
 
-**어떤 일이 일어나나요?**
-CLI는 `src/catalog/` 디렉토리를 만들고 `catalog.module.ts` 진입점을 생성합니다. 여기에 필요한 컨트롤러, 서비스, DTO를 이어서 붙일 수 있습니다.
+이 명령은 다음 구조를 생성합니다:
+
+```
+src/
+└── catalog/
+    └── catalog.module.ts
+```
+
+생성된 모듈 파일은 다음과 같습니다:
+
+```ts
+import { Module } from '@fluojs/core';
+
+@Module({
+  controllers: [],
+  providers: [],
+})
+export class CatalogModule {}
+```
+
+여기에 컨트롤러, 서비스 등의 구성 요소를 기능이 커질수록 차례로 추가할 수 있습니다.
 
 ### 2. 정밀한 컴포넌트 생성
 기존 기능에 단일 구성 요소를 추가해야 하나요? 세분화된 제너레이터를 사용하세요.
 
-- **`fluo g controller name`**: HTTP 컨트롤러를 스캐폴딩합니다.
-- **`fluo g service name`**: 비즈니스 로직 서비스를 스캐폴딩합니다.
-- **`fluo g repo name`**: 데이터 레포지토리 패턴을 스캐폴딩합니다.
-- **`fluo g module name`**: 깨끗한 모듈 정의를 스캐폴딩합니다.
+```sh
+fluo g controller catalog
+fluo g service catalog
+```
+
+두 명령 실행 후 기능 디렉토리는 다음과 같습니다:
+
+```
+src/
+└── catalog/
+    ├── catalog.module.ts
+    ├── catalog.controller.ts
+    └── catalog.service.ts
+```
+
+생성된 컨트롤러는 표준 `@Inject` + `@Controller` 패턴을 따릅니다:
+
+```ts
+import { Inject } from '@fluojs/core';
+import { Controller } from '@fluojs/http';
+
+import { CatalogService } from './catalog.service';
+
+@Inject(CatalogService)
+@Controller('/catalog')
+export class CatalogController {
+  constructor(private readonly catalogService: CatalogService) {}
+}
+```
+
+사용 가능한 전체 제너레이터 목록:
+
+| 명령 | 생성 결과 |
+| :--- | :--- |
+| `fluo g module name` | `@Module` 데코레이터가 포함된 모듈 정의 |
+| `fluo g controller name` | `@Controller`와 `@Inject`가 포함된 HTTP 컨트롤러 |
+| `fluo g service name` | 비즈니스 로직 서비스 클래스 |
+| `fluo g repo name` | 데이터 레포지토리 패턴 클래스 |
 
 ### 3. 유연한 출력 경로
 기본적으로 CLI는 `src/`를 타겟으로 합니다. 프로젝트의 디렉토리 구조에 맞게 `--target-directory` (또는 `-o`) 플래그를 사용할 수 있습니다.
@@ -32,11 +85,69 @@ CLI는 `src/catalog/` 디렉토리를 만들고 `catalog.module.ts` 진입점을
 fluo g module auth --target-directory src/shared
 ```
 
+이렇게 하면 `src/auth/auth.module.ts` 대신 `src/shared/auth/auth.module.ts`가 생성됩니다.
+
 ### 4. 드라이 런을 통한 안전한 실행
 변경 사항을 실제로 적용하기 전에 어떤 파일이 수정되거나 생성될지 미리 확인해 보세요.
 
 ```sh
 fluo g module shop --dry-run
+```
+
+파일 시스템을 건드리지 않고 계획된 작업만 출력하므로, 경로와 이름을 생성 전에 확인할 수 있습니다.
+
+### 5. 전체 기능 슬라이스 조합
+실제로는 제너레이터를 연속 사용하여 완전한 기능을 구성합니다. 새로운 `orders` 기능을 만드는 전형적인 워크플로우는 다음과 같습니다:
+
+```sh
+# 1. 모듈 생성
+fluo g module orders
+
+# 2. 컨트롤러와 서비스 추가
+fluo g controller orders
+fluo g service orders
+
+# 3. 데이터 접근을 위한 레포지토리 추가
+fluo g repo orders
+```
+
+결과:
+
+```
+src/
+└── orders/
+    ├── orders.module.ts
+    ├── orders.controller.ts
+    ├── orders.service.ts
+    └── orders.repo.ts
+```
+
+그런 다음 `orders.module.ts`에서 모든 요소를 연결합니다:
+
+```ts
+import { Module } from '@fluojs/core';
+import { OrdersController } from './orders.controller';
+import { OrdersService } from './orders.service';
+import { OrdersRepo } from './orders.repo';
+
+@Module({
+  controllers: [OrdersController],
+  providers: [OrdersService, OrdersRepo],
+  exports: [OrdersService],
+})
+export class OrdersModule {}
+```
+
+그리고 루트 `AppModule`에서 해당 모듈을 import합니다:
+
+```ts
+import { Module } from '@fluojs/core';
+import { OrdersModule } from './orders/orders.module';
+
+@Module({
+  imports: [OrdersModule],
+})
+export class AppModule {}
 ```
 
 ### 왜 CLI를 사용해야 하나요?

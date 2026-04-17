@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./quick-start.ko.md"><kbd>한국어</kbd></a></p>
 
-Experience the power of **standard decorators** and **explicit dependency injection** in under a minute. No legacy compiler flags, no magic reflection—just clean, verifiable TypeScript.
+Experience the power of standard decorators and explicit dependency injection in under a minute. No legacy compiler flags, no magic reflection, just clean, verifiable TypeScript.
 
 ### who this is for
 Developers who want to move beyond legacy decorators and see a modern, high-performance TypeScript framework in action.
@@ -14,66 +14,25 @@ The fluo CLI is your central tool for project scaffolding and component generati
 pnpm add -g @fluojs/cli
 ```
 
-### 2. create your first project
-Initialize a fresh application. By default, this bootstraps the v2 compatibility baseline: a high-performance **Fastify** HTTP adapter on Node.js.
+### 2. create your project
+Initialize a fresh application. By default, this bootstraps a high-performance Fastify HTTP adapter on Node.js.
 
 ```sh
 fluo new my-fluo-app
 cd my-fluo-app
 ```
 
-If you want to select the same HTTP starter path explicitly, use the flags-first v2 contract:
+While the interactive wizard is the recommended path, you can also use explicit flags to select a specific starter.
 
-```sh
-fluo new my-fluo-app --shape application --transport http --runtime node --platform fastify
-```
+| Shape | Transport | Runtime | Platform | Command |
+| :--- | :--- | :--- | :--- | :--- |
+| application | http | node | fastify | `fluo new app --platform fastify` |
+| application | http | bun | bun | `fluo new app --runtime bun` |
+| application | http | workers | workers | `fluo new app --runtime cloudflare-workers` |
+| microservice | tcp | node | none | `fluo new svc --transport tcp` |
+| microservice | nats | node | none | `fluo new svc --transport nats` |
 
-The same command family also exposes the other published v2 starter paths:
-
-```sh
-# Express application starter
-fluo new my-fluo-express --shape application --transport http --runtime node --platform express
-
-# Raw Node.js HTTP application starter
-fluo new my-fluo-node --shape application --transport http --runtime node --platform nodejs
-
-# Bun application starter
-fluo new my-fluo-bun --shape application --transport http --runtime bun --platform bun
-
-# Deno application starter
-fluo new my-fluo-deno --shape application --transport http --runtime deno --platform deno
-
-# Cloudflare Workers application starter
-fluo new my-fluo-worker --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
-
-# Runnable TCP microservice starter (default when you omit --transport)
-fluo new my-fluo-microservice --shape microservice --transport tcp --runtime node --platform none
-
-# Runnable Redis Streams microservice starter
-fluo new my-fluo-redis-streams --shape microservice --transport redis-streams --runtime node --platform none
-
-# Runnable NATS microservice starter
-fluo new my-fluo-nats --shape microservice --transport nats --runtime node --platform none
-
-# Runnable Kafka microservice starter
-fluo new my-fluo-kafka --shape microservice --transport kafka --runtime node --platform none
-
-# Runnable RabbitMQ microservice starter
-fluo new my-fluo-rabbitmq --shape microservice --transport rabbitmq --runtime node --platform none
-
-# Runnable MQTT microservice starter
-fluo new my-fluo-mqtt --shape microservice --transport mqtt --runtime node --platform none
-
-# Runnable gRPC microservice starter
-fluo new my-fluo-grpc --shape microservice --transport grpc --runtime node --platform none
-
-# Mixed single-package starter: Fastify HTTP app + attached TCP microservice
-fluo new my-fluo-mixed --shape mixed --transport tcp --runtime node --platform fastify
-```
-
-For a docs-level split between this shipped starter matrix and the remaining broader adapter ecosystem, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
-
-When `fluo new` runs in an interactive terminal, the wizard resolves onto this same shape-first model. It asks for the project name, starter shape, the maintained tooling preset, package manager, whether to install dependencies, and whether to initialize git.
+For the full list of available configurations, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
 ### 3. start development
 fluo's starter comes with a pre-configured development environment that handles TypeScript compilation and process restarts automatically.
@@ -82,16 +41,95 @@ fluo's starter comes with a pre-configured development environment that handles 
 pnpm dev
 ```
 
-### 4. verify and explore
-Once the server is up (usually on port 3000), hit the built-in observability and sample endpoints:
+### 4. verify your setup
+Once the server is up on port 3000, check the built-in observability and sample endpoints.
 
-- **Health Check**: `curl http://localhost:3000/health`  
-  *Expect: `{"status":"ok"}`*
-- **Sample Module**: `curl http://localhost:3000/health-info/`  
-  *See the standard decorator pattern in action.*
+- **Health Check**: `curl http://localhost:3000/health`
+  *Expect: {"status":"ok"}*
+- **Greeting**: `curl http://localhost:3000/hello`
+  *Expect: {"message":"Hello, World!"}*
+
+### 5. understand your project
+The generated project follows a modular structure designed for clarity and explicit dependencies.
+
+```text
+my-fluo-app/
+├── src/
+│   ├── main.ts            # application entry point
+│   ├── app.ts             # root module definition
+│   ├── hello.controller.ts # http route handler
+│   └── hello.service.ts    # business logic provider
+├── tsconfig.json          # standards-first configuration
+└── package.json
+```
+
+#### main.ts: entry point
+The entry point initializes the runtime with a chosen platform adapter and the root module.
+
+```ts
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: 3000 }),
+});
+await app.listen();
+```
+
+#### app.ts: the root module
+The `@Module` decorator defines the boundaries of your application. It aggregates controllers for routing and providers for logic.
+
+```ts
+import { Module } from '@fluojs/core';
+import { createHealthModule } from '@fluojs/runtime';
+import { HelloController } from './hello.controller';
+import { HelloService } from './hello.service';
+
+const RuntimeHealthModule = createHealthModule();
+
+@Module({
+  imports: [RuntimeHealthModule],
+  controllers: [HelloController],
+  providers: [HelloService],
+})
+export class AppModule {}
+```
+
+#### hello.controller.ts: handling requests
+Controllers use `@Controller` and `@Get` decorators to map incoming requests to methods. Dependency injection is explicit through the `@Inject` decorator.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { Controller, Get } from '@fluojs/http';
+import { HelloService } from './hello.service';
+
+@Inject(HelloService)
+@Controller('/hello')
+export class HelloController {
+  constructor(private readonly helloService: HelloService) {}
+
+  @Get('/')
+  greet(): { message: string } {
+    return this.helloService.greet('World');
+  }
+}
+```
+
+#### hello.service.ts: business logic
+Services are plain classes that handle the heavy lifting. They are registered as providers in a module so they can be injected where needed.
+
+```ts
+export class HelloService {
+  greet(name: string): { message: string } {
+    return { message: `Hello, ${name}!` };
+  }
+}
+```
 
 ### why this matters
-Open `tsconfig.json` in your new project. Notice something?
+Open `tsconfig.json` in your new project. You will notice that fluo works with standard TypeScript defaults.
+
 ```json
 {
   "compilerOptions": {
@@ -100,7 +138,8 @@ Open `tsconfig.json` in your new project. Notice something?
   }
 }
 ```
-fluo works with **standard TypeScript defaults**. You get full IDE support and type safety without the "experimental" baggage of the past decade.
+
+By using TC39 standard decorators, you get full IDE support and type safety without relying on experimental legacy flags that deviate from the JavaScript language path.
 
 ### next steps
 - **Build something real**: Follow the [First Feature Path](./first-feature-path.md) to add your own logic.

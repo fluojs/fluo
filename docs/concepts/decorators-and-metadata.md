@@ -36,9 +36,117 @@ For HTTP routing, that registry uses a deliberately small path contract: each ro
 ## decorator families
 
 - **Structural (`@Module`)**: Defines the boundaries of a feature and its exported providers.
-- **Component (`@Controller`, `@Service`)**: Marks a class as a participant in the framework's lifecycle.
-- **Dependency (`@Inject`, `@Optional`)**: Explicitly declares the contract between a class and its dependencies.
-- **Behavioral (`@Get`, `@Post`, `@UseMiddleware`)**: Attaches runtime logic to specific methods or classes.
+- **Component (`@Controller`)**: Marks a class as a participant in the framework's lifecycle.
+- **Dependency (`@Inject`, `@Scope`, `@Global`)**: Explicitly declares the contract between a class and its dependencies.
+- **Behavioral (`@Get`, `@Post`, `@UseGuards`, `@RequestDto`)**: Attaches runtime logic to specific methods or classes.
+
+### structural decorators
+
+The `@Module()` decorator is the fundamental unit of organization in fluo. It defines the module's boundary and its relationship with other modules.
+
+```ts
+import { Module } from '@fluojs/core';
+import { HelloController } from './hello.controller';
+import { HelloService } from './hello.service';
+
+@Module({
+  imports: [],
+  controllers: [HelloController],
+  providers: [HelloService],
+  exports: [HelloService],
+})
+export class HelloModule {}
+```
+
+- **imports**: List of modules that export the providers required by this module.
+- **controllers**: Controllers defined in this module which have to be instantiated.
+- **providers**: Providers that will be instantiated by the fluo injector and that may be shared at least across this module.
+- **exports**: The subset of providers that are provided by this module and should be available in other modules which import this module.
+
+You can also create **Dynamic Modules** using the `forRoot` or `forRootAsync` patterns to allow consumers to configure the module at registration time.
+
+### component decorators
+
+Component decorators mark a class as a specific type of participant in the application.
+
+```ts
+import { Controller, Get, Post } from '@fluojs/http';
+
+@Controller('/users')
+export class UsersController {
+  @Get('/')
+  findAll() {
+    return [];
+  }
+
+  @Post('/')
+  create() {
+    return { id: '1' };
+  }
+}
+```
+
+- **@Controller**: Marks a class as an HTTP controller. Note that `@Controller` is imported from `@fluojs/http`, not `@fluojs/core`, as it is specific to the HTTP runtime.
+- **basePath**: The parameter passed to `@Controller('/users')` acts as a prefix for all routes defined within the class.
+
+### dependency decorators
+
+These decorators provide explicit instructions to the DI container on how to wire and manage instances.
+
+```ts
+import { Inject, Scope, Global } from '@fluojs/core';
+
+@Global()
+@Inject(UsersRepository, ConfigService)
+@Scope('request')
+export class UsersService {
+  constructor(
+    private readonly repo: UsersRepository,
+    private readonly config: ConfigService,
+  ) {}
+}
+```
+
+- **@Inject**: Because fluo does not use `reflect-metadata`, you must explicitly declare constructor dependencies. `@Inject` takes tokens in the same order as your constructor parameters.
+- **@Scope**: Defines the lifecycle of a provider. Supported values are `'singleton'` (default), `'request'` (per-request instance), and `'transient'` (new instance per resolution).
+- **@Global**: When applied to a module, it makes its exported providers available throughout the entire application without needing to import the module in every feature module.
+
+### behavioral decorators
+
+Behavioral decorators attach runtime logic—such as routing, validation, and security—to specific class methods.
+
+```ts
+import { Controller, Get, Post, RequestDto, UseGuards } from '@fluojs/http';
+import { UseAuth, RequireScopes } from '@fluojs/passport';
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/token')
+  @RequestDto(LoginDto)
+  issueToken(dto: LoginDto) {
+    return { token: '...' };
+  }
+
+  @Get('/profile')
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  getProfile(_input: undefined, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+- **Route Decorators**: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, and `@All` define HTTP endpoints.
+- **@RequestDto**: Associates a DTO (Data Transfer Object) class with the route for automatic binding and validation.
+- **Guards**: `@UseGuards` (from `@fluojs/http`) and domain-specific decorators like `@UseAuth` and `@RequireScopes` (from `@fluojs/passport`) manage authorization and security.
+
+## comparison with legacy decorators
+
+| Aspect | Legacy (experimentalDecorators) | fluo (TC39 Standard) |
+| :--- | :--- | :--- |
+| **DI wiring** | Implicit via `reflect-metadata` | Explicit via `@Inject()` |
+| **Compiler flags** | `experimentalDecorators` + `emitDecoratorMetadata` | None required |
+| **Bundler compat** | Needs complex plugins | Native support |
 
 ## boundaries
 

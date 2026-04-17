@@ -36,9 +36,117 @@ HTTP 라우팅에서는 이 registry가 의도적으로 작은 경로 계약을 
 ## 데코레이터 계열
 
 - **Structural (`@Module`)**: feature의 경계와 export된 provider를 정의합니다.
-- **Component (`@Controller`, `@Service`)**: class가 framework lifecycle의 참여자임을 표시합니다.
-- **Dependency (`@Inject`, `@Optional`)**: class와 그 의존성 사이의 계약을 명시적으로 선언합니다.
-- **Behavioral (`@Get`, `@Post`, `@UseMiddleware`)**: 특정 method나 class에 runtime logic을 연결합니다.
+- **Component (`@Controller`)**: class가 framework lifecycle의 참여자임을 표시합니다.
+- **Dependency (`@Inject`, `@Scope`, `@Global`)**: class와 그 의존성 사이의 계약을 명시적으로 선언합니다.
+- **Behavioral (`@Get`, `@Post`, `@UseGuards`, `@RequestDto`)**: 특정 method나 class에 runtime logic을 연결합니다.
+
+### structural 데코레이터
+
+`@Module()` decorator는 fluo 조직화의 기본 단위입니다. 모듈의 경계와 다른 모듈과의 관계를 정의합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { HelloController } from './hello.controller';
+import { HelloService } from './hello.service';
+
+@Module({
+  imports: [],
+  controllers: [HelloController],
+  providers: [HelloService],
+  exports: [HelloService],
+})
+export class HelloModule {}
+```
+
+- **imports**: 이 모듈에서 필요로 하는 provider를 export하는 모듈 목록입니다.
+- **controllers**: 이 모듈에서 정의되고 인스턴스화되어야 하는 컨트롤러입니다.
+- **providers**: fluo 인젝터에 의해 인스턴스화되고, 최소한 이 모듈 전체에서 공유될 수 있는 provider입니다.
+- **exports**: 이 모듈에서 제공하며, 이 모듈을 import하는 다른 모듈에서도 사용할 수 있게 할 provider의 하위 집합입니다.
+
+사용자가 등록 시점에 모듈을 구성할 수 있도록 `forRoot` 또는 `forRootAsync` 패턴을 사용하는 **Dynamic Modules**를 생성할 수도 있습니다.
+
+### component 데코레이터
+
+Component decorator는 클래스를 애플리케이션의 특정 참여자 유형으로 표시합니다.
+
+```ts
+import { Controller, Get, Post } from '@fluojs/http';
+
+@Controller('/users')
+export class UsersController {
+  @Get('/')
+  findAll() {
+    return [];
+  }
+
+  @Post('/')
+  create() {
+    return { id: '1' };
+  }
+}
+```
+
+- **@Controller**: 클래스를 HTTP 컨트롤러로 마킹합니다. `@Controller`는 `@fluojs/core`가 아니라 HTTP 런타임에 특화된 `@fluojs/http`에서 import된다는 점에 유의하세요.
+- **basePath**: `@Controller('/users')`에 전달된 파라미터는 클래스 내에 정의된 모든 route의 접두사(prefix) 역할을 합니다.
+
+### dependency 데코레이터
+
+이 decorator들은 DI 컨테이너에 인스턴스를 연결하고 관리하는 방법에 대한 명시적인 지침을 제공합니다.
+
+```ts
+import { Inject, Scope, Global } from '@fluojs/core';
+
+@Global()
+@Inject(UsersRepository, ConfigService)
+@Scope('request')
+export class UsersService {
+  constructor(
+    private readonly repo: UsersRepository,
+    private readonly config: ConfigService,
+  ) {}
+}
+```
+
+- **@Inject**: fluo는 `reflect-metadata`를 사용하지 않으므로 constructor 의존성을 명시적으로 선언해야 합니다. `@Inject`는 constructor 파라미터와 동일한 순서로 token을 받습니다.
+- **@Scope**: provider의 lifecycle을 정의합니다. 지원되는 값은 `'singleton'` (기본값), `'request'` (요청당 인스턴스), `'transient'` (해결 시마다 새 인스턴스)입니다.
+- **@Global**: 모듈에 적용하면, 모든 feature 모듈에서 일일이 import할 필요 없이 애플리케이션 전체에서 해당 모듈의 export된 provider를 사용할 수 있게 됩니다.
+
+### behavioral 데코레이터
+
+Behavioral decorator는 라우팅, 유효성 검사, 보안과 같은 runtime logic을 특정 클래스 메서드에 연결합니다.
+
+```ts
+import { Controller, Get, Post, RequestDto, UseGuards } from '@fluojs/http';
+import { UseAuth, RequireScopes } from '@fluojs/passport';
+
+@Controller('/auth')
+export class AuthController {
+  @Post('/token')
+  @RequestDto(LoginDto)
+  issueToken(dto: LoginDto) {
+    return { token: '...' };
+  }
+
+  @Get('/profile')
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  getProfile(_input: undefined, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+```
+
+- **Route Decorators**: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@All`은 HTTP 엔드포인트를 정의합니다.
+- **@RequestDto**: 자동 바인딩 및 유효성 검사를 위해 DTO(Data Transfer Object) 클래스를 route와 연결합니다.
+- **Guards**: `@UseGuards` (`@fluojs/http`) 및 `@UseAuth`, `@RequireScopes` (`@fluojs/passport`)와 같은 도메인 특화 decorator들이 권한 부여 및 보안을 관리합니다.
+
+## 레거시 데코레이터와 비교
+
+| 항목 | 레거시 (experimentalDecorators) | fluo (TC39 표준) |
+| :--- | :--- | :--- |
+| **DI 연결** | `reflect-metadata`를 통한 암시적 방식 | `@Inject()`를 통한 명시적 방식 |
+| **컴파일러 플래그** | `experimentalDecorators` + `emitDecoratorMetadata` | 필요 없음 |
+| **번들러 호환성** | 복잡한 플러그인 필요 | 네이티브 지원 |
 
 ## 경계
 
