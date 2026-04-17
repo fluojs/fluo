@@ -94,24 +94,6 @@ function createJwtModuleProviders(
 }
 
 /**
- * Creates the core JWT providers for advanced direct module composition.
- *
- * Prefer {@link JwtModule.forRoot} or {@link JwtModule.forRootAsync} for the canonical
- * application entrypoint so JWT registration stays aligned with the published module
- * surface.
- *
- * @param options JWT verification and signing options used for provider registration.
- * @returns Providers for the JWT verifier, signer, facade, and optional refresh token service.
- */
-export function createJwtCoreProviders(options: JwtVerifierOptions): Provider[] {
-  return createJwtModuleProviders({
-    provide: JWT_OPTIONS,
-    scope: 'singleton',
-    useValue: options,
-  }, Boolean(options.refreshToken), 'singleton');
-}
-
-/**
  * Registers JWT services and optional refresh-token support for an application module.
  */
 export class JwtModule {
@@ -143,12 +125,7 @@ export class JwtModule {
 
     defineModuleMetadata(JwtRuntimeModule, {
       exports: [JwtService, DefaultJwtVerifier, DefaultJwtSigner, ...(includeRefreshTokenExport ? [RefreshTokenService] : [])],
-      providers: createJwtModuleProviders(
-        optionsProvider,
-        includeRefreshTokenProvider,
-        refreshTokenServiceScope,
-        deferRefreshTokenServiceRegistration,
-      ),
+      providers: createJwtModuleProviders(optionsProvider, includeRefreshTokenProvider, refreshTokenServiceScope, deferRefreshTokenServiceRegistration),
     });
 
     return JwtRuntimeModule;
