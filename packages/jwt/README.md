@@ -32,6 +32,8 @@ npm install @fluojs/jwt
 
 Configure the JWT module with your signing keys and policy.
 
+`JwtModule.forRoot(...)` and `JwtModule.forRootAsync(...)` are the canonical application entrypoints. Use `createJwtCoreProviders(...)` only when you intentionally need advanced direct provider composition inside an existing custom module.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -114,6 +116,9 @@ const verifier = new DefaultJwtVerifier({
 - `DefaultJwtSigner`: Handles token issuance with default claim filling.
 - `DefaultJwtVerifier`: Handles token validation and normalization.
 - `JwtService`: A convenience facade combining signing and verification.
+
+### Advanced Helpers
+- `createJwtCoreProviders(...)`: Low-level provider factory for custom composition when `JwtModule.forRoot(...)` / `forRootAsync(...)` is not a fit.
 
 ### Types
 - `JwtPrincipal`: The normalized identity object (`subject`, `roles`, `scopes`, `claims`).

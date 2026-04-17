@@ -32,6 +32,8 @@ npm install @fluojs/jwt
 
 서명 키와 정책을 사용하여 JWT 모듈을 설정합니다.
 
+`JwtModule.forRoot(...)` 및 `JwtModule.forRootAsync(...)`가 애플리케이션의 canonical entrypoint입니다. `createJwtCoreProviders(...)`는 기존 커스텀 모듈 안에서 고급 직접 provider 구성이 정말 필요할 때만 사용하세요.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -114,6 +116,9 @@ const verifier = new DefaultJwtVerifier({
 - `DefaultJwtSigner`: 클레임 자동 채우기 기능이 포함된 토큰 발행 클래스입니다.
 - `DefaultJwtVerifier`: 토큰 검증 및 정규화를 담당하는 클래스입니다.
 - `JwtService`: 서명과 검증 기능을 결합한 편의용 파사드(facade)입니다.
+
+### 고급 헬퍼
+- `createJwtCoreProviders(...)`: `JwtModule.forRoot(...)` / `forRootAsync(...)`로 충분하지 않을 때만 사용하는 저수준 provider 팩토리입니다.
 
 ### 타입
 - `JwtPrincipal`: 정규화된 사용자 식별 객체 (`subject`, `roles`, `scopes`, `claims`).
