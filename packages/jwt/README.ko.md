@@ -32,7 +32,7 @@ npm install @fluojs/jwt
 
 서명 키와 정책을 사용하여 JWT 모듈을 설정합니다.
 
-`JwtModule.forRoot(...)` 및 `JwtModule.forRootAsync(...)`가 애플리케이션의 canonical entrypoint입니다. `createJwtCoreProviders(...)`는 기존 커스텀 모듈 안에서 고급 직접 provider 구성이 정말 필요할 때만 사용하세요.
+`JwtModule.forRoot(...)` 및 `JwtModule.forRootAsync(...)`가 애플리케이션의 canonical entrypoint입니다. JWT 등록, export, refresh token wiring이 공개 패키지 surface와 일치하도록 항상 이 module-first entrypoint를 통해 가져오세요.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -47,6 +47,42 @@ import { JwtModule } from '@fluojs/jwt';
       audience: 'my-app',
       accessTokenTtlSeconds: 3600,
     }),
+  ],
+})
+export class AuthModule {}
+```
+
+### 주입된 설정을 사용하는 비동기 등록
+
+JWT 설정이 다른 provider에서 와야 한다면, `JwtModule.forRootAsync(...)`를 사용해도 표준 module contract 안에서 안전하게 등록할 수 있습니다.
+
+```typescript
+import { Module, type Token } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+const JWT_SETTINGS = Symbol('jwt-settings');
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [JWT_SETTINGS],
+      useFactory: async (settings) => ({
+        accessTokenTtlSeconds: 900,
+        algorithms: ['HS256'],
+        audience: 'my-app',
+        issuer: settings.issuer,
+        secret: settings.secret,
+      }),
+    }),
+  ],
+  providers: [
+    {
+      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
+      useValue: {
+        issuer: 'my-api',
+        secret: 'your-secure-secret',
+      },
+    },
   ],
 })
 export class AuthModule {}
@@ -116,9 +152,6 @@ const verifier = new DefaultJwtVerifier({
 - `DefaultJwtSigner`: 클레임 자동 채우기 기능이 포함된 토큰 발행 클래스입니다.
 - `DefaultJwtVerifier`: 토큰 검증 및 정규화를 담당하는 클래스입니다.
 - `JwtService`: 서명과 검증 기능을 결합한 편의용 파사드(facade)입니다.
-
-### 고급 헬퍼
-- `createJwtCoreProviders(...)`: `JwtModule.forRoot(...)` / `forRootAsync(...)`로 충분하지 않을 때만 사용하는 저수준 provider 팩토리입니다.
 
 ### 타입
 - `JwtPrincipal`: 정규화된 사용자 식별 객체 (`subject`, `roles`, `scopes`, `claims`).

@@ -32,7 +32,7 @@ npm install @fluojs/jwt
 
 Configure the JWT module with your signing keys and policy.
 
-`JwtModule.forRoot(...)` and `JwtModule.forRootAsync(...)` are the canonical application entrypoints. Use `createJwtCoreProviders(...)` only when you intentionally need advanced direct provider composition inside an existing custom module.
+`JwtModule.forRoot(...)` and `JwtModule.forRootAsync(...)` are the canonical application entrypoints. Import JWT support through these module-first entrypoints so registration, exports, and refresh-token wiring stay aligned with the published package surface.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -47,6 +47,42 @@ import { JwtModule } from '@fluojs/jwt';
       audience: 'my-app',
       accessTokenTtlSeconds: 3600,
     }),
+  ],
+})
+export class AuthModule {}
+```
+
+### Async Registration with Injected Settings
+
+Use `JwtModule.forRootAsync(...)` when your JWT settings must come from another provider and still need to resolve into the standard module contract.
+
+```typescript
+import { Module, type Token } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+const JWT_SETTINGS = Symbol('jwt-settings');
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [JWT_SETTINGS],
+      useFactory: async (settings) => ({
+        accessTokenTtlSeconds: 900,
+        algorithms: ['HS256'],
+        audience: 'my-app',
+        issuer: settings.issuer,
+        secret: settings.secret,
+      }),
+    }),
+  ],
+  providers: [
+    {
+      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
+      useValue: {
+        issuer: 'my-api',
+        secret: 'your-secure-secret',
+      },
+    },
   ],
 })
 export class AuthModule {}
@@ -116,9 +152,6 @@ const verifier = new DefaultJwtVerifier({
 - `DefaultJwtSigner`: Handles token issuance with default claim filling.
 - `DefaultJwtVerifier`: Handles token validation and normalization.
 - `JwtService`: A convenience facade combining signing and verification.
-
-### Advanced Helpers
-- `createJwtCoreProviders(...)`: Low-level provider factory for custom composition when `JwtModule.forRoot(...)` / `forRootAsync(...)` is not a fit.
 
 ### Types
 - `JwtPrincipal`: The normalized identity object (`subject`, `roles`, `scopes`, `claims`).
