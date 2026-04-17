@@ -98,27 +98,9 @@ SocketIoModule.forRoot({
 
 이제 `cors`를 생략하면 `@fluojs/socket.io`는 `origin: false`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다.
 
-### 수동 모듈 조합
-일반적인 애플리케이션 모듈에서는 `SocketIoModule.forRoot(...)`가 표준 진입점입니다.
-이미 존재하는 커스텀 `defineModule(...)` 등록 안에 같은 Socket.IO provider 집합을 배선해야 할 때는
-`createSocketIoProviders(...)`를 지원되는 저수준 공개 API로 계속 사용할 수 있습니다.
-
-```ts
-import { defineModule } from '@fluojs/runtime';
-import {
-  SOCKETIO_ROOM_SERVICE,
-  SOCKETIO_SERVER,
-  createSocketIoProviders,
-} from '@fluojs/socket.io';
-
-class ManualSocketIoModule {}
-
-defineModule(ManualSocketIoModule, {
-  exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
-  global: true,
-  providers: createSocketIoProviders(),
-});
-```
+### module-first 등록만 지원
+`SocketIoModule.forRoot(...)`가 `@fluojs/socket.io`의 유일한 지원 등록 진입점입니다.
+provider 배열 helper를 통한 수동 `defineModule(...)` 조합은 의도적으로 지원하지 않으므로, 커스텀 모듈에서도 lifecycle provider를 직접 다시 배선하지 말고 `SocketIoModule.forRoot(...)`를 import 해야 합니다.
 
 ## 공개 API 개요
 
@@ -126,7 +108,7 @@ defineModule(ManualSocketIoModule, {
 - `SocketIoModule.forRoot({ auth, cors, engine, ... })`
 - `SOCKETIO_SERVER`
 - `SOCKETIO_ROOM_SERVICE`
-- `createSocketIoProviders(options)`: `SocketIoModule.forRoot(options)`가 사용하는 provider 집합을 반환하며, 지원되는 수동 `defineModule(...)` 조합에 사용할 수 있습니다.
+- 수동 `defineModule(...)` provider 조합은 의도적으로 지원하지 않습니다. 소유 모듈에서 `SocketIoModule.forRoot(...)`를 import 하십시오.
 
 ## 지원 플랫폼
 
