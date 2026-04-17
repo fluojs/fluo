@@ -103,6 +103,7 @@ TerminusModule.forRoot({
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - 인디케이터 및 provider 등록을 위한 메인 엔트리 포인트입니다.
+  - 패키지의 런타임 헬스 wiring을 책임지며, 저수준 provider 조합 로직은 루트 barrel API가 아닌 내부 구현 세부사항으로 유지됩니다.
 
 ### `TerminusHealthService`
 
@@ -115,6 +116,8 @@ TerminusModule.forRoot({
 
 - `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
   - Redis 전용 인디케이터 헬퍼는 선택적 Redis 피어가 설치되지 않은 환경에서도 루트 패키지 import가 안전하도록 전용 subpath에서 export됩니다.
+
+루트 패키지 사용자는 `TerminusModule.forRoot(...)`를 지원되는 조합 surface로 사용해야 합니다. 내부 provider wiring 헬퍼는 문서화된 루트 계약에 포함되지 않습니다.
 
 ### `HealthCheckError`
 
