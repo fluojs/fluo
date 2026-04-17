@@ -293,6 +293,7 @@ describe('@fluojs/socket.io', () => {
   it('keeps lifecycle and options tokens out of the root public entrypoint', () => {
     expect(publicApi.SOCKETIO_ROOM_SERVICE).toBeDefined();
     expect(publicApi.SOCKETIO_SERVER).toBeDefined();
+    expect(publicApi.createSocketIoProviders).toBe(createSocketIoProviders);
     expect('SOCKETIO_LIFECYCLE_SERVICE' in publicApi).toBe(false);
     expect('SOCKETIO_OPTIONS' in publicApi).toBe(false);
   });
@@ -351,6 +352,40 @@ describe('@fluojs/socket.io', () => {
     const probe = await app.container.resolve(ServerProbe);
 
     expect(probe.server).toBeDefined();
+
+    await app.close();
+  });
+
+  it('supports manual defineModule composition through createSocketIoProviders', async () => {
+    @Inject(SOCKETIO_SERVER, SOCKETIO_ROOM_SERVICE)
+    class ManualProbe {
+      constructor(
+        public readonly server: SocketIoServer,
+        public readonly rooms: SocketIoRoomService,
+      ) {}
+    }
+
+    class ManualSocketIoModule {}
+    defineModule(ManualSocketIoModule, {
+      exports: [SOCKETIO_ROOM_SERVICE, SOCKETIO_SERVER],
+      global: true,
+      providers: createSocketIoProviders(),
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [ManualSocketIoModule],
+      providers: [ManualProbe],
+    });
+
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: await findAvailablePort(),
+    });
+    const probe = await app.container.resolve(ManualProbe);
+
+    expect(probe.server).toBeDefined();
+    expect(probe.rooms).toBeInstanceOf(SocketIoLifecycleService);
 
     await app.close();
   });
