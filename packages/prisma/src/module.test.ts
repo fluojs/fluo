@@ -9,8 +9,9 @@ import {
   createPrismaPlatformStatusSnapshot,
   PRISMA_CLIENT,
   PRISMA_OPTIONS,
-  PrismaTransactionClient,
+  type PrismaTransactionClient,
   PrismaService,
+  PrismaTransactionInterceptor,
 } from './index.js';
 
 type Assert<T extends true> = T;
@@ -148,6 +149,47 @@ describe('@fluojs/prisma', () => {
       'transaction:end',
       'disconnect',
     ]);
+  });
+
+  it('supports manual defineModule composition via PrismaModule.forRoot imports', async () => {
+    const events: string[] = [];
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+    };
+
+    const prismaModule = PrismaModule.forRoot({ client });
+
+    class ManualPrismaModule {}
+
+    defineModule(ManualPrismaModule, {
+      exports: [PrismaService, PrismaTransactionInterceptor],
+      imports: [prismaModule],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [ManualPrismaModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const prisma = await app.container.resolve(PrismaService<typeof client>);
+    const rawClient = await app.container.resolve(PRISMA_CLIENT);
+    const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
+
+    expect(prisma).toBeInstanceOf(PrismaService);
+    expect(rawClient).toBe(client);
+    expect(moduleOptions).toEqual({ strictTransactions: false });
+    expect(events).toEqual(['connect']);
+
+    await app.close();
+
+    expect(events).toEqual(['connect', 'disconnect']);
   });
 
   it('rolls back open request transactions before disconnect on shutdown', async () => {

@@ -65,25 +65,6 @@ function createPrismaRuntimeProviders<
   ];
 }
 
-/**
- * Creates Prisma runtime providers for manual module composition.
- *
- * @param options Prisma module options with client handle and strict transaction mode.
- * @returns Provider definitions equivalent to `PrismaModule.forRoot(...)` wiring.
- */
-export function createPrismaProviders<
-  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = InferPrismaTransactionClient<TClient>,
-  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
->(
-  options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-): Provider[] {
-  return createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
-    provide: PRISMA_NORMALIZED_OPTIONS,
-    useValue: normalizePrismaModuleOptions(options),
-  });
-}
-
 function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = InferPrismaTransactionClient<TClient>,
@@ -95,7 +76,10 @@ function buildPrismaModule<
 
   return defineModule(PrismaRootModuleDefinition, {
     exports: PRISMA_MODULE_EXPORTS,
-    providers: createPrismaProviders(options),
+    providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
+      provide: PRISMA_NORMALIZED_OPTIONS,
+      useValue: normalizePrismaModuleOptions(options),
+    }),
   });
 }
 
