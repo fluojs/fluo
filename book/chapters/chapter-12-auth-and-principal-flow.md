@@ -148,6 +148,13 @@ async canActivate(context: GuardContext): Promise<true> {
 @Module({
   controllers: [AuthController, ProfileController],
   imports: [
+    JwtModule.forRoot({
+      accessTokenTtlSeconds: 3600,
+      algorithms: ['HS256'],
+      audience: 'fluo-auth-example-clients',
+      issuer: 'fluo-auth-example',
+      secret: 'fluo-auth-example-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
       [{ name: 'jwt', token: BearerJwtStrategy }],
@@ -156,19 +163,12 @@ async canActivate(context: GuardContext): Promise<true> {
   providers: [
     AuthService,
     BearerJwtStrategy,
-    ...createJwtCoreProviders({
-      accessTokenTtlSeconds: 3600,
-      algorithms: ['HS256'],
-      audience: 'fluo-auth-example-clients',
-      issuer: 'fluo-auth-example',
-      secret: 'fluo-auth-example-secret',
-    }),
   ],
 })
 export class AuthModule {}
 ```
 
-이 코드는 auth 장의 중요한 메시지를 담고 있다. JWT core provider와 passport strategy wiring은 별개지만, auth module 안에서 함께 조립된다. 즉, 인증은 한 클래스의 책임이 아니라 **여러 provider contract를 한 모듈 안에서 조합하는 문제**다.
+이 코드는 auth 장의 중요한 메시지를 담고 있다. JWT는 `JwtModule.forRoot(...)`로 module-first 등록을 하고, passport strategy wiring은 별도로 붙이지만 둘은 auth module 안에서 함께 조립된다. 즉, 인증은 한 클래스의 책임이 아니라 **여러 provider contract를 한 모듈 안에서 조합하는 문제**다.
 
 ## decorator는 auth requirement를 어떻게 기록하는가
 

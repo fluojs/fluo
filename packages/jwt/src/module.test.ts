@@ -5,6 +5,7 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { FluoFactory } from '@fluojs/runtime';
 
+import * as jwtRootExports from './index.js';
 import { JwtModule } from './module.js';
 import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh/refresh-token.js';
 import { JwtService } from './service.js';
@@ -72,6 +73,10 @@ async function createJwtApplicationContext(jwtModule: Constructor) {
 }
 
 describe('JwtModule', () => {
+  it('does not expose createJwtCoreProviders from the package root', () => {
+    expect(jwtRootExports).not.toHaveProperty('createJwtCoreProviders');
+  });
+
   it('supports synchronous forRoot registration', async () => {
     const container = new Container();
     const moduleType = JwtModule.forRoot({
@@ -148,6 +153,53 @@ describe('JwtModule', () => {
 
     expect(capturedSecrets).toEqual(['async-secret']);
     await expect(service.signAndVerify('async-user')).resolves.toBe('async-user');
+  });
+
+  it('supports async registration for advanced injected configuration', async () => {
+    const JWT_SETTINGS = Symbol('jwt-settings');
+
+    const container = new Container();
+    const moduleType = JwtModule.forRootAsync({
+      inject: [JWT_SETTINGS],
+      useFactory: async (...deps: unknown[]) => {
+        const [settings] = deps;
+
+        if (
+          typeof settings !== 'object'
+          || settings === null
+          || !("issuer" in settings)
+          || !("secret" in settings)
+          || typeof settings.issuer !== 'string'
+          || typeof settings.secret !== 'string'
+        ) {
+          throw new Error('jwt settings token must resolve to issuer/secret strings.');
+        }
+
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'advanced-async-clients',
+          issuer: settings.issuer,
+          secret: settings.secret,
+        };
+      },
+    });
+
+    container.register(
+      {
+        provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
+        useValue: {
+          issuer: 'advanced-async-issuer',
+          secret: 'advanced-async-secret',
+        },
+      },
+      ...moduleProviders(moduleType),
+      JwtRoundTripService,
+    );
+
+    const service = await container.resolve(JwtRoundTripService);
+
+    await expect(service.signAndVerify('advanced-async-user')).resolves.toBe('advanced-async-user');
   });
 
   it('propagates async option factory failures while resolving jwt providers', async () => {
