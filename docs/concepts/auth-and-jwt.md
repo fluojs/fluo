@@ -34,8 +34,8 @@ The following snippets demonstrate a standard JWT setup using the core fluo pack
 **Module Setup** (auth.module.ts):
 ```ts
 import { Module } from '@fluojs/core';
- import { JwtModule } from '@fluojs/jwt';
-import { createPassportProviders } from '@fluojs/passport';
+import { JwtModule } from '@fluojs/jwt';
+import { PassportModule } from '@fluojs/passport';
 import { AuthController, ProfileController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BearerJwtStrategy } from './bearer.strategy';
@@ -49,20 +49,17 @@ import { BearerJwtStrategy } from './bearer.strategy';
       issuer: 'fluo-auth-example',
       secret: 'fluo-auth-example-secret',
     }),
-  ],
-  controllers: [AuthController, ProfileController],
-  providers: [
-    AuthService,
-    BearerJwtStrategy,
-    ...createPassportProviders(
+    PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
       [{ name: 'jwt', token: BearerJwtStrategy }],
     ),
   ],
+  controllers: [AuthController, ProfileController],
+  providers: [AuthService, BearerJwtStrategy],
 })
 export class AuthModule {}
 ```
-The module configuration uses `JwtModule.forRoot(...)` as the canonical JWT entrypoint and keeps `createPassportProviders(...)` for Passport strategy integration.
+The module configuration uses `JwtModule.forRoot(...)` and `PassportModule.forRoot(...)` as the canonical module-first entrypoints for JWT verification and Passport strategy registration.
 
 **Token Issuance** (auth.service.ts):
 ```ts
