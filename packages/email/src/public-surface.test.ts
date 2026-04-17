@@ -63,6 +63,16 @@ describe('@fluojs/email public API surface', () => {
     });
   });
 
+  it('keeps the README helper contract aligned with the documented root-barrel API', () => {
+    const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(import.meta.dirname, '../README.ko.md'), 'utf8');
+
+    expect(readme).toContain('`createEmailProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `EmailModule.forRoot(...)`.');
+    expect(readme).toContain('The helper preserves the same `EMAIL`, `EMAIL_CHANNEL`, and `EmailService` wiring that `EmailModule.forRoot(...)` installs.');
+    expect(koreanReadme).toContain('`createEmailProviders(...)`는 애플리케이션이 `EmailModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.');
+    expect(koreanReadme).toContain('이 helper는 `EmailModule.forRoot(...)`가 구성하는 `EMAIL`, `EMAIL_CHANNEL`, `EmailService` wiring을 동일하게 유지합니다.');
+  });
+
   it('keeps documented TypeScript-only contracts stable enough for downstream packages', () => {
     expectTypeOf<EmailMessage>().toHaveProperty('to');
     expectTypeOf<EmailMessage>().toHaveProperty('subject');

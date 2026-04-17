@@ -144,7 +144,7 @@ vi.mock('bullmq', () => ({
 
 import { EmailChannel } from './channel.js';
 import { EmailNotificationQueueJob, EmailNotificationsQueueWorker, createEmailNotificationsQueueAdapter } from './queue.js';
-import { EmailModule } from './module.js';
+import { EmailModule, createEmailProviders } from './module.js';
 import { EmailService } from './service.js';
 import { EMAIL } from './tokens.js';
 import { EmailConfigurationError } from './errors.js';
@@ -226,6 +226,10 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   return metadata.providers as Provider[];
 }
 
+function providerToken(provider: Provider): unknown {
+  return typeof provider === 'function' ? provider : provider.provide;
+}
+
 describe('EmailModule', () => {
   beforeEach(() => {
     bullmqState.clear();
@@ -266,6 +270,58 @@ describe('EmailModule', () => {
 
     await service.onApplicationShutdown();
     expect(transportState.closeCalls).toBe(1);
+  });
+
+  it('creates helper providers with the same normalized options and facade tokens as EmailModule.forRoot', async () => {
+    const options = {
+      defaultFrom: ' noreply@example.com ',
+      defaultReplyTo: [{ address: ' reply@example.com ', name: 'Support' }],
+      notifications: { channel: ' transactional-email ' },
+      transport: createRecordingTransportFactory(),
+      verifyOnModuleInit: true,
+    };
+    const moduleType = EmailModule.forRoot(options);
+    const helperProviders = createEmailProviders(options);
+    const moduleRuntimeProviders = moduleProviders(moduleType);
+    const helperContainer = new Container();
+
+    expect(helperProviders).toHaveLength(moduleRuntimeProviders.length);
+    expect(helperProviders.map(providerToken)).toEqual(moduleRuntimeProviders.map(providerToken));
+
+    helperContainer.register(...helperProviders);
+
+    const service = await helperContainer.resolve(EmailService);
+    const facade = await helperContainer.resolve<Email>(EMAIL);
+    const channel = await helperContainer.resolve(EmailChannel);
+
+    await service.onModuleInit();
+
+    const result = await facade.send({
+      subject: 'Manual providers',
+      text: 'helper contract',
+      to: ['user@example.com'],
+    });
+
+    expect(result.messageId).toBe('message-1');
+    expect(channel.channel).toBe('transactional-email');
+    expect(transportState.verifyCalls).toBe(1);
+    expect(transportState.sent[0]).toMatchObject({
+      from: { address: 'noreply@example.com' },
+      replyTo: [{ address: 'reply@example.com', name: 'Support' }],
+      subject: 'Manual providers',
+      text: 'helper contract',
+    });
+
+    await service.onApplicationShutdown();
+    expect(transportState.closeCalls).toBe(1);
+  });
+
+  it('rejects helper-based registration without an explicit transport contract', () => {
+    expect(() =>
+      createEmailProviders({
+        defaultFrom: 'noreply@example.com',
+      } as never),
+    ).toThrowError(new EmailConfigurationError('EmailModule requires an explicit `transport` to be configured.'));
   });
 
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
