@@ -133,19 +133,20 @@ CacheModule.forRoot({
 
 ### Manual Module Composition
 
-`CacheModule.forRoot(...)` remains the default entrypoint for normal application setup.
-When you need to wire the same cache-manager providers into a custom `defineModule(...)`
-registration, `createCacheProviders(...)` remains a supported public API.
+`CacheModule.forRoot(...)` remains the supported root entrypoint for normal application setup,
+including custom `defineModule(...)` composition. Root-package consumers should treat
+low-level provider assembly as an internal implementation detail instead of part of the
+documented root-barrel API.
 
 ```typescript
 import { defineModule } from '@fluojs/runtime';
-import { CacheInterceptor, CacheService, createCacheProviders } from '@fluojs/cache-manager';
+import { CacheInterceptor, CacheModule, CacheService } from '@fluojs/cache-manager';
 
 class ManualCacheModule {}
 
 defineModule(ManualCacheModule, {
   exports: [CacheService, CacheInterceptor],
-  providers: createCacheProviders({ store: 'memory', ttl: 60 }),
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
 });
 ```
 
@@ -167,8 +168,7 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 - `CacheModule.forRoot(options)`: Configures the cache store (memory/redis), default TTL, and key strategies.
   This is the primary package entrypoint for application modules.
 
-### Provider composition
-- `createCacheProviders(options)`: Returns the provider set used by `CacheModule.forRoot(options)` for supported manual `defineModule(...)` composition.
+Root-level cache registration is intentionally centered on `CacheModule.forRoot(...)`; low-level provider wiring is not part of the documented root-barrel contract.
 
 ### Services
 - `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`).

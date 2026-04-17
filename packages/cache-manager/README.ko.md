@@ -133,19 +133,20 @@ CacheModule.forRoot({
 
 ### 수동 모듈 조합
 
-일반적인 애플리케이션 설정에서는 `CacheModule.forRoot(...)`가 기본 진입점입니다.
-동일한 cache-manager provider 그래프를 커스텀 `defineModule(...)` 등록 안에 직접 배치해야 할 때는
-`createCacheProviders(...)`를 계속 지원되는 공개 API로 사용할 수 있습니다.
+일반적인 애플리케이션 설정은 물론 커스텀 `defineModule(...)` 조합에서도
+`CacheModule.forRoot(...)`가 지원되는 루트 진입점입니다. 루트 패키지 소비자는
+저수준 provider 조합을 문서화된 root-barrel API의 일부가 아니라 내부 구현 세부사항으로
+취급해야 합니다.
 
 ```typescript
 import { defineModule } from '@fluojs/runtime';
-import { CacheInterceptor, CacheService, createCacheProviders } from '@fluojs/cache-manager';
+import { CacheInterceptor, CacheModule, CacheService } from '@fluojs/cache-manager';
 
 class ManualCacheModule {}
 
 defineModule(ManualCacheModule, {
   exports: [CacheService, CacheInterceptor],
-  providers: createCacheProviders({ store: 'memory', ttl: 60 }),
+  imports: [CacheModule.forRoot({ store: 'memory', ttl: 60 })],
 });
 ```
 
@@ -167,8 +168,7 @@ defineModule(ManualCacheModule, {
 - `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis), 기본 TTL, 키 전략 등을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
 
-### Provider 조합
-- `createCacheProviders(options)`: `CacheModule.forRoot(options)`와 동일한 provider 집합을 반환하며, 지원되는 수동 `defineModule(...)` 조합에 사용합니다.
+루트 레벨 캐시 등록은 의도적으로 `CacheModule.forRoot(...)`를 중심으로 합니다. 저수준 provider 조합은 문서화된 root-barrel 계약에 포함되지 않습니다.
 
 ### 서비스
 - `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`)을 위한 기본 API입니다.
