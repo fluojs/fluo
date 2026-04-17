@@ -1,18 +1,7 @@
-import type { Provider } from '@fluojs/di';
 import type { ModuleType } from '@fluojs/runtime';
 
-import { createNodeWebSocketProviders, NodeWebSocketModule } from './node.js';
+import { NodeWebSocketModule } from './node.js';
 import type { WebSocketModuleOptions } from './types.js';
-
-/**
- * Creates the default provider set for the runtime-agnostic WebSocket module entry point.
- *
- * @param options WebSocket adapter options forwarded to the Node-backed provider factory.
- * @returns Providers that register the default WebSocket lifecycle service wiring.
- */
-export function createWebSocketProviders(options: WebSocketModuleOptions = {}): Provider[] {
-  return createNodeWebSocketProviders(options);
-}
 
 /**
  * Root module entry point that defaults to the Node.js WebSocket adapter.

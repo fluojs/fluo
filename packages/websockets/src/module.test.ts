@@ -28,7 +28,7 @@ import {
   getWebSocketGatewayMetadata,
   getWebSocketHandlerMetadataEntries,
 } from './metadata.js';
-import { WebSocketModule, createWebSocketProviders } from './module.js';
+import { WebSocketModule } from './module.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 import type { WebSocketModuleOptions } from './types.js';
 
@@ -319,9 +319,9 @@ describe('@fluojs/websockets', () => {
     const options: WebSocketModuleOptions = {
       shutdown: { timeoutMs: 1234 },
     };
-    const providers = createWebSocketProviders(options);
+    const providers = getModuleMetadata(WebSocketModule.forRoot(options))?.providers ?? [];
     const optionsProvider = providers.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
 
     expect(providers).toContain(WebSocketGatewayLifecycleService);
