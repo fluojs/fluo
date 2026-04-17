@@ -17,7 +17,6 @@ import type {
 describe('@fluojs/discord public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
     expect(discordPublicApi).toHaveProperty('DiscordModule');
-    expect(discordPublicApi).toHaveProperty('createDiscordProviders');
     expect(discordPublicApi).toHaveProperty('createDiscordWebhookTransport');
     expect(discordPublicApi).toHaveProperty('DiscordService');
     expect(discordPublicApi).toHaveProperty('DiscordChannel');
@@ -48,6 +47,7 @@ describe('@fluojs/discord public API surface', () => {
   });
 
   it('keeps internal normalized options token hidden from the root barrel', () => {
+    expect(discordPublicApi).not.toHaveProperty('createDiscordProviders');
     expect(discordPublicApi).not.toHaveProperty('DISCORD_OPTIONS');
     expect(discordPublicApi).not.toHaveProperty('NormalizedDiscordModuleOptions');
   });
