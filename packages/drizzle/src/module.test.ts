@@ -4,6 +4,7 @@ import { Global, Inject, Module } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
 import {
+  DRIZZLE_OPTIONS,
   DrizzleModule,
   createDrizzlePlatformStatusSnapshot,
   DrizzleDatabase,
@@ -201,6 +202,86 @@ describe('@fluojs/drizzle', () => {
     );
 
     await asyncApp.close();
+  });
+
+  it('defaults strictTransactions to false for sync and async module entrypoints', async () => {
+    const database = {};
+
+    const SyncModule = DrizzleModule.forRoot({
+      database,
+    });
+
+    class SyncAppModule {}
+
+    defineModule(SyncAppModule, {
+      imports: [SyncModule],
+    });
+
+    const syncApp = await bootstrapApplication({
+      rootModule: SyncAppModule,
+    });
+    const syncDrizzle = await syncApp.container.resolve(DrizzleDatabase<typeof database>);
+    const syncOptions = await syncApp.container.resolve<{ strictTransactions: boolean }>(DRIZZLE_OPTIONS);
+
+    await expect(syncDrizzle.transaction(async () => 'sync-fallback')).resolves.toBe('sync-fallback');
+    await expect(syncDrizzle.requestTransaction(async () => 'sync-request-fallback')).resolves.toBe('sync-request-fallback');
+    expect(syncOptions).toEqual({ strictTransactions: false });
+
+    await syncApp.close();
+
+    const AsyncModule = DrizzleModule.forRootAsync({
+      useFactory: () => ({
+        database,
+      }),
+    });
+
+    class AsyncAppModule {}
+
+    defineModule(AsyncAppModule, {
+      imports: [AsyncModule],
+    });
+
+    const asyncApp = await bootstrapApplication({
+      rootModule: AsyncAppModule,
+    });
+    const asyncDrizzle = await asyncApp.container.resolve(DrizzleDatabase<typeof database>);
+    const asyncOptions = await asyncApp.container.resolve<{ strictTransactions: boolean }>(DRIZZLE_OPTIONS);
+
+    await expect(asyncDrizzle.transaction(async () => 'async-fallback')).resolves.toBe('async-fallback');
+    await expect(asyncDrizzle.requestTransaction(async () => 'async-request-fallback')).resolves.toBe('async-request-fallback');
+    expect(asyncOptions).toEqual({ strictTransactions: false });
+
+    await asyncApp.close();
+  });
+
+  it('awaits async dispose hooks registered through module entrypoints', async () => {
+    const events: string[] = [];
+    const database = {};
+
+    const drizzleModule = DrizzleModule.forRootAsync({
+      useFactory: async () => ({
+        database,
+        dispose: async () => {
+          events.push('dispose:start');
+          await Promise.resolve();
+          events.push('dispose:end');
+        },
+      }),
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    await app.close();
+
+    expect(events).toEqual(['dispose:start', 'dispose:end']);
   });
 
   it('falls back for requestTransaction when transaction support is unavailable and strictTransactions is false', async () => {

@@ -114,25 +114,6 @@ function createDrizzleProvidersAsync<
   return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>(normalizedOptionsProvider);
 }
 
-/**
- * Creates Drizzle providers for manual module composition.
- *
- * @param options Drizzle module options with a database handle, optional dispose hook, and strict transaction policy.
- * @returns Provider definitions equivalent to `DrizzleModule.forRoot(...)`.
- */
-export function createDrizzleProviders<
-  TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
-  TTransactionDatabase = TDatabase,
-  TTransactionOptions = unknown,
->(options: DrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>): Provider[] {
-  const resolved = normalizeDrizzleModuleOptions(options);
-
-  return createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>({
-    provide: DRIZZLE_NORMALIZED_OPTIONS,
-    useValue: resolved,
-  });
-}
-
 function buildDrizzleModule<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
   TTransactionDatabase = TDatabase,
@@ -142,7 +123,10 @@ function buildDrizzleModule<
 
   return defineModule(DrizzleRootModuleDefinition, {
     exports: DRIZZLE_MODULE_EXPORTS,
-    providers: createDrizzleProviders(options),
+    providers: createDrizzleRuntimeProviders<TDatabase, TTransactionDatabase, TTransactionOptions>({
+      provide: DRIZZLE_NORMALIZED_OPTIONS,
+      useValue: normalizeDrizzleModuleOptions(options),
+    }),
   });
 }
 
