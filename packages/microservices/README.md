@@ -10,6 +10,7 @@ Transport-driven microservices for fluo. Build scalable, message-driven architec
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Core Capabilities](#core-capabilities)
+- [Common Patterns](#common-patterns)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -85,12 +86,60 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 - `messageRetentionMaxLen` and `eventRetentionMaxLen` remain available as advanced opt-in knobs. Enabling them can trade away broker-managed recovery guarantees because Redis may trim pending live-stream entries before they are acknowledged.
 - RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
 
+## Common Patterns
+
+### Module-first custom registration
+
+Use `MicroservicesModule.forRoot({ transport, module: { ... } })` when you want custom providers, exports, or non-global registration without dropping back to raw provider arrays.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { MicroservicesModule, MicroserviceLifecycleService, MICROSERVICE } from '@fluojs/microservices';
+
+const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
+
+@Module({
+  imports: [
+    MicroservicesModule.forRoot({
+      transport: customTransport,
+      module: {
+        global: false,
+        providers: [{ provide: EXTRA_MICROSERVICE_EXPORT, useValue: 'custom-module-value' }],
+        additionalExports: [EXTRA_MICROSERVICE_EXPORT],
+      },
+    }),
+  ],
+})
+class FeatureModule {}
+```
+
+Behavioral contract notes:
+
+- The module path still installs the same built-in `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, and `MICROSERVICE` wiring as the default `MicroservicesModule.forRoot(...)` call.
+- `module.providers` appends extra providers after the built-in runtime wiring, while `module.additionalExports` extends the default exported tokens instead of replacing them.
+- `module.global` lets advanced callers keep the registration local without reassembling the raw provider graph themselves.
+
+### Low-level helper for raw provider arrays
+
+`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { createMicroservicesProviders } from '@fluojs/microservices';
+
+@Module({
+  providers: [...createMicroservicesProviders({ transport: customTransport })],
+})
+class ManualMicroserviceProvidersModule {}
+```
+
 ## Public API Overview
 
 ### Root barrel (`@fluojs/microservices`)
 
 - `MicroservicesModule`, `createMicroservicesProviders`: module registration helpers.
-- `MicroservicesModule.forRoot(...)` remains the canonical runtime entrypoint, while `createMicroservicesProviders(...)` stays public for callers that intentionally compose the provider set themselves.
+- `MicroservicesModule.forRoot(...)` remains the canonical runtime entrypoint. Pass `module: { global, providers, additionalExports }` when advanced callers need module-first customization without reassembling the raw provider graph.
+- `createMicroservicesProviders(...)` stays public for callers that intentionally need the low-level provider array itself.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: routing and streaming decorators.
 - `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: transport adapters exported from the root barrel.
 - `MicroserviceLifecycleService`, `MICROSERVICE`: programmatic runtime access and compatibility token.
@@ -117,8 +166,8 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 ## Example Sources
 
 - `packages/microservices/src/module.test.ts`: Integration tests for all transports.
-- `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including the documented `createMicroservicesProviders(...)` helper.
-- `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage that keeps the helper public during 0.x governance.
+- `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including the module-first registration overrides and `createMicroservicesProviders(...)` helper contract.
+- `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage that keeps the helper public while documenting the module-first replacement path during 0.x governance.
 - `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
 - `examples/microservices-tcp`: Basic TCP microservice example.
 - `examples/microservices-kafka`: Distributed Kafka-based architecture example.
