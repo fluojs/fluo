@@ -6,21 +6,7 @@ import { THROTTLER_OPTIONS } from './tokens.js';
 import type { ThrottlerModuleOptions } from './types.js';
 import { validateThrottlerModuleOptions } from './validation.js';
 
-/**
- * Create the throttler provider set for manual module composition.
- *
- * @param options Module-wide throttling policy.
- * @returns Providers for validated options and `ThrottlerGuard`.
- *
- * @example
- * ```ts
- * const providers = createThrottlerProviders({
- *   ttl: 60,
- *   limit: 10,
- * });
- * ```
- */
-export function createThrottlerProviders(options: ThrottlerModuleOptions): Provider[] {
+function createThrottlerProviders(options: ThrottlerModuleOptions): Provider[] {
   const validatedOptions = validateThrottlerModuleOptions(options);
 
   return [

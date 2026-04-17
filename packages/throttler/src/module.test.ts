@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
 
+import * as throttlerExports from './index.js';
 import { SkipThrottle, Throttle, getThrottleMetadata } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
-import { ThrottlerModule, createThrottlerProviders } from './module.js';
+import { ThrottlerModule } from './module.js';
 import { createMemoryThrottlerStore } from './store.js';
-import { THROTTLER_OPTIONS } from './tokens.js';
 import type {
   ThrottlerConsumeInput,
   ThrottlerModuleOptions,
@@ -96,43 +96,11 @@ function createGuardContext(
   };
 }
 
-type ObjectProvider = {
-  provide: unknown;
-  useClass?: unknown;
-  useExisting?: unknown;
-  useValue?: unknown;
-};
-
-function isObjectProvider(provider: unknown): provider is ObjectProvider {
-  return typeof provider === 'object' && provider !== null && 'provide' in provider;
-}
-
-describe('createThrottlerProviders', () => {
-  it('registers class-first ThrottlerGuard identity and keeps THROTTLER_OPTIONS token-based', () => {
-    const providers = createThrottlerProviders({
-      limit: 10,
-      ttl: 60,
-    });
-    const optionsProvider = providers.find(
-      (provider) => isObjectProvider(provider) && provider.provide === THROTTLER_OPTIONS,
-    );
-    const classProvider = providers.find(
-      (provider) => isObjectProvider(provider) && provider.provide === ThrottlerGuard,
-    );
-
-    expect(optionsProvider).toMatchObject({
-      provide: THROTTLER_OPTIONS,
-      useValue: {
-        limit: 10,
-        ttl: 60,
-      },
-    });
-    expect(classProvider).toMatchObject({
-      provide: ThrottlerGuard,
-      useClass: ThrottlerGuard,
-    });
-
-    expect(providers).toHaveLength(2);
+describe('@fluojs/throttler public entrypoints', () => {
+  it('keeps ThrottlerModule.forRoot as the supported registration entrypoint without exporting internal provider helpers', () => {
+    expect(throttlerExports).not.toHaveProperty('createThrottlerProviders');
+    expect(throttlerExports.ThrottlerModule).toBe(ThrottlerModule);
+    expect(typeof throttlerExports.ThrottlerModule.forRoot).toBe('function');
   });
 });
 
