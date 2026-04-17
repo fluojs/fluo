@@ -12,7 +12,6 @@ import type {
 describe('@fluojs/event-bus public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(eventBusPublicApi).toHaveProperty('EventBusModule');
-    expect(eventBusPublicApi).toHaveProperty('createEventBusProviders');
     expect(eventBusPublicApi).toHaveProperty('EventBusLifecycleService');
     expect(eventBusPublicApi).toHaveProperty('EVENT_BUS');
     expect(eventBusPublicApi).toHaveProperty('OnEvent');
@@ -40,6 +39,7 @@ describe('@fluojs/event-bus public API surface', () => {
   });
 
   it('hides internal descriptors and metadata helpers from the root barrel', () => {
+    expect(eventBusPublicApi).not.toHaveProperty('createEventBusProviders');
     expect(eventBusPublicApi).not.toHaveProperty('defineEventHandlerMetadata');
     expect(eventBusPublicApi).not.toHaveProperty('getEventHandlerMetadata');
     expect(eventBusPublicApi).not.toHaveProperty('getEventHandlerMetadataEntries');

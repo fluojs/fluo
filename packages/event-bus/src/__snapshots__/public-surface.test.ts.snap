@@ -7,6 +7,5 @@ exports[`@fluojs/event-bus root barrel public surface > keeps the documented roo
   "EventBusModule",
   "OnEvent",
   "createEventBusPlatformStatusSnapshot",
-  "createEventBusProviders",
 ]
 `;

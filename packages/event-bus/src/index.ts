@@ -1,5 +1,5 @@
 export { OnEvent } from './decorators.js';
-export { EventBusModule, createEventBusProviders } from './module.js';
+export { EventBusModule } from './module.js';
 export { EventBusLifecycleService } from './service.js';
 export * from './status.js';
 export { EVENT_BUS } from './tokens.js';

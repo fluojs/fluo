@@ -6,7 +6,7 @@ describe('@fluojs/event-bus root barrel public surface', () => {
   it('keeps the documented root exports stable for 0.x governance', () => {
     expect(eventBus).toHaveProperty('EventBusModule');
     expect(eventBus).not.toHaveProperty('createEventBusModule');
-    expect(eventBus).toHaveProperty('createEventBusProviders');
+    expect(eventBus).not.toHaveProperty('createEventBusProviders');
     expect(eventBus).toHaveProperty('EventBusLifecycleService');
     expect(eventBus).toHaveProperty('EVENT_BUS');
     expect(eventBus).not.toHaveProperty('EVENT_BUS_OPTIONS');

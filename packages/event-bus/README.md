@@ -51,6 +51,8 @@ export class NotificationService {
 
 Import `EventBusModule` and inject `EventBusLifecycleService` to publish events.
 
+`EventBusModule.forRoot(...)` is the supported root entrypoint for wiring the in-process event bus. Root-only consumers should treat low-level provider assembly as an internal implementation detail instead of part of the root-barrel API.
+
 ```typescript
 import { Module, Inject } from '@fluojs/core';
 import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
@@ -105,6 +107,7 @@ class UserRegisteredEvent {
 - `EventBusModule`: Main entry point for event bus registration.
 - `EventBusLifecycleService`: Primary service for publishing events (`publish(event)`).
 - `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
+- Root-level registration is intentionally centered on `EventBusModule.forRoot(...)`; low-level provider helpers are not part of the documented root-barrel contract.
 
 ### Interfaces
 - `EventBusTransport`: Contract for implementing external transport adapters.

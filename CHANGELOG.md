@@ -22,6 +22,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Breaking changes
 
+- `@fluojs/event-bus`: the root barrel no longer exports `createEventBusProviders(...)`. Migration note: switch root-package composition to `EventBusModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/cron`: the root barrel no longer exports `createCronProviders(...)`. Migration note: register scheduling through `CronModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/terminus`: the root barrel no longer exports `createTerminusProviders(...)`. Migration note: switch root-package composition to `TerminusModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/graphql`: schema introspection is now disabled unless `graphiql` or `introspection: true` is explicitly enabled, and built-in request budgets now cap GraphQL document depth, field complexity, and aggregate query cost by default. Migration note: enable `introspection: true` for trusted tooling flows that still need schema discovery, or set `limits` to explicit higher values (or `false` for a temporary legacy escape hatch) before rolling this update into existing large-query workloads.
