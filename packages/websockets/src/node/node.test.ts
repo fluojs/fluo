@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { Inject } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import { defineModule } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as nodePublicApi from './node.js';
-import { NodeWebSocketModule, createNodeWebSocketProviders } from './node.js';
+import { NodeWebSocketModule } from './node.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service.js';
 import type { WebSocketModuleOptions } from './node-types.js';
 
@@ -79,16 +80,16 @@ describe('@fluojs/websockets/node', () => {
   it('exposes the explicit Node-only websocket seam', () => {
     expect(nodePublicApi).toHaveProperty('NodeWebSocketModule');
     expect(nodePublicApi).toHaveProperty('NodeWebSocketGatewayLifecycleService');
-    expect(nodePublicApi).toHaveProperty('createNodeWebSocketProviders');
+    expect(nodePublicApi).not.toHaveProperty('createNodeWebSocketProviders');
   });
 
   it('wires the Node lifecycle service through the Node-only providers', () => {
     const options: WebSocketModuleOptions = {
       shutdown: { timeoutMs: 1234 },
     };
-    const providers = createNodeWebSocketProviders(options);
+    const providers = getModuleMetadata(NodeWebSocketModule.forRoot(options))?.providers ?? [];
     const optionsProvider = providers.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
 
     expect(providers).toContain(NodeWebSocketGatewayLifecycleService);
