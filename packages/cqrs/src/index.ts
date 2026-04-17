@@ -24,7 +24,7 @@ export {
   getSagaMetadata,
   sagaMetadataSymbol,
 } from './metadata.js';
-export { CqrsModule, createCqrsProviders, type CqrsModuleOptions } from './module.js';
+export { CqrsModule, type CqrsModuleOptions } from './module.js';
 export * from './status.js';
 export { CommandBusLifecycleService } from './buses/command-bus.js';
 export { CqrsEventBusService } from './buses/event-bus.js';

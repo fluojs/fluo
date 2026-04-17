@@ -5,7 +5,6 @@ import * as cqrsPublicApi from './index.js';
 describe('@fluojs/cqrs public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(cqrsPublicApi).toHaveProperty('CqrsModule');
-    expect(cqrsPublicApi).toHaveProperty('createCqrsProviders');
     expect(cqrsPublicApi).toHaveProperty('CommandBusLifecycleService');
     expect(cqrsPublicApi).toHaveProperty('QueryBusLifecycleService');
     expect(cqrsPublicApi).toHaveProperty('CqrsEventBusService');
@@ -20,6 +19,10 @@ describe('@fluojs/cqrs public API surface', () => {
     expect(cqrsPublicApi).toHaveProperty('QueryHandlerNotFoundException');
     expect(cqrsPublicApi).toHaveProperty('SagaTopologyError');
     expect(cqrsPublicApi).toHaveProperty('createCqrsPlatformStatusSnapshot');
+  });
+
+  it('hides low-level provider assembly from the root barrel', () => {
+    expect(cqrsPublicApi).not.toHaveProperty('createCqrsProviders');
   });
 
   it('does not expose removed legacy error aliases', () => {

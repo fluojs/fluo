@@ -33,6 +33,8 @@ npm install @fluojs/cqrs
 
 Register the `CqrsModule` and define your first command and handler.
 
+`CqrsModule.forRoot(...)` is the supported root entrypoint for wiring CQRS buses and handler discovery. Root-only consumers should treat low-level provider assembly as an internal implementation detail instead of part of the root-barrel API.
+
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import {
@@ -123,6 +125,7 @@ class LegacyService {
 
 ### Modules & Providers
 - `CqrsModule.forRoot(options)`: Main entry point. Registers buses and starts discovery.
+- Root-level registration is intentionally centered on `CqrsModule.forRoot(...)`; low-level provider helpers are not part of the documented root-barrel contract.
 - `CommandBusLifecycleService`: Primary service for executing commands.
 - `QueryBusLifecycleService`: Primary service for executing queries.
 - `CqrsEventBusService`: Primary service for publishing events.

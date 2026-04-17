@@ -22,7 +22,6 @@ exports[`@fluojs/cqrs root barrel public surface > keeps the documented root exp
   "SagaTopologyError",
   "commandHandlerMetadataSymbol",
   "createCqrsPlatformStatusSnapshot",
-  "createCqrsProviders",
   "defineCommandHandlerMetadata",
   "defineEventHandlerMetadata",
   "defineQueryHandlerMetadata",

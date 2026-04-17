@@ -22,7 +22,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Breaking changes
 
+<<<<<<< HEAD
 - `@fluojs/queue`: the root barrel no longer exports `createQueueProviders(...)`. Migration note: register queues through `QueueModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
+=======
+- `@fluojs/cqrs`: the root barrel no longer exports `createCqrsProviders(...)`. Migration note: switch root-package composition to `CqrsModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
+>>>>>>> 88257312 (docs(changelog): add cqrs migration note)
 - `@fluojs/event-bus`: the root barrel no longer exports `createEventBusProviders(...)`. Migration note: switch root-package composition to `EventBusModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/cron`: the root barrel no longer exports `createCronProviders(...)`. Migration note: register scheduling through `CronModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/websockets`: the root barrel no longer exports `createWebSocketProviders(...)`, and the runtime subpaths no longer export `create*WebSocketProviders(...)` helpers. Migration note: register websocket support through `WebSocketModule.forRoot(...)` or the explicit runtime `*WebSocketModule.forRoot(...)` subpath entrypoint; low-level provider wiring is now internal and no longer part of the supported public surface.

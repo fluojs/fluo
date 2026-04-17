@@ -33,6 +33,8 @@ npm install @fluojs/cqrs
 
 `CqrsModule`을 등록하고 첫 번째 Command와 Handler를 정의합니다.
 
+`CqrsModule.forRoot(...)`는 CQRS 버스와 핸들러 탐색을 연결하는 지원되는 루트 진입점입니다. 루트만 사용하는 소비자는 low-level provider 조립을 루트 배럴 API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다.
+
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import {
@@ -123,6 +125,7 @@ class LegacyService {
 
 ### 모듈 및 프로바이더
 - `CqrsModule.forRoot(options)`: 메인 진입점입니다. 버스를 등록하고 탐색을 시작합니다.
+- 루트 수준 등록은 의도적으로 `CqrsModule.forRoot(...)`를 중심으로 하며, low-level provider helper는 문서화된 루트 배럴 계약의 일부가 아닙니다.
 - `CommandBusLifecycleService`: Command 실행을 위한 기본 서비스입니다.
 - `QueryBusLifecycleService`: Query 실행을 위한 기본 서비스입니다.
 - `CqrsEventBusService`: Event 발행을 위한 기본 서비스입니다.
