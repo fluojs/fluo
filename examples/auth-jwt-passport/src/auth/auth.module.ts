@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { createJwtCoreProviders } from '@fluojs/jwt';
-import { createPassportProviders } from '@fluojs/passport';
+import { PassportModule } from '@fluojs/passport';
 
 import { AuthController, ProfileController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -8,6 +8,12 @@ import { BearerJwtStrategy } from './bearer.strategy';
 
 @Module({
   controllers: [AuthController, ProfileController],
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: BearerJwtStrategy }],
+    ),
+  ],
   providers: [
     AuthService,
     BearerJwtStrategy,
@@ -18,10 +24,6 @@ import { BearerJwtStrategy } from './bearer.strategy';
       issuer: 'fluo-auth-example',
       secret: 'fluo-auth-example-secret',
     }),
-    ...createPassportProviders(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
-    ),
   ],
 })
 export class AuthModule {}

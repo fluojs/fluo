@@ -141,12 +141,18 @@ async canActivate(context: GuardContext): Promise<true> {
 
 ## auth module은 이 모든 조각을 어떻게 조립하는가
 
-`auth.module.ts`를 보면 발급, 검증, guard 연결이 한 providers 배열 안에 조립된다 `[ex:auth-jwt-passport/src/auth/auth.module.ts]`.
+`auth.module.ts`를 보면 발급, 검증, guard 연결이 auth module 안에서 조립된다 `[ex:auth-jwt-passport/src/auth/auth.module.ts]`.
 
 ```ts
 // source: ex:auth-jwt-passport/src/auth/auth.module.ts
 @Module({
   controllers: [AuthController, ProfileController],
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: BearerJwtStrategy }],
+    ),
+  ],
   providers: [
     AuthService,
     BearerJwtStrategy,
@@ -157,16 +163,12 @@ async canActivate(context: GuardContext): Promise<true> {
       issuer: 'fluo-auth-example',
       secret: 'fluo-auth-example-secret',
     }),
-    ...createPassportProviders(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
-    ),
   ],
 })
 export class AuthModule {}
 ```
 
-이 코드는 auth 장의 중요한 메시지를 담고 있다. JWT core provider와 passport strategy provider는 별개지만, auth module 안에서 함께 조립된다. 즉, 인증은 한 클래스의 책임이 아니라 **여러 provider contract를 한 모듈 안에서 조합하는 문제**다.
+이 코드는 auth 장의 중요한 메시지를 담고 있다. JWT core provider와 passport strategy wiring은 별개지만, auth module 안에서 함께 조립된다. 즉, 인증은 한 클래스의 책임이 아니라 **여러 provider contract를 한 모듈 안에서 조합하는 문제**다.
 
 ## decorator는 auth requirement를 어떻게 기록하는가
 

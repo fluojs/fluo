@@ -29,26 +29,28 @@ npm install @fluojs/passport
 
 ## Quick Start
 
-### 1. Register Providers
+### 1. Register Modules
 
-Define your strategies and register them using `createPassportProviders`.
+Define your strategies and register them using `PassportModule.forRoot(...)`.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { createPassportProviders } from '@fluojs/passport';
+import { PassportModule } from '@fluojs/passport';
 import { MyJwtStrategy } from './jwt.strategy';
 
 @Module({
-  providers: [
-    MyJwtStrategy,
-    ...createPassportProviders(
+  imports: [
+    PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
       [{ name: 'jwt', token: MyJwtStrategy }]
     ),
   ],
+  providers: [MyJwtStrategy],
 })
 export class AuthModule {}
 ```
+
+`PassportModule.forRoot(...)` is the canonical public entrypoint. `createPassportProviders(...)` remains available as a compatibility shim when you need lower-level provider composition inside an existing module definition.
 
 ### 2. Protect Routes
 
@@ -81,6 +83,31 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+### Cookie Auth Preset
+
+Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HTTP cookies.
+
+```typescript
+import { Module } from '@fluojs/core';
+import {
+  CookieAuthModule,
+  CookieAuthStrategy,
+  COOKIE_AUTH_STRATEGY_NAME,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    CookieAuthModule.forRoot(),
+    PassportModule.forRoot(
+      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
+      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
 ### Refresh Token Lifecycle
 
 The package provides a built-in `RefreshTokenStrategy` and `RefreshTokenService` to handle secure token rotation and revocation.
@@ -88,13 +115,23 @@ The package provides a built-in `RefreshTokenStrategy` and `RefreshTokenService`
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
-import { UseAuth, createRefreshTokenProviders } from '@fluojs/passport';
+import {
+  PassportModule,
+  REFRESH_TOKEN_STRATEGY_NAME,
+  RefreshTokenModule,
+  RefreshTokenStrategy,
+  UseAuth,
+} from '@fluojs/passport';
 
 @Module({
-  providers: [
-    MyRefreshTokenService,
-    ...createRefreshTokenProviders(MyRefreshTokenService),
+  imports: [
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
   ],
+  providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
 
@@ -108,7 +145,7 @@ export class AuthController {
 }
 ```
 
-`createRefreshTokenProviders(...)` returns standard DI alias providers, so resolving `REFRESH_TOKEN_SERVICE` yields the same concrete service instance you registered.
+`RefreshTokenModule.forRoot(...)` is the canonical preset entrypoint. `createRefreshTokenProviders(...)` still returns the DI alias provider for advanced composition, so resolving `REFRESH_TOKEN_SERVICE` yields the same concrete service instance you registered.
 
 ## Public API Overview
 
@@ -117,8 +154,11 @@ export class AuthController {
 - `@RequireScopes(...scopes)`: Enforces specific scope requirements.
 
 ### Core Classes
+- `PassportModule`: Canonical module-first entry point for passport strategy wiring.
 - `AuthGuard`: The HTTP guard that executes the strategy chain.
+- `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
 - `CookieManager`: Utility for managing HttpOnly auth cookies.
+- `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
 - `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
 
 ### Interfaces

@@ -29,26 +29,28 @@ npm install @fluojs/passport
 
 ## 빠른 시작
 
-### 1. 프로바이더 등록
+### 1. 모듈 등록
 
-사용할 전략을 정의하고 `createPassportProviders`를 통해 등록합니다.
+사용할 전략을 정의하고 `PassportModule.forRoot(...)`를 통해 등록합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { createPassportProviders } from '@fluojs/passport';
+import { PassportModule } from '@fluojs/passport';
 import { MyJwtStrategy } from './jwt.strategy';
 
 @Module({
-  providers: [
-    MyJwtStrategy,
-    ...createPassportProviders(
+  imports: [
+    PassportModule.forRoot(
       { defaultStrategy: 'jwt' },
       [{ name: 'jwt', token: MyJwtStrategy }]
     ),
   ],
+  providers: [MyJwtStrategy],
 })
 export class AuthModule {}
 ```
+
+`PassportModule.forRoot(...)`가 표준 public entrypoint입니다. 이미 존재하는 모듈 안에서 더 낮은 수준의 provider 조합이 필요할 때만 `createPassportProviders(...)`를 호환 shim으로 사용하세요.
 
 ### 2. 라우트 보호
 
@@ -81,6 +83,31 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+### 쿠키 인증 프리셋
+
+HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAuthModule.forRoot(...)`를 사용합니다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import {
+  CookieAuthModule,
+  CookieAuthStrategy,
+  COOKIE_AUTH_STRATEGY_NAME,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    CookieAuthModule.forRoot(),
+    PassportModule.forRoot(
+      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
+      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
 ### 리프레시 토큰 수명 주기
 
 패키지에서 제공하는 `RefreshTokenStrategy`와 `RefreshTokenService`를 사용하여 안전한 토큰 로테이션 및 폐기 기능을 구현할 수 있습니다.
@@ -88,13 +115,23 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
-import { UseAuth, createRefreshTokenProviders } from '@fluojs/passport';
+import {
+  PassportModule,
+  REFRESH_TOKEN_STRATEGY_NAME,
+  RefreshTokenModule,
+  RefreshTokenStrategy,
+  UseAuth,
+} from '@fluojs/passport';
 
 @Module({
-  providers: [
-    MyRefreshTokenService,
-    ...createRefreshTokenProviders(MyRefreshTokenService),
+  imports: [
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
   ],
+  providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
 
@@ -108,7 +145,7 @@ export class AuthController {
 }
 ```
 
-`createRefreshTokenProviders(...)`는 표준 DI alias provider를 반환하므로, `REFRESH_TOKEN_SERVICE`를 해석하면 등록한 구체 서비스 인스턴스와 동일한 객체를 받게 됩니다.
+`RefreshTokenModule.forRoot(...)`가 표준 프리셋 진입점입니다. 고급 조합이 필요할 때는 `createRefreshTokenProviders(...)`를 계속 사용할 수 있으며, 이 경우에도 `REFRESH_TOKEN_SERVICE`를 해석하면 등록한 구체 서비스 인스턴스와 동일한 객체를 받게 됩니다.
 
 ## 공개 API 개요
 
@@ -117,8 +154,11 @@ export class AuthController {
 - `@RequireScopes(...scopes)`: 특정 권한(스코프) 요구 사항을 강제합니다.
 
 ### 주요 클래스
+- `PassportModule`: passport 전략 wiring을 위한 표준 module-first 진입점입니다.
 - `AuthGuard`: 전략 체인을 실행하는 HTTP 가드입니다.
+- `CookieAuthModule`: 내장 cookie-auth 프리셋의 모듈 진입점입니다.
 - `CookieManager`: HttpOnly 인증 쿠키 관리를 위한 유틸리티입니다.
+- `RefreshTokenModule`: 내장 refresh-token 프리셋의 모듈 진입점입니다.
 - `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 리프레시 로직을 패스포트 인터페이스로 연결합니다.
 
 ### 인터페이스
