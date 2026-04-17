@@ -93,7 +93,7 @@ function createAuthRequirementDecorator(patch: RequirementPatch): ClassOrMethodD
  * getProfile() {}
  * ```
  *
- * @param strategy Strategy name previously registered through `createPassportProviders(...)`.
+ * @param strategy Strategy name previously registered through `PassportModule.forRoot(...)` or `createPassportProviders(...)`.
  * @returns A class-or-method decorator that stores the auth requirement metadata.
  */
 export function UseAuth(strategy: string): ClassOrMethodDecoratorLike {

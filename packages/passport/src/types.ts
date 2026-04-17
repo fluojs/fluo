@@ -23,7 +23,7 @@ export interface AuthStrategy {
   authenticate(context: GuardContext): MaybePromise<AuthStrategyResult>;
 }
 
-/** Registration entry used by `createPassportProviders(...)`. */
+/** Registration entry used by `PassportModule.forRoot(...)` and `createPassportProviders(...)`. */
 export interface AuthStrategyRegistration {
   name: string;
   token: Token<AuthStrategy>;

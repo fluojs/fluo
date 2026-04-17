@@ -5,6 +5,7 @@ import type {
   PlatformSnapshot,
 } from '@fluojs/runtime';
 
+/** Snapshot payload describing passport readiness, health, ownership, and diagnostic details. */
 export interface PassportPlatformStatusSnapshot {
   readiness: PlatformReadinessReport;
   health: PlatformHealthReport;
@@ -12,6 +13,7 @@ export interface PassportPlatformStatusSnapshot {
   details: Record<string, unknown>;
 }
 
+/** Input contract for deriving passport platform health and readiness diagnostics. */
 export interface PassportStatusAdapterInput {
   componentId?: string;
   readinessCritical?: boolean;
@@ -108,6 +110,12 @@ function createHealth(input: PassportStatusAdapterInput): PlatformHealthReport {
   };
 }
 
+/**
+ * Creates a platform snapshot for passport strategy wiring and preset readiness.
+ *
+ * @param input Passport readiness inputs such as registered strategies, default strategy, and preset readiness flags.
+ * @returns A platform snapshot containing passport health, readiness, ownership, and structured details.
+ */
 export function createPassportPlatformStatusSnapshot(input: PassportStatusAdapterInput): PassportPlatformStatusSnapshot {
   const componentId = input.componentId ?? 'passport.default';
   const degraded = collectReadinessReasons(input).length > 0;
@@ -164,6 +172,12 @@ export function createPassportPlatformStatusSnapshot(input: PassportStatusAdapte
   };
 }
 
+/**
+ * Creates platform diagnostic issues for passport registry and preset readiness problems.
+ *
+ * @param input Passport readiness inputs such as registered strategies, default strategy, and preset readiness flags.
+ * @returns Diagnostic issues describing empty registries, strategy mismatches, and preset dependency failures.
+ */
 export function createPassportPlatformDiagnosticIssues(input: PassportStatusAdapterInput): PlatformDiagnosticIssue[] {
   const componentId = input.componentId ?? 'passport.default';
   const critical = input.readinessCritical ?? false;
@@ -174,7 +188,7 @@ export function createPassportPlatformDiagnosticIssues(input: PassportStatusAdap
     issues.push({
       code: 'AUTH_PASSPORT_STRATEGY_REGISTRY_EMPTY',
       componentId,
-      fixHint: 'Register at least one auth strategy via createPassportProviders(..., strategies).',
+      fixHint: 'Register at least one auth strategy via PassportModule.forRoot(..., strategies) or createPassportProviders(..., strategies).',
       message: 'Passport strategy registry has no registered auth strategies.',
       severity,
     });
