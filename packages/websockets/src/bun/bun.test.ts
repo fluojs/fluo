@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Inject } from '@fluojs/core';
+import { getModuleMetadata } from '@fluojs/core/internal';
 import type { HttpApplicationAdapter } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 
@@ -9,7 +10,6 @@ import * as bunPublicApi from './bun.js';
 import {
   BunWebSocketGatewayLifecycleService,
   BunWebSocketModule,
-  createBunWebSocketProviders,
   type BunServerLike,
   type BunServerWebSocket,
   type BunWebSocketBinding,
@@ -160,16 +160,16 @@ describe('@fluojs/websockets/bun', () => {
   it('exposes the explicit Bun websocket seam', () => {
     expect(bunPublicApi).toHaveProperty('BunWebSocketModule');
     expect(bunPublicApi).toHaveProperty('BunWebSocketGatewayLifecycleService');
-    expect(bunPublicApi).toHaveProperty('createBunWebSocketProviders');
+    expect(bunPublicApi).not.toHaveProperty('createBunWebSocketProviders');
   });
 
   it('wires the Bun lifecycle service through Bun-only providers', () => {
     const options = {
       shutdown: { timeoutMs: 1234 },
     };
-    const providers = createBunWebSocketProviders(options);
+    const providers = getModuleMetadata(BunWebSocketModule.forRoot(options))?.providers ?? [];
     const optionsProvider = providers.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
+      (provider: unknown) => typeof provider === 'object' && provider !== null && 'useValue' in provider,
     );
 
     expect(providers).toContain(BunWebSocketGatewayLifecycleService);
