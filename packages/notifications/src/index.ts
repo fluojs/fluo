@@ -3,7 +3,7 @@ export {
   NotificationQueueNotConfiguredError,
   NotificationsConfigurationError,
 } from './errors.js';
-export { NotificationsModule, createNotificationsProviders } from './module.js';
+export { NotificationsModule } from './module.js';
 export { NotificationsService } from './service.js';
 export { createNotificationsPlatformStatusSnapshot } from './status.js';
 export type { NotificationsPlatformStatusSnapshot, NotificationsStatusAdapterInput } from './status.js';
