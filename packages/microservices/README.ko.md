@@ -93,6 +93,7 @@ await microservice.listen();
 ### 루트 배럴 (`@fluojs/microservices`)
 
 - `MicroservicesModule`, `createMicroservicesProviders`: 모듈 등록 진입점입니다.
+- `MicroservicesModule.forRoot(...)`는 여전히 표준 런타임 진입점이며, `createMicroservicesProviders(...)`는 provider 집합을 의도적으로 직접 조합하려는 호출자를 위한 공개 helper로 유지합니다.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: 라우팅/스트리밍 데코레이터입니다.
 - `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: 루트 배럴에서 제공하는 트랜스포트 어댑터입니다.
 - `MicroserviceLifecycleService`, `MICROSERVICE`: 런타임 접근용 서비스와 호환 토큰입니다.
@@ -118,7 +119,9 @@ await microservice.listen();
 
 ## 예제 소스
 
-- `packages/microservices/src/module.test.ts`
-- `packages/microservices/src/public-api.test.ts`
-- `packages/microservices/src/public-subpaths.test.ts`
-- `packages/microservices/src/public-surface.test.ts`
+- `packages/microservices/src/module.test.ts`: 모든 트랜스포트 통합 계약을 검증합니다.
+- `packages/microservices/src/public-api.test.ts`: 문서화된 `createMicroservicesProviders(...)` helper를 포함한 루트 배럴 export 계약을 검증합니다.
+- `packages/microservices/src/public-surface.test.ts`: 0.x 거버넌스 동안 helper가 공개 surface에 남아 있는지 스냅샷으로 고정합니다.
+- `packages/microservices/src/public-subpaths.test.ts`: 문서화된 트랜스포트 서브패스 export map 계약을 검증합니다.
+- `examples/microservices-tcp`: 기본 TCP 마이크로서비스 예제입니다.
+- `examples/microservices-kafka`: Kafka 기반 분산 아키텍처 예제입니다.

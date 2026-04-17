@@ -90,6 +90,7 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 ### Root barrel (`@fluojs/microservices`)
 
 - `MicroservicesModule`, `createMicroservicesProviders`: module registration helpers.
+- `MicroservicesModule.forRoot(...)` remains the canonical runtime entrypoint, while `createMicroservicesProviders(...)` stays public for callers that intentionally compose the provider set themselves.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: routing and streaming decorators.
 - `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: transport adapters exported from the root barrel.
 - `MicroserviceLifecycleService`, `MICROSERVICE`: programmatic runtime access and compatibility token.
@@ -116,7 +117,8 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 ## Example Sources
 
 - `packages/microservices/src/module.test.ts`: Integration tests for all transports.
-- `packages/microservices/src/public-api.test.ts`: Root-barrel contract coverage.
+- `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including the documented `createMicroservicesProviders(...)` helper.
+- `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage that keeps the helper public during 0.x governance.
 - `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
 - `examples/microservices-tcp`: Basic TCP microservice example.
 - `examples/microservices-kafka`: Distributed Kafka-based architecture example.
