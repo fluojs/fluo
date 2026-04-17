@@ -39,13 +39,7 @@ function providerToken(provider: Provider): unknown {
   return undefined;
 }
 
-/**
- * Create the provider set that powers Terminus indicator aggregation.
- *
- * @param options Module options containing eager indicators, provider factories, and readiness checks.
- * @returns Runtime providers required by `TerminusModule.forRoot(...)`.
- */
-export function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[] {
+function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[] {
   const normalizedOptions: TerminusModuleOptions = {
     ...options,
     indicators: copyIndicators(options.indicators),

@@ -16,6 +16,7 @@ describe('terminus public surface', () => {
     expect(terminus).toHaveProperty('TerminusModule');
     expect((terminus as { TerminusModule: { forRoot: unknown } }).TerminusModule).toHaveProperty('forRoot');
     expect(terminus).not.toHaveProperty('createTerminusModule');
+    expect(terminus).not.toHaveProperty('createTerminusProviders');
   });
 
   it('keeps redis-specific indicators on the dedicated subpath export', () => {
