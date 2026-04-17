@@ -349,13 +349,23 @@ describe('@fluojs/mongoose', () => {
   it('awaits async dispose hooks registered through module entrypoints', async () => {
     const events: string[] = [];
     const connection = {};
+    let signalDisposeStarted!: () => void;
+    let releaseDispose!: () => void;
+
+    const disposeStarted = new Promise<void>((resolve) => {
+      signalDisposeStarted = resolve;
+    });
+    const disposeReleased = new Promise<void>((resolve) => {
+      releaseDispose = resolve;
+    });
 
     const mongooseModule = MongooseModule.forRootAsync({
       useFactory: async () => ({
         connection,
         dispose: async () => {
           events.push('dispose:start');
-          await Promise.resolve();
+          signalDisposeStarted();
+          await disposeReleased;
           events.push('dispose:end');
         },
       }),
@@ -371,7 +381,14 @@ describe('@fluojs/mongoose', () => {
       rootModule: AppModule,
     });
 
-    await app.close();
+    const closePromise = app.close();
+
+    await disposeStarted;
+    expect(events).toEqual(['dispose:start']);
+
+    releaseDispose();
+
+    await closePromise;
 
     expect(events).toEqual(['dispose:start', 'dispose:end']);
   });
