@@ -7,6 +7,5 @@ exports[`@fluojs/queue root barrel public surface > keeps the documented root ex
   "QueueModule",
   "QueueWorker",
   "createQueuePlatformStatusSnapshot",
-  "createQueueProviders",
 ]
 `;
