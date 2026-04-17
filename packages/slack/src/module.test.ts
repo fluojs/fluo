@@ -6,7 +6,7 @@ import { Container, type Provider } from '@fluojs/di';
 
 import { SlackChannel } from './channel.js';
 import { SlackConfigurationError, SlackMessageValidationError, SlackTransportError } from './errors.js';
-import { SlackModule } from './module.js';
+import { SlackModule, createSlackProviders } from './module.js';
 import { SlackService } from './service.js';
 import { SLACK } from './tokens.js';
 import { createSlackWebhookTransport } from './webhook.js';
@@ -99,6 +99,10 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   return metadata.providers as Provider[];
 }
 
+function providerToken(provider: Provider): unknown {
+  return typeof provider === 'function' ? provider : provider.provide;
+}
+
 describe('SlackModule', () => {
   beforeEach(() => {
     transportState.closeCalls = 0;
@@ -136,6 +140,53 @@ describe('SlackModule', () => {
 
     await service.onApplicationShutdown();
     expect(transportState.closeCalls).toBe(1);
+  });
+
+  it('creates helper providers with the same normalized options and facade tokens as SlackModule.forRoot', async () => {
+    const options = {
+      defaultChannel: ' #ops ',
+      notifications: { channel: ' alerts ' },
+      transport: createRecordingTransportFactory(),
+      verifyOnModuleInit: true,
+    };
+    const moduleType = SlackModule.forRoot(options);
+    const helperProviders = createSlackProviders(options);
+    const moduleRuntimeProviders = moduleProviders(moduleType);
+    const helperContainer = new Container();
+
+    expect(helperProviders).toHaveLength(moduleRuntimeProviders.length);
+    expect(helperProviders.map(providerToken)).toEqual(moduleRuntimeProviders.map(providerToken));
+
+    helperContainer.register(...helperProviders);
+
+    const service = await helperContainer.resolve(SlackService);
+    const facade = await helperContainer.resolve<Slack>(SLACK);
+    const channel = await helperContainer.resolve(SlackChannel);
+
+    await service.onModuleInit();
+
+    const result = await facade.send({
+      text: 'helper contract',
+    });
+
+    expect(result.messageTs).toBe('message-1');
+    expect(channel.channel).toBe('alerts');
+    expect(transportState.verifyCalls).toBe(1);
+    expect(transportState.sent[0]).toMatchObject({
+      channel: '#ops',
+      text: 'helper contract',
+    });
+
+    await service.onApplicationShutdown();
+    expect(transportState.closeCalls).toBe(1);
+  });
+
+  it('rejects helper-based registration without an explicit transport contract', () => {
+    expect(() =>
+      createSlackProviders({
+        defaultChannel: '#ops',
+      } as never),
+    ).toThrowError(new SlackConfigurationError('SlackModule requires an explicit `transport` to be configured.'));
   });
 
   it('resolves async options once and exposes the compatibility facade and channel token', async () => {
