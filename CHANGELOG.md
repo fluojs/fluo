@@ -22,13 +22,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Breaking changes
 
-<<<<<<< HEAD
 - `@fluojs/queue`: the root barrel no longer exports `createQueueProviders(...)`. Migration note: register queues through `QueueModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
-=======
 - `@fluojs/cqrs`: the root barrel no longer exports `createCqrsProviders(...)`. Migration note: switch root-package composition to `CqrsModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
->>>>>>> 88257312 (docs(changelog): add cqrs migration note)
 - `@fluojs/event-bus`: the root barrel no longer exports `createEventBusProviders(...)`. Migration note: switch root-package composition to `EventBusModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/cron`: the root barrel no longer exports `createCronProviders(...)`. Migration note: register scheduling through `CronModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
+- `@fluojs/email`: the root barrel no longer exports `createEmailProviders(...)`. Migration note: register email delivery through `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)`; low-level provider-array composition is now internal and no longer part of the supported root public surface.
 - `@fluojs/websockets`: the root barrel no longer exports `createWebSocketProviders(...)`, and the runtime subpaths no longer export `create*WebSocketProviders(...)` helpers. Migration note: register websocket support through `WebSocketModule.forRoot(...)` or the explicit runtime `*WebSocketModule.forRoot(...)` subpath entrypoint; low-level provider wiring is now internal and no longer part of the supported public surface.
 - `@fluojs/terminus`: the root barrel no longer exports `createTerminusProviders(...)`. Migration note: switch root-package composition to `TerminusModule.forRoot(...)`; low-level provider wiring is now internal and no longer part of the supported root public surface.
 - `@fluojs/graphql`: schema introspection is now disabled unless `graphiql` or `introspection: true` is explicitly enabled, and built-in request budgets now cap GraphQL document depth, field complexity, and aggregate query cost by default. Migration note: enable `introspection: true` for trusted tooling flows that still need schema discovery, or set `limits` to explicit higher values (or `false` for a temporary legacy escape hatch) before rolling this update into existing large-query workloads.
