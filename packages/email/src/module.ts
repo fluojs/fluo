@@ -94,13 +94,7 @@ function createEmailRuntimeProviders(optionsProvider: Provider): Provider[] {
   ];
 }
 
-/**
- * Creates email providers for manual module composition.
- *
- * @param options Static email module options including explicit transport wiring.
- * @returns Provider definitions equivalent to {@link EmailModule.forRoot} wiring.
- */
-export function createEmailProviders(options: EmailModuleOptions): Provider[] {
+function createEmailProviders(options: EmailModuleOptions): Provider[] {
   return createEmailRuntimeProviders({
     provide: EMAIL_OPTIONS,
     useValue: normalizeEmailModuleOptions(options),

@@ -70,6 +70,8 @@ Standards, policies, and operational guidance for maintaining and releasing fluo
 - **[NestJS Parity Gaps](./operations/nestjs-parity-gaps.md)**: Honest documentation on where we differ and why.
 
 > **Tip:** Use [Release Governance](./operations/release-governance.md) for the canonical publish surface, release-readiness gates, and the CI-only single-package release operator flow. Pair it with [Testing Strategies](./operations/testing-guide.md) for preflight checks via `pnpm verify:release-readiness`.
+>
+> Need a runtime-portable email overview? Start with `@fluojs/email` in the package inventory, then follow the explicit Node-only SMTP subpath `@fluojs/email/node` from the package docs and chooser guides.
 
 ## 📚 Reference
 

@@ -69,7 +69,9 @@ fluo 패키지의 유지보수와 릴리스를 위한 표준, 정책, 운영 가
 - **[서드파티 확장 계약](./operations/third-party-extension-contract.ko.md)**: 커뮤니티 패키지가 따라야 하는 계약.
 - **[NestJS 차이점 안내](./operations/nestjs-parity-gaps.ko.md)**: fluo가 NestJS와 다른 점과 그 이유에 대한 정직한 문서.
 
-> **팁:** 공개 패키지의 기준 publish surface, release-readiness gate, CI 전용 단건 릴리스 운영 절차는 [Release Governance](./operations/release-governance.ko.md)를 참조하세요. preflight 검증 경로는 [테스트 전략](./operations/testing-guide.ko.md)과 함께 사용하세요.
+> **팁:** 공개 패키지의 기준 publish surface, release-readiness gate, CI 전용 단건 패키지 릴리스 운영 절차는 [Release Governance](./operations/release-governance.ko.md)를 참조하세요. preflight 검증 경로는 [테스트 전략](./operations/testing-guide.ko.md)과 함께 사용하세요.
+>
+> 런타임 이식 가능한 이메일 패키지 개요가 필요하다면 패키지 인벤토리의 `@fluojs/email`부터 확인하고, Node 전용 SMTP 경로는 명시적 서브패스 `@fluojs/email/node`를 패키지 문서와 chooser 가이드에서 따라가세요.
 
 ## 📚 참조 자료
 

@@ -11,7 +11,6 @@ fluo를 위한 transport-agnostic 이메일 코어 패키지입니다. Nest-like
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
   - [`@fluojs/email/node`를 이용한 Node 전용 SMTP](#fluojs-email-node를-이용한-node-전용-smtp)
-  - [`createEmailProviders`를 이용한 수동 provider 조합](#createemailproviders를-이용한-수동-provider-조합)
   - [`EmailService`를 이용한 standalone 전달](#emailservice를-이용한-standalone-전달)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
   - [큐 기반 대량 전달](#큐-기반-대량-전달)
@@ -100,6 +99,8 @@ export class WelcomeService {
 }
 ```
 
+루트 `@fluojs/email` 공개 표면은 의도적으로 module-first입니다. 이메일 등록은 `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 통해 수행해야 합니다. 저수준 provider 배열 조합은 내부 구현이며 더 이상 지원되는 루트 공개 API가 아닙니다.
+
 ## 일반적인 패턴
 
 ### `@fluojs/email/node`를 이용한 Node 전용 SMTP
@@ -139,36 +140,6 @@ Behavioral contract 메모:
 - 이 factory는 자신이 생성한 Nodemailer transporter 리소스를 소유하므로 `EmailService`가 bootstrap 시 검증하고 shutdown 시 닫을 수 있습니다.
 - `createNodemailerEmailTransport(...)`는 이미 존재하는 Nodemailer transporter를 감싸지만 리소스 소유권은 호출자에게 남깁니다.
 - SMTP 자격 증명은 여전히 명시적인 옵션 또는 DI를 통해 들어와야 합니다. 루트 패키지와 Node 서브패스 모두 `process.env`를 직접 읽지 않습니다.
-
-### `createEmailProviders`를 이용한 수동 provider 조합
-
-`createEmailProviders(...)`는 애플리케이션이 `EmailModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.
-
-```typescript
-import { Module } from '@fluojs/core';
-import { createEmailProviders } from '@fluojs/email';
-
-@Module({
-  providers: [
-    ...createEmailProviders({
-      defaultFrom: 'noreply@example.com',
-      transport: {
-        kind: 'custom-http-transport',
-        create: () => customTransport,
-        ownsResources: false,
-      },
-    }),
-  ],
-  exports: [],
-})
-export class EmailProvidersModule {}
-```
-
-Behavioral contract 메모:
-
-- 이 helper는 `EmailModule.forRoot(...)`가 구성하는 `EMAIL`, `EMAIL_CHANNEL`, `EmailService` wiring을 동일하게 유지합니다.
-- `createEmailProviders(...)`는 trim된 주소, 기본 notification 채널 fallback, transport 소유권 기본값을 포함해 `EmailModule.forRoot(...)`와 동일한 옵션 정규화를 적용합니다.
-- 이 helper도 여전히 명시적인 `transport`를 요구하며, 패키지의 runtime-portable·no-implicit-env 계약을 약화시키지 않습니다.
 
 ### `EmailService`를 이용한 standalone 전달
 
@@ -301,7 +272,6 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ### 핵심
 
 - `EmailModule.forRoot(options)` / `EmailModule.forRootAsync(options)`
-- `createEmailProviders(options)`
 - `EmailService`
 - `EmailChannel`
 - `EMAIL`
@@ -349,7 +319,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ## 예제 소스
 
-- `packages/email/src/module.test.ts`: 모듈 등록, `createEmailProviders(...)` helper coverage, async wiring, lifecycle, queue-backed notifications 예제.
+- `packages/email/src/module.test.ts`: 모듈 등록, module-first 옵션 정규화, async wiring, lifecycle, queue-backed notifications 예제.
 - `packages/email/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/email/src/node/node.test.ts`: Node 전용 Nodemailer adapter 매핑과 lifecycle 예제.
 - `packages/email/src/status.test.ts`: health/readiness 계약 예제.

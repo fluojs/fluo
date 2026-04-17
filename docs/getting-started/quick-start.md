@@ -22,15 +22,43 @@ fluo new my-fluo-app
 cd my-fluo-app
 ```
 
-While the interactive wizard is the recommended path, you can also use explicit flags to select a specific starter.
+While the interactive terminal wizard is the recommended path, you can also use explicit flags to select a specific starter.
 
 | Shape | Transport | Runtime | Platform | Command |
 | :--- | :--- | :--- | :--- | :--- |
-| application | http | node | fastify | `fluo new app --platform fastify` |
-| application | http | bun | bun | `fluo new app --runtime bun` |
-| application | http | workers | workers | `fluo new app --runtime cloudflare-workers` |
-| microservice | tcp | node | none | `fluo new svc --transport tcp` |
-| microservice | nats | node | none | `fluo new svc --transport nats` |
+| application | http | node | fastify | `fluo new app --shape application --transport http --runtime node --platform fastify` |
+| application | http | node | express | `fluo new app --shape application --transport http --runtime node --platform express` |
+| application | http | node | nodejs | `fluo new app --shape application --transport http --runtime node --platform nodejs` |
+| application | http | bun | bun | `fluo new app --shape application --transport http --runtime bun --platform bun` |
+| application | http | deno | deno | `fluo new app --shape application --transport http --runtime deno --platform deno` |
+| application | http | cloudflare-workers | cloudflare-workers | `fluo new app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers` |
+| microservice | tcp | node | none | `fluo new svc --shape microservice --transport tcp --runtime node --platform none` |
+| microservice | redis-streams | node | none | `fluo new svc --shape microservice --transport redis-streams --runtime node --platform none` |
+| microservice | nats | node | none | `fluo new svc --shape microservice --transport nats --runtime node --platform none` |
+| microservice | kafka | node | none | `fluo new svc --shape microservice --transport kafka --runtime node --platform none` |
+| microservice | rabbitmq | node | none | `fluo new svc --shape microservice --transport rabbitmq --runtime node --platform none` |
+| microservice | mqtt | node | none | `fluo new svc --shape microservice --transport mqtt --runtime node --platform none` |
+| microservice | grpc | node | none | `fluo new svc --shape microservice --transport grpc --runtime node --platform none` |
+| mixed | tcp | node | fastify | `fluo new app --shape mixed --transport tcp --runtime node --platform fastify` |
+
+Published `fluo new` v2 starter examples:
+
+```sh
+fluo new app --shape application --transport http --runtime node --platform fastify
+fluo new app --shape application --transport http --runtime node --platform express
+fluo new app --shape application --transport http --runtime node --platform nodejs
+fluo new app --shape application --transport http --runtime bun --platform bun
+fluo new app --shape application --transport http --runtime deno --platform deno
+fluo new app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
+fluo new svc --shape microservice --transport tcp --runtime node --platform none
+fluo new svc --shape microservice --transport redis-streams --runtime node --platform none
+fluo new svc --shape microservice --transport nats --runtime node --platform none
+fluo new svc --shape microservice --transport kafka --runtime node --platform none
+fluo new svc --shape microservice --transport rabbitmq --runtime node --platform none
+fluo new svc --shape microservice --transport mqtt --runtime node --platform none
+fluo new svc --shape microservice --transport grpc --runtime node --platform none
+fluo new app --shape mixed --transport tcp --runtime node --platform fastify
+```
 
 For the full list of available configurations, see the [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 

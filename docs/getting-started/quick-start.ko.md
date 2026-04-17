@@ -22,15 +22,43 @@ fluo new my-fluo-app
 cd my-fluo-app
 ```
 
-대화형 마법사(wizard)를 사용하는 것이 가장 권장되지만, 명시적인 플래그를 사용해 특정 스타터를 바로 선택할 수도 있습니다.
+interactive terminal 기반 대화형 마법사(wizard)를 사용하는 것이 가장 권장되지만, 명시적인 플래그를 사용해 특정 스타터를 바로 선택할 수도 있습니다.
 
 | Shape | Transport | Runtime | Platform | Command |
 | :--- | :--- | :--- | :--- | :--- |
-| application | http | node | fastify | `fluo new app --platform fastify` |
-| application | http | bun | bun | `fluo new app --runtime bun` |
-| application | http | workers | workers | `fluo new app --runtime cloudflare-workers` |
-| microservice | tcp | node | none | `fluo new svc --transport tcp` |
-| microservice | nats | node | none | `fluo new svc --transport nats` |
+| application | http | node | fastify | `fluo new app --shape application --transport http --runtime node --platform fastify` |
+| application | http | node | express | `fluo new app --shape application --transport http --runtime node --platform express` |
+| application | http | node | nodejs | `fluo new app --shape application --transport http --runtime node --platform nodejs` |
+| application | http | bun | bun | `fluo new app --shape application --transport http --runtime bun --platform bun` |
+| application | http | deno | deno | `fluo new app --shape application --transport http --runtime deno --platform deno` |
+| application | http | cloudflare-workers | cloudflare-workers | `fluo new app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers` |
+| microservice | tcp | node | none | `fluo new svc --shape microservice --transport tcp --runtime node --platform none` |
+| microservice | redis-streams | node | none | `fluo new svc --shape microservice --transport redis-streams --runtime node --platform none` |
+| microservice | nats | node | none | `fluo new svc --shape microservice --transport nats --runtime node --platform none` |
+| microservice | kafka | node | none | `fluo new svc --shape microservice --transport kafka --runtime node --platform none` |
+| microservice | rabbitmq | node | none | `fluo new svc --shape microservice --transport rabbitmq --runtime node --platform none` |
+| microservice | mqtt | node | none | `fluo new svc --shape microservice --transport mqtt --runtime node --platform none` |
+| microservice | grpc | node | none | `fluo new svc --shape microservice --transport grpc --runtime node --platform none` |
+| mixed | tcp | node | fastify | `fluo new app --shape mixed --transport tcp --runtime node --platform fastify` |
+
+공개된 `fluo new` v2 스타터 예시는 다음과 같습니다.
+
+```sh
+fluo new app --shape application --transport http --runtime node --platform fastify
+fluo new app --shape application --transport http --runtime node --platform express
+fluo new app --shape application --transport http --runtime node --platform nodejs
+fluo new app --shape application --transport http --runtime bun --platform bun
+fluo new app --shape application --transport http --runtime deno --platform deno
+fluo new app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
+fluo new svc --shape microservice --transport tcp --runtime node --platform none
+fluo new svc --shape microservice --transport redis-streams --runtime node --platform none
+fluo new svc --shape microservice --transport nats --runtime node --platform none
+fluo new svc --shape microservice --transport kafka --runtime node --platform none
+fluo new svc --shape microservice --transport rabbitmq --runtime node --platform none
+fluo new svc --shape microservice --transport mqtt --runtime node --platform none
+fluo new svc --shape microservice --transport grpc --runtime node --platform none
+fluo new app --shape mixed --transport tcp --runtime node --platform fastify
+```
 
 사용 가능한 전체 구성 목록은 [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md)에서 확인하세요.
 
