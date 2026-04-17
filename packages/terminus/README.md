@@ -103,6 +103,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `static forRoot(options: TerminusModuleOptions): ModuleType`
   - Main entry point for registering indicators and providers.
+  - Owns the package's runtime health wiring; low-level provider assembly remains an internal implementation detail instead of a root-barrel API.
 
 ### `TerminusHealthService`
 
@@ -115,6 +116,8 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 
 - `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
   - Redis-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe without the optional Redis peer installed.
+
+Root-only consumers should treat `TerminusModule.forRoot(...)` as the supported composition surface. Internal provider-wiring helpers are intentionally not part of the documented root contract.
 
 ### `HealthCheckError`
 
