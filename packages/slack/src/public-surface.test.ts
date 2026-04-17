@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as slackPublicApi from './index.js';
@@ -27,6 +30,16 @@ describe('@fluojs/slack public API surface', () => {
     expect(slackPublicApi).toHaveProperty('SlackConfigurationError');
     expect(slackPublicApi).toHaveProperty('SlackMessageValidationError');
     expect(slackPublicApi).toHaveProperty('SlackTransportError');
+  });
+
+  it('keeps the README helper contract aligned with the documented root-barrel API', () => {
+    const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(import.meta.dirname, '../README.ko.md'), 'utf8');
+
+    expect(readme).toContain('`createSlackProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `SlackModule.forRoot(...)`.');
+    expect(readme).toContain('The helper preserves the same `SLACK`, `SLACK_CHANNEL`, and `SlackService` wiring that `SlackModule.forRoot(...)` installs.');
+    expect(koreanReadme).toContain('`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.');
+    expect(koreanReadme).toContain('이 helper는 `SlackModule.forRoot(...)`가 구성하는 `SLACK`, `SLACK_CHANNEL`, `SlackService` wiring을 동일하게 유지합니다.');
   });
 
   it('keeps documented TypeScript-only contracts stable enough for downstream packages', () => {

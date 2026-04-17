@@ -10,6 +10,7 @@ Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Ne
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Manual provider composition with `createSlackProviders`](#manual-provider-composition-with-createslackproviders)
   - [Standalone delivery with `SlackService`](#standalone-delivery-with-slackservice)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
@@ -73,6 +74,36 @@ export class DeployNotifier {
 ```
 
 ## Common Patterns
+
+### Manual provider composition with `createSlackProviders`
+
+`createSlackProviders(...)` is the supported manual-composition helper when applications need the same provider normalization outside `SlackModule.forRoot(...)`.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { createSlackProviders, createSlackWebhookTransport } from '@fluojs/slack';
+
+@Module({
+  providers: [
+    ...createSlackProviders({
+      defaultChannel: '#ops',
+      notifications: { channel: 'alerts' },
+      transport: createSlackWebhookTransport({
+        fetch: globalThis.fetch.bind(globalThis),
+        webhookUrl: 'https://hooks.slack.com/services/T000/B000/XXXX',
+      }),
+    }),
+  ],
+  exports: [],
+})
+export class SlackProvidersModule {}
+```
+
+Behavioral contract notes:
+
+- The helper preserves the same `SLACK`, `SLACK_CHANNEL`, and `SlackService` wiring that `SlackModule.forRoot(...)` installs.
+- `createSlackProviders(...)` applies the same option normalization as `SlackModule.forRoot(...)`, including trimmed default channels, notification channel fallback, and transport ownership defaults.
+- The helper still requires an explicit `transport`; it does not weaken the package's runtime-portable, no-implicit-env contract.
 
 ### Standalone delivery with `SlackService`
 
@@ -210,6 +241,6 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ## Example Sources
 
-- `packages/slack/src/module.test.ts`: Module registration, async wiring, webhook transport, and notifications integration examples.
+- `packages/slack/src/module.test.ts`: Module registration, `createSlackProviders(...)` helper coverage, async wiring, webhook transport, and notifications integration examples.
 - `packages/slack/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.
