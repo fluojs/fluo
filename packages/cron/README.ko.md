@@ -34,6 +34,8 @@ npm install @fluojs/cron croner
 
 `CronModule`을 등록하고 데코레이터를 사용하여 메서드를 스케줄링합니다.
 
+`CronModule.forRoot(...)`가 애플리케이션 모듈에서 지원되는 루트 등록 표면입니다. 패키지 내부 provider 조합 helper는 문서화된 루트 배럴 계약에 포함되지 않습니다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { CronModule, Cron, CronExpression, Interval, Timeout } from '@fluojs/cron';
@@ -158,6 +160,7 @@ class AppModule {}
 
 ### 모듈
 - `CronModule.forRoot(options)`: 스케줄러를 설정하고 필요한 경우 분산 락을 활성화합니다.
+  애플리케이션 수준 스케줄러 등록을 위한 지원 대상 루트 엔트리포인트입니다.
 
 ### 데코레이터
 - `@Cron(expression, options?)`: Cron 표현식을 사용하여 메서드를 예약합니다.
@@ -167,6 +170,8 @@ class AppModule {}
 ### 상수 및 토큰
 - `CronExpression`: 공통 Cron 패턴(예: `EVERY_HOUR`, `EVERY_DAY_AT_MIDNIGHT`)을 담은 객체입니다.
 - `SCHEDULING_REGISTRY`: `SchedulingRegistry` 서비스를 위한 주입 토큰입니다.
+
+루트 패키지 소비자는 `CronModule.forRoot(...)`를 통해 스케줄링을 조합해야 합니다. 저수준 provider 조합은 내부 구현으로 유지되어, 패키지 예제와 라이프사이클 테스트 전반에서 사용하는 모듈 엔트리포인트와 문서화된 루트 API가 계속 일치합니다.
 
 ## 관련 패키지
 
