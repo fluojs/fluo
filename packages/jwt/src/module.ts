@@ -94,7 +94,11 @@ function createJwtModuleProviders(
 }
 
 /**
- * Creates the core JWT providers for direct module composition.
+ * Creates the core JWT providers for advanced direct module composition.
+ *
+ * Prefer {@link JwtModule.forRoot} or {@link JwtModule.forRootAsync} for the canonical
+ * application entrypoint so JWT registration stays aligned with the published module
+ * surface.
  *
  * @param options JWT verification and signing options used for provider registration.
  * @returns Providers for the JWT verifier, signer, facade, and optional refresh token service.
