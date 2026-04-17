@@ -1,6 +1,6 @@
 export * from './dataloader.js';
 export * from './decorators.js';
-export * from './module.js';
+export { GraphqlModule } from './module.js';
 export {
   isGraphqlListTypeRef,
   listOf,

@@ -141,6 +141,7 @@ GraphqlModule.forRoot({
 ## 공개 API 개요
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
+- 루트 수준의 등록 계약은 의도적으로 `GraphqlModule.forRoot(...)`에만 맞춰져 있으며, `createGraphqlProviders(...)` 같은 저수준 provider helper는 문서화된 root barrel 계약에 포함되지 않습니다.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: 작업 데코레이터.
 - `Arg`: 인자 매핑 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`: DataLoader 팩토리 헬퍼.
