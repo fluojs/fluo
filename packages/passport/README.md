@@ -50,7 +50,7 @@ import { MyJwtStrategy } from './jwt.strategy';
 export class AuthModule {}
 ```
 
-`PassportModule.forRoot(...)` is the canonical public entrypoint. `createPassportProviders(...)` remains available as a compatibility shim when you need lower-level provider composition inside an existing module definition.
+`PassportModule.forRoot(...)` is the canonical public entrypoint for strategy registration. Configure passport wiring through module imports rather than low-level root provider composition.
 
 ### 2. Protect Routes
 
@@ -108,7 +108,7 @@ import {
 export class AuthModule {}
 ```
 
-`CookieAuthModule.forRoot(...)` is the canonical preset entrypoint. `createCookieAuthProviders(...)` remains available as a compatibility shim when you need to compose the cookie preset providers manually inside an existing module definition.
+`CookieAuthModule.forRoot(...)` is the canonical preset entrypoint. Import it alongside `PassportModule.forRoot(...)` when you want cookie-auth support in an application module.
 
 ### Refresh Token Lifecycle
 
@@ -147,7 +147,7 @@ export class AuthController {
 }
 ```
 
-`RefreshTokenModule.forRoot(...)` is the canonical preset entrypoint. `createRefreshTokenProviders(...)` still returns the DI alias provider for advanced composition, so resolving `REFRESH_TOKEN_SERVICE` yields the same concrete service instance you registered.
+`RefreshTokenModule.forRoot(...)` is the canonical preset entrypoint. Import it alongside `PassportModule.forRoot(...)` so the refresh-token strategy and shared `REFRESH_TOKEN_SERVICE` alias stay aligned through module wiring.
 
 ## Public API Overview
 

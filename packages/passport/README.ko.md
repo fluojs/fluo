@@ -50,7 +50,7 @@ import { MyJwtStrategy } from './jwt.strategy';
 export class AuthModule {}
 ```
 
-`PassportModule.forRoot(...)`가 표준 public entrypoint입니다. 이미 존재하는 모듈 안에서 더 낮은 수준의 provider 조합이 필요할 때만 `createPassportProviders(...)`를 호환 shim으로 사용하세요.
+`PassportModule.forRoot(...)`가 전략 등록을 위한 표준 public entrypoint입니다. passport wiring은 낮은 수준의 root provider 조합 대신 모듈 import를 통해 구성하세요.
 
 ### 2. 라우트 보호
 
@@ -108,7 +108,7 @@ import {
 export class AuthModule {}
 ```
 
-`CookieAuthModule.forRoot(...)`가 표준 프리셋 진입점입니다. 이미 존재하는 모듈 정의 안에서 cookie preset provider를 수동으로 조합해야 할 때는 `createCookieAuthProviders(...)`를 호환 shim으로 계속 사용할 수 있습니다.
+`CookieAuthModule.forRoot(...)`가 표준 프리셋 진입점입니다. 애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `PassportModule.forRoot(...)`와 함께 import 하세요.
 
 ### 리프레시 토큰 수명 주기
 
@@ -147,7 +147,7 @@ export class AuthController {
 }
 ```
 
-`RefreshTokenModule.forRoot(...)`가 표준 프리셋 진입점입니다. 고급 조합이 필요할 때는 `createRefreshTokenProviders(...)`를 계속 사용할 수 있으며, 이 경우에도 `REFRESH_TOKEN_SERVICE`를 해석하면 등록한 구체 서비스 인스턴스와 동일한 객체를 받게 됩니다.
+`RefreshTokenModule.forRoot(...)`가 표준 프리셋 진입점입니다. `PassportModule.forRoot(...)`와 함께 import 하여 refresh-token 전략과 공유 `REFRESH_TOKEN_SERVICE` alias를 동일한 모듈 wiring 안에서 맞추세요.
 
 ## 공개 API 개요
 
