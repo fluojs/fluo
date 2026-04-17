@@ -4,7 +4,7 @@ export {
   DiscordTransportError,
 } from './errors.js';
 export { DiscordChannel } from './channel.js';
-export { DiscordModule, createDiscordProviders } from './module.js';
+export { DiscordModule } from './module.js';
 export { DiscordService } from './service.js';
 export { createDiscordPlatformStatusSnapshot } from './status.js';
 export type { DiscordLifecycleState, DiscordPlatformStatusSnapshot, DiscordStatusAdapterInput } from './status.js';

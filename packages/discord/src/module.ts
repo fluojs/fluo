@@ -77,7 +77,7 @@ function createDiscordRuntimeProviders(optionsProvider: Provider): Provider[] {
  * @param options Static Discord module options including explicit transport wiring.
  * @returns Provider definitions equivalent to {@link DiscordModule.forRoot} wiring.
  */
-export function createDiscordProviders(options: DiscordModuleOptions): Provider[] {
+function createDiscordProviders(options: DiscordModuleOptions): Provider[] {
   return createDiscordRuntimeProviders({
     provide: DISCORD_OPTIONS,
     useValue: normalizeDiscordModuleOptions(options),
