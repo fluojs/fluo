@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { getModuleMetadata } from '@fluojs/core/internal';
+
 import { AuthStrategyResolutionError } from './errors.js';
+import { AuthGuard } from './guard.js';
 import { AUTH_STRATEGY_REGISTRY } from './internal-tokens.js';
-import { createPassportProviders } from './module.js';
+import { createPassportProviders, PassportModule } from './module.js';
 import type { AuthStrategy } from './types.js';
 
 describe('createPassportProviders', () => {
@@ -90,5 +93,28 @@ describe('createPassportProviders', () => {
         ],
       ),
     ).toThrow(AuthStrategyResolutionError);
+  });
+});
+
+describe('PassportModule', () => {
+  it('creates a module-first runtime definition that exports AuthGuard', () => {
+    class JwtStrategy implements AuthStrategy {
+      async authenticate() {
+        return { claims: {}, subject: 'jwt-user' };
+      }
+    }
+
+    const moduleDefinition = PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: JwtStrategy }],
+    );
+
+    const metadata = getModuleMetadata(moduleDefinition);
+
+    expect(metadata?.exports).toContain(AuthGuard);
+    expect(metadata?.providers).toEqual(createPassportProviders(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: JwtStrategy }],
+    ));
   });
 });

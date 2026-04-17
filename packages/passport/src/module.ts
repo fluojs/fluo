@@ -1,4 +1,6 @@
 import type { Provider } from '@fluojs/di';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+
 import { AuthStrategyResolutionError } from './errors.js';
 import { AuthGuard } from './guard.js';
 import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
@@ -22,13 +24,17 @@ function createStrategyRegistry(strategies: AuthStrategyRegistration[]): AuthStr
   return registry;
 }
 
+type PassportModuleType = ModuleType;
+
 /**
  * Creates the provider set that wires passport options, strategy registry, and
  * the public {@link AuthGuard} into one module-friendly bundle.
  *
  * @remarks
- * Strategy names must be unique within the provided registration list. The
- * returned providers are typically spread into a module's `providers` array.
+ * Strategy names must be unique within the provided registration list. Prefer
+ * {@link PassportModule.forRoot} for the canonical module-first API, and use
+ * this helper when you need lower-level provider composition inside an
+ * existing module definition.
  *
  * @example
  * ```ts
@@ -64,4 +70,46 @@ export function createPassportProviders(
     },
     AuthGuard,
   ];
+}
+
+/**
+ * Canonical module-first entrypoint for passport strategy wiring.
+ */
+export class PassportModule {
+  /**
+   * Registers passport options, the auth strategy registry, and {@link AuthGuard}.
+   *
+   * @param options Module-level auth defaults such as `defaultStrategy`.
+   * @param strategies Named strategy registrations exposed to `@UseAuth(...)` and the fallback default strategy.
+   * @returns A module definition that exports `AuthGuard` and keeps the strategy registry internal.
+   * @throws {AuthStrategyResolutionError} When duplicate strategy names are registered.
+   *
+   * @example
+   * ```ts
+   * import { Module } from '@fluojs/core';
+   * import { PassportModule } from '@fluojs/passport';
+   *
+   * @Module({
+   *   imports: [
+   *     PassportModule.forRoot(
+   *       { defaultStrategy: 'jwt' },
+   *       [{ name: 'jwt', token: JwtStrategy }],
+   *     ),
+   *   ],
+   *   providers: [JwtStrategy],
+   * })
+   * export class AuthModule {}
+   * ```
+   */
+  static forRoot(
+    options: PassportModuleOptions = {},
+    strategies: AuthStrategyRegistration[] = [],
+  ): PassportModuleType {
+    class PassportRootModule extends PassportModule {}
+
+    return defineModule(PassportRootModule, {
+      exports: [AuthGuard],
+      providers: createPassportProviders(options, strategies),
+    });
+  }
 }
