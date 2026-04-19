@@ -18,6 +18,7 @@ class InMemoryStreamBus implements RedisStreamClientLike {
   private readonly groupToConsumerPositions = new Map<string, Map<string, number>>();
   private readonly streamCounters = new Map<string, number>();
   private readonly streams = new Map<string, InMemoryStreamEntry[]>();
+  private readonly values = new Map<string, string>();
 
   async xadd(stream: string, fields: Record<string, string>, options?: RedisStreamWriteOptions): Promise<string> {
     const entries = this.streams.get(stream) ?? [];
@@ -111,6 +112,7 @@ class InMemoryStreamBus implements RedisStreamClientLike {
   }
 
   async del(stream: string): Promise<void> {
+    this.values.delete(stream);
     this.streams.delete(stream);
     this.streamCounters.delete(stream);
 
@@ -127,6 +129,27 @@ class InMemoryStreamBus implements RedisStreamClientLike {
     }
   }
 
+  async get(key: string): Promise<string | null> {
+    return this.values.get(key) ?? null;
+  }
+
+  async incr(key: string): Promise<number> {
+    const nextValue = Number.parseInt(this.values.get(key) ?? '0', 10) + 1;
+    this.values.set(key, String(nextValue));
+    return nextValue;
+  }
+
+  async decr(key: string): Promise<number> {
+    const nextValue = Number.parseInt(this.values.get(key) ?? '0', 10) - 1;
+    this.values.set(key, String(nextValue));
+    return nextValue;
+  }
+
+  async set(key: string, value: string): Promise<'OK'> {
+    this.values.set(key, value);
+    return 'OK';
+  }
+
   async xgroupCreate(stream: string, group: string, startId: string, mkstream: boolean): Promise<void> {
     if (!this.streams.has(stream)) {
       if (!mkstream) {
@@ -140,7 +163,7 @@ class InMemoryStreamBus implements RedisStreamClientLike {
     const groupKey = this.getGroupKey(stream, group);
 
     if (this.groupToConsumerPositions.has(groupKey)) {
-      return;
+      throw new Error(`BUSYGROUP Consumer Group name already exists for ${groupKey}`);
     }
 
     const streamEntries = this.streams.get(stream) ?? [];
@@ -618,6 +641,44 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await secondTransport.close();
 
     expect(destroyedGroups.some((key) => key === 'fluo:streams:strict:messages::fluo-handlers')).toBe(true);
+  });
+
+  it('keeps a shared request consumer group alive while another listener with the same namespace/group stays active', async () => {
+    const bus = new InMemoryStreamBus();
+    const namespace = 'fluo:streams:shared';
+    const consumerGroup = 'shared-handlers';
+    const first = createTransport(bus, {
+      consumerGroup,
+      namespace,
+      requestTimeoutMs: 200,
+    }).transport;
+    const second = createTransport(bus, {
+      consumerGroup,
+      namespace,
+      requestTimeoutMs: 200,
+    }).transport;
+
+    await first.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await second.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await first.close();
+
+    await expect(second.send('shared.echo', { ok: true })).resolves.toEqual({ ok: true });
+
+    await second.close();
   });
 
   it('rejects send() with AbortSignal before publish', async () => {

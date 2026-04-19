@@ -21,6 +21,10 @@ export interface RedisStreamClientLike {
     options?: { blockMs?: number; count?: number },
   ): Promise<readonly StreamReadGroupResult[] | null>;
   xack(stream: string, group: string, id: string): Promise<void>;
+  get?(key: string): Promise<string | null>;
+  incr?(key: string): Promise<number>;
+  decr?(key: string): Promise<number>;
+  set?(key: string, value: string): Promise<unknown>;
   xdel?(stream: string, id: string): Promise<void>;
   del?(stream: string): Promise<void>;
   xgroupCreate(stream: string, group: string, startId: string, mkstream: boolean): Promise<void>;
@@ -84,6 +88,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
+  private messageGroupLeaseRegistered = false;
   private ownsMessageGroup = false;
   private readonly pending = new Map<string, PendingRequest>();
   private pollPromises: Promise<void>[] = [];
@@ -137,6 +142,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
     this.listenPromise = (async () => {
       this.ownsMessageGroup = await this.ensureConsumerGroup(this.messageStream, this.messageGroup);
+      await this.registerMessageGroupLease(this.ownsMessageGroup);
       await this.options.readerClient.xgroupCreate(this.eventStream, this.eventGroup, '$', true);
       await this.options.readerClient.xgroupCreate(this.responseStream, this.responseGroup, '$', true);
 
@@ -284,6 +290,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
     try {
       const settled = await Promise.allSettled(this.pollPromises);
+      const shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
 
       for (const result of settled) {
         if (result.status === 'rejected') {
@@ -291,7 +298,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
         }
       }
 
-      if (this.ownsMessageGroup) {
+      if (shouldDestroyMessageGroup) {
         try {
           await this.options.readerClient.xgroupDestroy(this.messageStream, this.messageGroup);
         } catch (error) {
@@ -319,6 +326,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     } finally {
       this.listening = false;
       this.handler = undefined;
+      this.messageGroupLeaseRegistered = false;
       this.ownsMessageGroup = false;
       this.pollPromises = [];
 
@@ -343,6 +351,47 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
       throw error;
     }
+  }
+
+  private async registerMessageGroupLease(createdGroup: boolean): Promise<void> {
+    const { readerClient } = this.options;
+
+    if (!readerClient.incr || !readerClient.decr || !readerClient.get || !readerClient.set || !readerClient.del) {
+      this.messageGroupLeaseRegistered = false;
+      return;
+    }
+
+    if (createdGroup) {
+      await readerClient.set(this.messageGroupOwnerKey, this.consumerId);
+    }
+
+    await readerClient.incr(this.messageGroupRefCountKey);
+    this.messageGroupLeaseRegistered = true;
+  }
+
+  private async releaseMessageGroupLease(): Promise<boolean> {
+    const { readerClient } = this.options;
+
+    if (!this.messageGroupLeaseRegistered || !readerClient.decr || !readerClient.get) {
+      return this.ownsMessageGroup;
+    }
+
+    const remainingListeners = await readerClient.decr(this.messageGroupRefCountKey);
+
+    if (remainingListeners > 0) {
+      return false;
+    }
+
+    await readerClient.del?.(this.messageGroupRefCountKey);
+
+    const owner = await readerClient.get(this.messageGroupOwnerKey);
+
+    if (!owner) {
+      return false;
+    }
+
+    await readerClient.del?.(this.messageGroupOwnerKey);
+    return true;
   }
 
   private async pollStream(stream: string, group: string): Promise<void> {
@@ -563,6 +612,14 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
   private get messageGroup(): string {
     return this.consumerGroup;
+  }
+
+  private get messageGroupOwnerKey(): string {
+    return `${this.namespace}:groups:${this.consumerGroup}:owner`;
+  }
+
+  private get messageGroupRefCountKey(): string {
+    return `${this.namespace}:groups:${this.consumerGroup}:listeners`;
   }
 
   private get eventGroup(): string {
