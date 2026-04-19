@@ -89,6 +89,7 @@ await microservice.listen();
 - Redis Streams는 `close()` 중 인스턴스별 response stream은 항상 삭제하지만, 활성 fleet 전체에서 ownership를 증명할 수 없으면 공유 request consumer group은 보수적으로 유지합니다. lease-capable listener는 coordination metadata만 정리하고, mixed/fallback fleet에서는 살아 있는 다른 listener가 여전히 필요로 할 수 있으므로 공유 request group을 제거하지 않습니다.
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
+- transport logger를 통해 이벤트 핸들러 실패를 기록하는 경로(`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, gRPC event emit)는 끝까지 logger-driven observability를 유지합니다. transport logger를 주입하지 않으면 fluo는 해당 실패를 raw `console.error` fallback으로 복제하지 않습니다.
 
 ## 공통 패턴
 

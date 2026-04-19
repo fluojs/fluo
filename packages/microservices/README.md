@@ -86,6 +86,7 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 - Redis Streams always deletes each per-consumer response stream during `close()`, but it retains the shared request consumer group conservatively once ownership cannot be proven across the active fleet. Lease-capable listeners clean up only their coordination metadata, and mixed or fallback listener fleets keep the shared request group in place so one peer cannot destroy a group that another live listener still needs.
 - `messageRetentionMaxLen` and `eventRetentionMaxLen` remain available as advanced opt-in knobs. Enabling them can trade away broker-managed recovery guarantees because Redis may trim pending live-stream entries before they are acknowledged.
 - RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
+- Event-handler failures that flow through the transport logger (`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, and gRPC event emits) remain logger-driven. If you do not inject a transport logger, fluo does not mirror those failures through a raw `console.error` fallback.
 
 ## Common Patterns
 
