@@ -78,6 +78,8 @@ fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --
 fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
 ```
 
+Supported `--shape microservice --transport` starter values are exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. Earlier docs mentioned `redis`, but that value is no longer part of the shipped starter contract; use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` manually after scaffolding when you need broader Redis integration patterns.
+
 The NATS/Kafka/RabbitMQ starter contracts stay explicit about external brokers and caller-owned client libraries. Generated projects wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators directly in `src/app.ts` so the starter contract is runnable without pretending the base fluo packages hide those dependencies.
 
 The starter matrix also includes a mixed single-package starter: one Fastify HTTP app with an attached TCP microservice in the same generated project.
