@@ -32,7 +32,26 @@ function headingLevels(relativePath: string): number[] {
 
 function parsePackageListFromSection(markdown: string, sectionTitle: string): string[] {
   const lines = markdown.split('\n');
-  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+  const normalizeSectionHeading = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/`/g, '')
+      .replace(/[()]/g, ' ')
+      .replace(/\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/[^a-z0-9\-\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const normalizedSectionTitle = normalizeSectionHeading(sectionTitle);
+  const start = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('## ')) {
+      return false;
+    }
+
+    const normalizedHeading = normalizeSectionHeading(trimmed.replace(/^##\s*/, ''));
+
+    return normalizedHeading === normalizedSectionTitle;
+  });
 
   if (start < 0) {
     return [];
