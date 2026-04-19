@@ -19,6 +19,13 @@
 - 런타임/패키지 참조 문서는 현재 스타터 매트릭스 밖에서 채택 가능한 어댑터, 플랫폼, 배포 대상을 설명하는 더 넓은 생태계 지도입니다.
 - 어떤 페이지가 Node.js HTTP 플랫폼(Fastify, Express, raw Node.js), Bun, Deno, Cloudflare Workers를 언급할 때 명시적인 `fluo new --shape application --transport http --runtime ... --platform ...` 명령이 함께 있다면 그것이 실행 가능한 스타터 계약입니다. 마이크로서비스의 경우 문서화된 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc` 명령 변형을 runnable starter 계약으로 읽으세요. 그 밖의 어댑터/패키지 언급은 여전히 더 넓은 패키지 생태계를 설명합니다.
 
+## 명시적 지원 스타터 값
+
+- `--shape application --transport http`는 위에 적힌 runtime/platform 조합을 통해 `fastify`, `express`, `nodejs`, `bun`, `deno`, `cloudflare-workers` 스타터를 지원합니다.
+- `--shape microservice --transport`는 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`만 지원합니다.
+- `redis`는 더 이상 지원되는 `fluo new --transport` 스타터 값이 아닙니다. 유지보수되는 Redis 기반 스타터가 필요하면 `redis-streams`를 사용하고, 더 넓은 Redis 통합 선택지가 필요하면 스캐폴딩 후 `@fluojs/redis`를 추가하세요.
+- `--shape mixed`는 `--transport tcp --runtime node --platform fastify` 조합 하나만 공식 지원합니다.
+
 ## 기준 출처
 
 - `packages/cli/src/new/resolver.ts`는 현재 스캐폴딩되는 `fluo new` 매트릭스의 기준 소스입니다.

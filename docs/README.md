@@ -80,7 +80,7 @@ Detailed technical specifications and comparisons.
 - **[Package Chooser](./reference/package-chooser.md)**: Find the right tools for your specific task.
 - **[API Surface Overview](./reference/package-surface.md)**: Canonical inventory of public package families, runtime coverage, and responsibilities.
 - **[Package Folder Structure](./reference/package-folder-structure.md)**: Standard directory conventions for monorepo packages.
-- **[fluo new Support Matrix](./reference/fluo-new-support-matrix.md)**: Starter contract vs. the broader runtime/adapter ecosystem.
+- **[fluo new Support Matrix](./reference/fluo-new-support-matrix.md)**: Starter contract vs. the broader runtime/adapter ecosystem, including the explicit shipped `--transport` starter values (`tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`).
 - **[Compatibility Matrix](./reference/toolchain-contract-matrix.md)**: Versions, runtimes, and platform support.
 
 ## 🔄 Moving to fluo
