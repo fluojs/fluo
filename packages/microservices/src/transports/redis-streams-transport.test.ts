@@ -257,6 +257,80 @@ function createTransport(
   return { published, transport };
 }
 
+function createLeaseAwareClient(
+  bus: InMemoryStreamBus,
+  values: Map<string, string>,
+  destroyedGroups: string[] = [],
+): RedisStreamClientLike {
+  return {
+    xadd: async (stream, fields, options) => {
+      return await bus.xadd(stream, fields, options);
+    },
+    xreadgroup: async (group, consumer, streams, options) => {
+      return await bus.xreadgroup(group, consumer, streams, options);
+    },
+    xack: async (stream, group, id) => {
+      await bus.xack(stream, group, id);
+    },
+    get: async (key) => values.get(key) ?? null,
+    incr: async (key) => {
+      const nextValue = Number.parseInt(values.get(key) ?? '0', 10) + 1;
+      values.set(key, String(nextValue));
+      return nextValue;
+    },
+    decr: async (key) => {
+      const nextValue = Number.parseInt(values.get(key) ?? '0', 10) - 1;
+      values.set(key, String(nextValue));
+      return nextValue;
+    },
+    set: async (key, value) => {
+      values.set(key, value);
+      return 'OK';
+    },
+    xdel: async (stream, id) => {
+      await bus.xdel(stream, id);
+    },
+    del: async (key) => {
+      values.delete(key);
+      await bus.del(key);
+    },
+    xgroupCreate: async (stream, group, startId, mkstream) => {
+      await bus.xgroupCreate(stream, group, startId, mkstream);
+    },
+    xgroupDestroy: async (stream, group) => {
+      destroyedGroups.push(`${stream}::${group}`);
+      await bus.xgroupDestroy(stream, group);
+    },
+  } satisfies RedisStreamClientLike;
+}
+
+function createFallbackClient(bus: InMemoryStreamBus, destroyedGroups: string[] = []): RedisStreamClientLike {
+  return {
+    xadd: async (stream, fields, options) => {
+      return await bus.xadd(stream, fields, options);
+    },
+    xreadgroup: async (group, consumer, streams, options) => {
+      return await bus.xreadgroup(group, consumer, streams, options);
+    },
+    xack: async (stream, group, id) => {
+      await bus.xack(stream, group, id);
+    },
+    del: async (stream) => {
+      await bus.del(stream);
+    },
+    xdel: async (stream, id) => {
+      await bus.xdel(stream, id);
+    },
+    xgroupCreate: async (stream, group, startId, mkstream) => {
+      await bus.xgroupCreate(stream, group, startId, mkstream);
+    },
+    xgroupDestroy: async (stream, group) => {
+      destroyedGroups.push(`${stream}::${group}`);
+      await bus.xgroupDestroy(stream, group);
+    },
+  } satisfies RedisStreamClientLike;
+}
+
 describe('RedisStreamsMicroserviceTransport', () => {
   it('supports request/reply send() and event dispatch', async () => {
     const bus = new InMemoryStreamBus();
@@ -593,55 +667,17 @@ describe('RedisStreamsMicroserviceTransport', () => {
     expect(bus.getStreamNames()).not.toContain(responseStream);
   });
 
-  it('destroys the request consumer group on close so repeated listen/close cycles do not leak BUSYGROUP state', async () => {
-    const groupKeys = new Set<string>();
+  it('keeps the shared request consumer group intact on close so repeated listen/close cycles still tolerate BUSYGROUP state', async () => {
+    const bus = new InMemoryStreamBus();
     const destroyedGroups: string[] = [];
     const values = new Map<string, string>();
-
-    const createStrictClient = (): RedisStreamClientLike => ({
-      xadd: async () => '0-1',
-      xreadgroup: async () => null,
-      xack: async () => {},
-      get: async (key) => values.get(key) ?? null,
-      incr: async (key) => {
-        const nextValue = Number.parseInt(values.get(key) ?? '0', 10) + 1;
-        values.set(key, String(nextValue));
-        return nextValue;
-      },
-      decr: async (key) => {
-        const nextValue = Number.parseInt(values.get(key) ?? '0', 10) - 1;
-        values.set(key, String(nextValue));
-        return nextValue;
-      },
-      set: async (key, value) => {
-        values.set(key, value);
-        return 'OK';
-      },
-      del: async (key) => {
-        values.delete(key);
-      },
-      xgroupCreate: async (stream, group) => {
-        const key = `${stream}::${group}`;
-
-        if (groupKeys.has(key)) {
-          throw new Error(`BUSYGROUP Consumer Group name already exists for ${key}`);
-        }
-
-        groupKeys.add(key);
-      },
-      xgroupDestroy: async (stream, group) => {
-        const key = `${stream}::${group}`;
-        destroyedGroups.push(key);
-        groupKeys.delete(key);
-      },
-    });
 
     const firstTransport = new RedisStreamsMicroserviceTransport({
       namespace: 'fluo:streams:strict',
       pollBlockMs: 1,
-      readerClient: createStrictClient(),
+      readerClient: createLeaseAwareClient(bus, values, destroyedGroups),
       requestTimeoutMs: 50,
-      writerClient: createStrictClient(),
+      writerClient: createLeaseAwareClient(bus, values, destroyedGroups),
     });
 
     await firstTransport.listen(async () => undefined);
@@ -650,15 +686,15 @@ describe('RedisStreamsMicroserviceTransport', () => {
     const secondTransport = new RedisStreamsMicroserviceTransport({
       namespace: 'fluo:streams:strict',
       pollBlockMs: 1,
-      readerClient: createStrictClient(),
+      readerClient: createLeaseAwareClient(bus, values, destroyedGroups),
       requestTimeoutMs: 50,
-      writerClient: createStrictClient(),
+      writerClient: createLeaseAwareClient(bus, values, destroyedGroups),
     });
 
     await expect(secondTransport.listen(async () => undefined)).resolves.toBeUndefined();
     await secondTransport.close();
 
-    expect(destroyedGroups.some((key) => key === 'fluo:streams:strict:messages::fluo-handlers')).toBe(true);
+    expect(destroyedGroups).not.toContain('fluo:streams:strict:messages::fluo-handlers');
   });
 
   it('keeps a shared request consumer group alive while another listener with the same namespace/group stays active', async () => {
@@ -704,46 +740,21 @@ describe('RedisStreamsMicroserviceTransport', () => {
     const namespace = 'fluo:streams:no-lease';
     const consumerGroup = 'shared-handlers';
     const destroyedGroups: string[] = [];
-    const createNoLeaseClient = (): RedisStreamClientLike => ({
-      xadd: async (stream, fields, options) => {
-        return await bus.xadd(stream, fields, options);
-      },
-      xreadgroup: async (group, consumer, streams, options) => {
-        return await bus.xreadgroup(group, consumer, streams, options);
-      },
-      xack: async (stream, group, id) => {
-        await bus.xack(stream, group, id);
-      },
-      del: async (stream) => {
-        await bus.del(stream);
-      },
-      xdel: async (stream, id) => {
-        await bus.xdel(stream, id);
-      },
-      xgroupCreate: async (stream, group, startId, mkstream) => {
-        await bus.xgroupCreate(stream, group, startId, mkstream);
-      },
-      xgroupDestroy: async (stream, group) => {
-        destroyedGroups.push(`${stream}::${group}`);
-        await bus.xgroupDestroy(stream, group);
-      },
-    });
-
     const first = new RedisStreamsMicroserviceTransport({
       consumerGroup,
       namespace,
       pollBlockMs: 1,
-      readerClient: createNoLeaseClient(),
+      readerClient: createFallbackClient(bus, destroyedGroups),
       requestTimeoutMs: 200,
-      writerClient: createNoLeaseClient(),
+      writerClient: createFallbackClient(bus, destroyedGroups),
     });
     const second = new RedisStreamsMicroserviceTransport({
       consumerGroup,
       namespace,
       pollBlockMs: 1,
-      readerClient: createNoLeaseClient(),
+      readerClient: createFallbackClient(bus, destroyedGroups),
       requestTimeoutMs: 200,
-      writerClient: createNoLeaseClient(),
+      writerClient: createFallbackClient(bus, destroyedGroups),
     });
 
     await first.listen(async (packet) => {
@@ -775,15 +786,172 @@ describe('RedisStreamsMicroserviceTransport', () => {
       consumerGroup,
       namespace,
       pollBlockMs: 1,
-      readerClient: createNoLeaseClient(),
+      readerClient: createFallbackClient(bus, destroyedGroups),
       requestTimeoutMs: 200,
-      writerClient: createNoLeaseClient(),
+      writerClient: createFallbackClient(bus, destroyedGroups),
     });
 
     await expect(third.listen(async () => undefined)).resolves.toBeUndefined();
     await third.close();
 
     expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+  });
+
+  it('retains the shared request consumer group when a lease-capable listener closes before a fallback peer', async () => {
+    const bus = new InMemoryStreamBus();
+    const values = new Map<string, string>();
+    const destroyedGroups: string[] = [];
+    const namespace = 'fluo:streams:mixed-close-lease-first';
+    const consumerGroup = 'shared-handlers';
+
+    const leaseCapable = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+    });
+    const fallback = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createFallbackClient(bus, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createFallbackClient(bus, destroyedGroups),
+    });
+
+    await leaseCapable.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await fallback.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await leaseCapable.close();
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+
+    await fallback.close();
+  });
+
+  it('retains the shared request consumer group when a fallback listener closes before a lease-capable peer', async () => {
+    const bus = new InMemoryStreamBus();
+    const values = new Map<string, string>();
+    const destroyedGroups: string[] = [];
+    const namespace = 'fluo:streams:mixed-close-fallback-first';
+    const consumerGroup = 'shared-handlers';
+
+    const leaseCapable = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+    });
+    const fallback = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createFallbackClient(bus, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createFallbackClient(bus, destroyedGroups),
+    });
+
+    await leaseCapable.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await fallback.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await fallback.close();
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+
+    await leaseCapable.close();
+  });
+
+  it('lets the surviving mixed-fleet peer continue send()/receive traffic after the other listener closes', async () => {
+    const bus = new InMemoryStreamBus();
+    const values = new Map<string, string>();
+    const destroyedGroups: string[] = [];
+    const namespace = 'fluo:streams:mixed-survivor';
+    const consumerGroup = 'shared-handlers';
+
+    const leaseCapable = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createLeaseAwareClient(bus, values, destroyedGroups),
+    });
+    const fallback = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createFallbackClient(bus, destroyedGroups),
+      requestTimeoutMs: 200,
+      writerClient: createFallbackClient(bus, destroyedGroups),
+    });
+    const receivedEvents: string[] = [];
+
+    await leaseCapable.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        receivedEvents.push(String((packet.payload as { from: string }).from));
+        return undefined;
+      }
+
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await fallback.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        receivedEvents.push(String((packet.payload as { from: string }).from));
+        return undefined;
+      }
+
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await leaseCapable.close();
+
+    await expect(fallback.send('mixed.echo', { ok: true })).resolves.toEqual({ ok: true });
+    await fallback.emit('mixed.event', { from: 'fallback' });
+    await sleep(20);
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+    expect(receivedEvents).toContain('fallback');
+
+    await fallback.close();
   });
 
   it('rejects send() with AbortSignal before publish', async () => {

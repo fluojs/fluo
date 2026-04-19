@@ -363,6 +363,13 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
       return;
     }
 
+    if (!createdGroup) {
+      // Joining an existing request group cannot prove that every active listener participates
+      // in the same lease protocol, so shared groups must be retained conservatively.
+      this.messageGroupLeaseRegistered = false;
+      return;
+    }
+
     if (createdGroup) {
       await readerClient.set(this.messageGroupOwnerKey, this.consumerId);
     }
@@ -374,7 +381,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private async releaseMessageGroupLease(): Promise<boolean> {
     const { readerClient } = this.options;
 
-    if (!this.messageGroupLeaseRegistered || !readerClient.decr || !readerClient.get) {
+    if (!this.messageGroupLeaseRegistered || !readerClient.decr || !readerClient.get || !readerClient.del) {
       // Fallback/no-lease clients intentionally retain the shared request group because
       // destroying it here could break another active listener that joined via BUSYGROUP.
       return false;
@@ -386,16 +393,19 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
       return false;
     }
 
-    await readerClient.del?.(this.messageGroupRefCountKey);
+    await readerClient.del(this.messageGroupRefCountKey);
 
     const owner = await readerClient.get(this.messageGroupOwnerKey);
+
+    await readerClient.del(this.messageGroupOwnerKey);
 
     if (!owner) {
       return false;
     }
 
-    await readerClient.del?.(this.messageGroupOwnerKey);
-    return true;
+    // Even the original creator cannot prove that no fallback listener is still attached to
+    // the shared request group, so the conservative mixed-fleet policy retains the group.
+    return false;
   }
 
   private async pollStream(stream: string, group: string): Promise<void> {
