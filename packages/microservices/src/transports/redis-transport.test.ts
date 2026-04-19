@@ -139,6 +139,31 @@ describe('RedisPubSubMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not fall back to console.error when no logger is configured', async () => {
+    const bus = new InMemoryRedisBus();
+    const { publishClient, subscribeClient } = bus.createClient();
+    const transport = new RedisPubSubMicroserviceTransport({
+      publishClient,
+      subscribeClient,
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('redis event failed without logger');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(consoleError).not.toHaveBeenCalled();
+
+    await transport.close();
+  });
+
   it('cleans up subscriptions on close', async () => {
     const bus = new InMemoryRedisBus();
     const { publishClient, subscribeClient } = bus.createClient();

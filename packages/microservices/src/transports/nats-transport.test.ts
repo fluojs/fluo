@@ -150,6 +150,35 @@ describe('NatsMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('does not fall back to console.error when no logger is configured', async () => {
+    const nats = new InMemoryNatsClient();
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const transport = new NatsMicroserviceTransport({ client: nats, codec });
+    await transport.listen(async (packet) => {
+      if (packet.kind === 'event') {
+        throw new Error('nats event failed without logger');
+      }
+
+      return undefined;
+    });
+
+    await expect(transport.emit('audit.value', { value: 9 })).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(consoleError).not.toHaveBeenCalled();
+
+    await transport.close();
+  });
+
   it('isolates malformed inbound event frames from the NATS subscription callback', async () => {
     const nats = new InMemoryNatsClient();
     const codec = {
