@@ -93,7 +93,7 @@ await microservice.listen();
 
 ### 커스텀 모듈 등록
 
-custom provider/export/non-global 구성이 필요할 때는 `MicroservicesModule.forRoot({ transport, module: { ... } })`를 사용하세요.
+custom provider/export/non-global 구성이 필요할 때도 raw provider array로 내려가지 말고 `MicroservicesModule.forRoot({ transport, module: { ... } })`를 우선 사용하세요.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -123,6 +123,8 @@ Behavioral contract notes:
 - `module.global`을 사용하면 등록 범위를 로컬로 제한할 수 있습니다.
 
 ### provider 배열 헬퍼
+
+`createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.
 
 `createMicroservicesProviders(...)`는 커스텀 모듈 조합에 provider 배열이 필요할 때 사용할 수 있습니다.
 

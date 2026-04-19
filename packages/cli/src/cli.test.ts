@@ -651,7 +651,7 @@ describe('CLI command runner', () => {
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
 
-  it('reports the remaining validation-only microservice transport families through the CLI contract', async () => {
+  it('rejects transport values that are outside the shipped microservice starter contract', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const stderrBuffer: string[] = [];
@@ -664,7 +664,7 @@ describe('CLI command runner', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc');
+    expect(stderrBuffer.join('')).toContain('Invalid --transport value "redis".');
   });
 
   it('scaffolds a local .env file while ignoring it from git by default', async () => {
@@ -774,7 +774,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Usage: fluo new|create [project-name] [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
     expect(stdoutBuffer.join('')).toContain('--shape <application|microservice|mixed>');
-    expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
+    expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
     expect(stdoutBuffer.join('')).toContain('--runtime <node|bun|deno|cloudflare-workers>');
     expect(stdoutBuffer.join('')).toContain('--platform <fastify|express|nodejs|bun|deno|cloudflare-workers|none>');
     expect(stdoutBuffer.join('')).toContain('--tooling <standard>');

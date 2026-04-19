@@ -77,10 +77,9 @@ function cloneBootstrapSchema(schema: BootstrapSchema): BootstrapSchema {
   };
 }
 
-/** Documented microservice transports recognized by schema validation. */
-export const DOCUMENTED_MICROSERVICE_TRANSPORTS: readonly BootstrapTransport[] = [
+/** Supported microservice starter transports recognized by `fluo new`. */
+export const SUPPORTED_MICROSERVICE_STARTER_TRANSPORTS: readonly BootstrapTransport[] = [
   'tcp',
-  'redis',
   'redis-streams',
   'nats',
   'kafka',
@@ -88,6 +87,9 @@ export const DOCUMENTED_MICROSERVICE_TRANSPORTS: readonly BootstrapTransport[] =
   'mqtt',
   'grpc',
 ];
+
+/** Backward-compatible alias for the current shipped microservice starter transport list. */
+export const DOCUMENTED_MICROSERVICE_TRANSPORTS = SUPPORTED_MICROSERVICE_STARTER_TRANSPORTS;
 
 /** Source-of-truth registry for starter dependencies, prompt labels, and emitted scaffold recipes. */
 export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
@@ -485,7 +487,7 @@ export const SUPPORTED_BOOTSTRAP_PLATFORMS: readonly BootstrapPlatform[] = [
   'none',
 ];
 /** Supported transports accepted by the current starter matrix. */
-export const SUPPORTED_BOOTSTRAP_TRANSPORTS: readonly BootstrapTransport[] = ['http', ...DOCUMENTED_MICROSERVICE_TRANSPORTS];
+export const SUPPORTED_BOOTSTRAP_TRANSPORTS: readonly BootstrapTransport[] = ['http', ...SUPPORTED_MICROSERVICE_STARTER_TRANSPORTS];
 /** Supported tooling presets accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_TOOLING_PRESETS: readonly BootstrapToolingPreset[] = ['standard'];
 /** Supported topology modes accepted by the current starter matrix. */
@@ -574,11 +576,14 @@ export function getStarterProfileFromSchema(schema: BootstrapSchema): StarterPro
 }
 
 /**
- * Checks whether one transport belongs to the documented microservice transport family.
+ * Checks whether one transport belongs to the supported microservice starter transport family.
  *
  * @param transport Transport selected by the caller.
- * @returns `true` when the transport is part of the documented microservice transport set.
+ * @returns `true` when the transport is part of the supported microservice starter transport set.
  */
-export function isDocumentedMicroserviceTransport(transport: BootstrapTransport): boolean {
-  return DOCUMENTED_MICROSERVICE_TRANSPORTS.includes(transport);
+export function isSupportedMicroserviceStarterTransport(transport: BootstrapTransport): boolean {
+  return SUPPORTED_MICROSERVICE_STARTER_TRANSPORTS.includes(transport);
 }
+
+/** Backward-compatible alias for starter-transport membership checks. */
+export const isDocumentedMicroserviceTransport = isSupportedMicroserviceStarterTransport;

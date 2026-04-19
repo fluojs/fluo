@@ -868,7 +868,7 @@ describe('resolveBootstrapPlan', () => {
       },
       transport: 'http',
     })).toThrow(
-      'Unsupported bootstrap schema "microservice/node/http/none/standard/single-package". Microservice starters require a transport-aware microservice transport such as tcp, redis-streams, mqtt, grpc, redis, nats, kafka, or rabbitmq.',
+      'Unsupported bootstrap schema "microservice/node/http/none/standard/single-package". Microservice starters require a transport-aware microservice transport such as tcp, redis-streams, mqtt, grpc, nats, kafka, or rabbitmq.',
     );
   });
 
@@ -889,20 +889,9 @@ describe('resolveBootstrapPlan', () => {
     );
   });
 
-  it('validates documented microservice transport families separately from the runnable starter path', () => {
-    expect(() => resolveBootstrapPlan({
-      packageManager: 'pnpm' as const,
-      platform: 'none',
-      runtime: 'node',
-      shape: 'microservice',
-      tooling: 'standard',
-      topology: {
-        deferred: true,
-        mode: 'single-package',
-      },
-      transport: 'redis',
-    })).toThrow(
-      'Unsupported bootstrap schema "microservice/node/redis/none/standard/single-package". The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc, while transport validation still recognizes the remaining documented family: redis.',
+  it('rejects transport values outside the shipped starter matrix during schema resolution', () => {
+    expect(() => resolveBootstrapSchema({ transport: 'redis' as never })).toThrow(
+      'Unsupported transport "redis". Supported values: http, tcp, redis-streams, nats, kafka, rabbitmq, mqtt, grpc.',
     );
   });
 

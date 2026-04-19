@@ -52,6 +52,8 @@ export class OrderWorker {
 
 Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
 
+`QueueModule.forRoot(...)` is the supported root entrypoint for queue registration.
+
 Use `QueueModule.forRoot(...)` for application-level queue registration.
 
 ```typescript
@@ -105,6 +107,8 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
 
+Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
+
 ## Public API Overview
 
 ### Core
@@ -118,6 +122,8 @@ Jobs that fail all retry attempts are automatically moved to a dead-letter list 
 - `QueueModuleOptions`: Global queue settings (clientName, default attempts, concurrency, rate limiting).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
 - `QueueBackoffOptions`: Retry backoff settings (`type`, `delayMs`).
+
+`QueueModuleOptions` also includes dead-letter retention controls such as `defaultDeadLetterMaxEntries`.
 
 ## Related Packages
 

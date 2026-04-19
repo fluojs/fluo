@@ -52,6 +52,8 @@ export class OrderWorker {
 
 `QueueModule`을 등록하고 `QueueLifecycleService`를 주입받아 작업을 큐에 추가합니다.
 
+`QueueModule.forRoot(...)`는 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.
+
 큐 등록은 `QueueModule.forRoot(...)`로 구성합니다.
 
 ```typescript
@@ -104,6 +106,8 @@ QueueModule.forRoot({ clientName: 'jobs' })
 모든 재시도에 실패한 작업은 Redis의 데드 레터 리스트(`fluo:queue:dead-letter:<jobName>`)로 자동 이동되어, 나중에 수동으로 확인하거나 복구할 수 있습니다.
 
 `QueueModule.forRoot()`는 기본적으로 작업별 최근 데드 레터 엔트리 `1_000`개만 유지합니다. 무제한 보관이 꼭 필요하면 `defaultDeadLetterMaxEntries: false`로 opt-out 하고, 더 엄격한 운영 예산이 필요하면 더 작은 양의 정수를 지정하세요.
+
+저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다. 저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.
 
 ## 공개 API 개요
 

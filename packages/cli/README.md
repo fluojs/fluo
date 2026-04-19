@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The official CLI for fluo — bootstrap new applications, generate components, inspect runtime graphs, and run code transforms.
+The canonical CLI for fluo — bootstrap new applications, generate components, inspect runtime graphs, and run code transforms.
 
 ## Table of Contents
 
@@ -78,6 +78,8 @@ fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --
 fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
 ```
 
+Supported `--shape microservice --transport` starter values are exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. Earlier docs mentioned `redis`, but that value is no longer part of the shipped starter contract; use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` manually after scaffolding when you need broader Redis integration patterns.
+
 The NATS/Kafka/RabbitMQ starter contracts stay explicit about external brokers and caller-owned client libraries. Generated projects wire `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborators, and `amqplib` publisher/consumer collaborators directly in `src/app.ts` so the starter contract is runnable without pretending the base fluo packages hide those dependencies.
 
 The starter matrix also includes a mixed single-package starter: one Fastify HTTP app with an attached TCP microservice in the same generated project.
@@ -88,7 +90,7 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 When `fluo new` runs in an interactive TTY, the wizard uses the same flags/config model. It asks for the project name, shape-first branch (`application` -> runtime + HTTP platform, `microservice` -> transport), the maintained tooling preset, package-manager choice, whether to install dependencies immediately, and whether to initialize a git repository. Non-interactive flags and programmatic `runNewCommand(...)` calls use the same resolved defaults.
 
-For a docs-level table that separates the shipped starter matrix (Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservices, plus mixed) from the remaining broader adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md).
+For a docs-level table that separates the shipped starter matrix (Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservices, plus mixed) from the remaining broader adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md). Package-level integrations such as `@fluojs/redis` remain part of the broader ecosystem, but they are not extra `fluo new --transport` starter flags.
 
 ### 2. Generate a feature
 Add a new resource with a controller and service, automatically wired into the module.

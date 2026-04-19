@@ -73,8 +73,8 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Select the transport path explicitly (http for applications, tcp for the runnable microservice starter, plus validated microservice transport families).',
-    option: '--transport <http|tcp|redis|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>',
+    description: 'Select the transport path explicitly (http for applications, tcp for the runnable microservice starter, plus shipped microservice starter transports).',
+    option: '--transport <http|tcp|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>',
   },
   {
     aliases: [],
@@ -231,7 +231,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
         if (!SUPPORTED_TRANSPORTS.has(parsed.transport)) {
           throw new Error(
             'Invalid --transport value "' + parsed.transport + '". Use one of: '
-            + 'http, tcp, redis, redis-streams, nats, kafka, rabbitmq, mqtt, grpc.',
+            + 'http, tcp, redis-streams, nats, kafka, rabbitmq, mqtt, grpc.',
           );
         }
         index += 1;

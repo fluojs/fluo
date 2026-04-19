@@ -124,7 +124,24 @@ function extractHeadings(relativePath) {
 
 function parsePackageListFromSection(markdown, sectionTitle) {
   const lines = markdown.split('\n');
-  const start = lines.findIndex((line) => line.trim() === `## ${sectionTitle}`);
+  const normalizeSectionHeading = (value) =>
+    value
+      .toLowerCase()
+      .replace(/`/g, '')
+      .replace(/[()]/g, ' ')
+      .replace(/\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/[^#a-z0-9\-\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const normalizedSectionTitle = normalizeSectionHeading(sectionTitle);
+  const start = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('## ')) {
+      return false;
+    }
+
+    return normalizeSectionHeading(trimmed.replace(/^##\s*/, '')) === normalizedSectionTitle;
+  });
 
   if (start < 0) {
     return [];

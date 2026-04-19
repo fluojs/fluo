@@ -9,7 +9,7 @@ export type BootstrapRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 /** Supported platform adapters for the current starter matrix. */
 export type BootstrapPlatform = 'bun' | 'cloudflare-workers' | 'deno' | 'express' | 'fastify' | 'nodejs' | 'none';
 /** Supported transport families for the current starter matrix. */
-export type BootstrapTransport = 'grpc' | 'http' | 'kafka' | 'mqtt' | 'nats' | 'rabbitmq' | 'redis' | 'redis-streams' | 'tcp';
+export type BootstrapTransport = 'grpc' | 'http' | 'kafka' | 'mqtt' | 'nats' | 'rabbitmq' | 'redis-streams' | 'tcp';
 /** Supported tooling presets for the current starter matrix. */
 export type BootstrapToolingPreset = 'standard';
 

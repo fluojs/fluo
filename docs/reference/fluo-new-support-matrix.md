@@ -9,7 +9,7 @@ Use this page to distinguish what `fluo new` scaffolds today from the broader ru
 | surface | status today | what is wired into `fluo new` | where to go next |
 | --- | --- | --- | --- |
 | **Application starter** | **Scaffolded now** | Node.js + HTTP via `--shape application --transport http --runtime node --platform fastify|express|nodejs`, Bun via `--runtime bun --platform bun`, Deno via `--runtime deno --platform deno`, and Cloudflare Workers via `--runtime cloudflare-workers --platform cloudflare-workers` | Fastify remains the default starter baseline when you omit `--platform`; Express, raw Node.js, Bun, Deno, and Cloudflare Workers are all first-class application starters now. |
-| **Microservice starter** | **Scaffolded now** | Node.js + no HTTP platform + TCP via `--shape microservice --transport tcp --runtime node --platform none`, Redis Streams via `--transport redis-streams`, NATS via `--transport nats`, Kafka via `--transport kafka`, RabbitMQ via `--transport rabbitmq`, MQTT via `--transport mqtt`, and gRPC via `--transport grpc` | TCP remains the simplest default starter baseline when you omit `--transport`; Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC now ship as runnable starters with transport-specific dependency/env/proto wiring. Redis Pub/Sub remains a documented validation-only family for now. |
+| **Microservice starter** | **Scaffolded now** | Node.js + no HTTP platform + TCP via `--shape microservice --transport tcp --runtime node --platform none`, Redis Streams via `--transport redis-streams`, NATS via `--transport nats`, Kafka via `--transport kafka`, RabbitMQ via `--transport rabbitmq`, MQTT via `--transport mqtt`, and gRPC via `--transport grpc` | TCP remains the simplest default starter baseline when you omit `--transport`; Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC now ship as runnable starters with transport-specific dependency/env/proto wiring. Broader messaging packages such as `@fluojs/redis` remain ecosystem choices after scaffolding rather than extra `fluo new --transport` starter values. |
 | **Mixed starter** | **Scaffolded now** | Node.js + Fastify HTTP app + attached TCP microservice via `--shape mixed --transport tcp --runtime node --platform fastify` | This is the only published mixed starter variant today. |
 | **Broader adapter/runtime ecosystem** | **Partially scaffolded, partially docs-only** | `@fluojs/platform-fastify`, `@fluojs/platform-express`, `@fluojs/platform-nodejs`, `@fluojs/platform-bun`, `@fluojs/platform-deno`, and `@fluojs/platform-cloudflare-workers` now all have first-class application starter paths. Other runtime/package combinations remain broader ecosystem docs rather than starter presets. | Use the runtime/package docs below to adopt the remaining docs-only adapters after scaffolding or in hand-authored setups. |
 
@@ -18,6 +18,13 @@ Use this page to distinguish what `fluo new` scaffolds today from the broader ru
 - Treat `fluo new` docs as a starter contract, not as a promise that every documented adapter already has a starter preset.
 - Treat runtime and package reference docs as the broader ecosystem map for adapters, platforms, and deployment targets you can adopt outside the current starter matrix.
 - When a page mentions Node.js HTTP platforms (Fastify, Express, raw Node.js), Bun, Deno, or Cloudflare Workers, treat the explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands as the runnable starter contract. For microservices, treat the documented `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc` command variants as the runnable starter contract. Other adapter/package mentions outside those starter rows still describe the broader package ecosystem.
+
+## explicit supported starter values
+
+- `--shape application --transport http` supports the shipped starter platforms `fastify`, `express`, `nodejs`, `bun`, `deno`, and `cloudflare-workers` through the documented runtime/platform combinations above.
+- `--shape microservice --transport` supports exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`.
+- `redis` is not a supported `fluo new --transport` starter value anymore. Use `redis-streams` for the maintained Redis-backed starter, or add `@fluojs/redis` after scaffolding when you need broader Redis integration choices.
+- `--shape mixed` supports the single published starter combination `--transport tcp --runtime node --platform fastify`.
 
 ## authoritative sources
 

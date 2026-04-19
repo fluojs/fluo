@@ -99,7 +99,7 @@ export class WelcomeService {
 }
 ```
 
-Register email delivery through `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)`.
+The root `@fluojs/email` surface is intentionally module-first. Register email delivery through `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)`.
 
 ## Common Patterns
 

@@ -78,6 +78,8 @@ fluo new my-mqtt-service --shape microservice --transport mqtt --runtime node --
 fluo new my-grpc-service --shape microservice --transport grpc --runtime node --platform none
 ```
 
+지원되는 `--shape microservice --transport` 스타터 값은 정확히 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`입니다. 이전 문서에 있던 `redis` 값은 더 이상 제공되는 스타터 계약에 포함되지 않으며, 유지보수되는 Redis 기반 스타터가 필요하면 `redis-streams`를 사용하고, 더 넓은 Redis 통합 패턴이 필요하면 스캐폴딩 후 `@fluojs/redis`를 수동으로 추가하세요.
+
 NATS/Kafka/RabbitMQ 스타터 계약은 외부 broker와 caller-owned client library 의존성을 숨기지 않고 명시적으로 유지합니다. 생성된 프로젝트는 `src/app.ts`에서 `nats` + `JSONCodec()`, `kafkajs` producer/consumer collaborator, `amqplib` publisher/consumer collaborator를 직접 연결하므로, 기본 fluo 패키지가 그 의존성을 감춘 것처럼 가장하지 않는 runnable starter 계약이 됩니다.
 
 starter 매트릭스에는 mixed single-package starter도 포함됩니다. 하나의 Fastify HTTP 앱과 attached TCP microservice를 같은 생성 프로젝트 안에 함께 배치합니다.
@@ -88,7 +90,7 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 `fluo new`가 interactive TTY에서 실행되면 wizard는 기존 flags/config 모델을 그대로 사용합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime + HTTP platform, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출도 동일한 resolved defaults를 사용합니다.
 
-현재 제공되는 스타터 매트릭스(Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요.
+현재 제공되는 스타터 매트릭스(Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
 
 ### 2. 기능 추가
 컨트롤러와 서비스가 포함된 새 리소스를 추가하고, 모듈에 자동으로 연결합니다.

@@ -9,7 +9,7 @@ import {
   getDefaultBootstrapSchemaForShape,
   getStarterProfileForShape,
   getStarterProfileFromSchema,
-  isDocumentedMicroserviceTransport,
+  isSupportedMicroserviceStarterTransport,
   SUPPORTED_BOOTSTRAP_PLATFORMS,
   SUPPORTED_BOOTSTRAP_RUNTIMES,
   SUPPORTED_BOOTSTRAP_SHAPES,
@@ -106,11 +106,11 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   if (schema.shape === 'microservice' && schema.transport === 'http') {
     throw new Error(
       'Unsupported bootstrap schema "microservice/node/http/' + schema.platform + '/standard/single-package". '
-       + 'Microservice starters require a transport-aware microservice transport such as tcp, redis-streams, mqtt, grpc, redis, nats, kafka, or rabbitmq.',
+       + 'Microservice starters require a transport-aware microservice transport such as tcp, redis-streams, mqtt, grpc, nats, kafka, or rabbitmq.',
     );
   }
 
-  if (schema.shape === 'application' && isDocumentedMicroserviceTransport(schema.transport)) {
+  if (schema.shape === 'application' && isSupportedMicroserviceStarterTransport(schema.transport)) {
     throw new Error(
       'Unsupported bootstrap schema "application/node/' + schema.transport + '/' + schema.platform + '/standard/single-package". '
       + 'Application starters currently require the HTTP transport across the Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers starter profiles.',
@@ -124,15 +124,14 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
     );
   }
 
-  if (schema.shape === 'microservice' && isDocumentedMicroserviceTransport(schema.transport) && schema.transport !== defaultProfile.schema.transport) {
+  if (schema.shape === 'microservice' && isSupportedMicroserviceStarterTransport(schema.transport) && schema.transport !== defaultProfile.schema.transport) {
     throw new Error(
       'Unsupported bootstrap schema "microservice/node/' + schema.transport + '/' + schema.platform + '/standard/single-package". '
-      + 'The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc, while transport validation still recognizes the remaining documented family: '
-      + 'redis.',
+      + 'The first-class microservice starters currently scaffold tcp, redis-streams, nats, kafka, rabbitmq, mqtt, and grpc.',
     );
   }
 
-  if (schema.shape === 'mixed' && isDocumentedMicroserviceTransport(schema.transport) && schema.transport !== defaultProfile.schema.transport) {
+  if (schema.shape === 'mixed' && isSupportedMicroserviceStarterTransport(schema.transport) && schema.transport !== defaultProfile.schema.transport) {
     throw new Error(
       'Unsupported bootstrap schema "mixed/node/' + schema.transport + '/' + schema.platform + '/standard/' + schema.topology.mode + '". '
       + 'The first mixed starter currently supports only the attached TCP microservice contract.',

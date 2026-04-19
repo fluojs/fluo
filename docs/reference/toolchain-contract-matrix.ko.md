@@ -20,9 +20,9 @@
 | --- | --- | --- |
 | **프로젝트 생성 (기본 HTTP)** | `fluo new my-app` | 호환 기준선 스타터인 단일 패키지(single-package) Node.js + Fastify HTTP 앱을 생성합니다. |
 | **프로젝트 생성 (명시적 HTTP)** | `fluo new my-app --shape application --transport http --runtime node --platform fastify` | 기본 HTTP 스타터와 동일한 생성 결과로 해석됩니다. |
-| **프로젝트 생성 (microservice)** | `fluo new my-service --shape microservice --transport tcp --runtime node --platform none` | 실행 가능한 단일 패키지 TCP 마이크로서비스(microservice) 스타터를 생성합니다. 이제 `--transport redis-streams`, `--transport nats`, `--transport kafka`, `--transport rabbitmq`, `--transport mqtt`, `--transport grpc`도 전송별 dependency/env/proto 구성을 갖춘 실행 가능한 스타터 변형을 생성하며, 전송 검증은 여전히 `tcp`, `redis`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc` 문서 계열 전체를 인식합니다. |
+| **프로젝트 생성 (microservice)** | `fluo new my-service --shape microservice --transport tcp --runtime node --platform none` | 실행 가능한 단일 패키지 TCP 마이크로서비스(microservice) 스타터를 생성합니다. `--transport redis-streams`, `--transport nats`, `--transport kafka`, `--transport rabbitmq`, `--transport mqtt`, `--transport grpc`는 전송별 dependency/env/proto 구성을 갖춘 다른 shipped starter 변형을 생성합니다. `@fluojs/redis` 같은 더 넓은 패키지는 추가 `fluo new --transport` 값이 아니라 스캐폴딩 이후에 붙이는 통합 선택지로 남습니다. |
 | **프로젝트 생성 (mixed)** | `fluo new my-app --shape mixed --transport tcp --runtime node --platform fastify` | Fastify HTTP 앱 하나와 연결된(attached) TCP 마이크로서비스 하나를 함께 생성하는 혼합 단일 패키지 스타터를 생성합니다. |
-| **대화형 위저드** | TTY에서 `fluo new` 실행 | 비대화형(non-interactive) 플래그 경로와 동일한 shape-first 스키마(프로젝트 이름, shape, tooling preset, package manager, install 선택, git 선택)로 해석됩니다. |
+| **대화형 위저드 (Interactive wizard)** | TTY에서 `fluo new` 실행 | 비대화형(non-interactive) 플래그 경로와 동일한 shape-first 스키마(프로젝트 이름, shape, tooling preset, package manager, install 선택, git 선택)로 해석됩니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. |
 | **진단** | `fluo inspect` | 런타임 그래프 및 타이밍 데이터를 JSON 형식으로 내보내기. |
 

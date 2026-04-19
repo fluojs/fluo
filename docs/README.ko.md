@@ -80,7 +80,7 @@ fluo 패키지의 유지보수와 릴리스를 위한 표준, 정책, 운영 가
 - **[패키지 선택 가이드](./reference/package-chooser.ko.md)**: 특정 작업에 적합한 도구 찾기.
 - **[API 요약](./reference/package-surface.ko.md)**: 공개 패키지 패밀리, 런타임 범위, 패키지 책임을 정리한 기준 인벤토리.
 - **[패키지 폴더 구조](./reference/package-folder-structure.ko.md)**: 모노레포 패키지의 표준 디렉토리 규칙.
-- **[fluo new 지원 매트릭스](./reference/fluo-new-support-matrix.ko.md)**: 현재 스타터 계약과 더 넓게 문서화된 런타임/어댑터 생태계의 구분.
+- **[fluo new 지원 매트릭스](./reference/fluo-new-support-matrix.ko.md)**: 현재 스타터 계약과 더 넓게 문서화된 런타임/어댑터 생태계의 구분, 그리고 명시적으로 지원되는 `--transport` 스타터 값(`tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc`) 안내.
 - **[호환성 매트릭스](./reference/toolchain-contract-matrix.ko.md)**: 버전, 런타임, 플랫폼 지원 현황.
 
 ## 🔄 fluo로 전환하기
