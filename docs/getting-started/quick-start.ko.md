@@ -22,7 +22,7 @@ fluo new my-fluo-app
 cd my-fluo-app
 ```
 
-대화형 터미널 마법사를 사용하는 것이 좋지만, 명시적 플래그를 사용해 특정 스타터를 선택할 수도 있습니다.
+대화형 터미널 마법사(interactive terminal)를 사용하는 것이 좋지만, 명시적 플래그를 사용해 특정 스타터를 선택할 수도 있습니다.
 
 | Shape | Transport | Runtime | Platform | Command |
 | :--- | :--- | :--- | :--- | :--- |
