@@ -847,11 +847,26 @@ const readerRedis = new Redis(redisUrl, { lazyConnect: true, maxRetriesPerReques
 const writerRedis = new Redis(redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1 });
 
 const readerClient: RedisStreamClientLike = {
+  async decr(key) {
+    return await readerRedis.decr(key);
+  },
+  async del(key) {
+    await readerRedis.del(key);
+  },
+  async get(key) {
+    return await readerRedis.get(key);
+  },
+  async incr(key) {
+    return await readerRedis.incr(key);
+  },
   async xack(stream, group, id) {
     await readerRedis.xack(stream, group, id);
   },
   async xadd(stream, fields) {
     return await readerRedis.xadd(stream, '*', ...Object.entries(fields).flatMap(([key, value]) => [key, value]));
+  },
+  async xdel(stream, id) {
+    await readerRedis.xdel(stream, id);
   },
   async xgroupCreate(stream, group, startId, mkstream) {
     if (mkstream) {
@@ -863,6 +878,9 @@ const readerClient: RedisStreamClientLike = {
   },
   async xgroupDestroy(stream, group) {
     await readerRedis.xgroup('DESTROY', stream, group);
+  },
+  async set(key, value) {
+    return await readerRedis.set(key, value);
   },
   async xreadgroup(group, consumer, streams, options) {
     const response = await readerRedis.xreadgroup(
@@ -895,11 +913,26 @@ const readerClient: RedisStreamClientLike = {
 };
 
 const writerClient: RedisStreamClientLike = {
+  async decr(key) {
+    return await writerRedis.decr(key);
+  },
+  async del(key) {
+    await writerRedis.del(key);
+  },
+  async get(key) {
+    return await writerRedis.get(key);
+  },
+  async incr(key) {
+    return await writerRedis.incr(key);
+  },
   async xack(stream, group, id) {
     await writerRedis.xack(stream, group, id);
   },
   async xadd(stream, fields) {
     return await writerRedis.xadd(stream, '*', ...Object.entries(fields).flatMap(([key, value]) => [key, value]));
+  },
+  async xdel(stream, id) {
+    await writerRedis.xdel(stream, id);
   },
   async xgroupCreate(stream, group, startId, mkstream) {
     if (mkstream) {
@@ -911,6 +944,9 @@ const writerClient: RedisStreamClientLike = {
   },
   async xgroupDestroy(stream, group) {
     await writerRedis.xgroup('DESTROY', stream, group);
+  },
+  async set(key, value) {
+    return await writerRedis.set(key, value);
   },
   async xreadgroup(group, consumer, streams, options) {
     const response = await writerRedis.xreadgroup(

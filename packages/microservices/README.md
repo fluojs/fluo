@@ -83,6 +83,7 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 - TCP frames are bounded to 1 MiB per newline-delimited message by default; oversized frames close the socket instead of growing the request buffer without limit.
 - Redis Streams acknowledges request/event entries only after handler-side processing finishes. Failed events stay pending for broker-managed recovery instead of being acknowledged early.
 - Redis Streams does not apply publish-time trimming to live request/event streams by default, so pending entries remain recoverable until `xack` or consumer-group recovery completes. Acked request/reply entries are cleaned up, each per-consumer response stream keeps bounded retention by default (`responseRetentionMaxLen: 1_000`), and each response stream is deleted during `close()`.
+- Redis Streams always deletes each per-consumer response stream during `close()`, but it retains the shared request consumer group conservatively once ownership cannot be proven across the active fleet. Lease-capable listeners clean up only their coordination metadata, and mixed or fallback listener fleets keep the shared request group in place so one peer cannot destroy a group that another live listener still needs.
 - `messageRetentionMaxLen` and `eventRetentionMaxLen` remain available as advanced opt-in knobs. Enabling them can trade away broker-managed recovery guarantees because Redis may trim pending live-stream entries before they are acknowledged.
 - RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
 
@@ -124,6 +125,8 @@ Behavioral contract notes:
 `createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
 
 Use `createMicroservicesProviders(...)` when you need a provider array for custom module assembly.
+
+`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
 
 ```typescript
 import { Module } from '@fluojs/core';

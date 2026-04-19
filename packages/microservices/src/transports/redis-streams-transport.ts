@@ -21,6 +21,10 @@ export interface RedisStreamClientLike {
     options?: { blockMs?: number; count?: number },
   ): Promise<readonly StreamReadGroupResult[] | null>;
   xack(stream: string, group: string, id: string): Promise<void>;
+  get?(key: string): Promise<string | null>;
+  incr?(key: string): Promise<number>;
+  decr?(key: string): Promise<number>;
+  set?(key: string, value: string): Promise<unknown>;
   xdel?(stream: string, id: string): Promise<void>;
   del?(stream: string): Promise<void>;
   xgroupCreate(stream: string, group: string, startId: string, mkstream: boolean): Promise<void>;
@@ -84,6 +88,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private logger: MicroserviceTransportLogger | undefined;
   private listening = false;
   private listenPromise: Promise<void> | undefined;
+  private messageGroupLeaseRegistered = false;
+  private ownsMessageGroup = false;
   private readonly pending = new Map<string, PendingRequest>();
   private pollPromises: Promise<void>[] = [];
 
@@ -135,7 +141,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     }
 
     this.listenPromise = (async () => {
-      await this.options.readerClient.xgroupCreate(this.messageStream, this.messageGroup, '$', true);
+      this.ownsMessageGroup = await this.ensureConsumerGroup(this.messageStream, this.messageGroup);
+      await this.registerMessageGroupLease(this.ownsMessageGroup);
       await this.options.readerClient.xgroupCreate(this.eventStream, this.eventGroup, '$', true);
       await this.options.readerClient.xgroupCreate(this.responseStream, this.responseGroup, '$', true);
 
@@ -269,7 +276,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   }
 
   /**
-   * Stops polling and tears down the event/response consumer groups.
+   * Stops polling and tears down the owned request, event, and response consumer resources.
    *
    * @returns A promise that resolves once shutdown cleanup finishes.
    */
@@ -283,10 +290,19 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
     try {
       const settled = await Promise.allSettled(this.pollPromises);
+      const shouldDestroyMessageGroup = await this.releaseMessageGroupLease();
 
       for (const result of settled) {
         if (result.status === 'rejected') {
           closeError ??= result.reason;
+        }
+      }
+
+      if (shouldDestroyMessageGroup) {
+        try {
+          await this.options.readerClient.xgroupDestroy(this.messageStream, this.messageGroup);
+        } catch (error) {
+          closeError ??= error;
         }
       }
 
@@ -310,6 +326,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     } finally {
       this.listening = false;
       this.handler = undefined;
+      this.messageGroupLeaseRegistered = false;
+      this.ownsMessageGroup = false;
       this.pollPromises = [];
 
       for (const pending of [...this.pending.values()]) {
@@ -320,6 +338,74 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     if (closeError) {
       throw closeError;
     }
+  }
+
+  private async ensureConsumerGroup(stream: string, group: string): Promise<boolean> {
+    try {
+      await this.options.readerClient.xgroupCreate(stream, group, '$', true);
+      return true;
+    } catch (error) {
+      if (this.isBusyGroupError(error)) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private async registerMessageGroupLease(createdGroup: boolean): Promise<void> {
+    const { readerClient } = this.options;
+
+    if (!readerClient.incr || !readerClient.decr || !readerClient.get || !readerClient.set || !readerClient.del) {
+      // Without the optional KV helpers we cannot coordinate shared-group ownership safely
+      // across listeners, so the fallback path keeps the request consumer group alive.
+      this.messageGroupLeaseRegistered = false;
+      return;
+    }
+
+    if (!createdGroup) {
+      // Joining an existing request group cannot prove that every active listener participates
+      // in the same lease protocol, so shared groups must be retained conservatively.
+      this.messageGroupLeaseRegistered = false;
+      return;
+    }
+
+    if (createdGroup) {
+      await readerClient.set(this.messageGroupOwnerKey, this.consumerId);
+    }
+
+    await readerClient.incr(this.messageGroupRefCountKey);
+    this.messageGroupLeaseRegistered = true;
+  }
+
+  private async releaseMessageGroupLease(): Promise<boolean> {
+    const { readerClient } = this.options;
+
+    if (!this.messageGroupLeaseRegistered || !readerClient.decr || !readerClient.get || !readerClient.del) {
+      // Fallback/no-lease clients intentionally retain the shared request group because
+      // destroying it here could break another active listener that joined via BUSYGROUP.
+      return false;
+    }
+
+    const remainingListeners = await readerClient.decr(this.messageGroupRefCountKey);
+
+    if (remainingListeners > 0) {
+      return false;
+    }
+
+    await readerClient.del(this.messageGroupRefCountKey);
+
+    const owner = await readerClient.get(this.messageGroupOwnerKey);
+
+    await readerClient.del(this.messageGroupOwnerKey);
+
+    if (!owner) {
+      return false;
+    }
+
+    // Even the original creator cannot prove that no fallback listener is still attached to
+    // the shared request group, so the conservative mixed-fleet policy retains the group.
+    return false;
   }
 
   private async pollStream(stream: string, group: string): Promise<void> {
@@ -522,6 +608,10 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     console.error('[fluo][RedisStreamsMicroserviceTransport] event handler failed:', error);
   }
 
+  private isBusyGroupError(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('BUSYGROUP');
+  }
+
   private get messageStream(): string {
     return `${this.namespace}:messages`;
   }
@@ -536,6 +626,14 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
 
   private get messageGroup(): string {
     return this.consumerGroup;
+  }
+
+  private get messageGroupOwnerKey(): string {
+    return `${this.namespace}:groups:${this.consumerGroup}:owner`;
+  }
+
+  private get messageGroupRefCountKey(): string {
+    return `${this.namespace}:groups:${this.consumerGroup}:listeners`;
   }
 
   private get eventGroup(): string {

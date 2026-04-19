@@ -86,6 +86,7 @@ await microservice.listen();
 - TCP 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
 - Redis Streams는 요청/이벤트 엔트리를 핸들러 처리가 끝난 뒤에만 ACK합니다. 실패한 이벤트는 조기 ACK로 유실하지 않고 broker 복구/재전달 경로에 남겨 둡니다.
 - Redis Streams는 기본적으로 live request/event stream에 publish-time trimming을 적용하지 않으므로, pending 엔트리가 `xack` 또는 consumer-group 복구 경로가 끝나기 전에 잘리지 않습니다. ACK가 끝난 request/reply 엔트리는 정리되고, 인스턴스별 response stream은 기본적으로 bounded retention(`responseRetentionMaxLen: 1_000`)을 유지한 뒤 `close()` 중 삭제됩니다.
+- Redis Streams는 `close()` 중 인스턴스별 response stream은 항상 삭제하지만, 활성 fleet 전체에서 ownership를 증명할 수 없으면 공유 request consumer group은 보수적으로 유지합니다. lease-capable listener는 coordination metadata만 정리하고, mixed/fallback fleet에서는 살아 있는 다른 listener가 여전히 필요로 할 수 있으므로 공유 request group을 제거하지 않습니다.
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
 
@@ -127,6 +128,8 @@ Behavioral contract notes:
 `createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.
 
 `createMicroservicesProviders(...)`는 커스텀 모듈 조합에 provider 배열이 필요할 때 사용할 수 있습니다.
+
+`createMicroservicesProviders(...)`는 실제로 low-level provider array 자체가 필요한 호출자에게만 남아 있습니다.
 
 ```ts
 import { Module } from '@fluojs/core';

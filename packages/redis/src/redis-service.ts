@@ -3,6 +3,20 @@ import type Redis from 'ioredis';
 
 import { REDIS_CLIENT, getRedisClientToken } from './tokens.js';
 
+const namedRedisServiceTokens = new Map<string, symbol>();
+
+function getOrCreateNamedRedisServiceToken(name: string): symbol {
+  const existing = namedRedisServiceTokens.get(name);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = Symbol(`fluo.redis.service:${name}`);
+  namedRedisServiceTokens.set(name, created);
+  return created;
+}
+
 function decodeRedisValue(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -114,5 +128,5 @@ export function getRedisServiceToken(name?: string): Token<RedisService> {
     return RedisService;
   }
 
-  return Symbol.for(`fluo.redis.service:${name?.trim()}`) as Token<RedisService>;
+  return getOrCreateNamedRedisServiceToken(name?.trim() ?? '') as Token<RedisService>;
 }
