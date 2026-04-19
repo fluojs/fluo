@@ -26,6 +26,7 @@ declare module '@fluojs/http' {
 
 const WORKER_DISPATCHER_NOT_READY_MESSAGE =
   'Cloudflare Workers adapter received a request before dispatcher binding completed.';
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 /** Minimal Worker execution context surface used by the adapter. */
 export interface CloudflareWorkerExecutionContext {
@@ -123,7 +124,7 @@ export class CloudflareWorkerHttpApplicationAdapter
 
   async close(): Promise<void> {
     if (this.closeInFlight) {
-      await this.closeInFlight;
+      await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
       return;
     }
 
@@ -139,7 +140,7 @@ export class CloudflareWorkerHttpApplicationAdapter
     this.closeInFlight = closeInFlight;
     void closeInFlight.catch(() => {});
 
-    await closeInFlight;
+    await waitForCloseWithTimeout(closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
   }
 
   getRealtimeCapability() {
@@ -401,6 +402,25 @@ function createShutdownResponse(): Response {
       'content-type': 'application/json',
     },
     status: 503,
+  });
+}
+
+function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      reject(new Error(`Cloudflare Workers adapter shutdown timeout exceeded ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+
+    void closePromise.then(
+      () => {
+        clearTimeout(timeoutHandle);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timeoutHandle);
+        reject(error);
+      },
+    );
   });
 }
 
