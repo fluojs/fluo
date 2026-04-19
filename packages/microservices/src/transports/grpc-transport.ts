@@ -1,4 +1,5 @@
 import type { MicroserviceTransport, MicroserviceTransportLogger, ServerStreamWriter, TransportBidiStreamHandler, TransportClientStreamHandler, TransportHandler, TransportServerStreamHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -1276,12 +1277,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   }
 
   private logEventHandlerFailure(error: unknown): void {
-    if (this.logger) {
-      this.logger.error('Event handler failed.', error, 'GrpcMicroserviceTransport');
-      return;
-    }
-
-    console.error('[fluo][GrpcMicroserviceTransport] event handler failed:', error);
+    logTransportEventHandlerFailure(this.logger, 'GrpcMicroserviceTransport', error);
   }
 }
 

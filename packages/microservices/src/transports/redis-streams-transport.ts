@@ -1,4 +1,5 @@
 import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 interface StreamReadGroupResult {
   readonly id: string;
@@ -600,12 +601,7 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   }
 
   private logEventHandlerFailure(error: unknown): void {
-    if (this.logger) {
-      this.logger.error('Event handler failed.', error, 'RedisStreamsMicroserviceTransport');
-      return;
-    }
-
-    console.error('[fluo][RedisStreamsMicroserviceTransport] event handler failed:', error);
+    logTransportEventHandlerFailure(this.logger, 'RedisStreamsMicroserviceTransport', error);
   }
 
   private isBusyGroupError(error: unknown): boolean {

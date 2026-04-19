@@ -1,4 +1,5 @@
 import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
@@ -576,12 +577,7 @@ export class MqttMicroserviceTransport implements MicroserviceTransport {
   }
 
   private logEventHandlerFailure(error: unknown): void {
-    if (this.logger) {
-      this.logger.error('Event handler failed.', error, 'MqttMicroserviceTransport');
-      return;
-    }
-
-    console.error('[fluo][MqttMicroserviceTransport] event handler failed:', error);
+    logTransportEventHandlerFailure(this.logger, 'MqttMicroserviceTransport', error);
   }
 }
 
