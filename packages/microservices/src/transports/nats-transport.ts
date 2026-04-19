@@ -1,4 +1,5 @@
 import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 interface NatsMessageLike {
   readonly data: Uint8Array;
@@ -64,12 +65,7 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
   private subscriptions: NatsSubscriptionLike[] = [];
 
   private logEventHandlerFailure(error: unknown): void {
-    if (this.logger) {
-      this.logger.error('Event handler failed.', error, 'NatsMicroserviceTransport');
-      return;
-    }
-
-    console.error('[fluo][NatsMicroserviceTransport] event handler failed:', error);
+    logTransportEventHandlerFailure(this.logger, 'NatsMicroserviceTransport', error);
   }
 
   private handleEventMessageSafely(message: NatsMessageLike): void {
