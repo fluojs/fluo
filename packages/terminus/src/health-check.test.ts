@@ -129,6 +129,82 @@ describe('runHealthCheck', () => {
       redis: { message: 'timeout', status: 'down' },
     });
   });
+
+  it('marks hung indicators as down when an execution timeout is configured', async () => {
+    const report = await runHealthCheck(
+      [
+        {
+          key: 'database',
+          check: async () => new Promise(() => undefined),
+        },
+        {
+          key: 'memory',
+          check: async (key: string) => ({
+            [key]: {
+              status: 'up',
+            },
+          }),
+        },
+      ],
+      { indicatorTimeoutMs: 5 },
+    );
+
+    expect(report.status).toBe('error');
+    expect(report.contributors).toEqual({
+      down: ['database'],
+      up: ['memory'],
+    });
+    expect(report.error.database).toEqual({
+      message: 'Health indicator timed out after 5ms.',
+      status: 'down',
+    });
+    expect(report.info.memory).toEqual({
+      status: 'up',
+    });
+  });
+
+  it('fails deterministically when a later indicator reuses an existing result key', async () => {
+    const report = await runHealthCheck([
+      {
+        key: 'database',
+        check: async (key: string) => ({
+          [key]: {
+            latencyMs: 4,
+            status: 'up',
+          },
+        }),
+      },
+      {
+        key: 'cache',
+        check: async () => ({
+          database: {
+            message: 'stale cache snapshot',
+            status: 'down',
+          },
+        }),
+      },
+    ]);
+
+    expect(report.status).toBe('error');
+    expect(report.details.database).toEqual({
+      latencyMs: 4,
+      status: 'up',
+    });
+    expect(report.details['cache-duplicate-key-error']).toEqual({
+      message: 'Indicator produced duplicate result key(s): database.',
+      status: 'down',
+    });
+    expect(report.error).toEqual({
+      'cache-duplicate-key-error': {
+        message: 'Indicator produced duplicate result key(s): database.',
+        status: 'down',
+      },
+    });
+    expect(report.contributors).toEqual({
+      down: ['cache-duplicate-key-error'],
+      up: ['database'],
+    });
+  });
 });
 
 describe('assertHealthCheck', () => {

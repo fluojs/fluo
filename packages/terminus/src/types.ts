@@ -37,10 +37,20 @@ export interface HealthCheckReport {
   status: 'ok' | 'error';
 }
 
+/** Optional execution guardrails applied while Terminus runs health indicators. */
+export interface HealthCheckExecutionOptions {
+  /**
+   * Maximum time in milliseconds allowed for a single indicator execution before
+   * Terminus marks it as `down`.
+   */
+  indicatorTimeoutMs?: number;
+}
+
 /**
  * Module options for registering health indicators, providers, and readiness hooks.
  */
 export interface TerminusModuleOptions {
+  execution?: HealthCheckExecutionOptions;
   indicators?: readonly HealthIndicator[];
   indicatorProviders?: readonly Provider[];
   path?: string;

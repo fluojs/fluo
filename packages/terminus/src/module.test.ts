@@ -148,6 +148,55 @@ describe('TerminusModule.forRoot', () => {
     await app.close();
   });
 
+  it('applies execution timeouts to /health and /ready checks', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'database',
+        check: async () => new Promise(() => undefined),
+      },
+    ];
+    const terminusModule = TerminusModule.forRoot({
+      execution: {
+        indicatorTimeoutMs: 5,
+      },
+      indicators,
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [terminusModule],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    const healthResponse = createResponse();
+    await app.dispatch(createRequest('/health'), healthResponse);
+
+    expect(healthResponse.statusCode).toBe(503);
+    expect(healthResponse.body).toMatchObject({
+      contributors: {
+        down: ['database'],
+        up: [],
+      },
+      error: {
+        database: {
+          message: 'Health indicator timed out after 5ms.',
+          status: 'down',
+        },
+      },
+      status: 'error',
+    });
+
+    const readyResponse = createResponse();
+    await app.dispatch(createRequest('/ready'), readyResponse);
+
+    expect(readyResponse.statusCode).toBe(503);
+    expect(readyResponse.body).toEqual({ status: 'unavailable' });
+
+    await app.close();
+  });
+
   it('supports custom indicators that transition from up to down after bootstrap', async () => {
     let healthy = true;
     const indicators: HealthIndicator[] = [
