@@ -195,4 +195,27 @@ describe('renderMermaid', () => {
     expect(output).toContain('-->');
     expect(output).toContain('degraded');
   });
+
+  it('uses distinct external node ids when dependency names sanitize to the same base', () => {
+    const output = renderMermaid({
+      ...snapshotFixture,
+      components: [
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['cache.one', 'cache-one'],
+          id: 'api.gateway',
+        },
+      ],
+      diagnostics: [],
+    });
+
+    const dotNodeId = output.match(/  (EXT_[A-Za-z0-9_]+)\["cache\.one"\]/)?.[1];
+    const dashNodeId = output.match(/  (EXT_[A-Za-z0-9_]+)\["cache-one"\]/)?.[1];
+
+    expect(dotNodeId).toBeDefined();
+    expect(dashNodeId).toBeDefined();
+    expect(dotNodeId).not.toBe(dashNodeId);
+    expect(output).toContain(`  C1 --> ${dotNodeId}`);
+    expect(output).toContain(`  C1 --> ${dashNodeId}`);
+  });
 });

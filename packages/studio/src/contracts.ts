@@ -242,6 +242,25 @@ function escapeMermaidText(value: string): string {
   return value.replaceAll('"', '\\"');
 }
 
+function sanitizeMermaidNodeIdSegment(value: string): string {
+  return value.replaceAll(/[^a-zA-Z0-9_]/g, '_');
+}
+
+function hashMermaidNodeId(value: string): string {
+  let hash = 2_166_136_261;
+
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16_777_619) >>> 0;
+  }
+
+  return hash.toString(16).padStart(8, '0');
+}
+
+function createExternalMermaidNodeId(value: string): string {
+  return `EXT_${sanitizeMermaidNodeIdSegment(value)}_${hashMermaidNodeId(value)}`;
+}
+
 /**
  * Renders the loaded platform snapshot as a Mermaid dependency graph.
  *
@@ -251,6 +270,7 @@ function escapeMermaidText(value: string): string {
 export function renderMermaid(snapshot: PlatformShellSnapshot): string {
   const lines: string[] = ['graph TD'];
   const nodeByComponent = new Map<string, string>();
+  const externalNodeByDependency = new Map<string, string>();
 
   if (snapshot.components.length === 0) {
     lines.push('  EMPTY["No registered platform components"]');
@@ -277,8 +297,14 @@ export function renderMermaid(snapshot: PlatformShellSnapshot): string {
         continue;
       }
 
-      const externalNode = `EXT_${dependency.replaceAll(/[^a-zA-Z0-9_]/g, '_')}`;
-      lines.push(`  ${externalNode}["${escapeMermaidText(dependency)}"]`);
+      let externalNode = externalNodeByDependency.get(dependency);
+
+      if (!externalNode) {
+        externalNode = createExternalMermaidNodeId(dependency);
+        externalNodeByDependency.set(dependency, externalNode);
+        lines.push(`  ${externalNode}["${escapeMermaidText(dependency)}"]`);
+      }
+
       lines.push(`  ${from} --> ${externalNode}`);
     }
   }
