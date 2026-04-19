@@ -195,6 +195,21 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
   });
 
+  it('keeps redis tokens package-local while preserving stable named lookups', () => {
+    const cacheClientToken = getRedisClientToken('cache');
+    const cacheClientTokenAgain = getRedisClientToken('cache');
+    const jobsClientToken = getRedisClientToken('jobs');
+    const cacheServiceToken = getRedisServiceToken('cache');
+    const cacheServiceTokenAgain = getRedisServiceToken('cache');
+
+    expect(cacheClientToken).toBe(cacheClientTokenAgain);
+    expect(cacheServiceToken).toBe(cacheServiceTokenAgain);
+    expect(cacheClientToken).not.toBe(jobsClientToken);
+    expect(Symbol.keyFor(REDIS_CLIENT)).toBeUndefined();
+    expect(Symbol.keyFor(cacheClientToken)).toBeUndefined();
+    expect(Symbol.keyFor(cacheServiceToken as symbol)).toBeUndefined();
+  });
+
   it('falls back to disconnect when quit fails during shutdown', async () => {
     mockRedisState.quitError = new Error('quit failed');
 

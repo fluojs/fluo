@@ -7,8 +7,18 @@ import { RedisLifecycleService } from './service.js';
 import { getRedisClientToken, REDIS_CLIENT } from './tokens.js';
 import type { RedisModuleOptions } from './types.js';
 
+const redisLifecycleTokens = new Map<string, symbol>();
+
 function getRedisLifecycleToken(name: string): symbol {
-  return Symbol.for(`fluo.redis.lifecycle:${name}`);
+  const existing = redisLifecycleTokens.get(name);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = Symbol(`fluo.redis.lifecycle:${name}`);
+  redisLifecycleTokens.set(name, created);
+  return created;
 }
 
 /**
