@@ -42,6 +42,7 @@ function providerToken(provider: Provider): unknown {
 function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[] {
   const normalizedOptions: TerminusModuleOptions = {
     ...options,
+    execution: { ...(options.execution ?? {}) },
     indicators: copyIndicators(options.indicators),
     indicatorProviders: copyProviders(options.indicatorProviders),
     readinessChecks: [...(options.readinessChecks ?? [])],
@@ -88,7 +89,22 @@ function createTerminusProviders(options: TerminusModuleOptions = {}): Provider[
       },
     },
     ...indicatorProviders,
-    TerminusHealthService,
+    {
+      inject: [TERMINUS_HEALTH_INDICATORS, TERMINUS_OPTIONS],
+      provide: TerminusHealthService,
+      useFactory: (resolvedIndicators: unknown, resolvedOptions: unknown) => {
+        const indicators = Array.isArray(resolvedIndicators) ? (resolvedIndicators as readonly HealthIndicator[]) : [];
+        const execution = typeof resolvedOptions === 'object'
+          && resolvedOptions !== null
+          && 'execution' in resolvedOptions
+          && typeof (resolvedOptions as { execution?: unknown }).execution === 'object'
+          && (resolvedOptions as { execution?: unknown }).execution !== null
+          ? ((resolvedOptions as { execution?: TerminusModuleOptions['execution'] }).execution ?? {})
+          : {};
+
+        return new TerminusHealthService(indicators, execution);
+      },
+    },
   ];
 }
 
@@ -133,6 +149,7 @@ function createTerminusRuntimeModule(options: TerminusModuleOptions = {}): Modul
     imports: [healthModule],
     providers: [
       ...createTerminusProviders({
+        execution: options.execution,
         indicatorProviders: options.indicatorProviders,
         indicators: options.indicators,
         path: options.path,
