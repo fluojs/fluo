@@ -357,6 +357,8 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     const { readerClient } = this.options;
 
     if (!readerClient.incr || !readerClient.decr || !readerClient.get || !readerClient.set || !readerClient.del) {
+      // Without the optional KV helpers we cannot coordinate shared-group ownership safely
+      // across listeners, so the fallback path keeps the request consumer group alive.
       this.messageGroupLeaseRegistered = false;
       return;
     }
@@ -373,7 +375,9 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
     const { readerClient } = this.options;
 
     if (!this.messageGroupLeaseRegistered || !readerClient.decr || !readerClient.get) {
-      return this.ownsMessageGroup;
+      // Fallback/no-lease clients intentionally retain the shared request group because
+      // destroying it here could break another active listener that joined via BUSYGROUP.
+      return false;
     }
 
     const remainingListeners = await readerClient.decr(this.messageGroupRefCountKey);

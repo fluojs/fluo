@@ -596,12 +596,30 @@ describe('RedisStreamsMicroserviceTransport', () => {
   it('destroys the request consumer group on close so repeated listen/close cycles do not leak BUSYGROUP state', async () => {
     const groupKeys = new Set<string>();
     const destroyedGroups: string[] = [];
+    const values = new Map<string, string>();
 
     const createStrictClient = (): RedisStreamClientLike => ({
       xadd: async () => '0-1',
       xreadgroup: async () => null,
       xack: async () => {},
-      del: async () => {},
+      get: async (key) => values.get(key) ?? null,
+      incr: async (key) => {
+        const nextValue = Number.parseInt(values.get(key) ?? '0', 10) + 1;
+        values.set(key, String(nextValue));
+        return nextValue;
+      },
+      decr: async (key) => {
+        const nextValue = Number.parseInt(values.get(key) ?? '0', 10) - 1;
+        values.set(key, String(nextValue));
+        return nextValue;
+      },
+      set: async (key, value) => {
+        values.set(key, value);
+        return 'OK';
+      },
+      del: async (key) => {
+        values.delete(key);
+      },
       xgroupCreate: async (stream, group) => {
         const key = `${stream}::${group}`;
 
@@ -679,6 +697,93 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await expect(second.send('shared.echo', { ok: true })).resolves.toEqual({ ok: true });
 
     await second.close();
+  });
+
+  it('keeps the shared request consumer group alive on fallback clients without optional lease helpers', async () => {
+    const bus = new InMemoryStreamBus();
+    const namespace = 'fluo:streams:no-lease';
+    const consumerGroup = 'shared-handlers';
+    const destroyedGroups: string[] = [];
+    const createNoLeaseClient = (): RedisStreamClientLike => ({
+      xadd: async (stream, fields, options) => {
+        return await bus.xadd(stream, fields, options);
+      },
+      xreadgroup: async (group, consumer, streams, options) => {
+        return await bus.xreadgroup(group, consumer, streams, options);
+      },
+      xack: async (stream, group, id) => {
+        await bus.xack(stream, group, id);
+      },
+      del: async (stream) => {
+        await bus.del(stream);
+      },
+      xdel: async (stream, id) => {
+        await bus.xdel(stream, id);
+      },
+      xgroupCreate: async (stream, group, startId, mkstream) => {
+        await bus.xgroupCreate(stream, group, startId, mkstream);
+      },
+      xgroupDestroy: async (stream, group) => {
+        destroyedGroups.push(`${stream}::${group}`);
+        await bus.xgroupDestroy(stream, group);
+      },
+    });
+
+    const first = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createNoLeaseClient(),
+      requestTimeoutMs: 200,
+      writerClient: createNoLeaseClient(),
+    });
+    const second = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createNoLeaseClient(),
+      requestTimeoutMs: 200,
+      writerClient: createNoLeaseClient(),
+    });
+
+    await first.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await second.listen(async (packet) => {
+      if (packet.kind === 'message') {
+        return packet.payload;
+      }
+
+      return undefined;
+    });
+
+    await first.close();
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+    await expect(second.send('shared.echo', { ok: true })).resolves.toEqual({ ok: true });
+
+    await second.close();
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
+
+    const third = new RedisStreamsMicroserviceTransport({
+      consumerGroup,
+      namespace,
+      pollBlockMs: 1,
+      readerClient: createNoLeaseClient(),
+      requestTimeoutMs: 200,
+      writerClient: createNoLeaseClient(),
+    });
+
+    await expect(third.listen(async () => undefined)).resolves.toBeUndefined();
+    await third.close();
+
+    expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
   });
 
   it('rejects send() with AbortSignal before publish', async () => {
