@@ -47,7 +47,7 @@
 | **MQTT** | `fluo new my-service --shape microservice --transport mqtt --runtime node --platform none` |
 | **gRPC** | `fluo new my-service --shape microservice --transport grpc --runtime node --platform none` |
 
-이 표는 현재 실제로 제공되는 runnable starter 매트릭스를 설명합니다. 스타터 프리셋 밖의 더 넓은 문서화된 마이크로서비스 생태계에는 여전히 validation-only `redis` 참조가 포함됩니다.
+이 표는 현재 실제로 제공되는 runnable starter 매트릭스를 설명합니다. `@fluojs/redis` 같은 더 넓은 통합은 스캐폴딩 이후에도 사용할 수 있지만, 추가 `fluo new --transport` 스타터 프리셋은 아닙니다.
 
 ## 영속성 및 데이터 접근 추가
 

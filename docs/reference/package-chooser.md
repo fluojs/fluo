@@ -47,7 +47,7 @@ These adapter rows describe supported package paths and now map directly to firs
 | **MQTT** | `fluo new my-service --shape microservice --transport mqtt --runtime node --platform none` |
 | **gRPC** | `fluo new my-service --shape microservice --transport grpc --runtime node --platform none` |
 
-These rows describe the currently shipped runnable starter matrix. The broader documented microservice ecosystem still includes validation-only `redis` references outside the starter presets.
+These rows describe the currently shipped runnable starter matrix. Broader integrations such as `@fluojs/redis` stay available after scaffolding, but they are not additional `fluo new --transport` starter presets.
 
 ## add persistence & data access
 
