@@ -103,6 +103,31 @@ class AppModule {}
 
 Prometheus metric names must stay unique inside a registry. Shared-registry mode keeps that behavior intact instead of silently shadowing metrics.
 
+### Runtime platform telemetry
+
+The module emits fluo-specific gauges that mirror the platform shell and registered component state.
+
+- `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
+- `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
+
+The platform snapshot is refreshed during each scrape, and you can attach environment labels up front.
+
+```ts
+MetricsModule.forRoot({
+  platformTelemetry: {
+    env: 'production',
+    instance: 'web-01',
+  },
+});
+```
+
+### Runtime platform telemetry scrape contract
+
+Platform telemetry refreshes `fluo_component_ready` and `fluo_component_health` on each `/metrics` scrape by resolving `PLATFORM_SHELL`.
+
+- If `PLATFORM_SHELL` is not registered, the scrape still succeeds and omits the platform telemetry series.
+- If resolving `PLATFORM_SHELL` fails for any other reason, the scrape surfaces that failure instead of swallowing it.
+
 ### Disable default process and Node metrics
 
 `defaultMetrics` defaults to `true`, so `MetricsModule.forRoot()` registers Prometheus default process and Node.js collectors once per registry unless you opt out.
@@ -127,6 +152,7 @@ MetricsModule.forRoot({
 - `endpointMiddleware` binds route-scoped middleware only to the scrape endpoint.
 - HTTP metrics default to template-normalized path labels.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
+- Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
 
 ## Related Packages
 

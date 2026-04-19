@@ -140,6 +140,13 @@ MetricsModule.forRoot({
 })
 ```
 
+### 런타임 플랫폼 텔레메트리 스크레이프 계약
+
+플랫폼 텔레메트리는 매 `/metrics` 스크레이프마다 `PLATFORM_SHELL`을 resolve하여 `fluo_component_ready`와 `fluo_component_health`를 갱신합니다.
+
+- `PLATFORM_SHELL` 등록 자체가 빠진 경우에는 스크레이프가 계속 성공하고 플랫폼 텔레메트리 시리즈만 생략됩니다.
+- 그 외의 `PLATFORM_SHELL` resolve 실패는 조용히 삼키지 않고 스크레이프 실패로 그대로 드러납니다.
+
 ### 기본 프로세스/Node 메트릭 비활성화
 
 `defaultMetrics`의 기본값은 `true`입니다. 따라서 별도 설정이 없으면 Registry마다 Prometheus 기본 프로세스/Node.js collector를 한 번 등록합니다. 최소 Registry만 노출하고 싶다면 비활성화하세요.
@@ -158,6 +165,13 @@ MetricsModule.forRoot({
 - 카운터, 게이지, 히스토그램 및 레지스트리 접근을 위한 Prometheus 기반 헬퍼
 
 ### 운영 기본값
+
+- `path`의 기본값은 `'/metrics'`이며, `path: false`로 스크레이프 엔드포인트를 완전히 비활성화할 수 있습니다.
+- `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
+- `endpointMiddleware`는 스크레이프 엔드포인트에만 route-scoped middleware를 바인딩합니다.
+- HTTP 메트릭은 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
+- raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.
+- 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.
 
 ## 관련 패키지
 
