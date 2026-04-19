@@ -90,7 +90,7 @@ Microservice handlers fully support fluo's DI scopes. Request-scoped providers a
 
 ### Custom module registration
 
-Use `MicroservicesModule.forRoot({ transport, module: { ... } })` when you want custom providers, exports, or non-global registration.
+Use `MicroservicesModule.forRoot({ transport, module: { ... } })` when you want custom providers, exports, or non-global registration without dropping back to raw provider arrays.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -120,6 +120,8 @@ Behavioral contract notes:
 - `module.global` lets advanced callers keep the registration local.
 
 ### Provider-array helper
+
+`createMicroservicesProviders(...)` remains available only for callers that truly need the low-level provider array itself.
 
 Use `createMicroservicesProviders(...)` when you need a provider array for custom module assembly.
 
