@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http';
 import { createServer } from 'node:net';
 import { request as httpsRequest } from 'node:https';
 
@@ -451,6 +452,47 @@ describe('@fluojs/platform-fastify', () => {
     await app.close();
   });
 
+  it('does not add CORS headers or preflight handling when cors is false', async () => {
+    @Controller('/ping')
+    class PingController {
+      @Get('/')
+      ping() {
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [PingController] });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const [response, corsPreflight] = await Promise.all([
+      fetch(`http://127.0.0.1:${String(port)}/ping`, {
+        headers: { origin: 'https://example.com' },
+      }),
+      fetch(`http://127.0.0.1:${String(port)}/ping`, {
+        headers: {
+          'access-control-request-method': 'GET',
+          origin: 'https://example.com',
+        },
+        method: 'OPTIONS',
+      }),
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(corsPreflight.status).toBe(404);
+    expect(corsPreflight.headers.get('access-control-allow-origin')).toBeNull();
+
+    await app.close();
+  });
+
   it('reports the configured host in startup logs', async () => {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
@@ -693,6 +735,38 @@ describe('@fluojs/platform-fastify', () => {
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 
+  it('reuses the same in-flight close promise and stays idempotent after shutdown settles', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
+    const deferred = createDeferred<void>();
+    let closeCallCount = 0;
+    const app = {
+      close: () => {
+        closeCallCount += 1;
+        return deferred.promise;
+      },
+      server: {
+        listening: true,
+      },
+    };
+
+    Reflect.set(adapter, 'app', app);
+    Reflect.set(adapter, 'dispatcher', { async dispatch() {} });
+
+    const firstClose = adapter.close();
+    const secondClose = adapter.close();
+
+    expect(closeCallCount).toBe(1);
+
+    deferred.resolve();
+    await Promise.all([firstClose, secondClose]);
+
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+
+    app.server.listening = false;
+    await expect(adapter.close()).resolves.toBeUndefined();
+    expect(closeCallCount).toBe(1);
+  });
+
   it('fails close() when the fastify server does not stop within the shutdown timeout', async () => {
     const adapter = new FastifyHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, 20);
     const deferred = createDeferred<void>();
@@ -771,7 +845,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number | string | null) => undefined as never) as typeof process.exit);
     const port = await findAvailablePort();
     const app = await runFastifyApplication(AppModule, {
       cors: false,
@@ -846,5 +920,61 @@ describe('@fluojs/platform-fastify', () => {
       name: 'FastifyError',
       statusCode: 400,
     }))).toBe(false);
+  });
+
+  it('propagates abort signal when the client disconnects', async () => {
+    const aborted = createDeferred<void>();
+
+    @Controller('/abort')
+    class AbortController {
+      @Get('/')
+      async wait(_input: undefined, context: RequestContext) {
+        await new Promise<void>((resolve) => {
+          context.request.signal?.addEventListener('abort', () => {
+            aborted.resolve();
+            resolve();
+          }, { once: true });
+        });
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [AbortController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    const request = httpRequest({
+      host: '127.0.0.1',
+      method: 'GET',
+      path: '/abort',
+      port,
+    });
+    request.on('error', () => {});
+    request.end();
+
+    setTimeout(() => {
+      request.destroy();
+    }, 20);
+
+    await expect(Promise.race([
+      aborted.promise,
+      new Promise<void>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error('Abort signal was not propagated.'));
+        }, 2_000);
+      }),
+    ])).resolves.toBeUndefined();
+
+    await app.close();
   });
 });
