@@ -636,6 +636,11 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain("import Redis from 'ioredis';");
     expect(appFile).toContain('new RedisStreamsMicroserviceTransport({');
     expect(appFile).toContain('readerClient');
+    expect(appFile).toContain('async get(key)');
+    expect(appFile).toContain('async incr(key)');
+    expect(appFile).toContain('async decr(key)');
+    expect(appFile).toContain('async set(key, value)');
+    expect(appFile).toContain('async xdel(stream, id)');
   });
 
   it('generates a runnable MQTT microservice starter scaffold', async () => {
