@@ -99,7 +99,7 @@ export class WelcomeService {
 }
 ```
 
-이메일 등록은 `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 통해 수행합니다.
+루트 `@fluojs/email` 공개 표면은 의도적으로 module-first입니다. 이메일 등록은 `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 통해 수행해야 합니다.
 
 ## 일반적인 패턴
 
