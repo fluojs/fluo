@@ -1,8 +1,49 @@
-import { Inject } from '@fluojs/core';
-
 import { HealthCheckError } from './errors.js';
-import { TERMINUS_HEALTH_INDICATORS } from './tokens.js';
-import type { HealthCheckReport, HealthIndicator, HealthIndicatorResult, HealthIndicatorState } from './types.js';
+import type {
+  HealthCheckExecutionOptions,
+  HealthCheckReport,
+  HealthIndicator,
+  HealthIndicatorResult,
+  HealthIndicatorState,
+} from './types.js';
+
+type HealthCheckEntry = [string, HealthIndicatorState];
+
+type ExecutedIndicatorResult = {
+  entries: HealthCheckEntry[];
+  indicatorKey: string;
+};
+
+function normalizeIndicatorTimeoutMs(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+
+  return Math.floor(value);
+}
+
+function createTimeoutMessage(timeoutMs: number): string {
+  return `Health indicator timed out after ${String(timeoutMs)}ms.`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(createTimeoutMessage(timeoutMs)));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
 
 function toFailureResult(key: string, error: unknown): HealthIndicatorResult {
   return {
@@ -57,29 +98,113 @@ function inferIndicatorKey(indicator: HealthIndicator, index: number): string {
   return `indicator-${String(index + 1)}`;
 }
 
+function createDuplicateKeyFailureKey(indicatorKey: string, seenKeys: ReadonlySet<string>): string {
+  const baseKey = `${indicatorKey}-duplicate-key-error`;
+
+  if (!seenKeys.has(baseKey)) {
+    return baseKey;
+  }
+
+  let suffix = 2;
+  let candidate = `${baseKey}-${String(suffix)}`;
+
+  while (seenKeys.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseKey}-${String(suffix)}`;
+  }
+
+  return candidate;
+}
+
+function createDuplicateKeyFailure(
+  indicatorKey: string,
+  duplicateKeys: readonly string[],
+  seenKeys: ReadonlySet<string>,
+): HealthCheckEntry {
+  return [
+    createDuplicateKeyFailureKey(indicatorKey, seenKeys),
+    {
+      message: `Indicator produced duplicate result key(s): ${duplicateKeys.join(', ')}.`,
+      status: 'down',
+    },
+  ];
+}
+
+async function runIndicator(
+  indicator: HealthIndicator,
+  index: number,
+  executionOptions: HealthCheckExecutionOptions,
+): Promise<ExecutedIndicatorResult> {
+  const key = inferIndicatorKey(indicator, index);
+  const indicatorTimeoutMs = normalizeIndicatorTimeoutMs(executionOptions.indicatorTimeoutMs);
+
+  try {
+    const result = indicatorTimeoutMs === undefined
+      ? await indicator.check(key)
+      : await withTimeout(indicator.check(key), indicatorTimeoutMs);
+
+    return {
+      entries: Object.entries(normalizeIndicatorResult(key, result)),
+      indicatorKey: key,
+    };
+  } catch (error: unknown) {
+    if (error instanceof HealthCheckError) {
+      return {
+        entries: Object.entries(normalizeIndicatorResult(key, error.causes)),
+        indicatorKey: key,
+      };
+    }
+
+    return {
+      entries: Object.entries(toFailureResult(key, error)),
+      indicatorKey: key,
+    };
+  }
+}
+
+function aggregateIndicatorEntries(checks: readonly ExecutedIndicatorResult[]): HealthCheckEntry[] {
+  const aggregatedEntries: HealthCheckEntry[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const check of checks) {
+    const duplicateKeys: string[] = [];
+
+    for (const entry of check.entries) {
+      const [entryKey] = entry;
+
+      if (seenKeys.has(entryKey)) {
+        duplicateKeys.push(entryKey);
+        continue;
+      }
+
+      seenKeys.add(entryKey);
+      aggregatedEntries.push(entry);
+    }
+
+    if (duplicateKeys.length > 0) {
+      const duplicateFailure = createDuplicateKeyFailure(check.indicatorKey, duplicateKeys, seenKeys);
+      seenKeys.add(duplicateFailure[0]);
+      aggregatedEntries.push(duplicateFailure);
+    }
+  }
+
+  return aggregatedEntries;
+}
+
 /**
  * Run every registered health indicator and aggregate their results.
  *
  * @param indicators Indicator instances to execute for the current health probe.
+ * @param executionOptions Optional timeout guardrails for indicator execution.
  * @returns A structured report containing `info`, `error`, and full `details` maps.
  */
-export async function runHealthCheck(indicators: readonly HealthIndicator[]): Promise<HealthCheckReport> {
-  const checks = (await Promise.all(
-    indicators.map(async (indicator, index) => {
-      const key = inferIndicatorKey(indicator, index);
-
-      try {
-        const result = await indicator.check(key);
-        return Object.entries(normalizeIndicatorResult(key, result));
-      } catch (error: unknown) {
-        if (error instanceof HealthCheckError) {
-          return Object.entries(normalizeIndicatorResult(key, error.causes));
-        }
-
-        return Object.entries(toFailureResult(key, error));
-      }
-    }),
-  )).flat();
+export async function runHealthCheck(
+  indicators: readonly HealthIndicator[],
+  executionOptions: HealthCheckExecutionOptions = {},
+): Promise<HealthCheckReport> {
+  const checks = aggregateIndicatorEntries(
+    await Promise.all(indicators.map((indicator, index) => runIndicator(indicator, index, executionOptions))),
+  );
 
   const details = Object.fromEntries(checks);
   const infoEntries = checks.filter(([, result]) => result.status === 'up');
@@ -115,9 +240,11 @@ export function assertHealthCheck(report: HealthCheckReport, message = 'Health c
 }
 
 /** Service facade that resolves and runs the health indicators registered in Terminus. */
-@Inject(TERMINUS_HEALTH_INDICATORS)
 export class TerminusHealthService {
-  constructor(private readonly indicators: readonly HealthIndicator[]) {}
+  constructor(
+    private readonly indicators: readonly HealthIndicator[],
+    private readonly executionOptions: HealthCheckExecutionOptions = {},
+  ) {}
 
   /**
    * Execute all registered indicators once.
@@ -125,7 +252,7 @@ export class TerminusHealthService {
    * @returns The aggregated health report for this check cycle.
    */
   async check(): Promise<HealthCheckReport> {
-    return runHealthCheck(this.indicators);
+    return runHealthCheck(this.indicators, this.executionOptions);
   }
 
   /**
