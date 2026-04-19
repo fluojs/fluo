@@ -76,7 +76,7 @@ await runNodejsApplication(AppModule, {
 - `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
 - `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
 - `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
-- `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`.
+- `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/runtime/node`.
 
 ## Related Packages
 
