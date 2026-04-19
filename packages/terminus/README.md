@@ -88,6 +88,21 @@ TerminusModule.forRoot({
 });
 ```
 
+### Execution Guardrails
+
+Use `execution.indicatorTimeoutMs` when custom indicators might hang or depend on slow downstreams. When a probe exceeds the configured timeout, Terminus marks that indicator as `down` instead of waiting forever.
+
+```typescript
+TerminusModule.forRoot({
+  execution: {
+    indicatorTimeoutMs: 1_500,
+  },
+  indicators: [
+    new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+  ],
+});
+```
+
 ### Failure Semantics
 
 When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthService` aggregates these failures into a report:
@@ -96,6 +111,7 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - `/ready` returns HTTP `503` if any indicator associated with readiness fails.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
+- If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
 
 ## Public API Overview
 
