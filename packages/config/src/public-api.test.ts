@@ -11,6 +11,7 @@ describe('@fluojs/config public API surface', () => {
     expect(configPublicApi).toHaveProperty('ConfigService');
     expect(configPublicApi).toHaveProperty('createConfigReloader');
     expect(configPublicApi).toHaveProperty('loadConfig');
+    expect(configPublicApi).not.toHaveProperty('replaceConfigServiceSnapshot');
   });
 
   it('keeps ConfigService read-only from the public API', () => {
