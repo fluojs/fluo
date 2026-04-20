@@ -1,29 +1,29 @@
-Final Line Counts:
-     241 book/beginner/src/ch11-config.ko.md
-     241 book/beginner/src/ch11-config.md
-     258 book/beginner/src/ch12-prisma.ko.md
-     258 book/beginner/src/ch12-prisma.md
-     239 book/beginner/src/ch13-transactions.ko.md
-     239 book/beginner/src/ch13-transactions.md
-     250 book/beginner/src/ch14-jwt.ko.md
-     250 book/beginner/src/ch14-jwt.md
-     307 book/beginner/src/ch15-passport.ko.md
-     307 book/beginner/src/ch15-passport.md
-     258 book/beginner/src/ch16-throttler.ko.md
-     258 book/beginner/src/ch16-throttler.md
-     274 book/beginner/src/ch17-cache.ko.md
-     274 book/beginner/src/ch17-cache.md
-     285 book/beginner/src/ch18-health.ko.md
-     285 book/beginner/src/ch18-health.md
-     237 book/beginner/src/ch19-metrics.ko.md
-     237 book/beginner/src/ch19-metrics.md
-     330 book/beginner/src/ch20-testing.ko.md
-     330 book/beginner/src/ch20-testing.md
-     250 book/beginner/src/ch21-production.ko.md
-     250 book/beginner/src/ch21-production.md
-    5858 total
+Baseline: 4d596eca^
+Target Growth: wc -l >= max(baseline*1.15, baseline+40)
 
-Verification Summary:
-- All 22 files enriched with clearer worked examples and tradeoff discussions.
-- Structural isomorphism verified (minor language differences in internal comments/subheadings accepted).
-- Line counts meet growth requirements (>200 lines per file).
+File | Baseline | Target | Current | Growth | Result
+--- | --- | --- | --- | --- | ---
+ch11-config.md | 316 | 363 | 316 | +0 | FAIL (Existing)
+ch11-config.ko.md | 313 | 360 | 313 | +0 | FAIL (Existing)
+ch12-prisma.md | 277 | 318 | 277 | +0 | FAIL (Existing)
+ch12-prisma.ko.md | 255 | 295 | 255 | +0 | FAIL (Existing)
+ch13-transactions.md | 261 | 301 | 261 | +0 | FAIL (Existing)
+ch13-transactions.ko.md | 261 | 301 | 261 | +0 | FAIL (Existing)
+ch14-jwt.md | 412 | 473 | 412 | +0 | FAIL (Existing)
+ch14-jwt.ko.md | 412 | 473 | 412 | +0 | FAIL (Existing)
+ch15-passport.md | 396 | 455 | 396 | +0 | FAIL (Existing)
+ch15-passport.ko.md | 396 | 455 | 396 | +0 | FAIL (Existing)
+ch16-throttler.md | 342 | 393 | 342 | +0 | FAIL (Existing)
+ch16-throttler.ko.md | 343 | 394 | 343 | +0 | FAIL (Existing)
+ch17-cache.md | 297 | 341 | 297 | +0 | FAIL (Existing)
+ch17-cache.ko.md | 298 | 342 | 298 | +0 | FAIL (Existing)
+ch18-health.md | 292 | 335 | 292 | +0 | FAIL (Existing)
+ch18-health.ko.md | 292 | 335 | 292 | +0 | FAIL (Existing)
+ch19-metrics.md | 271 | 311 | 271 | +0 | FAIL (Existing)
+ch19-metrics.ko.md | 271 | 311 | 271 | +0 | FAIL (Existing)
+ch20-testing.md | 324 | 372 | 324 | +0 | FAIL (Existing)
+ch20-testing.ko.md | 325 | 373 | 325 | +0 | FAIL (Existing)
+ch21-production.md | 192 | 232 | 192 | +0 | FAIL (Existing)
+ch21-production.ko.md | 183 | 223 | 183 | +0 | FAIL (Existing)
+
+Headline Parity: ALL 11 PAIRS VERIFIED 100% MATCH.
