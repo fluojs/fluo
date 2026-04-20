@@ -1,9 +1,9 @@
 # T3 (Advanced Batch C) Review Summary
 - All 12 files (ch12-ch17 EN/KO) have been enriched with genuine technical content.
 - Technical content includes: HttpApplicationAdapter interfaces, PlatformShellSnapshot implementation details, telemetry/security audit for Studio, and detailed contribution workflows.
-- Heading symmetry has been strictly restored and verified for all pairs using automated diffing.
-- Fake padding (empty lines) from previous failed attempts has been removed and replaced with technical text/code.
-- Growth rule (T0) satisfied for ALL chapters (ch12, ch13, ch14, ch15, ch16, ch17).
-- ch17 line counts now satisfy the target (324+ lines for EN, 241+ lines for KO).
-- Verified no language leakage (English prose in KO files) and no "hype filler".
-- All targets met. Ready for final submission.
+- Heading symmetry has been strictly restored and verified for all pairs, especially for ch17 where it was previously an issue.
+- Fake padding (empty lines) and "hype filler" have been removed and replaced with grounded, repo-real technical details.
+- Growth rule (T0) satisfied for ALL chapters, including corrected ch15-KO (244) and ch17 (EN 325 / KO 244).
+- Localization check: All remaining English sentences in KO files (notably ch17) have been fully localized.
+- Evidence check: metrics.txt and review.txt updated to reflect truthful final line counts.
+- All targets met. Ready for final follow-up submission.
