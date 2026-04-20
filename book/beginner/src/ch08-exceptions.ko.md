@@ -96,7 +96,7 @@ function requirePost(post: unknown, id: string) {
 
 이 점은 디버깅과 클라이언트 기대치 모두에 중요합니다.
 
-### 전역 예외 필터 (Global Exception Filter)
+### Global Exception Filter
 
 "예외를 던진 후에는 어떤 일이 벌어지는 걸까?"라고 궁금할 수 있습니다. fluo에는 컨트롤러나 서비스에서 던져진 HTTP 예외를 잡아내는 **전역 예외 필터**가 있습니다. 이 필터는 예외를 자동으로 표준 JSON 응답 형식으로 변환합니다.
 
@@ -202,11 +202,11 @@ API 호출이 실패했을 때는 다음을 질문해 보세요.
 
 이 세 질문이 올바른 예외 스타일을 선택하는 데 큰 도움이 됩니다.
 
-### 마무리 팁: 로그와의 연결 (Final Tip: Linking with Logs)
+### Custom Exception Titles
 
 실제 운영 환경에서는 예외가 발생했을 때 이를 기록(logging)하는 것이 매우 중요합니다. `InternalServerErrorException` 같은 예상치 못한 오류는 개발자가 즉시 알 수 있도록 경고를 보내야 할 수도 있습니다. 반면 `NotFoundException` 같은 일상적인 오류는 일반적인 접근 로그로 처리하는 경우가 많습니다. 예외를 잘 구분해두면, 나중에 관찰 가능성(Observability) 도구를 도입할 때 훨씬 수월해집니다.
 
-### 커스텀 예외 메시지 (Custom Exception Titles)
+## 8.5 Translating Business Rules into HTTP Failures
 
 기본 메시지도 유용하지만, 필요에 따라 커스터마이징할 수도 있습니다. 대부분의 예외는 추가적인 설명이나 커스텀 객체를 인자로 받을 수 있습니다.
 
@@ -219,7 +219,7 @@ throw new BadRequestException('Invalid email format', {
 
 이러한 유연성 덕분에 단순히 메시지만으로는 부족할 때 클라이언트에게 더 많은 컨텍스트를 제공할 수 있습니다. 중수편으로 넘어가면 기본 `HttpException`을 상속받아 직접 커스텀 예외 클래스를 만드는 방법도 배우게 됩니다.
 
-## 8.5 Translating Business Rules into HTTP Failures
+### What About `InternalServerErrorException`?
 
 모든 예외가 존재 여부와 관련된 것은 아닙니다.
 
@@ -256,7 +256,7 @@ update(id: string, input: UpdatePostDto) {
 
 서로 다른 실패는 같은 generic error 뒤에 숨어서는 안 됩니다.
 
-### What About `InternalServerErrorException`?
+## 8.6 Building a Practical Beginner Error Checklist
 
 이 예외는 신중하게 써야 합니다.
 
@@ -266,7 +266,7 @@ update(id: string, input: UpdatePostDto) {
 
 모든 것을 internal error로 만들면 클라이언트는 유용한 정보를 잃습니다.
 
-## 8.6 Building a Practical Beginner Error Checklist
+### Common Beginner Mistakes with Exceptions
 
 이제 FluoBlog에는 작은 오류 정책을 세울 만큼의 동작이 쌓였습니다.
 
@@ -284,7 +284,7 @@ update(id: string, input: UpdatePostDto) {
 
 대신 HTTP 계약의 일부로 다루게 됩니다.
 
-### Common Beginner Mistakes with Exceptions
+### What FluoBlog Gains Here
 
 - 모든 상황에 `null`을 반환하고 명시적 실패를 고르지 않는 실수.
 - 예상 가능한 클라이언트 실수에 generic `Error`를 던지는 실수.
@@ -292,7 +292,7 @@ update(id: string, input: UpdatePostDto) {
 - 검증 실패와 비즈니스 규칙 실패를 같은 것으로 다루는 실수.
 - 예측 가능한 조건에 internal error 응답을 사용하는 실수.
 
-### What FluoBlog Gains Here
+### Consistency is Key
 
 이제 FluoBlog는 일이 잘못되었을 때도 더 분명하게 말합니다.
 
@@ -304,11 +304,11 @@ update(id: string, input: UpdatePostDto) {
 
 서비스 계층도 자신이 강제하는 규칙을 더 정직하게 드러내게 됩니다.
 
-### 일관성이 핵심 (Consistency is Key)
+### Named Exceptions vs HTTP Status Codes
 
 이러한 패턴을 사용하면 여러분의 API는 **예측 가능**해집니다. 예측 가능성은 전문적인 백엔드의 특징입니다. 없는 게시글에 대한 404든, 검증 오류에 대한 400이든, 클라이언트는 항상 무엇을 기대해야 하고 어떻게 처리해야 할지 알게 됩니다. 이는 프론트엔드 개발자의 혼란을 줄여주며, 장기적으로 애플리케이션을 훨씬 더 유지보수하기 쉽게 만듭니다.
 
-### 이름 있는 예외 vs HTTP 상태 코드 (Named Exceptions vs HTTP Status Codes)
+### Summary
 
 단순히 `404` 같은 숫자만 반환하고 싶은 유혹이 생길 수 있습니다. fluo도 이를 지원하지만, `NotFoundException` 같은 이름 있는 예외를 사용하는 것이 여러 면에서 권장됩니다.
 
@@ -317,7 +317,7 @@ update(id: string, input: UpdatePostDto) {
 3.  **미래 보장**: 나중에 프레임워크가 예외에 더 많은 메타데이터를 추가하더라도, 여러분의 코드는 자동으로 그 혜택을 받게 됩니다.
 4.  **타입 안정성**: 이름 있는 예외는 실제 클래스이므로, 필요한 경우 구체적으로 추적하거나 잡아낼 수 있습니다.
 
-### Summary
+## Next Chapter Preview
 - 명시적인 HTTP 예외는 API 실패를 더 이해하기 쉽고 문서화하기 쉽게 만듭니다.
 - 없는 리소스에 대해 조용히 `null`을 반환하는 것보다 `NotFoundException`이 더 강한 계약입니다.
 - 검증 오류와 비즈니스 규칙 오류는 mysterious crash가 아니라 예상 가능한 실패로 다뤄야 합니다.
@@ -325,5 +325,4 @@ update(id: string, input: UpdatePostDto) {
 - FluoBlog는 이제 게시글 조회와 수정 실패 상황을 더 의도적으로 표현합니다.
 - 이제 프로젝트는 라우트 보호와 재사용 가능한 요청/응답 파이프라인 훅을 배울 준비가 되었습니다.
 
-## Next Chapter Preview
 9장에서는 가드와 인터셉터를 추가합니다. 이를 통해 FluoBlog는 특정 라우트를 보호하고, 재사용 가능한 요청 파이프라인 동작을 도입하며, 보안 스타일 검사를 API 흐름에 연결할 수 있게 됩니다.

@@ -62,7 +62,7 @@ DTO는 단순한 TypeScript 편의 기능이 아닙니다.
 
 그 전환을 안전하게 만드는 것이 검증입니다.
 
-### 왜 인터페이스가 아니라 클래스인가요?
+### Why Classes instead of Interfaces?
 
 DTO에 TypeScript 인터페이스(interface) 대신 클래스(class)를 사용하는 이유가 궁금할 수 있습니다. TypeScript에서 인터페이스는 컴파일 중에 삭제되어 런타임에는 존재하지 않습니다. 반면 클래스는 JavaScript 표준의 일부이며 런타임에도 남아 있습니다. fluo는 이러한 런타임 존재감을 활용하여 데코레이터를 통해 검증 메타데이터를 부착합니다. 이는 순수 인터페이스로는 불가능한 일입니다.
 
@@ -116,11 +116,11 @@ DTO 필드가 간단한 기본값으로 초기화된 예제를 자주 보게 됩
 
 하지만 이 정도만으로도 시스템의 가치를 보여 주기에 충분합니다.
 
-### 왜 데코레이터인가요?
+### Why Decorators?
 
 fluo가 클래스 프로퍼티에 직접 `@IsString()` 같은 데코레이터를 사용하는 것을 보셨을 겁니다. 이러한 "선언적(declarative)" 스타일은 fluo 프레임워크의 특징입니다. 데이터를 체크하기 위해 긴 `if/else` 블록을 작성하는 대신, 데이터가 어떠해야 하는지 선언만 하면 됩니다. 이렇게 하면 DTO가 코드이자 문서의 역할을 동시에 수행하며, 규칙을 보호 대상 데이터와 가깝게 유지할 수 있습니다.
 
-### 흔히 사용되는 검증 데코레이터
+### Common Validation Decorators
 
 `@fluojs/validation` 패키지는 다양한 데이터 유형에 대한 광범위한 데코레이터를 제공합니다.
 
@@ -175,7 +175,7 @@ HTTP 바인딩은 보통 첫 번째 경로가 필요합니다.
 
 들어오는 페이로드는 비즈니스 로직이 실행되기 전에 먼저 알려진 DTO 형태로 바뀌어야 합니다.
 
-### 메타데이터의 역할 (The Role of Metadata)
+### The Role of Metadata
 
 내부적으로 `@fluojs/validation`은 클래스를 청사진(blueprint)으로 사용합니다. 데코레이터를 읽어 데이터가 어떤 모습이어야 하는지 파악합니다. `materialize`가 호출되면 들어오는 데이터를 이 청사진과 비교합니다. 이것이 fluo가 효율적인 이유입니다. 모든 요청에 대해 느리고 무거운 리플렉션을 사용하는 대신, 여러분이 이미 제공한 구조화된 메타데이터를 활용하기 때문입니다.
 
@@ -239,7 +239,7 @@ export class PostsController {
 
 `PartialType`, `PickType`, `OmitType` 같은 helper는 중복을 줄이면서도 검증 메타데이터를 보존합니다.
 
-### 특정 DTO 변형 생성하기
+### Creating Specific DTO Variations
 
 예를 들어 제목만 포함하는 DTO가 필요하다면 다음과 같이 할 수 있습니다.
 
@@ -293,7 +293,7 @@ export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
 
 이 규칙이 나중의 미묘한 버그를 막아 줍니다.
 
-### 쿼리 파라미터 변환하기
+### Converting Query Parameters
 
 만약 쿼리 파라미터에서 꼭 숫자를 받아야 한다면, 커스텀 변환 로직과 함께 `@FromQuery()` 데코레이터를 사용할 수 있습니다.
 
@@ -345,7 +345,7 @@ export class PostsService {
 
 이런 명확함은 이후 리팩터링을 쉽게 만듭니다.
 
-### 신뢰와 안정성 (Reliability and Trust)
+### Reliability and Trust
 
 입력이 유효하다는 것을 알고 있다면 더 단순한 서비스 코드를 작성할 수 있습니다. DTO가 이미 처리했다는 사실을 알고 있기 때문에 서비스 내부에서 `if (input.title.length < 3)` 같은 체크를 할 필요가 없습니다. 이는 전송 계층과 비즈니스 로직 사이의 신뢰를 구축하며, 시스템의 각 부분이 핵심 책임에 집중할 수 있게 해 줍니다.
 

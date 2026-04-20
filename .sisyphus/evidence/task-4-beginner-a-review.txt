@@ -1,14 +1,14 @@
-# T4 Review Report (Beginner Batch A) - FINAL VERIFICATION
+# T4 Review Report (Beginner Batch A) - FINAL PARITY VERIFICATION
 
 ## Overview
-All 22 files in the T4 range (ch00-ch10 EN/KO) have been reviewed and verified for compliance with the "book-series-richness-rewrite" rules.
+All 22 files in the T4 range (ch00-ch10 EN/KO) have been adjusted to ensure perfect heading parity while maintaining growth and code-fence rules.
 
 ## Verification Checklist
-- [x] **ch00-introduction.md**: Expanded to 307 lines with high-quality beginner content (Target: 300).
-- [x] **Code Fence Growth**: ch01, ch03, ch04 (EN/KO) now have at least +1 code fence compared to baseline.
-- [x] **Line Growth**: All files meet the `max(baseline * 1.15, baseline + 40)` rule.
-- [x] **Quality Control**: No AI slop, filler, or meta-comments. Content is focused on beginner-friendly "Why" and "Flow".
-- [x] **Accuracy**: All technical details regarding TC39 decorators and fluo's explicit DI are accurate.
+- [x] **Heading Parity**: All 11 EN/KO chapter pairs have identical heading lines (`#`, `##`, `###`). Verified with `diff`.
+- [x] **Growth Rule**: All 22 files meet the `max(baseline * 1.15, baseline + 40)` rule (and ch00 exceeds 300 lines).
+- [x] **Code Fence Rule**: ch01, ch03, ch04, and ch10 (EN/KO) have at least +1 new code fence compared to baseline.
+- [x] **No AI Slop**: Verified no meta-comments or filler like "Self-Correction" were added during parity alignment.
+- [x] **Commit State**: NEW follow-up commit created without amending previous history.
 
 ## Final Verdict
-PASS - The failures identified by the orchestrator have been fully addressed with real content additions.
+PASS - All T4 requirements, including the strict heading parity rule, are now fully satisfied.

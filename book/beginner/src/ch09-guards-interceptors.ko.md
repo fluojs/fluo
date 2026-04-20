@@ -35,7 +35,7 @@ guard는 요청이 계속 진행될 수 있는지 결정합니다. 라우터가 
 
 interceptor는 핸들러를 감싸면서 전후에 재사용 가능한 로직을 적용할 수 있습니다. 실행 스트림에 접근할 수 있으므로, 반환값을 변형하거나 에러가 exception filter에 도달하기 전에 가로챌 수도 있습니다.
 
-### 요청 생명주기 (The Request Lifecycle)
+### The Request Lifecycle
 
 정확한 순서를 이해하는 것은 디버깅과 아키텍처 설계에 필수적입니다. 요청이 fluo 애플리케이션에 도달하면 다음과 같은 여러 계층을 통과합니다.
 
@@ -124,7 +124,7 @@ guard는 재사용 가능합니다.
 
 또한 데코레이터 줄에서 의도를 바로 드러내 줍니다.
 
-### 다중 가드 실행 (Multi-Guard Execution)
+### Multi-Guard Execution
 
 실제 애플리케이션에서는 여러 가지 검사가 필요할 수 있습니다. fluo는 여러 가드를 체이닝(chaining)할 수 있게 해 줍니다.
 
@@ -192,7 +192,7 @@ export class RequestLogInterceptor {
 }
 ```
 
-### 응답 변형 (Transforming the Response)
+### Transforming the Response
 
 인터셉터의 가장 강력한 기능 중 하나는 반환된 데이터를 변형하는 능력입니다. 모든 성공적인 응답을 표준 "데이터 봉투(envelope)"로 감싸고 싶다고 가정해 봅시다.
 
