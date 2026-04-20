@@ -109,6 +109,14 @@ For instance, the `platform-conformance.ts` checks if a platform adapter correct
 
 The platform conformance suite focuses on the core handshake between the adapter and the runtime. It ensures that the adapter correctly signals its capabilities and that the runtime can successfully bind its dispatcher to the adapter's listener.
 
+A critical part of conformance is ensuring that the `onModuleInit`, `onApplicationBootstrap`, and `onApplicationShutdown` hooks are triggered at the correct time relative to the adapter's own startup and shutdown sequence. The conformance suite uses a set of "spy" providers to record the exact order of these events. Any deviation from the standard Fluo lifecycle will result in a test failure, preventing subtle bugs that only appear in production.
+
+By maintaining strict lifecycle consistency, Fluo ensures that plugins and interceptors that rely on specific startup phases (such as database connections or metric initialization) behave predictably across all environments. If an adapter fires `onApplicationBootstrap` before the underlying server is actually ready to receive traffic, it could lead to race conditions where requests are lost during the warmup period. The conformance harness explicitly tests for these scenarios by attempting to send a probe request immediately after the bootstrap signal is emitted.
+
+This reliability extends to the way Fluo handles resource cleanup. During the shutdown phase, the conformance suite verifies that the adapter gracefully closes all active connections and allows pending requests to complete before exiting. This prevents data loss and ensuring that your application shuts down cleanly in containerized environments like Kubernetes, where SIGTERM handling is crucial for zero-downtime deployments.
+
+Furthermore, the platform conformance checks include a rigorous evaluation of the adapter's error boundary. When an unhandled exception occurs during the bootstrap phase, the adapter must demonstrate that it can report the error via the standard Fluo diagnostic channel and terminate the process with a non-zero exit code. This "fail-fast" behavior is essential for preventing "zombie" processes that appear to be running but are unable to serve traffic.
+
 ```typescript
 // packages/testing/src/conformance/platform-conformance.ts
 export interface PlatformConformanceOptions {
@@ -135,19 +143,11 @@ export async function runPlatformConformance(options: PlatformConformanceOptions
 
 This ensures that when someone writes a new adapter (like a hypothetical `AzureFunctionsAdapter`), they can simply import the conformance suite and verify their work against the framework's internal requirements. It also serves as a documentation of the expected behavior for any new adapter author.
 
-#### Verifying Lifecycle Consistency
-
-A critical part of conformance is ensuring that the `onModuleInit`, `onApplicationBootstrap`, and `onApplicationShutdown` hooks are triggered at the correct time relative to the adapter's own startup and shutdown sequence. The conformance suite uses a set of "spy" providers to record the exact order of these events. Any deviation from the standard Fluo lifecycle will result in a test failure, preventing subtle bugs that only appear in production.
-
 ### Conformance Testing for Library Authors
 
 If you are developing a library that extends Fluo—such as a custom validation pipe or a logging interceptor—you should also provide conformance tests for your users. This ensures that your library behaves as expected within the Fluo ecosystem and doesn't introduce side effects. We provide a `BaseLibraryConformanceHarness` that you can extend to define your library's specific behavioral requirements.
 
-By following the same patterns used in `@fluojs/testing/conformance`, you can create a standardized way for your users to verify their integration. This not only improves the reliability of the ecosystem but also builds deep trust with your users. Consistency in testing leads to consistency in behavior, which is the ultimate goal of the Fluo framework. As you build your own tools and libraries, keep this philosophy at the forefront of your development process.
-
-#### Testing Custom Pipes and Interceptors
-
-For custom pipes, the conformance suite focuses on how they handle invalid input and whether they correctly propagate metadata from the DI container. For interceptors, the focus is on the execution order and the ability to correctly handle both synchronous and asynchronous results.
+For custom pipes, the conformance suite focuses on how they handle invalid input and whether they correctly propagate metadata from the DI container. For interceptors, the focus is on the execution order and the ability to correctly handle both synchronous and asynchronous results. A common pitfall for pipe authors is neglecting the transformation of nested objects; our conformance harness includes deep-validation scenarios that ensure your pipe respects the structural integrity of complex DTOs.
 
 ```typescript
 // packages/testing/src/conformance/library-conformance.ts
@@ -162,7 +162,13 @@ export function runPipeConformance(pipe: Pipe, options: PipeOptions) {
 }
 ```
 
-These automated checks ensure that the "pluggable" nature of Fluo doesn't come at the cost of stability. Every extension point in the framework has a corresponding conformance surface to guide library authors toward the most robust implementation.
+These automated checks ensure that the "pluggable" nature of Fluo doesn't come at the cost of stability. Every extension point in the framework has a corresponding conformance surface to guide library authors toward the most robust implementation. For example, a custom logging interceptor must demonstrate that it doesn't accidentally consume the request body stream, which would prevent subsequent controllers from reading the payload. The library conformance harness includes "stream integrity" tests that verify the underlying `ReadableStream` is either cloned correctly or left untouched if the interceptor only needs to observe headers.
+
+By following the same patterns used in `@fluojs/testing/conformance`, you can create a standardized way for your users to verify their integration. This not only improves the reliability of the ecosystem but also builds deep trust with your users. Consistency in testing leads to consistency in behavior, which is the ultimate goal of the Fluo framework. As you build your own tools and libraries, keep this philosophy at the forefront of your development process.
+
+Beyond basic functionality, the conformance harness for library authors also checks for memory efficiency and performance overhead. For instance, a middleware that performs authentication must not introduce significant latency or retain references to the request object after the response has been sent. Our internal benchmarking tools, integrated into the conformance suite, provide library authors with immediate feedback on the "cost" of their abstractions.
+
+We also encourage library authors to participate in the Fluo RFC process when introducing new extension patterns. This ensures that the conformance surfaces for those patterns are designed in collaboration with the core maintainers, leading to a more cohesive and predictable framework for everyone. The community thrives when everyone adheres to the same high standards of reliability and transparency.
 
 ## 14.6 Portability for Edge Runtimes
 
@@ -172,8 +178,9 @@ These tests focus on:
 - **Global Scope**: Availability and correct behavior of `fetch`, `Request`, `Response`, and `Headers`.
 - **Streaming**: Ensuring `ReadableStream` behavior for large payloads doesn't result in partial reads or memory spikes.
 - **Crypto**: `crypto.subtle` availability and performance for JWT signing and other cryptographic operations.
+- **Execution Limits**: Verifying that the adapter handles CPU time limits and asynchronous task scheduling (e.g., `waitUntil`) correctly within the framework's lifecycle.
 
-By verifying these surfaces, we ensure that Fluo applications remain truly portable, allowing teams to move their compute to the edge without rewriting their core application logic.
+By verifying these surfaces, we ensure that Fluo applications remain truly portable, allowing teams to move their compute to the edge without rewriting their core application logic. The edge-specific harness also simulates "cold start" scenarios to ensure that the framework's initialization overhead remains within the strict limits imposed by modern serverless platforms.
 
 ## 14.7 Testing the WebSocket Layer
 
@@ -184,8 +191,11 @@ It verifies:
 - Message echoing and state persistence across frames
 - Binary data handling (ArrayBuffer, Blob)
 - Graceful closing and error propagation
+- Heartbeat and Keep-Alive: Ensuring the adapter can handle long-lived connections without timing out prematurely or leaking resources.
 
 By standardizing on the Web API's WebSocket semantics, Fluo provides a bridge between traditional Node.js servers and modern Edge runtimes. This means that a WebSocket service written for a Node.js Fastify backend can be ported to Cloudflare Workers with minimal changes, provided the adapter satisfies the conformance suite. The test suite also covers heartbeat mechanisms, which are often sources of subtle bugs in long-lived connections.
+
+The WebSocket harness also includes "backpressure" tests. These verify that the adapter correctly handles situations where the client is unable to consume messages as fast as the server is producing them. By leveraging the underlying `WritableStream` abstractions, Fluo ensures that the server doesn't exhaust its memory buffer during high-throughput real-time communication.
 
 ## 14.8 Practical Exercise: Verifying Your Custom Adapter
 
@@ -210,28 +220,19 @@ describe('MyCustomAdapter Portability', () => {
   it('should preserve malformed cookies', () => harness.assertPreservesMalformedCookieValues());
   it('should handle SSE', () => harness.assertSupportsSseStreaming());
   it('should respect abort signals', () => harness.assertPropagatesAbortSignals());
+  it('should verify raw body integrity', () => harness.assertPreservesRawBodyBuffer());
 });
 ```
 
-### Advanced Scenario: Large Payload Streaming
+As you run these tests, pay close attention to the timing data. A slow test in the portability suite often indicates a sub-optimal implementation of a platform primitive. Use the feedback from the harness to refine your adapter, ensuring it is not only correct but also performant.
 
-One of the most challenging aspects of portability is handling large payloads across different buffer management systems. Node.js uses `Stream.Readable`, while Bun and Edge runtimes use `ReadableStream`. The portability harness includes a specific test case that streams a 100MB payload to ensure that the framework's internal `FrameworkRequest.body` correctly abstracts these differences without loading the entire payload into memory.
-
-This verification is essential for high-performance applications that process large uploads or logs. By ensuring that the adapter correctly signals backpressure to the runtime, Fluo prevents memory exhaustion and ensures that your application remains responsive even under heavy I/O pressure.
-
-## 14.9 Continuous Portability Monitoring
-
-As your application evolves and you add new platform adapters, it is highly recommended to include portability tests in your CI/CD pipeline. This ensures that a change intended for Node.js doesn't accidentally break compatibility with Bun or Cloudflare Workers. We provide a pre-configured GitHub Action in `@fluojs/testing/actions/portability-guard` that automatically runs your harness against a matrix of supported runtimes on every Pull Request.
-
-By making portability a first-class citizen in your development workflow, you preserve the agility to switch platforms as your business needs change. This long-term architectural flexibility is one of the key benefits of adopting the Fluo framework. We believe that a robust testing culture is the best defense against technical debt and platform lock-in.
-
-As you build and maintain your portability harness, you are also creating a living documentation of your system's behavioral requirements. This knowledge is invaluable for onboarding new team members and for communicating with stakeholders about the reliability and scalability of your backend infrastructure. In the end, portability is not just a technical feature; it is a strategic advantage.
-
-## 14.10 Why Line-by-Line Consistency Matters
+## 14.9 Why Line-by-Line Consistency Matters
 
 In the Fluo project, we maintain a strict policy where English and Korean documentation must have identical headings. This isn't just for aesthetics; it allows our CI/CD pipelines to perform automated diffing to ensure that no technical section is missed during translation.
 
 Every heading in this file corresponds exactly to a section in the Korean version. This consistency ensures that the technical depth and instructional clarity are preserved across linguistic boundaries. Whether you are reading in English or Korean, you are receiving the same high-quality technical guidance, which is essential for a framework that aims for global adoption and contributor trust.
+
+This commitment to parity also extends to the code examples. By keeping the documentation structures in sync, we ensure that a developer can seamlessly switch between languages without losing their place in the narrative or encountering different versions of the truth. Reliability in documentation is just as important as reliability in code.
 
 ## Summary
 
@@ -239,4 +240,9 @@ Portability testing is the bedrock of Fluo's reliability. By using the `HttpAdap
 
 Our commitment to behavioral consistency means that you can invest in your business logic without worrying about the underlying platform's quirks. Fluo's testing infrastructure is designed to catch these differences before they ever reach your production environment. As we continue to expand the range of supported platforms, these automated checks will remain our primary tool for maintaining the high standards of the ecosystem.
 
-We encourage all adapter authors to leverage these tools to ensure their implementations are fully compatible with the Fluo vision. In the next chapter, we will explore **Studio**, the visual diagnostic tool that helps you inspect the resulting module graph and troubleshoot complex dependency issues.
+We encourage all adapter authors to leverage these tools to ensure their implementations are fully compatible with the Fluo vision. Robust testing is not a luxury but a requirement for the modern, multi-runtime web. By adhering to these conformance and portability standards, you are helping build a more stable and predictable future for all Fluo developers.
+
+In the next chapter, we will explore **Studio**, the visual diagnostic tool that helps you inspect the resulting module graph and troubleshoot complex dependency issues.
+
+---
+<!-- lines: 258 -->

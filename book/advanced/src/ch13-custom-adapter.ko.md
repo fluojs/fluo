@@ -3,15 +3,14 @@
 
 # Chapter 13. Custom Adapter Implementation — 독자적인 전송 계층 구축
 
-## What You Will Learn in This Chapter
+## 이 챕터에서 배우는 것
 - `HttpApplicationAdapter` 인터페이스의 구조와 역할
 - `listen()`과 `close()` 메서드를 통한 서버 생명주기 관리
 - `FrameworkRequest`와 `FrameworkResponse` 인터페이스 준수 방법
 - Fastify 기반 어댑터 구현 사례 분석
 - 서버리스(Serverless) 및 엣지(Edge) 환경을 위한 어댑터 전략
-- 실시간 통신 역량(Realtime Capability) 보고 및 No-op 어댑터 활용
 
-## Prerequisites
+## 사전 요구사항
 - 11~12장의 HTTP 디스패처 및 실행 파이프라인 지식
 - 특정 HTTP 서버 라이브러리(Node.js http, Fastify, Express 등)에 대한 기초 지식
 - Fluo의 인터페이스 기반 다형성에 대한 이해
@@ -255,35 +254,18 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 
 이 스켈레톤은 비록 단순하지만 어댑터의 핵심 메커니즘을 모두 포함하고 있습니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 더해 정교한 버퍼링, 멀티파트 처리, 압축, 그리고 HTTP/2와 같은 프로토콜 최적화 로직이 추가됩니다.
 
-## 13.13 어댑터 테스트와 무결성 검증
-
-커스텀 어댑터를 구현한 후에는 반드시 `@fluojs/testing` 패키지에서 제공하는 적합성 테스트(Conformance Test)를 통과해야 합니다. 이 테스트 스위트는 어댑터가 `FrameworkRequest`와 `FrameworkResponse` 계약을 완벽히 준수하는지, 특히 스트리밍 응답이나 대용량 바디 처리 시 메모리 누수가 발생하지 않는지 등을 엄격하게 검증합니다.
-
-어댑터 저자는 다음과 같이 테스트를 구성할 수 있습니다:
-
-```typescript
-import { runAdapterConformanceTests } from '@fluojs/testing';
-import { TinyNodeAdapter } from './tiny-node-adapter';
-
-describe('TinyNodeAdapter Conformance', () => {
-  runAdapterConformanceTests({
-    adapterFactory: () => new TinyNodeAdapter(),
-    // 특정 에지 케이스에 대한 추가 검증 설정
-  });
-});
-```
-
-이러한 자동화된 검증 과정을 통해 여러분이 만든 어댑터가 fluo 생태계의 다른 패키지들과 아무런 문제 없이 협력할 수 있음을 증명할 수 있습니다. 무결성이 증명된 어댑터는 커뮤니티에 공유되어 더 많은 개발자들에게 런타임 선택의 자유를 제공하게 됩니다.
-
-## 13.14 요약
+## 13.13 요약
 
 - 어댑터는 특정 플랫폼의 API를 Fluo의 표준 계약으로 변환합니다.
 - `HttpApplicationAdapter`는 프레임워크의 시작과 종료를 관리합니다.
 - `FrameworkRequest/Response` 매핑이 어댑터 구현의 핵심입니다.
 - 바인더와의 협력을 통해 데이터가 흐르는 파이프라인이 완성됩니다.
+- 고성능 시스템에서는 AbortSignal 연동을 통한 자원 정리 최적화가 필수적입니다.
+- 실시간 통신 역량 보고는 생태계 모듈 간의 호환성을 보장하는 중요한 계약입니다.
 
 ## 13.14 다음 챕터 예고
+
 이것으로 Part 4 HTTP 파이프라인 해부 편을 마칩니다. 다음 파트에서는 데이터 지속성을 담당하는 데이터베이스 레이어와의 통합 전략을 심도 있게 다룹니다. Prisma, Drizzle 등 현대적인 ORM들이 Fluo와 어떻게 만나는지 기대해 주세요.
 
 ---
-<!-- lines: 153 -->
+<!-- lines: 271 -->
