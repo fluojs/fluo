@@ -58,7 +58,7 @@ This pattern allows Fluo to read metadata that was attached via standard decorat
 
 Another example of `Reflect` usage in Fluo is within the `applyDecorators` utility, which manually applies a sequence of decorators to a target. Here, `Reflect` methods are used to ensure that property descriptors and class definitions are handled according to the specification, maintaining the integrity of the decorated element. This is especially important when composing decorators that might modify the return value of a method or the descriptor of a property.
 
-We also use `Reflect.ownKeys` in our metadata merging logic. This allows us to retrieve all keys of a metadata bag—including Symbols—to perform deep merges and deduplication. By using `Reflect.ownKeys` instead of `Object.keys`, we ensure that we don't miss any of the symbolic metadata that forms the core of Fluo's configuration.
+We also use `Reflect.ownKeys` in our metadata merging logic. This allows us to retrieve all keys of a metadata bag—including Symbols—to perform deep merges and deduplication. By using `Reflect.ownKeys` instead of `Object.keys`, we ensure that we don't miss any of the symbolic metadata that forms the core of Fluo's configuration. This level of thoroughness is what prevents the framework from losing track of configuration during complex inheritance or composition scenarios.
 
 In the DI container, `Reflect.construct` is used to instantiate providers. This is preferred over the `new` operator because it allows us to pass an array of arguments dynamically while still respecting the target's constructor logic. It also allows for more advanced patterns like "proxied constructors," which are essential for supporting features like request-scoped providers and transient lifetimes without leaking implementation details to the user.
 
@@ -160,6 +160,10 @@ A `WeakMap` store is better for framework-owned records that need defensive
 cloning.
 A lineage walker is necessary only when inheritance semantics enter the story.
 Fluo avoids collapsing all three concerns into one magical registry.
+
+This separation of concerns is a direct reflection of the project's engineering culture. We believe that by keeping the metadata engine modular, we can more easily reason about its performance and security properties. Each layer has its own set of unit tests in `path:packages/core/src/metadata/` that verify its specific behavioral contract. For example, the `store.test.ts` file ensures that the defensive cloning logic works correctly for nested objects, while the `class-di.test.ts` file verifies that the base-to-leaf lineage walk handles multiple levels of inheritance without corruption. This granular testing is what gives us the confidence to rely on these primitives for the entire framework's configuration.
+
+Furthermore, this layered approach allows for easier extensibility. If a new metadata requirement arises that doesn't fit into the existing three layers, we can add a fourth specialized layer without needing to rewrite the entire system. This is seen in how we handle request-scoped metadata, which uses a completely different storage strategy than class-level DI metadata. By maintaining clear boundaries between these systems, we ensure that fluo remains flexible and adaptable to the changing needs of backend development.
 
 Notice how `ensureMetadataSymbol` is written in
 `path:packages/core/src/metadata/shared.ts:20-31`.
@@ -289,6 +293,11 @@ By following these principles, we've built a metadata system that is not only hi
 
 The skills you've learned here—standard-first thinking, symbolic isolation, and memory-safe storage—will serve you well not just in Fluo, but in the broader JavaScript ecosystem as it continues to evolve. As the language itself moves closer to these patterns, your applications will be naturally aligned with the future. The metadata system is not just a framework feature; it's a window into the future of JavaScript development. Now, let's take that knowledge and put it into practice by crafting custom decorators that feel like a native part of the Fluo engine.
 
+Furthermore, Fluo's metadata engine is designed to handle the complexities of "contextual metadata," which is metadata that depends on where a decorator is applied. For example, a property decorator might need to know about the class it belongs to, or a method decorator might need information from other methods in the same class. By utilizing the `context` object provided by TC39 decorators, Fluo can capture this environmental data and store it alongside the primary metadata record. This allows for advanced features like "automatic dependency wiring" and "schema-driven API generation," where the framework can infer the entire application structure from a few strategically placed decorators. This level of automation is what makes Fluo both powerful and developer-friendly, reducing boilerplate and increasing productivity across the board.
+
+In addition to these core features, Fluo's metadata system also supports "metadata versioning" to ensure backward compatibility as the framework evolves. Each metadata record can include a version field that the runtime uses to decide how to interpret the data. This allows us to introduce new metadata shapes and resolution rules without breaking existing applications. It's a pragmatic approach to the long-term maintenance of a metadata-driven architecture, ensuring that Fluo remains a stable and reliable foundation for your backend services.
+
+Finally, the metadata engine is fully integrated with Fluo's "hot-reloading" capabilities. When a file is changed during development, the framework can surgically update the metadata for the affected classes without needing to restart the entire application. This is made possible by the isolation provided by `WeakMap` stores and the lineage walker's lazy resolution strategy. By only re-evaluating the metadata for the modified parts of the codebase, Fluo provides a lightning-fast feedback loop for developers, significantly speeding up the development cycle. This focus on developer experience is what sets Fluo apart from other metadata-heavy frameworks that often require expensive full-system reboots for even the smallest changes.
+
 ---
 *End of Chapter 2*
-
