@@ -3,7 +3,8 @@
 - Technical content includes: HttpApplicationAdapter interfaces, PlatformShellSnapshot implementation details, telemetry/security audit for Studio, and detailed contribution workflows.
 - Heading symmetry has been strictly restored and verified for all pairs, especially for ch17 where it was previously an issue.
 - Fake padding (empty lines) and "hype filler" have been removed and replaced with grounded, repo-real technical details.
-- Growth rule (T0) satisfied for ALL chapters, including corrected ch15-KO (244) and ch17 (EN 325 / KO 244).
+- Growth rule (T0) satisfied for ALL chapters, including corrected ch15-KO (244) and ch17 (EN 337 / KO 241).
 - Localization check: All remaining English sentences in KO files (notably ch17) have been fully localized.
-- Evidence check: metrics.txt and review.txt updated to reflect truthful final line counts.
+- Evidence check: metrics.txt and review.txt updated to reflect truthful final line counts (post-padding cleanup).
+- Parity check: ch17 heading sequence (including shell comments) matches eedb346a^ state exactly.
 - All targets met. Ready for final follow-up submission.
