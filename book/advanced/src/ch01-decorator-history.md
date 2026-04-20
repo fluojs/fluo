@@ -17,9 +17,9 @@ In 2022, the official ECMAScript decorator proposal finally reached Stage 3. Thi
 
 The shift to Stage 3 represents a fundamental change in the developer's contract with the language. Instead of a "black box" that modifies properties via `Object.defineProperty`, decorators are now part of the formal class definition process. This ensures that the runtime can optimize class creation, as the shape of the class is determined before it's finalized.
 
-In the Stage 3 proposal, decorators are strictly defined. They are functions that are called with the element being decorated (the "value") and a "context" object. This context object provides awealth of information that was previously inaccessible or had to be guessed, such as whether a method is static, private, or what its name is. This formalization allows for much more powerful and reliable transformations.
+In the Stage 3 proposal, decorators are strictly defined. They are functions that are called with the element being decorated (the "value") and a "context" object. This context object provides a wealth of information that was previously inaccessible or had to be guessed, such as whether a method is static, private, or what its name is. This formalization allows for much more powerful and reliable transformations.
 
-Moreover, the Stage 3 proposal introduced the concept of "metadata" as a first-class citizen. Every decorator can now contribute to a metadata bag associated with the class, providing a standard-compliant way to store information that would previously have required the `reflect-metadata` polyfill. This transition from "experimental magic" to "language-level primitive" is the foundation upon which Fluo is built.
+Moreover, the Stage 3 proposal introduced the concept of "metadata" as a first-class citizen. Every decorator can now contribute to a metadata bag associated with the class, providing a standard-compliant way to store information that would previously have required the `reflect-metadata` polyfill. This transition from "experimental magic" to "language-level primitive" is the foundation upon which Fluo is built, specifically leveraging the `metadata` property on the `ClassDecoratorContext` as utilized in `path:packages/core/src/metadata/shared.ts:9-34`.
 
 ## 1.3 Why standard decorators matter
 Standardization brings stability, performance, and cross-runtime compatibility. By moving away from compiler-specific magic, standard decorators ensure that code written today will run natively in future engines. For a framework like Fluo, adhering to the TC39 standard means zero reliance on `reflect-metadata`, resulting in significantly faster startup times and reduced memory footprints. It allows Fluo to run seamlessly on Node.js, Bun, and Deno with a unified behavior model.
@@ -37,7 +37,7 @@ Consider the execution order: in Stage 1, decorators are evaluated and applied d
 
 Another critical difference is the `addInitializer` hook provided by the Stage 3 context. This hook allows a decorator to register a function that will be executed at a specific point in the class or instance lifecycle. This is a far more robust alternative to the legacy pattern of manually wrapping constructors or methods. It provides a formal way to perform setup logic that is guaranteed to run correctly.
 
-Finally, the way metadata is handled has completely changed. In Stage 1, metadata was almost always an external concern, handled by a third-party library. In Stage 3, metadata is built into the language. Decorators can access and modify the `metadata` property on the context object, which is then made available on the class constructor via `Symbol.metadata`. This eliminates the need for global state and ensures that metadata is properly scoped to the class.
+Finally, the way metadata is handled has completely changed. In Stage 1, metadata was almost always an external concern, handled by a third-party library. In Stage 3, metadata is built into the language. Decorators can access and modify the `metadata` property on the context object, which is then made available on the class constructor via `Symbol.metadata`. This eliminates the need for global state and ensures that metadata is properly scoped to the class. Fluo's `ensureMetadataSymbol()` in `path:packages/core/src/metadata/shared.ts:20-32` ensures this symbol is correctly polyfilled or resolved across different environments.
 
 ## 1.5 The metadata problem in legacy frameworks
 Legacy frameworks rely heavily on `emitDecoratorMetadata`. This TypeScript feature emits an enormous amount of opaque metadata (design:type, design:paramtypes) for every decorated element. While this enabled "magic" dependency injection, it came at a high cost: bloated bundles, slow reflection-based lookup, and the requirement of the heavy `reflect-metadata` polyfill. This approach also struggled with circular dependencies and interface types, which disappear at runtime.
@@ -58,7 +58,7 @@ This philosophy extends beyond just decorators. Fluo aims to use standard APIs w
 In Fluo, "Standard-First" also means "Explicit-First." We prefer explicit configuration over implicit magic. This is why we use `@Inject(TOKEN)` instead of relying on constructor parameter types. This explicitness makes the code easier to read, easier to debug, and more resilient to the nuances of different compilation targets.
 
 ## 1.7 Performance: No more heavy reflection
-Performance in Fluo isn't just about the HTTP request path; it's about the boot-up and memory efficiency. By using standard decorators, Fluo avoids the global registry overhead of `reflect-metadata`. Metadata in Fluo is explicit and stored using standard `Symbol.metadata` bags when available, or lean internal `WeakMap` stores. This architectural choice leads to nearly instant cold starts, which is critical for serverless and edge environments.
+Performance in Fluo isn't just about the HTTP request path; it's about the boot-up and memory efficiency. By using standard decorators, Fluo avoids the global registry overhead of `reflect-metadata`. Metadata in Fluo is explicit and stored using standard `Symbol.metadata` bags when available, or lean internal `WeakMap` stores like the one created in `path:packages/core/src/metadata/module.ts:5`. This architectural choice leads to nearly instant cold starts, which is critical for serverless and edge environments.
 
 In internal benchmarks, removing the `reflect-metadata` dependency and avoiding automatic metadata emission resulted in a 30-50% reduction in initial memory allocation for large module graphs. This efficiency is achieved because Fluo only records the metadata it actually needs, rather than letting the compiler emit metadata for every decorated parameter.
 
@@ -73,7 +73,7 @@ The `context.addInitializer` hook is particularly powerful. It allows decorators
 
 Standard decorators also benefit from TypeScript's improved metadata support. You can now define decorators that accept specific types of values or are only valid on specific types of classes. This leads to a "compile-time first" development experience, where errors are caught early in the development cycle rather than at runtime.
 
-In Fluo, we leverage these type-safety features to provide a robust developer experience. Our decorators are carefully typed to ensure they are used correctly. For example, the `@Module` decorator is typed to only accept valid module definitions, and the `@Inject` decorator ensures that the tokens you provide are compatible with the constructor parameters.
+In Fluo, we leverage these type-safety features to provide a robust developer experience. Our decorators are carefully typed to ensure they are used correctly. For example, the `@Module` decorator in `path:packages/core/src/decorators.ts:19-23` is typed to only accept valid module definitions, and the `@Inject` decorator ensures that the tokens you provide are compatible with the constructor parameters.
 
 ## 1.9 Comparing legacy vs standard code
 The shift from legacy to standard is most visible in the decorator signatures and how they are consumed.
@@ -171,7 +171,7 @@ Read the `@Inject` overloads carefully in
 `path:packages/core/src/decorators.ts:46-77`.
 Fluo accepts the canonical variadic form, still normalizes the temporary array
 form for migration, and then records explicit constructor tokens through
-`defineClassDiMetadata`. In other words, migration support exists at the API
+`defineClassDiMetadata` in `path:packages/core/src/metadata/class-di.ts:33-38`. In other words, migration support exists at the API
 edge, but the stored runtime contract is already standard-first and explicit.
 
 The same file also clarifies what Fluo did **not** build.
@@ -219,3 +219,6 @@ from compiler-emitted guesses,
 to developer-authored metadata,
 to standard class-evaluation hooks that runtimes can eventually understand
 without framework-specific folklore.
+
+---
+*End of Chapter 1*

@@ -17,18 +17,24 @@ The core utility of a custom decorator is often its ability to record metadata t
 
 Fluo's metadata system is designed to be accessible to custom decorators. By interacting with the `context.metadata` object (which maps to the TC39 metadata bag), you can store data using your own private symbols. This ensures that your custom metadata won't interfere with the framework's internal metadata, even if they are attached to the same class or method.
 
+The implementation of this "metadata bag" approach is visible in how Fluo handles cross-cutting concerns. For example, in `path:packages/http/src/decorators.ts:181-189`, the `@Controller()` decorator writes its configuration directly into the class metadata. This avoids the need for global reflection registries and keeps the configuration local to the decorated element.
+
 This isolation is key to building a scalable and modular ecosystem. In Fluo, we encourage the use of "domain-specific" metadata. For example, if you're building a caching library for Fluo, you might create a `@Cacheable()` decorator that stores its configuration under a `CACHE_METADATA_KEY` Symbol. This allows your library to operate independently of the core framework's DI or routing logic, while still participating in the same unified metadata model.
 
 Metadata-driven logic also improves testability. Instead of having to mock complex internal states, you can simply inspect the metadata attached to a class or method to verify that your decorators were applied correctly. Fluo provides internal utilities (available via `@fluojs/core/internal`) to help you read and validate this metadata during your unit and integration tests.
 
 ## 3.3 Implementation: @CurrentUser()
 The `@CurrentUser()` decorator is a classic example of a parameter decorator used to streamline controller logic. In the context of an HTTP request, it identifies which parameter should receive the authenticated user object.
+
+To implement this, we use the `defineInjectionMetadata` utility found in `path:packages/core/src/metadata/injection.ts:11-17`. This function is the low-level primitive for recording how a specific parameter or property should be satisfied by the framework's runtime.
+
 ```ts
 // Conceptual implementation of @CurrentUser()
 export function CurrentUser(): StandardParameterDecoratorFn {
   return (value, context) => {
     // Standard parameter decorators can't easily access the method context yet
     // so we use Fluo's internal injection metadata store.
+    // Reference: packages/core/src/metadata/injection.ts:11-17
     defineInjectionMetadata(context, {
       source: 'request',
       key: 'user',
@@ -37,14 +43,16 @@ export function CurrentUser(): StandardParameterDecoratorFn {
   };
 }
 ```
+
 At runtime, Fluo's HTTP pipeline reads this metadata. When the controller method is about to be invoked, the framework looks up the "user" object from the current request context and injects it into the argument list at the specified index. This pattern eliminates the need for manual user extraction in every controller method, leading to much cleaner and more testable code.
 
 In a more advanced implementation, `@CurrentUser()` might also support optional validation or filtering. For example, you could pass an option to the decorator to specify that only certain properties of the user object should be injected, or that a specific validation rule should be applied to the user object before injection. This flexibility is what makes parameter decorators such a powerful tool in the Fluo toolbox.
 
-Furthermore, because Fluo's injection system is standard-based, `@CurrentUser()` works seamlessly across different HTTP adapters (Node.js, Bun, Cloudflare Workers). As long as the adapter correctly populates the request context, the decorator will find the user object and inject it correctly, maintaining the "Write Once, Run Anywhere" promise of the framework.
-
 ## 3.4 Implementation: @Roles()
 The `@Roles()` decorator is typically used for authorization. It allows developers to specify which user roles are permitted to access a specific endpoint.
+
+The implementation pattern here is "Method Metadata Writing." Unlike parameter decorators that use specific injection stores, `@Roles()` simply writes to the shared TC39 metadata bag. This is exactly how `@UseGuards()` works in `path:packages/http/src/decorators.ts:414-427`, where it merges guard lists into the method-scoped metadata.
+
 ```ts
 // Conceptual implementation of @Roles()
 const ROLES_KEY = Symbol('roles');
@@ -57,14 +65,16 @@ export function Roles(...roles: string[]): StandardMethodDecoratorFn {
   };
 }
 ```
+
 A subsequent guard can then read `ROLES_KEY` from the metadata. Since the metadata is associated with the method's metadata bag, the guard can perform a high-performance lookup to decide whether the current user (retrieved from the request) possesses the required roles to proceed.
 
 The beauty of `@Roles()` is its simplicity. It encapsulates the authorization requirement in a single, descriptive line of code. This makes the security policy of the application visible and auditable directly at the source code level. It also allows for easy changes—adding or removing a role from an endpoint is as simple as updating the decorator arguments.
 
-In more complex scenarios, you might want to support hierarchical roles or dynamic role checks. Because `@Roles()` just stores metadata, your authorization guard can implement any logic you need. It could check a database, consult an external auth provider, or perform complex logical operations (AND/OR) on the required roles. The decorator provides the "what," and the framework's runtime provides the "how."
-
 ## 3.5 Implementation: @ApiDoc()
 Documentation is a first-class citizen in Fluo. The `@ApiDoc()` decorator allows you to enrich your API endpoints with descriptive metadata without polluting the core logic.
+
+In `path:packages/openapi/src/decorators.ts:259-345`, we see how OpenAPI decorators build complex method-scoped records. They don't just store simple values; they build structured maps keyed by the method name (`context.name`), allowing the documentation generator to reconstruct the full API schema later.
+
 ```ts
 // Conceptual implementation of @ApiDoc()
 export function ApiDoc(options: ApiDocOptions): StandardMethodDecoratorFn {
@@ -76,14 +86,14 @@ export function ApiDoc(options: ApiDocOptions): StandardMethodDecoratorFn {
   };
 }
 ```
+
 This metadata is then collected by the `@fluojs/openapi` package to generate comprehensive, interactive API documentation (like Swagger) that stays perfectly in sync with your code. By keeping the documentation metadata close to the endpoint definition, Fluo ensures that any changes to the API are immediately reflected in the generated docs.
-
-`@ApiDoc()` can also be used to define response types, request schemas, and security requirements. This makes it a central hub for all OpenAPI-related configuration. Because it uses standard decorators, the documentation generation process is fast and reliable, avoiding the slow and often buggy reflection used by legacy OpenAPI libraries.
-
-In a large-scale project, `@ApiDoc()` can be further specialized. You might create `@GetUsersDoc()` or `@CreateUserDoc()` decorators that encapsulate common documentation patterns for specific types of operations. This further reduces boilerplate and ensures that all your endpoints follow a consistent documentation style, improving the overall quality of your API surface.
 
 ## 3.6 Advanced decorator composition
 As applications grow, you might find yourself applying the same 4 or 5 decorators to many different methods. Fluo supports decorator composition, allowing you to bundle multiple decorators into a single, cohesive unit.
+
+While many frameworks use a dedicated `applyDecorators` utility, Fluo's standard-first approach means you can often just return an array or chain the functions if they follow the same signature. However, for complex merging (like combining multiple `@UseGuards()` calls), the internal implementation in `path:packages/http/src/decorators.ts:414-427` demonstrates how to carefully merge metadata rather than blindly replacing it.
+
 ```ts
 export function Auth(roles: string[]) {
   // applyDecorators utility handles the execution order and context passing
@@ -94,13 +104,10 @@ export function Auth(roles: string[]) {
   );
 }
 ```
+
 The `applyDecorators` utility (provided by `@fluojs/core`) ensures that each decorator is executed in the correct order, following standard JavaScript semantics. This practice reduces boilerplate and ensures consistent application of cross-cutting concerns across your entire service.
 
 Moreover, composition allows for "smart decorators" that can adapt based on their arguments. For example, a single `@Controller()` decorator in Fluo is actually a composition that handles route prefixing, dependency injection registration, and metadata initialization all in one go. Understanding how to compose these primitives is the key to mastering Fluo's advanced architectural patterns.
-
-Composition also facilitates the creation of "Framework Kits." You can package a set of composed decorators into a library, providing a high-level API for specific domains (like `@fluojs/crud` or `@fluojs/microservices`). This allows other developers to leverage your architectural choices and patterns without having to understand the low-level details of how the decorators are implemented.
-
-Finally, remember that composition is not just about bundling. It's about creating a higher-level language for describing your application's behavior. By carefully choosing and composing your decorators, you can create a DSL (Domain Specific Language) that makes your code more expressive, more maintainable, and ultimately more enjoyable to work with.
 
 ## 3.7 Debugging Custom Decorators
 Debugging custom decorators can be a bit tricky because they run during the class evaluation phase. To help with this, you can use the `context.addInitializer` hook to log information at specific points in the lifecycle.
@@ -135,8 +142,6 @@ By following these best practices, you can create custom decorators that are rob
 - **Real-World Patterns**: Leverage common patterns like `@CurrentUser()`, `@Roles()`, and `@ApiDoc()` to build clean, declarative APIs.
 - **Composition**: Use `applyDecorators` to create powerful, reusable abstractions and reduce boilerplate.
 - **Verification**: Use internal metadata readers and debugging hooks to ensure your custom logic is working as intended.
-
-Mastering custom decorators is the first step towards becoming a Fluo expert. By understanding the underlying primitives and following the framework's architectural principles, you can build extensions that are as powerful and reliable as the core framework itself.
 
 ## 3.10 Case Study: Building a Custom @Loggable() Decorator
 To bring all these concepts together, let's look at how you might build a `@Loggable()` decorator that automatically logs method execution time and arguments. This decorator will use the standard method decorator signature and leverage `context.addInitializer` to perform its setup.
@@ -184,8 +189,6 @@ This implementation demonstrates several key features of standard decorators:
 3. **Initialization Logic**: It uses `addInitializer` for one-time setup tasks.
 4. **Performance Efficiency**: It only creates the wrapper once during class definition, not per-request.
 
-By following this pattern, you can build powerful cross-cutting decorators that integrate deeply with your application logic while maintaining the clean, declarative style of the Fluo framework.
-
 ## 3.11 Looking Ahead: The Future of Custom Decorators
 As the TC39 decorator proposal continues to evolve and gain wider adoption, we expect to see even more powerful features being added to the spec. This includes potential support for decorating additional elements, more sophisticated metadata APIs, and even better performance optimizations in the JavaScript engines.
 
@@ -202,9 +205,9 @@ One final source-backed observation closes the loop.
 Fluo's own package ecosystem already demonstrates the custom-decorator style this
 chapter recommends.
 
-- `path:packages/http/src/decorators.ts:181-188` shows `@Controller()` writing into controller metadata without legacy descriptors.
+- `path:packages/http/src/decorators.ts:181-189` shows `@Controller()` writing into controller metadata without legacy descriptors.
 - `path:packages/http/src/decorators.ts:197-205` shows `@Version()` branching on `context.kind` to support both class and method scope.
-- `path:packages/http/src/decorators.ts:414-426` shows `@UseGuards()` merging metadata rather than replacing it blindly.
+- `path:packages/http/src/decorators.ts:414-427` shows `@UseGuards()` merging metadata rather than replacing it blindly.
 - `path:packages/openapi/src/decorators.ts:259-345` shows OpenAPI decorators building method-scoped `Map` records keyed by `context.name`.
 - `path:packages/openapi/src/decorators.ts:477-503` shows response metadata accumulation as ordinary bag manipulation, not reflection magic.
 

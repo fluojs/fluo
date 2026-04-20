@@ -1,5 +1,5 @@
 <!-- packages: @fluojs/di, @fluojs/core, @fluojs/runtime -->
-<!-- project-state: T15 Part 2 source-analysis draft for provider normalization and resolution -->
+<!-- project-state: T15 Part 2 source-analysis depth expansion (350+ lines) -->
 
 # 4. Provider Normalization and Resolution Algorithms
 
@@ -357,3 +357,18 @@ enforce registration invariants,
 track recursive chains,
 select the correct cache strategy,
 and throw recovery-oriented errors when the graph violates container rules.
+
+## 4.6 Verification against @fluojs/di internals
+Closing the advanced analysis loop requires matching the chapter's claims against the actual behavioral contracts in the source.
+
+- `path:packages/di/src/container.ts:54-115` confirms that `normalizeProvider` is indeed the primary entrypoint for all provider shapes.
+- `path:packages/di/src/container.ts:389-402` proves that `resolveWithChain` handles cycle detection as its very first operational branch.
+- `path:packages/di/src/container.ts:796-825` shows `instantiate` enforcing singleton scope hygiene before any constructor runs.
+- `path:packages/di/src/container.ts:558-579` demonstrates that optional, forwardRef, and standard tokens share a unified resolution helper.
+- `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` provide the empirical evidence that the container's multi-provider and registration-conflict policies are enforced exactly as described.
+
+This standard-first architecture ensures that the DI container remains a predictable
+state machine, regardless of how complex the module graph becomes. By shifting
+complexity to the normalization phase and enforcing strict scope and topology
+rules during registration, Fluo provides a resolution algorithm that is both
+high-performing and audit-friendly.

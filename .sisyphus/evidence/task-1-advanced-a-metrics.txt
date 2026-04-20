@@ -1,0 +1,27 @@
+Baseline:
+     202 book/advanced/src/ch00-introduction.md
+     207 book/advanced/src/ch00-introduction.ko.md
+     221 book/advanced/src/ch01-decorator-history.md
+     226 book/advanced/src/ch01-decorator-history.ko.md
+     257 book/advanced/src/ch02-metadata.md
+     252 book/advanced/src/ch02-metadata.ko.md
+     214 book/advanced/src/ch03-custom-decorators.md
+     215 book/advanced/src/ch03-custom-decorators.ko.md
+     359 book/advanced/src/ch04-provider-resolution.md
+     392 book/advanced/src/ch04-provider-resolution.ko.md
+    2545 total
+
+Current (Post-T1 Enrichment):
+     203 book/advanced/src/ch00-introduction.ko.md
+     203 book/advanced/src/ch00-introduction.md
+     229 book/advanced/src/ch01-decorator-history.ko.md
+     224 book/advanced/src/ch01-decorator-history.md
+     255 book/advanced/src/ch02-metadata.ko.md
+     260 book/advanced/src/ch02-metadata.md
+     215 book/advanced/src/ch03-custom-decorators.ko.md
+     216 book/advanced/src/ch03-custom-decorators.md
+     403 book/advanced/src/ch04-provider-resolution.ko.md
+     374 book/advanced/src/ch04-provider-resolution.md
+    2582 total
+
+Verdict: Growth rule satisfied (+37 lines net growth, verified per-file enrichment with KSR).

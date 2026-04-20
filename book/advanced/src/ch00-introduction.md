@@ -9,15 +9,15 @@ This volume is different. While the Beginner and Intermediate books focused on b
 
 ## The Source-Analysis Posture
 
-In this book, we adopt a source-analysis posture. Every concept discussed is backed by a direct reference to the fluo monorepo source code. We don't just talk about "Module Metadata"; we look at `packages/core/src/decorators.ts` and see how it's stored in a `WeakMap`.
+In this book, we adopt a source-analysis posture. Every concept discussed is backed by a direct reference to the fluo monorepo source code. We don't just talk about "Module Metadata"; we look at `path:packages/core/src/metadata/module.ts:5-62` to understand how `WeakMap`-backed stores like `moduleMetadataStore` keep metadata isolated and memory-safe.
 
-Our goal is to turn you from a consumer into a contributor (or at least, a developer with deep internal knowledge). You'll learn to read the codebase not as a collection of black boxes, but as a transparent set of behavioral contracts.
+Our goal is to turn you from a consumer into a contributor (or at least, a developer with deep internal knowledge). You'll learn to read the codebase not as a collection of black boxes, but as a transparent set of behavioral contracts. By examining `path:packages/core/src/metadata/store.ts:16-33`, you will see how `createClonedWeakMapStore` enforces "clone-on-read/write" policies to prevent accidental metadata pollution across the framework.
 
 ## What This Volume Covers
 
 This book is organized into six major parts, each stripping away a layer of the framework:
 
-1.  **Decorators and Metadata**: We start at the very edge of the language—the TC39 Stage 3 standard decorators. We explore how fluo leverages this new standard to avoid the legacy `reflect-metadata` trap.
+1.  **Decorators and Metadata**: We start at the very edge of the language—the TC39 Stage 3 standard decorators. We explore how fluo leverages this new standard to avoid the legacy `reflect-metadata` trap, utilizing `Symbol.metadata` as defined in `path:packages/core/src/metadata/shared.ts:9-34`.
 2.  **DI Container Internals**: The heart of fluo. We dissect the resolution algorithm, scope management (Singleton, Request, Transient), and the complex dance of circular dependency detection.
 3.  **Runtime Bootstrap**: How does fluo go from a single `@Module` to a running server? We trace the module graph construction and the platform adapter contracts that allow fluo to run on Node.js, Bun, Deno, and Edge Workers.
 4.  **HTTP Pipeline Anatomy**: A step-by-step walkthrough of the request lifecycle. Guards, Interceptors, and Exception Filters—we see how they are chained and executed.
@@ -27,12 +27,13 @@ This book is organized into six major parts, each stripping away a layer of the 
 ## How to Read Path:Line References
 
 Throughout this book, you will encounter references like this:
-`pkg:core/src/decorators.ts:L15-L25`
+`path:packages/core/src/decorators.ts:19-23`
 
 This is our "KSR" (Key Source Reference) convention.
--   `pkg:core` refers to the `@fluojs/core` package.
+-   `path:` indicates a direct file path within the monorepo.
+-   `packages/core` refers to the `@fluojs/core` package.
 -   `src/decorators.ts` is the file path relative to that package's root.
--   `L15-L25` points you to the exact lines in the current version of the source code.
+-   `19-23` points you to the exact lines in the current version of the source code.
 
 We encourage you to have the fluo repository open in your IDE while reading. The text and the code are two halves of the same story.
 
@@ -40,7 +41,7 @@ We encourage you to have the fluo repository open in your IDE while reading. The
 
 This is not an introductory text. We assume you are comfortable with the following:
 
--   **TypeScript Mastery**: You should understand advanced types, generics, and the nuances of the `tsconfig.json` configuration.
+-   **TypeScript Mastery**: You should understand advanced types, generics, and the nuances of the `tsconfig.json` configuration. As seen in `path:packages/core/src/decorators.ts:11`, we use utility types like `TupleOnly<T>` to enforce strict variadic constraints.
 -   **fluo Fundamentals**: You have either read the Beginner/Intermediate volumes or have significant experience building production fluo apps. You should know what a Module, a Service, and a Controller are.
 -   **JavaScript Internals**: Basic knowledge of the Event Loop, Promises, and how classes work under the hood in JS will be extremely helpful.
 -   **No Magic Mindset**: You must be willing to let go of the idea that the framework "just knows" what to do. Every behavior is code, and you are here to see that code.
@@ -49,7 +50,7 @@ This is not an introductory text. We assume you are comfortable with the followi
 
 Standard project-building books follow a "build an app" narrative. This book follows an "unfold the engine" narrative. 
 
--   **Explicitness over Convenience**: We prioritize showing you the explicit internal mechanics even when the framework provides a convenient facade for end-users.
+-   **Explicitness over Convenience**: We prioritize showing you the explicit internal mechanics even when the framework provides a convenient facade for end-users. For example, `path:packages/core/src/metadata/class-di.ts:56-73` shows the explicit lineage-walking algorithm used for inherited DI metadata.
 -   **Performance-First Reasoning**: We frequently discuss *why* a certain design choice was made to minimize overhead or maximize tree-shaking potential.
 -   **Platform Neutrality**: Unlike many frameworks that are "Node.js first," fluo is "Standard first." We spend significant time discussing how the core remains isolated from specific runtime APIs.
 
@@ -81,7 +82,7 @@ Understanding the internal resolution of a Provider isn't just an academic exerc
 
 The web platform is changing. The days of heavy, Node-only monoliths are being challenged by lightweight, multi-runtime architectures. fluo was born from this shift. By studying its architecture, you're also studying the future of the web—where standard JS APIs are the primary foundation.
 
-We'll spend a lot of time looking at how `context` objects in Stage 3 decorators provide a safe way to share information between class members, and how this replaces the need for the global `Reflect` registry. This is a fundamental shift in how we think about "metadata" in JavaScript.
+We'll spend a lot of time looking at how `context` objects in Stage 3 decorators provide a safe way to share information between class members, and how this replaces the need for the global `Reflect` registry. This is a fundamental shift in how we think about "metadata" in JavaScript, moving from ambient global state to the encapsulated `metadataSymbol` handled in `path:packages/core/src/metadata/shared.ts:13-32`.
 
 ## Learning Path and Persistence
 
@@ -136,16 +137,16 @@ You are now part of a small but growing group of developers who truly understand
 To truly master the internals, we will be looking at several key areas of the monorepo:
 
 ### 1. The Core Infrastructure (`packages/core`)
-This is where the standard decorators live. We'll analyze `src/decorators.ts` and `src/metadata/` to see how fluo builds a high-performance metadata registry using `WeakMap` and `Symbol.metadata`.
+This is where the standard decorators live. We'll analyze `path:packages/core/src/decorators.ts:19-89` and `path:packages/core/src/metadata/` to see how fluo builds a high-performance metadata registry using `WeakMap` and `Symbol.metadata`.
 
 ### 2. The Dependency Injection Engine (`packages/di`)
-This is the most complex part of the framework. We will spend significant time in `src/container.ts` understanding how providers are resolved and how the dependency graph is constructed.
+This is the most complex part of the framework. We will spend significant time in `packages/di/src/container.ts` understanding how providers are resolved and how the dependency graph is constructed.
 
 ### 3. The Runtime Facade (`packages/runtime`)
-Here, we'll see how fluo abstracts away the differences between Node.js, Bun, and Deno. We'll look at the platform adapter interfaces in `src/interfaces/platform-adapter.interface.ts`.
+Here, we'll see how fluo abstracts away the differences between Node.js, Bun, and Deno. We'll look at the platform adapter interfaces in `packages/runtime/src/interfaces/platform-adapter.interface.ts`.
 
 ### 4. The HTTP Pipeline (`packages/http`)
-We'll trace a request from the moment it hits the server to the moment the response is sent. We'll look at the execution chain in `src/execution-context/`.
+We'll trace a request from the moment it hits the server to the moment the response is sent. We'll look at the execution chain in `packages/http/src/execution-context/`.
 
 ### 5. Testing and Reliability (`packages/testing`)
 We'll see how fluo uses its own testing package to verify its internal logic. We'll look at the integration tests that ensure cross-platform compatibility.
@@ -158,7 +159,7 @@ Each chapter will focus on a specific package or a specific feature. We'll start
 
 ## The Role of Architecture in Performance
 
-In the world of high-performance backends, every millisecond counts. We'll discuss how fluo's architecture is specifically tuned to minimize 런타임 overhead. From avoiding `Reflect.getMetadata` to using efficient data structures for the module graph, you'll see how design decisions directly impact performance.
+In the world of high-performance backends, every millisecond counts. We'll discuss how fluo's architecture is specifically tuned to minimize runtime overhead. From avoiding `Reflect.getMetadata` to using efficient data structures for the module graph, you'll see how design decisions directly impact performance.
 
 ## Embracing the "No-Magic" Philosophy
 

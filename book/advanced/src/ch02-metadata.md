@@ -20,7 +20,7 @@ The `ensureMetadataSymbol` function handles the polyfilling of `Symbol.metadata`
 
 Symbols are the perfect key for metadata because they are guaranteed to be unique. Even if multiple versions of Fluo or multiple frameworks coexist in the same runtime, their metadata won't collide as long as they use their own private Symbols. This "hygienic metadata" pattern is a core tenant of Fluo's design. It ensures that the framework's internal bookkeeping never leaks into the user's domain.
 
-Furthermore, symbolic metadata allows for efficient lookup. Because Symbols are not strings, engines can optimize property access using internal slots. This avoids the string-parsing and hash-map overhead associated with traditional property lookup. In Fluo, we use a set of canonical Symbols (like `metadataKeys.module` or `metadataKeys.classDi`) to organize our internal records, ensuring that every retrieval is as fast as a standard property access.
+Furthermore, symbolic metadata allows for efficient lookup. Because Symbols are not strings, engines can optimize property access using internal slots. This avoids the string-parsing and hash-map overhead associated with traditional property lookup. In Fluo, we use a set of canonical Symbols (like `metadataKeys.module` or `metadataKeys.classDi` in `path:packages/core/src/metadata/shared.ts:75-84`) to organize our internal records, ensuring that every retrieval is as fast as a standard property access.
 
 ## 2.3 Type-safe metadata storage
 Metadata is only as useful as its retrieval is reliable. Fluo ensures type safety by defining strict interfaces for every metadata record (e.g., `ModuleMetadata`, `ClassDiMetadata`, `RouteMetadata`). These records are stored in `WeakMap`-backed stores that prevent memory leaks by allowing metadata to be garbage-collected along with the class or object it describes. By using strongly typed keys and defensive cloning on read/write operations, Fluo eliminates entire classes of runtime errors common in reflection-heavy systems.
@@ -30,7 +30,7 @@ The `createClonedWeakMapStore` utility is the engine behind Fluo's immutable met
 
 The use of `WeakMap` is particularly important for performance and memory management in long-running processes. Unlike a standard `Map` or a global object, a `WeakMap` does not prevent its keys (the classes or objects) from being garbage collected. This means that if a module or controller is dynamically unloaded, its associated metadata will also be automatically cleaned up by the engine, ensuring that Fluo's memory footprint stays lean over time.
 
-Type safety is achieved through a combination of TypeScript generics and runtime validation. Every metadata store in Fluo is associated with a specific type, and our internal helpers (like `getModuleMetadata` or `getClassDiMetadata`) use these types to provide a strongly-typed API for the rest of the framework. This ensures that when the DI container or the HTTP runtime reads metadata, it knows exactly what shape to expect, reducing the need for defensive null checks and type casting.
+Type safety is achieved through a combination of TypeScript generics and runtime validation. Every metadata store in Fluo is associated with a specific type, and our internal helpers (like `getModuleMetadata` in `path:packages/core/src/metadata/module.ts:60-62`) use these types to provide a strongly-typed API for the rest of the framework. This ensures that when the DI container or the HTTP runtime reads metadata, it knows exactly what shape to expect, reducing the need for defensive null checks and type casting.
 
 ## 2.4 Reflect API examples in Fluo
 Fluo utilizes `Reflect` methods to interact with objects in a way that respects the language's internal mechanics. A primary example is retrieving the metadata bag from a target class.
@@ -62,7 +62,7 @@ The `getInheritedClassDiMetadata` function demonstrates this logic, specifically
 
 This inheritance model is "accumulative" by default for things like validation rules but "overriding" for things like lifecycle scopes. This nuance is managed through specialized merge routines in each metadata module, ensuring that the behavior always matches the developer's intuition. For example, a `@Scope('request')` on a child class should completely replace a `@Scope('singleton')` on its parent, whereas a child class adding new `@Inject` tokens should ideally complement the parent's requirements.
 
-To handle these different merge strategies, Fluo uses a set of internal utilities like `mergeUnique` and `cloneCollection`. These helpers ensure that arrays of guards or interceptors are deduplicated while preserving their relative order. This is critical for maintaining the integrity of the middleware pipeline, where the order of execution can significantly impact the outcome of a request.
+To handle these different merge strategies, Fluo uses a set of internal utilities like `mergeUnique` and `cloneCollection` in `path:packages/core/src/metadata/shared.ts`. These helpers ensure that arrays of guards or interceptors are deduplicated while preserving their relative order. This is critical for maintaining the integrity of the middleware pipeline, where the order of execution can significantly impact the outcome of a request.
 
 Finally, Fluo's inheritance logic is designed to be "lazy." We don't pre-calculate the inherited metadata for every class at startup. Instead, we resolve the lineage on-demand when the metadata is first requested. This keeps the initial boot time fast and ensures that the framework only does the work that is actually necessary for the current application execution path.
 
@@ -255,3 +255,6 @@ If you can answer those questions clearly, you are already thinking in the same
 metadata model the Fluo core uses.
 That alignment is what makes custom integrations feel native instead of bolted
 on.
+
+---
+*End of Chapter 2*
