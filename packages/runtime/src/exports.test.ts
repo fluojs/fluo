@@ -20,6 +20,7 @@ describe('runtime export boundaries', () => {
 
   it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
     expect(runtime.createHealthModule).toBeTypeOf('function');
+    expect(runtime.fluoFactory).toBe(runtime.FluoFactory);
     expect(runtime).not.toHaveProperty('createConsoleApplicationLogger');
     expect(runtime).not.toHaveProperty('createJsonApplicationLogger');
     expect(runtime).toHaveProperty('APPLICATION_LOGGER');
@@ -50,6 +51,11 @@ describe('runtime export boundaries', () => {
   it('exposes Node-only logger factories only on the ./node subpath', () => {
     expect(runtimeNode.createConsoleApplicationLogger).toBeTypeOf('function');
     expect(runtimeNode.createJsonApplicationLogger).toBeTypeOf('function');
+    expect(runtimeNode.createNodeHttpAdapter).toBeTypeOf('function');
+    expect(runtimeNode.bootstrapNodeApplication).toBeTypeOf('function');
+    expect(runtimeNode.runNodeApplication).toBeTypeOf('function');
+    expect(runtimeNode).not.toHaveProperty('compressNodeResponse');
+    expect(runtimeNode).not.toHaveProperty('createNodeResponseCompression');
   });
 
   it('declares the narrowed package export map', () => {

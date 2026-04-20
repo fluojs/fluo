@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import * as rootRuntimeApi from '../index.js';
-import { createNodeHttpAdapter, type NodeHttpApplicationAdapter } from './node.js';
+import * as publicNodeApi from '../node.js';
+import type { NodeHttpApplicationAdapter } from '../node.js';
 
 describe('createNodeHttpAdapter', () => {
   it('keeps Node lifecycle helpers out of the runtime root barrel', () => {
@@ -15,7 +16,7 @@ describe('createNodeHttpAdapter', () => {
     process.env.PORT = '4321';
 
     try {
-      const adapter = createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -33,7 +34,7 @@ describe('createNodeHttpAdapter', () => {
     process.env.PORT = 'not-a-number';
 
     try {
-      const adapter = createNodeHttpAdapter() as NodeHttpApplicationAdapter;
+      const adapter = publicNodeApi.createNodeHttpAdapter() as NodeHttpApplicationAdapter;
 
       expect(adapter.getListenTarget().url).toBe('http://localhost:3000');
       await adapter.close();
@@ -44,5 +45,11 @@ describe('createNodeHttpAdapter', () => {
         process.env.PORT = previousPort;
       }
     }
+  });
+
+  it('does not expose node compression internals on the public node subpath', () => {
+    expect(publicNodeApi.createNodeHttpAdapter).toBeTypeOf('function');
+    expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
+    expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
   });
 });
