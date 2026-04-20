@@ -62,6 +62,10 @@ Inside the boundary, your service expects trustworthy structure.
 
 Validation is what makes that transition safe.
 
+### Why Classes instead of Interfaces?
+
+You might wonder why we use TypeScript classes for DTOs instead of interfaces. In TypeScript, interfaces are erased during compilation, meaning they don't exist at runtime. Classes, however, are part of the JavaScript standard and remain available at runtime. fluo uses this runtime existence to attach validation metadata via decorators, which wouldn't be possible with plain interfaces.
+
 ## 6.2 Defining CreatePostDto with Validation Rules
 
 Now add rules that describe what a valid post creation request means for FluoBlog.
@@ -108,9 +112,22 @@ It also keeps examples approachable for readers who are still learning class-bas
 
 `published` may be omitted, but if it appears, it must be a boolean.
 
-These are small rules.
-
 Small rules are enough to show the value of the system.
+
+### Why Decorators?
+
+You might notice that fluo uses decorators like `@IsString()` directly on class properties. This "declarative" style is a hallmark of the fluo framework. Instead of writing long `if/else` blocks to check your data, you simply declare what the data should be. This makes your DTOs serve as both code and documentation, keeping your rules close to the data they protect.
+
+### Common Validation Decorators
+
+The `@fluojs/validation` package provides a wide range of decorators for different types of data:
+
+- **String checks**: `@IsString()`, `@MinLength()`, `@MaxLength()`, `@IsEmail()`, `@IsUrl()`
+- **Number checks**: `@IsNumber()`, `@Min()`, `@Max()`, `@IsInt()`
+- **Type checks**: `@IsBoolean()`, `@IsDate()`, `@IsEnum()`, `@IsArray()`
+- **Presence checks**: `@IsOptional()`, `@IsNotEmpty()`, `@IsDefined()`
+
+As a beginner, you don't need to memorize them all. Just remember that if you have a common data requirement, there's likely a decorator for it.
 
 ## 6.3 Connecting DTOs to the HTTP Layer
 
@@ -156,7 +173,12 @@ The beginner takeaway is simple.
 
 Incoming payloads should be transformed into a known DTO shape before business logic runs.
 
+### The Role of Metadata
+
+Under the hood, `@fluojs/validation` uses the class as a blueprint. It reads the decorators to understand what the data **should** look like. When `materialize` is called, it compares the incoming data to this blueprint. This is why fluo is so efficient—it doesn't rely on slow, expensive reflection for every single request; it uses the structured metadata you've already provided.
+
 ## 6.4 Updating FluoBlog Create and Update Flows
+
 
 Let us make the post service use DTO-driven input.
 
@@ -203,6 +225,8 @@ The create route now has explicit rules.
 
 The update route now communicates partial update semantics clearly.
 
+It stays behaviorally connected to the original rules.
+
 ### Why Mapped DTO Helpers Matter
 
 Beginners often duplicate similar DTOs by hand.
@@ -213,11 +237,21 @@ It becomes repetitive and error-prone quickly.
 
 Mapped helpers such as `PartialType`, `PickType`, and `OmitType` reduce that duplication while preserving validation metadata.
 
-That preservation is the important part.
+### Creating Specific DTO Variations
 
-The derived DTO is not just shorter.
+Suppose you want a DTO that only contains the title:
 
-It stays behaviorally connected to the original rules.
+```typescript
+export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
+```
+
+Or you want to exclude a specific field:
+
+```typescript
+export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
+```
+
+These utilities ensure that you define your validation rules **once** in the base DTO and reuse them throughout your application. This is a core principle of "DRY" (Don't Repeat Yourself) development.
 
 ## 6.5 No Implicit Scalar Coercion
 
@@ -257,6 +291,19 @@ Convert only when you can explain where that conversion belongs.
 
 That rule prevents subtle bugs later.
 
+### Converting Query Parameters
+
+If you really need a number from a query parameter, you can use the `@FromQuery()` decorator with a custom transform:
+
+```typescript
+@Get('/')
+findAll(@FromQuery('page', (v) => parseInt(v, 10)) page: number) {
+  return this.postsService.findAll(page);
+}
+```
+
+This makes the conversion explicit and visible. You aren't guessing what the framework will do; you are telling the framework exactly how to handle the data.
+
 ## 6.6 What FluoBlog Looks Like After Validation
 
 The posts feature is now more realistic.
@@ -295,6 +342,10 @@ The service signatures are now clearer.
 Other readers can see that create and update expect validated DTOs.
 
 That clarity makes future refactoring easier.
+
+### Reliability and Trust
+
+When you know your input is valid, you can write simpler service code. You don't need to check `if (input.title.length < 3)` inside your service because you know the DTO has already handled that. This builds trust between your transport layer and your business logic, allowing each part of the system to focus on its primary responsibility.
 
 ### Common Beginner Mistakes with Validation
 

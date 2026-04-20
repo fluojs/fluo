@@ -35,6 +35,20 @@ guard는 요청이 계속 진행될 수 있는지 결정합니다. 라우터가 
 
 interceptor는 핸들러를 감싸면서 전후에 재사용 가능한 로직을 적용할 수 있습니다. 실행 스트림에 접근할 수 있으므로, 반환값을 변형하거나 에러가 exception filter에 도달하기 전에 가로챌 수도 있습니다.
 
+### 요청 생명주기 (The Request Lifecycle)
+
+정확한 순서를 이해하는 것은 디버깅과 아키텍처 설계에 필수적입니다. 요청이 fluo 애플리케이션에 도달하면 다음과 같은 여러 계층을 통과합니다.
+
+1.  **Middleware**: CORS나 압축(compression) 같은 로우 레벨 요청/응답 처리.
+2.  **Guards**: 인가(Authorization) 및 인증(Authentication) 검사.
+3.  **Interceptors (Pre-handle)**: 핸들러 실행 전의 변형이나 로깅.
+4.  **Pipes**: 파라미터/본문의 검증 및 변형.
+5.  **Controller Handler**: 비즈니스 로직의 진입점.
+6.  **Interceptors (Post-handle)**: 응답 shaping 또는 타이밍 측정.
+7.  **Exception Filters**: 에러를 잡아내고 형식을 맞춤.
+
+이러한 계층적 접근 방식은 요청이 권한이 없는 경우 Guard 단계에서 조기에 실패하게 하여 시스템 리소스를 절약해 줍니다.
+
 ### A Simple Mental Model
 
 다음 두 질문으로 생각해 보세요.
@@ -110,6 +124,20 @@ guard는 재사용 가능합니다.
 
 또한 데코레이터 줄에서 의도를 바로 드러내 줍니다.
 
+### 다중 가드 실행 (Multi-Guard Execution)
+
+실제 애플리케이션에서는 여러 가지 검사가 필요할 수 있습니다. fluo는 여러 가드를 체이닝(chaining)할 수 있게 해 줍니다.
+
+```typescript
+@Post('/')
+@UseGuards(AuthGuard, RoleGuard, BlacklistGuard)
+create(input: CreatePostDto) {
+  return this.postsService.create(input);
+}
+```
+
+이 경우 fluo는 가드들을 순서대로 실행합니다. 만약 **하나라도** 가드가 `false`를 반환하거나 예외를 던지면 요청은 즉시 중단됩니다. 이를 통해 복잡한 인가 규칙을 모듈화하고 관리하기 쉽게 만들 수 있습니다.
+
 ## 9.3 Using an Interceptor for Reusable Response Workflow
 
 interceptor는 응답 shaping, 로깅, 타이밍 측정, 그 외 재사용 가능한 요청 흐름 관심사에 유용합니다.
@@ -164,11 +192,36 @@ export class RequestLogInterceptor {
 }
 ```
 
-중요한 것은 정확한 API 표면이 아닙니다.
+### 응답 변형 (Transforming the Response)
 
-중요한 것은 아키텍처적 역할입니다.
+인터셉터의 가장 강력한 기능 중 하나는 반환된 데이터를 변형하는 능력입니다. 모든 성공적인 응답을 표준 "데이터 봉투(envelope)"로 감싸고 싶다고 가정해 봅시다.
 
-interceptor는 모든 핸들러가 같은 코드를 반복하지 않도록 실행을 감쌉니다.
+```typescript
+export class TransformInterceptor {
+  async intercept(next: () => Promise<unknown>) {
+    const data = await next();
+    
+    // 원래 결과를 일관된 객체로 감쌉니다.
+    return {
+      success: true,
+      timestamp: new Date().toISOString(),
+      data,
+    };
+  }
+}
+```
+
+이제 단순히 게시글 객체만 반환하는 대신, API는 다음과 같이 반환하게 됩니다.
+
+```json
+{
+  "success": true,
+  "timestamp": "2026-04-21T10:00:00Z",
+  "data": { "id": "1", "title": "Hello Fluo" }
+}
+```
+
+이렇게 하면 애플리케이션 전체에 걸쳐 프론트엔드 개발자들에게 일관된 응답 계약(contract)을 보장할 수 있습니다.
 
 ## 9.4 Applying Guards and Interceptors to FluoBlog
 

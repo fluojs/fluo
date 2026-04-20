@@ -96,6 +96,20 @@ They also map more clearly to the final HTTP status code.
 
 That matters for both debugging and client expectations.
 
+### Global Exception Filter
+
+You might wonder: "What happens after I throw the exception?" fluo has a **Global Exception Filter** that catches any HTTP exceptions thrown from your controllers or services. It automatically formats them into a standard JSON response:
+
+```json
+{
+  "statusCode": 404,
+  "message": "Post 123 was not found.",
+  "error": "Not Found"
+}
+```
+
+This automatic formatting ensures that your API doesn't just "leak" raw stack traces to the client, which would be a security risk. Instead, it provides a clean, machine-readable error object that frontend developers can easily parse.
+
 ## 8.3 Making FluoBlog Not-Found Behavior Explicit
 
 In Chapter 5, `findById()` returned `null` when a post did not exist.
@@ -188,6 +202,19 @@ When an API call fails, ask:
 
 Those three questions help you choose the right exception style.
 
+### Custom Exception Titles
+
+While the built-in messages are helpful, you can also customize them. Most exceptions accept an optional description or a custom object:
+
+```typescript
+throw new BadRequestException('Invalid email format', {
+  cause: 'regex_failure',
+  field: 'email'
+});
+```
+
+This flexibility allows you to provide even more context to the client when a simple message isn't enough. As you progress to the Intermediate book, you'll learn how to create your own custom exception classes that extend the base `HttpException`.
+
 ## 8.5 Translating Business Rules into HTTP Failures
 
 Not every exception is about existence.
@@ -275,7 +302,20 @@ They can distinguish bad input from missing resources.
 
 The service layer also becomes more honest about the rules it enforces.
 
-## Summary
+### Consistency is Key
+
+By using these patterns, your API becomes **predictable**. Predictability is the hallmark of a professional backend. Whether it's a 404 for a missing post or a 400 for a validation error, the client always knows what to expect and how to handle it. This reduces frustration for frontend developers and makes your application much easier to maintain over time.
+
+### Named Exceptions vs HTTP Status Codes
+
+You might be tempted to just return a number like `404`. While fluo supports this, using the named exception `NotFoundException` is preferred for several reasons:
+
+1.  **Readability**: `throw new NotFoundException()` is much clearer to a human reader than `res.status(404).send()`.
+2.  **Consistency**: It ensures the response body follows the framework's standard error format.
+3.  **Future-proofing**: If the framework adds more metadata to exceptions later, your code will automatically benefit from it.
+4.  **Type Safety**: Named exceptions are real classes that can be tracked and caught specifically if needed.
+
+### Summary
 - Explicit HTTP exceptions make API failures easier to understand and easier to document.
 - `NotFoundException` is a better contract than silently returning `null` for missing resources.
 - Validation errors and business-rule errors should be treated as expected failures, not mysterious crashes.

@@ -96,6 +96,20 @@ function requirePost(post: unknown, id: string) {
 
 이 점은 디버깅과 클라이언트 기대치 모두에 중요합니다.
 
+### 전역 예외 필터 (Global Exception Filter)
+
+"예외를 던진 후에는 어떤 일이 벌어지는 걸까?"라고 궁금할 수 있습니다. fluo에는 컨트롤러나 서비스에서 던져진 HTTP 예외를 잡아내는 **전역 예외 필터**가 있습니다. 이 필터는 예외를 자동으로 표준 JSON 응답 형식으로 변환합니다.
+
+```json
+{
+  "statusCode": 404,
+  "message": "Post 123 was not found.",
+  "error": "Not Found"
+}
+```
+
+이러한 자동 포맷팅 덕분에 API가 로우 레벨의 스택 트레이스(stack trace)를 클라이언트에게 그대로 노출하지 않게 됩니다. 이는 보안 위험을 방지하는 동시에, 프론트엔드 개발자가 쉽게 파싱할 수 있는 깔끔한 기계 판독형 에러 객체를 제공합니다.
+
 ## 8.3 Making FluoBlog Not-Found Behavior Explicit
 
 5장에서는 `findById()`가 게시글이 없을 때 `null`을 반환했습니다.
@@ -188,6 +202,23 @@ API 호출이 실패했을 때는 다음을 질문해 보세요.
 
 이 세 질문이 올바른 예외 스타일을 선택하는 데 큰 도움이 됩니다.
 
+### 마무리 팁: 로그와의 연결 (Final Tip: Linking with Logs)
+
+실제 운영 환경에서는 예외가 발생했을 때 이를 기록(logging)하는 것이 매우 중요합니다. `InternalServerErrorException` 같은 예상치 못한 오류는 개발자가 즉시 알 수 있도록 경고를 보내야 할 수도 있습니다. 반면 `NotFoundException` 같은 일상적인 오류는 일반적인 접근 로그로 처리하는 경우가 많습니다. 예외를 잘 구분해두면, 나중에 관찰 가능성(Observability) 도구를 도입할 때 훨씬 수월해집니다.
+
+### 커스텀 예외 메시지 (Custom Exception Titles)
+
+기본 메시지도 유용하지만, 필요에 따라 커스터마이징할 수도 있습니다. 대부분의 예외는 추가적인 설명이나 커스텀 객체를 인자로 받을 수 있습니다.
+
+```typescript
+throw new BadRequestException('Invalid email format', {
+  cause: 'regex_failure',
+  field: 'email'
+});
+```
+
+이러한 유연성 덕분에 단순히 메시지만으로는 부족할 때 클라이언트에게 더 많은 컨텍스트를 제공할 수 있습니다. 중수편으로 넘어가면 기본 `HttpException`을 상속받아 직접 커스텀 예외 클래스를 만드는 방법도 배우게 됩니다.
+
 ## 8.5 Translating Business Rules into HTTP Failures
 
 모든 예외가 존재 여부와 관련된 것은 아닙니다.
@@ -273,7 +304,20 @@ update(id: string, input: UpdatePostDto) {
 
 서비스 계층도 자신이 강제하는 규칙을 더 정직하게 드러내게 됩니다.
 
-## Summary
+### 일관성이 핵심 (Consistency is Key)
+
+이러한 패턴을 사용하면 여러분의 API는 **예측 가능**해집니다. 예측 가능성은 전문적인 백엔드의 특징입니다. 없는 게시글에 대한 404든, 검증 오류에 대한 400이든, 클라이언트는 항상 무엇을 기대해야 하고 어떻게 처리해야 할지 알게 됩니다. 이는 프론트엔드 개발자의 혼란을 줄여주며, 장기적으로 애플리케이션을 훨씬 더 유지보수하기 쉽게 만듭니다.
+
+### 이름 있는 예외 vs HTTP 상태 코드 (Named Exceptions vs HTTP Status Codes)
+
+단순히 `404` 같은 숫자만 반환하고 싶은 유혹이 생길 수 있습니다. fluo도 이를 지원하지만, `NotFoundException` 같은 이름 있는 예외를 사용하는 것이 여러 면에서 권장됩니다.
+
+1.  **가독성**: `throw new NotFoundException()`은 `res.status(404).send()`보다 사람에게 훨씬 더 명확하게 읽힙니다.
+2.  **일관성**: 응답 본문이 프레임워크의 표준 에러 형식을 따르도록 보장합니다.
+3.  **미래 보장**: 나중에 프레임워크가 예외에 더 많은 메타데이터를 추가하더라도, 여러분의 코드는 자동으로 그 혜택을 받게 됩니다.
+4.  **타입 안정성**: 이름 있는 예외는 실제 클래스이므로, 필요한 경우 구체적으로 추적하거나 잡아낼 수 있습니다.
+
+### Summary
 - 명시적인 HTTP 예외는 API 실패를 더 이해하기 쉽고 문서화하기 쉽게 만듭니다.
 - 없는 리소스에 대해 조용히 `null`을 반환하는 것보다 `NotFoundException`이 더 강한 계약입니다.
 - 검증 오류와 비즈니스 규칙 오류는 mysterious crash가 아니라 예상 가능한 실패로 다뤄야 합니다.

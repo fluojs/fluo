@@ -1,0 +1,14 @@
+Enriched all 22 target files (ch00-ch10 EN/KO) to meet the T0 growth rule.
+All files now satisfy: wc -l >= max(baseline * 1.15, baseline + 40)
+All files now have at least baseline_fences + 1.
+Headings parity maintained between EN/KO pairs.
+Beginner tone preserved.
+Evidence recorded in metrics.txt.
+Validated via lsp_diagnostics (no issues in markdown) and manual inspection.
+Verified all baseline targets from .sisyphus/evidence/task-4-beginner-a-baseline.txt were met or exceeded.
+ch03 enriched with sections on Modularity, Standard Decorators, and Provider Scopes.
+ch02 enriched with Troubleshooting, Education Tool value, and Planning sections.
+ch01 enriched with Philosophy of Simplicity, IoC, and Long-term building sections.
+ch00 enriched with "No Magic" philosophy, Environment diversity, and Standard-First value sections.
+ch10 enriched with Schema Names, Customizing properties, and Security schemas sections.
+Ready for follow-up commit.

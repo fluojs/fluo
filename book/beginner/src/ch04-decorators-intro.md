@@ -56,6 +56,14 @@ Without decorators, you could still build a framework API, but you would often n
 
 Decorators compress that registration intent into a smaller, easier-to-scan syntax. That is why they are so useful for backend frameworks.
 
+### Code Organization Benefits
+
+Decorators also act as visual markers. When you scan a 500-line file, seeing `@Get()` above a method immediately tells you its external purpose. This organization benefit reduces the "cognitive load" of understanding a new codebase, making it easier for teams to collaborate on large projects.
+
+### Separation of Concerns
+
+Decorators help keep your business logic clean by separating cross-cutting concerns (like routing, validation, or authorization) from the core logic of your application. Instead of writing boilerplate code inside every method, you simply "decorate" your methods with the desired behavior, leading to much more maintainable code over time.
+
 ## 4.2 Legacy vs. Standard Decorators: Why the Shift?
 
 Many TypeScript developers first encountered decorators through the legacy `experimentalDecorators` model.
@@ -89,6 +97,14 @@ This change affects more than syntax.
 - compiler configuration becomes cleaner,
 - framework behavior becomes easier to explain in standard terms,
 - and the application is less tied to old compatibility assumptions.
+
+### Performance Gains
+
+One often overlooked benefit of standard decorators is performance. Because they are handled more natively by modern JavaScript engines and don't require heavy runtime reflection libraries, your application can boot faster and consume less memory. fluo leverages this efficiency to stay "lean and fast."
+
+### Improved Debugging
+
+Standard decorators provide a more predictable execution flow. When something goes wrong, the stack traces are often clearer because the framework isn't jumping through hidden reflection layers. For a beginner, this means less time spent wondering why a decorator isn't firing and more time building features.
 
 ### A Good Beginner Question
 
@@ -125,6 +141,14 @@ fluo uses class decorators because they create compact, readable declarations of
 Consider how much easier it is to scan a file when the first line of the class already tells you what it is.
 
 That readability is especially helpful in a modular codebase with many files.
+
+### Metadata Ownership
+
+In the legacy model, metadata was often "polluted" across the prototype. In the standard model, the framework has a clearer ownership of the metadata it attaches to a class. This reduces the risk of different libraries accidentally overwriting each other's configuration, leading to more stable and predictable applications.
+
+### Class Identity vs. Instance State
+
+Remember that class decorators affect the *class itself*, not just individual instances. This distinction is crucial for understanding how fluo's dependency injection container manages singletons and factory patterns. By decorating the class, you are defining how the framework should "manufacture" and "wire" instances of that class into the larger application.
 
 ### addInitializer and Framework Setup
 
@@ -174,6 +198,14 @@ In the standard model, the decorator context can help frameworks reason about wh
 
 That means frameworks can enforce clearer rules instead of relying on vague convention alone.
 
+### Composition of Behavior
+
+Standard decorators are designed to be composed. You can stack multiple decorators on a single method—for example, one to define the route and another to define access permissions. Because the standard defines a clear order of execution, you can trust that these behaviors will interact exactly as you expect.
+
+### Decorator Ordering Rules
+
+When you stack decorators like `@Get('/')` and `@Roles('admin')`, they are applied from bottom to top but initialized in a predictable sequence. Understanding this "onion-like" layering is a key step in moving from beginner to intermediate decorator usage in fluo.
+
 ### A Good Review Habit
 
 When you review a controller method, inspect both the body and the decorator line.
@@ -211,6 +243,14 @@ You do not need to use accessor decorators heavily in your first fluo project.
 The important point is awareness.
 
 The standard decorator model covers more than just classes and methods, which gives framework authors a broader and cleaner design space.
+
+### Encapsulation and Getters/Setters
+
+Using the `accessor` keyword combined with decorators allows fluo to intercept property access in a way that respects standard JavaScript encapsulation. This means your code stays idiomatic while the framework handles the heavy lifting of dependency resolution or state management behind the scenes.
+
+### Reactivity and State Management
+
+While less common in the basic FluoBlog example, accessor decorators are the foundation of fluo's future reactivity features. They allow the framework to detect when a property changes and trigger necessary side effects, much like how modern frontend frameworks like Svelte or Vue handle state.
 
 ### Performance and Predictability
 
@@ -260,6 +300,14 @@ A modern `target` helps the toolchain preserve newer JavaScript capabilities wit
 
 In other words, the language settings should support the framework philosophy instead of fighting it.
 
+### Bundler and Module Resolution
+
+Settings like `"moduleResolution": "bundler"` ensure that your development environment understands how to resolve the modern ESM (ECMAScript Modules) packages that fluo uses. This reduces "import errors" and ensures that your IDE provides accurate autocompletion and type checking as you build your application.
+
+### Strictly Enforced Standards
+
+By setting these flags to `false`, you are telling the TypeScript compiler: "I am using the official language standard, not a temporary experimental feature." This makes your codebase more "future-proof," as you won't have to rewrite your decorators when TypeScript eventually removes the legacy implementation.
+
 ### What to Check in a Real Project
 
 When a generated project or starter behaves oddly, inspect:
@@ -280,6 +328,14 @@ As you advance, decorators open the door to deeper topics.
 - composing metadata-driven framework features,
 - reasoning about performance trade-offs,
 - building higher-level abstractions on top of the standard model.
+
+### Custom Decorator Logic (Preview)
+
+While fluo provides all the decorators you need for common tasks, you'll eventually learn how to wrap complex logic into your own custom decorators. Imagine creating a `@UserOnly()` decorator that combines authentication check, role verification, and audit logging into a single, reusable line. This is where the true power of the standard model shines.
+
+### Meta-Framework Patterns
+
+Advanced developers use decorators to build "meta-frameworks"—libraries that extend fluo with new capabilities. For instance, a community package might provide a `@Cron()` decorator that automatically schedules a class method to run every hour. Because fluo is built on standards, these extensions are easy to build and even easier to use.
 
 ### Why Advanced Topics Can Wait
 
@@ -321,3 +377,4 @@ That progression is the true outcome of this part.
 
 ## Next Part Preview
 Part 1 will move from foundational concepts into practical HTTP API work. With the philosophy, project scaffold, module structure, and decorator model now in place, you are ready to build routes, validate requests, shape responses, and grow FluoBlog into a more realistic backend application.
+

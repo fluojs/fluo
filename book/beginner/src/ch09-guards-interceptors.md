@@ -35,6 +35,20 @@ Guards decide whether the request may continue. They run after the router matche
 
 Interceptors can wrap the handler and apply reusable logic before or after it. They have access to the execution stream, allowing you to transform the return value or catch errors before they reach the exception filter.
 
+### The Request Lifecycle
+
+Understanding the exact sequence is vital for debugging and architecture. When a request hits your fluo application, it travels through several layers:
+
+1.  **Middleware**: Raw request/response handling (like CORS or compression).
+2.  **Guards**: Authorization and authentication checks.
+3.  **Interceptors (Pre-handle)**: Transformation or logging before the handler.
+4.  **Pipes**: Validation and transformation of parameters/body.
+5.  **Controller Handler**: Your business logic entry point.
+6.  **Interceptors (Post-handle)**: Response shaping or timing.
+7.  **Exception Filters**: Catching and formatting errors.
+
+This layered approach ensures that if a request is unauthorized, it fails early at the Guard level, saving system resources.
+
 ### A Simple Mental Model
 
 Use this pair of questions.
@@ -110,6 +124,20 @@ It keeps authorization-style checks out of the handler body.
 
 It also makes intent visible at the decorator line.
 
+### Multi-Guard Execution
+
+In real-world applications, you might need multiple checks. fluo allows you to chain multiple guards:
+
+```typescript
+@Post('/')
+@UseGuards(AuthGuard, RoleGuard, BlacklistGuard)
+create(input: CreatePostDto) {
+  return this.postsService.create(input);
+}
+```
+
+In this case, fluo runs them in order. If **any** guard returns `false` or throws, the request is stopped immediately. This makes complex authorization rules modular and easy to manage.
+
 ## 9.3 Using an Interceptor for Reusable Response Workflow
 
 Interceptors are useful for response shaping, logging, timing, and other reusable request-flow concerns.
@@ -164,11 +192,36 @@ export class RequestLogInterceptor {
 }
 ```
 
-The point is not the exact API surface.
+### Transforming the Response
 
-The point is the architectural role.
+One of the most powerful features of interceptors is the ability to transform the returned data. Suppose you want to wrap every successful response in a standard data envelope:
 
-The interceptor wraps execution without forcing every handler to repeat the same logic.
+```typescript
+export class TransformInterceptor {
+  async intercept(next: () => Promise<unknown>) {
+    const data = await next();
+    
+    // Wrap the original result in a consistent object
+    return {
+      success: true,
+      timestamp: new Date().toISOString(),
+      data,
+    };
+  }
+}
+```
+
+Now, instead of just returning a post object, your API will return:
+
+```json
+{
+  "success": true,
+  "timestamp": "2026-04-21T10:00:00Z",
+  "data": { "id": "1", "title": "Hello Fluo" }
+}
+```
+
+This ensures a consistent contract for your frontend developers across the entire application.
 
 ## 9.4 Applying Guards and Interceptors to FluoBlog
 

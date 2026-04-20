@@ -1,0 +1,68 @@
+     313 book/beginner/src/ch00-introduction.ko.md
+     313 book/beginner/src/ch00-introduction.md
+     458 book/beginner/src/ch01-fluo-intro.ko.md
+     458 book/beginner/src/ch01-fluo-intro.md
+     425 book/beginner/src/ch02-cli-setup.ko.md
+     425 book/beginner/src/ch02-cli-setup.md
+     415 book/beginner/src/ch03-modules-providers.ko.md
+     438 book/beginner/src/ch03-modules-providers.md
+     379 book/beginner/src/ch04-decorators-intro.ko.md
+     380 book/beginner/src/ch04-decorators-intro.md
+     518 book/beginner/src/ch05-routing-controllers.ko.md
+     518 book/beginner/src/ch05-routing-controllers.md
+     381 book/beginner/src/ch06-validation.ko.md
+     379 book/beginner/src/ch06-validation.md
+     341 book/beginner/src/ch07-serialization.ko.md
+     341 book/beginner/src/ch07-serialization.md
+     329 book/beginner/src/ch08-exceptions.ko.md
+     327 book/beginner/src/ch08-exceptions.md
+     368 book/beginner/src/ch09-guards-interceptors.ko.md
+     368 book/beginner/src/ch09-guards-interceptors.md
+     289 book/beginner/src/ch10-openapi.ko.md
+     289 book/beginner/src/ch10-openapi.md
+     257 book/beginner/src/ch11-config.ko.md
+     231 book/beginner/src/ch11-config.md
+     223 book/beginner/src/ch12-prisma.ko.md
+     224 book/beginner/src/ch12-prisma.md
+     216 book/beginner/src/ch13-transactions.ko.md
+     217 book/beginner/src/ch13-transactions.md
+     335 book/beginner/src/ch14-jwt.ko.md
+     335 book/beginner/src/ch14-jwt.md
+     344 book/beginner/src/ch15-passport.ko.md
+     344 book/beginner/src/ch15-passport.md
+     295 book/beginner/src/ch16-throttler.ko.md
+     295 book/beginner/src/ch16-throttler.md
+     256 book/beginner/src/ch17-cache.ko.md
+     256 book/beginner/src/ch17-cache.md
+     249 book/beginner/src/ch18-health.ko.md
+     249 book/beginner/src/ch18-health.md
+     229 book/beginner/src/ch19-metrics.ko.md
+     229 book/beginner/src/ch19-metrics.md
+     276 book/beginner/src/ch20-testing.ko.md
+     276 book/beginner/src/ch20-testing.md
+     228 book/beginner/src/ch21-production.ko.md
+     228 book/beginner/src/ch21-production.md
+   14244 total
+book/beginner/src/ch00-introduction.md:2
+book/beginner/src/ch00-introduction.ko.md:2
+book/beginner/src/ch01-fluo-intro.md:2
+book/beginner/src/ch01-fluo-intro.ko.md:2
+book/beginner/src/ch02-cli-setup.md:18
+book/beginner/src/ch02-cli-setup.ko.md:18
+book/beginner/src/ch03-modules-providers.md:10
+book/beginner/src/ch03-modules-providers.ko.md:10
+book/beginner/src/ch04-decorators-intro.md:6
+book/beginner/src/ch04-decorators-intro.ko.md:6
+book/beginner/src/ch05-routing-controllers.md:22
+book/beginner/src/ch05-routing-controllers.ko.md:22
+book/beginner/src/ch06-validation.md:18
+book/beginner/src/ch06-validation.ko.md:18
+book/beginner/src/ch07-serialization.md:14
+book/beginner/src/ch07-serialization.ko.md:14
+book/beginner/src/ch08-exceptions.md:10
+book/beginner/src/ch08-exceptions.ko.md:10
+book/beginner/src/ch09-guards-interceptors.md:16
+book/beginner/src/ch09-guards-interceptors.ko.md:16
+book/beginner/src/ch10-openapi.md:8
+book/beginner/src/ch10-openapi.ko.md:8
+Tue Apr 21 04:50:12 KST 2026

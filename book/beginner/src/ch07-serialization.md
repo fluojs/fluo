@@ -51,6 +51,10 @@ They should not be assumed identical.
 
 Keeping them separate gives you more freedom to evolve internal code later.
 
+### Avoiding the "God DTO" Antipattern
+
+A common beginner mistake is creating a single DTO class for both input and output. This is often called a "God DTO." While it seems simpler at first, it quickly becomes messy. For example, your input might require a password, but your output definitely should not. By keeping your Request and Response DTOs separate from the start, you avoid accidentally leaking sensitive data or accepting fields that should be read-only.
+
 ## 7.2 Building a PublicPostDto
 
 Let us say FluoBlog stores posts with more fields than the public API should expose.
@@ -150,6 +154,29 @@ An interceptor is a natural place for reusable response shaping because it sits 
 
 That location makes the behavior consistent across endpoints.
 
+### Controller-Level vs Method-Level Interceptors
+
+You can apply the `@UseInterceptors()` decorator at different levels:
+
+- **Controller Level**: Applies to all routes in the controller.
+- **Method Level**: Applies only to a specific route handler.
+
+In FluoBlog, applying it at the controller level is usually the best choice for the `PostsController` since we want consistent serialization for all post-related data. However, if you had a specific route that returned raw text or a file download, you might choose to apply interceptors more selectively.
+
+### Manual Serialization
+
+Sometimes you might need to serialize data manually outside of an HTTP request, perhaps in a background job or a CLI command. You can use the `serialize()` function directly:
+
+```typescript
+import { serialize } from '@fluojs/serialization';
+
+const publicData = serialize(internalRecord, { 
+  type: PublicPostDto 
+});
+```
+
+This gives you the same power and consistency as the interceptor, but with full manual control over when and how the transformation happens.
+
 ## 7.4 Updating FluoBlog to Return Public Output
 
 Now let us make the posts feature feel more like a public API.
@@ -212,9 +239,17 @@ Maybe a derived display value should be formatted.
 
 `@Transform()` exists for that kind of synchronous shaping. It allows you to take the value of a property and return something else based on it. For example, in the `PublicPostDto` above, we could transform a long body into a short summary.
 
-It is not a replacement for domain logic.
+### Advanced Transformations
 
-It is a response-boundary tool.
+You can also access the full object inside a transform function:
+
+```typescript
+@Expose()
+@Transform(({ obj }) => `${obj.firstName} ${obj.lastName}`)
+fullName = '';
+```
+
+This is useful for combining multiple internal fields into a single public field. It keeps your service layer clean of display-specific formatting.
 
 ## 7.5 Safe Serialization Details Worth Knowing
 
@@ -245,6 +280,14 @@ That is a good reminder that transport design still needs thought.
 Decorators help.
 
 They do not replace clear API decisions.
+
+### Performance Considerations
+
+While serialization adds a small amount of overhead, it is highly optimized in fluo. Because fluo avoids heavy reflection libraries, the serialization process is faster than many traditional frameworks. For most beginner and intermediate applications, the performance impact is negligible compared to the security and clarity benefits it provides.
+
+### Working with Collections
+
+The `SerializerInterceptor` handles both single objects and arrays (collections) automatically. If your service returns an array of records, the interceptor will map over each item and apply the DTO transformation. This makes it extremely easy to build list endpoints that follow the same security rules as individual resource endpoints.
 
 ## 7.6 Common Beginner Patterns and Mistakes
 
@@ -281,6 +324,10 @@ That is a very mature step for a beginner project.
 It will also make the next chapters easier.
 
 Once outputs are shaped cleanly, error handling and API documentation become much clearer.
+
+### A Note on Maintenance
+
+As your application grows, you will thank yourself for separating these concerns. When you need to rename a database column or add an internal-only tracking field, your public API won't break. You simply update the mapping in your service or use `@Exclude()` on the new field. This decoupling is what allows backend systems to scale and evolve over years without forcing every client to rewrite their integration.
 
 ## Summary
 - Response DTOs protect clients from accidental field exposure.
