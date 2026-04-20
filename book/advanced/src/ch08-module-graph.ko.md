@@ -111,7 +111,7 @@ dependency가 dependent보다 먼저 append됩니다.
 
 ```text
 compileModule(AppModule)
-  compile imports first
+  compile imports first (recursive)
   create compiled record for current module
   append current module to ordered list last
 ```
@@ -119,6 +119,7 @@ compileModule(AppModule)
 즉 반환 배열은 임의의 discovery order가 아닙니다.
 도달 가능한 import graph에 대한 post-order traversal입니다.
 이것이 나중 registration 단계가 필요로 하는 순서와 정확히 맞습니다.
+`path:packages/runtime/src/bootstrap.test.ts:13-39`는 `SharedModule -> AppModule` 구조에서 결과가 `['SharedModule', 'AppModule']`임을 확인해 줍니다.
 
 compiled record는 `path:packages/runtime/src/module-graph.ts:219-226`에서 `providerTokens`도 미리 계산합니다.
 이 역시 작은데 중요한 선택입니다.
@@ -140,10 +141,6 @@ enter module
   unmark visiting
   append to ordered output
 ```
-
-`path:packages/runtime/src/bootstrap.test.ts:13-39`가 positive case를 고정합니다.
-negative case는 runtime source 자체에 문서화되어 있고,
-error hint가 의도된 recovery path를 직접 알려 줍니다.
 
 핵심 결과는 deterministic initialization order입니다.
 `bootstrapModule()`이 compiled array를 받을 때,
@@ -208,17 +205,16 @@ constructor metadata validation도 필수 계층입니다.
 `path:packages/runtime/src/module-graph.ts:103-129`의 `validateClassInjectionMetadata()`는 required constructor arity와 configured injection token 개수를 비교합니다.
 metadata가 부족하면,
 provider instantiation이 시작되기 전에 `ModuleInjectionMetadataError`를 던집니다.
+`path:packages/runtime/src/bootstrap.test.ts:61-75`는 `@Inject(Logger)` 없이 Logger를 생성자 인자로 받는 provider를 조기에 거부하는 사례를 보여 줍니다.
 
 테스트가 이 규칙들을 고정합니다.
 `path:packages/runtime/src/bootstrap.test.ts:41-59`는 export되지 않은 provider가 module 경계를 넘지 못함을 보여 줍니다.
-`path:packages/runtime/src/bootstrap.test.ts:61-75`는 `@Inject(...)` metadata 누락을 거부합니다.
 `path:packages/runtime/src/bootstrap.test.ts:105-120`은 같은 규칙을 controller에도 적용합니다.
 
 export validation은 `path:packages/runtime/src/module-graph.ts:333-358`의 `createExportedTokenSet()`에서 수행됩니다.
 규칙은 엄격합니다.
 module은 token이 local provider이거나,
 import한 module에서 re-export된 경우에만 export할 수 있습니다.
-그 외는 허용되지 않습니다.
 
 이 규칙은 미묘한 문서 drift를 막습니다.
 module이 실제로 등록하지 않은 token을 자기 public surface처럼 주장할 수 없게 합니다.
@@ -270,12 +266,7 @@ map에 나중 write가 이전 write를 덮어쓰기 때문에,
 마지막에 만난 provider token이 승리합니다.
 즉 설계가 좋지 않을 수는 있어도,
 동작은 deterministic합니다.
-
-테스트가 이를 분명하게 보여 줍니다.
-`path:packages/runtime/src/bootstrap.test.ts:291-317`은 warning path를 검증합니다.
-`path:packages/runtime/src/bootstrap.test.ts:319-343`은 warning mode에서 나중 provider가 실제로 승리함을 증명합니다.
-runtime은 duplicate를 merge하지 않습니다.
-token당 selected provider 하나만 남깁니다.
+`path:packages/runtime/src/bootstrap.test.ts:319-343`이 이를 증명합니다. ModuleB가 ModuleA를 import하거나 뒤에 배치될 경우, 같은 토큰에 대해 ModuleB의 provider가 최종 등록됩니다.
 
 selection 이후,
 `bootstrapModule()`은 `createRuntimeTokenSet()`과 `providerToken()`을 사용해 module provider 목록에서 runtime provider token을 제거합니다.
@@ -305,17 +296,11 @@ compiled module list는 dependency-first이므로,
 provider selection은 importer보다 imported module을 먼저 봅니다.
 따라서 duplicate policy가 허용할 경우,
 나중의 importer module이 imported token을 의도적으로 덮어쓸 수 있습니다.
-runtime은 임의가 아닙니다.
-dependency-ordered traversal 위에서 last-write-wins를 수행합니다.
-
-따라서 8장의 중간 결론은 이렇습니다.
-graph compiler가 합법적인 topology를 결정하고,
-`bootstrapModule()`은 그 topology를 explicit duplicate semantics와 함께 container에 재생합니다.
 
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 module graph order는 initialization order의 절반에 불과합니다.
 registration 이후 runtime은 어떤 singleton instance를 eager하게 만들지,
-어떤 hook을 실행할지,
+ 어떤 hook을 실행할지,
 언제 app이 ready해지는지도 결정해야 합니다.
 
 이 연속 단계는 `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`과,
@@ -355,10 +340,10 @@ compiled module 로그를 남깁니다.
 모든 `onModuleInit()` hook이 먼저 실행됩니다.
 그 pass가 끝난 뒤에야 모든 `onApplicationBootstrap()` hook이 실행됩니다.
 즉 전역적인 phase barrier가 있습니다.
-instance별 interleave가 아닙니다.
+`path:packages/runtime/src/bootstrap.test.ts:543-582`는 `module:init` 후 `app:bootstrap`이 실행되는 정확한 순서를 보여 줍니다.
 
 shutdown ordering은 거울상입니다.
-`path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`는 instance를 역순으로 순회하면서,
+`path:packages/runtime/src/bootstrap.test.ts:710-722`의 `runShutdownHooks()`는 instance를 역순으로 순회하면서,
 먼저 모든 `onModuleDestroy()`를 실행하고,
 그 다음 모든 `onApplicationShutdown()`을 실행합니다.
 

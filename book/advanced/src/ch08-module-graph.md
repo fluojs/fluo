@@ -113,7 +113,7 @@ The order can be summarized this way:
 
 ```text
 compileModule(AppModule)
-  compile imports first
+  compile imports first (recursive)
   create compiled record for current module
   append current module to ordered list last
 ```
@@ -121,6 +121,7 @@ compileModule(AppModule)
 So the produced array is not arbitrary discovery order.
 It is a post-order traversal of reachable imports.
 That is exactly what later registration phases need.
+`path:packages/runtime/src/bootstrap.test.ts:13-39` confirms that for a graph `SharedModule -> AppModule`, the result is `['SharedModule', 'AppModule']`.
 
 The compiled record also precomputes `providerTokens` at `path:packages/runtime/src/module-graph.ts:219-226`.
 This is another small but important design choice.
@@ -142,10 +143,6 @@ enter module
   unmark visiting
   append to ordered output
 ```
-
-`path:packages/runtime/src/bootstrap.test.ts:13-39` confirms the positive case.
-The negative case is documented in the runtime source itself,
-and the error hint tells the intended recovery path.
 
 The important consequence is deterministic initialization order.
 When `bootstrapModule()` receives the compiled array,
@@ -209,10 +206,10 @@ Constructor metadata validation is another essential layer.
 `validateClassInjectionMetadata()` in `path:packages/runtime/src/module-graph.ts:103-129` compares required constructor arity with configured injection tokens.
 If metadata is missing,
 the runtime throws `ModuleInjectionMetadataError` before any provider instantiation occurs.
+`path:packages/runtime/src/bootstrap.test.ts:61-75` shows that a provider with a logger parameter but no `@Inject(Logger)` is rejected early.
 
 The tests pin these rules down.
 `path:packages/runtime/src/bootstrap.test.ts:41-59` verifies that a non-exported provider cannot leak across module boundaries.
-`path:packages/runtime/src/bootstrap.test.ts:61-75` shows that missing `@Inject(...)` metadata is rejected.
 `path:packages/runtime/src/bootstrap.test.ts:105-120` extends the same rule to controllers.
 
 Export validation happens in `createExportedTokenSet()` at `path:packages/runtime/src/module-graph.ts:333-358`.
@@ -270,14 +267,8 @@ The implementation detail that matters is selection order.
 `collectProvidersForContainer()` iterates compiled modules in dependency order,
 but because later writes replace earlier ones in the map,
 the last encountered provider token wins.
-That makes the policy deterministic,
-even if the design itself is questionable.
-
-The tests show this clearly.
-`path:packages/runtime/src/bootstrap.test.ts:291-317` verifies the warning path.
-`path:packages/runtime/src/bootstrap.test.ts:319-343` proves that the later provider wins when warning mode is used.
-The runtime does not try to merge duplicates.
-It forces one selected provider per token.
+That makes the policy deterministic.
+`path:packages/runtime/src/bootstrap.test.ts:319-343` proves this: if ModuleA and ModuleB both provide `SHARED_TOKEN` and ModuleB depends on (or is ordered after) ModuleA, then ModuleB's version is the one finally registered.
 
 After selection,
 `bootstrapModule()` removes runtime provider tokens from the module provider list with `createRuntimeTokenSet()` and `providerToken()`.
@@ -306,12 +297,6 @@ The module-order analysis here is simple but important.
 Because the compiled module list is dependency-first,
 provider selection sees imported modules before importers.
 That means later importer modules can intentionally override imported tokens when duplicate policy allows it.
-The runtime is not random.
-It is last-write-wins on top of a dependency-ordered traversal.
-
-So Chapter 8's middle conclusion is:
-the graph compiler decides legal topology,
-and `bootstrapModule()` replays that topology into a container with explicit duplicate semantics.
 
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 Module graph order is only the first half of initialization order.
@@ -356,6 +341,7 @@ All `onModuleInit()` hooks run first.
 Only after that pass completes do `onApplicationBootstrap()` hooks run.
 This is a global phase barrier.
 Fluo does not interleave the two hook types instance by instance.
+`path:packages/runtime/src/bootstrap.test.ts:543-582` records this exact sequence: `module:init`, then `app:bootstrap`.
 
 Shutdown ordering is the mirror image.
 `runShutdownHooks()` at `path:packages/runtime/src/bootstrap.ts:710-722` iterates instances in reverse order,
