@@ -455,6 +455,33 @@ describe('Container', () => {
       expect(secondRequestResolved).toBe(rootAfterOverride);
     });
 
+    it('does not let request-scope overrides poison a root singleton dependency graph', async () => {
+      class ConfigService {
+        constructor(readonly value: string) {}
+      }
+
+      class RootSingletonConsumer {
+        constructor(readonly config: ConfigService) {}
+      }
+
+      const root = new Container().register(
+        { provide: ConfigService, useFactory: () => new ConfigService('root-config') },
+        { provide: RootSingletonConsumer, useClass: RootSingletonConsumer, inject: [ConfigService] },
+      );
+
+      const requestScope = root.createRequestScope();
+      requestScope.override({ provide: ConfigService, useFactory: () => new ConfigService('request-config') });
+
+      const requestResolved = await requestScope.resolve(RootSingletonConsumer);
+      const rootResolved = await root.resolve(RootSingletonConsumer);
+      const secondRequestResolved = await root.createRequestScope().resolve(RootSingletonConsumer);
+
+      expect(requestResolved).toBe(rootResolved);
+      expect(rootResolved).toBe(secondRequestResolved);
+      expect(rootResolved.config.value).toBe('root-config');
+      expect(requestResolved.config.value).not.toBe('request-config');
+    });
+
     it('throws ScopeMismatchError when registering a singleton on a request scope container', () => {
       const token = Symbol('singleton-token');
       const root = new Container();
