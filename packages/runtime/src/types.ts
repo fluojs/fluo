@@ -73,6 +73,13 @@ export interface OnApplicationShutdown {
   onApplicationShutdown(signal?: string): MaybePromise<void>;
 }
 
+/** Convenience union covering every public runtime lifecycle hook contract. */
+export type LifecycleHooks =
+  | OnModuleInit
+  | OnApplicationBootstrap
+  | OnModuleDestroy
+  | OnApplicationShutdown;
+
 /** Logger contract used by runtime bootstrap and lifecycle diagnostics. */
 export interface ApplicationLogger {
   debug(message: string, context?: string): void;

@@ -1188,3 +1188,15 @@ export class FluoFactory {
     }
   }
 }
+
+/**
+ * Lower-camel-case compatibility alias that matches the documented runtime entrypoint.
+ *
+ * @example
+ * ```ts
+ * import { fluoFactory } from '@fluojs/runtime';
+ *
+ * const app = await fluoFactory.create(AppModule);
+ * ```
+ */
+export const fluoFactory = FluoFactory;
