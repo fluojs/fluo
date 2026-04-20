@@ -85,7 +85,7 @@ class MyService {
 | 클래스/헬퍼 | 설명 |
 |---|---|
 | `ConfigModule` | 설정을 전역 또는 지역으로 등록하기 위한 모듈입니다. |
-| `ConfigService` | 설정 값에 타입 안전하게 접근하기 위한 서비스입니다. |
+| `ConfigService` | 설정 값에 타입 안전하게 접근하기 위한 읽기 전용 서비스입니다. 스냅샷 교체는 config reload 경로 내부에만 남습니다. |
 | `loadConfig(options)` | 설정을 수동으로 로드하기 위한 함수형 엔트리 포인트입니다. |
 | `createConfigReloader(options)` | 동적 설정 업데이트를 위한 리로더를 생성합니다. |
 

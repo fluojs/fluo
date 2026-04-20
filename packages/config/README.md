@@ -90,7 +90,7 @@ The `validate` function runs after all sources are merged but before the applica
 | Class/Helper | Description |
 |---|---|
 | `ConfigModule` | Module for registering configuration globally or locally. |
-| `ConfigService` | Service for typed access to configuration values. |
+| `ConfigService` | Read-only service for typed access to configuration values. Snapshot replacement stays inside the config reload path. |
 | `loadConfig(options)` | Functional entry point for loading configuration manually. |
 | `createConfigReloader(options)` | Creates a reloader for dynamic configuration updates. |
 
