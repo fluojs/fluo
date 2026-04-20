@@ -138,6 +138,8 @@ export class PostsController {
 
 덕분에 컨트롤러는 포맷팅 세부사항보다 조정 역할에 집중할 수 있습니다.
 
+이 흐름은 보통 다음과 같이 진행됩니다: **내부 레코드 -> DTO -> 인터셉터 -> 클라이언트**. `SerializerInterceptor`는 `packages/serialization/src/serializer-interceptor.ts`에 정의되어 있으며, 내부적으로 `serialize` 함수를 사용해 여러분이 제공한 데코레이터 기반으로 변환을 수행합니다.
+
 ### Why an Interceptor Is a Good Fit
 
 직렬화는 cross-cutting concern입니다.
@@ -208,7 +210,7 @@ summary 값을 trim해야 할 수도 있습니다.
 
 파생된 표시 값을 포맷해야 할 수도 있습니다.
 
-`@Transform()`은 이런 동기식 경계 변환을 위해 존재합니다.
+`@Transform()`은 이런 동기식 경계 변환을 위해 존재합니다. 속성값을 가져와 여러분이 제공한 로직에 따라 다른 값을 반환할 수 있게 해 줍니다. 예를 들어 위 `PublicPostDto`에서 긴 본문(body)을 짧은 요약(summary)으로 변환해 보여 줄 때 유용합니다.
 
 도메인 로직을 대신하는 기능은 아닙니다.
 

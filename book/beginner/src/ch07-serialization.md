@@ -71,7 +71,7 @@ If the controller returns this object directly, every field may leak to the clie
 Instead, define a public output model.
 
 ```typescript
-import { Exclude, Expose, Transform } from '@fluojs/serialization';
+import { Expose, Exclude, Transform } from '@fluojs/serialization';
 
 @Expose({ excludeExtraneous: true })
 export class PublicPostDto {
@@ -137,6 +137,8 @@ Now the controller can return DTO instances or data intended for serialization.
 The interceptor applies the response shaping step automatically.
 
 That keeps the controller focused on coordination rather than formatting mechanics.
+
+This flow is common: **Internal Record -> DTO -> Interceptor -> Client**. The `SerializerInterceptor` is defined in `packages/serialization/src/serializer-interceptor.ts` and it uses the `serialize` function under the hood to perform the transformation based on the decorators you provided.
 
 ### Why an Interceptor Is a Good Fit
 
@@ -208,7 +210,7 @@ Maybe a username should be uppercased.
 
 Maybe a derived display value should be formatted.
 
-`@Transform()` exists for that kind of synchronous shaping.
+`@Transform()` exists for that kind of synchronous shaping. It allows you to take the value of a property and return something else based on it. For example, in the `PublicPostDto` above, we could transform a long body into a short summary.
 
 It is not a replacement for domain logic.
 

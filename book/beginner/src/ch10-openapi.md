@@ -85,6 +85,10 @@ import { PostsModule } from './posts/posts.module';
 export class AppModule {}
 ```
 
+The `OpenApiModule.forRoot()` method is the main entry point. It takes a configuration object where you specify the `title`, `version`, and most importantly, the `sources`.
+
+In fluo, `sources` define which controllers the OpenAPI builder should inspect. You can pass a `controllerToken` directly, as shown in the example.
+
 With `ui: true`, the application can serve Swagger UI.
 
 The generated JSON document is also available.
@@ -93,6 +97,8 @@ According to the package documentation, the common paths are:
 
 - `/openapi.json` for the document,
 - `/docs` for Swagger UI.
+
+You can verify this behavior in the `packages/openapi/src/openapi-module.test.ts` where the module is bootstrapped and the `/openapi.json` endpoint is hit to confirm the document structure.
 
 ### A Detail Worth Remembering
 
@@ -182,6 +188,8 @@ FluoBlog can now express:
 - response expectations through `@ApiResponse()`,
 - security requirements on protected routes through `@ApiBearerAuth()` or `@ApiSecurity()`.
 
+When you use `@fluojs/validation` decorators like `@IsString()` or `@IsNumber()` on your DTOs, the `OpenApiModule` automatically converts these into OpenAPI schema properties. This is handled by the schema builder internally (see `packages/openapi/src/schema-builder.test.ts`).
+
 That combination is powerful because it turns earlier chapters into documentation inputs.
 
 The work was cumulative by design.
@@ -193,6 +201,8 @@ In Chapter 9, write routes gained a guard.
 Documentation should reflect that protected nature.
 
 Even if the guard implementation is separate from the docs decorator, the docs can still communicate the requirement clearly.
+
+By adding `@ApiBearerAuth()`, you tell the Swagger UI that this endpoint requires an `Authorization` header. This allows you to test protected endpoints directly from the browser.
 
 This is another example of why security and documentation should be designed together.
 

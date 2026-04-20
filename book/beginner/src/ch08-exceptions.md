@@ -59,12 +59,12 @@ The HTTP package includes a set of exceptions for common API failure cases.
 
 These include:
 
-- `BadRequestException`
-- `UnauthorizedException`
-- `ForbiddenException`
-- `NotFoundException`
-- `InternalServerErrorException`
-- `PayloadTooLargeException`
+- `BadRequestException` (400)
+- `UnauthorizedException` (401)
+- `ForbiddenException` (403)
+- `NotFoundException` (404)
+- `InternalServerErrorException` (500)
+- `PayloadTooLargeException` (413)
 
 Each one exists so the code can express intent directly.
 
@@ -117,6 +117,8 @@ export class PostsService {
     const post = this.posts.find((item) => item.id === id);
 
     if (!post) {
+      // Throwing this exception immediately stops execution 
+      // and starts the fluo exception handling flow.
       throw new NotFoundException(`Post ${id} was not found.`);
     }
 
@@ -167,6 +169,8 @@ Examples include:
 - wrong scalar types,
 - invalid lengths,
 - malformed payload structure.
+
+When `@fluojs/validation` finds an error, it doesn't just crash. It throws a structured exception (often a `BadRequestException` variant) that the HTTP layer converts into a readable response (see `docs/concepts/error-responses.md`).
 
 The key idea is responsibility.
 

@@ -31,9 +31,9 @@ That is where guards and interceptors enter the picture.
 
 The distinction is worth learning carefully.
 
-Guards decide whether the request may continue.
+Guards decide whether the request may continue. They run after the router matches a path but before the controller handler is invoked.
 
-Interceptors can wrap the handler and apply reusable logic before or after it.
+Interceptors can wrap the handler and apply reusable logic before or after it. They have access to the execution stream, allowing you to transform the return value or catch errors before they reach the exception filter.
 
 ### A Simple Mental Model
 
@@ -42,6 +42,8 @@ Use this pair of questions.
 If the question is “is this request allowed?”, think guard.
 
 If the question is “how should this request be observed, transformed, or wrapped?”, think interceptor.
+
+This visible pipeline note is important: **Guards run BEFORE Interceptors**. If a guard returns `false` or throws an exception, the interceptor layer is never even reached for that request.
 
 That model is not exhaustive.
 
@@ -57,13 +59,17 @@ That is a perfect beginner guard example.
 import { ForbiddenException, type RequestContext } from '@fluojs/http';
 
 export class AdminGuard {
-  canActivate(_input: unknown, ctx: RequestContext) {
+  // input is the validated request body (if any)
+  canActivate(input: unknown, ctx: RequestContext) {
     const role = ctx.request.headers['x-role'];
 
     if (role !== 'admin') {
+      // We throw a structured exception, which Chapter 8 taught us
+      // will be caught and transformed into a 403 Forbidden response.
       throw new ForbiddenException('Admin role required.');
     }
 
+    // Returning true tells fluo the pipeline can continue.
     return true;
   }
 }
@@ -142,10 +148,17 @@ Imagine a very simple timing or logging interceptor.
 
 ```typescript
 export class RequestLogInterceptor {
+  // next is a function that returns the result of the handler (or the next interceptor)
   async intercept(next: () => Promise<unknown>) {
     const startedAt = Date.now();
+    
+    // We execute the handler and wait for the result
     const result = await next();
+    
+    // We can observe the time taken after the handler finishes
     console.log(`Request finished in ${Date.now() - startedAt}ms`);
+    
+    // We must return the result (or a transformed version of it)
     return result;
   }
 }
@@ -292,6 +305,7 @@ The API is starting to look less like a demo and more like a small maintainable 
 ## Summary
 - Guards decide whether a request may proceed.
 - Interceptors wrap handler execution to apply reusable request/response behavior.
+- Guards run before interceptors in the fluo request pipeline.
 - FluoBlog can now protect write routes while keeping public reads open.
 - `SerializerInterceptor` remains a practical example of response-side pipeline reuse.
 - Request-context-aware helpers are useful, but they should not replace good service boundaries.
