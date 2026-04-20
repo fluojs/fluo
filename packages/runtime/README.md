@@ -129,10 +129,11 @@ class UsersModule {}
 
 ## Public API Overview
 
-- `fluoFactory`: Static facade for application lifecycle management.
+- `fluoFactory`: Lower-camel-case alias for the runtime bootstrap facade used in the package examples.
+- `FluoFactory`: Class-based runtime bootstrap facade retained for compatibility and explicit static access.
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container` and `modules`.
-- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`.
+- `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
 
@@ -140,21 +141,32 @@ class UsersModule {}
 
 | Subpath | Purpose |
 | :--- | :--- |
-| `@fluojs/runtime/node` | Node.js-specific logger factories (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) and shutdown signal registration. |
+| `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers. |
 | `@fluojs/runtime/internal` | Low-level orchestration helpers and HTTP adapter base logic. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam used by adapter/package compatibility layers; prefer `@fluojs/runtime/node` in application code. |
 
 ### Node-Specific Subpath (`@fluojs/runtime/node`)
 
-Logger factories and other Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
+Logger factories and other supported Node-only helpers are **not** on the universal root entrypoint. Import them from the `./node` subpath:
 
 ```typescript
-import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/runtime/node';
+import {
+  bootstrapNodeApplication,
+  createConsoleApplicationLogger,
+  createJsonApplicationLogger,
+  createNodeHttpAdapter,
+  runNodeApplication,
+} from '@fluojs/runtime/node';
 ```
 
 - `createConsoleApplicationLogger()`: Colorized console logger using `process.stdout`/`process.stderr`.
 - `createJsonApplicationLogger()`: Structured JSON logger using `process.stdout`/`process.stderr`.
+- `createNodeHttpAdapter()`: Raw Node `http`/`https` adapter factory for adapter-first runtime setup.
+- `bootstrapNodeApplication()` / `runNodeApplication()`: Node-specific bootstrap helpers used by compatibility packages and direct Node runtime flows.
+- `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: Shutdown registration helpers for hosts that need explicit signal wiring.
+
+Lower-level Node compression internals stay behind the `@fluojs/runtime/internal-node` seam rather than the public `@fluojs/runtime/node` contract.
 
 ## Related Packages
 

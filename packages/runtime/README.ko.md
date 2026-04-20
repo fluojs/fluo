@@ -129,10 +129,11 @@ class UsersModule {}
 
 ## 공개 API 개요
 
-- `fluoFactory`: 애플리케이션 라이프사이클 관리를 위한 정적 파사드입니다.
+- `fluoFactory`: 패키지 예제에서 사용하는 런타임 부트스트랩 파사드의 lower-camel-case 별칭입니다.
+- `FluoFactory`: 호환성과 명시적 static 접근을 위해 유지되는 클래스 기반 런타임 부트스트랩 파사드입니다.
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`와 `modules`에 접근할 수 있습니다.
-- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`.
+- `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
 
@@ -140,21 +141,32 @@ class UsersModule {}
 
 | 서브경로 | 용도 |
 | :--- | :--- |
-| `@fluojs/runtime/node` | Node.js 전용 로거 팩토리 (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) 및 종료 시그널 등록. |
+| `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 웹 표준 요청/응답 유틸리티. |
 | `@fluojs/runtime/internal` | 저수준 오케스트레이션 헬퍼 및 HTTP 어댑터 기본 로직. |
 | `@fluojs/runtime/internal-node` | 어댑터/패키지 호환 계층이 사용하는 Node 전용 내부 seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 
 ### Node 전용 서브경로 (`@fluojs/runtime/node`)
 
-로거 팩토리 및 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
+로거 팩토리와 지원되는 기타 Node 전용 헬퍼는 범용 루트 진입점에 포함되지 않습니다. `./node` 서브경로에서 가져오세요:
 
 ```typescript
-import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/runtime/node';
+import {
+  bootstrapNodeApplication,
+  createConsoleApplicationLogger,
+  createJsonApplicationLogger,
+  createNodeHttpAdapter,
+  runNodeApplication,
+} from '@fluojs/runtime/node';
 ```
 
 - `createConsoleApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 컬러 콘솔 로거.
 - `createJsonApplicationLogger()`: `process.stdout`/`process.stderr`를 사용하는 구조화된 JSON 로거.
+- `createNodeHttpAdapter()`: 어댑터 우선 런타임 구성을 위한 raw Node `http`/`https` 어댑터 팩토리.
+- `bootstrapNodeApplication()` / `runNodeApplication()`: 호환 패키지와 직접 Node 런타임 흐름에서 사용하는 Node 전용 부트스트랩 헬퍼.
+- `createNodeShutdownSignalRegistration()`, `defaultNodeShutdownSignals()`, `registerShutdownSignals()`: 호스트가 명시적으로 시그널 wiring을 제어할 때 쓰는 종료 등록 헬퍼.
+
+더 저수준의 Node compression internals는 공개 `@fluojs/runtime/node` 계약이 아니라 `@fluojs/runtime/internal-node` seam 뒤에 둡니다.
 
 ## 관련 패키지
 
