@@ -519,6 +519,10 @@ export class Container {
     chain: Token[],
     activeTokens: Set<Token>,
   ): Promise<unknown> {
+    if (this.shouldResolveFromRoot(provider)) {
+      return await this.root().resolveScopedOrSingletonInstance(provider, chain, activeTokens);
+    }
+
     const cache = this.cacheFor(provider);
 
     if (!cache.has(provider.provide)) {
@@ -531,6 +535,10 @@ export class Container {
     }
 
     return cache.get(provider.provide);
+  }
+
+  private shouldResolveFromRoot(provider: NormalizedProvider): boolean {
+    return provider.scope === Scope.DEFAULT && this.requestScopeEnabled && !this.registrations.has(provider.provide);
   }
 
   private async resolveDepToken(
