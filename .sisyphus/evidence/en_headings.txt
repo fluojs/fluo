@@ -1,7 +1,0 @@
-# 5. Scopes: Singleton, Request, and Transient
-## 5.1 The scope vocabulary is small on purpose
-## 5.2 Singleton caching and the root container baseline
-## 5.3 Request scope is a child container, not a flag on a provider
-## 5.4 Transient providers skip caches entirely
-## 5.5 Overrides, cache invalidation, and stale instance disposal
-## 5.6 Disposal order, child scopes, and shutdown guarantees

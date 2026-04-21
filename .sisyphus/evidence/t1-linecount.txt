@@ -1,9 +1,0 @@
-     112 book/beginner/src/ch01-fluo-intro.ko.md
-     112 book/beginner/src/ch01-fluo-intro.md
-     101 book/beginner/src/ch02-cli-setup.ko.md
-     101 book/beginner/src/ch02-cli-setup.md
-     152 book/beginner/src/ch03-modules-providers.ko.md
-     152 book/beginner/src/ch03-modules-providers.md
-     136 book/beginner/src/ch04-decorators-intro.ko.md
-     136 book/beginner/src/ch04-decorators-intro.md
-    1002 total

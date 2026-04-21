@@ -1,3 +1,0 @@
-Review: All 10 files satisfy the strict growth rule (max(B*1.15, B+40)).
-Technical depth has been significantly enhanced with direct source references (KSR) and internal mechanism analysis.
-EN/KO structural parity is maintained across all chapters.

@@ -1,5 +1,0 @@
-     303 book/advanced/src/ch05-scopes.md
-     332 book/advanced/src/ch05-scopes.ko.md
-     635 total
-Code fences EN: 12
-Code fences KO: 12
