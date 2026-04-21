@@ -1,87 +1,87 @@
 <!-- packages: @fluojs/http, @fluojs/core, @fluojs/di -->
 <!-- project-state: FluoBlog v0 -->
 
-# Chapter 13. Custom Adapter Implementation — 독자적인 전송 계층 구축
+# Chapter 13. Custom Adapter Implementation: Building Your Own Transport Layer
 
-## 이 챕터에서 배우는 것
-- `HttpApplicationAdapter` 인터페이스의 구조와 역할
-- `listen()`과 `close()` 메서드를 통한 서버 생명주기 관리
-- `FrameworkRequest`와 `FrameworkResponse` 인터페이스 준수 방법
-- Fastify 기반 어댑터 구현 사례 분석
-- 서버리스(Serverless) 및 엣지(Edge) 환경을 위한 어댑터 전략
+## What You Will Learn in This Chapter
+- The structure and role of the `HttpApplicationAdapter` interface
+- How `listen()` and `close()` manage the server lifecycle
+- How to satisfy the `FrameworkRequest` and `FrameworkResponse` contracts
+- A practical Fastify-based adapter implementation
+- Adapter strategies for serverless and edge environments
 
-## 사전 요구사항
-- Ch11~12의 HTTP 디스패처 및 실행 파이프라인 지식
-- 특정 HTTP 서버 라이브러리(Node.js http, Fastify, Express 등)에 대한 기초 지식
+## Prerequisites
+- Knowledge of the HTTP dispatcher and execution pipeline from Chapters 11 and 12
+- Basic familiarity with a concrete HTTP server library such as Node.js `http`, Fastify, or Express
 
-## 13.1 어댑터(Adapter): 프레임워크와 런타임의 교량
+## 13.1 The Adapter: A Bridge Between Framework and Runtime
 
-fluo의 강점 중 하나는 런타임 중립성입니다. 이를 가능하게 하는 핵심 요소가 바로 어댑터 패턴입니다. 어댑터는 특정 플랫폼(Node.js, Bun, Cloudflare Workers 등)의 요청 객체를 fluo가 이해할 수 있는 `FrameworkRequest`로 변환하고, 디스패처의 실행 결과를 다시 플랫폼의 응답 객체로 되돌려줍니다.
+One of fluo's biggest strengths is runtime neutrality. The adapter pattern is what makes that possible. An adapter converts a platform-specific request object, for example from Node.js, Bun, or Cloudflare Workers, into the `FrameworkRequest` shape that fluo understands, and then converts the dispatch result back into the platform's response object.
 
-어댑터 덕분에 개발자는 `Controller`나 `Service` 로직을 한 번만 작성하면, 성능 요구사항에 따라 Fastify에서 Bun으로, 또는 AWS Lambda로 코드 수정 없이 옮겨갈 수 있습니다.
+Because of adapters, developers can write `Controller` and `Service` logic once and move from Fastify to Bun, or even to AWS Lambda, without rewriting business code.
 
-## 13.2 HttpApplicationAdapter 인터페이스 분석
+## 13.2 Understanding the HttpApplicationAdapter Interface
 
-새로운 플랫폼을 지원하기 위한 어댑터를 만들려면 `HttpApplicationAdapter` 인터페이스를 구현해야 합니다.
+To support a new platform, you implement the `HttpApplicationAdapter` interface.
 
 `packages/http/src/adapter.ts:L68-L93`
 ```typescript
 export interface HttpApplicationAdapter {
   /**
-   * 하부 서버 인스턴스를 노출합니다.
+    * Expose the underlying server instance.
    */
   getServer?(): unknown;
 
   /**
-   * 어댑터의 실시간 통신 역량을 보고합니다.
+    * Report the adapter's realtime capability.
    */
   getRealtimeCapability?(): HttpAdapterRealtimeCapability;
 
   /**
-   * 서버를 시작하고 디스패처를 바인딩합니다.
+    * Start the server and bind the dispatcher.
    */
   listen(dispatcher: Dispatcher): MaybePromise<void>;
 
   /**
-   * 서버를 안전하게 종료합니다.
+    * Shut the server down safely.
    */
   close(signal?: string): MaybePromise<void>;
 }
 ```
 
-- `listen(dispatcher)`: 서버를 가동하고, 들어오는 모든 HTTP 요청을 `dispatcher.dispatch(req, res)`로 전달하는 핵심 지점입니다.
-- `close(signal)`: 런타임 종료 시 호출되어 열려있는 소켓과 리소스를 정리합니다.
+- `listen(dispatcher)`: the key entry point that starts the server and forwards every incoming HTTP request into `dispatcher.dispatch(req, res)`.
+- `close(signal)`: called during shutdown to clean up open sockets and resources.
 
-## 13.3 요청/응답 매핑: FrameworkRequest와 FrameworkResponse
+## 13.3 Mapping Requests and Responses: FrameworkRequest and FrameworkResponse
 
-어댑터의 가장 중요한 임무는 매핑입니다. fluo는 어댑터가 제공하는 `FrameworkRequest`를 기반으로 모든 파이프라인을 가동하며, 응답은 `FrameworkResponse`를 통해 추상화됩니다.
+The most important job of an adapter is mapping. fluo runs the full pipeline on top of the `FrameworkRequest` supplied by the adapter, and responses are abstracted through `FrameworkResponse`.
 
 ```typescript
-// 어댑터 내부에서 수행되는 매핑 예시
+// Example mapping done inside an adapter
 const fluoRequest: FrameworkRequest = {
   method: rawRequest.method,
   url: rawRequest.url,
   headers: rawRequest.headers,
   body: rawRequest.body,
   query: rawRequest.query,
-  params: {}, // 디스패처가 라우트 매칭 시 채워줌
-  signal: rawRequest.signal, // AbortSignal 연동
+  params: {}, // Filled in by the dispatcher during route matching
+  signal: rawRequest.signal, // AbortSignal integration
 };
 ```
 
-특히 `signal` 속성을 플랫폼의 요청 중단 시그널(예: Node.js의 `req.on('close')`)과 연결하는 것이 중요합니다. 이는 파이프라인의 불필요한 연산을 방지하는 핵심 장치입니다.
+Connecting the `signal` field to the platform's request-abort signal, such as `req.on('close')` in Node.js, is especially important. It is a key tool for preventing wasted work inside the pipeline.
 
-## 13.4 실전: Fastify 어댑터 핵심 로직 분석
+## 13.4 In Practice: Core Fastify Adapter Logic
 
-`@fluojs/platform-fastify` 패키지는 이 인터페이스를 어떻게 구현하고 있을까요? Fastify은 이미 고도로 최적화된 라우팅과 플러그인 시스템을 갖추고 있지만, fluo 어댑터는 이를 단순한 "전송 계층"으로만 사용합니다.
+How does `@fluojs/platform-fastify` implement this interface? Fastify already has a highly optimized routing and plugin system, but the fluo adapter uses it only as a transport layer.
 
 ```typescript
-// packages/platform-fastify/src/adapter.ts (개념적 코드)
+// packages/platform-fastify/src/adapter.ts, conceptual code
 export class FastifyAdapter implements HttpApplicationAdapter {
   constructor(private instance = fastify()) {}
 
   async listen(dispatcher: Dispatcher) {
-    // 모든 경로를 fluo 디스패처로 위임
+    // Delegate every route to the fluo dispatcher
     this.instance.all('*', async (req, reply) => {
       await dispatcher.dispatch(
         this.mapRequest(req),
@@ -97,11 +97,11 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Fastify의 와일드카드 핸들러(`all('*')`)를 사용하여 모든 경로에 대한 제어권을 fluo 디스패처로 넘기는 것이 전형적인 패턴입니다.
+Using Fastify's wildcard handler, `all('*')`, to hand every route over to the fluo dispatcher is a common pattern.
 
-## 13.5 FrameworkResponse와 응답 쓰기 위임
+## 13.5 FrameworkResponse and Delegated Response Writing
 
-디스패처는 처리가 끝나면 `FrameworkResponse` 인터페이스의 메서드들을 호출하여 결과를 클라이언트에 보냅니다. 어댑터는 이 메서드들을 플랫폼에 맞게 구현해야 합니다.
+When the dispatcher finishes processing, it calls methods on `FrameworkResponse` to send the result to the client. The adapter must implement those methods for the target platform.
 
 ```typescript
 const fluoResponse: FrameworkResponse = {
@@ -112,17 +112,17 @@ const fluoResponse: FrameworkResponse = {
 };
 ```
 
-`committed` 속성은 이미 응답이 나갔는지 여부를 알려주며, 디스패처가 응답을 중복해서 쓰지 않도록 방어하는 안전장치 역할을 합니다.
+The `committed` property tells fluo whether the response has already been sent. That acts as a guardrail against writing the same response twice.
 
-## 13.6 서버리스 환경에서의 어댑터 전략
+## 13.6 Adapter Strategy in Serverless Environments
 
-AWS Lambda나 Cloudflare Workers와 같은 환경에서는 `listen()` 메서드가 지속적으로 실행되지 않습니다. 대신, 이벤트 기반으로 디스패처가 호출되어야 합니다.
+In environments such as AWS Lambda or Cloudflare Workers, `listen()` does not run continuously. Instead, the dispatcher must be triggered by events.
 
-`packages/platform-cloudflare-workers/src/adapter.ts`에서는 `fetch` 이벤트가 발생할 때마다 짧은 생명주기를 가진 어댑터가 생성되어 `dispatcher.dispatch`를 실행하고 응답을 `Response` 객체로 변환하여 반환합니다. 이처럼 어댑터 패턴은 전통적인 서버 환경과 현대적인 엣지 런타임을 투명하게 잇는 다리가 됩니다.
+In `packages/platform-cloudflare-workers/src/adapter.ts`, a short-lived adapter is created for each `fetch` event, executes `dispatcher.dispatch`, and returns a `Response` object. In this way, the adapter pattern becomes the bridge between classic server environments and modern edge runtimes.
 
-## 13.7 실시간 통신 역량(Realtime Capability) 보고
+## 13.7 Reporting Realtime Capability
 
-어댑터는 자신이 WebSocket이나 SSE를 지원하는지 여부를 프레임워크에 알릴 수 있습니다. 이는 `getRealtimeCapability`를 통해 수행됩니다.
+An adapter can report whether it supports WebSocket or SSE features. It does that through `getRealtimeCapability`.
 
 ```typescript
 // packages/http/src/adapter.ts:L49-L63
@@ -139,11 +139,11 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-프레임워크는 이 정보를 바탕으로 실시간 기능이 필요한 모듈(예: Socket.IO 통합)의 활성화 여부를 결정하거나 경고를 띄웁니다.
+The framework can use this information to decide whether to enable modules that require realtime features, such as a Socket.IO integration, or to warn the developer when support is missing.
 
-## 13.8 No-op 어댑터: 테스트와 커스텀 런타임
+## 13.8 The No-op Adapter: Testing and Custom Runtimes
 
-`createNoopHttpApplicationAdapter()`는 실제 네트워크 서버를 띄우지 않고도 프레임워크의 생명주기와 부트스트랩 과정을 검증할 때 유용합니다.
+`createNoopHttpApplicationAdapter()` is useful when you want to verify lifecycle and bootstrap behavior without starting a real network server.
 
 ```typescript
 // packages/http/src/adapter.ts:L100-L110
@@ -158,19 +158,19 @@ export function createNoopHttpApplicationAdapter(): HttpApplicationAdapter {
 }
 ```
 
-이 어댑터는 CI 환경에서 오버헤드 없이 프레임워크의 무결성을 테스트하거나, 수동으로 `dispatch`를 호출하는 매우 특수한 런타임을 만들 때 사용됩니다.
+This adapter is used in CI to test framework integrity with almost no overhead, and it is also useful when building unusual runtimes that call `dispatch` manually.
 
-## 13.9 어댑터 작성 시 주의사항: 에러 전파
+## 13.9 Adapter Authoring Cautions: Error Propagation
 
-어댑터 내부에서 발생하는 네트워크 에러나 바디 파싱 에러는 디스패처에게 넘기기 전에 적절히 `FrameworkRequest`에 담거나, 처리할 수 없는 수준이라면 어댑터 수준의 예외 핸들러가 작동해야 합니다. 만약 디스패처 실행 도중 치명적인 에러가 발생하여 응답을 쓸 수 없는 상태가 된다면, 어댑터는 플랫폼의 네이티브 기능을 사용하여 500 에러를 반환하는 "최후방 방어선" 역할을 해야 합니다.
+Network errors or body-parsing failures that happen inside the adapter should either be represented appropriately in `FrameworkRequest` before dispatch or handled at the adapter boundary if they cannot be expressed cleanly. If a fatal failure occurs during dispatch and the response can no longer be written through the normal path, the adapter should act as the last line of defense and return a 500 response using the host platform's native tools.
 
-## 13.10 어댑터의 진화: HTTP/3와 QUIC 지원
+## 13.10 Adapter Evolution: HTTP/3 and QUIC Support
 
-fluo의 어댑터 구조는 전송 계층의 변화에 유연하게 대응합니다. 하부 서버 라이브러리가 HTTP/3를 지원하도록 업그레이드되더라도, 어댑터가 `FrameworkRequest`와 `FrameworkResponse` 계약만 유지해준다면 상위의 비즈니스 로직은 단 한 줄도 고칠 필요가 없습니다. 이는 진정한 의미의 플랫폼 독립성을 실현합니다.
+fluo's adapter structure is designed to absorb changes in the transport layer. Even if the underlying server library upgrades to HTTP/3, upper-layer business logic does not need to change as long as the adapter continues to honor the `FrameworkRequest` and `FrameworkResponse` contracts. That is real platform independence.
 
-## 13.11 어댑터와 바인더(Binder)의 협력
+## 13.11 Collaboration Between Adapters and Binders
 
-어댑터가 요청을 디스패처에 전달하면, 디스패처는 내부적으로 바인더를 사용하여 요청 데이터를 DTO로 변환합니다. `DefaultBinder`는 어댑터가 채워준 `FrameworkRequest`의 각 필드를 훑으며 필요한 값을 추출합니다.
+Once the adapter passes a request into the dispatcher, the dispatcher uses a binder internally to turn request data into DTO inputs. `DefaultBinder` walks the fields filled by the adapter on `FrameworkRequest` and extracts the values it needs.
 
 ```typescript
 // packages/http/src/adapters/binding.ts:L32-L62
@@ -185,11 +185,11 @@ function readSourceValue(request: FrameworkRequest, source: MetadataSource, ...)
 }
 ```
 
-커스텀 어댑터를 만들 때, 플랫폼의 특수한 데이터 소스(예: 속성 기반의 세션 정보 등)가 있다면 바인더를 커스터마이징하여 이를 투명하게 DTO에 바인딩할 수도 있습니다.
+When authoring a custom adapter, you can even customize the binder if the platform has unusual data sources, such as property-based session data, and expose them cleanly to DTO binding.
 
-## 13.12 실습: 초경량 HTTP 어댑터 스켈레톤
+## 13.12 Exercise: A Tiny HTTP Adapter Skeleton
 
-학습을 위해 Node.js 내장 `http` 모듈을 사용하는 가장 단순한 형태의 어댑터 구조를 짜봅시다. 이 예제는 어댑터가 어떻게 네이티브 요청을 `FrameworkRequest`로 변환하고, 디스패처의 결과를 다시 네이티브 응답으로 되돌리는지 보여줍니다.
+For learning purposes, here is a minimal adapter built on the Node.js `http` module. The example shows how an adapter converts a native request into `FrameworkRequest` and maps the dispatch result back into the native response.
 
 ```typescript
 import * as http from 'http';
@@ -200,17 +200,17 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher) {
     this.server.on('request', async (req, res) => {
-      // 1. 요청 매핑: Node.js IncomingMessage를 FrameworkRequest로 변환
+      // 1. Request mapping: convert Node.js IncomingMessage into FrameworkRequest
       const frameworkReq = this.mapRequest(req);
       
-      // 2. 응답 매핑: Node.js ServerResponse를 FrameworkResponse로 변환
+      // 2. Response mapping: convert Node.js ServerResponse into FrameworkResponse
       const frameworkRes = this.mapResponse(res);
       
-      // 3. 디스패처 실행: fluo의 핵심 파이프라인 가동
+      // 3. Run the dispatcher: start fluo's core pipeline
       try {
         await dispatcher.dispatch(frameworkReq, frameworkRes);
       } catch (err) {
-        // 최후방 방어선: 디스패처 내부에서 처리되지 못한 치명적 에러 대응
+        // Last line of defense: handle fatal errors that escaped dispatcher handling
         if (!res.headersSent) {
           res.statusCode = 500;
           res.end('Internal Server Error');
@@ -234,10 +234,10 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       method: req.method || 'GET',
       url: req.url || '/',
       headers: req.headers as Record<string, string>,
-      body: (req as any).body, // 실제 구현 시 바디 파싱 로직 필요
-      query: {}, // URL 파싱 필요
+      body: (req as any).body, // A real implementation needs body parsing
+      query: {}, // URL parsing required
       params: {},
-      signal: new AbortController().signal, // 실제로는 req.on('close')와 연동 권장
+      signal: new AbortController().signal, // In practice, wire this to req.on('close')
     };
   }
 
@@ -252,20 +252,20 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 }
 ```
 
-이 스켈레톤은 비록 단순하지만 어댑터의 핵심 메커니즘을 모두 포함하고 있습니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 더해 정교한 버퍼링, 멀티파트 처리, 압축, 그리고 HTTP/2와 같은 프로토콜 최적화 로직이 추가됩니다.
+This skeleton is simple, but it contains the core mechanics of an adapter. A production adapter such as `FastifyAdapter` adds richer buffering, multipart handling, compression, and protocol-level optimizations such as HTTP/2 support.
 
-## 13.13 요약
+## 13.13 Summary
 
-- 어댑터는 특정 플랫폼의 API를 fluo의 표준 계약으로 변환합니다.
-- `HttpApplicationAdapter`는 프레임워크의 시작과 종료를 관리합니다.
-- `FrameworkRequest/Response` 매핑이 어댑터 구현의 핵심입니다.
-- 바인더와의 협력을 통해 데이터가 흐르는 파이프라인이 완성됩니다.
-- 고성능 시스템에서는 AbortSignal 연동을 통한 자원 정리 최적화가 필수적입니다.
-- 실시간 통신 역량 보고는 생태계 모듈 간의 호환성을 보장하는 중요한 계약입니다.
+- Adapters translate platform APIs into fluo's standard contracts.
+- `HttpApplicationAdapter` manages framework startup and shutdown.
+- Mapping `FrameworkRequest` and `FrameworkResponse` is the core of adapter authoring.
+- Cooperation with the binder completes the request-data pipeline.
+- In high-performance systems, integrating `AbortSignal` is essential for efficient cleanup.
+- Realtime capability reporting is an important compatibility contract across ecosystem modules.
 
-## 13.14 다음 챕터 예고
+## 13.14 Next Chapter Preview
 
-이것으로 Part 4 HTTP 파이프라인 해부 편을 마칩니다. 다음 파트에서는 데이터 지속성을 담당하는 데이터베이스 레이어와의 통합 전략을 심도 있게 다룹니다. Prisma, Drizzle 등 현대적인 ORM들이 fluo와 어떻게 만나는지 기대해 주세요.
+That closes Part 4 on HTTP pipeline internals. The next part moves into testing and diagnostics, where we look closely at portability verification, conformance, and the tooling that keeps behavior consistent across runtimes.
 
 ---
 <!-- lines: 271 -->
