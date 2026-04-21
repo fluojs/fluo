@@ -206,43 +206,5 @@ export async function invokeControllerHandler(
 ## 12.13 다음 챕터 예고
 다음 챕터에서는 이러한 복잡한 파이프라인을 특정 플랫폼(Fastify, Bun 등)에 연결하는 커스텀 어댑터 구현 방법을 배웁니다. `HttpApplicationAdapter`의 마법을 기대해 주세요.
 
-
 ---
 <!-- lines: 255 -->
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -11,7 +11,6 @@
 - 요청 중단(Aborted) 처리와 리소스 정리 메커니즘
 - `DispatchPhaseContext`를 이용한 단계별 상태 공유 및 성능 최적화 기법
 
-
 ## 사전 요구사항
 - 1권에서 다룬 기초적인 HTTP 컨트롤러 및 라우팅 지식
 - `AsyncLocalStorage` 또는 비동기 컨텍스트 전파 개념에 대한 기본 이해
@@ -132,7 +131,6 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
 
 디스패처는 미들웨어 실행 전, 가드 실행 후, 그리고 응답을 쓰기 직전에 `ensureRequestNotAborted`를 호출하여 불필요한 연산을 방지합니다. `packages/http/src/dispatch/dispatcher.test.ts:L622-L735`에서는 요청이 도중에 중단되었을 때 `finally` 블록의 리소스 정리 로직이 누락 없이 실행되는지를 엄격하게 테스트합니다. 이는 특히 파일 업로드나 대용량 데이터 처리와 같이 리소스 집약적인 요청에서 서버의 가용성을 유지하는 데 필수적인 기능입니다.
 
-
 ## 11.6 파이프라인 시각화 다이어그램
 
 전체적인 흐름을 다시 한번 시각적으로 정리해 봅시다. 각 단계 사이의 화살표는 명시적인 상태 전이를 의미하며, 어느 단계에서든 발생한 예외는 즉시 [Error Handling] 레이어로 전파됩니다.
@@ -182,7 +180,6 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
 
 이 다이어그램은 fluo 아키텍처의 핵심인 "보증된 정리(Guaranteed Cleanup)" 원칙을 보여줍니다. 모든 레이어는 독립적이며, 디스패처가 이를 하나의 조화로운 흐름으로 엮어내되 어떠한 경로(성공, 예상된 에러, 예기치 못한 패닉)를 통하더라도 리소스 해제 단계는 반드시 거치게 설계되어 있습니다.
 
-
 ## 11.7 DispatchPhaseContext: 단계별 상태 공유
 
 디스패처 내부에서 요청의 상태를 추적하기 위해 `DispatchPhaseContext` 인터페이스를 사용합니다. 여기에는 요청 컨텍스트뿐만 아니라 매칭된 핸들러 정보, 옵저버 목록 등이 담기며 파이프라인 전반에 걸쳐 공유됩니다.
@@ -201,7 +198,6 @@ interface DispatchPhaseContext {
 
 이 컨텍스트는 파이프라인을 흐르며 `matchedHandler`와 같은 필드가 채워지게 되고, 최종적으로 `onRequestFinish` 옵저버에게 전달되어 전체 실행 이력을 보고할 수 있게 합니다. `packages/http/src/dispatch/dispatcher.ts:L258-L351`의 핵심 파이프라인 실행 로직은 이 컨텍스트를 상태 저장소(State Store)로 활용하여 각 단계가 독립적이면서도 필요한 정보를 유기적으로 공유하도록 설계되었습니다.
 
-
 ## 11.8 오류 처리 정책 (Error Policy)
 
 파이프라인 어디에서든 오류가 발생하면 `handleDispatchError`가 호출되어 중앙 집중식으로 관리됩니다.
@@ -211,13 +207,11 @@ interface DispatchPhaseContext {
 3. 전역 `onError` 훅이 있다면 실행합니다. `dispatcher.ts:L304`에서 비동기로 호출되며 애플리케이션 수준의 커스텀 에러 로깅을 수행할 수 있습니다.
 4. 아무도 처리하지 않았다면 `writeErrorResponse`를 통해 표준 HTTP 오류 봉투(Envelope)를 클라이언트에 전송합니다. `packages/http/src/dispatch/dispatcher.test.ts:L541-L619`에서는 다양한 비즈니스 에러가 올바른 HTTP 상태 코드로 변환되는지 테스트합니다.
 
-
 ## 11.9 성능 최적화: WeakMap을 활용한 메타데이터 캐싱
 
 디스패처는 라우트 매칭 시 매번 복잡한 연산을 수행하지 않습니다. `packages/http/src/dispatch/dispatch-routing-policy.ts` 내부에서는 `WeakMap`을 사용하여 컨트롤러 클래스와 해당 클래스의 라우트 메타데이터를 캐싱합니다. `WeakMap`을 사용함으로써 컨트롤러 클래스가 가비지 컬렉션의 대상이 되었을 때 캐시 데이터도 자동으로 함께 제거되도록 설계되었습니다.
 
 또한 디스패처 생성 시점에 `resolveContentNegotiation`을 통해 설정을 미리 계산해 둠으로써 요청당 오버헤드를 최소화합니다. `packages/http/src/public-api.test.ts:L39-L52` 수준의 통합 테스트를 통해 대규모 애플리케이션에서도 일관된 라우팅 지연 시간(Latency)을 보장함을 입증하고 있습니다. 이러한 최적화 덕분에 Fluo는 매 요청마다 컨테이너를 생성하고 해제하는 오버헤드에도 불구하고 매우 높은 처리량(Throughput)을 유지할 수 있습니다.
-
 
 ## 11.10 리소스 정리: DI 스코프 소멸
 
@@ -251,7 +245,5 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 - **강력한 관찰성**: 옵저버 패턴을 통해 비즈니스 로직 수정 없이 전 구간 모니터링이 가능합니다.
 - **신뢰할 수 있는 정리**: `AbortSignal` 감시와 강제 `dispose()` 호출로 리소스 낭비를 원천 차단합니다.
 
-
 ## 다음 챕터 예고
 다음 챕터에서는 가드, 인터셉터, 미들웨어가 구체적으로 어떻게 "체인"을 형성하고 서로의 실행을 제어하는지 깊이 있게 파헤칩니다. `reduceRight`를 활용한 체인 구성의 묘미를 만나보세요.
-
