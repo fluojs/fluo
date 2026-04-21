@@ -1,45 +1,22 @@
-     257 book/beginner/src/ch11-config.ko.md
-     231 book/beginner/src/ch11-config.md
-     223 book/beginner/src/ch12-prisma.ko.md
-     224 book/beginner/src/ch12-prisma.md
-     216 book/beginner/src/ch13-transactions.ko.md
-     217 book/beginner/src/ch13-transactions.md
-     335 book/beginner/src/ch14-jwt.ko.md
-     335 book/beginner/src/ch14-jwt.md
-     344 book/beginner/src/ch15-passport.ko.md
-     344 book/beginner/src/ch15-passport.md
-     295 book/beginner/src/ch16-throttler.ko.md
-     295 book/beginner/src/ch16-throttler.md
-     256 book/beginner/src/ch17-cache.ko.md
-     256 book/beginner/src/ch17-cache.md
-     249 book/beginner/src/ch18-health.ko.md
-     249 book/beginner/src/ch18-health.md
-     229 book/beginner/src/ch19-metrics.ko.md
-     229 book/beginner/src/ch19-metrics.md
-     276 book/beginner/src/ch20-testing.ko.md
-     276 book/beginner/src/ch20-testing.md
-     228 book/beginner/src/ch21-production.ko.md
-     228 book/beginner/src/ch21-production.md
-    5792 total
-book/beginner/src/ch11-config.ko.md:16
-book/beginner/src/ch11-config.md:16
-book/beginner/src/ch12-prisma.ko.md:14
-book/beginner/src/ch12-prisma.md:14
-book/beginner/src/ch13-transactions.ko.md:12
-book/beginner/src/ch13-transactions.md:12
-book/beginner/src/ch14-jwt.ko.md:12
-book/beginner/src/ch14-jwt.md:12
-book/beginner/src/ch15-passport.ko.md:18
-book/beginner/src/ch15-passport.md:18
-book/beginner/src/ch16-throttler.ko.md:12
-book/beginner/src/ch16-throttler.md:12
-book/beginner/src/ch17-cache.ko.md:12
-book/beginner/src/ch17-cache.md:12
-book/beginner/src/ch18-health.ko.md:14
-book/beginner/src/ch18-health.md:14
-book/beginner/src/ch19-metrics.ko.md:12
-book/beginner/src/ch19-metrics.md:12
-book/beginner/src/ch20-testing.ko.md:14
-book/beginner/src/ch20-testing.md:14
-book/beginner/src/ch21-production.ko.md:6
-book/beginner/src/ch21-production.md:6
+book/beginner/src/ch11-config.md:201
+book/beginner/src/ch11-config.ko.md:224
+book/beginner/src/ch12-prisma.md:195
+book/beginner/src/ch12-prisma.ko.md:194
+book/beginner/src/ch13-transactions.md:189
+book/beginner/src/ch13-transactions.ko.md:188
+book/beginner/src/ch14-jwt.md:301
+book/beginner/src/ch14-jwt.ko.md:301
+book/beginner/src/ch15-passport.md:310
+book/beginner/src/ch15-passport.ko.md:310
+book/beginner/src/ch16-throttler.md:261
+book/beginner/src/ch16-throttler.ko.md:261
+book/beginner/src/ch17-cache.md:223
+book/beginner/src/ch17-cache.ko.md:223
+book/beginner/src/ch18-health.md:217
+book/beginner/src/ch18-health.ko.md:217
+book/beginner/src/ch19-metrics.md:200
+book/beginner/src/ch19-metrics.ko.md:200
+book/beginner/src/ch20-testing.md:242
+book/beginner/src/ch20-testing.ko.md:242
+book/beginner/src/ch21-production.md:199
+book/beginner/src/ch21-production.ko.md:199

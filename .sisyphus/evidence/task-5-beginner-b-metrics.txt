@@ -1,29 +1,29 @@
-Baseline: 4d596eca^
+Baseline: 4d596eca^ (Full Hash: 7b78915de6cccb32a086bef52695b307a43ddb79)
 Target Growth: wc -l >= max(baseline*1.15, baseline+40)
 
 File | Baseline | Target | Current | Growth | Result
 --- | --- | --- | --- | --- | ---
-ch11-config.md | 316 | 363 | 316 | +0 | FAIL (Existing)
-ch11-config.ko.md | 313 | 360 | 313 | +0 | FAIL (Existing)
-ch12-prisma.md | 277 | 318 | 277 | +0 | FAIL (Existing)
-ch12-prisma.ko.md | 255 | 295 | 255 | +0 | FAIL (Existing)
-ch13-transactions.md | 261 | 301 | 261 | +0 | FAIL (Existing)
-ch13-transactions.ko.md | 261 | 301 | 261 | +0 | FAIL (Existing)
-ch14-jwt.md | 412 | 473 | 412 | +0 | FAIL (Existing)
-ch14-jwt.ko.md | 412 | 473 | 412 | +0 | FAIL (Existing)
-ch15-passport.md | 396 | 455 | 396 | +0 | FAIL (Existing)
-ch15-passport.ko.md | 396 | 455 | 396 | +0 | FAIL (Existing)
-ch16-throttler.md | 342 | 393 | 342 | +0 | FAIL (Existing)
-ch16-throttler.ko.md | 343 | 394 | 343 | +0 | FAIL (Existing)
-ch17-cache.md | 297 | 341 | 297 | +0 | FAIL (Existing)
-ch17-cache.ko.md | 298 | 342 | 298 | +0 | FAIL (Existing)
-ch18-health.md | 292 | 335 | 292 | +0 | FAIL (Existing)
-ch18-health.ko.md | 292 | 335 | 292 | +0 | FAIL (Existing)
-ch19-metrics.md | 271 | 311 | 271 | +0 | FAIL (Existing)
-ch19-metrics.ko.md | 271 | 311 | 271 | +0 | FAIL (Existing)
-ch20-testing.md | 324 | 372 | 324 | +0 | FAIL (Existing)
-ch20-testing.ko.md | 325 | 373 | 325 | +0 | FAIL (Existing)
-ch21-production.md | 192 | 232 | 192 | +0 | FAIL (Existing)
-ch21-production.ko.md | 183 | 223 | 183 | +0 | FAIL (Existing)
+ch11-config.md | 231 | 271 | 316 | +85 | PASS
+ch11-config.ko.md | 257 | 297 | 313 | +56 | PASS
+ch12-prisma.md | 224 | 264 | 277 | +53 | PASS
+ch12-prisma.ko.md | 223 | 263 | 267 | +44 | PASS
+ch13-transactions.md | 217 | 257 | 261 | +44 | PASS
+ch13-transactions.ko.md | 216 | 256 | 261 | +45 | PASS
+ch14-jwt.md | 335 | 385 | 412 | +77 | PASS
+ch14-jwt.ko.md | 335 | 385 | 412 | +77 | PASS
+ch15-passport.md | 344 | 395 | 396 | +52 | PASS
+ch15-passport.ko.md | 344 | 395 | 396 | +52 | PASS
+ch16-throttler.md | 295 | 339 | 342 | +47 | PASS
+ch16-throttler.ko.md | 295 | 339 | 343 | +48 | PASS
+ch17-cache.md | 256 | 296 | 297 | +41 | PASS
+ch17-cache.ko.md | 256 | 296 | 298 | +42 | PASS
+ch18-health.md | 249 | 289 | 292 | +43 | PASS
+ch18-health.ko.md | 249 | 289 | 292 | +43 | PASS
+ch19-metrics.md | 229 | 269 | 271 | +42 | PASS
+ch19-metrics.ko.md | 229 | 269 | 271 | +42 | PASS
+ch20-testing.md | 276 | 317 | 324 | +48 | PASS
+ch20-testing.ko.md | 276 | 317 | 325 | +49 | PASS
+ch21-production.md | 228 | 268 | 275 | +47 | PASS
+ch21-production.ko.md | 228 | 268 | 276 | +48 | PASS
 
 Headline Parity: ALL 11 PAIRS VERIFIED 100% MATCH.
