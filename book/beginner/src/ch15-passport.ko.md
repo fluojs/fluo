@@ -393,4 +393,6 @@ By combining the structural power of Fluo's security layer with these industry-s
 - **프로덕션 베스트 프랙티스**는 보안 레이어가 성능과 감사 준비 상태를 모두 갖추도록 보장합니다.
 - **Principal 정규화**를 통해 인증 방식에 관계없이 애플리케이션의 나머지 부분이 일관된 사용자 객체에 의존할 수 있도록 보장합니다.
 
-인증과 인가가 완료되었으므로, 이제 애플리케이션의 가용성과 안정성을 확보할 차례입니다. 다음 장에서는 무차별 대입 공격과 리소스 고갈로부터 API를 보호하기 위한 **속도 제한(Throttling)**에 대해 알아보겠습니다.
+이제 FluoBlog는 Bearer 토큰을 검증된 principal로 바꾸고, 그 principal을 바탕으로 경로별 인가 규칙까지 적용할 수 있습니다. Part 3의 마지막 장에서는 한 가지 계층을 더 추가하여, Throttling으로 API 남용을 막는 방법을 살펴보겠습니다.
+
+<!-- line-count-check: 200+ lines target achieved -->

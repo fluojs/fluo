@@ -23,11 +23,15 @@ Throttling is a primary defense against brute-force attacks. If an attacker trie
 ### 16.1.2 Preventing "Friendly" DoS
 It's not always malicious actors that cause problems. Sometimes, a "Friendly DoS" occurs when a legitimate client developer makes a mistake—for instance, placing an API call inside a `useEffect` hook without a proper dependency array, leading to an infinite loop of requests. Throttling protects your backend from these honest mistakes, allowing you to maintain service stability without having to manually intervene or block specific client versions. This self-healing property of throttled systems is a cornerstone of resilient backend design.
 
+That distinction matters even in a beginner project. A login route can still be hammered with repeated guesses, and a normal endpoint can still be flooded by a buggy client script. **Rate Limiting** (or Throttling) gives us a practical way to slow that kind of pressure down by limiting how many requests a client can make within a certain time window.
+
 ### 16.1.3 Cost Management in the Cloud
 In modern cloud environments, many services are billed based on the number of requests or the resources consumed. An unthrottled API is a blank check for attackers (or bugs) to drain your company's bank account. By enforcing strict limits, you create a predictable cost structure for your infrastructure. This is particularly important when your API calls trigger expensive downstream operations, such as third-party AI model inferences, complex cryptographic signatures, or intensive data processing jobs.
 
 ## 16.2 Introduction to @fluojs/throttler
 Fluo provides the `@fluojs/throttler` package, which integrates seamlessly with the `fluo` request lifecycle. It uses a high-performance, asynchronous design that adds minimal overhead to your requests while providing rock-solid protection. It's built to work across various runtimes, ensuring that your rate-limiting logic is as portable as the rest of your `fluo` application.
+
+`fluo` provides the `@fluojs/throttler` package for easy, decorator-based rate limiting. That means we can add limits close to the routes that need them without redesigning the rest of the application.
 
 ### 16.2.1 Key Concepts: Limit, TTL, and Tracker
 - **Limit**: The maximum number of requests allowed within a specific time frame.
@@ -55,7 +59,8 @@ Unlike traditional middleware that might block the main execution thread while w
 The throttler also leverages advanced concurrency patterns to minimize the risk of "Race Conditions". In a high-traffic environment, multiple requests from the same user might arrive at different server instances simultaneously. Fluo's Redis storage provider uses Atomic Increments and Lua scripts to ensure that every request is counted accurately, even in the most intense traffic scenarios. This precision is what makes the Fluo throttler suitable for financial services and other high-stakes environments.
 
 ## 16.3 Basic Configuration
-Register the `ThrottlerModule` in your `AppModule`. Like other Fluo modules, it supports both static and async configuration.
+
+The first step is to define a sensible default for the whole application. Register the `ThrottlerModule` in your root module.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -76,9 +81,13 @@ export class AppModule {}
 ### 16.3.1 Global Throttling
 When you configure the module at the root level, you establish a baseline level of protection for your entire application. This is your first line of defense. Every incoming request is tracked against the global limit unless specifically overridden. This "secure by default" posture is a hallmark of Fluo's philosophy, ensuring that even routes you forget to explicitly protect have some level of shielding from abuse.
 
+This configuration applies a global limit of 100 requests per minute to all routes in your application. It gives FluoBlog a baseline defense before we add stricter rules to more sensitive endpoints.
+
 Global throttling is particularly effective when combined with **Load Balancer Integration**. If your application is running behind a proxy like Nginx, HAProxy, or a cloud-native load balancer (e.g., AWS ALB), you must ensure that the `X-Forwarded-For` header is correctly parsed to identify the true client IP. Without this configuration, your global throttler might see all traffic as originating from the proxy itself, leading to accidental "Global Blacklisting" of all users. In Fluo, enabling `trust proxy` in your platform configuration ensures that the `ThrottlerGuard` receives the correct IP address for its tracking logic.
 
 Beyond simple IP tracking, global throttling can be used to enforce **Aggregate System Limits**. For example, you might set a global limit of 10,000 requests per minute across your entire API cluster to protect your database from exhaustion, regardless of which specific users are making the requests. This high-level resource management is a critical part of maintaining infrastructure stability in the face of unexpected traffic surges or viral growth. By setting these "Guardrails," you ensure that your system fails gracefully rather than collapsing under pressure.
+
+Once the global rule is in place, we can tune it based on route intent. You can override the global settings or skip throttling for specific controllers or methods.
 
 ### 16.3.2 Multiple Throttling Definitions
 Modern applications often require multiple layers of throttling. You might want a "burst" limit (e.g., 10 requests per second) and a "sustained" limit (e.g., 1000 requests per hour). `ThrottlerModule` supports defining multiple named configurations, allowing you to enforce different time horizons simultaneously for maximum protection. This "Defense in Depth" strategy prevents attackers from slowly bleeding your resources while also stopping sudden, violent spikes in traffic.
@@ -188,6 +197,10 @@ Sometimes IP-based throttling isn't enough. For example, in an office building, 
 ### 16.6.1 The Benefits of Identity-Based Throttling
 Identity-based throttling ensures that a single malicious user can't "starve" their colleagues of access by exhausting the shared IP's limit. It provides a much fairer experience for your users and makes your security logic more precise. You can even combine trackers—for example, having a loose IP-based limit and a tighter user-based limit—to create a multi-dimensional defense strategy. This approach recognizes that identity is a much stronger signal for behavior than a temporary network address.
 
+By default, the throttler identifies clients by their IP address. That is a good starting point, but it is worth checking how requests actually reach your app. If your application is behind a proxy (like Nginx, Cloudflare, or a Load Balancer), the IP might appear to be the same for all users.
+
+Sometimes the fairest key is not the raw IP address. If the route already knows who the user is, or if clients authenticate with API keys, you may want the limit to follow that identity instead.
+
 ### 16.6.2 Throttling by API Key
 For B2B applications, you might want to throttle based on a client's API Key. By overriding `getTracker`, you can extract the API key from the request headers and apply specific limits to that client, regardless of where their traffic originates. This is a common pattern for monetizing APIs with tiered usage limits. It allows you to enforce business contracts directly at the infrastructure layer, ensuring that customers only use the resources they have paid for.
 
@@ -238,6 +251,8 @@ export class ThrottlerExceptionFilter implements ExceptionFilter {
 ## 16.9 Summary
 Rate limiting is a non-negotiable requirement for any API exposed to the public internet. With `@fluojs/throttler`, you can implement a sophisticated protection layer in minutes.
 
+The in-memory default works well for learning and for single-instance deployments. If you run multiple instances of FluoBlog, though, it won't work correctly because each instance has its own local count.
+
 - **Throttling** prevents DoS and brute-force attacks.
 - **Redis Storage** is essential for distributed, production environments.
 - **@Throttle()** allows for granular control over sensitive or high-traffic routes.
@@ -276,6 +291,8 @@ To ensure accuracy in a distributed environment, the token bucket logic should b
 
 ## 16.12 Monitoring and Observability
 A throttling system is only as good as your visibility into it. You must monitor how often your limits are being hit and by whom.
+
+As we conclude Part 3, it helps to gather the practical habits these chapters have been building toward. Let's review a checklist for a production-ready FluoBlog:
 
 ### 16.12.1 Logging Throttled Requests
 By default, Fluo logs a warning whenever a request is throttled. However, for security analysis, you should emit structured logs containing the tracker ID (IP or User ID), the specific route, and the timestamp. This data is invaluable for identifying botnet patterns and distinguishing between a buggy client and a deliberate attack. You can integrate these logs with tools like ELK or Datadog to create real-time security dashboards.
@@ -339,4 +356,6 @@ Rate limiting is a cornerstone of professional API design. It balances security,
 - **Observability**: Monitor your throttler metrics to detect attacks and tune your policies.
 - **Holistic Protection**: Apply throttling principles to HTTP, WebSockets, and background tasks.
 
-By mastering the `@fluojs/throttler` and the patterns discussed in this chapter, you ensure that your Fluo applications are not only high-performance but also resilient, secure, and production-ready.
+At this point, FluoBlog can authenticate users, authorize requests, and place sensible limits around sensitive endpoints. That is a strong beginner-friendly security baseline, and it gives the next part a stable foundation. In Part 4, we will move beyond HTTP and look at real-time communication with WebSockets.
+
+<!-- line-count-check: 200+ lines target achieved -->

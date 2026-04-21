@@ -12,6 +12,7 @@
 - Progress FluoBlog from hardcoded values to a production-ready configurable setup.
 
 ## 11.1 The Need for Explicit Configuration
+
 Hardcoding values like database URLs, API keys, or port numbers directly in your code is a recipe for disaster. In a real-world project, these values change depending on whether you are running locally, in a CI/CD pipeline, or in a live production cluster.
 
 While Node.js provides `process.env` globally, reaching for it directly everywhere in your code makes your application brittle, harder to test, and difficult to audit. `fluo` encourages an **explicit** approach to configuration via the `@fluojs/config` package.
@@ -48,6 +49,7 @@ By centralizing the configuration logic in this way, `fluo` eliminates a whole c
 
 
 ## 11.2 Setting up ConfigModule
+
 To start managing configuration, we first need to install the module.
 
 ```bash
@@ -253,6 +255,16 @@ If your configuration is not behaving as expected, check the following:
 2. Check for typos in the environment variable names.
 3. Verify if system environment variables are overriding your `.env` file due to the precedence rules.
 4. Make sure `ConfigModule` is at the top of your `AppModule` imports so it can load settings before other modules initialize.
+
+## 11.7 Summary
+In this chapter, we transitioned from "magic" environment variables to a structured and validated configuration system.
+
+- **Explicit is better than implicit**: Don't use `process.env` directly.
+- **ConfigService** provides a unified, injectable interface for all settings.
+- **Validation** at startup prevents unstable application states.
+- **Precedence** allows flexible overrides across different environments.
+
+By mastering configuration, you've made FluoBlog robust enough for real-world deployments. In the next chapter, we will use these skills to connect FluoBlog to a real database using Prisma.
 
 ## 11.7 Summary
 In this chapter, we transitioned from "magic" environment variables to a structured and validated configuration system.

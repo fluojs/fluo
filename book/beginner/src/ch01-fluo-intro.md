@@ -3,6 +3,8 @@
 
 # Chapter 1. Introduction to fluo and Design Philosophy
 
+This opening chapter gives you the mental model for everything that follows. Before you scaffold FluoBlog or add your first feature, you need to see what fluo is trying to make easier, what kinds of framework trade-offs it rejects, and why those choices matter for a beginner who wants a codebase that still makes sense later.
+
 ## Learning Objectives
 - Understand the core problems fluo solves in the modern TypeScript ecosystem.
 - Explore the philosophy of explicit Dependency Injection (DI).
@@ -38,9 +40,11 @@ The downside appears later.
 - When a route behaves strangely, you need to know which decorator registered it.
 - When deployment changes, you need to know which part of the app assumes a specific runtime.
 
-fluo teaches the explicit version of these ideas early so your mental model scales with your project.
+fluo teaches the explicit version of these ideas early so your mental model scales with your project. That is why this chapter starts with trade-offs before syntax, because understanding the costs of hidden behavior makes the rest of the framework feel far more deliberate.
 
 ### The Metadata Problem in Detail
+
+To make that trade-off concrete, it helps to look at the metadata problem directly.
 
 Legacy decorator-based frameworks usually depend on `emitDecoratorMetadata` and a reflection library to inspect class constructor types.
 
@@ -78,6 +82,8 @@ fluo prefers a little visible structure up front because it lowers those long-te
 
 ### A Quick Mental Model
 
+After those problems, we can compress the framework into a simpler picture.
+
 Think of fluo as a framework that treats your codebase like a map rather than a mystery.
 
 - Modules describe boundaries.
@@ -113,6 +119,8 @@ As you progress through this book, you'll find that the modularity of the framew
 This community-driven approach means that the framework evolves based on real-world needs. If you find a missing piece or a way to improve an existing module, you are encouraged to contribute. This culture of openness and collaboration is what makes the fluo ecosystem so vibrant and resilient.
 
 ## 1.2 Explicit DI: Dependency Injection Without Magic
+
+Once the general philosophy is clear, DI becomes the first concrete place where fluo makes that philosophy visible.
 
 Dependency Injection is a pattern where objects receive the collaborators they need instead of constructing those collaborators by themselves.
 
@@ -177,6 +185,8 @@ The beginner lesson is simple: a dependency should have a name that appears in c
 
 ### A Small Testing Payoff
 
+That same readability also pays off the moment you start testing.
+
 Imagine a service that creates blog posts and depends on a repository.
 
 With explicit DI, the testing story becomes obvious.
@@ -226,6 +236,8 @@ Because the wiring is visible in your `@Module()` and `@Inject()` calls, you don
 
 ## 1.3 Runtime Neutrality: One Codebase, Any Platform
 
+Explicit wiring is only one part of the story. The next design choice is about where that code can live over time.
+
 Modern backend applications rarely live in a single environment forever.
 
 Teams prototype locally on Node.js, benchmark on Bun, deploy APIs on containers, and sometimes move specific workloads to edge platforms. A framework that couples application logic to one runtime makes every future move more expensive.
@@ -272,6 +284,8 @@ That consistency is what runtime neutrality is for. It protects the application 
 
 ### A Beginner-Friendly Example
 
+Here is the practical version of that idea in the context of FluoBlog.
+
 Suppose FluoBlog exposes `GET /posts`.
 
 The code that loads posts and returns them as JSON should not change just because the transport layer changes from one runtime adapter to another.
@@ -288,6 +302,8 @@ Runtime neutrality is not only about portability. It is also about clearer owner
 - Migration work becomes more mechanical and less risky.
 
 ## 1.4 TC39 Standard Decorators: Moving Beyond experimentalDecorators
+
+At this point, one more foundation choice needs to be clear. fluo is not only explicit about architecture, it is also deliberate about the language model it builds on.
 
 Decorators are central to the fluo developer experience, but the framework intentionally builds on the modern JavaScript standard rather than the older TypeScript-only behavior.
 
@@ -339,6 +355,8 @@ fluo wants the answer to those questions to be easy to verify from the code and 
 
 ## 1.5 The fluo Ecosystem Map
 
+With the philosophy in place, you can now place the packages on a simple map instead of seeing them as an unrelated list.
+
 fluo is modular by design. Instead of shipping as a single monolith, it offers focused packages that can be combined to form the stack you need.
 
 | Category | Primary Packages |
@@ -387,6 +405,8 @@ Modularity also gives the book a clean teaching sequence.
 That progression mirrors how healthy production systems grow: one clear need at a time.
 
 ## 1.6 Meet FluoBlog
+
+The last step in this introduction is to connect those ideas to the project you will carry through the book.
 
 Throughout this book, we will build **FluoBlog**, a blog API that starts small and grows chapter by chapter.
 
@@ -465,6 +485,8 @@ The most important thing you can bring to this book is a mindset of curiosity. A
 - TC39 standard decorators are part of fluo's standard-first foundation.
 - The package ecosystem is modular, so beginners can learn one layer at a time.
 - FluoBlog is the running example that ties all chapters together.
+
+At the end of this chapter, you are not expected to know every API. You are expected to know what kind of framework fluo is, why its explicit style matters, and how FluoBlog will let you learn those ideas one layer at a time.
 
 ## Next Chapter Preview
 In the next chapter, we move from philosophy to action. You will install the fluo CLI, scaffold the first version of FluoBlog, inspect the generated files, and run the app locally so the abstract ideas from this chapter become a concrete project on disk.

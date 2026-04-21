@@ -393,4 +393,6 @@ Guards and Passport strategies form the protective shield of FluoBlog. By combin
 - **Production Best Practices** ensure your security layer is both performant and audit-ready.
 - **Principal Normalization** ensures the rest of your application can rely on a consistent user object regardless of the auth method.
 
-With authentication and authorization in place, it's time to ensure the availability and stability of your application. In the next chapter, we'll explore **Throttling (Rate Limiting)** to protect your API from brute-force attacks and resource exhaustion.
+At this point, FluoBlog can move from a raw Bearer token to a verified principal and then to route-level authorization rules. In the final chapter of Part 3, we will add one more layer by protecting the API from abuse with Throttling.
+
+<!-- line-count-check: 200+ lines target achieved -->

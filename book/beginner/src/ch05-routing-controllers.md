@@ -19,21 +19,9 @@
 
 ## 5.1 Why Routing Comes First in HTTP Work
 
-Part 1 begins where backend applications become tangible.
+Part 1 begins where backend applications become tangible. Users do not experience your dependency graph directly. They experience URLs, methods, and responses, so routing is the first practical HTTP topic.
 
-Users do not experience your dependency graph directly.
-
-They experience URLs, methods, and responses.
-
-That is why routing is the first practical HTTP topic.
-
-In fluo, routing is centered on controllers.
-
-A controller class groups related endpoints under a shared path prefix.
-
-Method decorators then connect individual class methods to HTTP verbs.
-
-This creates a readable map from URL to code.
+In fluo, routing is centered on controllers. A controller class groups related endpoints under a shared path prefix, and method decorators connect individual class methods to HTTP verbs. Together, they create a readable map from URL to code.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -47,21 +35,13 @@ export class PostsController {
 }
 ```
 
-Even this tiny example communicates a lot.
-
-The controller owns the `/posts` area.
-
-The `list()` method handles `GET /posts`.
-
-The returned array becomes the response payload.
+Even this tiny example communicates a lot. The controller owns the `/posts` area, the `list()` method handles `GET /posts`, and the returned array becomes the response payload. Before we add more HTTP features, that simple mapping is the core habit to keep in view.
 
 ### Routes Are an Application Contract
 
-As soon as you publish an endpoint, other code can depend on it.
+As soon as you publish an endpoint, other code can depend on it. Frontend code, mobile clients, tests, and external integrations may all treat that route as stable, which is why route design deserves deliberate thought even in a beginner project.
 
-Frontend code, mobile clients, tests, and external integrations may all treat that route as stable.
-
-That is why route design deserves deliberate thought even in a beginner project.
+Frontend code, mobile clients, tests, and external integrations may all treat that route as stable, which is why route design deserves deliberate thought even in a beginner project.
 
 ### Route Versioning (A Peek Ahead)
 
@@ -83,13 +63,11 @@ Following these standards from day one makes your API intuitive for other develo
 
 Good routing isn't just about technical correctness; it's about semantic clarity. A URL like `/posts/1/comments` clearly communicates that you are accessing comments belonging to a specific post. fluo's nested controller capabilities (which we'll explore in the Intermediate book) help enforce this logical hierarchy. For now, focus on keeping your top-level paths descriptive and simple.
 
+For FluoBlog, the post API is a natural first feature. Readers can understand it quickly, and it gives us room to add validation, serialization, exceptions, guards, and OpenAPI later in a clear sequence.
+
 ### The Beginner Goal in This Chapter
 
-You do not need a perfect production API yet.
-
-You need a clear mental model.
-
-That model is:
+You do not need a perfect production API yet. You need a clear mental model, and this chapter builds it in four steps:
 
 1. a controller owns route declarations,
 2. a service owns reusable post logic,
@@ -355,11 +333,7 @@ export class PostsController {
 }
 ```
 
-This is still simple.
-
-That simplicity is good.
-
-We can already talk about route ownership and request flow without mixing in too many new concepts.
+This is still simple, and that simplicity is good. We can already talk about route ownership and request flow without mixing in too many new concepts, which keeps the foundation stable for the chapters that follow.
 
 ### What Is Still Missing?
 
@@ -492,19 +466,7 @@ That is the standard to protect as the API grows.
 
 ### Why This Chapter Stops Here
 
-It can be tempting to add update, delete, auth, docs, and error handling immediately.
-
-But that would blur the teaching boundary.
-
-A better beginner sequence is to add one HTTP concern at a time.
-
-First routing.
-
-Then validation.
-
-Then response shaping.
-
-That layered approach creates a stronger mental model than a giant all-at-once example.
+It can be tempting to add update, delete, auth, docs, and error handling immediately, but that would blur the teaching boundary. A better beginner sequence is to add one HTTP concern at a time: first routing, then validation, then response shaping. That layered approach creates a stronger mental model than a giant all-at-once example.
 
 ## Summary
 - Controllers map URLs and HTTP verbs to readable class methods.
@@ -515,4 +477,4 @@ That layered approach creates a stronger mental model than a giant all-at-once e
 - The project is now ready for DTO-based validation.
 
 ## Next Chapter Preview
-In Chapter 6, we will replace loose request payloads with DTOs and validation rules. That step will make FluoBlog safer by ensuring incoming data is shaped and checked before it reaches the post service.
+In Chapter 6, we will replace loose request payloads with DTOs and validation rules. Routing gave FluoBlog a visible API surface, and validation is the next step that makes that surface safer before data reaches the post service.

@@ -19,21 +19,9 @@
 
 ## 9.1 Where Guards and Interceptors Fit in the Request Pipeline
 
-By now, FluoBlog can route requests, validate input, shape output, and throw deliberate exceptions.
+By now, FluoBlog can route requests, validate input, shape output, and throw deliberate exceptions. The next question is pipeline control: can every request proceed, and should some reusable behavior run around a handler?
 
-The next question is pipeline control.
-
-Can every request proceed?
-
-Should some reusable behavior run around a handler?
-
-That is where guards and interceptors enter the picture.
-
-The distinction is worth learning carefully.
-
-Guards decide whether the request may continue. They run after the router matches a path but before the controller handler is invoked.
-
-Interceptors can wrap the handler and apply reusable logic before or after it. They have access to the execution stream, allowing you to transform the return value or catch errors before they reach the exception filter.
+That is where guards and interceptors enter the picture. The distinction is worth learning carefully. Guards decide whether the request may continue, while interceptors can wrap the handler and apply reusable logic before or after it.
 
 ### The Request Lifecycle
 
@@ -164,11 +152,7 @@ export class PostsController {
 }
 ```
 
-This is powerful because the controller stays focused on route intent.
-
-It does not manually serialize every return value.
-
-The interceptor applies a shared rule around the handler.
+This is powerful because the controller stays focused on route intent. It does not manually serialize every return value. Instead, the interceptor applies a shared rule around the handler, which is exactly the kind of reuse Part 1 has been building toward.
 
 ### Another Beginner-Friendly Interceptor Example
 
@@ -345,15 +329,7 @@ Common beginner mistakes include:
 
 ### What FluoBlog Gains Here
 
-FluoBlog now has a more realistic HTTP pipeline.
-
-Public reads remain simple.
-
-Write routes can be protected.
-
-Response shaping can stay centralized.
-
-The API is starting to look less like a demo and more like a small maintainable backend.
+FluoBlog now has a more realistic HTTP pipeline. Public reads remain simple, write routes can be protected, and response shaping can stay centralized. The API is starting to look less like a demo and more like a small maintainable backend.
 
 ## Summary
 - Guards decide whether a request may proceed.
@@ -365,4 +341,4 @@ The API is starting to look less like a demo and more like a small maintainable 
 - The project is ready for automatic API documentation that reflects these routes and behaviors.
 
 ## Next Chapter Preview
-In Chapter 10, we will generate OpenAPI documentation for FluoBlog. The routes, DTOs, exceptions, and protected endpoints you built in this part will become the raw material for machine-readable API docs and Swagger UI.
+In Chapter 10, we will generate OpenAPI documentation for FluoBlog. By this point the routes, DTOs, exceptions, and protected endpoints already form a coherent API story, and the next step is to turn that work into machine-readable docs and Swagger UI.

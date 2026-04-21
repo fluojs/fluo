@@ -3,6 +3,8 @@
 
 # Chapter 4. Introduction to TC39 Stage 3 Decorators
 
+Part 0 ends by stepping one layer deeper than modules and providers. If Chapter 3 showed you the visible structure of a fluo application, this chapter explains the language feature that makes that structure readable. The goal is not to master every low-level decorator API, but to leave Part 0 with a stable understanding of why fluo builds on the TC39 standard model.
+
 ## Learning Objectives
 - Define what a decorator is in modern JavaScript terms.
 - Understand the difference between legacy and standard decorators.
@@ -17,6 +19,8 @@
 - Willingness to focus on concepts before memorizing every low-level detail.
 
 ## 4.1 What is a Decorator?
+
+The right place to begin is the simplest possible question.
 
 At a beginner level, a decorator is a function-based mechanism for attaching behavior or metadata-related intent to classes and class members.
 
@@ -65,6 +69,8 @@ Decorators also act as visual markers. When you scan a 500-line file, seeing `@G
 Decorators help keep your business logic clean by separating cross-cutting concerns (like routing, validation, or authorization) from the core logic of your application. Instead of writing boilerplate code inside every method, you simply "decorate" your methods with the desired behavior, leading to much more maintainable code over time.
 
 ## 4.2 Legacy vs. Standard Decorators: Why the Shift?
+
+Once the basic role of decorators is clear, the next question is why fluo cares so much about the standard version.
 
 Many TypeScript developers first encountered decorators through the legacy `experimentalDecorators` model.
 
@@ -115,6 +121,8 @@ When evaluating a modern framework, ask:
 fluo wants the first answer.
 
 ## 4.3 Class Decorators
+
+From there, it helps to look at the decorator types in the same order you meet them in normal fluo code.
 
 Class decorators apply to the class as a whole. In fluo, this is where some of the most recognizable framework concepts appear.
 
@@ -171,6 +179,8 @@ When you read fluo source or examples, pause and ask what the class decorator is
 
 ## 4.4 Method Decorators
 
+After class identity, the next layer is method-level behavior.
+
 Method decorators target individual methods rather than the entire class.
 
 In HTTP code, they are commonly used to declare route behavior.
@@ -222,6 +232,8 @@ The decorator line tells you where and how it participates in the application su
 
 ## 4.5 Accessor and Field Decorators
 
+The standard model reaches beyond classes and methods, so it is worth seeing the broader picture before the chapter closes.
+
 Standard decorators also support accessor-oriented patterns that are more structured than many older field-based approaches.
 
 This is relevant to fluo because not every useful framework behavior happens at the class or method level.
@@ -272,6 +284,8 @@ Method decorators define what a method does in the app surface.
 Accessor decorators can help define how a property participates in framework behavior.
 
 ## 4.6 Verification: tsconfig.json Settings
+
+After the conceptual model, it is useful to connect the ideas back to the project configuration that keeps them true in practice.
 
 The code style and framework architecture only work cleanly if the TypeScript configuration matches the intended decorator model.
 
@@ -327,6 +341,8 @@ This configuration awareness will become more useful as your projects become mor
 
 ## 4.7 Looking Ahead: Advanced Decorators
 
+This is also a good moment to separate what you need now from what can wait until later.
+
 This chapter is an introduction, not the end of the subject.
 
 As you advance, decorators open the door to deeper topics.
@@ -381,6 +397,8 @@ That progression is the true outcome of this part.
 - Class, method, and accessor decorators each serve different framework roles.
 - fluo keeps TypeScript settings aligned with the standard decorator model.
 - Understanding decorators makes the rest of the framework easier to read.
+
+That is a fitting place to end Part 0. You have moved from philosophy, to scaffold, to feature structure, and finally to the language model that supports all of it. With that foundation in place, the next part can focus on building HTTP APIs instead of stopping to explain the basics each time.
 
 ## Next Part Preview
 Part 1 will move from foundational concepts into practical HTTP API work. With the philosophy, project scaffold, module structure, and decorator model now in place, you are ready to build routes, validate requests, shape responses, and grow FluoBlog into a more realistic backend application.

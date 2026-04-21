@@ -19,23 +19,9 @@
 
 ## 6.1 Why Loose Input Becomes a Problem Quickly
 
-In Chapter 5, the create route accepted a plain object.
+In Chapter 5, the create route accepted a plain object. That was fine for introducing routing, but it is not fine as a long-term input strategy.
 
-That was fine for introducing routing.
-
-It is not fine as a long-term input strategy.
-
-A plain object does not communicate which fields are required.
-
-It does not explain which values must be strings.
-
-It does not express minimum lengths or optional fields.
-
-Most importantly, it does not protect the service boundary.
-
-DTOs solve this by giving request data a named shape.
-
-Validation decorators then turn that shape into an executable contract.
+A plain object does not communicate which fields are required, which values must be strings, or which rules define optional input. Most importantly, it does not protect the service boundary. DTOs solve this by giving request data a named shape, and validation decorators turn that shape into an executable contract.
 
 ```typescript
 class CreatePostDto {
@@ -44,11 +30,7 @@ class CreatePostDto {
 }
 ```
 
-Even before adding validation rules, this is already more readable than an anonymous inline object.
-
-The class name tells you what the payload is for.
-
-The properties tell you what the route expects.
+Even before adding validation rules, this is already more readable than an anonymous inline object. The class name tells you what the payload is for, and the properties tell you what the route expects.
 
 ### DTOs Are a Boundary Tool
 
@@ -88,13 +70,7 @@ export class CreatePostDto {
 }
 ```
 
-This class now does three useful jobs.
-
-It names the request.
-
-It documents the expected fields.
-
-It defines runtime validation rules.
+This class now does three useful jobs. It names the request, documents the expected fields, and defines runtime validation rules. That combination is what moves FluoBlog from a routed API to a safer API.
 
 ### Why Field Defaults Help Beginners
 
@@ -257,15 +233,9 @@ These utilities ensure that you define your validation rules **once** in the bas
 
 One detail from the validation package documentation deserves extra attention.
 
-The validator is intentionally strict.
+The validator is intentionally strict. If the transport gives you `'42'` and the DTO expects `number`, validation does not silently pretend that the string was already a number.
 
-If the transport gives you `'42'` and the DTO expects `number`, validation does not silently pretend that the string was already a number.
-
-This is a healthy design choice.
-
-Silent coercion can hide bugs.
-
-It can also make input behavior harder to predict.
+This is a healthy design choice because silent coercion can hide bugs and make input behavior harder to predict. As Part 1 moves forward, that explicitness will matter just as much for failures as it does for successful requests.
 
 ### What This Means for FluoBlog
 
@@ -376,4 +346,4 @@ Before handling every error path, it helps to decide what successful output shou
 - The posts service now receives cleaner transport-boundary data.
 
 ## Next Chapter Preview
-In Chapter 7, we will move to the response side of the API. FluoBlog will start shaping output DTOs so internal data and transport-facing data do not have to be the same thing.
+In Chapter 7, we will move to the response side of the API. Validation gave FluoBlog a safer input boundary, and the next step is to shape output DTOs so internal data and transport-facing data do not have to be the same thing.

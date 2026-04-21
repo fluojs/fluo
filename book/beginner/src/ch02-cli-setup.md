@@ -3,6 +3,8 @@
 
 # Chapter 2. Creating Your First Project with the CLI
 
+Chapter 1 explained the philosophy. This chapter turns that philosophy into something concrete on disk. By the end, you will have a running FluoBlog starter, a clear picture of the generated files, and a beginner-friendly baseline that you can trust before the architecture grows.
+
 ## Learning Objectives
 - Install the fluo CLI tool globally or invoke it through a package runner.
 - Use `fluo new` to scaffold a fresh project.
@@ -18,6 +20,8 @@
 - A terminal session you can keep open while experimenting.
 
 ## 2.1 Installing @fluojs/cli
+
+The first step is simple, but it matters because the CLI creates the environment where all later examples will make sense.
 
 The fluo CLI is the entry point for the beginner workflow. Instead of manually assembling every config file, you begin with a tool that already understands the conventions of the framework.
 
@@ -113,6 +117,8 @@ A well-maintained CLI ensures that every new project you start benefits from the
 
 ## 2.2 fluo new: Interactive Scaffolding
 
+Once the command is available, the next move is not to handcraft files one by one. It is to let the generator establish a clean starting point.
+
 Once the CLI is installed, create the learning project for this book.
 
 ```bash
@@ -172,6 +178,8 @@ It usually tells you:
 - and whether anything needs attention before startup.
 
 ## 2.3 Analyzing the Project Structure
+
+After generation, the most useful beginner habit is to pause and read before editing.
 
 After generation finishes, move into the new directory.
 
@@ -270,6 +278,8 @@ The CLI configures `tsconfig.json` for you with the optimal settings for fluo. A
 
 ## 2.4 Understanding package.json Scripts
 
+With the directory layout in view, the next question is how you actually work inside the project day to day.
+
 The generated project normally includes a small set of scripts that support the whole beginner workflow.
 
 - **`dev`**: runs the application in development mode with fast feedback.
@@ -315,6 +325,8 @@ Shared scripts also reduce team confusion.
 When everyone uses the same command names, docs stay shorter and onboarding gets easier. A good starter template gives that common language to you from the first chapter.
 
 ## 2.5 FluoBlog: Initial Scaffolding and First Run
+
+After inspecting the files, it is time to prove that the scaffold is not just well organized, but actually alive.
 
 Now run the project.
 
@@ -420,6 +432,8 @@ The more you interact with the framework through the CLI and logs, the more intu
 - The generated source tree teaches where bootstrap, module composition, and project metadata live.
 - `dev`, `build`, and `start` serve different parts of the development lifecycle.
 - A successful first request proves the scaffold is genuinely working.
+
+That is the real outcome of this chapter. You now have more than a generated folder, you have a known-good starting state that will make the next architectural concepts easier to place.
 
 ## Next Chapter Preview
 In the next chapter, we will take the generated starter and explain the three core architectural roles you will keep seeing in fluo: modules, providers, and controllers. That is where FluoBlog stops being only a scaffold and starts becoming your own application structure.

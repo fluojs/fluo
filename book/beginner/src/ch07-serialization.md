@@ -19,37 +19,13 @@
 
 ## 7.1 Why Successful Responses Need Their Own Design
 
-Input validation protects the application from bad requests.
+Input validation protects the application from bad requests. Response serialization protects clients from accidental overexposure. Those are related problems, but they are not the same problem.
 
-Response serialization protects clients from accidental overexposure.
-
-Those are related problems.
-
-They are not the same problem.
-
-Beginners often assume that returning a service object directly is harmless.
-
-That assumption becomes dangerous as soon as internal fields appear.
-
-A post record might contain drafts, internal ids, author notes, or implementation-specific data.
-
-Not every field belongs in the public API.
-
-That is why response DTOs matter.
-
-They let you decide what the client should actually see.
+Beginners often assume that returning a service object directly is harmless. That assumption becomes dangerous as soon as internal fields appear. A post record might contain drafts, internal ids, author notes, or implementation-specific data, and not every field belongs in the public API. That is why response DTOs matter. They let you decide what the client should actually see.
 
 ### Request DTO vs Response DTO
 
-A request DTO answers, “what input may enter the application?”
-
-A response DTO answers, “what output should leave the application?”
-
-Those concerns often overlap.
-
-They should not be assumed identical.
-
-Keeping them separate gives you more freedom to evolve internal code later.
+A request DTO answers, “what input may enter the application?” A response DTO answers, “what output should leave the application?” Those concerns often overlap, but they should not be assumed identical. Keeping them separate gives you more freedom to evolve internal code later.
 
 ### Avoiding the "God DTO" Antipattern
 
@@ -100,11 +76,7 @@ export class PublicPostDto {
 }
 ```
 
-This class expresses a transport contract.
-
-Only exposed fields belong in the response.
-
-Internal details stay internal.
+This class expresses a transport contract. Only exposed fields belong in the response, and internal details stay internal. That shift continues the same boundary discipline introduced by validation, now on the way out of the app instead of on the way in.
 
 ### Why `excludeExtraneous` Is Beginner-Friendly
 
@@ -313,17 +285,9 @@ Common mistakes include:
 
 ### What FluoBlog Gains Here
 
-FluoBlog now has a cleaner public face.
+FluoBlog now has a cleaner public face. The app is no longer saying, “whatever my internal object looks like, that is the API.” Instead, it says, “the API has its own deliberate response contract.”
 
-The app is no longer saying, “whatever my internal object looks like, that is the API.”
-
-Instead, it says, “the API has its own deliberate response contract.”
-
-That is a very mature step for a beginner project.
-
-It will also make the next chapters easier.
-
-Once outputs are shaped cleanly, error handling and API documentation become much clearer.
+That is a very mature step for a beginner project, and it will make the next chapters easier. Once outputs are shaped cleanly, error handling and API documentation become much clearer.
 
 ### A Note on Maintenance
 
@@ -338,4 +302,4 @@ As your application grows, you will thank yourself for separating these concerns
 - The project is ready to make both success and failure responses more deliberate.
 
 ## Next Chapter Preview
-In Chapter 8, we will focus on exception handling. Once FluoBlog has cleaner successful responses, we can make not-found cases, bad requests, and server errors equally intentional.
+In Chapter 8, we will focus on exception handling. FluoBlog now explains successful responses more clearly, so the next step is to make not-found cases, bad requests, and server errors just as intentional.

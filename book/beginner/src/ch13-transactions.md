@@ -19,10 +19,10 @@ In the previous chapter, we connected FluoBlog to a database. However, many busi
 
 What happens if step 1 succeeds but step 2 fails? You end up with a "zombie" user who has no profile, potentially causing crashes in other parts of the system that expect profiles to exist. This violates the principle of **Atomicity**, which states that a series of operations must either all succeed or all fail together. In complex distributed systems, maintaining this atomicity is even more challenging but remains the bedrock of system reliability.
 
+Think of consistency as the legal framework of your database. Even if a transaction is technically successful (Atomic), it must not violate the invariants of the system. If you try to transfer money from an account that has a "non-negative balance" constraint, the transaction must fail if the result would be negative, even if the math itself is correct. This semantic consistency is what prevents your application from entering "impossible" states that lead to logic errors and user frustration.
+
 ### Consistency: Beyond Just Atomicity
 While atomicity ensures that all steps happen together, **Consistency** ensures that the data remains in a valid state according to all defined rules. For example, if your database has a rule that every profile must belong to a user, a transaction ensures that this rule is never broken, even during complex, multi-step updates. fluo's integration with Prisma makes enforcing these consistency rules straightforward, as the database itself acts as the final gatekeeper for your data's integrity. Consistency isn't just about successful writes; it's about the state of the entire universe of your data remaining coherent and predictable after every single operation. 
-
-Think of consistency as the legal framework of your database. Even if a transaction is technically successful (Atomic), it must not violate the invariants of the system. If you try to transfer money from an account that has a "non-negative balance" constraint, the transaction must fail if the result would be negative, even if the math itself is correct. This semantic consistency is what prevents your application from entering "impossible" states that lead to logic errors and user frustration.
 
 ### Durability and the Promise of Persistence
 The "D" in ACID stands for **Durability**, which guarantees that once a transaction is committed, it will remain even in the event of a system failure (like a power outage or a crash). By using a robust database like PostgreSQL with Prisma and fluo, you are building on a foundation that takes durability seriously. Your users can trust that when they receive a "Success" message, their data is safely and permanently stored on the disk, across multiple replicas if configured.
@@ -102,6 +102,8 @@ export class UsersService {
 }
 ```
 
+If `profilesRepo.create` throws an error, the entire transaction, including the user creation, is automatically rolled back by the database. That gives the service one clear success path instead of forcing later code to clean up half-finished state.
+
 ### Complex Transactions with Multiple Repositories
 One of the key advantages of the block pattern is how easily it scales to include multiple repositories. In the example above, `UsersRepository` and `ProfilesRepository` are both used within the same transaction. Because they both rely on `prisma.current()`, they automatically share the transaction context created by `this.prisma.transaction`. 
 
@@ -134,6 +136,8 @@ export class UsersController {
 ### The "Unit of Work" Pattern
 The use of an interceptor is a classic implementation of the **Unit of Work** pattern. It treats the entire request as a single, atomic operation. If the controller action finishes successfully, the transaction is committed. If any part of the request—from the controller to the deepest service—throws an exception, the entire transaction is rolled back. 
 
+This is extremely powerful for simple CRUD APIs where you want to ensure total consistency without writing manual transaction blocks in your services. It is the same idea as the block pattern, just applied at the request boundary instead of inside one service method.
+
 This provides a high level of safety for standard API actions, reducing the amount of boilerplate code needed for error handling and manual rollback logic in every single service method. It also ensures that partial data is never committed if a mid-request validation fails or an external service call times out and throws an error.
 
 ### When to use Interceptors vs. Blocks?
@@ -145,6 +149,10 @@ When a transaction fails, it's not just about rolling back the database. You als
 
 ### Best Practice: Keep Transactions Short
 While it's tempting to wrap large chunks of logic in a transaction, remember that transactions hold database locks. If a transaction takes several seconds to complete, it can slow down your entire application by blocking other requests. Always aim to keep your transactions as short and focused as possible. Only include the operations that absolutely *must* succeed or fail together. Avoid doing heavy computation, image processing, or external API calls inside a transaction block, as these increase the duration of locks significantly.
+
+By this point, we have seen how transactions are created. The next design question is how to keep the data layer clean while using them consistently.
+
+In FluoBlog, we want our data layer to be both clean and efficient.
 
 In many high-traffic applications, long-running transactions are the silent killers of performance. When a database row is locked for a transaction, any other process trying to write to that same row must wait. This creates a bottleneck that cascades through the entire system. By keeping transactions concise, you maximize the concurrency of your database and ensure that FluoBlog remains responsive even as your user base grows. Every millisecond saved in a transaction block is a millisecond gained in overall system throughput.
 
@@ -183,6 +191,8 @@ Let's implement a robust post creation flow that also increments a `postCount` i
 
 Maintaining derived data, such as counts or aggregates, is a common performance optimization in backend development. However, it requires careful transaction management to ensure that the primary data (the new post) and the derived data (the updated count) remain in sync. Fluo's transaction model makes this coordination simple and robust.
 
+That separation becomes clearer in a real example. Let's implement a robust post creation flow that also updates a "user post count" (for performance reasons).
+
 ```typescript
 // src/posts/posts.service.ts
 @Injectable()
@@ -201,6 +211,8 @@ export class PostsService {
 
 By putting these in a transaction, we guarantee that the `postCount` never gets out of sync with the actual number of rows in the `Post` table. If the post creation succeeds but the counter update fails (perhaps due to a lock timeout), the post itself is rolled back, maintaining the integrity of our counter logic.
 
+Even if the `incrementPostCount` fails, we won't have a new post without a corresponding count update. The database change remains coherent, and the service code still reads like one business action rather than a pile of defensive cleanup steps.
+
 ### Event-Driven Alternatives to Transactions
 While transactions are great for immediate consistency, sometimes you can achieve the same goal using an event-driven approach. For example, instead of updating the `postCount` in the same transaction, you could emit a `PostCreatedEvent` and have a separate background worker update the count. This "eventual consistency" model can improve performance by shortening the main transaction, but it introduces more complexity and the potential for temporary data mismatches. 
 
@@ -208,6 +220,8 @@ In this chapter, we focus on the transactional approach, which is simpler and mo
 
 ## 13.7 Summary
 In this chapter, we explored the world of data integrity and the Fluo transaction model. Reliable transaction management is the foundation of any production-grade application, and Fluo simplifies this complexity without sacrificing control.
+
+In this chapter, we explored the critical world of data integrity and the patterns that keep related writes coordinated.
 
 - **Atomicity** ensures that multi-step operations are "all or nothing."
 - **Consistency** keeps your database in a valid state according to your business rules.
@@ -218,7 +232,7 @@ In this chapter, we explored the world of data integrity and the Fluo transactio
 - **Service-Repository Split** ensures that business rules (transactions) are separated from query logic (SQL/Prisma).
 
 ### Persistence: Beyond Just Atomicity
-In Part 2, we mastered the data and configuration layer of Fluo. You have moved from a simple in-memory project to a robust, database-backed application structure. You are now prepared to handle the most complex data consistency requirements in your backend services. In Part 3, we shift to the critical world of security—starting with Authentication and JWT.
+By completing Part 2, you have mastered the "Data" and "Configuration" aspects of Fluo. Across these three chapters, you moved from explicit configuration, to persistent storage, to transaction-safe data access, which is a big step from an in-memory toy to a robust database-backed application structure. In Part 3, we will shift our focus to security, starting with Authentication and JWT.
 
 By using Fluo and Prisma, you are building on a foundation that takes ACID principles seriously. Your users can trust that when they receive a "Success" message, their data is safely and permanently stored. This reliability is the hallmark of a professional backend.
 

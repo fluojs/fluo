@@ -19,43 +19,19 @@
 
 ## 8.1 Why Exceptions Improve API Clarity
 
-So far, FluoBlog can validate requests and shape successful responses.
+So far, FluoBlog can validate requests and shape successful responses. That is only half of a trustworthy API. Clients also need predictable failure behavior.
 
-That is only half of a trustworthy API.
-
-Clients also need predictable failure behavior.
-
-If a route cannot find a post, returning `null` may be technically possible.
-
-It is not a very strong API contract.
-
-The client still has to guess whether `null` means missing data, temporary failure, or sloppy design.
-
-An explicit exception tells the story much more clearly.
-
-The request failed for a known reason.
-
-The HTTP status code should communicate that reason.
+If a route cannot find a post, returning `null` may be technically possible, but it is not a very strong API contract. The client still has to guess whether `null` means missing data, temporary failure, or sloppy design. An explicit exception tells the story much more clearly: the request failed for a known reason, and the HTTP status code should communicate that reason.
 
 ### Expected Failures vs Unexpected Failures
 
-This is one of the most helpful beginner distinctions.
+This is one of the most helpful beginner distinctions. Some failures are part of normal application behavior, such as invalid input, missing resources, or forbidden access. Other failures are accidental, such as coding bugs, broken infrastructure, or unhandled states.
 
-Some failures are part of normal application behavior.
-
-Examples include invalid input, missing resources, or forbidden access.
-
-Other failures are accidental.
-
-Examples include coding bugs, broken infrastructure, or unhandled states.
-
-Expected failures should usually become deliberate HTTP exceptions.
-
-Unexpected failures should be visible as real server problems.
+Expected failures should usually become deliberate HTTP exceptions. Unexpected failures should be visible as real server problems. That difference keeps the API honest for both clients and maintainers.
 
 ## 8.2 Built-In HTTP Exceptions in fluo
 
-The HTTP package includes a set of exceptions for common API failure cases.
+The HTTP package includes a set of exceptions for common API failure cases. Once the idea of expected failure is clear, these built-ins give that idea a precise HTTP shape.
 
 These include:
 
@@ -163,13 +139,7 @@ This is the same separation-of-concerns pattern we used in earlier chapters.
 
 ## 8.4 Validation Errors and Bad Requests
 
-Validation failures are another common expected error path.
-
-By the time the request reaches your service, DTO validation should already have protected the input boundary.
-
-That is one reason Chapter 6 came before this chapter.
-
-The API can now reject bad payloads with more confidence.
+Validation failures are another common expected error path. By the time the request reaches your service, DTO validation should already have protected the input boundary. That is one reason Chapter 6 came before this chapter, and it is why the API can now reject bad payloads with more confidence.
 
 ### What Makes a Request “Bad”?
 
@@ -292,15 +262,7 @@ You start treating them as part of the HTTP contract.
 
 ### What FluoBlog Gains Here
 
-FluoBlog now speaks more clearly when things go wrong.
-
-That matters just as much as the happy path.
-
-Clients can reason about missing posts.
-
-They can distinguish bad input from missing resources.
-
-The service layer also becomes more honest about the rules it enforces.
+FluoBlog now speaks more clearly when things go wrong, and that matters just as much as the happy path. Clients can reason about missing posts, distinguish bad input from missing resources, and see business-rule failures as deliberate contract decisions. The service layer also becomes more honest about the rules it enforces.
 
 ### Consistency is Key
 
@@ -324,4 +286,4 @@ You might be tempted to just return a number like `404`. While fluo supports thi
 - The project is ready to add route protection and reusable request/response workflow hooks.
 
 ## Next Chapter Preview
-In Chapter 9, we will add guards and interceptors. That will let FluoBlog protect selected routes, introduce reusable request pipeline behavior, and connect security-style checks to the API flow.
+In Chapter 9, we will add guards and interceptors. Exceptions made failure behavior explicit, and the next step is to control which requests may proceed and which reusable behaviors should wrap the route pipeline.

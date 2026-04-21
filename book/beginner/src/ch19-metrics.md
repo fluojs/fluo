@@ -51,6 +51,8 @@ The `@fluojs/metrics` package integrates Prometheus into `fluo`. Prometheus is t
 Prometheus is built for the dynamic nature of cloud-native environments. It doesn't require your application to "push" data to a central server, which simplifies network configuration and prevents your monitoring system from becoming a bottleneck during traffic spikes. It also features a powerful query language (PromQL) and a massive ecosystem of exporters for databases, caches, and operating systems.
 
 ## 19.3 Basic Setup
+The basic setup is intentionally small so you can expose useful telemetry before you design any custom dashboard.
+
 Install the package:
 `pnpm add @fluojs/metrics`
 
@@ -261,7 +263,7 @@ Metrics turn FluoBlog from a "black box" into a transparent system. By collectin
 - **Alerting**: Use Grafana to notify your team when performance degrades or error rates spike, enabling proactive incident response.
 - **Standardization**: By following the OpenMetrics standard, Fluo ensures compatibility with the entire modern monitoring ecosystem.
 
-In the next few chapters, we will circle back to the foundations of data and security—Prisma, Transactions, and JWT—to ensure your implementation is as robust as your monitoring. By combining deep visibility with rock-solid architectural patterns, you are building a backend that is truly ready for the demands of the modern web.
+Congratulations, you have completed Part 4: Caching and Operations. FluoBlog now has faster reads, explicit health signals, and observable runtime behavior. In the final part, we will focus on testing and the last production checks.
 
 ### 19.9.1 The Future of Observability in Fluo
 As the world of backend engineering moves towards more complex, distributed systems, Fluo is committed to staying at the forefront of observability. Future versions of the framework will include deeper integration with **Distributed Tracing** (OpenTelemetry) and **Log Aggregation**, providing a true "Single Pane of Glass" for all your operational data. 

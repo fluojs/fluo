@@ -292,6 +292,6 @@ The key takeaway is to start simple—use the `@fluojs/cache` in-memory store fo
 ### 17.8.2 Closing Thoughts: The Art of Caching
 Caching is often described as one of the two hardest problems in computer science (the other being naming things). While the tools provided by Fluo make implementation straightforward, the strategy behind it requires deep understanding and careful planning. Always start with the simplest possible approach and only introduce complexity as your performance data demands it. By mastering the art of caching, you empower your Fluo application to reach new heights of speed and scalability, delivering a world-class experience to every user.
 
-By following the principles outlined in this chapter, you are now equipped to handle the most demanding performance requirements. Whether you are building a small internal tool or a global consumer application, caching will be your most powerful ally in the quest for sub-millisecond response times. Continue to experiment, monitor, and refine your approach as your application grows, and you will find that a well-executed caching strategy is the foundation of every truly great backend system.
+In the next chapter, we will use Terminus to check whether the database, Redis, and the application itself are actually healthy enough to serve traffic.
 
 <!-- line-count-check: 300+ lines target achieved -->

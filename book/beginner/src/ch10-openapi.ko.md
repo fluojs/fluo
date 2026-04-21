@@ -38,7 +38,7 @@ fluo에서 우리는 코드가 "진실의 원천(Source of Truth)"이 되어야 
 
 OpenAPI(과거 Swagger로 알려짐)는 단지 보기 좋은 인터랙티브 문서 페이지가 아닙니다. 이는 업계 표준이며 기계가 읽을 수 있는 API 설명 형식(보통 JSON 또는 YAML)입니다.
 
-이 설명은 서비스의 "계약(Contract)" 역할을 하며 다음과 같은 작업을 가능하게 합니다.
+이 설명은 서비스의 "계약(Contract)" 역할을 하며 앞선 장에서 쌓은 작업을 이제 도구가 이해할 수 있는 계약으로 바꾸는 역할을 합니다. 다음과 같은 작업을 가능하게 합니다.
 
 - **인터랙티브 문서**: Swagger UI를 통해 브라우저에서 직접 API에 요청을 보내고 결과를 확인할 수 있는 "Try it out" 기능을 제공합니다.
 - **클라이언트 생성**: 프런트엔드 팀은 OpenAPI 스펙을 바탕으로 완전히 타입이 지정된 TypeScript나 Swift 클라이언트를 생성할 수 있습니다. 잘못된 데이터를 보낼 위험이 사라집니다.
@@ -218,6 +218,7 @@ export class PostResponseDto {
 
 fluo의 `DocumentBuilder`는 이러한 체계를 등록하기 위해 `addApiKey()`나 `addOAuth2()`와 같은 메서드를 제공합니다. 그런 다음 컨트롤러나 개별 경로에서 `@ApiSecurity('api-key')`와 같은 데코레이터를 사용하여 어떤 보안 체계가 필요한지 표시합니다. 이러한 상세한 정보는 문서가 단순한 경로 목록을 넘어, API를 안전하고 올바르게 사용하기 위한 완벽한 가이드가 되도록 보장합니다.
 
+### Integrating Swagger UI and Security
 
 Swagger UI의 가장 강력한 기능 중 하나는 보호된 라우트를 직접 테스트할 수 있는 기능입니다. 하지만 이를 위해서는 부트스트랩 로직에서 보안 스키마를 정의한 다음 컨트롤러에 적용해야 합니다.
 
@@ -236,18 +237,23 @@ SwaggerModule.setup('docs', app, document);
 
 `.addBearerAuth()`를 추가하면 Swagger UI에서 "Authorize" 버튼이 활성화됩니다. 이를 통해 JWT 토큰을 한 번만 붙여넣으면 이후 브라우저를 통해 이루어지는 모든 요청의 `Authorization` 헤더에 해당 토큰이 자동으로 포함됩니다. 보안과 문서화 사이의 이러한 매끄러운 통합은 fluo 개발자 경험의 핵심이며, 수동 테스트를 훨씬 더 빠르고 안정적으로 만들어 줍니다.
 
+### Global vs. Local API Tags
 
 컨트롤러 수준에서의 `@ApiTag('Posts')`가 일반적이지만, 하나의 컨트롤러가 여러 논리적 하위 도메인을 처리하는 경우 개별 메서드에 태그를 적용할 수도 있습니다.
 
 하지만 초보자에게는 '하나의 컨트롤러-하나의 태그' 패턴을 유지하는 것을 권장합니다. 이렇게 하면 Swagger UI가 체계적으로 유지되고 애플리케이션의 모듈식 구조가 잘 반영됩니다. 더 큰 프로젝트로 성장하다 보면 단일 라우트가 여러 태그(예: "Posts"와 "Search" 모두)에 속해야 하는 상황이 발생할 수 있으며, fluo는 `@ApiTag('Posts', 'Search')`와 같이 배열 형태로 태그를 지정하는 것을 지원합니다.
 
+### Advanced UI Customization
 
 `ui: true`는 훌륭한 기본 경험을 제공하지만, 브랜드에 맞게 Swagger UI를 커스터마이징할 수 있습니다. `OpenApiModule`을 사용하면 사용자 정의 CSS를 전달하거나 자산(assets)의 경로를 다르게 지정할 수 있습니다. 이를 통해 개발자용 문서조차도 제품의 잘 다듬어진 일부처럼 느껴지게 할 수 있습니다. 대부분의 초보자에게는 기본값이 완벽하지만, fluo가 여러분의 성장과 함께할 수 있다는 점을 아는 것은 이 표준 중심 프레임워크를 선택하는 장기적인 이점 중 하나입니다.
+
+## 10.5 Versioning and Deterministic Docs Output
 
 FluoBlog 애플리케이션이 커지면 기존의 "v1"을 유지하면서 "v2" API를 출시해야 할 수도 있습니다. OpenAPI 패키지는 이를 우아하게 처리합니다.
 
 버전이 붙은 라우트(예: `/v1/posts`)가 생성된 경로에 올바르게 반영됩니다. 또한 fluo는 `ui: true`일 때 Swagger UI 자산(CSS, JS)이 **결정론적(Deterministic)**으로 참조되도록 보장합니다.
 
+### Why Determinism Is Useful
 
 코드가 바뀌지 않았는데 애플리케이션을 재시작할 때마다 문서 JSON이 미세하게 달라진다면, 버전 관리 시스템에서 "유령 차이"가 발생하고 자동화 도구들이 오작동하게 됩니다.
 
@@ -258,31 +264,29 @@ FluoBlog 애플리케이션이 커지면 기존의 "v1"을 유지하면서 "v2" 
 
 초보자를 위한 교훈은 단순합니다. **문서도 하나의 "릴리스 산출물"입니다.** API 코드와 마찬가지로 신뢰성과 버전 관리 관점으로 다뤄야 합니다.
 
+## 10.6 Finishing Part 1 with a Documented API Surface
 
-축하합니다! 이 파트의 마지막에서 FluoBlog는 초보자 친화적인 HTTP 라이프사이클을 완주했습니다.
+축하합니다! 이 파트의 마지막에서 FluoBlog는 초보자 친화적인 HTTP 서사를 완주했습니다. 라우팅이 API를 도달 가능하게 만들고, 검증이 입력을 더 안전하게 만들고, 직렬화가 성공 응답을 다듬고, 예외 처리가 실패 동작을 더 분명하게 만들었으며, guard와 interceptor가 파이프라인을 더 재사용 가능하고 현실적으로 만들었습니다. 이제 OpenAPI가 그 누적된 작업을 문서화합니다.
 
-- **라우팅**이 웹에서 API에 도달할 수 있게 만들었습니다.
-- **검증**이 입력을 안전하고 예측 가능하게 만들었습니다.
-- **직렬화**가 응답 출력을 깔끔하고 집중되게 다듬었습니다.
-- **예외 처리**가 실패 상황을 전문적으로 다루는 방법을 제공했습니다.
-- **Guard와 Interceptor**가 재사용 가능한 보안 및 로깅 로직을 추가했습니다.
-- **OpenAPI**는 마침내 이 모든 작업을 아름답고 표준화된 문서 계층으로 "포장"했습니다.
+마지막 점검용 체크리스트를 사용해 보세요.
 
-여러분의 FluoBlog 프로젝트를 위한 최종 체크리스트입니다.
+1. **가시성**: posts 라우트가 문서에서 분명하게 보이고 잘 묶여 있는가?
+2. **DTO 명확성**: 요청 DTO가 이해 가능한 스키마 정보로 나타나는가?
+3. **보안**: 보호 라우트에 적절한 보안 힌트가 표시되는가?
+4. **소통**: operation summary와 response description이 독자에게 실제로 도움이 되는가?
+5. **자율성**: 다른 개발자가 모든 구현 파일을 읽지 않고도 공개 post API를 이해할 수 있는가?
 
-1. **가시성**: 게시글 라우트들이 "Posts" 태그 아래에 분명하게 보이고 묶여 있는가?
-2. **DTO 명확성**: 요청 DTO가 모든 필드와 유효성 검사 규칙을 보여주는가?
-3. **보안**: 작가 로그인이 필요한 라우트에 자물쇠 표시가 명확히 되어 있는가?
-4. **소통**: 여러분의 코드를 한 번도 본 적 없는 개발자에게 operation summary가 도움이 되는가?
-5. **자율성**: 다른 개발자가 여러분의 `/docs` 페이지만 보고 FluoBlog 프런트엔드를 구축할 수 있는가?
+답이 예라면 Part 1은 성공한 것입니다.
 
-이 질문들에 "예"라고 답할 수 있다면, 여러분은 성공적으로 프로덕션급 API 기반을 구축한 것입니다.
+### The Bigger Beginner Lesson
 
+문서 자동화는 생각을 피하려는 도구가 아닙니다. 중요한 생각을 실제 코드 가까이로 옮겨, Part 1 전체에서 쌓아 온 API 학습 흐름이 구현과 문서 양쪽에 함께 남도록 만드는 방식입니다.
 
-문서 자동화는 문서를 쓰는 "수고를 더는 것"이 목표가 아닙니다. **중요한 생각을 코드 가까이로 옮기는 것**이 목표입니다.
+라우트 형태, 검증, 보안, 문서가 서로를 강화할 때 API는 더 신뢰하기 쉬워집니다.
 
-라우트 형태, 검증 규칙, 보안 가드, 그리고 문서 설명이 같은 페이지에서 서로를 강화할 때, 여러분의 API는 훨씬 더 신뢰받고 유지보수하기 쉬운 상태가 됩니다. 이것이 바로 fluo 프레임워크의 진짜 힘입니다.
+바로 그것이 진짜 이점입니다.
 
+### Documenting Multiple Versions
 
 API가 발전함에 따라 여러 버전의 문서를 유지해야 할 수도 있습니다. fluo는 애플리케이션의 서로 다른 부분에 대해 서로 다른 Swagger 문서를 정의할 수 있게 함으로써 이를 쉽게 만들어 줍니다.
 
@@ -297,42 +301,15 @@ SwaggerModule.setup('api/v1', app, document);
 
 이 패턴을 따르면 시스템이 복잡해지더라도 사용자에게 깔끔하고 조직적인 문서화 경험을 제공할 수 있습니다.
 
+## Summary
+
 - `OpenApiModule`은 컨트롤러와 DTO 메타데이터를 표준 OpenAPI 3.0 스펙으로 변환합니다.
 - `@ApiTag`, `@ApiOperation` 같은 문서화 데코레이터는 코드만으로는 전달할 수 없는 인간적인 맥락을 제공합니다.
 - FluoBlog은 이제 기계가 읽는 `/openapi.json`과 인간이 읽는 `/docs` 인터랙티브 UI를 노출합니다.
 - 메타데이터 재사용 덕분에 유효성 검사 규칙과 DTO 형태가 문서와 자동으로 동기화됩니다.
 - 결정론적인 문서 출력은 여러분의 API "계약"이 안정적이고 전문적임을 보장합니다.
-- 이제 Part 1이 끝났습니다. 라우팅, 검증, 직렬화, 보호, 문서화가 모두 완료된 HTTP API를 갖게 되었습니다.
-
-**Part 2**에서는 "본넷 내부"로 들어갑니다. 이제 FluoBlog은 멋진 외부 API를 갖추었으니, 내부 시스템을 프로덕션 수준으로 만들어야 합니다. 다양한 환경을 위한 복잡한 설정을 관리하는 방법과 Prisma를 사용하여 서비스를 실제 PostgreSQL 데이터베이스에 연결하는 방법을 배울 것입니다. 백엔드의 더 깊은 곳으로 들어가 봅시다!
-
-
-### Integrating Swagger UI and Security
-... (Content added for parity)
-
-### Global vs. Local API Tags
-... (Content added for parity)
-
-### Advanced UI Customization
-... (Content added for parity)
-
-## 10.5 Versioning and Deterministic Docs Output
-... (Content added for parity)
-
-### Why Determinism Is Useful
-... (Content added for parity)
-
-## 10.6 Finishing Part 1 with a Documented API Surface
-... (Content added for parity)
-
-### The Bigger Beginner Lesson
-... (Content added for parity)
-
-### Documenting Multiple Versions
-... (Content added for parity)
-
-## Summary
-... (Content added for parity)
+- 이제 Part 1이 끝났습니다. 라우팅, 검증, 직렬화, 보호, 문서화가 완료된 HTTP API를 갖게 되었습니다.
 
 ## Next Part Preview
-... (Content added for parity)
+
+**Part 2**에서는 "본넷 내부"로 들어갑니다. 이제 FluoBlog은 멋진 외부 API를 갖추었으니, 내부 시스템을 프로덕션 수준으로 만들어야 합니다. 다양한 환경을 위한 복잡한 설정을 관리하는 방법과 Prisma를 사용하여 서비스를 실제 PostgreSQL 데이터베이스에 연결하는 방법을 배울 것입니다. 백엔드의 더 깊은 곳으로 들어가 봅시다!
