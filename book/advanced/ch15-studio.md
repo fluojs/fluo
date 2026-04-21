@@ -1,7 +1,7 @@
 <!-- packages: @fluojs/studio, @fluojs/runtime, @fluojs/cli -->
 <!-- project-state: FluoBlog v0 -->
 
-# Chapter 15. Studio — 시각적 진단과 관찰성
+# Chapter 15. Studio: Visual Diagnostics and Observability
 
 ## What You Will Learn in This Chapter
 

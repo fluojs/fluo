@@ -1,7 +1,7 @@
 <!-- packages: @fluojs/testing, @fluojs/http, @fluojs/runtime -->
 <!-- project-state: FluoBlog v0 -->
 
-# Chapter 14. Portability Testing and Conformance — 이식성 테스트와 적합성 검증
+# Chapter 14. Portability Testing and Conformance
 
 ## What You Will Learn in This Chapter
 - The importance of behavioral consistency across runtimes
