@@ -255,9 +255,3 @@ Standard decorators in Fluo represent the final transition from "framework magic
 ---
 *End of Chapter 1*
 
-
-
-
-
-
-

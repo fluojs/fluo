@@ -52,7 +52,7 @@ This is not an introductory text. We assume you are comfortable with the followi
 
 ## How This Volume Differs
 
-Standard project-building books follow a "build an app" narrative. This book follows an "unfold the engine" narrative. 
+Standard project-building books follow a "build an app" narrative. This book follows an "unfold the engine" narrative.
 
 -   **Explicitness over Convenience**: We prioritize showing you the explicit internal mechanics even when the framework provides a convenient facade for end-users. For example, `path:packages/core/src/metadata/class-di.ts:56-73` shows the explicit lineage-walking algorithm used for inherited DI metadata.
 -   **Performance-First Reasoning**: We frequently discuss *why* a certain design choice was made to minimize overhead or maximize tree-shaking potential.

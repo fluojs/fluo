@@ -166,7 +166,7 @@ To bring all these concepts together, let's look at how you might build a `@Logg
 export function Loggable(options: LogOptions = {}): StandardMethodDecoratorFn {
   return (originalMethod, context) => {
     const methodName = String(context.name);
-    
+
     // Use addInitializer to log that the method has been decorated
     context.addInitializer(() => {
       if (options.verbose) {
@@ -217,9 +217,7 @@ In Part 2, we will move from the declarative configuration layer to the heart of
 
 Mastering decorators and metadata is the key to unlocking the full potential of Fluo. By embracing the standard-first approach and understanding the "why" behind our architectural choices, you are now well-equipped to build sophisticated, scalable, and future-proof backend applications. See you in Part 2!
 
-One final source-backed observation closes the loop.
-Fluo's own package ecosystem already demonstrates the custom-decorator style this
-chapter recommends.
+One final source-backed observation closes the loop. Fluo's own package ecosystem already demonstrates the custom-decorator style this chapter recommends.
 
 - `path:packages/http/src/decorators.ts:181-189` shows `@Controller()` writing into controller metadata without legacy descriptors.
 - `path:packages/http/src/decorators.ts:197-205` shows `@Version()` branching on `context.kind` to support both class and method scope.
@@ -227,17 +225,14 @@ chapter recommends.
 - `path:packages/openapi/src/decorators.ts:259-345` shows OpenAPI decorators building method-scoped `Map` records keyed by `context.name`.
 - `path:packages/openapi/src/decorators.ts:477-503` shows response metadata accumulation as ordinary bag manipulation, not reflection magic.
 
-That is the important advanced pattern: successful custom decorators in Fluo are
-small, composable metadata writers. The runtime power comes later, when other
-packages read those records and turn them into HTTP behavior, documentation, or
-DI policy.
+That is the important advanced pattern: successful custom decorators in Fluo are small, composable metadata writers. The runtime power comes later, when other packages read those records and turn them into HTTP behavior, documentation, or DI policy.
 
 The true power of custom decorators in fluo comes from their integration with guards and interceptors. By combining a metadata-recording decorator with a guard that reads that metadata, you can build complex, domain-specific logic that is both performant and easy to use. For example, consider an `@AuditLog()` decorator that records which methods should be logged to a database. You can create a global interceptor that checks for the `AUDIT_LOG_METADATA_KEY` and, if present, records the request and response details. This pattern involves two components:
 1.  **The Decorator**: Records a specific intent or configuration on a class or method.
 2.  **The Guard/Interceptor**: Reads that intent at runtime and acts accordingly.
 This decoupling ensures that your business logic (the controller) doesn't need to know anything about the implementation details of the guard or interceptor. It only needs to declare its intent through the decorator.
 
-When your custom decorator isn't working as expected, the first step is to verify that the metadata is being recorded correctly. You can use the `getModuleMetadata` or `getClassDiMetadata` helpers (as discussed in Chapter 2) within a unit test to inspect the metadata bag of your decorated class. If the metadata is there, the issue likely lies within the component that is supposed to read it (the guard, interceptor, or DI container). Tracing the execution from the metadata retrieval point is the fastest way to identify the bottleneck. 
+When your custom decorator isn't working as expected, the first step is to verify that the metadata is being recorded correctly. You can use the `getModuleMetadata` or `getClassDiMetadata` helpers (as discussed in Chapter 2) within a unit test to inspect the metadata bag of your decorated class. If the metadata is there, the issue likely lies within the component that is supposed to read it (the guard, interceptor, or DI container). Tracing the execution from the metadata retrieval point is the fastest way to identify the bottleneck.
 
 Common pitfalls include using the wrong Symbol for recording vs retrieval, or forgetting that decorators run at class definition time rather than request time. Also remember that by default, metadata recorded on a method is not inherited by subclasses unless you explicitly handle the inheritance logic (as seen in `path:packages/core/src/metadata/class-di.ts`). If you need inherited metadata, you must ensure your retrieval logic traverses the prototype chain or that your decorator uses a storage mechanism that supports hierarchical resolution.
 

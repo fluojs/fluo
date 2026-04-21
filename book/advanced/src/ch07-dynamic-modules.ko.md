@@ -33,7 +33,7 @@ export function defineModule(target: any, metadata: ModuleMetadata) {
 
 function createRuntimeModule(options: MyOptions): ModuleType {
   class RuntimeModule {}
-  
+
   defineModule(RuntimeModule, {
     providers: [
       { provide: MY_OPTIONS, useValue: options },
@@ -41,7 +41,7 @@ function createRuntimeModule(options: MyOptions): ModuleType {
     ],
     exports: [MyService]
   });
-  
+
   return RuntimeModule;
 }
 ```
@@ -218,7 +218,7 @@ describe('PrismaModule', () => {
   it('should produce a module with normalized options', async () => {
     const module = PrismaModule.forRoot({ databaseUrl: 'sqlite://file.db' });
     const metadata = getModuleMetadata(module);
-    
+
     const optionsProvider = metadata.providers.find(p => p.provide === PRISMA_NORMALIZED_OPTIONS);
     expect(optionsProvider.useValue.databaseUrl).toBe('sqlite://file.db');
     expect(optionsProvider.useValue.timeout).toBe(5000); // 기본값 확인
@@ -235,7 +235,7 @@ describe('PrismaModule', () => {
 
     const metadata = getModuleMetadata(module);
     const factory = metadata.providers.find(p => p.provide === PRISMA_NORMALIZED_OPTIONS).useFactory;
-    
+
     await Promise.all([factory(), factory()]);
     expect(callCount).toBe(1); // 메모이제이션 확인
   });
@@ -255,18 +255,4 @@ describe('PrismaModule', () => {
 마지막으로, 동적 모듈은 특화된 텔레메트리(telemetry) 프로바이더를 등록함으로써 관찰 가능성(observability) 측면에서도 핵심적인 역할을 할 수 있습니다. 이러한 프로바이더들은 고유한 모듈 이름이나 식별자를 사용하도록 구성될 수 있으며, 이를 통해 개별 모듈 인스턴스 수준에서 지표와 로그를 세밀하게 추적할 수 있습니다. 이는 복잡한 시스템의 어떤 구체적인 부분에서 문제가 발생하고 있는지 찾아내는 것을 훨씬 쉽게 만들어 주며, 프로덕션 장애의 평균 복구 시간(MTTR)을 단축시킵니다.
 
 요약하자면, Fluo에서 동적 모듈을 작성한다는 것은 프레임워크의 핵심 프리미티브를 숨기려 하기보다 이를 포용하는 것을 의미합니다. 모듈을 일등 시민이자 제조된 결과물로 취급함으로써, 전통적인 데코레이터 기반 접근 방식으로는 불가능한 수준의 유연성과 투명성을 얻을 수 있습니다. 더 많은 규율이 필요하지만, 그 보상은 시스템이 복잡해짐에 따라 근본적으로 이해하고 테스트하고 유지보수하기 쉬워진다는 점입니다.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

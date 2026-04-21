@@ -34,7 +34,7 @@ export function defineModule(target: any, metadata: ModuleMetadata) {
 
 function createRuntimeModule(options: MyOptions): ModuleType {
   class RuntimeModule {}
-  
+
   defineModule(RuntimeModule, {
     providers: [
       { provide: MY_OPTIONS, useValue: options },
@@ -42,7 +42,7 @@ function createRuntimeModule(options: MyOptions): ModuleType {
     ],
     exports: [MyService]
   });
-  
+
   return RuntimeModule;
 }
 ```
@@ -225,7 +225,7 @@ describe('PrismaModule', () => {
   it('should produce a module with normalized options', async () => {
     const module = PrismaModule.forRoot({ databaseUrl: 'sqlite://file.db' });
     const metadata = getModuleMetadata(module);
-    
+
     const optionsProvider = metadata.providers.find(p => p.provide === PRISMA_NORMALIZED_OPTIONS);
     expect(optionsProvider.useValue.databaseUrl).toBe('sqlite://file.db');
     expect(optionsProvider.useValue.timeout).toBe(5000); // Default value
@@ -242,7 +242,7 @@ describe('PrismaModule', () => {
 
     const metadata = getModuleMetadata(module);
     const factory = metadata.providers.find(p => p.provide === PRISMA_NORMALIZED_OPTIONS).useFactory;
-    
+
     await Promise.all([factory(), factory()]);
     expect(callCount).toBe(1); // Memoization check
   });
@@ -262,33 +262,4 @@ Beyond basic provider checks, sophisticated dynamic modules can also verify thei
 Finally, dynamic modules can play a key role in observability by registering specialized telemetry providers. These providers can be configured to use the unique module name or identity, allowing for granular tracking of metrics and logs at the individual module instance level. This makes it much easier to pinpoint which specific part of a complex system is experiencing issues, further reducing the mean time to resolution for production incidents.
 
 In summary, authoring dynamic modules in Fluo is about embracing the framework's core primitives rather than trying to hide them. By treating modules as first-class, manufactured artifacts, we gain a level of flexibility and transparency that is simply not possible with traditional decorator-based approaches. It requires more discipline, but the reward is a system that is fundamentally easier to understand, test, and maintain as it grows in complexity.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
