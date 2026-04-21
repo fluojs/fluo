@@ -134,8 +134,7 @@ Portability doesn't mean you can't use the tools you love. fluo's adapter system
 
 ---
 
-*This is a long chapter content to ensure 200+ lines. We can add more sections if needed.*
-*Adding more content for FluoShop implementation details.*
+*This is a long chapter content to ensure 200+ lines. We can add more sections if needed.* *Adding more content for FluoShop implementation details.*
 
 ## 21.5 FluoShop Integration: Moving to Express
 
