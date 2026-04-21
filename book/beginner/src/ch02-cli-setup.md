@@ -87,7 +87,7 @@ The CLI gives you a reliable starting point so you can spend your mental energy 
 
 ### Troubleshooting global installs
 
-If the global install doesn't work as expected, it's often due to permission issues or Node.js version mismatches. 
+If the global install doesn't work as expected, it's often due to permission issues or Node.js version mismatches.
 
 On some systems, you might need to use `sudo` (not recommended for npm) or, better yet, use a version manager like `nvm` or `fnm` to manage your Node.js installations without needing root permissions.
 
@@ -95,13 +95,13 @@ If you are using `pnpm`, make sure you have run `pnpm setup` to add the global b
 
 ### CLI as an Education Tool
 
-The CLI isn't just for speed; it's a teacher. By looking at the choices it makes—which dependencies it includes, how it configures TypeScript, and where it places files—you are learning the framework's best practices. 
+The CLI isn't just for speed; it's a teacher. By looking at the choices it makes—which dependencies it includes, how it configures TypeScript, and where it places files—you are learning the framework's best practices.
 
 When you run `fluo new`, pay attention to the packages it installs. You'll see `@fluojs/core`, `@fluojs/http`, and other modular components. This shows you that fluo is not a monolithic framework, but a collection of specialized tools that you can mix and match.
 
 ### Staying Updated with the CLI
 
-The fluo ecosystem moves fast. New features, security patches, and performance improvements are released regularly. 
+The fluo ecosystem moves fast. New features, security patches, and performance improvements are released regularly.
 
 To ensure you have the latest features and bug fixes, periodically check for updates to the CLI:
 
@@ -252,21 +252,21 @@ That deliberate pause helps you separate three ideas.
 
 ### The Role of .fluo.json
 
-As mentioned earlier, `.fluo.json` is a metadata file that helps the CLI track your project's state. It includes information like the project name, the version of fluo used for scaffolding, and any custom templates applied. 
+As mentioned earlier, `.fluo.json` is a metadata file that helps the CLI track your project's state. It includes information like the project name, the version of fluo used for scaffolding, and any custom templates applied.
 
 Avoid editing this file manually unless you are an advanced user. If this file is corrupted or deleted, some CLI commands (like adding new modules or controllers automatically) might stop working. Keeping it intact ensures that your project remains "CLI-compatible" throughout its development lifecycle.
 
 ### Exploring the `node_modules` Folder (Briefly)
 
-While beginners are usually told to ignore `node_modules`, taking a quick peek can be enlightening. 
+While beginners are usually told to ignore `node_modules`, taking a quick peek can be enlightening.
 
-You'll see the `@fluojs` namespace containing the core framework logic. Notice how small these packages are. This is a direct result of fluo's "Standard-First" philosophy—it relies on native language features rather than massive external libraries. 
+You'll see the `@fluojs` namespace containing the core framework logic. Notice how small these packages are. This is a direct result of fluo's "Standard-First" philosophy—it relies on native language features rather than massive external libraries.
 
 Understanding that the framework itself is just a collection of well-organized TypeScript code can demystify much of the "magic" you might feel as a newcomer. It's all just code, and the more you look at it, the more familiar it will become.
 
 ### Why TypeScript?
 
-Fluo is built on TypeScript, and the generated project reflects this. 
+Fluo is built on TypeScript, and the generated project reflects this.
 
 You might wonder why we don't just use plain JavaScript. TypeScript provides:
 
@@ -412,17 +412,17 @@ The FluoBlog project we are building together will follow this pattern. In each 
 
 ### The Joy of the First Green Log
 
-There is a special kind of satisfaction in seeing that first "Application started successfully" log in your terminal. 
+There is a special kind of satisfaction in seeing that first "Application started successfully" log in your terminal.
 
-It marks the moment when an abstract concept becomes a living, breathing program. Don't rush past this moment. Take a second to appreciate that you've successfully set up a modern, high-performance backend environment. 
+It marks the moment when an abstract concept becomes a living, breathing program. Don't rush past this moment. Take a second to appreciate that you've successfully set up a modern, high-performance backend environment.
 
 You are now part of a growing community of developers who prioritize standards, performance, and clean architecture. Welcome to the fluo family!
 
 ### Learning from the Logs
 
-The logs that fluo prints are not just status updates; they are a diagnostic tool. 
+The logs that fluo prints are not just status updates; they are a diagnostic tool.
 
-If you see an error, don't panic. Read the stack trace. It usually tells you exactly which file and line number caused the problem. Developing the habit of reading and understanding logs is one of the most important skills you can acquire as a backend developer. 
+If you see an error, don't panic. Read the stack trace. It usually tells you exactly which file and line number caused the problem. Developing the habit of reading and understanding logs is one of the most important skills you can acquire as a backend developer.
 
 The more you interact with the framework through the CLI and logs, the more intuitive it will become. It's like learning a new language—at first, you're just repeating phrases, but soon you'll be composing your own sentences.
 

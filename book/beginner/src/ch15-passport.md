@@ -79,7 +79,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 ```
 
 ### 15.3.2 Configuration Options
-The `super()` call in the constructor is where you configure the behavior of the Passport strategy. 
+The `super()` call in the constructor is where you configure the behavior of the Passport strategy.
 - `jwtFromRequest`: Defines how the token is extracted. `fromAuthHeaderAsBearerToken()` is the standard for most APIs, but you could also extract it from a cookie or a custom query parameter.
 - `ignoreExpiration`: If set to `true`, the strategy will accept expired tokens. You should almost always keep this `false` in production.
 - `secretOrKey`: The cryptographic secret used to verify the token's signature. This should always be loaded from your `ConfigService` rather than being hardcoded.
@@ -351,7 +351,6 @@ Every time a guard denies access, it's a potential security event. Ensure that y
 If you have a policy that applies to 90% of your routes (like requiring authentication), consider registering it as a global guard. You can then use "Opt-Out" decorators (like `@Public()`) for the few exceptions. This "Deny by Default" approach is much safer than manually applying guards to every new controller and protects your system from accidental exposures during rapid development cycles.
 
 Additionally, always remember to **Test Your Guards in Isolation**. Since guards are providers, you can easily write unit tests for them by mocking the `ExecutionContext` and the `Reflector`. Testing your security logic ensures that your authorization rules behave as expected across all edge cases, such as missing headers, malformed tokens, or users with multiple roles. A well-tested security layer is the foundation of a reliable application.
-
 
 ## 15.11 Deep Dive: Multi-Factor Authentication (MFA) Patterns
 For high-security applications, a single password or JWT is often not enough. Implementing **Multi-Factor Authentication (MFA)** is a critical step in modern security.

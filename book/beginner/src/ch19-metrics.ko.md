@@ -53,8 +53,7 @@ Prometheus는 클라우드 네이티브 환경의 동적인 특성에 맞춰 구
 ## 19.3 Basic Setup
 기본 설정은 의도적으로 작습니다. 커스텀 대시보드를 만들기 전에 먼저 유용한 텔레메트리를 노출할 수 있게 해 줍니다.
 
-패키지를 설치합니다:
-`pnpm add @fluojs/metrics`
+패키지를 설치합니다: `pnpm add @fluojs/metrics`
 
 루트 `AppModule`에 모듈을 등록합니다:
 

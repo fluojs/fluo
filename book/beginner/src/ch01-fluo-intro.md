@@ -96,7 +96,7 @@ If you can point to each of those pieces in the source tree, the framework is do
 
 ### The Philosophy of Simplicity
 
-One of the most important concepts in fluo is that "simple is better than clever." 
+One of the most important concepts in fluo is that "simple is better than clever."
 
 In many frameworks, "clever" features like automatic file-based routing or implicit dependency discovery seem like magic until they fail. When they fail, you're left guessing why a file wasn't picked up or why a dependency is undefined.
 
@@ -104,7 +104,7 @@ Fluo's simplicity comes from its explicitness. You can always follow the breadcr
 
 ### Why fluo is "Standard-First"
 
-When we say fluo is "Standard-First," we mean it prioritizes the features built into the JavaScript and TypeScript languages themselves. 
+When we say fluo is "Standard-First," we mean it prioritizes the features built into the JavaScript and TypeScript languages themselves.
 
 The web ecosystem moves fast, and frameworks that invent their own proprietary syntax often find themselves left behind when the language matures. By aligning with standards like TC39 decorators and the Web Streams API, fluo ensures that your knowledge is transferable.
 
@@ -112,7 +112,7 @@ Learning fluo isn't just about learning one framework; it's about becoming a bet
 
 ### The Community and Ecosystem
 
-Fluo isn't just a set of packages; it's a growing community of developers who value clean code and performance. 
+Fluo isn't just a set of packages; it's a growing community of developers who value clean code and performance.
 
 As you progress through this book, you'll find that the modularity of the framework extends to its community. There are specialized modules created by contributors for everything from GraphQL integration to advanced logging.
 
@@ -212,7 +212,7 @@ Once you adopt that habit, many later topics become easier.
 
 ### Inversion of Control (IoC)
 
-Dependency Injection is a specific way to implement a broader principle called Inversion of Control. 
+Dependency Injection is a specific way to implement a broader principle called Inversion of Control.
 
 In a traditional program, a high-level component controls the creation of its dependencies. With IoC, that control is "inverted"—the component defines what it needs, and an external "container" (in this case, fluo) provides those dependencies.
 
@@ -220,17 +220,17 @@ This shift in control is what makes your code modular. The `UsersService` no lon
 
 ### The Lifecycle of a Dependency
 
-Understanding when a dependency is created and destroyed is crucial for managing resources like memory and database connections. 
+Understanding when a dependency is created and destroyed is crucial for managing resources like memory and database connections.
 
-In fluo, the DI container manages this lifecycle for you. When the application starts, the container analyzes the dependency graph and creates the necessary instances in the correct order. 
+In fluo, the DI container manages this lifecycle for you. When the application starts, the container analyzes the dependency graph and creates the necessary instances in the correct order.
 
 Most of the time, dependencies are singletons, meaning they are created once and shared. However, fluo's explicit nature allows you to define different lifecycles for specific needs, ensuring that your application remains efficient even as its complexity increases.
 
 ### Debugging with Explicit DI
 
-One of the greatest benefits of explicit DI is how much easier it makes debugging. 
+One of the greatest benefits of explicit DI is how much easier it makes debugging.
 
-If a service isn't working because a dependency is missing, fluo will give you a clear error message telling you exactly which token was requested and which module was responsible for providing it. 
+If a service isn't working because a dependency is missing, fluo will give you a clear error message telling you exactly which token was requested and which module was responsible for providing it.
 
 Because the wiring is visible in your `@Module()` and `@Inject()` calls, you don't have to guess where the framework's auto-discovery might have gone wrong. You can simply look at the code, follow the imports, and find the missing piece. This directness saves hours of frustration and makes you a more effective developer.
 
@@ -464,7 +464,7 @@ This comment acts as a small navigation aid.
 
 ### Building for the Long Term
 
-When you choose a framework, you're not just choosing a set of tools; you're choosing a foundation for your future work. 
+When you choose a framework, you're not just choosing a set of tools; you're choosing a foundation for your future work.
 
 Fluo's commitment to standards and explicitness is a commitment to the long-term health of your project. As the JavaScript ecosystem continues to evolve, fluo will remain a stable and predictable partner.
 
@@ -472,9 +472,9 @@ By learning these foundational concepts now, you're setting yourself up for succ
 
 ### A Mindset for Success
 
-As you start your journey with fluo, remember that every expert was once a beginner. 
+As you start your journey with fluo, remember that every expert was once a beginner.
 
-Don't be discouraged if some concepts feel abstract at first. The FluoBlog project is designed to bring these ideas to life, showing you exactly how they work in a real application. 
+Don't be discouraged if some concepts feel abstract at first. The FluoBlog project is designed to bring these ideas to life, showing you exactly how they work in a real application.
 
 The most important thing you can bring to this book is a mindset of curiosity. Ask "why" things are done this way. Experiment with the code. Try to break things and then fix them. That is how true understanding is built. Let's get started and build something remarkable together!
 

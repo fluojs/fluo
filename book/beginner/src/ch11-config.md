@@ -47,7 +47,6 @@ This initialization phase is critical because it happens during the "OnModuleIni
 
 By centralizing the configuration logic in this way, `fluo` eliminates a whole class of configuration-related bugs. You no longer have to worry about race conditions or inconsistent settings across different parts of your application. The `ConfigService` provides a single, reliable point of access for every setting your application needs.
 
-
 ## 11.2 Setting up ConfigModule
 
 To start managing configuration, we first need to install the module.
@@ -122,10 +121,9 @@ This explicit approach also simplifies code reviews. When a PR introduces a new 
 The `ConfigService` acts as the single source of truth for your entire application. By funneling all external settings through this service, you eliminate the risk of different parts of your app using conflicting values for the same setting. This centralized control is a key factor in building reliable backends that behave consistently across all deployment environments.
 
 ### Convention: Environment Variable Naming
-While `fluo` doesn't enforce a naming convention, following industry standards like `UPPER_SNAKE_CASE` (e.g., `REDIS_HOST`, `MAX_RETRIES`) is highly recommended. This makes your `.env` files easier to read and consistent with other tools in the DevOps ecosystem. 
+While `fluo` doesn't enforce a naming convention, following industry standards like `UPPER_SNAKE_CASE` (e.g., `REDIS_HOST`, `MAX_RETRIES`) is highly recommended. This makes your `.env` files easier to read and consistent with other tools in the DevOps ecosystem.
 
 Also, consider prefixing service-specific variables (e.g., `BLOG_PORT` instead of just `PORT`) if you plan to deploy multiple fluo applications in the same environment or container mesh. This prevents collisions and makes the purpose of each setting crystal clear.
-
 
 ### Injecting the ConfigService into Other Providers
 Once registered, the `ConfigService` becomes available throughout your application via dependency injection. This makes it incredibly easy to provide configuration values to any part of your system. Whether you are building an API service, a database repository, or a logging module, the `ConfigService` is always ready to supply the settings it has loaded.
@@ -215,10 +213,10 @@ Let's clean up our project by moving our "magic strings" to a `.env` file.
    ```
 
 2. **Access via Service**:
-   Replace any hardcoded ports in `main.ts` and repository URLs with `ConfigService` lookups.
+Replace any hardcoded ports in `main.ts` and repository URLs with `ConfigService` lookups.
 
 ### Security Note: .gitignore and Configuration
-As a beginner, it is tempting to commit your `.env` file to GitHub so your teammates can run the project easily. **Never do this.** Environment files often contain sensitive secrets like database passwords, private encryption keys, and third-party API tokens. 
+As a beginner, it is tempting to commit your `.env` file to GitHub so your teammates can run the project easily. **Never do this.** Environment files often contain sensitive secrets like database passwords, private encryption keys, and third-party API tokens.
 
 The standard practice is to:
 1. Add `.env` to your `.gitignore` file.

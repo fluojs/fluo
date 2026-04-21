@@ -83,7 +83,7 @@ If you remember those three ideas, later chapters will feel much more predictabl
 
 ### Standard vs Legacy Decorators (Preview)
 
-While we will cover this in depth in the next chapter, it is worth noting early that fluo uses standard TC39 Stage 3 decorators. 
+While we will cover this in depth in the next chapter, it is worth noting early that fluo uses standard TC39 Stage 3 decorators.
 
 Unlike older frameworks that require "Experimental Decorators" and "Emit Decorator Metadata" settings in `tsconfig.json`, fluo works with the native JavaScript decorator proposal.
 
@@ -198,7 +198,7 @@ Most beginner logic should stay in the `DEFAULT` scope. It is the most performan
 
 ### The Lifecycle of a Provider
 
-Providers aren't just static objects; they have a lifecycle managed by the fluo container. 
+Providers aren't just static objects; they have a lifecycle managed by the fluo container.
 
 When your application starts, fluo:
 
@@ -211,7 +211,7 @@ You can even hook into this lifecycle using special interfaces (like `OnModuleIn
 
 ### Thinking in Providers
 
-Learning fluo is often about learning to "think in providers." 
+Learning fluo is often about learning to "think in providers."
 
 Instead of writing a function that does everything, you start to ask: "What is the core responsibility here? Should this be a service? A repository? A configuration helper?"
 

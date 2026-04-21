@@ -29,7 +29,7 @@ Google's SRE handbook defines the "Four Golden Signals" of monitoring: Latency, 
 Reactive monitoring is when you fix things after they break (e.g., an alert triggers because the server crashed). Proactive monitoring is when you identify a trend before it becomes a failure (e.g., noticing that memory usage is slowly climbing over several days). Fluo's metrics allow you to implement this proactive approach, giving you the time to deploy fixes during regular working hours rather than during an emergency at 3:00 AM.
 
 ### 19.1.3 Metrics vs. Logs: Choosing the Right Tool
-It is important to understand the difference between **Metrics** and **Logs**. Logs are high-cardinality data that record specific events (e.g., "User 123 logged in at 10:05 AM"). Metrics are low-cardinality data that aggregate these events into numerical values (e.g., "There were 50 logins in the last minute"). 
+It is important to understand the difference between **Metrics** and **Logs**. Logs are high-cardinality data that record specific events (e.g., "User 123 logged in at 10:05 AM"). Metrics are low-cardinality data that aggregate these events into numerical values (e.g., "There were 50 logins in the last minute").
 
 Logs are great for debugging "Why did this specific request fail?", while metrics are best for answering "Is the system as a whole performing correctly?". In a well-architected Fluo application, you use both. When a metric alert triggers (e.g., high error rate), you use logs to drill down into the specific errors and find the root cause. This "Correlation" between metrics and logs is the secret to fast incident response.
 
@@ -53,8 +53,7 @@ Prometheus is built for the dynamic nature of cloud-native environments. It does
 ## 19.3 Basic Setup
 The basic setup is intentionally small so you can expose useful telemetry before you design any custom dashboard.
 
-Install the package:
-`pnpm add @fluojs/metrics`
+Install the package: `pnpm add @fluojs/metrics`
 
 Register the module in your `AppModule`:
 
@@ -175,7 +174,7 @@ Naming is critical for long-term maintainability. Follow the Prometheus conventi
 Example: `fluoblog_posts_created_total`. Consistent naming makes it much easier to find and query your metrics in Grafana, especially as your application grows to hundreds of different metrics.
 
 ### 19.5.4 Advanced Label Management: Dynamic Labels
-In some cases, you might not know the label values until runtime. Fluo's metrics service allows you to pass labels dynamically when recording a value. For example, you could track the `error_code` of failed payments: `metrics.getCounter('payment_failures_total').inc({ code: error.code })`. 
+In some cases, you might not know the label values until runtime. Fluo's metrics service allows you to pass labels dynamically when recording a value. For example, you could track the `error_code` of failed payments: `metrics.getCounter('payment_failures_total').inc({ code: error.code })`.
 
 Be very careful with **Cardinality** here. If the `code` label can take thousands of unique values (like a stack trace), it will overwhelm Prometheus. Always ensure that your label values come from a bounded set of possible strings. If you need to track high-cardinality data, use logs instead.
 
@@ -245,7 +244,7 @@ A good dashboard should be hierarchical. Start with "High-Level" status (Up/Down
 Be careful not to set your alerts too sensitively. If an alert triggers every time there is a 1-second spike in traffic, your team will quickly start ignoring them—this is known as "Alert Fatigue". Use averaging and "For" durations (e.g., "Error rate > 5% for 3 minutes") to filter out transient noise and ensure that every alert your team receives is actionable and important.
 
 ### 19.8.3 Sharing Dashboards: Monitoring as Code
-In modern engineering teams, dashboards are often treated as "Code". You can export your Grafana dashboards as JSON files and store them in your version control system (Git) alongside your Fluo code. This ensures that every developer on your team has access to the same visualization tools and that any changes to the monitoring logic are reviewed and audited just like your application code. 
+In modern engineering teams, dashboards are often treated as "Code". You can export your Grafana dashboards as JSON files and store them in your version control system (Git) alongside your Fluo code. This ensures that every developer on your team has access to the same visualization tools and that any changes to the monitoring logic are reviewed and audited just like your application code.
 
 Fluo provides a set of **Reference Dashboard Templates** for common use cases (e.g., "API Overview", "Database Performance"). You can import these templates into your Grafana instance and customize them to fit your specific needs, giving you a head start on building a professional-grade observability stack.
 
@@ -266,7 +265,7 @@ Metrics turn FluoBlog from a "black box" into a transparent system. By collectin
 Congratulations, you have completed Part 4: Caching and Operations. FluoBlog now has faster reads, explicit health signals, and observable runtime behavior. In the final part, we will focus on testing and the last production checks.
 
 ### 19.9.1 The Future of Observability in Fluo
-As the world of backend engineering moves towards more complex, distributed systems, Fluo is committed to staying at the forefront of observability. Future versions of the framework will include deeper integration with **Distributed Tracing** (OpenTelemetry) and **Log Aggregation**, providing a true "Single Pane of Glass" for all your operational data. 
+As the world of backend engineering moves towards more complex, distributed systems, Fluo is committed to staying at the forefront of observability. Future versions of the framework will include deeper integration with **Distributed Tracing** (OpenTelemetry) and **Log Aggregation**, providing a true "Single Pane of Glass" for all your operational data.
 
 The journey you've started in this chapter is just the beginning. By prioritizing metrics and monitoring from the very start of your project, you are building a solid foundation for a backend that is not just fast and secure, but also transparent and easy to manage. Continue to explore the vast ecosystem of Prometheus and Grafana, and use the hard data they provide to drive the continuous improvement of your Fluo applications.
 

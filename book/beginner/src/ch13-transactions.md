@@ -22,7 +22,7 @@ What happens if step 1 succeeds but step 2 fails? You end up with a "zombie" use
 Think of consistency as the legal framework of your database. Even if a transaction is technically successful (Atomic), it must not violate the invariants of the system. If you try to transfer money from an account that has a "non-negative balance" constraint, the transaction must fail if the result would be negative, even if the math itself is correct. This semantic consistency is what prevents your application from entering "impossible" states that lead to logic errors and user frustration.
 
 ### Consistency: Beyond Just Atomicity
-While atomicity ensures that all steps happen together, **Consistency** ensures that the data remains in a valid state according to all defined rules. For example, if your database has a rule that every profile must belong to a user, a transaction ensures that this rule is never broken, even during complex, multi-step updates. fluo's integration with Prisma makes enforcing these consistency rules straightforward, as the database itself acts as the final gatekeeper for your data's integrity. Consistency isn't just about successful writes; it's about the state of the entire universe of your data remaining coherent and predictable after every single operation. 
+While atomicity ensures that all steps happen together, **Consistency** ensures that the data remains in a valid state according to all defined rules. For example, if your database has a rule that every profile must belong to a user, a transaction ensures that this rule is never broken, even during complex, multi-step updates. fluo's integration with Prisma makes enforcing these consistency rules straightforward, as the database itself acts as the final gatekeeper for your data's integrity. Consistency isn't just about successful writes; it's about the state of the entire universe of your data remaining coherent and predictable after every single operation.
 
 ### Durability and the Promise of Persistence
 The "D" in ACID stands for **Durability**, which guarantees that once a transaction is committed, it will remain even in the event of a system failure (like a power outage or a crash). By using a robust database like PostgreSQL with Prisma and fluo, you are building on a foundation that takes durability seriously. Your users can trust that when they receive a "Success" message, their data is safely and permanently stored on the disk, across multiple replicas if configured.
@@ -46,7 +46,7 @@ async createUser(data, tx?) {
 This approach pollutes your business logic with database concerns and makes refactoring difficult. If you decide to add a third repository call deep in the service tree, you have to go back and update the entire call chain to pass the `tx` object. `fluo` takes a different approach by using **AsyncLocalStorage (ALS)**. This allows Fluo to maintain a transaction context that "travels" through your asynchronous call stack automatically, much like how a ThreadLocal variable might work in other languages but adapted for the asynchronous world of Node.js.
 
 ### The Power of AsyncLocalStorage
-`AsyncLocalStorage` is a native Node.js feature that allows data to be stored and accessed across the lifetime of an asynchronous operation. fluo leverages this to create a "hidden" context for your database client. When you start a transaction, fluo stores the transaction-aware client in ALS. Any subsequent call to `.current()` within that same asynchronous flow will automatically retrieve the correct client, eliminating the need for manual passing. 
+`AsyncLocalStorage` is a native Node.js feature that allows data to be stored and accessed across the lifetime of an asynchronous operation. fluo leverages this to create a "hidden" context for your database client. When you start a transaction, fluo stores the transaction-aware client in ALS. Any subsequent call to `.current()` within that same asynchronous flow will automatically retrieve the correct client, eliminating the need for manual passing.
 
 This is a game-changer for developer experience, as it allows for clean service and repository methods that focus purely on the "what" rather than the "how" of data access. Behind the scenes, Fluo manages the lifecycle of this storage, ensuring that contexts are cleared when a request ends or a transaction completes, preventing memory leaks and cross-request data contamination. It provides a level of architectural cleanliness that was previously very difficult to achieve in the JavaScript ecosystem without significant boilerplate.
 
@@ -68,7 +68,7 @@ export class UsersRepository {
 Because of `.current()`, your repository doesn't need to know if it's being called as part of a transaction or as a standalone operation. This makes your code modular and easy to test. You can call `usersRepo.create()` from a simple script, or from a complex multi-step transaction in a service, and the repository code remains exactly the same. This "Transaction Agnosticism" is a core pillar of the Fluo architecture.
 
 ### Transaction Agnosticism in Depth
-In many legacy systems, developers pass a "transaction object" or "database client" manually through every function call. This is error-prone and makes your code hard to read. fluo's `PrismaService.current()` completely removes this burden. By being transaction-agnostic, your repository doesn't need to know whether it's part of a larger transaction or not. It simply asks the service for the "active client," and fluo handles the rest. 
+In many legacy systems, developers pass a "transaction object" or "database client" manually through every function call. This is error-prone and makes your code hard to read. fluo's `PrismaService.current()` completely removes this burden. By being transaction-agnostic, your repository doesn't need to know whether it's part of a larger transaction or not. It simply asks the service for the "active client," and fluo handles the rest.
 
 This design pattern also simplifies unit testing, as you can easily mock the `PrismaService` without worrying about the complex state management associated with nested transactions. Furthermore, it encourages the use of small, focused repositories that can be composed into larger operations within services. You don't have to worry about whether a repository you're calling will "break" the transaction or use a different client; if it follows the `.current()` rule, it is guaranteed to participate in whatever context is currently active.
 
@@ -105,7 +105,7 @@ export class UsersService {
 If `profilesRepo.create` throws an error, the entire transaction, including the user creation, is automatically rolled back by the database. That gives the service one clear success path instead of forcing later code to clean up half-finished state.
 
 ### Complex Transactions with Multiple Repositories
-One of the key advantages of the block pattern is how easily it scales to include multiple repositories. In the example above, `UsersRepository` and `ProfilesRepository` are both used within the same transaction. Because they both rely on `prisma.current()`, they automatically share the transaction context created by `this.prisma.transaction`. 
+One of the key advantages of the block pattern is how easily it scales to include multiple repositories. In the example above, `UsersRepository` and `ProfilesRepository` are both used within the same transaction. Because they both rely on `prisma.current()`, they automatically share the transaction context created by `this.prisma.transaction`.
 
 This allows you to build complex business operations that span multiple domains while maintaining absolute data integrity. You can even call other service methods from within a transaction block, and if those services use repositories that follow the `.current()` rule, they will all participate in the same atomic unit of work. This composability is what allows Fluo applications to scale gracefully from a single service to hundreds of interacting modules without losing track of database boundaries.
 
@@ -134,7 +134,7 @@ export class UsersController {
 ```
 
 ### The "Unit of Work" Pattern
-The use of an interceptor is a classic implementation of the **Unit of Work** pattern. It treats the entire request as a single, atomic operation. If the controller action finishes successfully, the transaction is committed. If any part of the request—from the controller to the deepest service—throws an exception, the entire transaction is rolled back. 
+The use of an interceptor is a classic implementation of the **Unit of Work** pattern. It treats the entire request as a single, atomic operation. If the controller action finishes successfully, the transaction is committed. If any part of the request—from the controller to the deepest service—throws an exception, the entire transaction is rolled back.
 
 This is extremely powerful for simple CRUD APIs where you want to ensure total consistency without writing manual transaction blocks in your services. It is the same idea as the block pattern, just applied at the request boundary instead of inside one service method.
 
@@ -175,7 +175,7 @@ await this.prisma.transaction(async () => {
 ```
 
 ### The Trade-off: Performance vs. Consistency
-Choosing an isolation level is always a balance between performance and consistency. A level like `ReadCommitted` provides good performance but might allow "non-repeatable reads." On the other hand, `Serializable` provides the absolute highest level of consistency but can lead to more transaction conflicts and slower performance under heavy load. 
+Choosing an isolation level is always a balance between performance and consistency. A level like `ReadCommitted` provides good performance but might allow "non-repeatable reads." On the other hand, `Serializable` provides the absolute highest level of consistency but can lead to more transaction conflicts and slower performance under heavy load.
 
 As a general rule, start with the default (usually `ReadCommitted` in PostgreSQL) and only move to higher levels when your business logic specifically requires it. For instance, if you are building an inventory system where you must never oversell an item, you might use a higher isolation level or "SELECT FOR UPDATE" locks to ensure absolute accuracy. Most beginner applications will find the default settings more than sufficient, but as you scale, understanding these trade-offs becomes a vital part of your engineering toolkit.
 
@@ -214,7 +214,7 @@ By putting these in a transaction, we guarantee that the `postCount` never gets 
 Even if the `incrementPostCount` fails, we won't have a new post without a corresponding count update. The database change remains coherent, and the service code still reads like one business action rather than a pile of defensive cleanup steps.
 
 ### Event-Driven Alternatives to Transactions
-While transactions are great for immediate consistency, sometimes you can achieve the same goal using an event-driven approach. For example, instead of updating the `postCount` in the same transaction, you could emit a `PostCreatedEvent` and have a separate background worker update the count. This "eventual consistency" model can improve performance by shortening the main transaction, but it introduces more complexity and the potential for temporary data mismatches. 
+While transactions are great for immediate consistency, sometimes you can achieve the same goal using an event-driven approach. For example, instead of updating the `postCount` in the same transaction, you could emit a `PostCreatedEvent` and have a separate background worker update the count. This "eventual consistency" model can improve performance by shortening the main transaction, but it introduces more complexity and the potential for temporary data mismatches.
 
 In this chapter, we focus on the transactional approach, which is simpler and more reliable for most beginner-to-intermediate use cases where strict consistency is the priority. As your application grows to a global scale, you might revisit these decisions and move towards event-driven patterns, but starting with transactions is the safest and most predictable path.
 

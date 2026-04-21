@@ -166,7 +166,7 @@ Once deployed, the work doesn't stop. You must monitor the "Golden Signals" of y
 - **Saturation**: How "full" are your CPU and Memory resources?
 
 ### Log Aggregation and Distributed Tracing
-Set up **Log Aggregation** (like ELK, Datadog, or Grafana Loki) so you can search through errors across multiple containers simultaneously. 
+Set up **Log Aggregation** (like ELK, Datadog, or Grafana Loki) so you can search through errors across multiple containers simultaneously.
 
 For complex requests that span multiple services, implement **Distributed Tracing** using OpenTelemetry. This allows you to visualize the lifecycle of a request and identify where bottlenecks occur.
 

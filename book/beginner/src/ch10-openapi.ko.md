@@ -156,9 +156,7 @@ export class PostsController {
 
 fluo 코드에서 OpenAPI를 생성하는 가장 강력한 이유는 **메타데이터 재사용**입니다.
 
-6장에서 우리는 `@fluojs/validation`을 사용하여 앱에 요청 DTO를 알려주었습니다.
-5장에서 HTTP 계층은 이미 라우트와 메서드 정보를 얻었습니다.
-이제 OpenAPI 계층은 이 모든 정보를 재사용하여 복잡한 components와 schema를 구축할 수 있습니다.
+6장에서 우리는 `@fluojs/validation`을 사용하여 앱에 요청 DTO를 알려주었습니다. 5장에서 HTTP 계층은 이미 라우트와 메서드 정보를 얻었습니다. 이제 OpenAPI 계층은 이 모든 정보를 재사용하여 복잡한 components와 schema를 구축할 수 있습니다.
 
 ### What FluoBlog Can Now Describe
 

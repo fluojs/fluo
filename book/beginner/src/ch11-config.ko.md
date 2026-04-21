@@ -217,7 +217,7 @@ ConfigModule.forRoot({
    ```
 
 2. **서비스를 통한 접근**:
-   `main.ts`의 하드코딩된 포트나 리포지토리 URL을 `ConfigService` 조회로 대체합니다.
+`main.ts`의 하드코딩된 포트나 리포지토리 URL을 `ConfigService` 조회로 대체합니다.
 
 그 다음 `app.module.ts`에서 다음과 같이 사용합니다.
 

@@ -157,7 +157,6 @@ HTTP 바인딩은 보통 첫 번째 경로가 필요합니다.
 
 ## 6.4 Updating FluoBlog Create and Update Flows
 
-
 이제 게시글 서비스가 DTO 기반 입력을 사용하도록 바꿔 보겠습니다.
 
 업데이트 DTO도 함께 준비하겠습니다.

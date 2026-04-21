@@ -24,9 +24,9 @@ The result is a framework that is:
 
 ## Why This Book?
 
-There is plenty of documentation available for fluo, but documentation often focuses on "how" a specific feature works. You can find the API reference for a `@Get()` decorator in seconds, but knowing when to use it, how to structure your service to handle the data it receives, and how to test that logic is where the real challenge lies. 
+There is plenty of documentation available for fluo, but documentation often focuses on "how" a specific feature works. You can find the API reference for a `@Get()` decorator in seconds, but knowing when to use it, how to structure your service to handle the data it receives, and how to test that logic is where the real challenge lies.
 
-This book focuses on the **"why"** and the **"flow"**. 
+This book focuses on the **"why"** and the **"flow"**.
 
 We recognize that learning a new framework can be overwhelming, especially when it challenges some of the patterns you might have learned in Express or NestJS. That is why this book follows a cumulative path. We don't just dump all the features on you at once. We start with the absolute basics—setting up your environment and understanding the core philosophy—and gradually add layers of complexity.
 
@@ -150,7 +150,7 @@ Our goal for this first volume is **Confidence**. By the time you finish Chapter
 
 ### Ready to Start?
 
-Before you turn the page, make sure your environment is ready. We recommend using a modern terminal and your favorite code editor. 
+Before you turn the page, make sure your environment is ready. We recommend using a modern terminal and your favorite code editor.
 
 ```bash
 # Verify your Node.js version
@@ -170,12 +170,12 @@ Are you ready to build the future of the backend? Turn the page, and let's go to
 *Note: This book uses FluoBlog v0.0 as the baseline project version. As the framework evolves, check the official documentation for the latest minor updates.*
 
 ### A Note on the "Standard-First" Approach
-When we say "Standard-First," we are making a commitment to your career as a developer. By learning fluo, you are learning the official JavaScript Decorator API. Even if you eventually move to another tool or a different language, the patterns you learn here—dependency injection, modularity, and explicit configuration—are universal. 
+When we say "Standard-First," we are making a commitment to your career as a developer. By learning fluo, you are learning the official JavaScript Decorator API. Even if you eventually move to another tool or a different language, the patterns you learn here—dependency injection, modularity, and explicit configuration—are universal.
 
-Many developers feel "stuck" in frameworks that use proprietary DSLs (Domain Specific Languages). fluo is the opposite. It is an extension of the language you already know. 
+Many developers feel "stuck" in frameworks that use proprietary DSLs (Domain Specific Languages). fluo is the opposite. It is an extension of the language you already know.
 
 ### Why Explicitness Matters
-In the early days of the web, "magic" was seen as a feature. Frameworks that could guess what you wanted to do were popular. But as applications grew into massive microservices, that magic became a nightmare. It made debugging impossible and refactoring a gamble. 
+In the early days of the web, "magic" was seen as a feature. Frameworks that could guess what you wanted to do were popular. But as applications grew into massive microservices, that magic became a nightmare. It made debugging impossible and refactoring a gamble.
 
 fluo chooses a different path. We believe that **explicit is better than implicit**. When you look at a fluo controller, you see exactly where its data comes from. When you look at a module, you see exactly what it provides. This might require a few more lines of code upfront, but it saves hundreds of hours of debugging later.
 

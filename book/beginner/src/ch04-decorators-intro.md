@@ -156,7 +156,6 @@ export class MyController {}
 
 That readability is especially helpful in a modular codebase with many files.
 
-
 ### Metadata Ownership
 
 In the legacy model, metadata was often "polluted" across the prototype. In the standard model, the framework has a clearer ownership of the metadata it attaches to a class. This reduces the risk of different libraries accidentally overwriting each other's configuration, leading to more stable and predictable applications.
@@ -227,8 +226,7 @@ When you stack decorators like `@Get('/')` and `@Roles('admin')`, they are appli
 
 When you review a controller method, inspect both the body and the decorator line.
 
-The method body tells you what the code does.
-The decorator line tells you where and how it participates in the application surface.
+The method body tells you what the code does. The decorator line tells you where and how it participates in the application surface.
 
 ## 4.5 Accessor and Field Decorators
 
@@ -279,9 +277,7 @@ Older field decorator patterns often felt awkward because they worked around lan
 
 For now, remember this simple rule.
 
-Class decorators define what a class is.
-Method decorators define what a method does in the app surface.
-Accessor decorators can help define how a property participates in framework behavior.
+Class decorators define what a class is. Method decorators define what a method does in the app surface. Accessor decorators can help define how a property participates in framework behavior.
 
 ## 4.6 Verification: tsconfig.json Settings
 
@@ -402,4 +398,3 @@ That is a fitting place to end Part 0. You have moved from philosophy, to scaffo
 
 ## Next Part Preview
 Part 1 will move from foundational concepts into practical HTTP API work. With the philosophy, project scaffold, module structure, and decorator model now in place, you are ready to build routes, validate requests, shape responses, and grow FluoBlog into a more realistic backend application.
-

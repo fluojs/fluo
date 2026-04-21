@@ -140,7 +140,7 @@ Be careful not to include *every* single dependency in your health check. If an 
 Beyond external services, you must also monitor your own server's resource usage. A memory leak can slowly degrade performance before finally causing a crash. By using the built-in memory health indicators, you can signal that an instance is "unhealthy" if it exceeds a certain RAM threshold. This allows your orchestrator to gracefully rotate the instance before it reaches a critical failure state, ensuring that your overall service remains stable and responsive.
 
 ### 18.4.3 Dependency Priority and Cascading Failures
-In a highly connected microservices architecture, the failure of one small service can sometimes trigger a "Cascading Failure" that takes down the entire system. Differentiated monitoring allows you to assign a **Priority Level** to each dependency. 
+In a highly connected microservices architecture, the failure of one small service can sometimes trigger a "Cascading Failure" that takes down the entire system. Differentiated monitoring allows you to assign a **Priority Level** to each dependency.
 - **Critical Dependencies**: If these fail (e.g., the primary database), the readiness check fails immediately.
 - **Non-Critical Dependencies**: If these fail (e.g., a non-essential search indexer), the readiness check might return a "Warning" status but still consider the application "Ready" to handle most user requests.
 
@@ -189,7 +189,7 @@ Just like any other part of your application, your custom health indicators shou
 Testing your health logic is crucial because a faulty health indicator can cause "False Positives" (missing a real failure) or "False Negatives" (triggering unnecessary restarts). By including health indicators in your automated test suite, you ensure that your reliability monitoring system is itself reliable, providing a solid foundation for your production operations.
 
 ### 18.5.5 Reusable Indicators via Shared Libraries
-If you have multiple Fluo applications that all connect to the same custom legacy database or proprietary internal API, you can package your custom health indicators into a shared library. Because Fluo's DI system and the Terminus interface are consistent across all modules, your indicators can be easily distributed and reused by different teams within your organization. 
+If you have multiple Fluo applications that all connect to the same custom legacy database or proprietary internal API, you can package your custom health indicators into a shared library. Because Fluo's DI system and the Terminus interface are consistent across all modules, your indicators can be easily distributed and reused by different teams within your organization.
 
 This "Shared Reliability" approach ensures that everyone follows the same best practices for monitoring critical internal infrastructure. By centralizing the monitoring logic for common dependencies, you reduce duplicate code and ensure that every application in your organization benefits from the most up-to-date and robust health check logic.
 
@@ -253,7 +253,7 @@ In a globally distributed system, the graceful shutdown process must also consid
 This coordinated shutdown across regions ensures that users never experience a "Stale Region" error, where they are directed to a data center that is currently in the middle of a maintenance cycle. By extending the concept of graceful shutdown to the entire global infrastructure, you maintain the highest possible level of reliability and user satisfaction.
 
 ### 18.6.8 Automated Post-Mortem and Feedback Loops
-When an application shuts down due to a failure (rather than a planned deployment), Terminus can be configured to trigger an **Automated Post-Mortem**. This involves capturing a snapshot of the application's state, the last few hundred log lines, and the current health report, and sending them to your development team via a Slack or Discord webhook (using the modules we'll discuss in the intermediate book). 
+When an application shuts down due to a failure (rather than a planned deployment), Terminus can be configured to trigger an **Automated Post-Mortem**. This involves capturing a snapshot of the application's state, the last few hundred log lines, and the current health report, and sending them to your development team via a Slack or Discord webhook (using the modules we'll discuss in the intermediate book).
 
 By automating the collection of failure data, you shorten the feedback loop between production errors and developer fixes. This proactive approach to failure analysis is a hallmark of "High-Velocity Engineering" teams, allowing you to identify and solve the root causes of instability before they impact your broader user base. In the Fluo ecosystem, reliability is not just about staying up; it's about learning and improving every time you go down.
 
@@ -285,7 +285,7 @@ Before you consider your health check implementation complete, run through this 
 By checking these boxes, you ensure that your Fluo application is not just running, but truly production-ready.
 
 ### 18.7.3 Final Thoughts on Application Reliability
-Reliability is not a binary state; it is a spectrum of confidence. By implementing the health checks and graceful shutdown procedures outlined in this chapter, you have significantly increased your confidence in the stability of FluoBlog. You have moved from "hoping" the application works to "knowing" exactly how it is performing and having the tools to handle its inevitable failures. 
+Reliability is not a binary state; it is a spectrum of confidence. By implementing the health checks and graceful shutdown procedures outlined in this chapter, you have significantly increased your confidence in the stability of FluoBlog. You have moved from "hoping" the application works to "knowing" exactly how it is performing and having the tools to handle its inevitable failures.
 
 As you move forward, always keep the user's perspective in mind. Every 503 error you prevent and every transaction you protect via a graceful shutdown is a win for your users. In the professional world of backend engineering, reliability is the silent feature that matters most. By building your applications on the solid foundation of Fluo and Terminus, you are ensuring that your software is ready for the challenges of the modern, always-on internet.
 

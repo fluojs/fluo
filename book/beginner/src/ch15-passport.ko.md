@@ -352,7 +352,6 @@ Fluo에서는 종종 인터셉터나 스코프 지정 공급자(Scoped provider)
 
 또한 항상 **가드를 격리하여 테스트**해야 한다는 점을 기억하십시오. 가드는 공급자(Provider)이므로 `ExecutionContext`와 `Reflector`를 모킹(Mocking)하여 쉽게 단위 테스트를 작성할 수 있습니다. 보안 로직을 테스트하면 헤더 누락, 잘못된 형식의 토큰, 여러 역할을 가진 사용자 등 모든 엣지 케이스에 대해 인가 규칙이 예상대로 작동하는지 확인할 수 있습니다. 잘 테스트된 보안 레이어는 신뢰할 수 있는 애플리케이션의 토대입니다.
 
-
 ## 15.11 Deep Dive: Multi-Factor Authentication (MFA) Patterns
 For high-security applications, a single password or JWT is often not enough. Implementing **Multi-Factor Authentication (MFA)** is a critical step in modern security.
 

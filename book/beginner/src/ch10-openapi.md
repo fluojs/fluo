@@ -156,9 +156,7 @@ Small documentation hints create a much better first impression for anyone (incl
 
 One of the strongest reasons to generate OpenAPI from fluo code is **metadata reuse**.
 
-In Chapter 6, we used `@fluojs/validation` to teach the app about our request DTOs.
-In Chapter 5, the HTTP layer already learned about our routes and methods.
-Now, the OpenAPI layer can reuse all of that information to build complex components and schemas.
+In Chapter 6, we used `@fluojs/validation` to teach the app about our request DTOs. In Chapter 5, the HTTP layer already learned about our routes and methods. Now, the OpenAPI layer can reuse all of that information to build complex components and schemas.
 
 ### What FluoBlog Can Now Describe
 
@@ -181,9 +179,9 @@ This is another example of why **security and documentation should be designed t
 
 ### The Importance of Schema Names
 
-When generating OpenAPI documentation, the names given to your DTO classes become the names of the schemas in the final specification. 
+When generating OpenAPI documentation, the names given to your DTO classes become the names of the schemas in the final specification.
 
-For example, `CreatePostDto` becomes a component named `CreatePostDto` in the `components/schemas` section of the OpenAPI JSON. This is why consistent naming conventions are so important. If you have two different modules with a `CreateDto`, the generator might run into naming collisions. 
+For example, `CreatePostDto` becomes a component named `CreatePostDto` in the `components/schemas` section of the OpenAPI JSON. This is why consistent naming conventions are so important. If you have two different modules with a `CreateDto`, the generator might run into naming collisions.
 
 Using a prefix or a more descriptive name like `PostCreateDto` or `UserCreateDto` is a good practice to avoid these issues and ensure that your documentation remains clear and unambiguous.
 
@@ -239,7 +237,7 @@ By adding `.addBearerAuth()`, you enable the "Authorize" button in the Swagger U
 
 ### Global vs. Local API Tags
 
-While `@ApiTag('Posts')` at the controller level is common, you can also apply tags to individual methods if a controller handles multiple logical sub-domains. 
+While `@ApiTag('Posts')` at the controller level is common, you can also apply tags to individual methods if a controller handles multiple logical sub-domains.
 
 However, for beginners, we recommend sticking to the one-controller-one-tag pattern. This keeps your Swagger UI organized and mirrors the modular structure of your application. As you grow into larger projects, you might find situations where a single route belongs to multiple tags (e.g., both "Posts" and "Search"), and fluo supports this by allowing an array of tags: `@ApiTag('Posts', 'Search')`.
 

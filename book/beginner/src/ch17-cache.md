@@ -224,7 +224,6 @@ Lastly, consider the **Idempotent Invalidation** strategy. When performing cache
 
 In mission-critical systems, you should also implement **Soft Invalidation**. Instead of immediately deleting the key, you mark it as "expired" but keep it in the cache for a few extra seconds. If the database is under extreme load, your application can still serve the "slightly stale" data while the new value is being computed in the background. This "Serve Stale while Revalidate" (SWR) pattern provides the ultimate level of resilience, ensuring that your users always get a response, even when your underlying systems are struggling.
 
-
 ### 17.6.6 Negative Caching: Protecting against Ghost Requests
 A common but often overlooked pattern is **Negative Caching**. This involves caching the *absence* of data. If a user requests a blog post that doesn't exist (e.g., ID 99999), your database will return null. If thousands of users (or a bot) request that same non-existent ID, your database will be hit thousands of times. By caching a "Not Found" result for a short period, you protect your database from these "Ghost Requests" and significantly improve the resilience of your API against specific types of Denial of Service (DoS) attacks.
 
@@ -248,7 +247,7 @@ A small, extremely fast in-memory cache on each server instance. This stores the
 A larger, shared Redis cluster that stores data for all server instances. This is where most of your cached data lives. It's slightly slower than L1 due to network overhead but much larger and provides consistent state across your cluster.
 
 ### 17.7.3 Orchestrating the Layers: The Sidecar Pattern
-When you request data, you check L1 first. If it's a miss, you check L2. If L2 is also a miss, you go to the database. When you update data, you must invalidate BOTH L1 (across all instances!) and L2. Fluo's modular design allows you to chain multiple cache managers together to create this sophisticated architecture with ease. 
+When you request data, you check L1 first. If it's a miss, you check L2. If L2 is also a miss, you go to the database. When you update data, you must invalidate BOTH L1 (across all instances!) and L2. Fluo's modular design allows you to chain multiple cache managers together to create this sophisticated architecture with ease.
 
 You can also leverage a **Cache Sidecar** or a service mesh (like Istio or Linkerd) to handle the synchronization between L1 caches. When Node A invalidates an item in its local memory, it sends a broadcast signal to all other nodes to do the same. This ensures "Global Consistency" for your L1 layer without sacrificing the speed of local access. In a Fluo ecosystem, this is often handled by the `@fluojs/redis-pubsub` module, which provides a lightweight event bus for cross-instance communication.
 
@@ -258,7 +257,7 @@ High-performance systems don't wait for the first user to request data before ca
 Similarly, you can implement **Predictive Pre-fetching**. If a user is browsing the first page of a search result, there's a high probability they will click on the second page. Your application can proactively fetch and cache the second page in the background. While this increases the load on your database slightly, the benefit to the user experience is immense. By anticipating user needs, you can create an application that feels "instant," significantly improving user satisfaction and engagement.
 
 ### 17.7.5 Global Cache Invalidation: The Challenge of Consistency
-In a multi-region deployment, keeping caches consistent across the globe is a significant challenge. If a user in London updates a post, how do you ensure a user in Tokyo doesn't see stale data from their local cache? This requires a **Global Invalidation Strategy**. You can use a globally distributed message bus like Google Cloud Pub/Sub or AWS SNS to broadcast invalidation events to all regions. 
+In a multi-region deployment, keeping caches consistent across the globe is a significant challenge. If a user in London updates a post, how do you ensure a user in Tokyo doesn't see stale data from their local cache? This requires a **Global Invalidation Strategy**. You can use a globally distributed message bus like Google Cloud Pub/Sub or AWS SNS to broadcast invalidation events to all regions.
 
 While this adds complexity, it ensures that your application provides a consistent experience regardless of where the user is located. Fluo's cache module can be integrated with these global messaging systems, allowing you to trigger invalidations across your entire global infrastructure with a single event. For most applications, however, a regional approach with shorter TTLs for global data is often a simpler and more cost-effective starting point.
 
@@ -285,7 +284,7 @@ Caching is the foundation of high-performance backend systems. By moving frequen
 In the next chapter, we will shift our focus to **Observability**—starting with Health Checks to ensure your application is running smoothly. By combining security (JWT), protection (Throttling), and performance (Caching), you have built a robust foundation for a production-grade Fluo application.
 
 ### 17.8.1 Moving Beyond the Basics
-While this chapter covered the essential patterns for high-performance caching, the journey doesn't end here. As your application scales to support millions of concurrent users, you will encounter new challenges like **Global Cache Replication** across multiple cloud regions and **Predictive Cache Management** using machine learning. 
+While this chapter covered the essential patterns for high-performance caching, the journey doesn't end here. As your application scales to support millions of concurrent users, you will encounter new challenges like **Global Cache Replication** across multiple cloud regions and **Predictive Cache Management** using machine learning.
 
 The key takeaway is to start simple—use the `@fluojs/cache` in-memory store for your initial development, and transition to a distributed Redis setup as your traffic grows. Always prioritize data integrity by implementing robust invalidation strategies, and use the layered architecture pattern to get the absolute best performance from your infrastructure. With these tools in your belt, you are ready to build the next generation of lightning-fast web services.
 

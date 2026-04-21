@@ -155,7 +155,6 @@ Under the hood, `@fluojs/validation` uses the class as a blueprint. It reads the
 
 ## 6.4 Updating FluoBlog Create and Update Flows
 
-
 Let us make the post service use DTO-driven input.
 
 We will also prepare an update DTO.

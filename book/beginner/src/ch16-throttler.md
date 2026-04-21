@@ -207,7 +207,6 @@ For B2B applications, you might want to throttle based on a client's API Key. By
 ### 16.6.3 Implementing Geo-Aware Throttling
 In a global application, you might want to apply different limits based on the user's geographical location. For instance, you might tighten limits for regions where you are seeing a high volume of suspicious activity. By integrating a GeoIP service into your custom `ThrottlerGuard`, you can extract the country code from the request and use it as part of your tracking key. This "Geographical Defense" adds another layer of sophistication to your security perimeter, allowing you to respond dynamically to regional threats without affecting your entire global user base.
 
-
 ## 16.7 Handling the "Too Many Requests" Error
 When a user exceeds the limit, Fluo throws a `ThrottlerException`, which results in a `429 Too Many Requests` HTTP status code. The response includes a `Retry-After` header indicating how long the user should wait.
 
