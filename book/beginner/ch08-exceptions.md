@@ -278,6 +278,11 @@ You might be tempted to just return a number like `404`. While fluo supports thi
 4.  **Type Safety**: Named exceptions are real classes that can be tracked and caught specifically if needed.
 
 ### Summary
+
+This chapter turned failures into explicit API behavior. FluoBlog now distinguishes missing resources, invalid input, and blocked business actions in a way that clients can understand and handle predictably.
+
+## Next Chapter Preview
+
 - Explicit HTTP exceptions make API failures easier to understand and easier to document.
 - `NotFoundException` is a better contract than silently returning `null` for missing resources.
 - Validation errors and business-rule errors should be treated as expected failures, not mysterious crashes.

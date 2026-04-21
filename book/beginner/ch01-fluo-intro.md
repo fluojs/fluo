@@ -183,6 +183,10 @@ Later in real projects, you may inject:
 
 The beginner lesson is simple: a dependency should have a name that appears in code.
 
+## Next Chapter Preview
+
+In the next chapter, we move from philosophy to hands-on work. We will install the fluo CLI, scaffold the first version of FluoBlog, inspect the generated files, and run the app locally so the ideas from this chapter connect to real commands and directories.
+
 ### A Small Testing Payoff
 
 That same readability also pays off the moment you start testing.
