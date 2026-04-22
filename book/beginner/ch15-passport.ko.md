@@ -239,7 +239,7 @@ Fluo에서는 종종 인터셉터나 스코프 지정 공급자(Scoped provider)
 또한 항상 **인증과 인가 로직을 격리하여 테스트**해야 한다는 점을 기억하십시오. 헤더 누락, 잘못된 형식의 토큰, 여러 역할을 가진 사용자 등 모든 엣지 케이스에 대해 정책이 예상대로 작동하는지 확인해야 합니다. 잘 테스트된 보안 레이어는 신뢰할 수 있는 애플리케이션의 토대입니다.
 
 ## 15.11 Deep Dive: Multi-Factor Authentication (MFA) Patterns
-For high-security applications, a single password or JWT is often not enough. Implementing **Multi-Factor Authentication (MFA)** is a critical step in modern security.
+보안 수준이 높은 애플리케이션에서는 단일 비밀번호나 JWT만으로는 충분하지 않은 경우가 많습니다. **Multi-Factor Authentication (MFA)**를 구현하는 것은 현대 보안에서 매우 중요한 단계입니다.
 
 ### 15.11.1 The MFA Challenge Flow
 Fluo에서는 보통 첫 번째 요소(비밀번호)가 성공한 후 "부분적인(Partial)" JWT를 발급하여 MFA를 처리합니다. 이 토큰에는 `mfa_required: true`와 같은 특수 클레임이 포함됩니다. 이후 사용자는 MFA 인증 엔드포인트로 리다이렉트됩니다. 유효한 TOTP 또는 SMS 코드가 제공된 후에야 애플리케이션은 "최종적인(Final)" 전체 액세스용 JWT를 발급합니다. 이러한 다단계 프로세스는 비밀번호가 도난당하더라도 공격자가 두 번째 요소 없이는 전체 액세스 권한을 얻을 수 없도록 보장합니다.
