@@ -6,6 +6,7 @@
   - [Philosophy: Explicit Over Implicit](ch00-introduction.ko.md#philosophy-explicit-over-implicit)
   - [How to Navigate This Book](ch00-introduction.ko.md#how-to-navigate-this-book)
   - [Setting Expectations](ch00-introduction.ko.md#setting-expectations)
+  - [Community and Support](ch00-introduction.ko.md#community-and-support)
   - [용어 사전](ch00-introduction.ko.md#용어-사전)
 
 ## Part 0. 마이크로서비스 준비
