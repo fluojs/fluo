@@ -140,9 +140,12 @@ export class PostService {
 
   async create(data: any) {
     const post = await this.prisma.post.create({ data });
-    
-    // 새 포스트가 생성될 때마다 카운터를 증가시킵니다.
-    this.metrics.getCounter('blog_posts_created_total').inc();
+     
+     // 새 포스트가 생성될 때마다 카운터를 증가시킵니다.
+    this.metrics.counter({
+      name: 'blog_posts_created_total',
+      help: '생성된 블로그 게시물 수',
+    }).inc();
     
     return post;
   }
@@ -154,7 +157,10 @@ export class PostService {
 
 ```typescript
 // 현재 값을 직접 설정합니다.
-this.metrics.getGauge('active_sessions_count').set(currentSessions);
+this.metrics.gauge({
+  name: 'active_sessions_count',
+  help: '현재 활성 세션 수',
+}).set(currentSessions);
 ```
 
 ### Histogram: Measuring Distributions
@@ -162,7 +168,10 @@ this.metrics.getGauge('active_sessions_count').set(currentSessions);
 
 ```typescript
 // 업로드된 파일 크기를 관측합니다.
-this.metrics.getHistogram('image_upload_size_bytes').observe(file.size);
+this.metrics.histogram({
+  name: 'image_upload_size_bytes',
+  help: '업로드된 이미지 크기',
+}).observe(file.size);
 ```
 
 ### 19.5.1 Labels: Adding Dimension to Data
@@ -181,12 +190,12 @@ Fluo는 주로 분포 측정을 위해 히스토그램에 집중하지만, `Summ
 예: `fluoblog_posts_created_total`. 일관된 명명 규칙은 애플리케이션이 수백 개의 서로 다른 메트릭으로 성장하더라도 Grafana에서 메트릭을 찾고 쿼리하는 것을 훨씬 쉽게 만들어 줍니다.
 
 ### 19.5.4 Advanced Label Management: Dynamic Labels
-런타임 전까지 라벨 값을 알 수 없는 경우도 있습니다. Fluo의 메트릭 서비스는 값을 기록할 때 동적으로 라벨을 전달할 수 있게 해줍니다. 예를 들어 실패한 결제의 `error_code`를 추적할 수 있습니다: `metrics.getCounter('payment_failures_total').inc({ code: error.code })`.
+런타임 전까지 라벨 값을 알 수 없는 경우도 있습니다. Fluo의 메트릭 서비스는 값을 기록할 때 동적으로 라벨을 전달할 수 있게 해줍니다. 예를 들어 실패한 결제의 `error_code`를 추적할 수 있습니다: `metrics.counter({ name: 'payment_failures_total', help: '실패한 결제 수', labelNames: ['code'] }).inc({ code: error.code })`.
 
 여기서 **카디널리티(Cardinality)**를 매우 주의해야 합니다. 만약 `code` 라벨이 수천 개의 고유한 값(예: 스택 트레이스)을 가질 수 있다면 Prometheus에 과부하를 줄 것입니다. 항상 라벨 값이 제한된 범위 내에 있도록 보장하십시오. 고카디널리티 데이터를 추적해야 한다면 메트릭 대신 로그를 사용하세요.
 
 ### 19.5.5 Metric Initialization and "Zeroing"
-모니터링에서 흔히 발생하는 문제는 메트릭이 처음 기록되기 전까지 Prometheus에 나타나지 않는다는 점입니다. 이로 인해 대시보드가 "비어" 보이거나 비율(rate) 계산이 깨질 수 있습니다. 이를 해결하려면 애플리케이션 시작 중에 메트릭을 0으로 **초기화(Initialize)**해야 합니다. Fluo의 `MetricsService`는 메트릭과 예상되는 라벨을 미리 등록할 수 있는 `init` 메서드를 제공하여, 대시보드가 항상 채워져 있고 알림이 항상 활성 상태를 유지하도록 보장합니다.
+모니터링에서 흔히 발생하는 문제는 메트릭이 처음 기록되기 전까지 Prometheus에 나타나지 않는다는 점입니다. 이로 인해 대시보드가 "비어" 보이거나 비율(rate) 계산이 깨질 수 있습니다. 이를 해결하려면 애플리케이션 시작 중에 필요한 카운터, 게이지, 히스토그램을 미리 등록해 두는 것이 좋습니다.
 
 ## 19.6 Securing the Metrics Endpoint
 프로덕션 환경에서는 일반 대중에게 내부 메트릭을 공개하고 싶지 않을 것입니다. 메트릭은 트래픽 패턴, 사용자 증가세, 내부 아키텍처에 대한 민감한 정보를 드러낼 수 있습니다. 커스텀 미들웨어나 Fluo의 내장 보안 기능을 사용하여 엔드포인트를 보호할 수 있습니다.
