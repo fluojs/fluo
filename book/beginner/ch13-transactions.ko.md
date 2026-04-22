@@ -191,7 +191,7 @@ await this.prisma.transaction(async () => {
 - **Non-Repeatable Reads**: 트랜잭션이 동일한 행을 두 번 읽었는데, 그 사이에 다른 트랜잭션이 해당 데이터를 수정하여 결과가 달라집니다.
 - **Phantom Reads**: 트랜잭션이 동일한 쿼리를 두 번 실행했는데, 그 사이에 다른 트랜잭션이 행을 추가하거나 삭제하여 결과 행의 수가 달라집니다.
 
-Most modern databases and Fluo/Prisma 기본값은 가장 위험한 문제(Dirty Reads 등)를 방지하도록 설계되어 있지만, 요구 사항에 따라 이러한 설정을 조정해야 할 수도 있습니다.
+대부분의 현대적 데이터베이스와 Fluo/Prisma의 기본 설정은 가장 위험한 문제(Dirty Reads 등)를 방지하도록 설계되어 있지만, 요구 사항에 따라 이러한 설정을 조정해야 할 수도 있습니다.
 
 ## 13.6 Refactoring FluoBlog
 "작성자 프로필" 페이지를 최적화하기 위해, 게시물을 생성할 때 `User` 레코드의 `postCount`를 증가시키는 견고한 로직을 구현해 보겠습니다. 이러한 카운터를 유지함으로써 프로필 페이지를 방문할 때마다 비용이 많이 드는 "COUNT(*)" 쿼리를 실행하는 것을 피할 수 있습니다. 이는 성능을 위한 전형적인 **비정규화(Denormalization)** 사례입니다.
@@ -247,40 +247,40 @@ export class PostsService {
 ### Persistence: Beyond Just Atomicity
 Part 2를 완료함으로써 여러분은 Fluo의 "데이터"와 "설정" 측면을 마스터했습니다. 이번 파트에서 우리는 명시적 설정, 영구 저장, 트랜잭션 안전한 데이터 접근을 순서대로 쌓아 올렸고, 그 결과 단순한 메모리 기반 토이 프로젝트에서 견고한 데이터베이스 기반 애플리케이션 구조로 한 단계 올라섰습니다. Part 3에서는 보안에 초점을 맞춰 인증(Authentication)과 JWT부터 시작하겠습니다.
 
-By using Fluo and Prisma, you are building on a foundation that takes ACID principles seriously. Your users can trust that when they receive a "Success" message, their data is safely and permanently stored. This reliability is the hallmark of a professional backend.
+Fluo와 Prisma를 사용하면 ACID 원칙을 진지하게 반영한 기반 위에서 시스템을 구축하게 됩니다. 사용자는 "Success" 메시지를 받았을 때 자신의 데이터가 안전하고 영구적으로 저장되었다고 믿을 수 있습니다. 이러한 신뢰성은 전문적인 백엔드의 특징입니다.
 
-Furthermore, consider the implications of transactional integrity on your system's scalability. A system that maintains high data quality through strict transactions is much easier to scale and reason about than one riddled with partial writes and inconsistent states. As you grow, these early architectural decisions will pay dividends in reduced technical debt and fewer production incidents.
+또한 트랜잭션 무결성이 시스템 확장성에 미치는 영향도 생각해 보아야 합니다. 엄격한 트랜잭션을 통해 높은 데이터 품질을 유지하는 시스템은 부분 쓰기와 불일치 상태가 난무하는 시스템보다 훨씬 더 쉽게 확장할 수 있고 이해하기도 쉽습니다. 시스템이 성장할수록 이런 초기 아키텍처 결정은 기술 부채를 줄이고 프로덕션 장애를 줄이는 형태로 큰 가치를 돌려줍니다.
 
 ### Advanced Transaction Patterns
-Beyond the basic block and interceptor patterns, Fluo supports more advanced scenarios such as:
-1. **Parallel Transactions**: Running independent transactions concurrently when they don't share resource dependencies.
-2. **Selective Rollbacks**: Using fine-grained error handling to decide whether to roll back a block or handle the error gracefully without affecting the outer context.
-3. **Transaction Hooks**: Executing logic immediately before or after a commit or rollback, useful for synchronization with external caches or message brokers.
+기본적인 블록 패턴과 인터셉터 패턴을 넘어, Fluo는 다음과 같은 더 고급 시나리오도 지원합니다.
+1. **병렬 트랜잭션**: 서로 같은 리소스 의존성을 공유하지 않는 독립 작업을 동시에 실행하는 방식입니다.
+2. **선택적 롤백**: 더 세밀한 에러 처리를 사용해 블록 전체를 롤백할지, 아니면 바깥 컨텍스트에 영향을 주지 않고 우아하게 처리할지를 결정하는 방식입니다.
+3. **트랜잭션 훅**: 커밋이나 롤백 직전/직후에 로직을 실행하는 방식으로, 외부 캐시나 메시지 브로커와의 동기화에 유용합니다.
 
-Mastering these patterns allows you to handle even the most demanding enterprise requirements with the same elegance and simplicity that Fluo brings to smaller projects.
+이러한 패턴을 익히면 Fluo가 작은 프로젝트에 제공하는 것과 같은 우아함과 단순함으로 가장 까다로운 엔터프라이즈 요구 사항까지 처리할 수 있습니다.
 
 ### The Human Side of Transactions
-Remember that behind every transaction is a user expectation. When someone clicks "Buy," they expect a consistent outcome. When someone "Signs Up," they expect their profile to be ready. Transactions are the technical bridge between messy real-world intentions and orderly digital records. By mastering this bridge, you become more than a coder—you become a steward of your users' digital trust.
+모든 트랜잭션 뒤에는 사용자의 기대가 있다는 점을 기억하십시오. 누군가 "Buy"를 클릭하면 일관된 결과를 기대합니다. 누군가 "Signs Up"을 하면 자신의 프로필이 준비되어 있기를 기대합니다. 트랜잭션은 복잡한 현실 세계의 의도를 정돈된 디지털 기록으로 이어 주는 기술적 다리입니다. 이 다리를 제대로 다루게 되면 단순한 코더를 넘어 사용자의 디지털 신뢰를 지키는 사람이 됩니다.
 
-Keep your transactions lean, your repositories agnostic, and your service layer focused on the big picture. This is the path to becoming a fluo expert.
+트랜잭션은 간결하게 유지하고, 리포지토리는 트랜잭션에 종속되지 않게 두며, 서비스 레이어는 큰 그림에 집중하게 하십시오. 이것이 fluo 전문가로 성장하는 길입니다.
 
 ### Transaction Logging and Auditing
-In production environments, simply knowing that a transaction happened is often not enough. You need to know *what* changed and *who* changed it. By integrating Fluo's middleware with Prisma's middleware or extensions, you can implement a transparent auditing system that records every row-level change within a transaction. This "Audit Log" becomes an invaluable tool for debugging, security investigations, and regulatory compliance.
+프로덕션 환경에서는 트랜잭션이 발생했다는 사실만 아는 것으로는 충분하지 않은 경우가 많습니다. *무엇이* 바뀌었는지, 그리고 *누가* 바꿨는지를 알아야 합니다. Fluo의 미들웨어를 Prisma의 미들웨어 또는 확장과 통합하면 트랜잭션 안에서 발생한 모든 행 수준 변경을 기록하는 투명한 감사 시스템을 구현할 수 있습니다. 이 "Audit Log"는 디버깅, 보안 조사, 규제 준수에 매우 중요한 도구가 됩니다.
 
-Furthermore, consider the role of transaction timeouts in maintaining system availability. A long-running transaction that holds locks on critical tables can effectively bring your entire application to a halt. In `fluo`, we recommend setting strict timeouts at both the application level (via interceptors) and the database level to ensure that no single rogue request can monopolize your resources.
+또한 시스템 가용성을 유지하는 데서 트랜잭션 타임아웃이 맡는 역할도 생각해 보아야 합니다. 중요한 테이블에 잠금을 건 채 오래 실행되는 트랜잭션은 애플리케이션 전체를 사실상 멈춰 세울 수 있습니다. `fluo`에서는 하나의 비정상 요청이 리소스를 독점하지 못하도록 애플리케이션 수준에서는 인터셉터로, 데이터베이스 수준에서는 DB 설정으로 엄격한 타임아웃을 두는 것을 권장합니다.
 
 ### Distributed Transactions and Sagas
-As you move from a monolithic Fluo application to a microservices architecture, the concept of a "transaction" evolves. You can no longer rely on a single database's ACID properties to coordinate changes across multiple services. Instead, you must embrace patterns like the **Saga Pattern**, which uses a sequence of local transactions and compensating actions to maintain data integrity across service boundaries. While `fluo` provides the building blocks for these advanced patterns, they require a different mindset regarding consistency—one that accepts "eventual" rather than "immediate" alignment.
+모놀리식 Fluo 애플리케이션에서 마이크로서비스 아키텍처로 이동하면 "트랜잭션"이라는 개념도 함께 확장됩니다. 더 이상 여러 서비스에 걸친 변경을 조정하기 위해 단일 데이터베이스의 ACID 속성에만 의존할 수 없습니다. 대신 로컬 트랜잭션의 연쇄와 보상 작업을 사용해 서비스 경계 전반의 데이터 무결성을 유지하는 **Saga Pattern** 같은 패턴을 받아들여야 합니다. `fluo`는 이러한 고급 패턴을 위한 구성 요소를 제공하지만, 일관성을 바라보는 관점은 달라져야 합니다. 즉, "즉각적인 정합성"보다 "최종적인 정합성"을 받아들이는 사고방식이 필요합니다.
 
 ### Final Thoughts on Data Patterns
-The way you handle data defines the soul of your application. Choosing explicit transactions over hidden magic, and transaction-agnostic repositories over tightly coupled ones, sets you on a path towards a codebase that remains joyfully maintainable for years. Part 2 was about the "Ground Truth" of your application. Now that we have a solid foundation, let's secure it.
+데이터를 다루는 방식은 애플리케이션의 성격을 규정합니다. 숨겨진 마법보다 명시적 트랜잭션을, 강하게 결합된 리포지토리보다 트랜잭션에 종속되지 않는 리포지토리를 선택하면 오랫동안 즐겁게 유지보수할 수 있는 코드베이스로 나아가게 됩니다. Part 2는 애플리케이션의 "Ground Truth"를 다루는 여정이었습니다. 이제 탄탄한 기반을 갖췄으니 이를 안전하게 지켜 봅시다.
 
 ### Monitoring Transaction Health
-To maintain a high-performing system, you must monitor your transaction health in real-time. Use Fluo's built-in metrics to track transaction durations, commit vs. rollback ratios, and lock contention metrics. If you notice a spike in rollbacks, it might indicate a bug in your business logic or a connectivity issue with your database. High lock contention, on the other hand, suggests that your transactions are too long or that you're hitting the same database rows too frequently, signaling a need for architectural changes or better caching.
+높은 성능의 시스템을 유지하려면 트랜잭션 상태를 실시간으로 모니터링해야 합니다. Fluo의 내장 메트릭을 사용해 트랜잭션 지속 시간, 커밋 대비 롤백 비율, 잠금 경합 지표를 추적하십시오. 롤백이 급증한다면 비즈니스 로직의 버그나 데이터베이스 연결 문제를 의심해 볼 수 있습니다. 반대로 잠금 경합이 높다면 트랜잭션이 너무 길거나 같은 데이터베이스 행을 너무 자주 건드리고 있다는 뜻일 수 있으며, 이는 아키텍처 변경이나 더 나은 캐싱이 필요하다는 신호입니다.
 
-In addition to metrics, structured logging is essential. Every transaction should log its unique ID (provided by ALS) so you can trace exactly what happened if a request fails. This correlation between HTTP requests and database transactions is what makes Fluo applications exceptionally easy to debug in high-pressure production scenarios. By treating transactions as first-class citizens in your observability stack, you ensure that your data layer is never a "black box."
+메트릭에 더해 구조화된 로깅도 필수입니다. 모든 트랜잭션은 고유 ID, 즉 ALS가 제공하는 식별자를 로그에 남겨야 요청이 실패했을 때 정확히 무슨 일이 있었는지 추적할 수 있습니다. HTTP 요청과 데이터베이스 트랜잭션 사이의 이런 상관관계 덕분에 Fluo 애플리케이션은 압박이 큰 프로덕션 상황에서도 디버깅하기가 매우 쉬워집니다. 트랜잭션을 관측 가능성 스택의 일급 시민으로 다루면 데이터 레이어가 결코 "black box"로 남지 않게 됩니다.
 
 ### Scaling Your Transactional Logic
-As your team grows, maintaining consistent transaction patterns becomes a human challenge. Document your transaction rules clearly and use linting or architectural tests to ensure that every new repository follows the `.current()` pattern. By enforcing these rules at the tooling level, you prevent technical debt from creeping in and ensure that your codebase remains as clean and reliable as the day it was created.
+팀이 성장할수록 일관된 트랜잭션 패턴을 유지하는 일은 사람의 문제이기도 해집니다. 트랜잭션 규칙을 명확히 문서화하고, 린트나 아키텍처 테스트를 사용해 새 리포지토리마다 `.current()` 패턴을 따르는지 확인하십시오. 이런 규칙을 툴링 수준에서 강제하면 기술 부채가 서서히 스며드는 일을 막고 코드베이스를 처음 만들었을 때처럼 깔끔하고 신뢰할 수 있는 상태로 유지할 수 있습니다.
 
-The journey through data patterns is not just about writing code; it's about adopting a mindset of precision and accountability. Every byte you write to the database is a commitment to your users. By using Fluo's transaction tools, you are making that commitment with confidence.
+데이터 패턴을 익히는 여정은 단지 코드를 작성하는 일이 아니라, 정확성과 책임감의 사고방식을 받아들이는 과정입니다. 데이터베이스에 기록하는 모든 바이트는 사용자에게 하는 약속입니다. Fluo의 트랜잭션 도구를 사용한다는 것은 그 약속을 자신 있게 지키겠다는 뜻입니다.
