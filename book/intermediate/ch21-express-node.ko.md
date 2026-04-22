@@ -103,25 +103,24 @@ async function bootstrap() {
 
 ## 21.3 Platform-Specific Responses
 
-가끔 스트리밍이나 특정 플랫폼 동작을 처리하기 위해 fluo 추상화를 벗어나야 할 때가 있습니다. fluo는 플랫폼 네이티브 객체를 주입하는 `@Res()` 및 `@Req()` 데코레이터를 제공합니다.
+가끔 스트리밍이나 특정 플랫폼 동작을 처리하기 위해 fluo 추상화를 조금 더 직접 다뤄야 할 때가 있습니다. 이때는 raw 요청 객체를 핸들러 시그니처에 퍼뜨리기보다 `RequestContext`와 `FrameworkResponse` 계약을 통해 플랫폼 경계를 넘는 편이 더 안전합니다.
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
 Express 어댑터는 `SseResponse` 유틸리티를 통해 SSE를 지원합니다.
 
 ```typescript
-import { Get, Res, FrameworkResponse } from '@fluojs/http';
-import { SseResponse } from '@fluojs/platform-express';
+import { Get, SseResponse, type RequestContext } from '@fluojs/http';
 
 @Get('notifications')
-async stream(@Res() res: FrameworkResponse) {
-  const sse = new SseResponse();
+async stream(_input: undefined, ctx: RequestContext) {
+  const sse = new SseResponse(ctx);
   
   const interval = setInterval(() => {
     sse.send({ data: { message: 'New order received!' } });
   }, 5000);
 
-  res.on('close', () => clearInterval(interval));
+  ctx.request.signal?.addEventListener('abort', () => clearInterval(interval), { once: true });
   
   return sse;
 }
@@ -129,13 +128,23 @@ async stream(@Res() res: FrameworkResponse) {
 
 ### 21.3.2 Using Raw Node streams
 
-Node.js 어댑터를 사용할 때는 `IncomingMessage` 및 `ServerResponse`와 상호작용합니다.
+Node.js 어댑터를 사용할 때도 핸들러는 가능하면 `FrameworkResponse` 계약을 통해 응답을 다루고, 어댑터가 그 결과를 실제 `ServerResponse`로 매핑하게 두는 편이 좋습니다. 즉, raw Node stream 메서드에 직접 기대기보다 `response.stream.write()`, `waitForDrain()`, `close()` 같은 공용 계약 안에서 스트리밍을 표현해야 합니다.
 
 ```typescript
 @Get('download')
-async download(@Res() res: any) {
-  const fileStream = fs.createReadStream('report.pdf');
-  fileStream.pipe(res);
+async download(_input: undefined, ctx: RequestContext) {
+  const responseStream = ctx.response.stream;
+  if (!responseStream) {
+    throw new Error('현재 어댑터는 스트리밍 응답을 지원하지 않습니다.');
+  }
+
+  for await (const chunk of fs.createReadStream('report.pdf')) {
+    if (!responseStream.write(chunk)) {
+      await responseStream.waitForDrain?.();
+    }
+  }
+
+  responseStream.close();
 }
 ```
 
@@ -182,7 +191,7 @@ bootstrap().catch(err => {
 });
 ```
 
-여기서 핵심적인 장점은 Fastify가 요청을 처리하든 Express가 처리하든 상관없이 `@Body()`, `@Param()`, `@Query()` 데코레이터가 동일하게 작동한다는 것입니다. fluo의 내부 디스패처가 어댑터의 네이티브 요청 형식과 표준 fluo 컨텍스트 사이의 변환을 처리합니다.
+여기서 핵심적인 장점은 Fastify가 요청을 처리하든 Express가 처리하든 상관없이 `@FromBody()`, `@FromPath()`, `@FromQuery()` 같은 바인딩 데코레이터가 동일하게 작동한다는 것입니다. fluo의 내부 디스패처가 어댑터의 네이티브 요청 형식과 표준 fluo 컨텍스트 사이의 변환을 처리합니다.
 
 ## 21.6 Advanced: The `run` Helpers
 

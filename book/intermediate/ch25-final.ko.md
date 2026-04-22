@@ -57,34 +57,37 @@ Istio와 같은 전형적인 서비스 메시 설정에서 각 fluo 서비스는
 ```typescript
 @Module({
   imports: [
-    ClientsModule.register([
-      {
-        name: 'ORDER_SERVICE',
-        transport: Transport.TCP,
-        options: { host: 'order-service-mesh', port: 80 }
-      }
-    ])
+    MicroservicesModule.forRoot({
+      transport: new TcpMicroserviceTransport({
+        host: 'order-service-mesh',
+        port: 80,
+        requestTimeoutMs: 1_000,
+      }),
+    })
   ]
 })
 export class GatewayModule {}
 ```
 
-fluo의 `ClientsModule`을 사용함으로써, 여러분의 코드는 연결이 메시에 의해 가로채지는지 또는 직접 IP를 호출하는지 여부에 관계없이 이식성을 유지합니다. fluo는 송수신되는 데이터가 예상된 계약을 따르도록 보장하며, 메시는 데이터가 실제로 목적지에 도달하도록 보장합니다.
+fluo의 `MicroservicesModule.forRoot(...)`와 `TcpMicroserviceTransport`를 사용함으로써, 여러분의 코드는 연결이 메시에 의해 가로채지는지 또는 직접 IP를 호출하는지 여부에 관계없이 이식성을 유지합니다. fluo는 송수신되는 데이터가 예상된 계약을 따르도록 보장하며, 메시는 데이터가 실제로 목적지에 도달하도록 보장합니다.
 
 ## 25.4 Observability with fluo and OpenTelemetry
 
-디버깅과 성능 튜닝을 위해 여러 런타임(Node, Bun, Workers)에 걸친 요청을 추적하는 것은 필수적입니다. fluo는 OpenTelemetry와 통합되어 별도의 설정 없이 통합된 트레이싱을 제공합니다.
+디버깅과 성능 튜닝을 위해 여러 런타임(Node, Bun, Workers)에 걸친 요청을 추적하는 것은 필수적입니다. fluo에서는 이런 관측 가능성을 단일 트레이싱 플래그보다, 실제 런타임에 붙는 메트릭과 헬스 구성을 명시적으로 유지하는 쪽이 더 정직한 문서화입니다.
 
 ```typescript
-// main.ts에서의 통합
-import { OtelModule } from '@fluojs/otel';
-
-const app = await fluoFactory.create(AppModule, {
-  tracing: true // 트레이스 스팬을 자동으로 전파하고 생성합니다.
-});
+@Module({
+  imports: [
+    MetricsModule.forRoot(),
+    TerminusModule.forRoot({
+      indicators: [new MemoryHealthIndicator({ key: 'memory', rssThresholdBytes: Number.MAX_SAFE_INTEGER })],
+    }),
+  ],
+})
+export class ObservabilityModule {}
 ```
 
-게이트웨이(Workers)가 주문 서비스(Node)를 호출할 때, fluo는 요청 헤더에 트레이스 컨텍스트를 주입합니다. 주문 서비스는 이를 받아 스팬을 이어갑니다. 이를 통해 Jaeger, Zipkin, Honeycomb과 같은 도구에서 요청의 전체 생명주기를 확인할 수 있습니다.
+게이트웨이(Workers)가 주문 서비스(Node)를 호출할 때도, 각 서비스는 자신이 실제로 노출하는 `/metrics`, `/health`, `/ready` 같은 운영 표면을 통해 상태를 드러내야 합니다. 분산 추적을 추가하더라도 이런 런타임 계약이 먼저 명확해야 전체 요청 흐름을 안정적으로 읽을 수 있습니다.
 
 ## 25.5 Final Architecture Review: The "Fluo Way"
 
