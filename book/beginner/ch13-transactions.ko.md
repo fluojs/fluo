@@ -61,9 +61,9 @@ async createUser(data, tx?) {
 이전 장에서 보았듯이, Fluo 리포지토리는 항상 `PrismaService.current()`를 사용합니다.
 
 ```typescript
-@Injectable()
+@Inject(PrismaService)
 export class UsersRepository {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService<any>) {}
+  constructor(private readonly prisma: PrismaService<any>) {}
 
   async create(data) {
     // .current()는 현재 트랜잭션 컨텍스트에 있는지 자동으로 감지합니다!
@@ -86,13 +86,13 @@ export class UsersRepository {
 Fluo에서 트랜잭션을 실행하는 가장 직접적인 방법은 서비스 계층에서 Prisma 트랜잭션 블록을 사용하는 것입니다.
 
 ```typescript
-import { Injectable, Inject } from '@fluojs/core';
+import { Inject } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
 
-@Injectable()
+@Inject(PrismaService, UsersRepository, ProfilesRepository)
 export class UsersService {
   constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService<any>,
+    private readonly prisma: PrismaService<any>,
     private readonly usersRepo: UsersRepository,
     private readonly profilesRepo: ProfilesRepository,
   ) {}
@@ -202,8 +202,14 @@ Most modern databases and Fluo/Prisma 기본값은 가장 위험한 문제(Dirty
 
 ```typescript
 // src/posts/posts.service.ts
-@Injectable()
+@Inject(PrismaService, PostsRepository, UsersRepository)
 export class PostsService {
+  constructor(
+    private readonly prisma: PrismaService<any>,
+    private readonly postsRepo: PostsRepository,
+    private readonly usersRepo: UsersRepository,
+  ) {}
+
   async createPost(userId: number, dto: CreatePostDto) {
     return this.prisma.transaction(async () => {
       // 1. 게시물 생성
