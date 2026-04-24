@@ -80,7 +80,7 @@ DTO 필드가 간단한 기본값으로 초기화된 예제를 자주 보게 됩
 
 이 패턴은 클래스를 materialize하고 눈으로 확인하기 쉽게 만들어 줍니다.
 
-클래스 기반 검증을 처음 배우는 독자에게도 더 부담이 적습니다.
+클래스 기반 검증을 처음 읽는 독자도 흐름을 파악하기 쉽습니다.
 
 ### What These Rules Mean
 
@@ -96,7 +96,7 @@ DTO 필드가 간단한 기본값으로 초기화된 예제를 자주 보게 됩
 
 ### Why Decorators?
 
-fluo가 클래스 프로퍼티에 직접 `@IsString()` 같은 데코레이터를 사용하는 것을 보셨을 겁니다. 이러한 "선언적(declarative)" 스타일은 fluo 프레임워크의 특징입니다. 데이터를 체크하기 위해 긴 `if/else` 블록을 작성하는 대신, 데이터가 어떠해야 하는지 선언만 하면 됩니다. 이렇게 하면 DTO가 코드이자 문서의 역할을 동시에 수행하며, 규칙을 보호 대상 데이터와 가깝게 유지할 수 있습니다.
+fluo는 클래스 프로퍼티에 직접 `@IsString()` 같은 데코레이터를 사용합니다. 이러한 "선언적(declarative)" 스타일은 fluo 프레임워크의 특징입니다. 데이터를 체크하기 위해 긴 `if/else` 블록을 작성하는 대신, 데이터가 어떠해야 하는지 선언합니다. 이렇게 하면 DTO가 코드이자 문서의 역할을 동시에 수행하며, 규칙을 보호 대상 데이터와 가깝게 유지할 수 있습니다.
 
 ### Common Validation Decorators
 
@@ -107,7 +107,7 @@ fluo가 클래스 프로퍼티에 직접 `@IsString()` 같은 데코레이터를
 - **타입 검사**: `@IsBoolean()`, `@IsDate()`, `@IsEnum()`, `@IsArray()`
 - **존재 여부 검사**: `@IsOptional()`, `@IsNotEmpty()`, `@IsDefined()`
 
-초보자로서 이 모든 것을 외울 필요는 없습니다. 일반적인 데이터 요구 사항이 있다면 그에 맞는 데코레이터가 이미 존재할 가능성이 높다는 점만 기억하세요.
+이 모든 것을 외울 필요는 없습니다. 일반적인 데이터 요구 사항이 있다면 그에 맞는 데코레이터가 이미 존재할 가능성이 높다는 점만 기억하세요.
 
 ## 6.3 Connecting DTOs to the HTTP Layer
 
@@ -149,13 +149,13 @@ HTTP 바인딩은 보통 첫 번째 경로가 필요합니다.
 
 그래서 문서에서 hydration과 validation을 함께 처리하는 `materialize()`를 강조합니다.
 
-초보자 관점의 핵심은 단순합니다.
+지금 필요한 핵심은 단순합니다.
 
 들어오는 페이로드는 비즈니스 로직이 실행되기 전에 먼저 알려진 DTO 형태로 바뀌어야 합니다.
 
 ### The Role of Metadata
 
-내부적으로 `@fluojs/validation`은 클래스를 청사진(blueprint)으로 사용합니다. 데코레이터를 읽어 데이터가 어떤 모습이어야 하는지 파악합니다. `materialize`가 호출되면 들어오는 데이터를 이 청사진과 비교합니다. 이것이 fluo가 효율적인 이유입니다. 모든 요청에 대해 느리고 무거운 리플렉션을 사용하는 대신, 여러분이 이미 제공한 구조화된 메타데이터를 활용하기 때문입니다.
+내부적으로 `@fluojs/validation`은 클래스를 청사진(blueprint)으로 사용합니다. 데코레이터를 읽어 데이터가 어떤 모습이어야 하는지 파악합니다. `materialize`가 호출되면 들어오는 데이터를 이 청사진과 비교합니다. fluo가 효율적인 이유도 여기에 있습니다. 모든 요청에 대해 느리고 무거운 리플렉션을 사용하는 대신, 이미 제공된 구조화된 메타데이터를 활용하기 때문입니다.
 
 ## 6.4 Updating FluoBlog Create and Update Flows
 
@@ -169,7 +169,7 @@ import { PartialType } from '@fluojs/validation';
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
 ```
 
-이 코드는 mapped DTO helper를 보여 주는 아주 좋은 초보자 예제입니다.
+이 코드는 mapped DTO helper를 보여 주는 좋은 초기 예제입니다.
 
 `PartialType(CreatePostDto)`는 create DTO의 모든 필드가 update에서는 optional이 된다는 뜻입니다.
 
@@ -208,7 +208,7 @@ export class PostsController {
 
 ### Why Mapped DTO Helpers Matter
 
-초보자는 비슷한 DTO를 손으로 반복해서 작성하기 쉽습니다.
+처음에는 비슷한 DTO를 손으로 반복해서 작성하기 쉽습니다.
 
 처음에는 그 방법도 동작합니다.
 
@@ -230,7 +230,7 @@ export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
 export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
 ```
 
-이러한 유틸리티를 사용하면 기본 DTO에서 검증 규칙을 **한 번만** 정의하고 애플리케이션 전체에서 재사용할 수 있습니다. 이는 "DRY"(Don't Repeat Yourself) 개발의 핵심 원칙입니다.
+이러한 유틸리티를 사용하면 기본 DTO에서 검증 규칙을 **한 번만** 정의하고 애플리케이션 전체에서 재사용할 수 있습니다. 이는 "DRY"(Don't Repeat Yourself) 원칙을 DTO 설계에 적용하는 방식입니다.
 
 ## 6.5 No Implicit Scalar Coercion
 
@@ -254,7 +254,7 @@ export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
 
 ### Beginner Rule of Thumb
 
-네트워크가 원하는 타입을 그대로 보내 줄 것이라고 가정하지 마세요.
+네트워크가 원하는 타입을 그대로 보내 준다고 가정하지 마세요.
 
 기대하는 타입을 설명하세요.
 
@@ -322,7 +322,7 @@ export class PostsService {
 
 ### Reliability and Trust
 
-입력이 유효하다는 것을 알고 있다면 더 단순한 서비스 코드를 작성할 수 있습니다. DTO가 이미 처리했다는 사실을 알고 있기 때문에 서비스 내부에서 `if (input.title.length < 3)` 같은 체크를 할 필요가 없습니다. 이는 전송 계층과 비즈니스 로직 사이의 신뢰를 구축하며, 시스템의 각 부분이 핵심 책임에 집중할 수 있게 해 줍니다.
+입력이 유효하다는 것을 알고 있다면 더 단순한 서비스 코드를 작성할 수 있습니다. DTO가 이미 처리했다는 사실을 알고 있기 때문에 서비스 내부에서 `if (input.title.length < 3)` 같은 체크를 반복할 필요가 없습니다. 이는 전송 계층과 비즈니스 로직 사이의 책임을 분리하고, 시스템의 각 부분이 자기 역할에 집중하게 합니다.
 
 ### Common Beginner Mistakes with Validation
 
@@ -348,7 +348,7 @@ export class PostsService {
 - DTO는 느슨한 요청 객체를 이름 있는 검증 가능한 입력 계약으로 바꿉니다.
 - `@RequestDto()`는 HTTP 바인딩과 DTO materialization 및 validation을 연결합니다.
 - 검증 데코레이터는 FluoBlog 생성 및 업데이트 라우트를 더 안전하게 만듭니다.
-- `PartialType()`은 update DTO를 만들 때 유용한 초보자 패턴입니다.
+- `PartialType()`은 update DTO를 만들 때 유용한 초기 패턴입니다.
 - fluo는 암시적 스칼라 강제 변환을 피하므로 입력 처리가 예측 가능해집니다.
 - 이제 posts 서비스는 더 깔끔한 전송 경계 데이터를 받습니다.
 
