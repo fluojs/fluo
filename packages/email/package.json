@@ -10,7 +10,7 @@
     "queue",
     "mailer"
   ],
-  "version": "0.0.0",
+  "version": "1.0.0-beta.1",
   "private": false,
   "license": "MIT",
   "repository": {

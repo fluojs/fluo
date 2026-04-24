@@ -1,0 +1,945 @@
+{
+  "schemaVersion": 1,
+  "targetVersion": "1.0.0-beta.1",
+  "distTag": "beta",
+  "createdAt": "2026-04-24T13:18:06.245Z",
+  "updatedAt": "2026-04-24T13:18:06.245Z",
+  "packages": [
+    {
+      "order": 1,
+      "wave": "P1",
+      "name": "@fluojs/core",
+      "dir": "packages/core",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 2,
+      "wave": "P2",
+      "name": "@fluojs/config",
+      "dir": "packages/config",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 3,
+      "wave": "P2",
+      "name": "@fluojs/di",
+      "dir": "packages/di",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 4,
+      "wave": "P2",
+      "name": "@fluojs/validation",
+      "dir": "packages/validation",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 5,
+      "wave": "P3",
+      "name": "@fluojs/http",
+      "dir": "packages/http",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 6,
+      "wave": "P4",
+      "name": "@fluojs/runtime",
+      "dir": "packages/runtime",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 7,
+      "wave": "P4",
+      "name": "@fluojs/serialization",
+      "dir": "packages/serialization",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 8,
+      "wave": "P5",
+      "name": "@fluojs/cli",
+      "dir": "packages/cli",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 9,
+      "wave": "P5",
+      "name": "@fluojs/event-bus",
+      "dir": "packages/event-bus",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 10,
+      "wave": "P5",
+      "name": "@fluojs/jwt",
+      "dir": "packages/jwt",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 11,
+      "wave": "P5",
+      "name": "@fluojs/notifications",
+      "dir": "packages/notifications",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 12,
+      "wave": "P5",
+      "name": "@fluojs/redis",
+      "dir": "packages/redis",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 13,
+      "wave": "P5",
+      "name": "@fluojs/drizzle",
+      "dir": "packages/drizzle",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 14,
+      "wave": "P5",
+      "name": "@fluojs/prisma",
+      "dir": "packages/prisma",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 15,
+      "wave": "P5",
+      "name": "@fluojs/graphql",
+      "dir": "packages/graphql",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 16,
+      "wave": "P5",
+      "name": "@fluojs/metrics",
+      "dir": "packages/metrics",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 17,
+      "wave": "P5",
+      "name": "@fluojs/microservices",
+      "dir": "packages/microservices",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 18,
+      "wave": "P5",
+      "name": "@fluojs/mongoose",
+      "dir": "packages/mongoose",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 19,
+      "wave": "P5",
+      "name": "@fluojs/openapi",
+      "dir": "packages/openapi",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 20,
+      "wave": "P5",
+      "name": "@fluojs/platform-bun",
+      "dir": "packages/platform-bun",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 21,
+      "wave": "P5",
+      "name": "@fluojs/platform-cloudflare-workers",
+      "dir": "packages/platform-cloudflare-workers",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 22,
+      "wave": "P5",
+      "name": "@fluojs/platform-deno",
+      "dir": "packages/platform-deno",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 23,
+      "wave": "P5",
+      "name": "@fluojs/platform-express",
+      "dir": "packages/platform-express",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 24,
+      "wave": "P5",
+      "name": "@fluojs/platform-fastify",
+      "dir": "packages/platform-fastify",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 25,
+      "wave": "P5",
+      "name": "@fluojs/platform-nodejs",
+      "dir": "packages/platform-nodejs",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 26,
+      "wave": "P5",
+      "name": "@fluojs/studio",
+      "dir": "packages/studio",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 27,
+      "wave": "P6",
+      "name": "@fluojs/cache-manager",
+      "dir": "packages/cache-manager",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 28,
+      "wave": "P6",
+      "name": "@fluojs/terminus",
+      "dir": "packages/terminus",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 29,
+      "wave": "P6",
+      "name": "@fluojs/throttler",
+      "dir": "packages/throttler",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 30,
+      "wave": "P6",
+      "name": "@fluojs/testing",
+      "dir": "packages/testing",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 31,
+      "wave": "P6",
+      "name": "@fluojs/websockets",
+      "dir": "packages/websockets",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 32,
+      "wave": "P7",
+      "name": "@fluojs/cqrs",
+      "dir": "packages/cqrs",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 33,
+      "wave": "P7",
+      "name": "@fluojs/cron",
+      "dir": "packages/cron",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 34,
+      "wave": "P7",
+      "name": "@fluojs/queue",
+      "dir": "packages/queue",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 35,
+      "wave": "P7",
+      "name": "@fluojs/discord",
+      "dir": "packages/discord",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 36,
+      "wave": "P7",
+      "name": "@fluojs/slack",
+      "dir": "packages/slack",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 37,
+      "wave": "P7",
+      "name": "@fluojs/passport",
+      "dir": "packages/passport",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 38,
+      "wave": "P8",
+      "name": "@fluojs/email",
+      "dir": "packages/email",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    },
+    {
+      "order": 39,
+      "wave": "P8",
+      "name": "@fluojs/socket.io",
+      "dir": "packages/socket.io",
+      "version": "1.0.0-beta.1",
+      "distTag": "beta",
+      "status": "pending",
+      "attemptCount": 0,
+      "timestamps": {
+        "dryRunPassedAt": null,
+        "publishStartedAt": null,
+        "publishedAt": null,
+        "verifiedAt": null,
+        "failedAt": null
+      },
+      "lastError": null,
+      "evidencePaths": {
+        "dryRunLog": null,
+        "publishLog": null,
+        "registryJson": null,
+        "resumeLog": null
+      }
+    }
+  ]
+}

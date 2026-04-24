@@ -216,12 +216,12 @@ describe('scaffoldBootstrapApp', () => {
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
     expect(packageJson.dependencies).toMatchObject({
-      '@fluojs/http': '^0.0.0',
-      '@fluojs/platform-fastify': '^0.0.0',
-      '@fluojs/runtime': '^0.0.0',
+      '@fluojs/http': '^1.0.0-beta.1',
+      '@fluojs/platform-fastify': '^1.0.0-beta.1',
+      '@fluojs/runtime': '^1.0.0-beta.1',
     });
     expect(packageJson.devDependencies).toMatchObject({
-      '@fluojs/testing': '^0.0.0',
+      '@fluojs/testing': '^1.0.0-beta.1',
     });
     expect(tsconfig).not.toContain('baseUrl');
     expect(tsconfigBuild).not.toContain('baseUrl');
