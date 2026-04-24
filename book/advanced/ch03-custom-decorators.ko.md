@@ -21,6 +21,25 @@
 ## 3.1 Crafting your own decorators
 프레임워크의 힘은 확장성에서 나오며, Fluo에서 이러한 확장성은 주로 커스텀 데코레이터를 통해 달성됩니다. Fluo는 TC39 표준을 기반으로 구축되었기 때문에, 커스텀 데코레이터를 만드는 일은 `StandardDecoratorFn`을 반환하는 함수를 정의하는 방식으로 시작합니다. 이러한 일관성 덕분에 커스텀 로직은 Fluo의 내장 데코레이터와 같은 규칙 위에서 작동하며, 동일한 성능 특성과 타입 안전성 보장을 공유합니다.
 
+Fluo의 공개 데코레이터도 같은 모양으로 만들어집니다. 외부 API는 작은 팩토리 함수이고, 반환된 표준 클래스 데코레이터가 실제 메타데이터 writer를 호출합니다.
+
+`path:packages/core/src/decorators.ts:19-33`
+```typescript
+export function Module(definition: ModuleMetadata): StandardClassDecoratorFn {
+  return (target) => {
+    defineModuleMetadata(target, definition);
+  };
+}
+
+export function Global(): StandardClassDecoratorFn {
+  return (target) => {
+    defineModuleMetadata(target, { global: true });
+  };
+}
+```
+
+이 발췌에서 중요한 점은 데코레이터가 별도의 전역 레지스트리를 직접 조작하지 않는다는 것입니다. `@Module()`과 `@Global()`은 표준 데코레이터 시그니처를 유지하면서, 실제 상태 변경은 메타데이터 helper에 위임합니다.
+
 레거시 데코레이터와 달리, 표준 데코레이터는 단순히 대상을 전달받는 함수가 아니라 매우 구조화된 트랜스포머입니다. 예를 들어 클래스에 대한 표준 데코레이터는 `(value: Function, context: ClassDecoratorContext) => void | Function` 시그니처를 가집니다. 이러한 구조를 통해 클래스를 관찰하는 것뿐만 아니라 클래스를 완전히 대체하거나 클래스가 정의될 때 실행되는 초기화 루틴을 등록할 수 있습니다.
 
 이러한 형식화된 구조는 레거시 데코레이터와 관련된 추측(guesswork)을 제거합니다. TC39 사양이 명확하고 예측 가능한 평가 순서를 정의하고 있으므로, 더 이상 서로 다른 요소에 데코레이터가 적용되는 순서에 대해 걱정할 필요가 없습니다. 커스텀 데코레이터 작성자에게 이는 복잡한 조합으로 사용될 때도 변환이 더 신뢰할 수 있고 추론하기 쉽다는 것을 의미합니다. 예를 들어, 클래스 데코레이터는 항상 모든 멤버 데코레이터(메서드, 접근자, 필드)가 처리된 후에 평가되므로, 프레임워크 수준의 등록을 위해 클래스 구조에 대한 일관된 "최종 뷰(final view)"를 제공합니다.
@@ -38,6 +57,31 @@ Fluo의 메타데이터 시스템은 커스텀 데코레이터가 접근할 수 
 
 더 나아가, `Symbol.metadata`를 이러한 정보를 위한 통합 버스로 활용합니다. `path:packages/core/src/metadata/shared.ts:13-34`에서 Fluo가 서로 다른 런타임 간에 이 심볼이 존재하도록 보장하는 방식을 확인할 수 있습니다. 커스텀 데코레이터 내에서 `context.metadata`에 기록하면 이 저수준 언어 기능에 직접 참여하게 됩니다. 이는 데코레이터가 TC39 메타데이터 사양을 존중하는 다른 도구와 호환되게 하며, 프레임워크를 확장하는 표준 기반 방법을 제공합니다.
 
+`Symbol.metadata` 연결은 다음처럼 한 번 보장된 뒤, 이후 helper들이 같은 심볼을 기준으로 표준 메타데이터 가방을 읽습니다.
+
+`path:packages/core/src/metadata/shared.ts:13-34`
+```typescript
+export let metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
+
+export function ensureMetadataSymbol(): symbol {
+  if (symbolWithMetadata.metadata) {
+    metadataSymbol = symbolWithMetadata.metadata;
+    return metadataSymbol;
+  }
+
+  Object.defineProperty(Symbol, 'metadata', {
+    configurable: true,
+    value: metadataSymbol,
+  });
+
+  return metadataSymbol;
+}
+
+void ensureMetadataSymbol();
+```
+
+따라서 커스텀 데코레이터가 `context.metadata`에 값을 쓰는 행위는 Fluo 내부 helper가 읽는 표준 메타데이터 경로와 같은 버스를 사용합니다. 이 공통 심볼 덕분에 확장 패키지와 코어 패키지가 같은 객체 모델을 공유할 수 있습니다.
+
 이러한 격리는 확장 가능하고 모듈화된 생태계를 구축하는 데 핵심입니다. Fluo에서 우리는 "도메인 특화" 메타데이터의 사용을 권장합니다. 예를 들어, Fluo를 위한 캐싱 라이브러리를 구축하는 경우 `CACHE_METADATA_KEY` 심볼 아래에 구성을 저장하는 `@Cacheable()` 데코레이터를 만들 수 있습니다. 이를 통해 라이브러리는 동일한 통합 메타데이터 모델에 참여하면서도 프레임워크 코어의 DI나 라우팅 로직과는 독립적으로 작동할 수 있습니다.
 
 메타데이터 중심 로직은 또한 테스트 가능성을 향상시킵니다. 복잡한 내부 상태를 모킹(mocking)하는 대신, 클래스나 메서드에 첨부된 메타데이터를 검사하는 것만으로 데코레이터가 올바르게 적용되었는지 간단히 확인할 수 있습니다. Fluo는 단위 및 통합 테스트 중에 이 메타데이터를 읽고 검증하는 데 도움이 되는 내부 유틸리티(`@fluojs/core/internal`을 통해 사용 가능)를 제공합니다.
@@ -47,23 +91,22 @@ Fluo의 메타데이터 시스템은 커스텀 데코레이터가 접근할 수 
 
 이를 구현하기 위해 `path:packages/core/src/metadata/injection.ts:11-17`에 위치한 `defineInjectionMetadata` 유틸리티를 사용합니다. 이 함수는 특정 파라미터나 속성이 프레임워크 런타임에 의해 어떻게 충족되어야 하는지 기록하는 저수준 프리미티브입니다.
 
-```ts
-// @CurrentUser()의 개념적 구현
-export function CurrentUser(): StandardParameterDecoratorFn {
-  return (value, context) => {
-    // 표준 파라미터 데코레이터는 아직 메서드 컨텍스트에 직접 접근하기 어렵기 때문에
-    // Fluo의 내부 주입 메타데이터 저장소를 사용합니다.
-    // 참고: packages/core/src/metadata/injection.ts:11-17
-    defineInjectionMetadata(context, {
-      source: 'request',
-      key: 'user',
-      index: context.index
-    });
+이 장의 핵심은 `@CurrentUser()`라는 이름 자체보다 "데코레이터 팩토리에서 메타데이터 writer로 이어지는 구조"입니다. 같은 구조는 공개 `@Inject()` 데코레이터에서도 확인할 수 있습니다.
+
+`path:packages/core/src/decorators.ts:69-76`
+```typescript
+export function Inject(...tokensOrList: readonly unknown[]): StandardClassDecoratorFn {
+  const tokens = tokensOrList.length === 1 && Array.isArray(tokensOrList[0])
+    ? [...tokensOrList[0] as readonly Token[]]
+    : [...tokensOrList as readonly Token[]];
+
+  return (target) => {
+    defineClassDiMetadata(target, { inject: [...tokens] });
   };
 }
 ```
 
-이 `defineInjectionMetadata` 호출(`path:packages/core/src/metadata/injection.ts:14-16` 참조)은 본질적으로 해당 파라미터에 대한 "요구 사항"을 기록합니다. 이는 컨테이너가 이 특정 메서드를 해결할 때, 요청 객체의 내부 저장소에서 'user' 엔트리를 찾아야 함을 지정합니다. 이는 Fluo가 정적인 데코레이터 실행과 동적인 런타임 해결 사이의 간극을 어떻게 메우는지 보여주는 강력한 사례입니다.
+이 `defineInjectionMetadata` 호출(`path:packages/core/src/metadata/injection.ts:14-16` 참조)은 본질적으로 해당 파라미터에 대한 "요구 사항"을 기록합니다. 위의 공개 `@Inject()` 발췌도 같은 원리를 보여 줍니다. 데코레이터는 실행 시점에 런타임 객체를 만들지 않고, 나중에 컨테이너가 읽을 정적 요구 사항만 메타데이터로 남깁니다. 이는 Fluo가 정적인 데코레이터 실행과 동적인 런타임 해결 사이의 간극을 어떻게 메우는지 보여주는 강력한 사례입니다.
 
 런타임에 Fluo의 HTTP 파이프라인은 이 메타데이터를 읽습니다. 컨트롤러 메서드가 호출되기 직전에 프레임워크는 현재 요청 컨텍스트에서 "user" 객체를 찾아 지정된 인덱스의 인자 리스트에 주입합니다. 이 패턴은 모든 컨트롤러 메서드에서 수동으로 사용자를 추출할 필요를 없애주어, 훨씬 더 깔끔하고 테스트 가능한 코드로 이어집니다.
 
@@ -74,20 +117,30 @@ export function CurrentUser(): StandardParameterDecoratorFn {
 
 여기서 사용되는 구현 패턴은 "메서드 메타데이터 기록"입니다. 특정 주입 저장소를 사용하는 파라미터 데코레이터와 달리, `@Roles()`는 단순히 공유된 TC39 메타데이터 가방에 기록합니다. 이는 `path:packages/http/src/decorators.ts:414-427`에 정의된 `@UseGuards()`가 가드 리스트를 메서드 스코프 메타데이터에 병합하는 방식과 동일합니다.
 
-```ts
-// @Roles()의 개념적 구현
-const ROLES_KEY = Symbol('roles');
+메서드 스코프에서 여러 데코레이터가 같은 종류의 값을 누적할 때는 덮어쓰기보다 병합이 중요합니다. Fluo의 공유 helper는 기존 배열과 새 배열을 순서 보존 방식으로 합칩니다.
 
-export function Roles(...roles: string[]): StandardMethodDecoratorFn {
-  return (value, context) => {
-    // 메서드의 메타데이터 가방에 필요한 역할들을 저장
-    // TC39에서 context.metadata는 클래스를 위한 공유 가방입니다.
-    context.metadata[ROLES_KEY] = roles;
-  };
+`path:packages/core/src/metadata/shared.ts:127-143`
+```typescript
+export function mergeUnique<T>(existing: readonly T[] | undefined, values: readonly T[] | undefined): T[] | undefined {
+  if (!existing?.length && !values?.length) {
+    return undefined;
+  }
+
+  const merged = [...(existing ?? [])];
+  const seen = new Set(merged);
+
+  for (const value of values ?? []) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      merged.push(value);
+    }
+  }
+
+  return merged;
 }
 ```
 
-(`@UseGuards`를 위한 `path:packages/http/src/decorators.ts:418-425`에서 볼 수 있는 것과 같은) 이러한 직접적인 메타데이터 조작 패턴은 fluo에서 커스텀 데코레이터를 구축하는 가장 일반적인 방법입니다. 이는 내부 저장소의 오버헤드를 피하고 네이티브 언어 메타데이터 버스를 활용합니다. 가드나 인터셉터가 이러한 역할을 확인해야 할 때, 메서드의 메타데이터 가방에서 동일한 심볼을 읽기만 하면 되므로 빠르고 효율적인 권한 부여 체크가 가능합니다.
+(`@UseGuards`를 위한 `path:packages/http/src/decorators.ts:418-425`에서 볼 수 있는 것과 같은) 이러한 직접적인 메타데이터 조작 패턴은 fluo에서 커스텀 데코레이터를 구축하는 가장 일반적인 방법입니다. 위 발췌처럼 병합 helper를 쓰면 같은 정책을 여러 번 선언해도 기존 값이 무조건 사라지지 않습니다. 가드나 인터셉터가 이러한 역할을 확인해야 할 때, 메서드의 메타데이터 가방에서 동일한 심볼을 읽기만 하면 되므로 빠르고 효율적인 권한 부여 체크가 가능합니다.
 
 더 나아가, `context.addInitializer` 훅을 활용하여 클래스 정의 단계에서 검증을 수행할 수 있습니다. 예를 들어 데코레이터에 제공된 역할들이 중앙 역할 레지스트리에 따라 유효한지 확인할 수 있습니다. 이러한 "조기 검증" 패턴은 구성 오류가 요청 시점이 아니라 애플리케이션 시작 시점에 즉시 발견되도록 보장합니다. `path:packages/http/src/decorators.ts:184-187`의 로직은 컨트롤러 프리픽스를 검증하기 위해 유사한 접근 방식을 사용합니다.
 
@@ -104,37 +157,33 @@ export function Roles(...roles: string[]): StandardMethodDecoratorFn {
 
 `path:packages/openapi/src/decorators.ts:259-345`를 보면 OpenAPI 데코레이터들이 어떻게 복잡한 메서드 스코프 레코드를 구축하는지 확인할 수 있습니다. 단순히 단일 값을 저장하는 대신, 메서드 이름(`context.name`)을 키로 사용하는 구조화된 맵을 구축하여 문서 생성기가 나중에 전체 API 스키마를 재구성할 수 있도록 합니다.
 
-```ts
-// @ApiDoc()의 개념적 구현
-export function ApiDoc(options: ApiDocOptions): StandardMethodDecoratorFn {
-  return (value, context) => {
-    // 문서 생성기에서 사용할 OpenAPI 스키마 조각을 기록
-    // 이는 종종 새 옵션을 기존 메타데이터와 병합하는 과정을 포함합니다.
-    const existing = context.metadata[API_DOC_KEY] || {};
-    context.metadata[API_DOC_KEY] = { ...existing, ...options };
-  };
+구조화된 메서드별 기록은 결국 property key가 붙은 `Map`을 얻거나 만들어 쓰는 문제로 수렴합니다. Fluo의 공유 helper는 이 저장소 생성 패턴을 작은 함수로 고정합니다.
+
+`path:packages/core/src/metadata/shared.ts:103-115`
+```typescript
+export function getOrCreatePropertyMap<T>(
+  store: WeakMap<object, Map<MetadataPropertyKey, T>>,
+  target: object,
+): Map<MetadataPropertyKey, T> {
+  let map = store.get(target);
+
+  if (!map) {
+    map = new Map<MetadataPropertyKey, T>();
+    store.set(target, map);
+  }
+
+  return map;
 }
 ```
 
-이 메타데이터는 이후 `@fluojs/openapi` 패키지에 의해 수집되어, 코드와 동기화된 포괄적이고 인터랙티브한 API 문서(예: Swagger)를 생성하는 데 사용됩니다. 문서 메타데이터를 엔드포인트 정의와 가깝게 유지함으로써 Fluo는 API의 모든 변경 사항이 생성된 문서에 즉각적으로 반영되도록 보장합니다.
+이 메타데이터는 이후 `@fluojs/openapi` 패키지에 의해 수집되어, 코드와 동기화된 포괄적이고 인터랙티브한 API 문서(예: Swagger)를 생성하는 데 사용됩니다. 위 helper처럼 대상 객체와 property key를 기준으로 저장 위치를 안정적으로 확보하면, 문서 메타데이터를 엔드포인트 정의와 가깝게 유지하면서도 생성기가 나중에 같은 구조를 다시 읽을 수 있습니다.
 
 ## 3.6 Advanced decorator composition
 애플리케이션이 커짐에 따라 동일한 4~5개의 데코레이터를 여러 메서드에 반복적으로 적용하게 될 수 있습니다. Fluo는 데코레이터 합성을 지원하여, 여러 데코레이터를 하나의 응집력 있는 단위로 묶을 수 있게 합니다.
 
 많은 프레임워크가 전용 `applyDecorators` 유틸리티를 사용하지만, Fluo의 표준 우선 접근 방식은 데코레이터들이 동일한 시그니처를 따른다면 단순히 배열을 반환하거나 함수들을 체이닝하는 것만으로도 충분함을 의미합니다. 하지만 여러 개의 `@UseGuards()` 호출을 결합하는 것과 같은 복잡한 병합의 경우, `path:packages/http/src/decorators.ts:414-427`의 내부 구현은 메타데이터를 맹목적으로 교체하지 않고 신중하게 병합하는 방법을 보여줍니다.
 
-```ts
-export function Auth(roles: string[]) {
-  // applyDecorators 유틸리티는 실행 순서와 컨텍스트 전달을 처리합니다.
-  return applyDecorators(
-    Roles(...roles),
-    ApiDoc({ security: [{ bearerAuth: [] }] }),
-    UseGuards(JwtAuthGuard, RolesGuard)
-  );
-}
-```
-
-(`@fluojs/core`에서 제공하는) `applyDecorators` 유틸리티는 각 데코레이터가 표준 JavaScript 의미론을 따라 올바른 순서로 실행되도록 보장합니다. 이러한 관행은 보일러플레이트를 줄이고 서비스 전체에서 횡단 관심사(cross-cutting concerns)가 일관되게 적용되도록 합니다.
+앞 절의 `mergeUnique` 발췌가 이 합성 규칙의 핵심을 이미 보여 주었습니다. 합성된 데코레이터가 같은 메타데이터 슬롯에 여러 값을 더할 수 있으므로, writer는 기존 값을 읽고 새 값을 합친 뒤 다시 기록해야 합니다. 이러한 관행은 보일러플레이트를 줄이고 서비스 전체에서 횡단 관심사(cross-cutting concerns)가 일관되게 적용되도록 합니다.
 
 더 나아가, 합성을 통해 인자에 따라 유동적으로 적응하는 "스마트 데코레이터"를 만들 수도 있습니다. 예를 들어 Fluo의 단일 `@Controller()` 데코레이터는 실제로는 라우트 프리픽싱, 의존성 주입 등록, 메타데이터 초기화를 한 번에 처리하는 합성체입니다. 이러한 프리미티브들을 합성하는 방법을 이해하는 것이 Fluo의 고급 아키텍처 패턴을 읽는 열쇠입니다.
 
@@ -246,6 +295,32 @@ Fluo에서 커스텀 데코레이터의 진정한 위력은 가드 및 인터셉
 이러한 디커플링은 비즈니스 로직(컨트롤러)이 가드나 인터셉터의 구현 세부 사항에 대해 알 필요가 없도록 보장합니다. 비즈니스 로직은 데코레이터를 통해 자신의 의도를 선언하기만 하면 됩니다.
 
 커스텀 데코레이터가 예상대로 작동하지 않을 때, 첫 번째 단계는 메타데이터가 올바르게 기록되고 있는지 확인하는 것입니다. 2장에서 논의한 것처럼 유닛 테스트 내에서 `getModuleMetadata` 또는 `getClassDiMetadata` 헬퍼를 사용하여 데코레이트된 클래스의 메타데이터 가방을 검사할 수 있습니다. 메타데이터가 존재한다면 문제는 해당 메타데이터를 읽어야 하는 구성 요소(가드, 인터셉터 또는 DI 컨테이너)에 있을 가능성이 높습니다. 메타데이터 검색 시점부터 실행을 추적하는 것이 병목 현상을 식별하는 가장 빠른 방법입니다.
+
+DI 메타데이터는 직접 정의된 값과 상속된 값을 구분해서 읽습니다. 이 차이를 알면 데코레이터가 기록한 값이 사라진 것인지, 상속 병합 규칙 때문에 다른 값으로 보이는 것인지 빠르게 좁힐 수 있습니다.
+
+`path:packages/core/src/metadata/class-di.ts:56-83`
+```typescript
+export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
+  let effective: ClassDiMetadata | undefined;
+
+  for (const constructor of getClassMetadataLineage(target)) {
+    const metadata = classDiMetadataStore.read(constructor);
+
+    if (!metadata) {
+      continue;
+    }
+
+    effective = {
+      inject: metadata.inject ?? effective?.inject,
+      scope: metadata.scope ?? effective?.scope,
+    };
+  }
+
+  return effective ? cloneClassDiMetadata(effective) : undefined;
+}
+```
+
+이 발췌는 부모에서 자식 순서로 생성자 lineage를 순회하고, 자식이 값을 제공한 필드만 덮어쓰는 방식을 보여 줍니다. 그래서 디버깅할 때는 "직접 기록된 값"과 "상속까지 반영한 유효 값"을 구분해서 확인해야 합니다.
 
 흔히 발생하는 실수들은 다음과 같습니다.
 - **심볼 불일치**: 메타데이터를 기록할 때와 검색할 때 정확히 동일한 심볼을 사용하고 있는지 확인하십시오.

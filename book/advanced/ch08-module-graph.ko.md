@@ -23,13 +23,109 @@ Part 3는 Part 2가 멈춘 지점에서 다시 시작합니다. DI container가 
 
 첫 단계는 `path:packages/runtime/src/bootstrap.ts:372-398`에 있습니다. `bootstrapModule()`은 `Container`를 만들기 전에 `compileModuleGraph(rootModule, options)`를 먼저 호출합니다. 이 순서가 이 장의 첫 번째 구현 사실입니다. module analysis는 container registration의 부수 효과가 아니라, 그 선행 조건입니다.
 
+이 경계는 함수 첫 줄에서 바로 고정됩니다. 그래프를 먼저 컴파일하고, 그 결과로 받은 `modules` 배열만 컨테이너 등록 단계에 넘깁니다.
+
+`path:packages/runtime/src/bootstrap.ts:372-398`
+```typescript
+export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
+  const modules = compileModuleGraph(rootModule, options);
+  const container = new Container();
+  const policy: DuplicateProviderPolicy = options.duplicateProviderPolicy ?? 'warn';
+
+  const runtimeProviders = options.providers ?? [];
+  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
+  const moduleProviders = collectProvidersForContainer(modules, runtimeProviders, policy, options.logger)
+    .filter((provider) => !runtimeProviderTokens.has(providerToken(provider)));
+
+  if (runtimeProviders.length > 0) {
+    container.register(...runtimeProviders);
+  }
+
+  if (moduleProviders.length > 0) {
+    container.register(...moduleProviders);
+  }
+
+  registerControllers(container, modules);
+  registerModuleMiddleware(container, modules);
+```
+
+이 발췌는 `Container` 생성이 graph compile 뒤에 오지만, provider 등록보다 앞선다는 점을 보여 줍니다. 즉 bootstrap은 모듈 위상과 접근 규칙을 확정한 뒤에야 runtime provider, module provider, controller, middleware token을 컨테이너에 넣습니다.
+
+
 따라서 runtime은 bootstrap을 두 겹의 graph로 봅니다. 바깥에는 module graph가 있고, 그 안에 DI container의 provider graph가 있습니다. 바깥 graph가 잘못되면 안쪽 graph는 시작하지 않습니다.
 
 같은 phase boundary는 더 높은 application bootstrap에서도 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`은 module bootstrap, runtime token registration, lifecycle singleton resolution, hook execution을 끝낸 뒤에야 dispatcher를 만듭니다. runtime은 unresolved module topology 위에 request handling state를 얹지 않습니다.
 
+application bootstrap의 큰 흐름도 같은 순서를 반복합니다. 여기서는 module graph 단계가 timing phase로도 분리되어 있어, 이후 token 등록과 lifecycle 실행이 별도 단계임을 읽을 수 있습니다.
+
+`path:packages/runtime/src/bootstrap.ts:939-989`
+```typescript
+    const moduleBootstrapStart = timingEnabled ? runtimePerformance.now() : 0;
+    const bootstrapped = bootstrapModule(options.rootModule, {
+      duplicateProviderPolicy: options.duplicateProviderPolicy,
+      logger,
+      providers: runtimeProviders,
+      validationTokens: [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER],
+    });
+    if (timingEnabled) {
+      timingPhases.push({
+        durationMs: runtimePerformance.now() - moduleBootstrapStart,
+        name: 'bootstrap_module',
+      });
+    }
+
+    const registerTokensStart = timingEnabled ? runtimePerformance.now() : 0;
+    registerRuntimeBootstrapTokens(bootstrapped, adapter, platformShell);
+```
+
+이 코드는 request dispatcher 생성보다 훨씬 앞에서 module bootstrap과 runtime token registration이 끝나야 함을 보여 줍니다. 뒤쪽의 dispatcher 생성은 같은 함수의 나중 단계에 있으므로, module graph가 승인되지 않으면 request handling shell은 만들어지지 않습니다.
+
+
 `compileModuleGraph()` 자체는 `path:packages/runtime/src/module-graph.ts:406-415`에 정의되어 있습니다. 이 함수의 반환값은 container가 아닙니다. `CompiledModule[]`입니다. 이 반환 타입이 의도적으로 구조적이라는 점이 중요합니다. 각 record는 `type`, `definition`, `providerTokens`, `exportedTokens`를 가집니다.
 
+최상위 compiler는 짧지만, 여기서 초기 `ordered` 배열과 runtime token set을 만들고 validation까지 통과시킨 뒤 반환합니다.
+
+`path:packages/runtime/src/module-graph.ts:406-415`
+```typescript
+export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
+  const ordered: CompiledModule[] = [];
+  const runtimeProviders = options.providers ?? [];
+  const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
+
+  compileModule(rootModule, runtimeProviderTokens, new Map(), new Set(), ordered);
+  validateCompiledModules(ordered, runtimeProviders, runtimeProviderTokens);
+
+  return ordered;
+}
+```
+
+반환 직전에 validation이 실행되기 때문에, caller가 받는 배열은 단순 발견 목록이 아닙니다. 순환, injection metadata, visibility, export legality를 통과한 compiled module record 목록입니다.
+
+
 대응되는 타입 정의인 `path:packages/runtime/src/types.ts:41-54`도 다시 볼 가치가 있습니다. `CompiledModule`은 runtime이 사용하는 정규화된 module record입니다. 원래 module class, 정규화된 metadata definition, local ownership을 나타내는 provider token set, validation 이후의 exported token set을 보관합니다.
+
+타입 정의는 이 record가 왜 컨테이너가 아니라 그래프 분석 결과인지 드러냅니다.
+
+`path:packages/runtime/src/types.ts:41-54`
+```typescript
+/** Compiled module record produced by module-graph analysis. */
+export interface CompiledModule {
+  type: ModuleType;
+  definition: ModuleDefinition;
+  exportedTokens: Set<Token>;
+  providerTokens: Set<Token>;
+}
+
+/** Result returned by low-level bootstrap compilation helpers. */
+export interface BootstrapResult {
+  container: Container;
+  modules: CompiledModule[];
+  rootModule: ModuleType;
+}
+```
+
+`CompiledModule`에는 instance가 없습니다. 대신 local provider ownership과 export surface가 들어 있습니다. 실제 컨테이너는 그 다음 `BootstrapResult`에서 modules와 함께 조립됩니다.
+
 
 이 사실은 Fluo가 module bootstrap을 어떻게 이해하는지 보여 줍니다. runtime은 나중 단계에서 module decorator를 반복 해석하지 않습니다. 먼저 안정적인 runtime record로 compile하고, 그 뒤의 로직은 그 compiled record를 소비합니다.
 
@@ -47,10 +143,80 @@ root module type
 
 이 순서는 테스트에서도 드러납니다. `path:packages/runtime/src/bootstrap.test.ts:13-39`는 단순한 graph가 dependency order로 module을 돌려준다는 것을 검증합니다. 기대 순서는 `SharedModule`, 그 다음 `AppModule`입니다. 작은 테스트지만, 이 장의 핵심 규칙을 담고 있습니다. import된 module이 importer보다 먼저 안정화됩니다.
 
+테스트는 import edge 하나만으로도 반환 순서를 고정합니다.
+
+`path:packages/runtime/src/bootstrap.test.ts:13-39`
+```typescript
+  it('boots a simple module graph deterministically', () => {
+    class Logger {}
+
+    class SharedModule {}
+    defineModuleMetadata(SharedModule, {
+      exports: [Logger],
+      providers: [Logger],
+    });
+
+    @Inject(Logger)
+    class AppService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [SharedModule],
+      providers: [AppService],
+    });
+
+    const result = bootstrapModule(AppModule);
+
+    expect(result.modules.map((compiledModule) => compiledModule.type.name)).toEqual([
+      'SharedModule',
+      'AppModule',
+```
+
+여기서 `AppModule`이 root인데도 결과 배열은 `SharedModule`을 먼저 둡니다. DFS post-order가 bootstrap contract로 노출되는 지점입니다.
+
+
 고급 독자가 가져가야 할 핵심 모델은 명확합니다. Fluo bootstrap은 front-loaded되어 있습니다. 뒤쪽 런타임을 단순하고 예측 가능하게 유지하려고 앞단에서 많은 검증을 수행합니다. request handling이 시작될 때는 module order와 token visibility가 이미 증명된 상태입니다.
 
 ## 8.2 Graph compilation is a depth-first walk with explicit cycle rejection
 핵심 compiler는 `path:packages/runtime/src/module-graph.ts:185-233`의 `compileModule()`입니다. 입력 인자만 봐도 알고리즘의 형태가 드러납니다. `compiled`, `visiting`, `ordered` 컬렉션을 받습니다.
+
+함수의 앞부분은 세 컬렉션의 역할을 그대로 보여 줍니다. 이미 컴파일된 module은 재사용하고, 현재 재귀 stack에 있는 module은 cycle로 거부합니다.
+
+`path:packages/runtime/src/module-graph.ts:185-212`
+```typescript
+function compileModule(
+  moduleType: ModuleType,
+  runtimeProviderTokens: Set<Token>,
+  compiled = new Map<ModuleType, CompiledModule>(),
+  visiting = new Set<ModuleType>(),
+  ordered: CompiledModule[] = [],
+) {
+  if (compiled.has(moduleType)) {
+    const existing = compiled.get(moduleType);
+
+    if (existing) {
+      return existing;
+    }
+  }
+
+  if (visiting.has(moduleType)) {
+    throw new ModuleGraphError(
+      `Circular module import detected for ${moduleType.name}.`,
+      {
+        module: moduleType.name,
+        phase: 'module graph compilation',
+        hint: 'Break the import cycle by extracting shared providers into a separate module that both sides can import independently.',
+      },
+    );
+  }
+
+  visiting.add(moduleType);
+```
+
+`compiled`는 이미 닫힌 node cache이고, `visiting`은 현재 열려 있는 DFS stack입니다. 같은 module이 `visiting`에 다시 나타나는 순간은 cycle이므로, runtime은 더 진행하지 않고 `ModuleGraphError`를 던집니다.
+
 
 형식으로는 전형적인 DFS지만, 이 장에서 중요한 것은 이름보다 구현입니다. module type이 이미 `compiled`에 있으면 함수는 기존 compiled record를 재사용합니다. module type이 `visiting`에 있으면 runtime은 즉시 예외를 던집니다.
 
@@ -60,7 +226,60 @@ root module type
 
 module이 cycle 검사를 통과하면, compiler는 `path:packages/runtime/src/module-graph.ts:170-183`의 `normalizeModuleDefinition()`으로 metadata를 정규화합니다. 이 단계는 빠진 field를 빈 배열이나 `false`로 채웁니다. 그래서 이후 단계는 `imports`나 `exports`가 undefined인지 계속 물어볼 필요가 없습니다.
 
+정규화 helper는 decorator metadata를 runtime이 읽기 쉬운 shape으로 바꿉니다.
+
+`path:packages/runtime/src/module-graph.ts:170-183`
+```typescript
+function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getModuleMetadata>): ModuleDefinition {
+  if (!rawDefinition) {
+    return {};
+  }
+
+  return {
+    global: rawDefinition.global ?? false,
+    imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
+    providers: (rawDefinition.providers as Provider[] | undefined) ?? [],
+    controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
+    exports: (rawDefinition.exports as Token[] | undefined) ?? [],
+    middleware: (rawDefinition.middleware as MiddlewareLike[] | undefined) ?? [],
+  };
+}
+```
+
+이 발췌 덕분에 뒤쪽 DFS와 validation이 빈 배열을 기본값으로 삼을 수 있습니다. graph 알고리즘은 metadata 존재 여부가 아니라 정규화된 edge와 surface만 다룹니다.
+
+
 그 다음 재귀는 imported module을 전부 먼저 순회합니다. 모든 import가 compile된 뒤에야 현재 module이 `CompiledModule` record로 만들어집니다. 그리고 마지막에 `ordered`에 push됩니다. 이 push 시점이 관찰되는 순서를 설명합니다. dependency가 dependent보다 먼저 append됩니다.
+
+후반부는 그 post-order 전환을 직접 보여 줍니다.
+
+`path:packages/runtime/src/module-graph.ts:213-232`
+```typescript
+  const definition = normalizeModuleDefinition(getModuleMetadata(moduleType));
+
+  for (const imported of definition.imports ?? []) {
+    compileModule(imported, runtimeProviderTokens, compiled, visiting, ordered);
+  }
+
+  const providerTokens = new Set((definition.providers ?? []).map((provider) => providerToken(provider)));
+
+  const compiledModule: CompiledModule = {
+    type: moduleType,
+    definition,
+    exportedTokens: new Set<Token>(),
+    providerTokens,
+  };
+
+  compiled.set(moduleType, compiledModule);
+  visiting.delete(moduleType);
+  ordered.push(compiledModule);
+
+  return compiledModule;
+}
+```
+
+`visiting.delete()`와 `ordered.push()`가 import recursion 뒤에 나오기 때문에, 현재 module은 자신의 dependency subtree가 닫힌 뒤에만 결과 배열에 들어갑니다. `providerTokens`도 이 시점에 계산되어 이후 export validation의 local ownership 기준이 됩니다.
+
 
 순서를 의사코드로 요약하면 다음과 같습니다.
 
@@ -105,23 +324,213 @@ validation pipeline은 크게 네 조각으로 나뉩니다. 첫째, runtime boo
 
 접근 가능한 token의 공식은 `path:packages/runtime/src/module-graph.ts:263-275`의 `createAccessibleTokenSet()`에 명시되어 있습니다. 한 module의 accessible set은 다음 네 종류의 합집합입니다. runtime provider token, 자기 own local provider token, 직접 import한 module들의 exported token, global module이 export한 token입니다.
 
+공식은 코드에서도 네 입력의 단순한 합집합입니다.
+
+`path:packages/runtime/src/module-graph.ts:263-275`
+```typescript
+function createAccessibleTokenSet(
+  runtimeProviderTokens: Set<Token>,
+  moduleProviderTokens: Set<Token>,
+  importedExportedTokens: Set<Token>,
+  globalExportedTokens: Set<Token>,
+): Set<Token> {
+  return new Set<Token>([
+    ...runtimeProviderTokens,
+    ...moduleProviderTokens,
+    ...importedExportedTokens,
+    ...globalExportedTokens,
+  ]);
+}
+```
+
+이 helper에는 숨은 graph search가 없습니다. 어떤 token이 현재 module에서 보이는지는 이미 계산된 네 set에 들어 있는지로 판정됩니다.
+
+
 이 공식을 문장으로 다시 적는 이유가 있습니다. 이것이 실제 module contract이기 때문입니다. token이 앱 어딘가에 존재한다고 해서 visible해지는 것은 아닙니다. 반드시 이 네 경로 중 하나로 현재 module에 들어와야 합니다.
 
 provider visibility 검사는 `path:packages/runtime/src/module-graph.ts:277-303`의 `validateProviderVisibility()`에서 수행됩니다. 각 provider마다, runtime은 먼저 constructor metadata를 검증하고, 그 다음 dependency token을 순회하며, 접근 불가능한 token이 있으면 `ModuleVisibilityError`를 던집니다.
 
+provider 검사는 raw injection token을 실제 token으로 푼 뒤 accessible set membership만 봅니다.
+
+`path:packages/runtime/src/module-graph.ts:277-303`
+```typescript
+function validateProviderVisibility(
+  compiledModule: CompiledModule,
+  scope: string,
+  accessibleTokens: Set<Token>,
+): void {
+  for (const provider of compiledModule.definition.providers ?? []) {
+    validateProviderInjectionMetadata(provider, scope);
+
+    for (const rawToken of providerDependencies(provider)) {
+      const token = resolveInjectionToken(rawToken);
+
+      if (!accessibleTokens.has(token)) {
+        throw new ModuleVisibilityError(
+          `Provider ${String(providerToken(provider))} in module ${compiledModule.type.name} cannot access token ${String(
+            token,
+          )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          {
+            module: compiledModule.type.name,
+            token,
+            phase: 'provider visibility validation',
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global() to make its exports universally visible.`,
+          },
+        );
+      }
+    }
+  }
+}
+```
+
+이 분기는 visibility 실패의 원인을 module boundary로 제한합니다. token이 존재하는지만 보지 않고, local, imported export, global export 중 어느 경로로 들어왔는지를 accessible set으로 강제합니다.
+
+
 controller visibility는 `path:packages/runtime/src/module-graph.ts:305-331`에서 같은 패턴을 따릅니다. Fluo는 controller에 provider보다 느슨한 privilege model을 주지 않습니다. controller도 같은 import/export topology를 따라야 합니다.
+
+controller 검사는 provider 검사와 같은 membership 모델을 사용합니다.
+
+`path:packages/runtime/src/module-graph.ts:305-331`
+```typescript
+function validateControllerVisibility(
+  compiledModule: CompiledModule,
+  scope: string,
+  accessibleTokens: Set<Token>,
+): void {
+  for (const controller of compiledModule.definition.controllers ?? []) {
+    validateControllerInjectionMetadata(controller, scope);
+
+    for (const rawToken of controllerDependencies(controller)) {
+      const token = resolveInjectionToken(rawToken);
+
+      if (!accessibleTokens.has(token)) {
+        throw new ModuleVisibilityError(
+          `Controller ${controller.name} in module ${compiledModule.type.name} cannot access token ${String(
+            token,
+          )} because it is not local, not exported by an imported module, and not visible through a global module.`,
+          {
+            module: compiledModule.type.name,
+            token,
+            phase: 'controller visibility validation',
+            hint: `Add ${String(token)} to the exports array of the module that owns it, then import that module into ${compiledModule.type.name}. Alternatively, mark the owning module with @Global().`,
+          },
+        );
+      }
+    }
+  }
+}
+```
+
+provider와 controller가 같은 accessible set을 공유한다는 점이 중요합니다. controller라는 이유로 module boundary를 건너뛰는 별도 권한은 없습니다.
+
 
 이 파일의 에러 메시지는 특히 설명력이 높습니다. token이 보이지 않으면 runtime은 owning module에서 export하고 그 module을 import하라고 제안합니다. universal visibility가 목적이라면 owner를 `@Global()`로 표시하라고 안내합니다. 즉 validation은 단순 방어가 아니라, 프레임워크의 architectural teaching을 코드로 담은 계층입니다.
 
 constructor metadata validation도 필수 계층입니다. `path:packages/runtime/src/module-graph.ts:103-129`의 `validateClassInjectionMetadata()`는 required constructor arity와 configured injection token 개수를 비교합니다. metadata가 부족하면, provider instantiation이 시작되기 전에 `ModuleInjectionMetadataError`를 던집니다.
 
+이 검사는 token visibility보다 앞선 더 기본적인 계약입니다. 생성자가 요구하는 인자 수와 명시된 inject token 수가 맞지 않으면 graph validation 안에서 실패합니다.
+
+`path:packages/runtime/src/module-graph.ts:103-129`
+```typescript
+function validateClassInjectionMetadata(
+  subject: string,
+  implementation: Function,
+  inject: readonly InjectionToken[],
+  scope: string,
+  remedy: string,
+): void {
+  const required = requiredConstructorParameters(implementation);
+
+  if (required === 0 || inject.length >= required) {
+    return;
+  }
+
+  const missingIndex = inject.length;
+  const configured = inject.length;
+  const parameterWord = required === 1 ? 'parameter' : 'parameters';
+  const tokenWord = configured === 1 ? 'token is' : 'tokens are';
+
+  throw new ModuleInjectionMetadataError(
+    `${subject} in ${scope} declares ${required} constructor ${parameterWord} but only ${configured} injection ${tokenWord} configured. Add ${remedy} for constructor parameter #${missingIndex}.`,
+    {
+      module: scope,
+      phase: 'injection metadata validation',
+      hint: `Ensure ${subject} has a matching @Inject(...) decorator or provider.inject array that covers all ${required} constructor parameters. Use @Inject() for an explicit empty override.`,
+    },
+  );
+}
+```
+
+이 발췌는 인스턴스 생성 실패를 나중 DI 단계로 미루지 않는 이유를 보여 줍니다. module graph validation은 “보이는가”뿐 아니라 “해석할 metadata가 충분한가”도 함께 판정합니다.
+
+
 테스트가 이 규칙들을 고정합니다. `path:packages/runtime/src/bootstrap.test.ts:41-59`는 export되지 않은 provider가 module 경계를 넘지 못함을 보여 줍니다. `path:packages/runtime/src/bootstrap.test.ts:61-75`는 `@Inject(...)` metadata 누락을 거부합니다. `path:packages/runtime/src/bootstrap.test.ts:105-120`은 같은 규칙을 controller에도 적용합니다.
 
 export validation은 `path:packages/runtime/src/module-graph.ts:333-358`의 `createExportedTokenSet()`에서 수행됩니다. 규칙은 엄격합니다. module은 token이 local provider이거나, import한 module에서 re-export된 경우에만 export할 수 있습니다. 그 외는 허용되지 않습니다.
 
+export surface를 만드는 helper는 이 규칙을 한 루프로 강제합니다.
+
+`path:packages/runtime/src/module-graph.ts:333-358`
+```typescript
+function createExportedTokenSet(
+  compiledModule: CompiledModule,
+  importedExportedTokens: Set<Token>,
+): Set<Token> {
+  const exportedTokens = new Set<Token>();
+
+  for (const token of compiledModule.definition.exports ?? []) {
+    if (!compiledModule.providerTokens.has(token) && !importedExportedTokens.has(token)) {
+      throw new ModuleVisibilityError(
+        `Module ${compiledModule.type.name} cannot export token ${String(
+          token,
+        )} because it is neither local nor re-exported from an imported module.`,
+        {
+          module: compiledModule.type.name,
+          token,
+          phase: 'export validation',
+          hint: `Either add a provider for ${String(token)} to ${compiledModule.type.name}'s providers array, or import a module that exports ${String(token)} so it can be re-exported.`,
+        },
+      );
+    }
+
+    exportedTokens.add(token);
+  }
+
+  return exportedTokens;
+}
+```
+
+`providerTokens`와 `importedExportedTokens`가 모두 실패할 때만 예외가 납니다. 따라서 public surface는 local ownership 또는 valid re-export 중 하나로 설명되어야 합니다.
+
+
 이 규칙은 미묘한 문서 drift를 막습니다. module이 실제로 등록하지 않은 token을 자기 public surface처럼 주장할 수 없게 합니다. public surface는 실제 graph edge와 일치해야 합니다.
 
 validation 흐름은 다음과 같이 그릴 수 있습니다.
+
+실제 validation loop는 그 네 단계를 같은 순서로 실행합니다.
+
+`path:packages/runtime/src/module-graph.ts:382-396`
+```typescript
+  for (const compiledModule of modules) {
+    const scope = `module ${compiledModule.type.name}`;
+    const importedModules = resolveImportedModules(compiledModule, compiledByType);
+    const importedExportedTokens = createImportedExportedTokenSet(importedModules);
+    const accessibleTokens = createAccessibleTokenSet(
+      runtimeProviderTokens,
+      compiledModule.providerTokens,
+      importedExportedTokens,
+      globalExportedTokens,
+    );
+
+    validateProviderVisibility(compiledModule, scope, accessibleTokens);
+    validateControllerVisibility(compiledModule, scope, accessibleTokens);
+    compiledModule.exportedTokens = createExportedTokenSet(compiledModule, importedExportedTokens);
+  }
+}
+```
+
+이 loop는 imported module의 exported token을 먼저 모으고, accessible set을 만든 뒤, provider, controller, export 순서로 검사합니다. 마지막 assignment가 끝나야 `compiledModule.exportedTokens`가 다음 importer에게 신뢰 가능한 public surface가 됩니다.
+
 
 ```text
 for each compiled module:
@@ -142,9 +551,88 @@ graph가 compile되면, `path:packages/runtime/src/bootstrap.ts:372-398`의 `boo
 
 여기서 가장 흥미로운 helper는 `path:packages/runtime/src/bootstrap.ts:262-312`의 `collectProvidersForContainer()`입니다. 이 함수는 runtime provider와 module provider를 token 기준의 selected-provider map으로 합칩니다. 여기서는 multi-version 공존을 시도하지 않습니다. token마다 승자 하나만 선택합니다.
 
+helper의 시작은 runtime provider를 같은 selected map에 먼저 넣습니다.
+
+`path:packages/runtime/src/bootstrap.ts:262-278`
+```typescript
+function collectProvidersForContainer(
+  modules: CompiledModule[],
+  runtimeProviders: Provider[] | undefined,
+  policy: DuplicateProviderPolicy,
+  logger?: ApplicationLogger,
+): Provider[] {
+  const selectedProviders = new Map<Token, SelectedProviderEntry>();
+
+  for (const runtimeProvider of runtimeProviders ?? []) {
+    const token = providerToken(runtimeProvider);
+    selectedProviders.set(token, {
+      moduleName: '<runtime>',
+      provider: runtimeProvider,
+      source: 'runtime',
+      token,
+    });
+  }
+```
+
+runtime provider도 token key로 선택되지만, 뒤쪽 filter에서 module provider 중 runtime token과 겹치는 항목은 빠집니다. 그래서 bootstrap 전용 token이 module provider와 섞여 중복 등록되지 않습니다.
+
+
 duplicate policy는 `path:packages/runtime/src/types.ts:33-39`의 `BootstrapModuleOptions`에서 옵니다. 허용 값은 `'warn'`, `'throw'`, `'ignore'`입니다. `bootstrapModule()`은 `path:packages/runtime/src/bootstrap.ts:375`에서 기본값을 `'warn'`으로 둡니다.
 
+옵션 타입은 duplicate policy가 graph compile 옵션과 같은 저수준 bootstrap 계약에 속한다는 점을 보여 줍니다.
+
+`path:packages/runtime/src/types.ts:33-39`
+```typescript
+/** Low-level options used while compiling the runtime module graph. */
+export interface BootstrapModuleOptions {
+  duplicateProviderPolicy?: 'warn' | 'throw' | 'ignore';
+  logger?: ApplicationLogger;
+  providers?: Provider[];
+  validationTokens?: Token[];
+}
+```
+
+이 옵션은 graph validation 자체뿐 아니라, graph가 승인된 뒤 provider selection을 어떻게 다룰지도 함께 전달합니다.
+
+
 두 module이 같은 token을 등록하면, runtime은 `path:packages/runtime/src/bootstrap.ts:257-260`의 `createDuplicateProviderMessage()`를 사용한 뒤 policy에 따라 분기합니다. `'throw'`는 `DuplicateProviderError`를 던지고, `'warn'`은 로그를 남기고 계속 진행하며, `'ignore'`는 조용히 나중 registration을 승자로 둡니다.
+
+module provider 순회 부분은 duplicate 감지와 last write를 같은 루프 안에서 처리합니다.
+
+`path:packages/runtime/src/bootstrap.ts:280-308`
+```typescript
+  for (const compiledModule of modules) {
+    for (const provider of compiledModule.definition.providers ?? []) {
+      const token = providerToken(provider);
+      const existing = selectedProviders.get(token);
+
+      if (existing && existing.source === 'module') {
+        const message = createDuplicateProviderMessage(token, compiledModule.type.name, existing.moduleName);
+
+        if (policy === 'throw') {
+          throw new DuplicateProviderError(message, {
+            module: compiledModule.type.name,
+            token,
+            phase: 'provider registration',
+            hint: `Remove the duplicate registration from one of the modules, use container.override() for intentional replacements, or set duplicateProviderPolicy to 'warn' or 'ignore'.`,
+          });
+        }
+
+        if (policy === 'warn') {
+          logger?.warn(message, 'BootstrapModule');
+        }
+      }
+
+      selectedProviders.set(token, {
+        moduleName: compiledModule.type.name,
+        provider,
+        source: 'module',
+        token,
+      });
+```
+
+`selectedProviders.set()`이 항상 루프 끝에서 실행되므로, throw가 아닌 정책에서는 나중 module provider가 map의 값을 바꿉니다. 이 때문에 duplicate 허용 모드는 deterministic last write wins입니다.
+
 
 여기서 중요한 구현 포인트는 selection order입니다. `collectProvidersForContainer()`는 compiled module을 dependency order로 순회하지만, map에 나중 write가 이전 write를 덮어쓰기 때문에, 마지막에 만난 provider token이 승리합니다. 즉 설계가 좋지 않을 수는 있어도, 동작은 deterministic합니다.
 
@@ -163,6 +651,47 @@ register middleware constructor tokens last
 
 controller 단계는 `path:packages/runtime/src/bootstrap.ts:314-320`의 `registerControllers()`가 담당합니다. middleware 단계는 `path:packages/runtime/src/bootstrap.ts:330-348`의 `registerModuleMiddleware()`가 담당합니다. 이 마지막 helper가 중요한 이유는 middleware constructor도 DI에 참여할 수 있기 때문입니다.
 
+controller 등록은 compiled module order를 그대로 순회합니다.
+
+`path:packages/runtime/src/bootstrap.ts:314-320`
+```typescript
+function registerControllers(container: Container, modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    for (const controller of compiledModule.definition.controllers ?? []) {
+      container.register(controller);
+    }
+  }
+}
+```
+
+middleware 등록도 같은 modules 배열을 사용하되, class token과 route config 안의 constructor만 DI token으로 등록합니다.
+
+`path:packages/runtime/src/bootstrap.ts:330-348`
+```typescript
+function registerModuleMiddleware(container: Container, modules: CompiledModule[]): void {
+  for (const compiledModule of modules) {
+    for (const middleware of compiledModule.definition.middleware ?? []) {
+      if (typeof middleware === 'object' && middleware !== null && 'middleware' in middleware && 'routes' in middleware) {
+        const middlewareToken = (middleware as { middleware: unknown; routes: unknown }).middleware;
+
+        if (typeof middlewareToken === 'function') {
+          registerMiddlewareToken(container, middlewareToken);
+        }
+
+        continue;
+      }
+
+      if (typeof middleware === 'function') {
+        registerMiddlewareToken(container, middleware);
+      }
+    }
+  }
+}
+```
+
+이 발췌는 middleware object 전체를 provider로 취급하지 않는다는 점을 보여 줍니다. DI에 참여할 수 있는 constructor token만 컨테이너에 들어갑니다.
+
+
 `path:packages/runtime/src/bootstrap.test.ts:223-287`은 이 동작을 고정합니다. middleware class token은 container에 등록되고, `{ middleware, routes }` 형태의 route-scoped middleware도 마찬가지입니다. 반면 plain object middleware는 건너뜁니다. 이 덕분에 factory-style middleware를 유지하면서도 모든 middleware를 DI type인 척하지 않습니다.
 
 여기서의 module-order analysis는 단순하지만 중요합니다. compiled module list는 dependency-first이므로 provider selection은 importer보다 imported module을 먼저 봅니다. 따라서 duplicate policy가 허용할 경우, 나중의 importer module이 imported token을 의도적으로 덮어쓸 수 있습니다. runtime은 임의로 고르지 않습니다. dependency-ordered traversal 위에서 last-write-wins를 수행합니다.
@@ -180,13 +709,89 @@ module graph order는 initialization order의 절반에 불과합니다. registr
 
 `path:packages/runtime/src/bootstrap.ts:666-688`의 `resolveLifecycleInstances()`가 바로 eager instantiation policy를 명시하는 곳입니다. request scope와 transient provider는 건너뜁니다. token 기준으로 중복을 제거합니다. 그리고 singleton provider만 즉시 resolve합니다.
 
+이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
+
+`path:packages/runtime/src/bootstrap.ts:666-688`
+```typescript
+async function resolveLifecycleInstances(container: Container, providers: Provider[]): Promise<unknown[]> {
+  const instances: unknown[] = [];
+  const seen = new Set<Token>();
+
+  for (const provider of providers) {
+    const scope = providerScope(provider);
+
+    if (scope === 'request' || scope === 'transient') {
+      continue;
+    }
+
+    const token = providerToken(provider);
+
+    if (seen.has(token)) {
+      continue;
+    }
+
+    seen.add(token);
+    instances.push(await container.resolve(token));
+  }
+
+  return instances;
+}
+```
+
+그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. singleton 후보만 token 중복 제거를 거친 뒤 eager resolve 대상이 됩니다.
+
+
 즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 instantiate한다"가 아닙니다. "lifecycle hook에 참여할 수 있는 unique singleton provider를 eager하게 instantiate한다"에 가깝습니다. 이 정책이 더 제한적이고, 더 감사 가능하며, 무엇보다 구현 추적이 쉽습니다.
 
 셋째, `path:packages/runtime/src/bootstrap.ts:830-840`의 `runBootstrapLifecycle()`이 실제 start sequence를 조율합니다. readiness marker를 reset하고, bootstrap hook을 실행하고, platform shell을 시작하고, readiness를 표시하고, compiled module 로그를 남깁니다.
 
 내부 hook ordering은 `path:packages/runtime/src/bootstrap.ts:693-705`의 `runBootstrapHooks()`에 있습니다. 모든 `onModuleInit()` hook이 먼저 실행됩니다. 그 pass가 끝난 뒤에야 모든 `onApplicationBootstrap()` hook이 실행됩니다. 즉 전역적인 phase barrier가 있습니다. instance별 interleave가 아닙니다.
 
+bootstrap hook runner는 두 번의 pass로 phase barrier를 만듭니다.
+
+`path:packages/runtime/src/bootstrap.ts:693-705`
+```typescript
+async function runBootstrapHooks(instances: unknown[]): Promise<void> {
+  for (const instance of instances) {
+    if (isOnModuleInit(instance)) {
+      await instance.onModuleInit();
+    }
+  }
+
+  for (const instance of instances) {
+    if (isOnApplicationBootstrap(instance)) {
+      await instance.onApplicationBootstrap();
+    }
+  }
+}
+```
+
+한 instance의 두 hook을 붙여 실행하지 않고, 모든 module init을 먼저 끝냅니다. 이 구조가 lifecycle phase를 전역적으로 분리합니다.
+
+
 shutdown ordering은 거울상입니다. `path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`는 instance를 역순으로 순회하면서, 먼저 모든 `onModuleDestroy()`를 실행하고, 그 다음 모든 `onApplicationShutdown()`을 실행합니다.
+
+종료 hook은 같은 phase 분리를 유지하되 instance 순서만 뒤집습니다.
+
+`path:packages/runtime/src/bootstrap.ts:710-722`
+```typescript
+async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  for (const instance of [...instances].reverse()) {
+    if (isOnModuleDestroy(instance)) {
+      await instance.onModuleDestroy();
+    }
+  }
+
+  for (const instance of [...instances].reverse()) {
+    if (isOnApplicationShutdown(instance)) {
+      await instance.onApplicationShutdown(signal);
+    }
+  }
+}
+```
+
+이 발췌는 startup과 shutdown이 같은 lifecycle model을 공유한다는 점을 보여 줍니다. 시작은 정방향 두 pass이고, 종료는 역방향 두 pass입니다.
+
 
 application test가 이 계약을 증명합니다. `path:packages/runtime/src/application.test.ts:175-235`는 정확한 순서를 기록합니다. `module:init`, `app:bootstrap`, 그리고 close 시 `module:destroy`, `app:shutdown:SIGTERM`, 마지막으로 adapter close입니다.
 
