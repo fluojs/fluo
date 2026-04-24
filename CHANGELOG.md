@@ -54,6 +54,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Root release documentation now removes draft release-readiness placeholder text, uses the current public CLI commands (`fluo new`, `fluo g`) and package name (`@fluojs/websockets`), and aligns the documented Node.js baseline with the `>=20.0.0` contract declared by the root and published package manifests.
 
+## [0.0.0-beta.1] - 2026-04-24
+
+### Changed
+
+- `@fluojs/core`: prepared the package for the first npm seed beta release without changing runtime behavior.
+- `@fluojs/core`: aligned the package manifest version with the single-package release workflow inputs for beta publication.
+
 ## [0.0.0] - 2026-03-11
 
 ### Breaking changes
