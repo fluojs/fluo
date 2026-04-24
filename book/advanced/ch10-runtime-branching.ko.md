@@ -19,7 +19,7 @@
 - Node 서버와 Web 표준 Request/Response 모델의 기본 차이 이해.
 
 ## 10.1 Fluo branches by package surface and adapter seams more than by giant runtime conditionals
-Chapter 10에 오면 가장 먼저 봐야 할 사실은, Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 더 좁고, 훨씬 더 아키텍처적입니다.
+Chapter 10에서 가장 먼저 볼 사실은 Fluo의 runtime portability가 하나의 거대한 `if (isNode) ... else if (isEdge) ...` 블록으로 구현되지 않는다는 점입니다. branch point는 훨씬 좁고, 더 아키텍처적인 위치에 있습니다.
 
 `path:packages/runtime/src/bootstrap.ts:920-1202`의 핵심 bootstrap logic 대부분은 transport-neutral합니다. module graph를 compile하고, DI container를 만들고, runtime token을 등록하고, lifecycle instance를 resolve하고, hook을 실행하고, application/context shell을 조립합니다. 이 코드 어디에도 Node인지, Web platform인지, edge runtime인지 묻는 거대한 분기문은 없습니다.
 
@@ -72,7 +72,7 @@ subpaths:
 이 설계는 portability mistake를 눈에 띄게 만듭니다. application code가 Node helper를 import한다면, 그 import path 자체가 이미 portability cost를 선언하고 있는 셈입니다.
 
 ## 10.3 The Node branch packages server lifecycle, retries, compression, and shutdown behind the ./node subpath
-public Node entrypoint는 `path:packages/runtime/src/node.ts:1-18`입니다. 이 파일은 logger factory와 `./node/internal-node.js`의 일부 API만 re-export합니다. 파일이 아주 작다는 사실 자체가 의미심장합니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
+public Node entrypoint는 `path:packages/runtime/src/node.ts:1-18`입니다. 이 파일은 logger factory와 `./node/internal-node.js`의 일부 API만 re-export합니다. 파일이 아주 작다는 사실 자체가 의미 있습니다. Node branch는 깊은 구현 파일 위에 놓인 curated façade에 가깝습니다.
 
 실제 구현은 `path:packages/runtime/src/node/internal-node.ts:1-421`에 있습니다. 여기서야 비로소 runtime은 root runtime이 가정할 수 없는 capability를 직접 다룹니다. Node HTTP/HTTPS server, sockets, listen retry behavior, compression wiring, process-signal shutdown helper가 모두 이 파일에 있습니다.
 
@@ -107,7 +107,7 @@ internally
   -> optional compression wiring
 ```
 
-여기서 중요한 아키텍처 포인트는 단순히 Node가 special helper를 가진다는 사실이 아닙니다. 그 helper를 root runtime surface를 오염시키지 않고도 제공한다는 사실입니다.
+여기서 중요한 아키텍처 포인트는 단순히 Node가 special helper를 가진다는 사실이 아닙니다. 그 helper를 root runtime surface를 오염시키지 않고 제공한다는 사실입니다.
 
 ## 10.4 The Web and Edge branch reuse the Web-standard Request/Response seam instead of inventing separate runtimes
 Web branch는 `path:packages/runtime/src/web.ts:1-606`에 있습니다. 역할은 bootstrap을 다시 구현하는 것이 아닙니다. native Web `Request`와 `Response` semantics를 Fluo의 framework request/response contract로 정규화하는 것입니다.
@@ -137,16 +137,16 @@ Edge host:
 
 바뀌는 것은 transport edge입니다. 그 위에 있는 shared dispatcher와 더 높은 runtime shell은 그대로 유지됩니다.
 
-바로 이것이 portability win입니다. Fluo는 Node용 dispatcher와 Edge용 dispatcher를 따로 둘 필요가 없습니다. raw transport family마다 normalization seam 하나면 충분합니다.
+이것이 portability 측면의 핵심 이점입니다. Fluo는 Node용 dispatcher와 Edge용 dispatcher를 따로 둘 필요가 없습니다. raw transport family마다 normalization seam 하나면 충분합니다.
 
 ## 10.5 Shared request/response factories are the narrow bridge that keeps higher runtime behavior identical across hosts
-전체 branching 이야기를 한 번에 이해하게 해 주는 파일은 `path:packages/runtime/src/adapters/request-response-factory.ts:1-63`입니다. 이 파일이 raw I/O와 framework dispatcher 사이의 host-agnostic bridge입니다.
+전체 branching 구조를 한 번에 이해하게 해 주는 파일은 `path:packages/runtime/src/adapters/request-response-factory.ts:1-63`입니다. 이 파일이 raw I/O와 framework dispatcher 사이의 host-agnostic bridge입니다.
 
 `RequestResponseFactory` interface는 단 다섯 가지만 요구합니다. raw request로부터 framework request를 만들 것, raw response나 host primitive로부터 abort signal을 만들 것, framework response를 만들 것, request id를 해석할 것, error response를 쓸 것입니다.
 
 그 위에서 `dispatchWithRequestResponseFactory()`가 나머지를 담당합니다. framework response를 만들고, abort signal을 얻고, framework request를 만들고, dispatcher가 준비되지 않았으면 throw하며, request를 dispatch하고, 아무 것도 commit되지 않았으면 빈 응답을 자동으로 보내고, 실패 시 signal이 이미 abort되었거나 response가 이미 committed된 경우를 제외하고는 normalized error response를 기록합니다.
 
-이 helper가 runtime branching의 진짜 anti-duplication seam입니다. Node branch와 Web branch는 각각 dispatcher invocation, empty-response fallback, error-serialization flow를 따로 구현하지 않습니다. 서로 다른 factory만 공급합니다.
+이 helper가 runtime branching의 실제 anti-duplication seam입니다. Node branch와 Web branch는 각각 dispatcher invocation, empty-response fallback, error-serialization flow를 따로 구현하지 않습니다. 서로 다른 factory만 공급합니다.
 
 대칭 구조는 source에서 바로 보입니다. Node의 `createNodeRequestResponseFactory()`는 `path:packages/runtime/src/node/internal-node.ts:196-238`에 있고, Web의 `createWebRequestResponseFactory()`는 `path:packages/runtime/src/web.ts:246-274`에 있습니다. 둘 다 같은 interface를 반환하고, 둘 다 이후에는 `dispatchWithRequestResponseFactory()`에 의해 소비됩니다.
 
@@ -164,10 +164,9 @@ host-specific factory
 
 이 점은 앞서 본 export boundary도 설명해 줍니다. 진짜 host-specific code가 request/response factory 아래쪽에 있기 때문에, root barrel은 portable하게 유지될 수 있습니다.
 
-따라서 10장의 마지막 교훈은 import hygiene보다 더 넓습니다. Fluo의 runtime branching이 성립하는 이유는, framework가 대부분의 bootstrap을 host-agnostic하게 만든 뒤, 아주 늦은 시점의 좁은 transport seam에서만 분기하기 때문입니다. Node는 server lifecycle helper를 받고, Web/Edge host는 Request/Response normalization helper를 받습니다. 하지만 그 seam 위에서는 module graph, container, lifecycle hook, platform shell, dispatcher model이 동일합니다.
+따라서 10장의 마지막 결론은 import hygiene보다 넓습니다. Fluo의 runtime branching이 성립하는 이유는 framework가 대부분의 bootstrap을 host-agnostic하게 만든 뒤, 아주 늦은 시점의 좁은 transport seam에서만 분기하기 때문입니다. Node는 server lifecycle helper를 받고, Web/Edge host는 Request/Response normalization helper를 받습니다. 하지만 그 seam 위에서는 module graph, container, lifecycle hook, platform shell, dispatcher model이 동일합니다.
 
 이것이 내부 portability contract입니다. "호스트당 하나의 런타임"이 아니라, "가장자리에 명시적인 호스트 어댑터가 있는 하나의 공유 런타임 셸"입니다.
-
 
 
 

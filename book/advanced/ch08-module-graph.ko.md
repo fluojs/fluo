@@ -3,7 +3,7 @@
 
 # Chapter 8. Module Graph Compilation and Initialization Order
 
-이 장은 Fluo 런타임이 실제 인스턴스를 만들기 전에 모듈 그래프를 먼저 컴파일하고 검증하는 이유를 설명합니다. Chapter 7이 동적 모듈의 생산 방식을 다뤘다면, 이 장은 그렇게 만들어진 모듈들이 어떤 순서와 규칙으로 부트스트랩되는지 연결합니다.
+이 장은 Fluo 런타임이 실제 인스턴스를 만들기 전에 모듈 그래프를 먼저 컴파일하고 검증하는 이유를 다룹니다. Chapter 7이 동적 모듈을 만들어 내는 방식을 설명했다면, 이 장은 그렇게 만들어진 모듈이 어떤 순서와 규칙으로 부트스트랩되는지 이어서 정리합니다.
 
 ## Learning Objectives
 - `compileModuleGraph()`가 모듈 위상을 확정하는 과정을 설명합니다.
@@ -19,11 +19,11 @@
 - 깊이 우선 탐색과 위상 정렬의 기본 개념.
 
 ## 8.1 The bootstrap pipeline starts by freezing module topology before constructing anything
-Part 3는 Part 2가 멈춘 지점에서 다시 시작합니다. DI container가 provider를 해석하려면, 그보다 먼저 runtime이 어떤 module이 존재하는지, 어떤 순서로 visible해지는지, 그리고 어떤 token이 module 경계를 넘어도 되는지를 결정해야 합니다.
+Part 3는 Part 2가 멈춘 지점에서 다시 시작합니다. DI container가 provider를 해석하려면, runtime은 그보다 먼저 어떤 module이 존재하는지, 어떤 순서로 visible해지는지, 어떤 token이 module 경계를 넘어도 되는지 결정해야 합니다.
 
-이 첫 단계는 `path:packages/runtime/src/bootstrap.ts:372-398`에 있습니다. `bootstrapModule()`은 `Container`를 만들기 전에 먼저 `compileModuleGraph(rootModule, options)`를 호출합니다. 이 순서가 이 장의 첫 번째 구현 사실입니다. module analysis는 container registration의 부수 효과가 아닙니다. 그 선행 조건입니다.
+첫 단계는 `path:packages/runtime/src/bootstrap.ts:372-398`에 있습니다. `bootstrapModule()`은 `Container`를 만들기 전에 `compileModuleGraph(rootModule, options)`를 먼저 호출합니다. 이 순서가 이 장의 첫 번째 구현 사실입니다. module analysis는 container registration의 부수 효과가 아니라, 그 선행 조건입니다.
 
-따라서 runtime은 bootstrap을 두 겹의 graph로 다룹니다. 먼저 module graph가 있고, 그 다음 DI container 내부의 provider graph가 있습니다. 바깥 graph가 잘못되면, 안쪽 graph는 시작조차 하지 않습니다.
+따라서 runtime은 bootstrap을 두 겹의 graph로 봅니다. 바깥에는 module graph가 있고, 그 안에 DI container의 provider graph가 있습니다. 바깥 graph가 잘못되면 안쪽 graph는 시작하지 않습니다.
 
 같은 phase boundary는 더 높은 application bootstrap에서도 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`은 module bootstrap, runtime token registration, lifecycle singleton resolution, hook execution을 끝낸 뒤에야 dispatcher를 만듭니다. runtime은 unresolved module topology 위에 request handling state를 얹지 않습니다.
 
@@ -47,16 +47,16 @@ root module type
 
 이 순서는 테스트에서도 드러납니다. `path:packages/runtime/src/bootstrap.test.ts:13-39`는 단순한 graph가 dependency order로 module을 돌려준다는 것을 검증합니다. 기대 순서는 `SharedModule`, 그 다음 `AppModule`입니다. 작은 테스트지만, 이 장의 핵심 규칙을 담고 있습니다. import된 module이 importer보다 먼저 안정화됩니다.
 
-고급 독자가 가져가야 할 정신 모델은 이렇습니다. Fluo bootstrap은 front-loaded되어 있습니다. 나중 런타임을 지루할 정도로 단순하게 만들기 위해 초반에 많이 검증합니다. request handling이 시작될 때는, module order와 token visibility가 이미 증명된 상태입니다.
+고급 독자가 가져가야 할 핵심 모델은 명확합니다. Fluo bootstrap은 front-loaded되어 있습니다. 뒤쪽 런타임을 단순하고 예측 가능하게 유지하려고 앞단에서 많은 검증을 수행합니다. request handling이 시작될 때는 module order와 token visibility가 이미 증명된 상태입니다.
 
 ## 8.2 Graph compilation is a depth-first walk with explicit cycle rejection
 핵심 compiler는 `path:packages/runtime/src/module-graph.ts:185-233`의 `compileModule()`입니다. 입력 인자만 봐도 알고리즘의 형태가 드러납니다. `compiled`, `visiting`, `ordered` 컬렉션을 받습니다.
 
-형식적으로는 전형적인 DFS지만, 이 장에서 중요한 것은 라벨보다 구현입니다. module type이 이미 `compiled`에 있으면, 함수는 기존 compiled record를 재사용합니다. module type이 `visiting`에 있으면, runtime은 즉시 예외를 던집니다.
+형식으로는 전형적인 DFS지만, 이 장에서 중요한 것은 이름보다 구현입니다. module type이 이미 `compiled`에 있으면 함수는 기존 compiled record를 재사용합니다. module type이 `visiting`에 있으면 runtime은 즉시 예외를 던집니다.
 
 정확한 throw site는 `path:packages/runtime/src/module-graph.ts:200-208`입니다. 에러는 `ModuleGraphError`이고, 메시지는 `Circular module import detected for ${moduleType.name}.`입니다. hint는 shared provider를 별도 module로 추출하라고 권장합니다.
 
-이 hint는 그냥 친절한 문구가 아닙니다. runtime이 module cycle을 구조 문제로 본다는 뜻입니다. lazy token trick으로 때우는 문제가 아닙니다. 이 점은 DI 패키지의 provider-level `forwardRef()`와 분명히 다릅니다.
+이 hint는 단순한 안내 문구가 아닙니다. runtime이 module cycle을 구조 문제로 본다는 뜻입니다. lazy token trick으로 덮을 문제가 아닙니다. 이 점은 DI 패키지의 provider-level `forwardRef()`와 분명히 다릅니다.
 
 module이 cycle 검사를 통과하면, compiler는 `path:packages/runtime/src/module-graph.ts:170-183`의 `normalizeModuleDefinition()`으로 metadata를 정규화합니다. 이 단계는 빠진 field를 빈 배열이나 `false`로 채웁니다. 그래서 이후 단계는 `imports`나 `exports`가 undefined인지 계속 물어볼 필요가 없습니다.
 
@@ -105,13 +105,13 @@ validation pipeline은 크게 네 조각으로 나뉩니다. 첫째, runtime boo
 
 접근 가능한 token의 공식은 `path:packages/runtime/src/module-graph.ts:263-275`의 `createAccessibleTokenSet()`에 명시되어 있습니다. 한 module의 accessible set은 다음 네 종류의 합집합입니다. runtime provider token, 자기 own local provider token, 직접 import한 module들의 exported token, global module이 export한 token입니다.
 
-이 공식을 문장으로 다시 적는 이유가 있습니다. 이것이 실제 module contract이기 때문입니다. token이 앱 어딘가에 존재한다고 해서 visible한 것이 아닙니다. 반드시 이 네 경로 중 하나로 현재 module에 들어와야 합니다.
+이 공식을 문장으로 다시 적는 이유가 있습니다. 이것이 실제 module contract이기 때문입니다. token이 앱 어딘가에 존재한다고 해서 visible해지는 것은 아닙니다. 반드시 이 네 경로 중 하나로 현재 module에 들어와야 합니다.
 
 provider visibility 검사는 `path:packages/runtime/src/module-graph.ts:277-303`의 `validateProviderVisibility()`에서 수행됩니다. 각 provider마다, runtime은 먼저 constructor metadata를 검증하고, 그 다음 dependency token을 순회하며, 접근 불가능한 token이 있으면 `ModuleVisibilityError`를 던집니다.
 
 controller visibility는 `path:packages/runtime/src/module-graph.ts:305-331`에서 같은 패턴을 따릅니다. Fluo는 controller에 provider보다 느슨한 privilege model을 주지 않습니다. controller도 같은 import/export topology를 따라야 합니다.
 
-이 파일의 에러 메시지는 특히 교육적입니다. token이 보이지 않으면, runtime은 owning module에서 export하고 그 module을 import하라고 제안합니다. 또는 universal visibility가 목적이라면 owner를 `@Global()`로 표시하라고 안내합니다. 즉 validation은 단순 방어가 아니라, 프레임워크의 architectural teaching을 코드로 담은 계층입니다.
+이 파일의 에러 메시지는 특히 설명력이 높습니다. token이 보이지 않으면 runtime은 owning module에서 export하고 그 module을 import하라고 제안합니다. universal visibility가 목적이라면 owner를 `@Global()`로 표시하라고 안내합니다. 즉 validation은 단순 방어가 아니라, 프레임워크의 architectural teaching을 코드로 담은 계층입니다.
 
 constructor metadata validation도 필수 계층입니다. `path:packages/runtime/src/module-graph.ts:103-129`의 `validateClassInjectionMetadata()`는 required constructor arity와 configured injection token 개수를 비교합니다. metadata가 부족하면, provider instantiation이 시작되기 전에 `ModuleInjectionMetadataError`를 던집니다.
 
@@ -165,7 +165,7 @@ controller 단계는 `path:packages/runtime/src/bootstrap.ts:314-320`의 `regist
 
 `path:packages/runtime/src/bootstrap.test.ts:223-287`은 이 동작을 고정합니다. middleware class token은 container에 등록되고, `{ middleware, routes }` 형태의 route-scoped middleware도 마찬가지입니다. 반면 plain object middleware는 건너뜁니다. 이 덕분에 factory-style middleware를 유지하면서도 모든 middleware를 DI type인 척하지 않습니다.
 
-여기서의 module-order analysis는 단순하지만 중요합니다. compiled module list는 dependency-first이므로, provider selection은 importer보다 imported module을 먼저 봅니다. 따라서 duplicate policy가 허용할 경우, 나중의 importer module이 imported token을 의도적으로 덮어쓸 수 있습니다. runtime은 임의가 아닙니다. dependency-ordered traversal 위에서 last-write-wins를 수행합니다.
+여기서의 module-order analysis는 단순하지만 중요합니다. compiled module list는 dependency-first이므로 provider selection은 importer보다 imported module을 먼저 봅니다. 따라서 duplicate policy가 허용할 경우, 나중의 importer module이 imported token을 의도적으로 덮어쓸 수 있습니다. runtime은 임의로 고르지 않습니다. dependency-ordered traversal 위에서 last-write-wins를 수행합니다.
 
 따라서 8장의 중간 결론은 이렇습니다. graph compiler가 합법적인 topology를 결정하고, `bootstrapModule()`은 그 topology를 explicit duplicate semantics와 함께 container에 재생합니다.
 
@@ -207,20 +207,20 @@ compile module graph
 
 `path:packages/runtime/src/bootstrap.test.ts:522-629`의 application-context 테스트는 HTTP adapter가 없어도 같은 lifecycle sequence가 유지됨을 보여 줍니다. 즉 initialization order는 transport startup에 속한 것이 아니라, runtime shell 자체에 속합니다. 이 구분이 바로 8장의 진짜 마무리입니다. Fluo에서 "module initialization order"는 단순한 topological sorting이 아닙니다. 더 구체적인 계층화된 모델입니다.
 
-첫째, **모듈 그래프의 컴파일 타임 순서**가 있습니다. 여기서 순환 의존성이 거부되고 가시성 경계가 그려집니다. 단 하나의 생성자도 호출되기 전에 애플리케이션이 여기서 실패한다면, `@Module()` 임포트의 구조적 결함을 보고 있을 가능성이 높습니다. `compileModule()` 알고리즘은 모듈의 전체 의존성 하위 트리가 완전히 이해되고 검증될 때까지 어떤 모듈도 컨테이너에 들어가지 않도록 보장합니다. 이는 일부 모듈은 자신의 익스포트를 알고 있지만 다른 모듈은 그렇지 못한 "부분적 그래프" 상태를 방지하여, 후속 등록 단계에 대해 일관된 세계관을 유지합니다. 이 단계에서 `providerTokens`와 `exportedTokens`를 미리 계산하는 것은 전체 컨테이너 설정의 청사진 역할을 합니다.
+첫째, **모듈 그래프의 컴파일 타임 순서**가 있습니다. 여기서 순환 의존성이 거부되고 가시성 경계가 그려집니다. 생성자가 하나도 호출되기 전에 애플리케이션이 여기서 실패한다면, `@Module()` import 구조에 결함이 있을 가능성이 큽니다. `compileModule()` 알고리즘은 모듈의 전체 의존성 하위 트리가 이해되고 검증될 때까지 어떤 모듈도 컨테이너에 들어가지 않도록 보장합니다. 그 결과 일부 모듈만 자신의 export를 알고 다른 모듈은 모르는 "부분적 그래프" 상태를 피하고, 후속 등록 단계에 일관된 세계관을 넘길 수 있습니다. 이 단계에서 `providerTokens`와 `exportedTokens`를 미리 계산하는 일은 전체 컨테이너 설정의 청사진을 만드는 작업입니다.
 
-둘째, **토큰 등록 순서**가 있습니다. 런타임이 컴파일된 모듈 레코드를 순회하면서 프로바이더 정의를 DI 컨테이너에 공급합니다. 이는 평면적이고 추가적인 프로세스이지만, 컴파일 중에 설정된 위상 순서(topological order)에 의해 제어됩니다. 등록 단계는 중복 프로바이더 정책이 강제되고 컨테이너의 내부 룩업 테이블이 채워지는 곳입니다. 이 작업이 단일하고 순차적인 패스로 발생하기 때문에, Fluo는 일부 다른 프레임워크에서 발견되는 "지연 등록(lazy registration)"의 복잡성을 피하고 컨테이너의 최종 상태를 결정론적이며 진단 도구를 통해 감사하기 쉽게 만듭니다. 또한 이 단계는 별칭 프로바이더(alias providers)의 정규화를 처리하여 모든 `useExisting` 리디렉션이 컨테이너의 내부 맵에 올바르게 등록되도록 보장합니다.
+둘째, **토큰 등록 순서**가 있습니다. 런타임은 컴파일된 모듈 레코드를 순회하면서 프로바이더 정의를 DI 컨테이너에 공급합니다. 이 과정은 평면적인 등록 pass이지만, 컴파일 중에 정해진 위상 순서(topological order)에 의해 제어됩니다. 등록 단계는 중복 프로바이더 정책이 강제되고 컨테이너의 내부 lookup table이 채워지는 지점입니다. 이 작업이 단일하고 순차적인 pass로 일어나기 때문에, Fluo는 일부 프레임워크에서 보이는 "지연 등록(lazy registration)"의 복잡성을 피하고 컨테이너의 최종 상태를 결정론적으로 유지합니다. 진단 도구로 감사하기도 쉬워집니다. 또한 이 단계는 별칭 프로바이더(alias providers)의 정규화를 처리하여 모든 `useExisting` redirect가 컨테이너의 내부 map에 올바르게 등록되도록 보장합니다.
 
-셋째, **싱글톤 라이프사이클 부트스트랩 순서**입니다. 이는 생성자와 `OnModuleInit` 훅의 형태로 사용자 코드가 실제로 실행되는 첫 번째 지점입니다. Fluo는 의존성을 존중하는 순서대로 라이프사이클을 가진 싱글톤들을 꼼꼼하게 해결합니다. 서비스 A가 서비스 B에 의존한다면, 서비스 B가 완전히 초기화되고 그 `onModuleInit` 훅이 완료된 후에야 서비스 A의 훅이 시작됨이 보장됩니다. 이러한 "깊이 우선 초기화(depth-first initialization)"는 여러분의 비즈니스 로직이 실행되기 시작할 때, 의존하는 모든 리소스가 알려진 준비 상태에 있음을 보장합니다. `resolveBootstrapLifecycleInstances()`를 통한 이러한 인스턴스 해결은 정적 그래프에 생명을 불어넣어 프로바이더 정의를 실제 운영 가능한 객체로 전환합니다.
+셋째, **싱글톤 라이프사이클 부트스트랩 순서**입니다. 이는 생성자와 `OnModuleInit` 훅의 형태로 사용자 코드가 실제로 실행되는 첫 지점입니다. Fluo는 의존성을 존중하는 순서로 라이프사이클을 가진 싱글톤을 해석합니다. 서비스 A가 서비스 B에 의존한다면, 서비스 B가 초기화되고 그 `onModuleInit` 훅이 완료된 뒤에 서비스 A의 훅이 시작됩니다. 이러한 "깊이 우선 초기화(depth-first initialization)"는 비즈니스 로직이 실행되기 시작할 때 의존 리소스가 알려진 준비 상태에 있음을 보장합니다. `resolveBootstrapLifecycleInstances()`를 통한 인스턴스 해석은 정적 그래프를 실제 운영 가능한 객체로 전환합니다.
 
-넷째, 이전 계층들이 모두 완료된 후에야 **전송 준비(transport readiness)** 단계가 시작됩니다. 여기서 HTTP 어댑터가 포트에서 리스닝을 시작하거나 메시지 큐 소비자가 태스크를 가져오기 시작할 수 있습니다. 전체 내부 런타임 셸이 건강하고 초기화될 때까지 전송 시작을 지연함으로써, Fluo는 "절반만 준비된" 애플리케이션이 트래픽을 수락하고 즉시 실패하는 것을 방지합니다. 또한 부트스트랩 단계에서 등록된 헬스 체크 엔드포인트가 애플리케이션 준비 상태의 진정한 상태를 정확하게 반영하도록 보장합니다. 이러한 분리는 애플리케이션의 내부 상태가 항상 외부 가용성보다 우선시되도록 보장합니다.
+넷째, 이전 계층이 모두 완료된 후에야 **전송 준비(transport readiness)** 단계가 시작됩니다. 여기서 HTTP 어댑터가 포트에서 리스닝을 시작하거나 메시지 큐 소비자가 태스크를 가져오기 시작할 수 있습니다. 전체 내부 런타임 셸이 건강하고 초기화될 때까지 전송 시작을 늦춤으로써, Fluo는 "절반만 준비된" 애플리케이션이 트래픽을 수락한 뒤 곧바로 실패하는 상황을 막습니다. 또한 부트스트랩 단계에서 등록된 health check endpoint가 애플리케이션 준비 상태를 실제 상태에 맞게 반영하도록 합니다. 이 분리는 애플리케이션의 내부 상태가 외부 가용성보다 먼저 확정되어야 한다는 원칙을 유지합니다.
 
-고급 아키텍트에게 이 계층화된 모델은 강력한 진단 도구입니다. 애플리케이션 시작에 실패했을 때 단순히 "왜?"라고 묻지 않고 "어느 계층에서?"라고 묻게 됩니다.
-- 서비스의 로그가 나타나기 전에 실패한다면, **모듈 그래프 컴파일** 단계를 확인하십시오.
-- `ScopeMismatchError`나 `CircularDependencyError`와 함께 실패한다면, **토큰 등록** 및 DI 분석을 확인하십시오.
-- 서비스 초기화 중에 실패한다면(예: 데이터베이스 연결 타임아웃), **라이프사이클 부트스트랩** 단계를 확인하십시오.
-- 첫 번째 요청을 받을 때만 실패한다면, **전송 어댑터** 및 미들웨어 등록을 확인하십시오.
+고급 아키텍트에게 이 계층화된 모델은 강한 진단 도구입니다. 애플리케이션 시작에 실패했을 때 단순히 "왜?"가 아니라 "어느 계층에서?"를 묻게 됩니다.
+- 서비스 로그가 나타나기 전에 실패한다면, **모듈 그래프 컴파일** 단계를 확인합니다.
+- `ScopeMismatchError`나 `CircularDependencyError`와 함께 실패한다면, **토큰 등록** 및 DI 분석을 확인합니다.
+- 서비스 초기화 중에 실패한다면(예: 데이터베이스 연결 타임아웃), **라이프사이클 부트스트랩** 단계를 확인합니다.
+- 첫 번째 요청을 받을 때만 실패한다면, **전송 어댑터** 및 미들웨어 등록을 확인합니다.
 
-이러한 수준의 구조적 규율은 시작 과정을 불투명한 마법의 "블랙박스"로 취급하는 프레임워크와 Fluo를 차별화하는 요소입니다. `bootstrap.ts`와 `module-graph.ts`의 명시적인 코드를 통해 이러한 이산적인 단계들을 노출함으로써, Fluo는 개발자가 자신의 애플리케이션이 어떻게 생겨나는지 정확히 이해할 수 있도록 힘을 실어줍니다. 이는 "의존성 그래프"를 정적인 데이터 구조에서 백엔드의 전체 라이프사이클을 지배하는 동적이고 살아있는 계약으로 바꿉니다.
+이 수준의 구조적 규율은 시작 과정을 불투명한 "블랙박스"로 취급하는 프레임워크와 Fluo를 구분합니다. `bootstrap.ts`와 `module-graph.ts`의 명시적인 코드는 이산적인 단계를 그대로 드러내며, 개발자가 자신의 애플리케이션이 어떤 순서로 만들어지는지 추적할 수 있게 합니다. 그 결과 "의존성 그래프"는 정적인 데이터 구조를 넘어 백엔드 전체 라이프사이클을 지배하는 실행 계약이 됩니다.
 
-궁극적으로 모듈 그래프는 Fluo 런타임의 두뇌입니다. 단순히 데이터를 보유하는 것이 아니라, 원시 구성에서 기능적이고 회복력 있는 애플리케이션으로의 전환을 오케스트레이션합니다. 그 뉘앙스를 마스터하는 것은 Fluo를 "사용하는" 개발자에서 Fluo로 "구축하는" 아키텍트로 나아가는 마지막 단계입니다. 이러한 이해는 프레임워크의 핵심 약속인 명시성과 신뢰성을 유지하면서도 동적 모듈 오케스트레이션 및 복잡한 멀티 호스트 배포와 같은 정교한 아키텍처 패턴을 생성할 수 있게 해줍니다.
+결국 모듈 그래프는 Fluo 런타임의 판단 지점입니다. 데이터를 보관하는 데 그치지 않고, 원시 구성에서 동작 가능한 애플리케이션으로 넘어가는 전환을 조율합니다. 이 계층을 이해하면 Fluo를 단순히 호출하는 수준을 넘어, 런타임 계약에 맞춰 시스템을 설계할 수 있습니다. 그 이해는 프레임워크의 핵심 약속인 명시성과 신뢰성을 유지하면서도 동적 모듈 오케스트레이션 및 복잡한 멀티 호스트 배포 같은 고급 아키텍처 패턴을 다룰 수 있게 해 줍니다.

@@ -29,7 +29,7 @@ Fluo runtime internals를 오해하는 가장 쉬운 방법은 `Application`, `A
 
 source에서도 분기 지점이 직접 보입니다. `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`은 `new FluoApplication(...)`을 반환합니다. `path:packages/runtime/src/bootstrap.ts:1059-1153`의 `FluoFactory.createApplicationContext()`는 `new FluoApplicationContext(...)`를 반환합니다. `path:packages/runtime/src/bootstrap.ts:1164-1189`의 `FluoFactory.createMicroservice()`는 먼저 application context를 만든 다음, resolve된 runtime token을 `FluoMicroserviceApplication`으로 감쌉니다.
 
-즉 bootstrap 이야기는 완전히 별개인 세 경로라기보다, 한 baseline 위에 올라가는 layered composition입니다. runtime은 context 전용 DI system이나, microservice 전용 lifecycle engine을 따로 유지하지 않습니다. 같은 core baseline 위에 다른 wrapper를 얹습니다.
+즉 bootstrap 구조는 완전히 별개인 세 경로가 아니라, 한 baseline 위에 올라가는 layered composition입니다. runtime은 context 전용 DI system이나 microservice 전용 lifecycle engine을 따로 유지하지 않습니다. 같은 core baseline 위에 다른 wrapper를 얹습니다.
 
 구현 관점의 diagram은 다음과 같습니다.
 
@@ -47,7 +47,7 @@ bootstrap graph + container + lifecycle baseline
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
 `FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:531-575`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback만 저장합니다.
 
-public method도 `get()`과 `close()`뿐입니다. 바로 이 미니멀리즘이 핵심입니다. application context는 CLI task, worker, migration, 혹은 HTTP listener가 필요 없는 모든 DI-driven process를 위한 runtime baseline입니다.
+public method도 `get()`과 `close()`뿐입니다. 이 미니멀한 표면이 핵심입니다. application context는 CLI task, worker, migration, 혹은 HTTP listener가 필요 없는 모든 DI-driven process를 위한 runtime baseline입니다.
 
 실제 bootstrap path는 `path:packages/runtime/src/bootstrap.ts:1059-1153`의 `FluoFactory.createApplicationContext()`입니다. 이 함수를 `bootstrapApplication()`과 비교하면, 대부분의 순서가 동일합니다. 여전히 logger, platform shell, runtime provider list, compiled module, runtime context token, lifecycle instance, timing diagnostics를 만듭니다.
 
@@ -55,7 +55,7 @@ public method도 `get()`과 `close()`뿐입니다. 바로 이 미니멀리즘이
 
 이 차이는 테스트로 명시적으로 고정됩니다. `path:packages/runtime/src/bootstrap.test.ts:523-541`은 application service resolve는 성공하고, `context.get(HTTP_APPLICATION_ADAPTER)`는 `No provider registered`로 실패하며, `context.get(PLATFORM_SHELL)`은 성공해야 한다고 검증합니다.
 
-여기서 중요한 교훈은 미묘합니다. application context는 "절반만 bootstrap된 상태"가 아닙니다. 자기가 약속한 capability에 대해서는 완전히 bootstrap된 상태입니다. 단지 adapter access를 약속하지 않을 뿐입니다.
+여기서 중요한 점은 미묘합니다. application context는 "절반만 bootstrap된 상태"가 아닙니다. 자신이 약속한 capability에 대해서는 완전히 bootstrap된 상태입니다. 다만 adapter access를 약속하지 않을 뿐입니다.
 
 lifecycle 동작도 완전합니다. 같은 테스트 파일의 `path:packages/runtime/src/bootstrap.test.ts:543-582`는 context bootstrap이 `onModuleInit()`와 `onApplicationBootstrap()`을 실행하고, 이후 `close()`가 `onModuleDestroy()`와 `onApplicationShutdown()`을 실행함을 보여 줍니다.
 
@@ -111,7 +111,7 @@ Application = ApplicationContext
 source가 구현하는 모델도 정확히 이것입니다. application shell은 totally different bootstrap universe가 아니라, context baseline에 transport-facing capability를 더한 형태입니다.
 
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
-application context와 application shell은 모두 매우 신중한 close semantics를 구현합니다. 이 부분은 runtime에서 가장 성숙한 설계 중 하나입니다.
+application context와 application shell은 모두 신중한 close semantics를 구현합니다. 이 부분은 runtime에서 특히 성숙한 설계 중 하나입니다.
 
 공유 cleanup primitive는 `path:packages/runtime/src/bootstrap.ts:119-153`의 `closeRuntimeResources()`입니다. 순서는 명시적입니다. 먼저 runtime cleanup callback을 실행하고, 그 다음 shutdown hook, 그 다음 adapter가 있으면 adapter close, 마지막으로 container disposal을 수행합니다. 필요하면 에러를 누적한 뒤 하나로 다시 던집니다.
 
@@ -141,7 +141,7 @@ close()
   -> allow retry on failure
 ```
 
-고급 사용자에게 이 설계가 중요한 이유는, runtime lifecycle이 startup convenience만 다루지 않기 때문입니다. Fluo는 resource retirement까지 runtime contract의 일부로 취급합니다.
+고급 사용자에게 이 설계가 중요한 이유는 runtime lifecycle이 startup convenience만 다루지 않기 때문입니다. Fluo는 resource retirement까지 runtime contract의 일부로 취급합니다.
 
 ## 9.5 The platform shell and adapter seams define what the runtime may assume about the host
 이제 runtime bootstrap 안의 두 가지 다른 contract를 분리해서 볼 수 있습니다. 하나는 platform shell이고, 다른 하나는 HTTP adapter입니다. 둘은 상호작용하지만, 답하는 질문이 다릅니다.
@@ -154,4 +154,4 @@ platform-shell contract는 `path:packages/runtime/src/platform-contract.ts:151-1
 
 이 platform shell은 `runBootstrapLifecycle()` 동안 시작되고, `FluoApplication.ready()`가 `listen()` 전에 다시 검사합니다. 즉 platform shell은 runtime의 host-readiness governor입니다.
 
-adapter contract는 더 좁습니다.
+adapter contract는 더 좁습니다. HTTP adapter는 request/response dispatch와 listen/close semantics에 집중하고, platform shell은 host component의 readiness와 health를 집계합니다. 이 분리 덕분에 runtime은 호스트별 세부 사항을 한 계층에 밀어 넣지 않고, application shell이 무엇을 가정해도 되는지 명확히 제한합니다.
