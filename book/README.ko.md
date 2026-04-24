@@ -46,4 +46,4 @@
 - 전체 챕터 목록으로 들어가기 전에 방향을 잡고 싶다면 **[초보편 챕터 0](./beginner/ch00-introduction.ko.md)**, **[중수편 챕터 0](./intermediate/ch00-introduction.ko.md)**, **[고수편 챕터 0](./advanced/ch00-introduction.ko.md)**부터 읽어도 좋습니다.
 - 초보편을 마쳤다면 **[중수편 목차](./intermediate/toc.ko.md)**로 이어서 읽으세요.
 - 내부 구조나 기여 맥락이 필요하다면 **[고수편 목차](./advanced/toc.ko.md)**로 이동하세요.
-- 책 경로보다 넓은 프레임워크 문서가 필요하다면 **[문서 허브](../docs/README.ko.md)**를 확인하세요.
+- 책 경로보다 넓은 프레임워크 문서가 필요하다면 **[문서 허브](../docs/CONTEXT.ko.md)**를 확인하세요.
