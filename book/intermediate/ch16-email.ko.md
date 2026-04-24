@@ -3,34 +3,34 @@
 
 # Chapter 16. Email Systems
 
-이 장은 FluoShop의 알림 흐름에 안정적인 이메일 채널을 붙이는 방법을 설명합니다. Chapter 15가 채널 오케스트레이션을 다뤘다면, 이 장은 그 위에 트랜잭션 메일 전송과 운영 준비 상태를 얹습니다.
+이 장에서는 FluoShop의 알림 흐름에 이메일 채널을 안정적으로 연결하는 방식을 다룹니다. Chapter 15에서 채널 오케스트레이션의 뼈대를 세웠다면, 여기서는 트랜잭션 메일 전송, 트랜스포트 경계, 운영 점검 지점을 구체화합니다.
 
 ## Learning Objectives
-- `@fluojs/email` 패키지의 핵심 구성 요소와 역할을 이해합니다.
-- EmailModule을 등록하고 전송 트랜스포트를 구성하는 방법을 배웁니다.
-- Node 전용 SMTP 서브패스를 사용할 때의 경계와 장점을 익힙니다.
-- `EmailService`로 독립적인 이메일 발송 흐름을 구현합니다.
-- 알림 오케스트레이션에 이메일 채널을 연결하는 방법을 살펴봅니다.
-- 대량 발송, 템플릿 렌더링, 상태 점검을 운영 관점에서 정리합니다.
+- `@fluojs/email` 패키지의 핵심 구성 요소와 책임을 구분합니다.
+- EmailModule 등록 방식과 전송 트랜스포트 구성 절차를 정리합니다.
+- Node 전용 SMTP 서브패스가 필요한 경계와 이점을 파악합니다.
+- `EmailService`를 사용해 독립적인 이메일 발송 흐름을 구성합니다.
+- 알림 오케스트레이션에 이메일 채널을 연결하는 방식을 확인합니다.
+- 대량 발송, 템플릿 렌더링, 상태 점검을 운영 기준으로 다룹니다.
 
 ## Prerequisites
 - Chapter 15 완료.
-- 비동기 작업 처리와 큐 기반 백그라운드 실행 흐름 이해.
-- 이메일 트랜스포트와 외부 서비스 연동에 대한 기본 감각.
+- 비동기 작업 처리와 큐 기반 백그라운드 실행 흐름에 대한 이해.
+- 이메일 트랜스포트와 외부 전송 서비스 연동에 대한 기본 경험.
 
 ## 16.1 The Architecture of @fluojs/email
 
-이메일 패키지는 가볍고 이식 가능하도록 설계되었습니다. 루트 엔트리포인트에는 모든 런타임에서 작동하는 핵심 로직이 포함되어 있으며, 런타임별 구현은 서브패스에 격리되어 있습니다.
+이메일 패키지는 가볍고 런타임 이식성을 해치지 않도록 구성되어 있습니다. 루트 엔트리포인트에는 공통 런타임에서 동작하는 핵심 로직만 두고, 런타임별 구현은 서브패스로 분리합니다.
 
 ### Key Components:
 - **EmailModule**: 이메일 트랜스포트의 수명 주기를 관리합니다.
-- **EmailService**: 메시지 전송을 위한 고수준 API.
-- **EmailTransport**: 새로운 전송 공급자를 구현하기 위한 인터페이스.
-- **EmailChannel**: 이메일을 `@fluojs/notifications`에 연결하는 어댑터.
+- **EmailService**: 메시지 전송을 담당하는 고수준 API입니다.
+- **EmailTransport**: 새 전송 공급자를 붙일 때 구현하는 인터페이스입니다.
+- **EmailChannel**: 이메일을 `@fluojs/notifications`에 연결하는 어댑터입니다.
 
 ## 16.2 Registering the Email Module
 
-등록을 위해서는 트랜스포트가 필요합니다. 이 예제에서는 일반적인 HTTP 트랜스포트를 사용하겠지만, fluo는 퍼스트 파티 Node.js SMTP 트랜스포트도 제공합니다.
+모듈을 등록하려면 먼저 트랜스포트를 결정해야 합니다. 아래 예제는 일반적인 HTTP 기반 트랜스포트를 사용하지만, fluo는 Node.js SMTP용 퍼스트 파티 트랜스포트도 별도로 제공합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -51,11 +51,11 @@ export class AppModule {}
 ```
 
 ### verifyOnModuleInit
-`verifyOnModuleInit: true`를 설정하면 애플리케이션 부트스트랩 중에 트랜스포트가 유효한지(예: SMTP 자격 증명 확인) 보장할 수 있습니다.
+`verifyOnModuleInit: true`를 설정하면 애플리케이션 부트스트랩 중 트랜스포트가 실제로 사용 가능한지 확인할 수 있습니다. SMTP 자격 증명 검증처럼 배포 초기에 실패를 드러내야 하는 경우에 유용합니다.
 
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
-Node.js에서 실행 중이고 SMTP를 사용하려는 경우 전용 서브패스를 사용해야 합니다. 이렇게 하면 핵심 패키지가 `nodemailer`와 같은 무거운 Node 전용 의존성으로부터 자유로워집니다.
+Node.js 환경에서 SMTP를 사용할 때는 전용 서브패스를 가져옵니다. 이렇게 분리하면 핵심 패키지가 `nodemailer` 같은 Node 전용 의존성에 묶이지 않고, 다른 런타임에서도 같은 루트 API를 유지할 수 있습니다.
 
 ```typescript
 import { EmailModule } from '@fluojs/email';
@@ -77,7 +77,7 @@ EmailModule.forRoot({
 
 ## 16.4 Standalone Usage: EmailService
 
-단순한 사용 사례의 경우 `EmailService`를 직접 주입할 수 있습니다.
+알림 오케스트레이션까지 필요하지 않은 단순한 흐름에서는 `EmailService`를 직접 주입해 사용할 수 있습니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -96,11 +96,11 @@ export class InvoiceService {
 }
 ```
 
-서비스는 `defaultFrom`의 해석을 처리하고 전송 전 메시지를 검증합니다.
+서비스는 `defaultFrom` 적용과 전송 전 메시지 검증을 담당합니다. 호출부는 수신자, 제목, 본문처럼 비즈니스 이벤트에 필요한 값에 집중하면 됩니다.
 
 ## 16.5 Integration with @fluojs/notifications
 
-15장에서 우리는 알림을 오케스트레이션하는 방법을 보았습니다. 해당 시스템에 이메일을 추가하려면 `EMAIL_CHANNEL` 토큰을 사용합니다.
+Chapter 15에서 구성한 알림 오케스트레이션에 이메일을 추가하려면 `EMAIL_CHANNEL` 토큰을 주입합니다.
 
 ```typescript
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
@@ -120,11 +120,11 @@ import { NotificationsModule } from '@fluojs/notifications';
 export class AppModule {}
 ```
 
-통합이 완료되면 `NotificationsService.dispatch({ channel: 'email', ... })`는 자동으로 이메일 설정을 사용하게 됩니다.
+통합 후 `NotificationsService.dispatch({ channel: 'email', ... })` 호출은 등록된 이메일 설정과 트랜스포트를 그대로 사용합니다.
 
 ## 16.6 Queue-backed Bulk Delivery
 
-루프에서 1,000개의 이메일을 보내는 것은 이벤트 루프를 차단하거나 속도 제한에 걸리는 지름길입니다. 백그라운드 처리를 위해 `@fluojs/email/queue` 서브패스를 사용하십시오.
+루프 안에서 이메일 1,000개를 직접 보내면 이벤트 루프를 오래 점유하거나 공급자 속도 제한에 걸리기 쉽습니다. 대량 발송은 `@fluojs/email/queue` 서브패스로 백그라운드 작업에 넘기는 편이 안전합니다.
 
 ```typescript
 import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
@@ -142,11 +142,11 @@ NotificationsModule.forRootAsync({
 });
 ```
 
-큐 어댑터는 대량의 알림 발송을 설정 가능한 재시도 및 백오프 로직을 가진 개별 백그라운드 작업으로 분해합니다.
+큐 어댑터는 대량 알림을 개별 백그라운드 작업으로 나누고, 각 작업에 설정 가능한 재시도와 백오프 정책을 적용합니다.
 
 ## 16.7 Template Rendering
 
-`@fluojs/email`은 플러그형 템플릿 렌더러를 지원합니다. 이를 통해 핵심 패키지를 특정 엔진에 결합하지 않고도 Handlebars, EJS 또는 React-email을 사용할 수 있습니다.
+`@fluojs/email`은 교체 가능한 템플릿 렌더러를 지원합니다. 핵심 패키지를 특정 엔진에 묶지 않으면서 Handlebars, EJS, React-email 같은 렌더링 방식을 선택할 수 있습니다.
 
 ```typescript
 EmailModule.forRoot({
@@ -159,11 +159,11 @@ EmailModule.forRoot({
 });
 ```
 
-렌더러가 있으면 전송 요청 시 `templateData`를 사용할 수 있습니다.
+렌더러를 등록하면 전송 요청에서 `templateData`를 넘겨 템플릿 기반 메일을 생성할 수 있습니다.
 
 ## 16.8 Status and Health Checks
 
-이메일 시스템은 실패할 수 있는 외부 의존성입니다. 트랜스포트의 상태를 모니터링하려면 `createEmailPlatformStatusSnapshot`을 사용하십시오.
+이메일 시스템은 네트워크, 인증, 공급자 장애의 영향을 받는 외부 의존성입니다. 트랜스포트 상태를 운영 지표로 확인하려면 `createEmailPlatformStatusSnapshot`을 사용합니다.
 
 ```typescript
 const snapshot = await createEmailPlatformStatusSnapshot(emailService);
@@ -172,11 +172,11 @@ if (!snapshot.isReady) {
 }
 ```
 
-이는 Kubernetes 준비성 프로브를 위한 `@fluojs/terminus`와 통합할 때 특히 유용합니다.
+이 스냅샷은 Kubernetes 준비성 프로브나 `@fluojs/terminus` 기반 헬스 체크에 연결할 때 특히 실용적입니다.
 
 ## 16.9 FluoShop Context: Order confirmation emails
 
-FluoShop에서는 법적으로 요구되는 주문 요약본을 보내기 위해 이메일을 사용합니다.
+FluoShop에서는 주문 확인과 법적 보관이 필요한 주문 요약본 전송에 이메일을 사용합니다.
 
 ```typescript
 async sendOrderConfirmation(order: Order) {
@@ -196,10 +196,10 @@ async sendOrderConfirmation(order: Order) {
 }
 ```
 
-오케스트레이션 계층을 사용함으로써 SMTP 서버를 일시적으로 사용할 수 없는 경우 백그라운드 재시도 로직을 무료로 얻을 수 있습니다.
+오케스트레이션 계층을 거치면 SMTP 서버나 외부 공급자가 잠시 불안정해도 백그라운드 재시도 정책을 일관되게 적용할 수 있습니다.
 
 ## Conclusion
 
-fluo 이메일 시스템은 트랜잭션 메시징을 위한 강력한 기반을 제공합니다. 서비스에서 트랜스포트를 엄격하게 분리함으로써, 테스트 가능하고 이식성이 뛰어나며 대량 생산 환경에 준비된 시스템을 구축했습니다.
+fluo 이메일 시스템은 트랜잭션 메시징을 위한 명확한 기반을 제공합니다. 서비스와 트랜스포트를 분리하면 테스트가 쉬워지고, 런타임 이식성을 유지하며, 대량 발송 운영에도 대응할 수 있습니다.
 
-다음 장에서는 알림 시스템을 확장하여 **Slack과 Discord**를 통한 실시간 채팅을 포함해 보겠습니다.
+다음 장에서는 알림 시스템을 **Slack과 Discord**까지 확장해 팀 채팅 기반 운영 흐름을 다룹니다.
