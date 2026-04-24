@@ -11,7 +11,7 @@
 
 ## Installation
 
-The fluo CLI is the command entrypoint for project scaffolding and component generation.
+The fluo CLI is your central tool for project scaffolding and component generation.
 
 Global install:
 
