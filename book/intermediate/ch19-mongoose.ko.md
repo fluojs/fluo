@@ -3,28 +3,28 @@
 
 # Chapter 19. MongoDB and Mongoose
 
-이 장은 FluoShop의 문서 지향 데이터 모델을 fluo 애플리케이션 안에 안정적으로 통합하는 방법을 설명합니다. Chapter 18이 GraphQL로 카탈로그 조회 계층을 열었다면, 이 장은 그 뒤를 받치는 MongoDB 영속성과 트랜잭션 흐름을 다룹니다.
+이 장에서는 FluoShop의 문서 지향 데이터 모델을 fluo 애플리케이션에 통합하는 방식을 다룹니다. Chapter 18에서 GraphQL 카탈로그 조회 계층을 열었다면, 여기서는 그 뒤를 받치는 MongoDB 영속성과 트랜잭션 흐름을 정리합니다.
 
 ## Learning Objectives
-- fluo에서 Mongoose 통합이 필요한 이유와 장점을 이해합니다.
-- `MongooseModule`을 구성하고 연결 수명 주기를 관리하는 방법을 배웁니다.
-- `MongooseConnection`을 활용한 리포지토리 패턴을 익힙니다.
-- 수동 트랜잭션과 요청 스코프 트랜잭션의 차이를 분석합니다.
-- FluoShop 제품 카탈로그에 문서 모델을 적용하는 방식을 살펴봅니다.
-- 상태 스냅샷으로 MongoDB 연결을 관측하는 방법을 정리합니다.
+- fluo에서 Mongoose 통합이 필요한 이유와 적용 지점을 구분합니다.
+- `MongooseModule` 구성과 연결 수명 주기 관리 방식을 정리합니다.
+- `MongooseConnection`을 사용하는 리포지토리 패턴을 구성합니다.
+- 수동 트랜잭션과 요청 스코프 트랜잭션의 차이를 비교합니다.
+- FluoShop 제품 카탈로그에 문서 모델을 적용하는 방식을 확인합니다.
+- 상태 스냅샷으로 MongoDB 연결을 관측하는 기준을 정리합니다.
 
 ## Prerequisites
 - Chapter 18 완료.
-- MongoDB 문서 모델과 Mongoose 기본 사용법 이해.
-- 트랜잭션과 요청 단위 데이터 일관성에 대한 기본 감각.
+- MongoDB 문서 모델과 Mongoose 기본 사용법에 대한 이해.
+- 트랜잭션과 요청 단위 데이터 일관성에 대한 기본 경험.
 
 ## 19.1 Why Mongoose in fluo?
 
-Mongoose는 Node.js 생태계에서 MongoDB를 다루는 사실상의 표준입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
+Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
-- **수명 주기 관리**: `onApplicationBootstrap` 단계에서 연결이 자동으로 설정되고, `beforeApplicationShutdown` 단계에서 안전하게 닫힙니다.
-- **세션 인지(Session Awareness)**: `MongooseConnection` 서비스는 콜 스택 전체에서 MongoDB 세션을 추적하여 트랜잭션 관리를 훨씬 용이하게 합니다.
-- **요청 스코프 트랜잭션**: `MongooseTransactionInterceptor`를 사용하면 데코레이터 하나만으로 전체 HTTP 요청을 MongoDB 트랜잭션으로 묶을 수 있습니다.
+- **수명 주기 관리**: `onApplicationBootstrap` 단계에서 연결을 설정하고, `beforeApplicationShutdown` 단계에서 안전하게 닫습니다.
+- **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적해 트랜잭션 경계를 유지합니다.
+- **요청 스코프 트랜잭션**: `MongooseTransactionInterceptor`로 전체 HTTP 요청을 MongoDB 트랜잭션으로 묶을 수 있습니다.
 
 ## 19.2 Installation and Setup
 
@@ -34,11 +34,11 @@ Mongoose와 fluo 통합 패키지를 설치합니다.
 pnpm add mongoose @fluojs/mongoose
 ```
 
-다른 일부 데이터베이스 통합과 달리, fluo는 여러분이 직접 Mongoose `Connection` 객체를 생성하여 제공하기를 기대합니다. 이를 통해 연결 옵션에 대한 완전한 제어권을 가질 수 있습니다.
+일부 데이터베이스 통합과 달리 fluo는 애플리케이션이 직접 Mongoose `Connection` 객체를 생성해 제공하는 방식을 사용합니다. 이 구조는 연결 문자열, 풀 옵션, 플러그인 구성 같은 세부 설정을 호출 측에서 명확히 통제하게 합니다.
 
 ## 19.3 Configuring the MongooseModule
 
-`MongooseModule`은 동기 또는 비동기 방식으로 구성할 수 있습니다.
+`MongooseModule`은 동기 또는 비동기 방식으로 구성할 수 있습니다. 아래 예제는 이미 생성한 연결을 모듈에 넘기는 가장 직접적인 형태입니다.
 
 ### Synchronous Configuration
 
@@ -62,7 +62,7 @@ export class PersistenceModule {}
 
 ## 19.4 Repositories and Connection Management
 
-Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용합니다. 전역 `mongoose` 객체를 사용하는 대신, `MongooseConnection` 서비스를 주입받아 사용합니다.
+Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용합니다. 전역 `mongoose` 객체에 의존하지 않고 `MongooseConnection` 서비스를 주입받아 현재 연결과 세션 경계를 따릅니다.
 
 ```typescript
 import { MongooseConnection } from '@fluojs/mongoose';
@@ -80,11 +80,11 @@ export class ProductRepository {
 }
 ```
 
-`conn.current()` 메서드는 현재 활성화된 Mongoose 연결을 반환합니다. 트랜잭션이 활성 상태인 경우, 컨텍스트에 따라 세션 정보도 함께 유지될 수 있습니다.
+`conn.current()` 메서드는 현재 활성화된 Mongoose 연결을 반환합니다. 트랜잭션이 활성 상태라면 같은 호출 흐름 안에서 세션 정보도 함께 유지됩니다.
 
 ## 19.5 Transaction Management
 
-MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 통합된 트랜잭션 래퍼를 제공하여 이를 단순화합니다.
+MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
 ### Manual Transactions
 
@@ -101,7 +101,7 @@ await this.conn.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-더 깔끔한 코드를 위해 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청이 시작될 때 자동으로 세션과 트랜잭션을 시작하고, 요청이 성공적으로 완료되면 이를 커밋합니다.
+컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';
@@ -119,9 +119,9 @@ export class OrderController {
 
 ## 19.6 FluoShop Context: Product Catalog Persistence
 
-FluoShop에서는 전자제품이나 의류 등 제품 유형에 따라 스키마가 크게 달라질 수 있기 때문에 제품 카탈로그용으로 MongoDB를 사용합니다.
+FluoShop에서는 제품 유형에 따라 속성이 크게 달라질 수 있는 카탈로그 데이터에 MongoDB를 사용합니다. 전자제품, 의류, 디지털 상품처럼 서로 다른 형태의 문서를 같은 도메인 안에서 다뤄야 하기 때문입니다.
 
-기본 스키마를 정의하고, Mongoose의 **Discriminators**를 사용하여 단일 컬렉션에 서로 다른 제품 유형을 저장하면서도 이를 효과적으로 관리합니다.
+기본 스키마를 정의한 뒤 Mongoose의 **Discriminators**를 사용하면 단일 컬렉션 안에 서로 다른 제품 유형을 저장하면서도 타입별 필드를 분리해 관리할 수 있습니다.
 
 ```typescript
 const productSchema = new mongoose.Schema({ name: String, price: Number }, { discriminatorKey: 'type' });
@@ -131,11 +131,11 @@ const Electronics = Product.discriminator('Electronics', new mongoose.Schema({ w
 const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: String, material: String }));
 ```
 
-`MongooseConnection`을 활용함으로써 리포지토리 코드를 깔끔하고 테스트 가능하게 유지할 수 있습니다.
+`MongooseConnection`을 사용하면 리포지토리 코드가 전역 상태에 묶이지 않아 테스트 대역을 주입하기 쉽고, 트랜잭션 경계도 일관되게 유지됩니다.
 
 ## 19.7 Health and Observability
 
-데이터베이스 연결 상태는 백엔드 운영에 필수적인 지표입니다. Fluo는 Mongoose를 위한 헬스 스냅샷 생성 헬퍼를 제공합니다.
+데이터베이스 연결 상태는 백엔드 운영에서 빠르게 확인해야 하는 핵심 지표입니다. Fluo는 Mongoose 연결 상태를 헬스 체크에 연결할 수 있도록 스냅샷 생성 헬퍼를 제공합니다.
 
 ```typescript
 import { createMongoosePlatformStatusSnapshot } from '@fluojs/mongoose';
@@ -148,6 +148,6 @@ if (!status.isReady) {
 
 ## 19.8 Conclusion
 
-Fluo에서의 Mongoose 통합은 수명 주기를 고려한 견고한 MongoDB 작업 방식을 제공합니다. Mongoose의 강력한 모델링 기능과 fluo의 DI 및 트랜잭션 관리를 결합하면 유연하면서도 신뢰할 수 있는 데이터 중심 서비스를 구축할 수 있습니다.
+Fluo의 Mongoose 통합은 연결 수명 주기, 세션, 트랜잭션 경계를 애플리케이션 구조 안에서 다루게 해줍니다. Mongoose의 모델링 기능과 fluo의 DI 및 트랜잭션 관리를 결합하면 유연한 문서 모델을 유지하면서도 운영 가능한 데이터 서비스를 만들 수 있습니다.
 
-다음 장에서는 SQL 중심의 작업을 위한 현대적인 대안인 **Drizzle ORM**에 대해 살펴보겠습니다.
+다음 장에서는 SQL 중심 작업을 위한 **Drizzle ORM** 통합을 다룹니다.
