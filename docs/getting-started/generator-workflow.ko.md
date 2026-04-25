@@ -53,6 +53,12 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
 
+## Generator Collections
+
+`fluo generate`는 현재 결정적인 단일 collection인 `@fluojs/cli/builtin`만 discovery합니다. 이 collection은 `@fluojs/cli`에 함께 포함되며, 위에 나열된 generator metadata와 CLI help output, option schema, alias, wiring behavior, test의 기준입니다.
+
+외부 package-owned 또는 app-local generator collection은 의도적으로 보류합니다. CLI는 local config file을 스캔하거나, 임의 package를 import하거나, application workspace의 collection code를 실행하지 않습니다. 향후 collection 지원은 계속 명시적이고 검토 가능해야 합니다. 호출자는 알려진 collection source를 선택해야 하며, metadata와 option schema는 테스트 가능해야 하고, file write는 해석된 target directory 아래에서 검증된 generator output으로 제한되어야 합니다.
+
 | 해석 규칙 | 결정되는 기본 디렉터리 |
 | --- | --- |
 | 현재 디렉터리에 `package.json`과 `src/`가 모두 존재 | `<cwd>/src` |
@@ -72,6 +78,7 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 - Dry-run 출력은 파일만 생성하는 생성기와 자동 등록 생성기를 구분하며, 모듈이 생성, 갱신, 또는 변경 없음 상태인지도 표시합니다.
 - `--dry-run`과 `--force`를 함께 사용하면 덮어쓰기 결정을 적용하지 않고 미리 볼 수 있습니다.
 - 자동 등록 메타데이터가 해석되더라도 변경되지 않은 파일 내용은 다시 쓰지 않습니다.
+- Generator discovery는 built-in `@fluojs/cli/builtin` collection으로 제한됩니다. 외부 또는 app-local collection은 보류되어 있으며 이 명령이 로드하지 않습니다.
 - 모듈 자동 등록은 controller, service, repository, guard, interceptor, middleware 생성기에만 적용됩니다.
 - DTO 생성기와 module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
 - generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--help`입니다.
