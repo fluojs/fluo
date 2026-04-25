@@ -20,7 +20,7 @@
 
 ## 11.1 디스패처(Dispatcher): 파이프라인의 사령탑
 
-fluo의 모든 HTTP 요청은 `Dispatcher`를 통해 처리됩니다. 디스패처는 특정 HTTP 서버 프레임워크(Fastify, Express 등)에 종속되지 않는 범용 인터페이스를 제공하며, 프레임워크 메타데이터를 실제 실행 로직으로 전환합니다.
+fluo의 모든 HTTP 요청은 `Dispatcher`를 통해 처리됩니다. 디스패처는 특정 HTTP 서버 프레임워크(Fastify, Express 등)에 종속되지 않는 범용 인터페이스를 제공하며, 프레임워크 메타데이터를 실제 실행 로직으로 전환합니다. 따라서 어댑터가 어떤 서버에서 요청을 받아오든, 이후의 라우팅과 파이프라인 실행은 같은 중심 흐름을 따를 수 있습니다.
 
 `packages/http/src/dispatch/dispatcher.ts:L324-L354`
 ```typescript
@@ -203,7 +203,7 @@ interface DispatchPhaseContext {
 
 ## 11.8 오류 처리 정책 (Error Policy)
 
-파이프라인 어디에서든 오류가 발생하면 `handleDispatchError`가 호출되어 중앙에서 관리됩니다.
+파이프라인 어디에서든 오류가 발생하면 `handleDispatchError`가 호출되어 중앙에서 관리됩니다. 이 중앙화된 정책 덕분에 각 단계는 자신이 맡은 일에 집중하고, 오류 응답 형식과 관찰성 훅은 한 흐름에서 일관되게 처리됩니다.
 
 1. `RequestAbortedError`는 조용히 무시합니다. 이는 클라이언트가 연결을 끊은 것이므로 서버 로그를 불필요하게 오염시키지 않기 위함입니다.
 2. `onRequestError` 옵저버에게 알립니다. `dispatcher.ts:L302`에서 수행되며, 외부 모니터링 시스템(Sentry 등)에 에러를 보고하기에 적합한 시점입니다.

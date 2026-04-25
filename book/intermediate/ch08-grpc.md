@@ -19,9 +19,7 @@ This chapter extends the transport choices from Part 1 to gRPC and sets the crit
 
 ## 8.1 Why gRPC in FluoShop
 
-FluoShop uses gRPC at boundaries where strict contracts and streaming semantics matter more than decoupling through a broker. Brokers are strong at asynchronous resilience, while gRPC is strong at point-to-point precision.
-
-Representative examples include the following.
+FluoShop uses gRPC at boundaries where strict contracts and streaming semantics matter more than decoupling through a broker. Brokers are strong at asynchronous resilience, while gRPC is strong at point-to-point precision. Representative examples include the following.
 
 - Internal pricing and quote APIs between Gateway and Checkout (Unary)
 - Server-streaming order tracking updates (one request, many updates)
@@ -145,9 +143,7 @@ Bidirectional streaming is the most expressive pattern. Both sides can send mess
 
 ## 8.5 Timeouts, cancellation, and observability
 
-The transport supports `requestTimeoutMs` for unary-style requests, defaulting to 3,000ms. If a request exceeds that duration, the transport rejects the promise with an error corresponding to `DEADLINE_EXCEEDED`.
-
-These details matter because type-safe contracts don't remove distributed failure. Teams still need to decide the following.
+The transport supports `requestTimeoutMs` for unary-style requests, defaulting to 3,000ms. If a request exceeds that duration, the transport rejects the promise with an error corresponding to `DEADLINE_EXCEEDED`. These details matter because type-safe contracts don't remove distributed failure. Teams still need to decide the following.
 
 - Which unary calls are latency-sensitive and need short timeouts
 - Which streams may stay open for several minutes, and whether they need manual heartbeat logic

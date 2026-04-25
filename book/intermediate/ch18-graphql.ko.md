@@ -117,7 +117,7 @@ export class BookResolver {
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다.
 
 ## 18.5 Real-time with Subscriptions
 
@@ -139,7 +139,7 @@ export class NotificationResolver {
 
 ### Enabling WebSockets
 
-양방향 실시간 통신이 필요하거나 클라이언트 환경이 WebSocket 중심일 때는 WebSocket 트랜스포트를 활성화합니다.
+양방향 실시간 통신이 필요하거나 클라이언트 환경이 WebSocket 중심일 때는 WebSocket 트랜스포트를 활성화합니다. 기본 SSE 경로로 충분한지 먼저 판단하고, 실제로 양방향 메시징이 필요한 경우에만 WebSocket을 선택하는 편이 운영 경계를 단순하게 유지합니다.
 
 ```typescript
 GraphqlModule.forRoot({
@@ -173,7 +173,7 @@ GraphqlModule.forRoot({
 
 ## 18.7 FluoShop Context: The Product Catalog
 
-FluoShop에서는 제품 카탈로그 조회 경험을 세밀하게 제공하기 위해 GraphQL을 사용합니다. 카테고리 조회에는 DataLoader를 적용하고, 검색 엔드포인트에는 복잡도 제한을 둬 성능과 안전성을 함께 관리합니다.
+FluoShop에서는 제품 카탈로그 조회 경험을 세밀하게 제공하기 위해 GraphQL을 사용합니다. 카테고리 조회에는 DataLoader를 적용하고, 검색 엔드포인트에는 복잡도 제한을 둬 성능과 안전성을 함께 관리합니다. 이 조합은 클라이언트가 필요한 필드를 유연하게 고르면서도, 서버가 감당하기 어려운 쿼리를 미리 제한하게 해줍니다.
 
 ```typescript
 @Resolver()

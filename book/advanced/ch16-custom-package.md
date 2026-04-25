@@ -55,7 +55,7 @@ The `DynamicModule` pattern is the main way fluo provides configurable functiona
 
 ### The DynamicModule Contract
 
-A `DynamicModule` is an object, or a class with a static method that returns an object, that satisfies the `ModuleMetadata` interface plus a `module` reference.
+A `DynamicModule` is an object, or a class with a static method that returns an object, that satisfies the `ModuleMetadata` interface plus a `module` reference. The important point is that it keeps the same metadata shape as a static Module while allowing options and Provider configuration to be created at call time.
 
 ```ts
 export interface DynamicModule extends ModuleMetadata {
@@ -71,7 +71,7 @@ Components of a Dynamic Module:
 
 ### The forRoot and forRootAsync Pattern
 
-Following the community standard, fluo libraries use `forRoot` for static configuration and `forRootAsync` for configuration that depends on other Providers, such as `ConfigService`.
+Following the community standard, fluo libraries use `forRoot` for static configuration and `forRootAsync` for configuration that depends on other Providers, such as `ConfigService`. These names help users immediately understand whether the Module accepts direct options or resolves configuration through DI.
 
 #### Implementation Strategy
 
@@ -106,7 +106,7 @@ In fluo, the `exports` field of `@Module` is not a simple hint. It is a strictly
 
 ## Practical Example: Feature-Flags Mini-Package
 
-To check these concepts, let's build a small feature flags package. This package lets features be turned on and off through configuration.
+To check these concepts, let's build a small feature flags package. This package lets features be turned on and off through configuration. Because the example is small, it makes the relationship between public surface, option Token, Service, and Dynamic Module easy to see.
 
 ### 1. Structure
 
@@ -136,7 +136,7 @@ export const FEATURE_FLAGS_OPTIONS = Symbol.for('@fluojs/feature-flags:options')
 
 ### 3. The Service
 
-The service consumes the options provided by the Module.
+The service consumes the options provided by the Module. Because the options arrive through an injection Token, the service does not need to know whether configuration came from static `forRoot` options or an async factory.
 
 ```ts
 @Inject(FEATURE_FLAGS_OPTIONS)
@@ -151,7 +151,7 @@ export class FeatureFlagsService {
 
 ### 4. The Dynamic Module
 
-This Module implements the `forRoot` and `forRootAsync` logic.
+This Module implements the `forRoot` and `forRootAsync` logic. Both methods export the same service, but they absorb the difference in how option values are prepared.
 
 ```ts
 @Module({})
@@ -201,7 +201,7 @@ The fluo runtime normalizes missing metadata fields, such as `exports: []` when 
 
 ### Handling Circular Dependencies
 
-In complex ecosystems, circular dependencies can appear between Modules. Use `forwardRef()` in both `imports` and `inject` arrays so the DI container can resolve these cycles lazily. This pattern is often needed when two Modules must share Providers while keeping strict encapsulation.
+In complex ecosystems, circular dependencies can appear between Modules. Use `forwardRef()` in both `imports` and `inject` arrays so the DI container can resolve these cycles lazily. This pattern is often needed when two Modules must share Providers while keeping strict encapsulation. Still, treat it as a signal to check whether shared responsibility should be moved into a separate Module instead of only hiding the cycle.
 
 ## Conclusion
 

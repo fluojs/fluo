@@ -67,11 +67,7 @@ The difference between the two approaches can be summarized like this.
 
 ### The Magic Trap
 
-A framework that automatically discovers every class and wires it together without explanation can look impressive in a small demo.
-
-Large systems are different.
-
-In production code, hidden behavior usually creates four kinds of friction.
+A framework that automatically discovers every class and wires it together without explanation can look impressive in a small demo, but large systems are different. In production code, hidden behavior usually creates four kinds of friction, and that friction turns into debugging and onboarding cost over time.
 
 - **Traceability friction**: You spend time finding where a Provider was registered.
 - **Refactoring friction**: A rename or file move can silently break a convention.
@@ -82,9 +78,7 @@ fluo chooses visible wiring from the beginning to lower these long-term costs.
 
 ### A Quick Mental Model
 
-After seeing those problems, you can compress the framework into a shorter picture.
-
-fluo treats a codebase more like a map than a riddle.
+After seeing those problems, you can compress the framework into a shorter picture. fluo treats a codebase more like a map than a riddle, and it expects important elements to be easy to point to inside the source tree.
 
 - Modules describe boundaries.
 - Providers describe reusable logic.
@@ -122,9 +116,7 @@ This community driven approach lets the framework evolve around real needs. If a
 
 Now that you have seen the overall philosophy, let's move into DI, the first place where fluo makes that philosophy visible.
 
-Dependency Injection is a pattern where an object receives the collaborators it needs from the outside instead of creating them itself.
-
-In many TypeScript frameworks, DI feels automatic because the framework reads constructor types. fluo intentionally makes that process more visible.
+Dependency Injection is a pattern where an object receives the collaborators it needs from the outside instead of creating them itself. In many TypeScript frameworks, DI feels automatic because the framework reads constructor types, but fluo intentionally makes that process more visible. That way, you can trace where a dependency comes from and which Module provides it by reading the code.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -153,15 +145,11 @@ This code immediately communicates two facts.
 1. `@Inject(DatabaseService)` states which token `UsersService` should receive in its constructor.
 2. This service needs `DatabaseService` to work, and registration happens in the Module's `providers`.
 
-There is no guessing step.
+There is no guessing step. The required token and registration point are visible in code, so readers do not have to imagine what the framework inferred.
 
 ### Why Constructor Injection?
 
-Constructor injection is one of the safest forms of DI because it makes required dependencies impossible to ignore.
-
-An object created through constructor injection is either valid, or it is not created at all.
-
-This approach gives practical benefits.
+Constructor injection is one of the safest forms of DI because it makes required dependencies impossible to ignore. An object created through constructor injection is either valid, or it is not created at all. This simple rule makes required collaborators visible as soon as you open the class, and it gives tests the same clear boundary.
 
 - Required collaborators are visible at the top of the class.
 - Tests can pass replacement implementations directly.
@@ -179,13 +167,7 @@ In real projects, you can also inject the following.
 - Factories that create external clients,
 - Platform specific adapters.
 
-At the beginning, the point to remember is simple. Dependencies should appear by name in code.
-
-This visibility pays off immediately in tests.
-
-Imagine a service that creates blog posts and depends on a repository.
-
-With explicit DI, the testing approach is clear.
+At the beginning, the point to remember is simple. Dependencies should appear by name in code, and that visibility pays off immediately in tests. If you imagine a service that creates blog posts and depends on a repository, explicit DI makes the testing approach clear.
 
 1. Create a fake repository.
 2. Put that fake where the real repository would go.
@@ -193,11 +175,7 @@ With explicit DI, the testing approach is clear.
 
 Because the service doesn't create the repository itself, the test can focus on behavior rather than framework internals.
 
-fluo is not only solving a technical problem. It is also teaching an architectural habit.
-
-That habit is **make important wiring readable**.
-
-Once you adopt that habit, later topics become easier.
+fluo is not only solving a technical problem. It is also teaching the architectural habit of **making important wiring readable**. Once you adopt that habit, later topics such as Module separation, shared Providers, runtime-specific code, and production diagnostics become easier.
 
 - Separating Modules becomes easier.
 - Exporting shared Providers becomes easier.
@@ -264,11 +242,7 @@ Runtime neutrality exists to protect that consistency. It shields the applicatio
 
 This idea is easier to see through FluoBlog.
 
-Assume FluoBlog provides `GET /posts`.
-
-The code that loads a list of posts and returns JSON should not change just because one runtime adapter is replaced with another.
-
-If behavior changes every time the runtime changes, the framework boundary is doing too much.
+Assume FluoBlog provides `GET /posts`. The code that loads a list of posts and returns JSON should not change just because one runtime adapter is replaced with another. If behavior changes every time the runtime changes, the framework boundary is doing too much.
 
 Runtime neutrality is not only about portability. It also helps separate responsibilities.
 
@@ -283,9 +257,7 @@ Decorators are central to the fluo developer experience, but the framework is ba
 
 For a long time, developers used legacy Decorators through the `experimentalDecorators` option. They were convenient, but they were not the final direction of JavaScript.
 
-fluo aligns with the standardized version instead.
-
-The key thing to remember early is not every low-level signature, but the philosophical difference.
+fluo aligns with the standardized version instead. The key thing to remember early is not every low-level signature, but the philosophical difference. Choosing the standard model is a long-term maintenance choice, not just a syntax preference.
 
 - Legacy Decorators were an experiment from the TypeScript era.
 - Standard Decorators reflect the direction of the JavaScript language itself.
@@ -339,11 +311,7 @@ Each category solves a different layer of backend work.
 - **Logic** packages handle validation, serialization, and architectural patterns.
 - **Ops** packages support reliability and runtime visibility.
 
-This modular structure matters because it narrows what you need to learn at first.
-
-You don't need to cover every package from the start.
-
-In Part 0, the important pieces are mostly these.
+This modular structure matters because it narrows what you need to learn at first. You do not need to cover every package from the start. In Part 0, you only need the core flow that will keep appearing throughout the book.
 
 - The core framework model,
 - The CLI,
@@ -366,9 +334,7 @@ The final step in this introduction is connecting the concepts you have seen to 
 
 Throughout this book, we will build a blog API called **FluoBlog**. The project grows a little in each chapter.
 
-We chose this example because it is familiar.
-
-A blog includes posts, categories, authors, authentication, validation rules, and operational concerns such as caching or observability. It can show a realistic structure without making you learn an unfamiliar business domain first.
+We chose this example because it is familiar. A blog includes posts, categories, authors, authentication, validation rules, and operational concerns such as caching or observability. It can show a realistic structure without making you learn an unfamiliar business domain first.
 
 A blog application is a good learning domain because its nouns are easy to picture.
 
@@ -402,9 +368,7 @@ The following advanced topics are deferred.
 
 This delay is intentional. Architecture is easier to understand when it expands in meaningful layers.
 
-Each chapter begins with a `project-state` comment.
-
-That comment acts like a small navigation marker.
+Each chapter begins with a `project-state` comment. That comment acts like a small navigation marker and tells you which point in the FluoBlog timeline the current examples assume.
 
 - It tells you which FluoBlog version the chapter assumes.
 - It reminds you that this book is cumulative.

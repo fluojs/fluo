@@ -19,9 +19,7 @@
 
 ## 8.1 Why gRPC in FluoShop
 
-FluoShop은 브로커를 통한 디커플링보다 엄격한 계약(strict contract)과 스트리밍 의미론(streaming semantics)이 더 중요한 경계에서 gRPC를 사용합니다. 브로커가 비동기적 탄력성에 강하다면, gRPC는 지점 간(point-to-point) 정밀도에 강합니다.
-
-대표적인 예시는 다음과 같습니다.
+FluoShop은 브로커를 통한 디커플링보다 엄격한 계약(strict contract)과 스트리밍 의미론(streaming semantics)이 더 중요한 경계에서 gRPC를 사용합니다. 브로커가 비동기적 탄력성에 강하다면, gRPC는 지점 간(point-to-point) 정밀도에 강합니다. 대표적인 예시는 다음과 같습니다.
 
 - Gateway와 Checkout 사이의 내부 가격 책정 및 견적(quote) API (Unary)
 - 서버 스트리밍 방식의 주문 추적 업데이트 (한 번의 요청, 여러 번의 업데이트)
@@ -145,9 +143,7 @@ async streamOrder(
 
 ## 8.5 Timeouts, cancellation, and observability
 
-transport는 unary 스타일 요청에 대해 `requestTimeoutMs`(기본값 3,000ms)를 지원합니다. 요청이 이 시간을 초과하면 transport는 `DEADLINE_EXCEEDED`에 해당하는 에러와 함께 프로미스를 거절합니다.
-
-타입 안전한 계약이 있다고 해서 분산 환경의 실패(distributed failure)가 사라지는 것은 아니므로 이러한 세부 사항이 중요합니다. 팀은 여전히 다음을 결정해야 합니다.
+transport는 unary 스타일 요청에 대해 `requestTimeoutMs`(기본값 3,000ms)를 지원합니다. 요청이 이 시간을 초과하면 transport는 `DEADLINE_EXCEEDED`에 해당하는 에러와 함께 프로미스를 거절합니다. 타입 안전한 계약이 있다고 해서 분산 환경의 실패(distributed failure)가 사라지는 것은 아니므로 이러한 세부 사항이 중요합니다. 팀은 여전히 다음을 결정해야 합니다.
 
 - 어떤 unary 호출이 지연 시간에 민감하여 짧은 타임아웃이 필요한가
 - 어떤 스트림이 몇 분 동안 열려 있을 수 있으며, 수동 하트비트 로직이 필요한가

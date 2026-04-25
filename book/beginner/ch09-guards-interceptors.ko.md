@@ -40,17 +40,11 @@
 
 ### A Simple Mental Model
 
-다음 두 질문으로 생각해 보세요.
-
-질문이 “이 요청이 허용되는가?”라면 guard를 떠올리면 됩니다.
-
-질문이 “이 요청을 어떻게 관찰하고 변형하고 감쌀 것인가?”라면 interceptor를 떠올리면 됩니다.
+다음 두 질문으로 생각해 보세요. 질문이 “이 요청이 허용되는가?”라면 guard를 떠올리면 되고, “이 요청을 어떻게 관찰하고 변형하고 감쌀 것인가?”라면 interceptor를 떠올리면 됩니다. 이 구분은 파이프라인 훅을 고를 때 가장 먼저 확인할 기준입니다.
 
 여기서 중요한 파이프라인 규칙이 있습니다: **Guard는 Interceptor보다 먼저 실행됩니다.** interceptor는 guard를 통과한 뒤에야 핸들러 실행을 감쌀 수 있고, DTO 바인딩과 validation도 그 내부의 컨트롤러 호출 단계에서 일어납니다.
 
-이 모델이 모든 것을 설명하는 것은 아닙니다.
-
-하지만 지금 단계의 요청 파이프라인을 설계하기에는 충분합니다.
+이 모델이 모든 것을 설명하는 것은 아니지만, 지금 단계의 요청 파이프라인을 설계하기에는 충분합니다. 먼저 허용 여부를 판단하고, 그다음 핸들러 주변의 공통 동작을 배치한다고 생각하면 흐름을 읽기 쉽습니다.
 
 ## 9.2 Protecting Write Routes with a Guard
 
@@ -94,25 +88,11 @@ export class PostsController {
 }
 ```
 
-이제 라우트 계약이 더 분명해집니다.
-
-게시글 읽기는 공개입니다.
-
-게시글 생성이나 수정은 먼저 guard 검사를 통과해야 합니다.
+이제 라우트 계약이 더 분명해집니다. 게시글 읽기는 공개이고, 게시글 생성이나 수정은 먼저 guard 검사를 통과해야 합니다. 이 차이가 데코레이터 줄에 드러나므로 라우트 본문을 읽기 전에도 보호 여부를 확인할 수 있습니다.
 
 ### Why a Guard Is Better Than an Inline Header Check
 
-물론 컨트롤러도 헤더를 직접 검사할 수 있습니다.
-
-한 라우트만 놓고 보면 동작은 할 것입니다.
-
-하지만 확장성은 좋지 않습니다.
-
-guard는 재사용 가능합니다.
-
-핸들러 본문에서 인가 스타일 검사를 분리해 줍니다.
-
-또한 데코레이터 줄에서 의도를 바로 드러내 줍니다.
+물론 컨트롤러도 헤더를 직접 검사할 수 있고, 한 라우트만 놓고 보면 동작은 할 것입니다. 하지만 확장성은 좋지 않습니다. guard는 재사용 가능하고, 핸들러 본문에서 인가 스타일 검사를 분리해 주며, 데코레이터 줄에서 의도를 바로 드러내 줍니다.
 
 ### Multi-Guard Execution
 
@@ -131,15 +111,7 @@ create(input: CreatePostDto) {
 
 ## 9.3 Using an Interceptor for Reusable Response Workflow
 
-interceptor는 응답 shaping, 로깅, 타이밍 측정, 그 외 재사용 가능한 요청 흐름 관심사에 유용합니다.
-
-여러분은 이미 7장에서 한 예를 보았습니다.
-
-`SerializerInterceptor`는 나가는 응답을 다듬습니다.
-
-이 한 가지 사례만으로도 interceptor가 단지 로깅용만은 아니라는 사실을 알 수 있습니다.
-
-재사용 가능한 workflow hook 전반을 위한 장치입니다.
+interceptor는 응답 shaping, 로깅, 타이밍 측정, 그 외 재사용 가능한 요청 흐름 관심사에 유용합니다. 여러분은 이미 7장에서 한 예를 보았습니다. `SerializerInterceptor`는 나가는 응답을 다듬으며, 이 한 가지 사례만으로도 interceptor가 단지 로깅용만은 아니라는 사실을 알 수 있습니다. interceptor는 재사용 가능한 workflow hook 전반을 위한 장치입니다.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -261,57 +233,25 @@ export class PostsController {
 }
 ```
 
-이 구조는 초기 아키텍처로도 충분히 건강합니다.
-
-공개 라우트의 가독성이 유지됩니다.
-
-보호 규칙도 명확합니다.
-
-cross-cutting 출력 동작은 재사용 가능한 형태로 남습니다.
+이 구조는 초기 아키텍처로도 충분히 건강합니다. 공개 라우트의 가독성이 유지되고, 보호 규칙도 명확하며, cross-cutting 출력 동작은 재사용 가능한 형태로 남습니다. 즉 라우트 본문은 핵심 작업에 집중하고 파이프라인 concern은 데코레이터와 훅으로 분리됩니다.
 
 ### Why This Is Better Than Manual Repetition
 
-guard와 interceptor가 없다면 모든 쓰기 핸들러가 같은 헤더 검사를 반복해야 합니다.
-
-모든 읽기 핸들러가 같은 직렬화 로직을 반복해야 할 수도 있습니다.
-
-그 반복은 쉽게 drift를 만듭니다.
-
-어떤 라우트는 업데이트됩니다.
-
-어떤 라우트는 뒤처집니다.
-
-데코레이터 기반 파이프라인 훅은 이런 불일치를 줄여 줍니다.
+guard와 interceptor가 없다면 모든 쓰기 핸들러가 같은 헤더 검사를 반복해야 하고, 모든 읽기 핸들러가 같은 직렬화 로직을 반복해야 할 수도 있습니다. 그 반복은 쉽게 drift를 만듭니다. 어떤 라우트는 업데이트되고 어떤 라우트는 뒤처지기 때문입니다. 데코레이터 기반 파이프라인 훅은 이런 불일치를 줄여 줍니다.
 
 ## 9.5 Request Context and Deep Helpers
 
 HTTP 패키지 문서에서 특히 도움이 되는 디테일이 하나 있습니다.
 
-fluo는 request context 유틸리티를 통해 현재 활성 요청에 접근할 수 있게 해 줍니다.
-
-즉 깊은 헬퍼 함수까지 매번 request 객체를 직접 전달하지 않아도 되는 경우가 있습니다.
+fluo는 request context 유틸리티를 통해 현재 활성 요청에 접근할 수 있게 해 줍니다. 즉 깊은 헬퍼 함수까지 매번 request 객체를 직접 전달하지 않아도 되는 경우가 있습니다. 이 기능은 요청과 밀접한 공통 로직을 더 정돈된 위치에 둘 수 있게 해 줍니다.
 
 ### Why This Matters for Guards and Interceptors
 
-guard와 interceptor는 전송 세부사항에 가까운 위치에서 동작하는 경우가 많습니다.
-
-헤더, request id, 그 밖의 context-aware 값을 필요로 할 수 있습니다.
-
-프레임워크는 그런 정보를 구조적으로 꺼낼 수 있는 방식을 제공합니다.
-
-덕분에 cross-cutting 코드를 더 정돈해서 배치할 수 있습니다.
-
-또한 서비스 계층 전체가 raw transport concern으로 오염되는 것도 막을 수 있습니다.
+guard와 interceptor는 전송 세부사항에 가까운 위치에서 동작하는 경우가 많고, 헤더, request id, 그 밖의 context-aware 값을 필요로 할 수 있습니다. 프레임워크는 그런 정보를 구조적으로 꺼낼 수 있는 방식을 제공합니다. 덕분에 cross-cutting 코드를 더 정돈해서 배치할 수 있고, 서비스 계층 전체가 raw transport concern으로 오염되는 것도 막을 수 있습니다.
 
 ### Beginner Caution
 
-request context에 접근할 수 있다고 해서 모든 헬퍼가 transport-aware가 되어야 하는 것은 아닙니다.
-
-정말로 요청 지향적인 concern에서만 사용하세요.
-
-가능한 한 핵심 비즈니스 로직은 도메인 동작에 집중시키세요.
-
-그 절제가 깔끔한 경계를 지켜 줍니다.
+request context에 접근할 수 있다고 해서 모든 헬퍼가 transport-aware가 되어야 하는 것은 아닙니다. 정말로 요청 지향적인 concern에서만 사용하고, 가능한 한 핵심 비즈니스 로직은 도메인 동작에 집중시키세요. 그 절제가 깔끔한 경계를 지켜 주며, 나중에 런타임이나 전송 계층이 바뀌어도 서비스 코드를 덜 흔들리게 합니다.
 
 ## 9.6 A Practical Review Checklist for Pipeline Hooks
 

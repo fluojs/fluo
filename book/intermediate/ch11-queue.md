@@ -20,9 +20,7 @@ This chapter explains how to place a queue boundary on top of FluoShop's event-d
 
 ## 11.1 Why FluoShop needs queues
 
-By v2.0.0, FluoShop already publishes domain events and coordinates multi-step workflows. But not every follow-up action is a good fit for immediate in-process handling.
-
-Examples include:
+By v2.0.0, FluoShop already publishes domain events and coordinates multi-step workflows. But not every follow-up action is a good fit for immediate in-process handling. Examples include:
 
 - sending bulk email batches
 - generating invoice PDFs
@@ -34,11 +32,7 @@ These tasks can be slow, may depend on unstable remote systems, and may need sev
 
 ## 11.2 Queue wiring in fluo
 
-The README documents `QueueModule.forRoot(...)` as the supported root entrypoint.
-
-The Queue package depends on Redis for persistence and coordination.
-
-So FluoShop first connects `@fluojs/redis`, then registers queue support.
+The README documents `QueueModule.forRoot(...)` as the supported root entrypoint. The Queue package depends on Redis for persistence and coordination. So FluoShop first connects `@fluojs/redis`, then registers queue support.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -63,11 +57,7 @@ A job is a serialized unit of work. A worker owns how that job is processed. Thi
 
 ### 11.3.1 Invoice generation job
 
-Invoice PDF generation is a typical queue task.
-
-It takes too long to run inside the checkout confirmation path.
-
-It may also fail for temporary reasons such as file storage or rendering outages.
+Invoice PDF generation is a typical queue task. It takes too long to run inside the checkout confirmation path. It may also fail for temporary reasons such as file storage or rendering outages.
 
 ```typescript
 import { QueueWorker } from '@fluojs/queue';
@@ -91,9 +81,7 @@ Worker options are part of the design. Retry and backoff are not after-the-fact 
 
 ### 11.3.2 Enqueue after a business event
 
-FluoShop often enqueues a job after a domain event or saga step.
-
-This keeps the request path short without losing the business action.
+FluoShop often enqueues a job after a domain event or saga step. This keeps the request path short without losing the business action.
 
 ```typescript
 import { Inject } from '@fluojs/core';

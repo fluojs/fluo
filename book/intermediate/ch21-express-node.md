@@ -24,7 +24,7 @@ Express is still the most widely used framework in the Node.js ecosystem. If exi
 
 ### 21.1.1 Installation
 
-To use Express, you need both the fluo adapter and the `express` package.
+To use Express, you need both the fluo adapter and the `express` package. The adapter connects fluo's HTTP contract to the Express execution model, while `express` provides the actual Node.js server behavior.
 
 ```bash
 npm install @fluojs/platform-express express
@@ -32,7 +32,7 @@ npm install @fluojs/platform-express express
 
 ### 21.1.2 Bootstrapping with Express
 
-The switch to Express starts by changing the adapter selection in the application entrypoint. Controllers and services stay the same; only the HTTP engine boundary is replaced.
+The switch to Express starts by changing the adapter selection in the application entrypoint. Controllers and services stay the same; only the HTTP engine boundary is replaced. This lets you use the Express middleware ecosystem without rewriting existing business logic.
 
 ```typescript
 import { createExpressAdapter } from '@fluojs/platform-express';
@@ -107,7 +107,7 @@ Sometimes you need to work a little more directly with fluo abstractions to hand
 
 ### 21.3.1 SSE (Server-Sent Events) in Express
 
-The Express Adapter supports SSE through the `SseResponse` utility.
+The Express Adapter supports SSE through the `SseResponse` utility. For notifications or status updates that only need one-way streaming, SSE can be enough with a simpler operational model than WebSockets.
 
 ```typescript
 import { Get, SseResponse, type RequestContext } from '@fluojs/http';

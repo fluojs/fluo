@@ -82,19 +82,11 @@ This class expresses the transfer contract. Only exposed fields are included in 
 
 ### Why `excludeExtraneous` Is Beginner-Friendly
 
-`@Expose({ excludeExtraneous: true })` creates an allowlist-oriented default.
-
-That means the safe default is exclusion.
-
-Only fields that should leave the app are explicitly allowed.
-
-This default is safer than trying to remember every field that must be hidden.
+`@Expose({ excludeExtraneous: true })` creates an allowlist-oriented default. That means the safe default is exclusion, and only fields that should leave the app are explicitly allowed. This default is safer than trying to remember every field that must be hidden, and it reduces the chance that newly added internal fields leak into the public API.
 
 ## 7.3 Serializing Controller Results Automatically
 
-The serialization package can process values directly with `serialize(value)`.
-
-In HTTP handlers, using an Interceptor is the more natural pattern.
+The serialization package can process values directly with `serialize(value)`. In HTTP handlers, using an Interceptor is the more natural pattern. Response shaping can repeat across many routes, so placing it in the shared pipeline keeps responsibilities cleaner.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -110,23 +102,13 @@ export class PostsController {
 }
 ```
 
-Now the Controller can return DTO instances or data intended for serialization.
-
-The Interceptor automatically applies the response shaping step.
-
-That lets the Controller focus on coordination instead of formatting details.
+Now the Controller can return DTO instances or data intended for serialization. The Interceptor automatically applies the response shaping step, which lets the Controller focus on coordination instead of formatting details. This flow also gathers response rules in one place and helps keep the API consistent.
 
 The flow usually looks like this: **internal record -> DTO -> Interceptor -> client**. `SerializerInterceptor` is defined in `packages/serialization/src/serializer-interceptor.ts`, and internally it uses the `serialize` function to transform values based on the decorators you provide.
 
 ### Why an Interceptor Is a Good Fit
 
-Serialization is a cross cutting concern.
-
-Many routes may need it.
-
-Because an Interceptor sits between handler execution and response writing, it is a natural place to put reusable response shaping.
-
-This position helps create consistent behavior across endpoints.
+Serialization is a cross cutting concern, and many routes may need it. Because an Interceptor sits between handler execution and response writing, it is a natural place to put reusable response shaping. This position helps create consistent behavior across endpoints without repeating the same transformation code in every Controller.
 
 ### Controller-Level vs Method-Level Interceptors
 
@@ -155,9 +137,7 @@ This keeps the same power and consistency as the Interceptor while giving you di
 
 Now let’s change the posts feature so it feels more like a public API.
 
-The service can still work with richer internal records.
-
-The Controller only needs to return response-oriented DTOs.
+The service can still work with richer internal records. The Controller only needs to return response-oriented DTOs. With that split, you can change the storage model later while keeping the public API contract stable.
 
 ```typescript
 // src/posts/public-post.dto.ts
@@ -195,21 +175,11 @@ findAllPublic() {
 }
 ```
 
-This structure gives FluoBlog a better separation of concerns.
-
-The internal record structure may change later.
-
-The public response contract can remain stable.
+This structure gives FluoBlog a better separation of concerns. The internal record structure may change later, but the public response contract can remain stable. API consumers depend on an intentionally designed response shape rather than on whatever the internal implementation happens to look like.
 
 ### Where `@Transform()` Helps
 
-Sometimes public responses need a light finishing transformation.
-
-You may need to trim a summary value.
-
-You may want to show a user name in uppercase.
-
-You may need to format a derived display value.
+Sometimes public responses need a light finishing transformation. You may need to trim a summary value, show a user name in uppercase, or format a derived display value. These are presentation concerns at the transfer boundary, so it is natural to keep them near the DTO rather than inside domain logic.
 
 `@Transform()` exists for these synchronous boundary transformations. It can take a property value and return a different value based on the logic you provide. For example, in the `PublicPostDto` above, it is useful when showing a long body as a short summary.
 
@@ -227,33 +197,11 @@ This is very useful when combining several internal fields into one public field
 
 ## 7.5 Safe Serialization Details Worth Knowing
 
-The serializer has a few traits that become important as an application grows.
-
-It handles recursive object traversal.
-
-It safely cuts circular references to avoid infinite recursion.
-
-It inherits decorator contracts from base classes.
-
-It treats plain objects carefully instead of assuming everything is a decorated instance.
-
-These details may sound a bit advanced.
-
-At this stage, you only need to remember one practical conclusion.
-
-The serializer is designed as a trustworthy boundary tool, not just a convenience function.
+The serializer has a few traits that become important as an application grows. It handles recursive object traversal, safely cuts circular references to avoid infinite recursion, inherits decorator contracts from base classes, and treats plain objects carefully instead of assuming everything is a decorated instance. These details may sound a bit advanced, but at this stage you only need one practical conclusion: the serializer is designed as a trustworthy boundary tool, not just a convenience function.
 
 ### What It Does Not Promise
 
-Serialization does not mean every value is automatically converted into a strict JSON primitive.
-
-Values such as `Date` or `bigint` may need separate normalization depending on the client contract.
-
-This is a reminder that transfer design still requires thought.
-
-Decorators help.
-
-But they do not replace clear API design.
+Serialization does not mean every value is automatically converted into a strict JSON primitive. Values such as `Date` or `bigint` may need separate normalization depending on the client contract. This is a reminder that transfer design still requires thought. Decorators help, but they do not replace clear API design.
 
 ### Performance Considerations
 
@@ -267,9 +215,7 @@ Serialization adds a small amount of overhead, but in fluo it is highly optimize
 
 When a team first introduces response DTOs, a few patterns appear quickly.
 
-A good pattern is making the service or mapper aware of public DTO creation.
-
-A weak pattern is returning internal objects without much thought and hoping sensitive fields do not leak.
+A good pattern is making the service or mapper aware of public DTO creation. A weak pattern is returning internal objects without much thought and hoping sensitive fields do not leak. When the response boundary is explicit, you control exposure instead of relying on hope.
 
 Use this checklist.
 

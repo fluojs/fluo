@@ -40,17 +40,11 @@ This layered approach saves system resources by letting unauthorized requests fa
 
 ### A Simple Mental Model
 
-Think in terms of these two questions.
-
-If the question is “Is this request allowed?”, think of a Guard.
-
-If the question is “How should this request be observed, transformed, and wrapped?”, think of an Interceptor.
+Think in terms of these two questions. If the question is “Is this request allowed?”, think of a Guard. If the question is “How should this request be observed, transformed, and wrapped?”, think of an Interceptor. This distinction is the first check when choosing a pipeline hook.
 
 There is one important pipeline rule here: **Guards run before Interceptors.** An Interceptor can wrap handler execution only after the request passes the Guards, and DTO binding and validation happen at the Controller invocation step inside that flow.
 
-This model does not explain everything.
-
-But it is enough for designing the request pipeline at this stage.
+This model does not explain everything, but it is enough for designing the request pipeline at this stage. Think of the flow as deciding permission first, then placing shared behavior around the handler.
 
 ## 9.2 Protecting Write Routes with a Guard
 
@@ -94,25 +88,11 @@ export class PostsController {
 }
 ```
 
-Now the route contract is clearer.
-
-Reading posts is public.
-
-Creating or updating posts must pass the Guard check first.
+Now the route contract is clearer. Reading posts is public, while creating or updating posts must pass the Guard check first. Because that difference appears on the Decorator line, you can see the protection rule before reading the handler body.
 
 ### Why a Guard Is Better Than an Inline Header Check
 
-Of course, a Controller can inspect headers directly.
-
-For a single route, that would work.
-
-But it does not scale well.
-
-A Guard is reusable.
-
-It separates authorization-style checks from the handler body.
-
-It also makes intent visible directly on the Decorator line.
+Of course, a Controller can inspect headers directly, and for a single route that would work. But it does not scale well. A Guard is reusable, separates authorization-style checks from the handler body, and makes intent visible directly on the Decorator line.
 
 ### Multi-Guard Execution
 
@@ -131,15 +111,7 @@ In this case, fluo runs the Guards in order. If **any** Guard returns `false` or
 
 ## 9.3 Using an Interceptor for Reusable Response Workflow
 
-Interceptors are useful for response shaping, logging, timing measurement, and other reusable request flow concerns.
-
-You already saw one example in Chapter 7.
-
-`SerializerInterceptor` refines outgoing responses.
-
-That single case shows that an Interceptor is not just for logging.
-
-It is a tool for reusable workflow hooks in general.
+Interceptors are useful for response shaping, logging, timing measurement, and other reusable request flow concerns. You already saw one example in Chapter 7. `SerializerInterceptor` refines outgoing responses, and that single case shows that an Interceptor is not just for logging. It is a tool for reusable workflow hooks in general.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -261,57 +233,25 @@ export class PostsController {
 }
 ```
 
-This structure is healthy enough for an early architecture.
-
-Public routes stay readable.
-
-Protection rules are clear.
-
-Cross-cutting output behavior remains reusable.
+This structure is healthy enough for an early architecture. Public routes stay readable, protection rules are clear, and cross-cutting output behavior remains reusable. Route bodies can focus on core work while pipeline concerns stay in Decorators and hooks.
 
 ### Why This Is Better Than Manual Repetition
 
-Without Guards and Interceptors, every write handler would need to repeat the same header check.
-
-Every read handler might also need to repeat the same serialization logic.
-
-That repetition easily creates drift.
-
-Some routes get updated.
-
-Other routes fall behind.
-
-Decorator-based pipeline hooks reduce these inconsistencies.
+Without Guards and Interceptors, every write handler would need to repeat the same header check, and every read handler might also need to repeat the same serialization logic. That repetition easily creates drift because some routes get updated while others fall behind. Decorator-based pipeline hooks reduce these inconsistencies.
 
 ## 9.5 Request Context and Deep Helpers
 
 There is one especially useful detail in the HTTP package documentation.
 
-fluo can give access to the currently active request through request context utilities.
-
-That means you do not always have to pass the request object manually into every deep helper function.
+fluo can give access to the currently active request through request context utilities. That means you do not always have to pass the request object manually into every deep helper function. This helps place request-oriented shared logic in a cleaner location.
 
 ### Why This Matters for Guards and Interceptors
 
-Guards and Interceptors often run close to transport details.
-
-They may need headers, request ids, and other context-aware values.
-
-The framework provides a structured way to get that information.
-
-This helps place cross-cutting code more cleanly.
-
-It also keeps the service layer from being polluted with raw transport concerns.
+Guards and Interceptors often run close to transport details, and they may need headers, request ids, and other context-aware values. The framework provides a structured way to get that information. This helps place cross-cutting code more cleanly and keeps the service layer from being polluted with raw transport concerns.
 
 ### Beginner Caution
 
-Access to request context does not mean every helper should become transport-aware.
-
-Use it only for concerns that are truly request-oriented.
-
-Keep core business logic focused on domain behavior whenever possible.
-
-That restraint protects clean boundaries.
+Access to request context does not mean every helper should become transport-aware. Use it only for concerns that are truly request-oriented, and keep core business logic focused on domain behavior whenever possible. That restraint protects clean boundaries and keeps service code steadier if the runtime or transport layer changes later.
 
 ## 9.6 A Practical Review Checklist for Pipeline Hooks
 

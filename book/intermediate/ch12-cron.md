@@ -20,9 +20,7 @@ This chapter explains how to introduce time-based work into FluoShop and how to 
 
 ## 12.1 Why FluoShop needs scheduling
 
-By v2.1.0, FluoShop can already react to commands, events, sagas, and queued jobs. Even so, some work does not start from a request or a new domain event. Time itself is the start condition.
-
-Examples include:
+By v2.1.0, FluoShop can already react to commands, events, sagas, and queued jobs. Even so, some work does not start from a request or a new domain event. Time itself is the start condition. Examples include:
 
 - expiring unpaid reservations every minute
 - reconciling marketplace settlement files every hour
@@ -34,9 +32,7 @@ These are scheduling concerns. They are not naturally expressed as one-time comm
 
 ## 12.2 Cron module wiring
 
-The README documents `CronModule.forRoot(...)` as the registration entrypoint.
-
-fluo supports cron expressions, fixed intervals, and one-time timeouts.
+The README documents `CronModule.forRoot(...)` as the registration entrypoint. fluo supports cron expressions, fixed intervals, and one-time timeouts.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -57,9 +53,7 @@ The package exposes three main scheduling shapes. `@Cron` is for calendar-style 
 
 ### 12.3.1 Reservation expiry cron
 
-Unpaid reservations must expire regularly.
-
-This is a natural cron task.
+Unpaid reservations must expire regularly. This is a natural cron task. Checking stale reservations on every user request would make the response path unnecessarily heavy, so time-based cleanup is clearer when it is separated into its own schedule.
 
 ```typescript
 import { Cron, CronExpression } from '@fluojs/cron';
@@ -72,9 +66,7 @@ export class ReservationExpiryService {
 }
 ```
 
-This is time-based maintenance tied to a business rule.
-
-The schedule is part of the behavior contract.
+This is time-based maintenance tied to a business rule. The schedule is part of the behavior contract. How often it runs is not just an operations setting, but also a policy for how long inventory may remain reserved.
 
 ### 12.3.2 Startup timeout and periodic polling
 

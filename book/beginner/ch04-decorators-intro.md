@@ -20,11 +20,7 @@ Part 0 closes by moving one layer below Modules and Providers. If Chapter 3 show
 
 ## 4.1 What is a Decorator?
 
-It is best to start with the simplest question.
-
-At first, you can understand a Decorator as a function-based mechanism that assigns behavior or metadata-related intent to a class or class member.
-
-The most important word here is **intent**.
+It is best to start with the simplest question. At first, you can understand a Decorator as a function-based mechanism that assigns behavior or metadata-related intent to a class or class member. The most important word here is **intent**, because Decorators reveal what role code plays in the application near the code itself.
 
 Decorators let you make declarations like these.
 
@@ -43,9 +39,7 @@ For example, `@Controller('/posts')` does not change the normal rules of a JavaS
 
 ### Why Beginners Should Care
 
-If Decorators were only "syntax that looks nice," they would not matter this much.
-
-They matter because Decorators become the vocabulary of the framework.
+If Decorators were only "syntax that looks nice," they would not matter this much. They matter because Decorators become the vocabulary of the framework. Reading fluo code often means reading the intent that Decorators declare.
 
 - Modules are defined with Decorators,
 - Controllers are registered with Decorators,
@@ -149,7 +143,7 @@ Also remember that Providers themselves are registered through a Module's `provi
 
 ### Why fluo Uses Them Heavily
 
-fluo uses class Decorators heavily because they let you declare intent in a short, readable way.
+fluo uses class Decorators heavily because they let you declare intent in a short, readable way. When a class shows its role near the top of the file, you can quickly tell which layer of the application that code belongs to.
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
@@ -167,9 +161,7 @@ export class MyController {
 }
 ```
 
-If you can read the first lines of a class and know what the file is about, file navigation becomes much easier.
-
-This readability is especially useful in modular codebases with many files.
+If you can read the first lines of a class and know what the file is about, file navigation becomes much easier. This readability is especially useful in modular codebases with many files, and it helps new teammates understand feature boundaries faster.
 
 ### Metadata Ownership
 
@@ -195,9 +187,7 @@ When reading fluo source or examples, pause for a moment and ask what each class
 
 After class-level identity comes method-level behavior.
 
-Method Decorators target individual methods rather than the whole class.
-
-In HTTP code, they are often used to declare route behavior.
+Method Decorators target individual methods rather than the whole class. In HTTP code, they are often used to declare route behavior, showing exactly where a method participates in the application surface.
 
 ```typescript
 @Get('/')
@@ -260,9 +250,7 @@ class MyController {
 
 ### Why This Is Interesting
 
-Accessors provide clearer language-level hooks for property-related behavior.
-
-That makes them useful for patterns like these.
+Accessors provide clearer language-level hooks for property-related behavior. That makes it possible to express state access, initialization, and metadata attachment more structurally, which is useful for patterns like these.
 
 - property access tracking,
 - lazy initialization,
@@ -270,11 +258,7 @@ That makes them useful for patterns like these.
 
 ### Why Beginners Should Stay Calm
 
-You do not need to use accessor Decorators heavily in your first fluo project.
-
-The important thing is to know that this tool exists.
-
-The standard Decorator model gives framework authors a broader and cleaner design space, not just classes and methods.
+You do not need to use accessor Decorators heavily in your first fluo project. The important thing is to know that this tool exists. The standard Decorator model gives framework authors a broader and cleaner design space, not just classes and methods.
 
 ### Encapsulation and Getters/Setters
 
@@ -316,9 +300,7 @@ A good baseline for an initial project looks like this.
 
 ### Why `experimentalDecorators: false` matters
 
-This setting is the clearest signal that the project has not chosen the old legacy Decorator path.
-
-For fluo, this alignment is intentional and foundational.
+This setting is the clearest signal that the project has not chosen the old legacy Decorator path. For fluo, this alignment is intentional and foundational. When language settings support the framework philosophy, Decorator behavior stays easier to predict.
 
 ### Why `emitDecoratorMetadata: false` matters
 
@@ -381,9 +363,7 @@ Once that mental model is stable, custom abstractions will make much more sense.
 
 ### What You Need Right Now
 
-At the end of Part 0, you do not need to implement your own Decorator system.
-
-What you need right now is a reliable foundation.
+At the end of Part 0, you do not need to implement your own Decorator system. What you need right now is a reliable foundation. If you can read what the built-in Decorators express, you can follow the HTTP examples in the next chapters with much more confidence.
 
 - Decorators express framework intent,
 - the standard model is future-facing,

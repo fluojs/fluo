@@ -58,11 +58,11 @@ The `@fluojs/metrics` package integrates Prometheus with `fluo`. Prometheus is a
 Prometheus was built for the dynamic nature of cloud-native environments. Applications do not need to "push" data to a central server, which simplifies network configuration and prevents the monitoring system from becoming a bottleneck during traffic spikes. It also has a powerful query language, PromQL, and a large ecosystem of exporters for databases, caches, and operating systems.
 
 ## 19.3 Basic Setup
-The basic setup is intentionally small. Before you create custom dashboards, it lets you start exposing useful telemetry first.
+The basic setup is intentionally small. Before you create custom dashboards, it lets you start exposing useful telemetry first. Rather than designing many metrics on day one, start by opening the default endpoint and confirming that real data begins to flow.
 
 Install the package: `pnpm add @fluojs/metrics`
 
-Register the Module in the root `AppModule`:
+Then register the Module in the root `AppModule`:
 
 ```typescript
 import { Module } from '@fluojs/core';

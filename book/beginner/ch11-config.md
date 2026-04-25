@@ -210,9 +210,7 @@ ConfigModule.forRoot({
 
 By validating during `forRoot`, Fluo raises a detailed error and **stops bootstrap** when configuration is invalid. This ensures that a misconfigured node is never put into load balancer rotation.
 
-One common production bug is an application starting with only partially valid configuration. If it boots with some values present and others missing, the problem may appear only after a real request arrives, making the root cause harder to find.
-
-With `fluo`, you can validate configuration during bootstrap. That means a half-configured state is blocked at startup instead of being carried into runtime.
+One common production bug is an application starting with only partially valid configuration. If it boots with some values present and others missing, the problem may appear only after a real request arrives, making the root cause harder to find. With `fluo`, you can validate configuration during bootstrap, so a half-configured state is blocked at startup instead of being carried into runtime. Configuration validation is not just a convenience. It is a safety barrier that keeps misconfigured instances out of production traffic.
 
 ### Real-world Scenario: Production Guardrails
 Imagine a production deployment script has a bug and fails to inject `DATABASE_URL`. In a traditional application, the process might start and the failure might not be discovered until minutes later, when the first user tries to sign up, causing a 500 error and a poor user experience.

@@ -263,7 +263,7 @@ This chapter covered the essential foundation for application health and reliabi
 The key takeaway is that production reliability is not a feature you add later. It is a core capability that must be designed and implemented from the beginning. When you prioritize health and graceful shutdown, you move closer to a professional grade backend that users and the business can trust.
 
 ### 18.7.2 Final Checklist for Production Readiness
-Before you consider your health check implementation complete, review this final checklist.
+Before you consider your health check implementation complete, review this final checklist. Each item is more than a documentation exercise. It verifies whether the orchestrator will have enough signal to make the right decision during deployment and failure handling.
 - [ ] Are you checking both the `GET /health` and `GET /ready` routes?
 - [ ] Are all critical dependencies, such as the database and cache, being monitored?
 - [ ] Are health endpoints protected from unauthorized access?
@@ -271,7 +271,7 @@ Before you consider your health check implementation complete, review this final
 - [ ] Have custom health indicators been tested for both success and failure cases?
 - [ ] Is the grace period tuned to the specific needs of long running requests?
 
-Checking these items helps you decide whether your Fluo application is not only running, but also ready for production.
+Checking these items helps you decide whether your Fluo application is not only running, but also ready for production. By reviewing health routes, dependency state, and shutdown behavior together, you confirm that the service does not hide failures and can communicate accurately with the infrastructure around it.
 
 ### 18.7.3 Final Thoughts on Application Reliability
 Reliability is not a binary state. It is a spectrum of confidence. When you implement the health checks and graceful shutdown procedures described in this chapter, you gain more evidence for FluoBlog's stability. You move from simply "hoping" that the application works to "knowing exactly" how it is behaving and having tools to handle inevitable failures.

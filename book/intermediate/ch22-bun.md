@@ -32,7 +32,7 @@ The `@fluojs/platform-bun` package is designed around the Bun runtime's `Bun.ser
 
 ### 22.2.1 Installation
 
-To get started, install the Bun adapter in your fluo project.
+To get started, install the Bun adapter in your fluo project. This package connects fluo's HTTP dispatcher to Bun's native server model.
 
 ```bash
 bun add @fluojs/platform-bun
@@ -162,7 +162,7 @@ Injecting this driver into a fluo Provider lets you keep type safety and reposit
 
 ### 22.8.2 Environment-Specific Providers
 
-If you need to swap Providers by runtime, use fluo's DI system. Platform-specific features such as Bun's file system API preserve portability when kept behind this kind of boundary.
+If you need to swap Providers by runtime, use fluo's DI system. Platform-specific features such as Bun's file system API preserve portability when kept behind this kind of boundary. Service code can express the file operation it needs, while the actual implementation is chosen for the runtime.
 
 ```typescript
 @Module({

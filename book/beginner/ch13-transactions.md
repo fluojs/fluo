@@ -157,11 +157,7 @@ When a transaction fails, rolling back the database is not the whole story. You 
 ### Best Practice: Keep Transactions Short
 You may be tempted to wrap large chunks of business logic in a transaction, but remember that transactions hold database locks. If a transaction takes several seconds to complete, it can block other requests and slow down the entire application. Always aim to keep transactions as short and focused as possible. Include only the work that must succeed or fail together. Avoid heavy computation, image processing, or external API calls inside a transaction block, because they greatly increase how long locks are held.
 
-Now that you have seen how to create transactions, the next important piece is designing the data layer so it stays clean while using them.
-
-In FluoBlog, we want the data layer to be both clean and efficient.
-
-In many high-traffic applications, long-running transactions are a major cause of performance degradation. When a transaction holds a specific database row, every other process that wants to access that row has to wait. This creates cascading bottlenecks across the whole system. By keeping transactions concise, you maximize database concurrency and ensure FluoBlog keeps stable response times as its user base grows. Every millisecond saved inside a transaction block improves throughput across the entire system.
+Now that you have seen how to create transactions, the next important piece is designing the data layer so FluoBlog stays both clean and efficient while using them. In many high-traffic applications, long-running transactions are a major cause of performance degradation. When a transaction holds a specific database row, every other process that wants to access that row has to wait, which creates cascading bottlenecks across the whole system. By keeping transactions concise, you maximize database concurrency and ensure FluoBlog keeps stable response times as its user base grows. Every millisecond saved inside a transaction block improves throughput across the entire system.
 
 ### Advanced: Deadlocks and Retries
 In highly concurrent environments, **Deadlocks** can occur. A deadlock happens when two transactions are each waiting for the other to release a lock. The database engine eventually terminates one of the transactions to break the cycle, but the application must be ready to handle that error. The standard practice is to implement a "retry" mechanism for deadlock errors. Fluo does not automatically retry transactions by default, to prevent unintended side effects, but you can easily wrap a transaction block in retry logic with a library like `p-retry` or a simple `while` loop with exponential backoff.
@@ -232,9 +228,7 @@ Transactions are excellent for immediate consistency, but sometimes an event-dri
 In this chapter, we focus on the simpler and more reliable transaction-based approach for most beginner and intermediate use cases where strict consistency is the priority. If your application grows to global scale, you can revisit these decisions and move toward event-driven patterns, but starting with transactions is the safest and most predictable path.
 
 ## 13.7 Summary
-In this chapter, we explored data integrity and Fluo's transaction model. Reliable transaction management is the foundation of production applications, and Fluo lowers this complexity without sacrificing control.
-
-In this chapter, we explored data integrity and the patterns that tie related writes together.
+In this chapter, we explored data integrity, Fluo's transaction model, and the patterns that tie related writes together. Reliable transaction management is the foundation of production applications, and Fluo lowers this complexity without sacrificing control. Now let's summarize which problem each pattern solves.
 
 - **Atomicity** guarantees that multi-step operations are "all or nothing."
 - **Consistency** keeps the database in a valid state according to business rules.

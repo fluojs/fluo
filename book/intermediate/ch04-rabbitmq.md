@@ -27,9 +27,7 @@ In FluoShop, Chapter 4 adds three concrete goals.
 2. Push warehouse work after payment confirmation into broker-backed queues.
 3. Keep the programming model the same even when the transport changes.
 
-RabbitMQ doesn't replace TCP or Redis everywhere.
-
-It handles only the handoffs where explicit queue ownership gives more clarity.
+RabbitMQ doesn't replace TCP or Redis everywhere. It handles only the handoffs where explicit queue ownership gives more clarity.
 
 When exactly one worker must pack a package, a queue gives more information than a fan-out topic. With RabbitMQ's **Competing Consumers** pattern, even if Fulfillment Service scales to 10 instances, one `payment.settled` event leads to exactly one warehouse "picking" task. This structure reduces duplicate shipping errors at the infrastructure level.
 
@@ -53,13 +51,7 @@ This transport also provides queue-level options that matter in the book example
 - `responseQueue`
 - `requestTimeoutMs`
 
-If these aren't overridden, fluo uses default values for event, message, and response queues.
-
-The response queue is especially important.
-
-By default, it is instance-scoped and includes a UUID.
-
-This prevents response collisions even when multiple service instances are alive at the same time. If Order Service instance A sends a request, only instance A's unique `responseQueue`, for example `fluo.microservices.responses.uuid-a`, receives the response. Instance B is listening to its own unique queue, so it never sees that message.
+If these aren't overridden, fluo uses default values for event, message, and response queues. The response queue is especially important. By default, it is instance-scoped and includes a UUID. This prevents response collisions even when multiple service instances are alive at the same time. If Order Service instance A sends a request, only instance A's unique `responseQueue`, for example `fluo.microservices.responses.uuid-a`, receives the response. Instance B is listening to its own unique queue, so it never sees that message.
 
 ### 4.2.2 Module wiring
 
@@ -88,13 +80,7 @@ const transport = new RabbitMqMicroserviceTransport({
 export class FulfillmentModule {}
 ```
 
-This code should now look very familiar.
-
-The handler model stays the same.
-
-Only the transport bootstrap changes.
-
-That continuity is what makes the intermediate book cumulative learning rather than repetition. Whether you use the `TcpMicroserviceTransport` from Chapter 2 or this RabbitMQ transport, a `@MessagePattern` handler doesn't need a single code change to receive data.
+This code should now look very familiar. The handler model stays the same. Only the transport bootstrap changes. That continuity is what makes the intermediate book cumulative learning rather than repetition. Whether you use the `TcpMicroserviceTransport` from Chapter 2 or this RabbitMQ transport, a `@MessagePattern` handler doesn't need a single code change to receive data.
 
 ## 4.3 Queue topology for request and event traffic
 
@@ -116,11 +102,7 @@ This becomes the RabbitMQ topology.
 - `fluoshop.fulfillment.events` carries fire-and-forget signals such as `payment.settled`.
 - `fluoshop.fulfillment.responses.<instance>` returns responses to the sender.
 
-This separation makes intent easy to read.
-
-When operators see backlog in the message queue, they immediately know request-like work is delayed.
-
-The event queue volume also shows how active broadcast-style side effects are. This topology also simplifies security. Order Service only needs write permission for Fulfillment's event/message queues and read permission only for its own unique response queue.
+This separation makes intent easy to read. When operators see backlog in the message queue, they immediately know request-like work is delayed, and event queue volume shows how active broadcast-style side effects are. This topology also simplifies security. Order Service only needs write permission for Fulfillment's event/message queues and read permission only for its own unique response queue.
 
 ### 4.3.2 Instance-scoped response queues
 
@@ -128,13 +110,7 @@ The repository's RabbitMQ tests verify an important safety property. Concurrent 
 
 ## 4.4 Request-response workflows on RabbitMQ
 
-RabbitMQ is often introduced only as a tool for background jobs.
-
-fluo supports a broader model than that.
-
-You can use `send()` and receive a correlated response.
-
-The transport serializes the request frame, sends it with `requestId` and `replyTo`, then resolves or rejects the caller when the response frame arrives. Internally, the transport maintains a `Map` of pending requests keyed by `requestId`, ensuring that even if thousands of responses arrive in the same minute, each one reaches the correct `async/await` caller.
+RabbitMQ is often introduced only as a tool for background jobs. fluo supports a broader model than that. You can use `send()` and receive a correlated response. The transport serializes the request frame, sends it with `requestId` and `replyTo`, then resolves or rejects the caller when the response frame arrives. Internally, the transport maintains a `Map` of pending requests keyed by `requestId`, ensuring that even if thousands of responses arrive in the same minute, each one reaches the correct `async/await` caller.
 
 ### 4.4.1 FluoShop packer reservation
 
@@ -158,29 +134,17 @@ export class FulfillmentClient {
 }
 ```
 
-The business benefit here is subtle but clear. Order Service doesn't need a direct TCP socket into the warehouse.
-
-It needs a transport that supports responses while fitting the queue-centered operational model the warehouse team has already adopted.
-
-RabbitMQ provides exactly that bridge.
+The business benefit here is subtle but clear. Order Service doesn't need a direct TCP socket into the warehouse. It needs a transport that supports responses while fitting the queue-centered operational model the warehouse team has already adopted. RabbitMQ provides exactly that bridge.
 
 ### 4.4.2 Timeouts, correlation, and handler failures
 
-If a response doesn't arrive within `requestTimeoutMs`, the transport rejects the caller.
-
-Handler errors also round-trip back to the caller as they are.
-
-That lets FluoShop distinguish three states.
+If a response doesn't arrive within `requestTimeoutMs`, the transport rejects the caller. Handler errors also round-trip back to the caller as they are. That lets FluoShop distinguish three states.
 
 1. Fulfillment received the request and responded successfully.
 2. Fulfillment processed the request but rejected it with a domain error.
 3. No response arrived within the timeout budget.
 
-These states must not be flattened into one generic failure.
-
-If the warehouse rejects same-day shipping as a policy decision, the API should be able to explain why.
-
-But if the broker path itself timed out, it should be shown as a temporary dependency error. This distinction is possible because of the `error` property in the `RabbitMqTransportMessage` frame. When a handler throws an error, the transport catches it, serializes the message, sets `kind: 'response'` and `error: string`, and returns it to the `replyTo` queue.
+These states must not be flattened into one generic failure. If the warehouse rejects same-day shipping as a policy decision, the API should be able to explain why. But if the broker path itself timed out, it should be shown as a temporary dependency error. This distinction is possible because of the `error` property in the `RabbitMqTransportMessage` frame. When a handler throws an error, the transport catches it, serializes the message, sets `kind: 'response'` and `error: string`, and returns it to the `replyTo` queue.
 
 ## 4.5 Event-driven workflows on RabbitMQ
 
@@ -208,17 +172,7 @@ This is the fluo pattern repeated throughout the book. Even when "wiring" change
 
 ### 4.5.2 Dead-letter and redrive policy
 
-The transport intentionally focuses on frame routing.
-
-Queue declaration policy belongs to the caller-owned RabbitMQ setup.
-
-That means the dead-letter exchange, TTL, maximum redelivery count, and redrive tooling must be defined with the application's `amqplib` channel setup.
-
-In FluoShop, warehouse events are a good place for exactly that policy.
-
-If `pickwave.created` repeatedly fails, operators should be able to isolate the poison message while preserving the original order context. This is the "poison pill" safety net. Instead of stopping consumers or losing the message, RabbitMQ can move the message to a **Dead Letter Exchange (DLX)** after N failures so operators can inspect and fix it manually later.
-
-The more explicit these recovery mechanisms are, the more RabbitMQ's strengths show.
+The transport intentionally focuses on frame routing. Queue declaration policy belongs to the caller-owned RabbitMQ setup. That means the dead-letter exchange, TTL, maximum redelivery count, and redrive tooling must be defined with the application's `amqplib` channel setup. In FluoShop, warehouse events are a good place for exactly that policy. If `pickwave.created` repeatedly fails, operators should be able to isolate the poison message while preserving the original order context. This is the "poison pill" safety net. Instead of stopping consumers or losing the message, RabbitMQ can move the message to a **Dead Letter Exchange (DLX)** after N failures so operators can inspect and fix it manually later. The more explicit these recovery mechanisms are, the more RabbitMQ's strengths show.
 
 ## 4.6 Delivery safety and operations
 
@@ -229,11 +183,7 @@ The repository tests document several behaviors that should become operational g
 - Concurrent requests are safely correlated through `requestId` UUIDs.
 - Instance-scoped response queues prevent reply theft.
 
-This gives FluoShop a stable mental model.
-
-RabbitMQ isn't magical durability.
-
-It becomes sufficiently safe durability only when topology, retries, and queue ownership are responsibly defined. fluo uses **JSON serialization** for transport frames, so compatibility is strong. Even a legacy Java service can send messages to FluoShop's RabbitMQ queues as long as it follows the `RabbitMqTransportMessage` schema.
+This gives FluoShop a stable mental model. RabbitMQ isn't magical durability, and it becomes sufficiently safe durability only when topology, retries, and queue ownership are responsibly defined. fluo uses **JSON serialization** for transport frames, so compatibility is strong. Even a legacy Java service can send messages to FluoShop's RabbitMQ queues as long as it follows the `RabbitMqTransportMessage` schema.
 
 ### 4.6.1 Operational signals to watch
 
@@ -245,31 +195,17 @@ For fulfillment queues, the team should watch these metrics.
 - **Per-instance response queue churn**: How often unique response queues are created and deleted.
 - **Dead-letter queue growth**: The number of failed business processes.
 
-These metrics tell different stories.
-
-If ready count rises, worker shortage is the likely cause.
-
-If redelivery count rises, handler stability may be dropping.
-
-If response queue churn is too fast, it may signal that instances are restarting too often.
+These metrics tell different stories. If ready count rises, worker shortage is the likely cause. If redelivery count rises, handler stability may be dropping. If response queue churn is too fast, it may signal that instances are restarting too often.
 
 ### 4.6.2 FluoShop rollout plan
 
-In v1.3.0, only the fulfillment handoff moves to RabbitMQ.
-
-The rest of FluoShop intentionally stays mixed.
+In v1.3.0, only the fulfillment handoff moves to RabbitMQ. The rest of FluoShop intentionally stays mixed.
 
 - API reads can stay on TCP for the lowest latency.
 - Payment durability can stay on Redis Streams for append-only log safety.
 - Only warehouse work moves to RabbitMQ queues for task-based ownership.
 
-This hybrid state is healthy.
-
-Architectures usually evolve one boundary at a time.
-
-The practical lesson is to move the link that benefits most from a queue-owned operational model first.
-
-You don't need to move every transport at once for symmetry. Symmetry is a developer preference. Stability is a business requirement.
+This hybrid state is healthy. Architectures usually evolve one boundary at a time. The practical lesson is to move the link that benefits most from a queue-owned operational model first. You don't need to move every transport at once for symmetry. Symmetry is a developer preference. Stability is a business requirement.
 
 ## 4.7 Summary
 

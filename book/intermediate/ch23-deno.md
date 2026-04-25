@@ -39,7 +39,7 @@ Deno handles dependencies differently. You can use the `deno add` command or imp
 deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
 ```
 
-Alternatively, you can manage them in a `deno.json` file for a more structured approach.
+Alternatively, you can manage them in a `deno.json` file for a more structured approach. The important point is that dependency boundaries are expressed more clearly through imports and configuration files than through an installation folder.
 
 ### 23.2.2 Bootstrapping FluoShop on Deno
 
@@ -61,7 +61,7 @@ To run this application, you must explicitly provide the required permissions. I
 deno run --allow-net --allow-read --allow-env main.ts
 ```
 
-If a flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment.
+If a flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment. The run command itself becomes documentation for the resources the application is allowed to access.
 
 ## 23.3 Web Standards and Request Dispatching
 
@@ -111,7 +111,7 @@ When building microservices on Deno, follow the principle of least privilege. Sp
 - **`--allow-read=./config,./static`**: Restricts file access to specific directories that contain configuration files or static assets.
 - **`--allow-env=PORT,DATABASE_URL`**: Restricts access to only the environment variable keys the application needs.
 
-Fluo's `ConfigModule` works with Deno environment variable access when permission is granted. The important point is that environment variable access itself appears in the deployment command's permission list.
+Fluo's `ConfigModule` works with Deno environment variable access when permission is granted. The important point is that environment variable access itself appears in the deployment command's permission list. Because reading configuration is part of the permission contract, operators can see which environment values the application depends on directly in the deploy command.
 
 ## 23.6 Porting Checklist for Deno
 
@@ -142,7 +142,7 @@ When running Deno, database driver choices need to account for the security mode
 
 ### 23.8.1 Using Deno KV
 
-If you need Deno-native storage, you can review Deno's built-in KV store. Deno KV is a key-value store included in the runtime and can be a suitable option for small state or cache-like data.
+If you need Deno-native storage, you can review Deno's built-in KV store. Deno KV is a key-value store included in the runtime and can be a suitable option for small state or cache-like data. For core order data where relationships and transaction policy matter, compare it carefully with the existing database choices.
 
 ```typescript
 import { OnModuleInit } from '@fluojs/core';

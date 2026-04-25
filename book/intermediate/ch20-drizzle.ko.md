@@ -94,7 +94,7 @@ export class ProductRepository {
 
 ## 20.5 Transaction Management
 
-Drizzle의 트랜잭션 관리는 fluo의 통합 인터페이스를 통해 다룰 수 있습니다.
+Drizzle의 트랜잭션 관리는 fluo의 통합 인터페이스를 통해 다룰 수 있습니다. 저장소 코드가 직접 트랜잭션 핸들을 관리하지 않아도 되므로, 서비스는 비즈니스 작업의 원자성에 집중할 수 있습니다.
 
 ### Manual Transactions
 
@@ -111,7 +111,7 @@ await this.db.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-`DrizzleTransactionInterceptor`를 사용하면 컨트롤러 액션 전체를 트랜잭션으로 묶을 수 있습니다. 여러 리포지토리 호출이 하나의 비즈니스 작업을 이루는 경우 원자성(atomicity)을 보장하는 데 적합합니다.
+`DrizzleTransactionInterceptor`를 사용하면 컨트롤러 액션 전체를 트랜잭션으로 묶을 수 있습니다. 여러 리포지토리 호출이 하나의 비즈니스 작업을 이루는 경우 원자성(atomicity)을 보장하는 데 적합합니다. 요청이 실패하면 같은 경계 안의 변경 사항을 함께 되돌릴 수 있어 주문 처리 같은 흐름을 더 안전하게 다룰 수 있습니다.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';
@@ -128,9 +128,7 @@ export class OrderController {
 
 ## 20.6 FluoShop Context: Relational Schema
 
-FluoShop에서는 트랜잭션 무결성과 관계 제약 조건이 중요한 **주문 관리(Order Management)** 서비스에 Drizzle을 사용합니다.
-
-테이블 정의는 중앙의 `schema.ts` 파일에서 관리합니다. Drizzle은 이 정의를 마이그레이션과 타입 생성에 함께 사용합니다.
+FluoShop에서는 트랜잭션 무결성과 관계 제약 조건이 중요한 **주문 관리(Order Management)** 서비스에 Drizzle을 사용합니다. 테이블 정의는 중앙의 `schema.ts` 파일에서 관리합니다. Drizzle은 이 정의를 마이그레이션과 타입 생성에 함께 사용하므로, 데이터베이스 구조와 TypeScript 타입이 같은 출처를 공유합니다.
 
 ```typescript
 import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
@@ -143,11 +141,11 @@ export const orders = pgTable('orders', {
 });
 ```
 
-`DrizzleDatabase`를 사용하면 서비스가 트랜잭션 핸들을 직접 넘기지 않아도 복잡한 다중 테이블 삽입 작업을 같은 경계 안에서 조율할 수 있습니다.
+`DrizzleDatabase`를 사용하면 서비스가 트랜잭션 핸들을 직접 넘기지 않아도 복잡한 다중 테이블 삽입 작업을 같은 경계 안에서 조율할 수 있습니다. 이 덕분에 checkout 흐름은 저장소 호출 순서에 집중하고, 트랜잭션 선택은 fluo 통합 계층에 맡길 수 있습니다.
 
 ## 20.7 Observability and Health
 
-제공된 스냅샷 헬퍼를 사용하면 SQL 연결 상태를 헬스 체크와 운영 지표에 연결할 수 있습니다.
+제공된 스냅샷 헬퍼를 사용하면 SQL 연결 상태를 헬스 체크와 운영 지표에 연결할 수 있습니다. 데이터베이스 풀이 끊기거나 지연이 커지는 상황을 애플리케이션 상태와 함께 확인할 수 있어 운영 판단이 빨라집니다.
 
 ```typescript
 import { createDrizzlePlatformStatusSnapshot } from '@fluojs/drizzle';
@@ -162,6 +160,4 @@ if (status.isReady) {
 
 Drizzle ORM은 fluo에서 SQL을 타입 안전하게 다루는 실용적인 방식을 제공합니다. Drizzle의 스키마 기반 타입 추론과 fluo의 트랜잭션 경계를 결합하면 빠르고 예측 가능한 데이터 레이어를 구성할 수 있습니다.
 
-이것으로 **Part 5: API 확장**을 마칩니다. GraphQL로 클라이언트 질의 계층을 열고, Mongoose와 Drizzle로 문서 모델과 관계형 모델을 각각 다루는 전략을 정리했습니다.
-
-**Part 6**에서는 **플랫폼 이식성**에 초점을 맞춰 Bun, Deno, Edge Workers 같은 런타임에서 FluoShop을 실행하는 방법을 다룹니다.
+이것으로 **Part 5: API 확장**을 마칩니다. GraphQL로 클라이언트 질의 계층을 열고, Mongoose와 Drizzle로 문서 모델과 관계형 모델을 각각 다루는 전략을 정리했습니다. 이제 FluoShop은 API 표현과 데이터 저장소 선택을 명시적인 모듈 경계로 다룰 수 있습니다. **Part 6**에서는 **플랫폼 이식성**에 초점을 맞춰 Bun, Deno, Edge Workers 같은 런타임에서 FluoShop을 실행하는 방법을 다룹니다.

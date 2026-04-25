@@ -24,26 +24,14 @@ Transport diversity는 프로세스 간 통신을 해결했습니다. 하지만 
 
 ## 9.2 Domain events in FluoShop v1.8.0
 
-v1.8.0의 FluoShop은 중요한 비즈니스 사실을 명시적인 event class로 다룹니다.
-
-이 이벤트들은 임의의 로그 메시지가 아닙니다.
-
-비즈니스가 실제로 중요하게 여기는 상태 변화를 표현합니다.
-
-예시는 다음과 같습니다.
+v1.8.0의 FluoShop은 중요한 비즈니스 사실을 명시적인 event class로 다룹니다. 이 이벤트들은 임의의 로그 메시지가 아닙니다. 비즈니스가 실제로 중요하게 여기는 상태 변화를 표현합니다. 예시는 다음과 같습니다.
 
 - `OrderPlacedEvent`
 - `InventoryReservedEvent`
 - `ShipmentDispatchedEvent`
 - `RefundApprovedEvent`
 
-이 이름 짓기는 중요합니다.
-
-Command는 intent를 표현합니다.
-
-Event는 이미 일어난 일을 표현합니다.
-
-이 차이가 모델을 정직하게 유지합니다.
+이 이름 짓기는 중요합니다. Command는 intent를 표현합니다. Event는 이미 일어난 일을 표현합니다. 이 차이가 모델을 정직하게 유지합니다.
 
 ### 9.2.1 Event classes and stable keys
 
@@ -128,15 +116,11 @@ export class CheckoutService {
 
 ## 9.4 Multiple handlers, one business fact
 
-이벤트 버스는 의도적으로 one-to-many입니다.
-
-이 점은 command routing과 정반대입니다.
-
-하나의 event에 여러 handler가 붙을 수 있는 이유는 플랫폼의 여러 부분이 같은 사실에 정당하게 관심을 가질 수 있기 때문입니다.
+이벤트 버스는 의도적으로 one-to-many입니다. 이 점은 command routing과 정반대입니다. 하나의 event에 여러 handler가 붙을 수 있는 이유는 플랫폼의 여러 부분이 같은 사실에 정당하게 관심을 가질 수 있기 때문입니다.
 
 ### 9.4.1 Notification reaction
 
-Notification Service는 `OrderPlacedEvent`를 듣고 영수증을 보냅니다.
+Notification Service는 `OrderPlacedEvent`를 듣고 영수증을 보냅니다. Checkout 흐름이 이메일 전송을 직접 기다리지 않아도 되기 때문에, 주문 기록과 고객 커뮤니케이션은 느슨하게 연결된 상태로 남습니다.
 
 ```typescript
 import { OnEvent } from '@fluojs/event-bus';
@@ -151,9 +135,7 @@ export class OrderNotificationsHandler {
 
 ### 9.4.2 Analytics reaction
 
-Analytics도 같은 event를 구독합니다.
-
-전환 카운터와 revenue dashboard를 갱신합니다.
+Analytics도 같은 event를 구독합니다. 전환 카운터와 revenue dashboard를 갱신하며, 이 반응은 주문 저장 책임과 분리된 read-side projection으로 남습니다.
 
 ```typescript
 export class OrderAnalyticsHandler {
@@ -166,7 +148,7 @@ export class OrderAnalyticsHandler {
 
 ### 9.4.3 Audit reaction
 
-Compliance는 같은 사실을 traceability 용도로 필요로 할 수 있습니다.
+Compliance는 같은 사실을 traceability 용도로 필요로 할 수 있습니다. 이 handler는 고객 경험을 바꾸지 않지만, 나중에 주문 흐름을 설명해야 할 때 필요한 증거를 조용히 남깁니다.
 
 ```typescript
 export class OrderAuditHandler {
@@ -177,9 +159,7 @@ export class OrderAuditHandler {
 }
 ```
 
-이 handler들은 서로를 알 필요가 없습니다.
-
-그 독립성이 핵심입니다.
+이 handler들은 서로를 알 필요가 없습니다. 그 독립성이 핵심입니다.
 
 ## 9.5 In-process first, distributed when needed
 
@@ -196,13 +176,7 @@ v1.8.0에서 가장 단순한 mental model은 다음과 같습니다.
 5. Analytics가 read-side counter를 projection합니다.
 6. Audit가 compliance evidence를 저장합니다.
 
-이 흐름은 의도적으로 비대칭입니다.
-
-하나의 write가 여러 reaction으로 확장됩니다.
-
-이것은 우발적 복잡성이 아닙니다.
-
-실제 커머스 플랫폼의 형태가 이렇습니다.
+이 흐름은 의도적으로 비대칭입니다. 하나의 write가 여러 reaction으로 확장됩니다. 이것은 우발적 복잡성이 아닙니다. 실제 커머스 플랫폼의 형태가 이렇습니다.
 
 ## 9.7 Operational rules for domain events
 

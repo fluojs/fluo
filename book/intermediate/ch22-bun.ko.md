@@ -32,7 +32,7 @@
 
 ### 22.2.1 Installation
 
-시작하려면 fluo 프로젝트에 Bun 어댑터를 설치하세요.
+시작하려면 fluo 프로젝트에 Bun 어댑터를 설치하세요. 이 패키지는 fluo의 HTTP 디스패처를 Bun의 네이티브 서버 모델에 연결하는 역할을 합니다.
 
 ```bash
 bun add @fluojs/platform-bun
@@ -162,7 +162,7 @@ const db = drizzle(sqlite);
 
 ### 22.8.2 Environment-Specific Providers
 
-런타임에 따라 프로바이더를 교체해야 한다면 fluo의 DI 시스템을 사용하세요. Bun의 파일 시스템 API처럼 플랫폼 전용 기능은 이런 경계 뒤에 둘 때 이식성이 유지됩니다.
+런타임에 따라 프로바이더를 교체해야 한다면 fluo의 DI 시스템을 사용하세요. Bun의 파일 시스템 API처럼 플랫폼 전용 기능은 이런 경계 뒤에 둘 때 이식성이 유지됩니다. 이렇게 하면 서비스 코드는 파일 처리 의도를 표현하고, 실제 구현만 런타임에 맞게 선택할 수 있습니다.
 
 ```typescript
 @Module({

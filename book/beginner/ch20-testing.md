@@ -154,7 +154,7 @@ Asynchronous code is common in backend development. Fluo's `createTestingModule`
 Sometimes you need to test whether Providers handle lifecycle events such as `onModuleInit` or `onApplicationShutdown` correctly. Fluo's testing module triggers these hooks during the `compile()` and `close()` phases. This lets you verify initialization and cleanup logic, such as opening a mock database connection or clearing a cache, as part of the test suite.
 
 ## 20.4 Provider Overrides
-`fluo` provides several ways to replace real components with test doubles.
+`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about.
 
 - **`overrideProvider(token, value)`**: Replaces a specific Token with a value, object, or instance.
 - **`overrideProviders([[token, value], ...])`**: Replaces several Tokens at once.
@@ -255,7 +255,7 @@ Integration tests are a good place to verify custom Middleware and header handli
 Although `createTestApp` is a virtual system, you can still simulate network-level failures by mocking the underlying data Provider. For example, you can mock `PrismaService` to throw a timeout error and verify that the application returns the proper `504 Gateway Timeout` or `503 Service Unavailable` response. This lets you test application resilience without physically breaking network hardware.
 
 ## 20.6 Mocking with createMock and createDeepMock
-For complex classes, manually mocking dozens of methods is tedious and error-prone. `@fluojs/testing/mock` provides helpers that use JavaScript Proxy to automatically mock types.
+For complex classes, manually mocking dozens of methods is tedious and error-prone. `@fluojs/testing/mock` provides helpers that use JavaScript Proxy to automatically mock types. This keeps test setup short and lets you spend more attention on the behavior you actually want to verify.
 
 ```typescript
 import { createMock, createDeepMock } from '@fluojs/testing/mock';

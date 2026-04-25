@@ -201,9 +201,7 @@ Sometimes IP-based throttling isn't enough. For example, hundreds of legitimate 
 ### 16.6.1 The Benefits of Identity-Based Throttling
 Identity-based throttling prevents one malicious user from exhausting a shared IP's limit and blocking access for coworkers. It gives each user a fairer experience and makes security logic more precise. You can also combine loose IP-based limits with strict user-based limits to build a multidimensional defense strategy. This approach assumes that identity is a more stable signal for behavior than a temporary network address.
 
-By default, the throttler identifies clients by IP address. That is a good starting point, but you should also consider the real deployment path. If your application is behind a proxy, such as Nginx, Cloudflare, or a load balancer, every user's IP may appear to be the same.
-
-Sometimes another basis is fairer than raw IP. For authenticated users, you may want to limit by user ID. For API-key-based clients, you may want to limit by that key.
+By default, the throttler identifies clients by IP address. That is a good starting point, but you should also consider the real deployment path. If your application is behind a proxy, such as Nginx, Cloudflare, or a load balancer, every user's IP may appear to be the same. In those cases, another basis can be fairer than raw IP: use the user ID for authenticated users, or the API key for API-key-based clients.
 
 ### 16.6.2 Throttling by API Key
 For B2B applications, you may want to throttle based on the client's API key. By overriding `getTracker`, you can extract the API key from request headers and apply limits specific to that client regardless of where the traffic comes from. This is a common pattern in API services with usage-based pricing tiers. It enforces business contracts directly at the infrastructure layer, ensuring customers only consume the resources they have paid for.
@@ -272,9 +270,7 @@ Implementing **circuit breakers** together with local rate limiting is a strong 
 
 Beyond protection, local rate limiting can also be used for **tenant-aware isolation** in microservices. In a multi-tenant environment, you don't want one customer's heavy use of `Service A` to affect another customer's experience with `Service B`. By applying local limits based on tenant ID, you can ensure every customer gets fair use of the underlying infrastructure resources and maintain strict service-level agreements (SLAs) across the whole platform.
 
-By default, the throttler identifies clients by IP address. That is a good starting point, but you should also consider the real deployment path. If your application is behind a proxy, such as Nginx, Cloudflare, or a load balancer, every user's IP may appear to be the same.
-
-Sometimes another basis is fairer than raw IP. For authenticated users, you may want to limit by user ID. For API-key-based clients, you may want to limit by that key.
+By default, the throttler identifies clients by IP address. That is a good starting point, but you should also consider the real deployment path. If your application is behind a proxy, such as Nginx, Cloudflare, or a load balancer, every user's IP may appear to be the same. Even in microservice environments, it can be fairer and easier to audit if authenticated users are limited by user ID and API-key-based clients are limited by that key instead of raw IP.
 
 ### 16.10.2 Service Mesh Integration
 If you use a service mesh such as Istio or Linkerd, you may wonder how Fluo's throttler fits in. A service mesh can provide basic rate limiting, but Fluo's throttler sits closer to your application's domain logic. It can throttle based on a user's role, subscription tier, or request body content, which a generic service mesh proxy can't easily know. Combining infrastructure-level protection from the service mesh with application-aware logic from Fluo gives you a security boundary with clear responsibility at each layer.

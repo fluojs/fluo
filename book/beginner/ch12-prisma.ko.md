@@ -57,13 +57,13 @@ pnpm add @fluojs/prisma @prisma/client
 pnpm add -D prisma
 ```
 
-설치가 완료되면 프로젝트에서 Prisma를 초기화합니다.
+설치가 완료되면 프로젝트에서 Prisma를 초기화합니다. 이 단계는 단순히 파일을 생성하는 작업이 아니라, FluoBlog가 앞으로 데이터베이스 구조를 선언하고 추적할 기준점을 만드는 과정입니다.
 
 ```bash
 npx prisma init
 ```
 
-이 명령은 `schema.prisma` 파일이 포함된 `prisma/` 디렉토리를 생성하고, `.env` 파일에 `DATABASE_URL` 항목을 추가합니다.
+이 명령은 `schema.prisma` 파일이 포함된 `prisma/` 디렉토리를 생성하고, `.env` 파일에 `DATABASE_URL` 항목을 추가합니다. 이후의 스키마 정의와 마이그레이션은 모두 이 디렉토리를 중심으로 진행되므로, 프로젝트에서 데이터 계층의 출발점이 분명해집니다.
 
 ### Choosing Your Database Provider
 Prisma는 PostgreSQL, MySQL, SQLite, SQL Server, CockroachDB, 그리고 MongoDB를 포함한 광범위한 데이터베이스를 지원합니다. FluoBlog의 경우, 로컬 개발을 위해 PostgreSQL이나 SQLite를 추천합니다. SQLite는 별도의 데이터베이스 서버를 설치할 필요 없이 로컬 파일에 데이터를 저장하므로 초기 실습에 편리합니다. 하지만 프로덕션 환경의 애플리케이션을 위해서는 PostgreSQL과 같은 관계형 데이터베이스가 표준입니다.

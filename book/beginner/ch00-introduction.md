@@ -194,7 +194,7 @@ Each of these steps is a required building block. Do not skip the theory. When y
 
 The fluo learning journey starts here.
 
-The reason this journey works is fluo's modularity. Because the framework is built from focused packages rather than one monolithic runtime, it can support specialized use cases without forcing every application to carry every feature. FluoBlog will start from a small skeleton and evolve chapter by chapter, so you can see how each design decision changes the application in practice.
+The reason this journey works is fluo's modularity. Because the framework is built from focused packages rather than one monolithic runtime, it can support specialized use cases without forcing every application to carry every feature. FluoBlog will start from a small skeleton and evolve chapter by chapter, so you can see how each design decision changes the application in practice rather than reading those choices as disconnected notes.
 
 We will keep returning to both sides of architecture: what we build and why we build it that way. By the end of this book, you will have built a full-featured API, but you will also understand the tradeoffs behind its structure. The only assumptions are a basic understanding of TypeScript and Node.js, plus a willingness to examine the reasoning behind each step.
 

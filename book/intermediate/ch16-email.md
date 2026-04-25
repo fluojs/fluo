@@ -51,7 +51,7 @@ export class AppModule {}
 ```
 
 ### verifyOnModuleInit
-Setting `verifyOnModuleInit: true` lets you confirm during application bootstrap that the transport is actually usable. This is useful when deployment should surface failures early, such as SMTP credential validation.
+Setting `verifyOnModuleInit: true` lets you confirm during application bootstrap that the transport is actually usable. This is useful when deployment should surface failures early, such as SMTP credential validation. Catching the problem at startup reduces the chance that the first order confirmation email is where you discover a bad setting.
 
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
@@ -101,7 +101,7 @@ The service applies `defaultFrom` and validates the message before delivery. The
 
 ## 16.5 Integration with @fluojs/notifications
 
-To add email to the notification orchestration configured in Chapter 15, inject the `EMAIL_CHANNEL` token.
+To add email to the notification orchestration configured in Chapter 15, inject the `EMAIL_CHANNEL` token. This lets email work both as an independent service and as a reusable notification channel backed by the same implementation.
 
 ```typescript
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';

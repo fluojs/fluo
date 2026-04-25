@@ -41,9 +41,7 @@ This example is tiny, but it already communicates a lot. This Controller owns th
 
 ### Routes Are an Application Contract
 
-As soon as you expose an endpoint, other code can depend on that path. Frontend code, mobile clients, tests, and external integrations can all treat that route as a stable contract, so route design is worth care even in an early project.
-
-Frontend code, mobile clients, tests, and external integrations can all treat that route as a stable contract, so route design is worth care even in an early project.
+As soon as you expose an endpoint, other code can depend on that path. Frontend code, mobile clients, tests, and external integrations can all treat that route as a stable contract, so route design is worth care even in an early project. With this mindset, routes stop feeling like a list of URLs and start reading like the application's promises to the outside world.
 
 ### Route Versioning (A Peek Ahead)
 
@@ -82,9 +80,7 @@ Once these four steps are clear, the rest of Part 1 becomes much easier.
 
 Now let's turn the posts feature skeleton from Chapter 3 into a real HTTP entry point.
 
-First, we will use a very small in-memory service.
-
-This keeps the focus of this chapter on routing rather than persistence.
+First, we will use a very small in-memory service. This keeps the focus of this chapter on routing rather than persistence, and it still gives us enough structure to see how Controllers and services divide responsibility.
 
 ```typescript
 // src/posts/posts.service.ts
@@ -119,21 +115,11 @@ export class PostsController {
 }
 ```
 
-Now FluoBlog feels like an API for the first time.
-
-An HTTP request can enter the application and return post data as a response.
+Now FluoBlog feels like an API for the first time. An HTTP request can enter the application and return post data as a response, and the route declaration and service delegation now connect into a real flow.
 
 ### Why the Controller Stays Small
 
-Notice what the Controller does not do.
-
-It does not create the array directly.
-
-It does not decide how posts are stored.
-
-It does not mix route mapping with business rules.
-
-Instead, it delegates.
+Notice what the Controller does not do. It does not create the array directly, decide how posts are stored, or mix route mapping with business rules. Instead, it delegates to the service so the Controller can stay focused on its role as the HTTP entry point.
 
 ### The Request Lifecycle (Simple Version)
 
@@ -166,15 +152,7 @@ These questions are simple, but they help keep the HTTP layer readable.
 
 ## 5.3 Path Params, Query Params, and Request Bodies
 
-Real APIs do more than list resources.
-
-They fetch one resource by id.
-
-They filter results.
-
-They receive payloads from clients.
-
-fluo exposes these inputs through DTO contracts declared on routes.
+Real APIs do more than list resources. They fetch one resource by id, filter results, and receive payloads from clients. fluo exposes these inputs through DTO contracts declared on routes so each handler clearly shows what data it expects.
 
 ```typescript
 import { Controller, Get, Post, RequestDto } from '@fluojs/http';
@@ -214,21 +192,11 @@ export class PostsController {
 }
 ```
 
-Each route directly declares the input DTO it receives.
-
-`FindPostParamsDto` shows the input shape bound from the `/:id` path.
-
-`SearchPostsQueryDto` gathers values read from the query string into one input object.
-
-`CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
+Each route directly declares the input DTO it receives. `FindPostParamsDto` shows the input shape bound from the `/:id` path, `SearchPostsQueryDto` gathers values read from the query string into one input object, and `CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
 
 ### Why Explicit Binding Matters
 
-Explicit binding is especially helpful when you first read a request flow.
-
-The handler signature immediately shows which DTO the route receives.
-
-Because the input contract is fixed as one object per method, it is also easier to trace the request flow.
+Explicit binding is especially helpful when you first read a request flow. The handler signature immediately shows which DTO the route receives, and because the input contract is fixed as one object per method, it is easier to trace the request flow.
 
 ### Binding vs. Raw Objects
 
@@ -276,15 +244,7 @@ The transport layer always deals with strings, but fluo's binding system is desi
 
 ### A Route Path Contract to Remember
 
-The HTTP package accepts literal path segments and full-segment parameters like `/:id`.
-
-It does not treat wildcards like `*` or mixed patterns like `:id.json` as normal route declarations.
-
-This constraint is helpful.
-
-It keeps route matching simpler and more predictable.
-
-In an early project, clear route shapes matter more than clever route tricks.
+The HTTP package accepts literal path segments and full-segment parameters like `/:id`. It does not treat wildcards like `*` or mixed patterns like `:id.json` as normal route declarations. This constraint is helpful because it keeps route matching simpler and more predictable, and in an early project, clear route shapes matter more than clever route tricks.
 
 ## 5.4 Expanding FluoBlog with Read and Create Endpoints
 
@@ -371,15 +331,7 @@ It is still simple, and that simplicity is a strength. We can talk about route o
 
 ### What Is Still Missing?
 
-This code is enough as a learning example, but it is not solid yet.
-
-The body is still a loose object.
-
-There is no validation.
-
-There is no explicit not-found handling.
-
-The response shape also exposes service results directly.
+This code is enough as a learning example, but it is not solid yet. The body is still a loose object, there is no validation, there is no explicit not-found handling, and the response shape exposes service results directly. The next chapters will tighten those input and output boundaries one layer at a time.
 
 ### The Importance of Return Values
 
@@ -435,25 +387,11 @@ async function main() {
 void main();
 ```
 
-The Fastify adapter is an excellent initial default.
-
-It is fast.
-
-It fits well with examples across the repo.
-
-It also keeps runtime configuration explicit through bootstrap options.
+The Fastify adapter is an excellent initial default. It is fast, it fits well with examples across the repo, and it keeps runtime configuration explicit through bootstrap options. That lets you focus on the framework structure while learning the first HTTP flow.
 
 ### What the Adapter Owns
 
-The adapter owns the mechanical parts of the HTTP server.
-
-The Controller still owns route intent.
-
-The Module still owns composition.
-
-The service still owns post logic.
-
-This separation is the architectural benefit.
+The adapter owns the mechanical parts of the HTTP server. The Controller still owns route intent, the Module still owns composition, and the service still owns post logic. This separation keeps runtime code and feature code from leaking into each other unnecessarily.
 
 ### Why the Fastify Adapter?
 

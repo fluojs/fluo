@@ -57,7 +57,7 @@ Fluo는 다양한 캐싱 백엔드에 대해 통일된 인터페이스를 제공
 이러한 플러그형 구조는 **직렬화 프로토콜(Serialization Protocols)**에도 적용됩니다. JSON이 기본값이지만, 데이터 집약적인 시나리오에서 더 나은 성능을 위해 Protocol Buffers(Protobuf)나 MessagePack과 같은 고효율 이진 형식으로 교체할 수 있습니다. 이러한 유연성은 애플리케이션의 요구 사항이 성장함에 따라 캐싱 레이어도 함께 발전할 수 있도록 보장합니다.
 
 ### 17.2.3 Serialization and Type Safety in Fluo
-캐싱에서 흔히 겪는 골칫거리 중 하나는 가져온 데이터가 저장한 데이터와 동일한 타입인지 보장하는 것입니다. Fluo의 `CacheService`는 TypeScript와 잘 맞물리는 읽기/쓰기 API를 제공하고, 복잡한 객체의 직렬화 세부 사항을 저장소 경계 안에 가둬 두므로 문자열을 날짜나 중첩 객체로 직접 파싱하는 부담을 줄여 줍니다.
+캐싱에서 흔히 겪는 골칫거리 중 하나는 가져온 데이터가 저장한 데이터와 동일한 타입인지 보장하는 것입니다. Fluo의 `CacheService`는 TypeScript와 잘 맞물리는 읽기/쓰기 API를 제공하고, 복잡한 객체의 직렬화 세부 사항을 저장소 경계 안에 가둬 두므로 문자열을 날짜나 중첩 객체로 직접 파싱하는 부담을 줄여 줍니다. 덕분에 서비스 코드는 캐시 저장 방식보다 데이터가 의미하는 바에 집중할 수 있고, 캐시 계층을 도입해도 타입 흐름이 흐려지지 않습니다.
 
 ## 17.3 Basic Configuration and Setup
 `AppModule`에 `CacheModule`을 등록합니다. 기본 설정은 인메모리 저장소를 사용하며, 이는 로컬 개발 환경에 적합합니다.
@@ -186,7 +186,7 @@ export class WeatherService {
 
 또한 **데코레이터 기반 부분 무효화(Decorator-Based Partial Invalidation)** 패턴의 사용을 고려해 보십시오. 특정 서비스 메서드를 특정 캐시 그룹의 "무효화기(Invalidators)"로 표시하는 커스텀 데코레이터를 만들 수 있습니다. 메서드가 호출되면 Fluo는 메서드 인수를 기반으로 관련 캐시 키를 자동으로 삭제할 수 있습니다. 이러한 선언적 접근 방식은 캐시 관리 로직을 비즈니스 로직과 분리하여 유지함으로써, 애플리케이션의 복잡성이 증가하더라도 코드를 유지보수하고 이해하기 쉽게 만들어 줍니다.
 
-By combining these advanced manual patterns with automatic response caching, you can create a highly efficient data layer that maximizes the performance and reliability of your Fluo backend. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
+이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 
 ### 17.5.4 Advanced Manual Patterns: Coordinating Concurrent Writers
 `CacheService`의 애플리케이션 공개 표면은 `get`, `set`, `remember`, `del`, `reset`에 집중되어 있습니다. 따라서 카운터 증가나 분산 락 같은 저장소 전용 원자 연산이 필요할 때는, 그것을 `CacheService`의 내장 애플리케이션 API로 가정하기보다 선택한 저장소의 별도 기능이나 애플리케이션 전용 조정 계층으로 다루는 편이 안전합니다.

@@ -45,7 +45,7 @@ A service mesh is a dedicated infrastructure layer for service-to-service commun
 
 ### 25.3.1 Sidecar Pattern
 
-In a typical service mesh setup such as Istio, each fluo service has a "sidecar" proxy, usually Envoy. Inbound and outbound network traffic passes through this proxy.
+In a typical service mesh setup such as Istio, each fluo service has a "sidecar" proxy, usually Envoy. Inbound and outbound network traffic passes through this proxy. The application handles business requests, while the sidecar applies network security and routing policy on its behalf.
 
 - **Outgoing**: Service A calls `http://order-service/api`. The sidecar intercepts it, finds the destination in the service discovery registry, and handles load balancing and retries.
 - **Incoming**: The sidecar receives the request, handles TLS termination, verifies the caller's identity, and forwards it to the fluo application on `localhost`.
@@ -91,7 +91,7 @@ Even when the gateway (Workers) calls the order service (Node), each service mus
 
 ## 25.5 Final Architecture Review: The "Fluo Way"
 
-FluoShop's success is built on the three pillars emphasized throughout this book.
+FluoShop's success is built on the three pillars emphasized throughout this book. These pillars are design criteria that outlast any single package and still guide decisions when you choose a new runtime or messaging tool.
 
 1. **Explicit Dependency Injection**: Reduces hidden magic and reveals dependency origins in code. This structure makes audits and testing easier.
 2. **Behavioral Contracts**: Fixes patterns that must behave with the same meaning even when runtimes change. Environmental change does not become logic change.
@@ -99,7 +99,7 @@ FluoShop's success is built on the three pillars emphasized throughout this book
 
 ## 25.6 Scaling to the Future
 
-FluoShop's next steps can be chosen according to operational maturity. Beyond this book, review these topics.
+FluoShop's next steps can be chosen according to operational maturity. Beyond this book, review these topics. The point is not to add every technology at once, but to choose an order that matches the current bottleneck and the team's operational capacity.
 - **Global Data Replication**: Use D1 or Fly.io Postgres for multi-region data persistence.
 - **Advanced CQRS**: Move to immutable event sourcing for a full audit log of every order change.
 - **AI Integration**: Use fluo's modularity to add LLM-based product recommendations or automated customer support.
@@ -125,7 +125,7 @@ Architecture will keep changing. The decisions made for FluoShop are based on to
 
 ## 25.8 Final Lessons Learned
 
-Through this book, we learned several important lessons.
+Through this book, we learned several important lessons. Each one applies beyond the FluoShop example and becomes a standard to revisit when designing other backend systems.
 - **Abstractions Matter**: Choosing an abstraction at the right level, such as a fluo adapter, can reduce the change scope when replacing runtimes.
 - **Testing is Non-Negotiable**: In distributed systems, integration tests and contract tests are the safety net. fluo's testing utilities help verify scenarios across multiple services.
 - **Standards are your Friend**: Following TC39 Decorators and Web APIs (fetch, Request, Response) makes code easier to move to standards-based runtimes.
@@ -151,7 +151,7 @@ fluoshop-workspace/
 └── pnpm-workspace.yaml      (monorepo settings)
 ```
 
-This structure lets you separate deployment cycles by service while managing shared types, schemas, and utilities in one repository.
+This structure lets you separate deployment cycles by service while managing shared types, schemas, and utilities in one repository. Because service boundaries and shared package boundaries are visible together, the impact of a change is easier to trace.
 
 ## 25.10 Closing Thoughts
 
@@ -171,14 +171,14 @@ Backend runtime boundaries keep changing. The edge is no longer a separate exper
 
 ## 25.12 Final Checklist for FluoShop Deployment
 
-Before operating FluoShop as a real service, check these operational foundations.
+Before operating FluoShop as a real service, check these operational foundations. These items are not a formality before deployment, but a way to prepare what the team will inspect and decide during an incident.
 
 1. **Security Audit**: Are all system permissions (Deno flags, Cloudflare bindings) configured as restrictively as possible?
 2. **Monitoring**: Is OpenTelemetry tracing propagating correctly across Node, Bun, and Worker nodes?
 3. **Failover**: Have you tested how the API gateway handles a temporary outage of the order service?
 4. **CI/CD**: Is the monorepo configured so only changed services are deployed?
 
-After completing this checklist, FluoShop moves one step from an example project to an operable service structure.
+After completing this checklist, FluoShop moves one step from an example project to an operable service structure. Repeating these checks in real environments makes a mixed-runtime distributed system more predictable to operate.
 
 ## 25.13 A Final Message to the Reader
 

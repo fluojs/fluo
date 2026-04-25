@@ -94,7 +94,7 @@ export class ProductRepository {
 
 ## 20.5 Transaction Management
 
-Drizzle transaction management can be handled through fluo's integration interface.
+Drizzle transaction management can be handled through fluo's integration interface. Repository code does not need to manage transaction handles directly, so services can focus on the atomicity of the business operation.
 
 ### Manual Transactions
 
@@ -111,7 +111,7 @@ await this.db.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-With `DrizzleTransactionInterceptor`, you can wrap an entire Controller action in a transaction. This is a good fit for guaranteeing atomicity when multiple repository calls make up one business operation.
+With `DrizzleTransactionInterceptor`, you can wrap an entire Controller action in a transaction. This is a good fit for guaranteeing atomicity when multiple repository calls make up one business operation. If the request fails, changes inside the same boundary can roll back together, which is safer for flows such as checkout.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';

@@ -55,7 +55,7 @@ fluo 패키지는 일반적으로 세 가지 핵심 기둥에 의존합니다.
 
 ### The DynamicModule Contract
 
-`DynamicModule`은 `ModuleMetadata` 인터페이스와 `module` 참조를 만족하는 객체(또는 객체를 반환하는 정적 메서드가 있는 클래스)입니다.
+`DynamicModule`은 `ModuleMetadata` 인터페이스와 `module` 참조를 만족하는 객체(또는 객체를 반환하는 정적 메서드가 있는 클래스)입니다. 정적 모듈과 같은 메타데이터 형태를 유지하면서도, 호출 시점에 옵션과 프로바이더 구성을 함께 만들어낼 수 있다는 점이 핵심입니다.
 
 ```ts
 export interface DynamicModule extends ModuleMetadata {
@@ -71,7 +71,7 @@ export interface DynamicModule extends ModuleMetadata {
 
 ### The forRoot and forRootAsync Pattern
 
-커뮤니티 표준에 맞춰 fluo 라이브러리는 정적 설정에는 `forRoot`를 사용하고, 다른 프로바이더(예: `ConfigService`)에 의존하는 설정에는 `forRootAsync`를 사용합니다.
+커뮤니티 표준에 맞춰 fluo 라이브러리는 정적 설정에는 `forRoot`를 사용하고, 다른 프로바이더(예: `ConfigService`)에 의존하는 설정에는 `forRootAsync`를 사용합니다. 이 이름을 따르면 사용자는 모듈이 동기 설정을 받는지, DI를 통해 비동기 설정을 해석하는지 곧바로 이해할 수 있습니다.
 
 #### Implementation Strategy
 
@@ -106,7 +106,7 @@ fluo에서 `@Module`의 `exports` 필드는 단순한 힌트가 아니라 엄격
 
 ## Practical Example: Feature-Flags Mini-Package
 
-이 개념을 확인하기 위해 간단한 기능 플래그 패키지를 구성해 봅니다. 이 패키지는 설정에 따라 기능을 켜고 끌 수 있게 합니다.
+이 개념을 확인하기 위해 간단한 기능 플래그 패키지를 구성해 봅니다. 이 패키지는 설정에 따라 기능을 켜고 끌 수 있게 합니다. 예제가 작기 때문에 공개 표면, 옵션 토큰, 서비스, 동적 모듈이 서로 어떻게 맞물리는지 한눈에 볼 수 있습니다.
 
 ### 1. Structure
 
@@ -136,7 +136,7 @@ export const FEATURE_FLAGS_OPTIONS = Symbol.for('@fluojs/feature-flags:options')
 
 ### 3. The Service
 
-서비스는 모듈에서 제공하는 옵션을 소비합니다.
+서비스는 모듈에서 제공하는 옵션을 소비합니다. 옵션은 주입 토큰을 통해 전달되므로, 서비스는 설정이 정적 `forRoot`에서 왔는지 비동기 팩토리에서 왔는지 알 필요가 없습니다.
 
 ```ts
 @Inject(FEATURE_FLAGS_OPTIONS)
@@ -151,7 +151,7 @@ export class FeatureFlagsService {
 
 ### 4. The Dynamic Module
 
-이 모듈에서 `forRoot` 및 `forRootAsync` 로직을 구현합니다.
+이 모듈에서 `forRoot` 및 `forRootAsync` 로직을 구현합니다. 두 메서드는 같은 서비스를 내보내지만, 옵션 값을 준비하는 방식만 다르게 두어 소비자 설정 방식의 차이를 흡수합니다.
 
 ```ts
 @Module({})
@@ -201,7 +201,7 @@ fluo 런타임은 누락된 메타데이터 필드(예: 생략된 경우 `export
 
 ### Handling Circular Dependencies
 
-복잡한 생태계에서는 모듈 간 순환 의존성이 생길 수 있습니다. DI 컨테이너가 이런 사이클을 지연 해석할 수 있도록 `imports`와 `inject` 배열 모두에서 `forwardRef()`를 사용하세요. 두 모듈이 엄격한 캡슐화를 유지하면서 프로바이더를 공유해야 할 때 자주 필요한 패턴입니다.
+복잡한 생태계에서는 모듈 간 순환 의존성이 생길 수 있습니다. DI 컨테이너가 이런 사이클을 지연 해석할 수 있도록 `imports`와 `inject` 배열 모두에서 `forwardRef()`를 사용하세요. 두 모듈이 엄격한 캡슐화를 유지하면서 프로바이더를 공유해야 할 때 자주 필요한 패턴입니다. 다만 순환을 숨기는 도구로만 쓰기보다, 공통 책임을 별도 모듈로 분리할 수 있는지도 함께 검토해야 합니다.
 
 ## Conclusion
 

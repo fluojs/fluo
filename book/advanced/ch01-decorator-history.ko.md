@@ -272,23 +272,11 @@ class ModernService {
 
 다음 챕터에서는 메타데이터 시스템 자체를 더 자세히 살펴보며, Fluo가 고성능의 타입 안전한 구성 엔진을 구축하기 위해 심볼과 Reflect를 어떻게 사용하는지 알아볼 것입니다. 여기서 논의한 명시성과 표준화의 원칙들이 프레임워크의 가장 미세한 수준에서 어떻게 적용되는지 보게 될 것입니다. 기대해 주십시오.
 
-이 미래 지향적 주장에는 실제 구현 근거가 있습니다. 공개 표면인
-`path:packages/core/src/decorators.ts:19-89`는 의도적으로 매우 작습니다.
-`@Module`, `@Global`, `@Inject`, `@Scope`만 존재하며, 레거시 descriptor 스타일 데코레이터를 위한 호환성 셰임도 없고, `design:paramtypes`를 읽는 분기도 없습니다. 바로 그 절제가 아키텍처 선택의 핵심입니다.
+이 미래 지향적 주장에는 실제 구현 근거가 있습니다. 공개 표면인 `path:packages/core/src/decorators.ts:19-89`는 의도적으로 매우 작고, `@Module`, `@Global`, `@Inject`, `@Scope`만 제공합니다. 레거시 descriptor 스타일 데코레이터를 위한 호환성 셰임도 없고 `design:paramtypes`를 읽는 분기도 없으므로, 이 절제 자체가 아키텍처 선택의 핵심입니다. 특히 위 `@Inject` 발췌와 `path:packages/core/src/decorators.ts:46-77`의 오버로드를 천천히 읽어보면 Fluo의 태도가 더 분명해집니다. Fluo는 정석인 variadic 호출을 우선하고, 마이그레이션 기간 동안만 배열 형태를 정규화한 뒤, 최종적으로는 `path:packages/core/src/metadata/class-di.ts:33-38`에 정의된 `defineClassDiMetadata`를 통해 명시적 생성자 토큰만 기록합니다. 즉, 마이그레이션 친화성은 API 가장자리에만 남겨두고 실제 런타임 계약은 이미 standard-first와 explicit-first로 고정한 것입니다.
 
-특히 위 `@Inject` 발췌와 `path:packages/core/src/decorators.ts:46-77`의 오버로드를 천천히 읽어보면 Fluo의 태도가 더 분명해집니다. Fluo는 정석인 variadic 호출을 우선하고, 마이그레이션 기간 동안만 배열 형태를 정규화한 뒤, 최종적으로는 `path:packages/core/src/metadata/class-di.ts:33-38`에 정의된 `defineClassDiMetadata`를 통해 명시적 생성자 토큰만 기록합니다. 즉, 마이그레이션 친화성은 API 가장자리에만 남겨두고, 실제 런타임 계약은 이미 standard-first와 explicit-first로 고정한 것입니다.
+같은 파일은 Fluo가 **의도적으로 만들지 않은 것**도 보여줍니다. 위 발췌의 마지막 반환부와 `path:packages/core/src/decorators.ts:69-77`은 토큰을 복사해 저장할 뿐, 파라미터 타입을 추론하지도 않고 인터페이스를 유추하지도 않으며 컴파일러가 방출한 힌트를 조회하지도 않습니다. 바로 이 생략 덕분에 Fluo는 `tsc`, `swc`, 그리고 앞으로의 네이티브 데코레이터 런타임까지 이식성을 유지합니다. 이를 받치는 메타데이터 계층도 같은 메시지를 줍니다. `path:packages/core/src/metadata/class-di.ts:33-37`은 DI 메타데이터에서 오직 `inject`와 `scope` 두 필드만 병합하며, 이 작은 병합 형상만 봐도 DI 상태가 끝없이 커지는 리플렉션 덤프가 아니라 런타임이 결정론적으로 해석할 수 있는 최소 레코드임을 알 수 있습니다.
 
-같은 파일은 Fluo가 **의도적으로 만들지 않은 것**도 보여줍니다.
-위 발췌의 마지막 반환부와 `path:packages/core/src/decorators.ts:69-77`은 토큰을 복사해 저장할 뿐,
-파라미터 타입을 추론하지도 않고, 인터페이스를 유추하지도 않으며, 컴파일러가 방출한 힌트를 조회하지도 않습니다. 바로 이 생략 덕분에 Fluo는 `tsc`, `swc`, 그리고 앞으로의 네이티브 데코레이터 런타임까지 이식성을 유지합니다.
-
-이를 받치는 메타데이터 계층도 같은 메시지를 줍니다.
-`path:packages/core/src/metadata/class-di.ts:33-37`은 DI 메타데이터에서
-오직 `inject`와 `scope` 두 필드만 병합합니다. 이 작은 병합 형상만 봐도 Fluo의 철학을 읽을 수 있습니다. DI 상태는 끝없이 커지는 리플렉션 덤프가 아니라, 런타임이 결정론적으로 해석할 수 있는 최소 레코드입니다.
-
-상속 처리 방식도 중요합니다.
-`path:packages/core/src/metadata/class-di.ts:56-72`는 생성자 계보를
-베이스에서 리프까지 순회한 뒤, 자식 메타데이터가 필요한 부분만 상속값을 대체하도록 합니다. 이는 서브클래스의 최종 생성자 형상과 컴파일러 방출 메타데이터가 우연히 맞아떨어지길 기대하던 레거시 습관을 대체하는, 표준 친화적인 방식입니다.
+상속 처리 방식도 같은 철학을 이어 갑니다. `path:packages/core/src/metadata/class-di.ts:56-72`는 생성자 계보를 베이스에서 리프까지 순회한 뒤, 자식 메타데이터가 필요한 부분만 상속값을 대체하도록 합니다. 이는 서브클래스의 최종 생성자 형상과 컴파일러 방출 메타데이터가 우연히 맞아떨어지길 기대하던 레거시 습관을 대체하는 표준 친화적인 방식입니다. 따라서 Fluo의 상속 메타데이터는 숨은 추론이 아니라, 읽을 수 있는 순회와 좁은 병합 규칙으로 설명됩니다.
 
 Stage 1 생태계와 비교하면 차이는 더 구체적으로 드러납니다.
 

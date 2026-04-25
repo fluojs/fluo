@@ -272,23 +272,11 @@ Chapter 1 laid the foundation for exploring Fluo's advanced internals. We examin
 
 In the next chapter, we look more closely at the metadata system itself and see how Fluo uses symbols and Reflect to build a high-performance, type-safe configuration engine. You will see how the principles of explicitness and standardization discussed here apply at the framework's finest level. Stay tuned.
 
-This future-facing claim has real implementation evidence. The public surface
-`path:packages/core/src/decorators.ts:19-89` is intentionally very small.
-Only `@Module`, `@Global`, `@Inject`, and `@Scope` exist. There is no compatibility shim for legacy descriptor-style decorators, and there is no branch that reads `design:paramtypes`. That restraint is the core of the architectural choice.
+This future-facing claim has real implementation evidence. The public surface at `path:packages/core/src/decorators.ts:19-89` is intentionally very small, offering only `@Module`, `@Global`, `@Inject`, and `@Scope`. There is no compatibility shim for legacy descriptor-style decorators, and there is no branch that reads `design:paramtypes`, so that restraint is the core of the architectural choice. If you slowly read the `@Inject` excerpt above and the overloads in `path:packages/core/src/decorators.ts:46-77`, Fluo's attitude becomes clearer. Fluo prioritizes the canonical variadic call, normalizes the array form only during the migration period, and ultimately records only explicit constructor Tokens through `defineClassDiMetadata` defined at `path:packages/core/src/metadata/class-di.ts:33-38`. In other words, migration friendliness remains only at the API edge, while the actual runtime contract is already fixed as standard-first and explicit-first.
 
-If you slowly read the `@Inject` excerpt above and the overloads in `path:packages/core/src/decorators.ts:46-77`, Fluo's attitude becomes clearer. Fluo prioritizes the canonical variadic call, normalizes the array form only during the migration period, and ultimately records only explicit constructor Tokens through `defineClassDiMetadata` defined at `path:packages/core/src/metadata/class-di.ts:33-38`. In other words, migration friendliness remains only at the API edge, while the actual runtime contract is already fixed as standard-first and explicit-first.
+The same file also shows what Fluo **intentionally did not build**. The final return block in the excerpt above and `path:packages/core/src/decorators.ts:69-77` only copy and store Tokens. They do not infer parameter types, infer interfaces, or read compiler-emitted hints, and that omission is exactly why Fluo preserves portability across `tsc`, `swc`, and future native Decorator runtimes. The metadata layer supporting this design sends the same message. `path:packages/core/src/metadata/class-di.ts:33-37` merges only two fields in DI metadata, `inject` and `scope`, and that small merge shape reveals Fluo's philosophy: DI state is not an endlessly growing reflection dump, but a minimal record the runtime can resolve deterministically.
 
-The same file also shows what Fluo **intentionally did not build**.
-The final return block in the excerpt above and `path:packages/core/src/decorators.ts:69-77` only copy and store Tokens.
-They do not infer parameter types, infer interfaces, or read compiler-emitted hints. That omission is exactly why Fluo preserves portability across `tsc`, `swc`, and future native Decorator runtimes.
-
-The metadata layer supporting this design sends the same message.
-`path:packages/core/src/metadata/class-di.ts:33-37` merges only two fields in DI metadata:
-`inject` and `scope`. That small merge shape alone reveals Fluo's philosophy. DI state is not an endlessly growing reflection dump; it is a minimal record the runtime can resolve deterministically.
-
-Inheritance handling is also important.
-`path:packages/core/src/metadata/class-di.ts:56-72` walks the constructor lineage
-from base to leaf, then lets child metadata replace only the inherited values it needs to replace. This is a standard-friendly replacement for the legacy habit of hoping the final constructor shape happens to match compiler-emitted metadata on subclasses.
+Inheritance handling continues the same argument. `path:packages/core/src/metadata/class-di.ts:56-72` walks the constructor lineage from base to leaf, then lets child metadata replace only the inherited values it needs to replace. This is a standard-friendly replacement for the legacy habit of hoping the final constructor shape happens to match compiler-emitted metadata on subclasses. Fluo's inherited metadata is therefore explained by readable traversal and narrow merge rules, not by hidden inference.
 
 Compared with the Stage 1 ecosystem, the difference becomes concrete.
 

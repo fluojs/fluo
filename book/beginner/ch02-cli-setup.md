@@ -48,9 +48,7 @@ If a version string is printed, your shell can find the executable correctly.
 
 ### Global vs Local CLI
 
-When you are starting out, the simplest choice is usually a global install.
-
-It is also common in real work. Still, knowing the difference helps you make faster decisions later when you work with a team or CI.
+When you are starting out, the simplest choice is usually a global install. It is also common in real work, but knowing the difference helps you make faster decisions later when you work with a team or CI. The point is not to memorize one correct option, but to choose based on the environment in front of you.
 
 - **Global installation** is convenient in a personal development environment.
 - **Local execution** through tools like `npx` or `pnpx` makes it easier to pin versions in CI.
@@ -73,9 +71,7 @@ This is not a fluo-specific problem. It is a basic environment issue that often 
 
 ### Why the Book Starts Here
 
-This book starts with the CLI because it reduces setup noise.
-
-Without the CLI, you would need to make too many decisions at once from the moment you create the first project.
+This book starts with the CLI because it reduces setup noise. Without the CLI, you would need to make too many decisions at once from the moment you create the first project. Early on, the goal is to learn the framework structure, so it is safer to begin from trustworthy defaults.
 
 - Package name,
 - TypeScript configuration,
@@ -148,9 +144,7 @@ This process is useful for developers new to fluo because it turns the intent to
 
 ### Naming the Project Carefully
 
-The project directory name stays with you longer than you might expect. It becomes part of the development experience.
-
-`fluo-blog` is a good name for learning.
+The project directory name stays with you longer than you might expect and becomes part of the development experience. `fluo-blog` is a good name for learning because it connects directly to the book project and stays easy to type repeatedly in the terminal.
 
 - It is easy to read,
 - It is easy to type,
@@ -166,11 +160,7 @@ In this chapter, the interactive flow is more helpful because each configuration
 
 ### A Healthy Beginner Habit
 
-Do not skip over the generator output.
-
-On the first run, you will see a short terminal summary at the end. Make sure to read it.
-
-It usually tells you the following.
+Do not skip over the generator output. On the first run, you will see a short terminal summary at the end, and it contains the information you need to decide what to do next. It usually tells you the following.
 
 - Which folder was created,
 - Which dependencies were installed,
@@ -212,11 +202,7 @@ At this stage, each file answers questions that naturally come up when opening a
 
 ### src/main.ts
 
-`src/main.ts` may look like the smallest file, but its responsibility is very large.
-
-This file bootstraps the application.
-
-In other words, it is where framework configuration turns into a running server. As environment configuration, logging, and platform options are added later, this file becomes an even more important entrypoint.
+`src/main.ts` may look like the smallest file, but its responsibility is very large. This file bootstraps the application because it is where framework configuration turns into a running server. As environment configuration, logging, and platform options are added later, this file becomes an even more important entrypoint.
 
 ### src/app.ts
 
@@ -245,9 +231,7 @@ The Controller exposes the default route, and the service provides the value ret
 
 ### Reading Before Editing
 
-Before changing anything, spend a few minutes reading the generated files.
-
-That short pause separates three things.
+Before changing anything, spend a few minutes reading the generated files. That short pause separates what the framework gives you by default from what you will change later, and it makes each file's responsibility easier to see.
 
 1. What the framework gives you by default.
 2. What you will change yourself in later chapters.
@@ -292,9 +276,7 @@ The generated project usually includes a small set of scripts that support the f
 
 ### Why `dev` matters most right now
 
-In Part 0, `dev` is the command you will use most often.
-
-It keeps the feedback loop short.
+In Part 0, `dev` is the command you will use most often. It keeps the feedback loop short, so the learning rhythm of changing code and checking the result stays intact.
 
 - Change code,
 - Save the file,
@@ -314,7 +296,7 @@ The recommended routine is as follows.
 
 ### `start` is not the same as `dev`
 
-It is better to learn this difference now.
+It is better to learn this difference now. Once you know that the two commands run different targets, you can narrow down issues faster when development mode and built output behave differently.
 
 - `dev` is optimized for iteration.
 - `start` runs the build output.
@@ -331,7 +313,7 @@ When everyone uses the same command names, documentation gets shorter and onboar
 
 After reading the files, it is time to confirm that this scaffold is not only well organized, but also a project that is actually alive.
 
-Run the project.
+Run the project. This is the first check that the generated files are not only well organized, but can also bootstrap into a real application.
 
 ```bash
 pnpm dev
@@ -393,9 +375,7 @@ The default app is valuable because it provides a known-good state. If a new err
 
 ### A Short Reflection Before Chapter 3
 
-The goal at the end of this chapter is not just to say that you tried the generator once.
-
-The stronger goal is this.
+The goal at the end of this chapter is not just to say that you tried the generator once. The stronger goal is to verify a healthy starting state yourself and have a baseline for the architecture concepts in the next chapter.
 
 - You know how the project was started.
 - You know the role of the core files.

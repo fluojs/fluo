@@ -154,7 +154,7 @@ describe('PostService', () => {
 때로는 프로바이더가 `onModuleInit`이나 `onApplicationShutdown`과 같은 라이프사이클 이벤트를 올바르게 처리하는지 테스트해야 할 때가 있습니다. Fluo의 테스트 모듈은 `compile()` 및 `close()` 단계에서 이러한 훅들을 트리거합니다. 이를 통해 모의 데이터베이스 연결 수립이나 캐시 정리와 같은 초기화 및 정리 로직을 테스트 스위트의 일부로 검증할 수 있습니다.
 
 ## 20.4 Provider Overrides
-`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다.
+`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다.
 
 - **`overrideProvider(token, value)`**: 특정 토큰을 값(객체 또는 인스턴스)으로 교체합니다.
 - **`overrideProviders([[token, value], ...])`**: 여러 토큰을 한 번에 교체합니다.
@@ -255,7 +255,7 @@ it('POST /posts should create a new post for admin', async () => {
 `createTestApp`은 가상 시스템이지만, 기반 데이터 프로바이더를 모의함으로써 네트워크 수준의 실패를 여전히 시뮬레이션할 수 있습니다. 예를 들어 `PrismaService`가 타임아웃 에러를 던지도록 모의하고, 애플리케이션이 적절한 `504 Gateway Timeout` 또는 `503 Service Unavailable` 응답을 반환하는지 확인할 수 있습니다. 이를 통해 네트워크 하드웨어를 실제로 망가뜨리지 않고도 애플리케이션의 복원력을 테스트할 수 있습니다.
 
 ## 20.6 Mocking with createMock and createDeepMock
-복잡한 클래스의 경우 수십 개의 메서드를 수동으로 모의 객체로 만드는 것은 번거롭고 실수가 생기기 쉽습니다. `@fluojs/testing/mock`은 JavaScript Proxy를 사용하여 타입을 자동으로 모의하는 헬퍼를 제공합니다.
+복잡한 클래스의 경우 수십 개의 메서드를 수동으로 모의 객체로 만드는 것은 번거롭고 실수가 생기기 쉽습니다. `@fluojs/testing/mock`은 JavaScript Proxy를 사용하여 타입을 자동으로 모의하는 헬퍼를 제공합니다. 덕분에 테스트 설정은 짧아지고, 실제로 검증하고 싶은 동작에 더 많은 주의를 쓸 수 있습니다.
 
 ```typescript
 import { createMock, createDeepMock } from '@fluojs/testing/mock';

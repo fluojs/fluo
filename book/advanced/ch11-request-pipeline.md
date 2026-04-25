@@ -20,7 +20,7 @@ This chapter looks at the internal steps the Fluo HTTP Dispatcher follows from r
 
 ## 11.1 Dispatcher, The Pipeline Command Center
 
-Every HTTP request in fluo is handled through the `Dispatcher`. The Dispatcher provides a general interface that does not depend on a specific HTTP server framework, such as Fastify or Express, and turns framework metadata into real execution logic.
+Every HTTP request in fluo is handled through the `Dispatcher`. The Dispatcher provides a general interface that does not depend on a specific HTTP server framework, such as Fastify or Express, and turns framework metadata into real execution logic. As a result, once an adapter hands a request to the framework, routing and pipeline execution can follow the same central flow regardless of the server that received it.
 
 `packages/http/src/dispatch/dispatcher.ts:L324-L354`
 ```typescript
@@ -203,7 +203,7 @@ As the context passes through the pipeline, fields such as `matchedHandler` are 
 
 ## 11.8 Error Handling Policy
 
-If an error occurs anywhere in the pipeline, `handleDispatchError` is called and handles it in one central place.
+If an error occurs anywhere in the pipeline, `handleDispatchError` is called and handles it in one central place. This central policy lets each stage focus on its own work while error response shape and observability hooks stay consistent across the whole flow.
 
 1. `RequestAbortedError` is silently ignored. The client disconnected, so there is no need to pollute server logs.
 2. The `onRequestError` observer is notified. This happens in `dispatcher.ts:L302`, which is a good time to report the error to an external monitoring system such as Sentry.

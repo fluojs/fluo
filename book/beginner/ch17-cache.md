@@ -57,7 +57,7 @@ The `@fluojs/cache-manager` module is built on a Provider-based architecture. Th
 This pluggable structure also applies to **serialization protocols**. JSON is the default, but in data-intensive scenarios you can swap it for a more efficient binary format such as Protocol Buffers, or Protobuf, or MessagePack for better performance. This flexibility ensures the caching layer can evolve as the application's requirements grow.
 
 ### 17.2.3 Serialization and Type Safety in Fluo
-One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly read and write API and keeps serialization details for complex objects behind the store boundary. This reduces the burden of manually parsing strings back into dates or nested objects.
+One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly read and write API and keeps serialization details for complex objects behind the store boundary. This reduces the burden of manually parsing strings back into dates or nested objects. As a result, service code can focus on what the data means instead of how the cache stores it, and adding a cache layer does not blur the type flow.
 
 ## 17.3 Basic Configuration and Setup
 Register `CacheModule` in `AppModule`. The default configuration uses an in-memory store, which is suitable for local development.

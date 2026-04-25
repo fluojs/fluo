@@ -24,26 +24,14 @@ Transport diversity solved communication between processes. It doesn't solve coo
 
 ## 9.2 Domain events in FluoShop v1.8.0
 
-FluoShop v1.8.0 treats important business facts as explicit event classes.
-
-These events aren't arbitrary log messages.
-
-They represent state changes the business truly cares about.
-
-Examples include:
+FluoShop v1.8.0 treats important business facts as explicit event classes. These events aren't arbitrary log messages. They represent state changes the business truly cares about. Examples include:
 
 - `OrderPlacedEvent`
 - `InventoryReservedEvent`
 - `ShipmentDispatchedEvent`
 - `RefundApprovedEvent`
 
-This naming matters.
-
-A command expresses intent.
-
-An event expresses something that has already happened.
-
-That distinction keeps the model honest.
+This naming matters. A command expresses intent. An event expresses something that has already happened. That distinction keeps the model honest.
 
 ### 9.2.1 Event classes and stable keys
 
@@ -128,15 +116,11 @@ Without events, Checkout could call Notifications directly. Then it could call A
 
 ## 9.4 Multiple handlers, one business fact
 
-An event bus is intentionally one-to-many.
-
-This is the opposite of command routing.
-
-A single event can have multiple handlers because several parts of the platform can legitimately care about the same fact.
+An event bus is intentionally one-to-many. This is the opposite of command routing. A single event can have multiple handlers because several parts of the platform can legitimately care about the same fact.
 
 ### 9.4.1 Notification reaction
 
-Notification Service listens for `OrderPlacedEvent` and sends a receipt.
+Notification Service listens for `OrderPlacedEvent` and sends a receipt. The checkout flow does not need to wait for email delivery directly, so order recording and customer communication stay loosely connected.
 
 ```typescript
 import { OnEvent } from '@fluojs/event-bus';
@@ -151,9 +135,7 @@ export class OrderNotificationsHandler {
 
 ### 9.4.2 Analytics reaction
 
-Analytics also subscribes to the same event.
-
-It updates conversion counters and the revenue dashboard.
+Analytics also subscribes to the same event. It updates conversion counters and the revenue dashboard, and that reaction remains a read-side projection separated from order storage responsibility.
 
 ```typescript
 export class OrderAnalyticsHandler {
@@ -166,7 +148,7 @@ export class OrderAnalyticsHandler {
 
 ### 9.4.3 Audit reaction
 
-Compliance may need the same fact for traceability.
+Compliance may need the same fact for traceability. This handler does not change the customer experience, but it quietly leaves the evidence needed to explain the order flow later.
 
 ```typescript
 export class OrderAuditHandler {
@@ -177,9 +159,7 @@ export class OrderAuditHandler {
 }
 ```
 
-These handlers don't need to know about each other.
-
-That independence is the point.
+These handlers don't need to know about each other. That independence is the point.
 
 ## 9.5 In-process first, distributed when needed
 
@@ -196,13 +176,7 @@ In v1.8.0, the simplest mental model is:
 5. Analytics projects read-side counters.
 6. Audit stores compliance evidence.
 
-This flow is intentionally asymmetric.
-
-One write expands into multiple reactions.
-
-This isn't accidental complexity.
-
-It is the shape of a real commerce platform.
+This flow is intentionally asymmetric. One write expands into multiple reactions. This isn't accidental complexity. It is the shape of a real commerce platform.
 
 ## 9.7 Operational rules for domain events
 

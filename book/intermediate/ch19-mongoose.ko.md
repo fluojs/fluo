@@ -100,7 +100,7 @@ await this.conn.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다.
+컨트롤러 단위에서는 `MongooseTransactionInterceptor`를 사용할 수 있습니다. 이 인터셉터는 HTTP 요청 시작 시 세션과 트랜잭션을 열고, 요청이 성공적으로 끝나면 커밋합니다. 컨트롤러 안의 여러 저장소 호출이 하나의 요청 책임을 이룰 때, 호출부마다 세션을 넘기는 반복을 줄여줍니다.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';

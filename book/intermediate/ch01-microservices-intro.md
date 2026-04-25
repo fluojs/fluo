@@ -84,7 +84,7 @@ fluo's value is that it lets you choose the right transport for each connection 
 
 ## 1.3 Strategic Advantages
 
-Using fluo's microservices Module gives you the following strategic advantages.
+Using fluo's microservices Module gives you the following strategic advantages. These benefits go beyond API convenience because they help teams design and operate with the same rules as the number of services grows.
 
 - **Developer Velocity**: You can focus on business logic without worrying about socket management or broker-specific APIs.
 - **Operational Flexibility**: You can start with simple TCP in development, then upgrade to a durable broker in production without changing handlers.
@@ -131,7 +131,7 @@ Operational tradeoffs such as idempotency, delivery semantics, and observability
 - **Patterns**: Use `@MessagePattern` for requests and `@EventPattern` for events.
 - **Progression**: Part 1 turns this abstract architecture into concrete, high-performance transport choices.
 
-We chose boundaries and communication methods first so we could define the service map before optimizing the plumbing. This order is safer in real work too.
+We chose boundaries and communication methods first so we could define the service map before optimizing the plumbing. This order is safer in real work too. Which responsibility should be separated has to come before which broker to use, so later transport choices stay grounded.
 
 ## 1.8 Next Chapter Preview
 

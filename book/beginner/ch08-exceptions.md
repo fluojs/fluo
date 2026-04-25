@@ -58,21 +58,11 @@ function requirePost(post: unknown, id: string) {
 }
 ```
 
-This code doesn't read like transport-layer thinking.
-
-The application is intentionally expressing a known missing-resource case.
-
-The selected exception also explains what response the HTTP layer should return.
+This code doesn't read like transport-layer thinking. The application is intentionally expressing a known missing-resource case, and the selected exception also explains what response the HTTP layer should return. An exception becomes code that speaks the API contract, not just a way to stop execution.
 
 ### Why Named Exceptions Matter
 
-Named exceptions are better than vague generic errors for common API failure cases.
-
-They help readers understand intent faster.
-
-They also connect more clearly to the final HTTP status code.
-
-That matters for both debugging and client expectations.
+Named exceptions are better than vague generic errors for common API failure cases. They help readers understand intent faster and connect more clearly to the final HTTP status code. That matters for both debugging and client expectations, and it gives failure responses a consistent vocabulary.
 
 ### Global Exception Handling
 
@@ -119,25 +109,11 @@ export class PostsService {
 }
 ```
 
-Now the Controller doesn't need to interpret `null`.
-
-The service directly owns the rule that a post doesn't exist.
-
-This style also makes it easier to reuse the same behavior across multiple routes.
+Now the Controller doesn't need to interpret `null`. The service directly owns the rule that a post doesn't exist, and this style also makes it easier to reuse the same behavior across multiple routes. When lookup rules live in one place, failure meaning stays more consistent.
 
 ### Why the Service Owns This Rule
 
-A Controller can throw exceptions too, of course.
-
-That doesn't mean every exception belongs in the Controller.
-
-If several routes depend on the same lookup behavior, the service is often the better place.
-
-The service understands the meaning of "a post must exist."
-
-The Controller understands the route entry point.
-
-This is the same separation-of-concerns pattern repeated throughout earlier chapters.
+A Controller can throw exceptions too, of course, but that doesn't mean every exception belongs in the Controller. If several routes depend on the same lookup behavior, the service is often the better place. The service understands the meaning of "a post must exist," while the Controller understands the route entry point. This is the same separation-of-concerns pattern repeated throughout earlier chapters.
 
 ## 8.4 Validation Errors and Bad Requests
 
@@ -145,9 +121,7 @@ Validation failure is another common expected error path. Before a request reach
 
 ### What Makes a Request “Bad”?
 
-A bad request is not a server crash.
-
-It means the client sent data that doesn't satisfy the route contract.
+A bad request is not a server crash. It means the client sent data that doesn't satisfy the route contract. The response should help the client understand what to fix instead of hiding the issue as a server failure.
 
 For example:
 
@@ -158,11 +132,7 @@ For example:
 
 When `@fluojs/validation` finds an error, it doesn't simply stop. It throws a structured exception, usually in the `BadRequestException` family, and the HTTP layer turns it into a readable response. See `docs/architecture/error-responses.md`.
 
-The key point is ownership.
-
-The client should be able to fix the request and try again.
-
-That's different from an internal server problem.
+The key point is ownership. The client should be able to fix the request and try again, which is different from an internal server problem. That is why validation failures should be expressed as clear, structured client errors whenever possible.
 
 ### A Useful Beginner Habit
 
@@ -193,15 +163,7 @@ This flexibility lets you give clients more context when a message alone isn't e
 
 ### What About `InternalServerErrorException`?
 
-Not every exception is about existence.
-
-Some exceptions are about policy.
-
-For example, suppose FluoBlog decides that the current update route can't edit posts that are already published.
-
-That's a business rule.
-
-The service can express that rule clearly.
+Not every exception is about existence. Some exceptions are about policy. For example, suppose FluoBlog decides that the current update route can't edit posts that are already published. That's a business rule, and the service can express that rule clearly.
 
 ```typescript
 import { BadRequestException, NotFoundException } from '@fluojs/http';
@@ -222,21 +184,11 @@ update(id: string, input: UpdatePostDto) {
 }
 ```
 
-This makes the API contract stronger.
-
-The client can distinguish "that post doesn't exist" from "this route doesn't allow that operation."
-
-Different failures shouldn't hide behind the same generic error.
+This makes the API contract stronger. The client can distinguish "that post doesn't exist" from "this route doesn't allow that operation." Different failures should not hide behind the same generic error, and each meaning should appear in the status code and message.
 
 ## 8.6 Building a Practical Beginner Error Checklist
 
-Use this exception carefully.
-
-If a failure is an expected business result, a more specific exception type is often a better fit.
-
-It's best to reserve `InternalServerErrorException` for cases where the server truly couldn't process a valid request.
-
-If everything becomes an internal error, clients lose useful information.
+Use this exception carefully. If a failure is an expected business result, a more specific exception type is often a better fit. It's best to reserve `InternalServerErrorException` for cases where the server truly couldn't process a valid request. If everything becomes an internal error, clients lose useful information, and operators have a harder time separating real incidents from normal rejections.
 
 ### Common Beginner Mistakes with Exceptions
 
@@ -250,11 +202,7 @@ Every time you add a new route, use this checklist:
 4. Which errors should be explained clearly to the client?
 5. Which failures are truly unexpected server problems?
 
-This checklist is useful because it turns error handling into a design activity.
-
-You stop treating failure as an afterthought.
-
-Instead, you treat it as part of the HTTP contract.
+This checklist is useful because it turns error handling into a design activity. You stop treating failure as an afterthought and treat it as part of the HTTP contract. Then each new route can be reviewed for failure responses with the same care as successful responses.
 
 ### What FluoBlog Gains Here
 

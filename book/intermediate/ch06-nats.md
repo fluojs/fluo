@@ -42,9 +42,7 @@ This detail shows that fluo does not hide the actual NATS contract. NATS uses `U
 - `messageSubject`
 - `requestTimeoutMs`
 
-The defaults use `fluo.microservices.events` and `fluo.microservices.messages`.
-
-In FluoShop, we use subject names that reveal domain intent.
+The defaults use `fluo.microservices.events` and `fluo.microservices.messages`. In FluoShop, we use subject names that reveal domain intent.
 
 - `fluoshop.inventory.events`
 - `fluoshop.inventory.messages`
@@ -86,11 +84,7 @@ const transport = new NatsMicroserviceTransport({
 export class InventoryCoordinationModule {}
 ```
 
-The exact codec wrapper implementation can vary by team.
-
-But the architectural point does not change.
-
-The application explicitly owns the NATS connection and codec choice.
+The exact codec wrapper implementation can vary by team. But the architectural point does not change. The application explicitly owns the NATS connection and codec choice.
 
 ## 6.3 Fast request-reply for inventory control
 
@@ -112,11 +106,7 @@ async previewReservation(input: { sku: string; zoneId: string; quantity: number 
 }
 ```
 
-The Order Service gets an answer within a short latency window.
-
-If a durable business record is needed later, another transport can own that step.
-
-NATS does not need to take on every responsibility.
+The Order Service gets an answer within a short latency window. If a durable business record is needed later, another transport can own that step. NATS does not need to take on every responsibility.
 
 ### 6.3.2 Timeout budgets
 
@@ -138,11 +128,7 @@ async invalidateCache(event: { sku: string }) {
 }
 ```
 
-The handler is still simple.
-
-Subject routing and the NATS publish mechanism remain inside the transport.
-
-This consistency means teams do not need to relearn a new handler model every time the transport changes.
+The handler is still simple. Subject routing and the NATS publish mechanism remain inside the transport. This consistency means teams do not need to relearn a new handler model every time the transport changes.
 
 ### 6.4.2 No console fallback for event failures
 
@@ -161,9 +147,7 @@ From an operations perspective, teams should watch the following signals.
 - **Connection churn**: Frequent reconnections can indicate unstable NATS server configuration or network issues.
 - **Handler error logs**: Monitor failed policy updates or cache evictions.
 
-If these signals are stable, NATS remains a clear internal coordination layer.
-
-If the business starts requiring replay or long-term retention, another transport should take on that responsibility.
+If these signals are stable, NATS remains a clear internal coordination layer. If the business starts requiring replay or long-term retention, another transport should take on that responsibility.
 
 ## 6.6 FluoShop v1.5.0 progression
 
@@ -184,8 +168,4 @@ This is not overengineering. It is explicit role assignment. Systems become easi
 - Event handler failures are handled in a logger-driven way and do not use a raw `console.error` fallback when no logger is present.
 - FluoShop now uses NATS for inventory and cache coordination paths where speed matters more than replay.
 
-NATS is not a tool that tries to win every transport contest.
-
-It is strong in one role: fast, understandable coordination.
-
-That is why FluoShop needs NATS. It fills a gap in the communication choices by adding a high-speed lane for internal signals.
+NATS is not a tool that tries to win every transport contest. It is strong in one role: fast, understandable coordination. That is why FluoShop needs NATS. It fills a gap in the communication choices by adding a high-speed lane for internal signals.

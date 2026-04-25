@@ -25,13 +25,7 @@ The concrete requirements look like this:
 1. The support team needs replay so it can rebuild customer timelines after a bug fix.
 2. The analytics team needs consumer groups because it has to build several downstream projections from the same data.
 
-This is why FluoShop chooses Kafka.
-
-In v1.4.0, FluoShop adds a durable `order-timeline` stream.
-
-Order Service, Payment Service, and Fulfillment Service all publish milestones to this stream.
-
-Separate consumers then build projections for analytics and operations. This log acts as the **Single Source of Truth** for the order entity. Even if each individual service owns its own database, the Kafka log is the official audit trail used to reconcile what actually happened across service boundaries.
+This is why FluoShop chooses Kafka. In v1.4.0, FluoShop adds a durable `order-timeline` stream. Order Service, Payment Service, and Fulfillment Service all publish milestones to this stream. Separate consumers then build projections for analytics and operations. This log acts as the **Single Source of Truth** for the order entity. Even if each individual service owns its own database, the Kafka log is the official audit trail used to reconcile what actually happened across service boundaries.
 
 ## 5.2 Bootstrapping Kafka with explicit producer and consumer wiring
 
@@ -47,17 +41,13 @@ This transport supports three topic-level options.
 - `messageTopic`
 - `responseTopic`
 
-The defaults prioritize general use.
-
-In FluoShop, names that reveal domain and operational intent are better.
+The defaults prioritize general use. In FluoShop, names that reveal domain and operational intent are better.
 
 - `fluoshop.timeline.events`
 - `fluoshop.domain.messages`
 - `fluoshop.responses.<instance>`
 
-Response topics are usually separated per client instance.
-
-That lets fluo avoid response collisions in concurrent request-reply flows. By default, the transport creates a `responseTopic` with a UUID suffix, such as `fluo.microservices.responses.uuid`, giving each instance its own receive point for responses.
+Response topics are usually separated per client instance. That lets fluo avoid response collisions in concurrent request-reply flows. By default, the transport creates a `responseTopic` with a UUID suffix, such as `fluo.microservices.responses.uuid`, giving each instance its own receive point for responses.
 
 ### 5.2.2 Module wiring
 
@@ -82,21 +72,11 @@ const transport = new KafkaMicroserviceTransport({
 export class TimelineModule {}
 ```
 
-As in the previous chapters, the Module stays small.
-
-The framework doesn't require you to redesign the handler structure.
-
-Instead, it requires you to expose the transport contract explicitly.
+As in the previous chapters, the Module stays small. The framework doesn't require you to redesign the handler structure. Instead, it requires you to expose the transport contract explicitly.
 
 ## 5.3 Request-reply on durable topics
 
-Kafka is most widely used as an event stream.
-
-Even so, fluo also provides `send()` on top of Kafka for cases that need durable broker routing.
-
-This approach is slower and more expensive than TCP.
-
-Still, if you need broker-mediated decoupling and can accept the extra latency, it is a valid choice. FluoShop uses this route for "Order Audit" requests. A specific answer is needed, but the request itself must remain durable and be processed later even if the target service is briefly restarting.
+Kafka is most widely used as an event stream. Even so, fluo also provides `send()` on top of Kafka for cases that need durable broker routing. This approach is slower and more expensive than TCP. Still, if you need broker-mediated decoupling and can accept the extra latency, it is a valid choice. FluoShop uses this route for "Order Audit" requests. A specific answer is needed, but the request itself must remain durable and be processed later even if the target service is briefly restarting.
 
 ### 5.3.1 Per-client response topics
 
@@ -158,13 +138,7 @@ The business doesn't want a structure where one queue decides which department r
 
 ## 5.5 Partitioning, ordering, and replay
 
-Kafka's operational strengths come with design responsibilities.
-
-Ordering is usually guaranteed only within a single partition.
-
-Replay is powerful, but it can also amplify poorly designed events more broadly.
-
-Retention is valuable only when events carry enough meaning to reconstruct state.
+Kafka's operational strengths come with design responsibilities. Ordering is usually guaranteed only within a single partition. Replay is powerful, but it can also amplify poorly designed events more broadly. Retention is valuable only when events carry enough meaning to reconstruct state.
 
 ### 5.5.1 Choosing keys in FluoShop
 
@@ -176,18 +150,14 @@ Suppose Support Dashboard had a bug and silently ignored `shipment.dispatched` f
 
 ## 5.6 Operating Kafka in a mixed-transport system
 
-Kafka doesn't have to be the central axis of the entire platform.
-
-FluoShop intentionally keeps a mixed transport setup.
+Kafka doesn't have to be the central axis of the entire platform. FluoShop intentionally keeps a mixed transport setup.
 
 - RabbitMQ still owns warehouse work assignment.
 - Redis Streams still protect some payment durability paths.
 - TCP can still provide simple direct lookup.
 - Kafka owns durable shared history and multi-team projection.
 
-This division of work places each transport in the role where it fits best.
-
-Operationally, the team should observe the following signals.
+This division of work places each transport in the role where it fits best. Operationally, the team should observe the following signals.
 
 - **Consumer lag by group**: How far a service is behind the latest event.
 - **Topic retention and storage**: When events are deleted because of time or size limits.
@@ -195,11 +165,7 @@ Operationally, the team should observe the following signals.
 - **Replay duration**: How long it takes to reread the log from the beginning.
 - **Timeout rates**: How often request/response flows fail.
 
-These signals show whether Kafka is being used for its intended role.
-
-If request-reply timeout dominates, you may be forcing synchronous behavior onto a transport that is better suited to logged events.
-
-If replay cost is too high, the projection structure may be relying too heavily on raw history without snapshots.
+These signals show whether Kafka is being used for its intended role. If request-reply timeout dominates, you may be forcing synchronous behavior onto a transport that is better suited to logged events. If replay cost is too high, the projection structure may be relying too heavily on raw history without snapshots.
 
 ## 5.7 FluoShop v1.4.0 progression
 
@@ -219,8 +185,4 @@ The third question becomes much easier to handle once Kafka is introduced. Kafka
 - Partition keys should follow business ordering requirements, not convenience.
 - FluoShop now records a replayable order timeline that analytics, support, and fraud tooling can consume independently.
 
-RabbitMQ showed the boundary for work assignment.
-
-Kafka shows the boundary for preserving and reusing business history.
-
-That is why the two transports deserve to coexist in the same system. In FluoShop, the move from v1.3.0 to v1.4.0 is less about speed and more about **long-term accountability**.
+RabbitMQ showed the boundary for work assignment. Kafka shows the boundary for preserving and reusing business history. That is why the two transports deserve to coexist in the same system. In FluoShop, the move from v1.3.0 to v1.4.0 is less about speed and more about **long-term accountability**.

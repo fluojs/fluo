@@ -117,7 +117,7 @@ export class BookResolver {
 }
 ```
 
-`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request.
+`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem.
 
 ## 18.5 Real-time with Subscriptions
 
@@ -139,7 +139,7 @@ export class NotificationResolver {
 
 ### Enabling WebSockets
 
-Enable the WebSocket transport when you need bidirectional realtime communication or when the client environment is WebSocket-centered.
+Enable the WebSocket transport when you need bidirectional realtime communication or when the client environment is WebSocket-centered. Check whether the default SSE path is enough first, then choose WebSockets only when bidirectional messaging is actually needed so the operational boundary stays simpler.
 
 ```typescript
 GraphqlModule.forRoot({

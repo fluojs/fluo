@@ -28,9 +28,7 @@ Commands should describe requested state changes. They are point-to-point. One c
 
 ### 10.2.1 PlaceOrderCommand
 
-By v1.9.0, FluoShop no longer invokes checkout writes only through vague service methods.
-
-Instead, it models intent directly.
+By v1.9.0, FluoShop no longer invokes checkout writes only through vague service methods. Instead, it models intent directly.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -98,9 +96,7 @@ Once queries are explicit, projections become easier to discuss. FluoShop can cr
 
 ## 10.4 CQRS wiring in fluo
 
-The package README documents `CqrsModule.forRoot(...)` as the supported root entrypoint.
-
-This Module registers the command, query, and event buses and performs discovery during bootstrap.
+The package README documents `CqrsModule.forRoot(...)` as the supported root entrypoint. This Module registers the command, query, and event buses and performs discovery during bootstrap.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -118,9 +114,7 @@ import { CqrsModule } from '@fluojs/cqrs';
 export class CommerceApplicationModule {}
 ```
 
-This keeps the entrypoint concise.
-
-As with earlier fluo packages, lifecycle and discovery happen through Module registration instead of manually assembling buses in each feature.
+This keeps the entrypoint concise. As with earlier fluo packages, lifecycle and discovery happen through Module registration instead of manually assembling buses in each feature.
 
 ## 10.5 Event publishing from CQRS
 
@@ -132,9 +126,7 @@ Sagas are where CQRS becomes visibly event-driven. A Saga listens to one event a
 
 ### 10.6.1 OrderPlacedEvent to ReserveInventoryCommand
 
-After a customer completes an order, FluoShop must reserve inventory.
-
-This is a natural Saga step.
+After a customer completes an order, FluoShop must reserve inventory. This is a natural Saga step.
 
 ```typescript
 import { Inject } from '@fluojs/core';

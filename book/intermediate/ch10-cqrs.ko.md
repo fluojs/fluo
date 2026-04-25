@@ -28,9 +28,7 @@ Command는 요청된 상태 변화를 설명해야 합니다. 이들은 point-to
 
 ### 10.2.1 PlaceOrderCommand
 
-v1.9.0에 이르면 FluoShop은 checkout write를 더 이상 막연한 service method로만 호출하지 않습니다.
-
-대신 intent를 직접 모델링합니다.
+v1.9.0에 이르면 FluoShop은 checkout write를 더 이상 막연한 service method로만 호출하지 않습니다. 대신 intent를 직접 모델링합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -98,9 +96,7 @@ Query가 명시적이 되면 projection도 논의하기 쉬워집니다. FluoSho
 
 ## 10.4 CQRS wiring in fluo
 
-패키지 README는 `CqrsModule.forRoot(...)`를 지원되는 root entrypoint로 문서화합니다.
-
-이 module은 command, query, event bus를 등록하고 bootstrap 시 discovery를 수행합니다.
+패키지 README는 `CqrsModule.forRoot(...)`를 지원되는 root entrypoint로 문서화합니다. 이 module은 command, query, event bus를 등록하고 bootstrap 시 discovery를 수행합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -118,9 +114,7 @@ import { CqrsModule } from '@fluojs/cqrs';
 export class CommerceApplicationModule {}
 ```
 
-이렇게 하면 entrypoint가 간결하게 유지됩니다.
-
-이전 fluo 패키지들과 마찬가지로 lifecycle과 discovery는 각 feature에서 bus를 수동 조립하는 대신 module registration을 통해 이뤄집니다.
+이렇게 하면 entrypoint가 간결하게 유지됩니다. 이전 fluo 패키지들과 마찬가지로 lifecycle과 discovery는 각 feature에서 bus를 수동 조립하는 대신 module registration을 통해 이뤄집니다.
 
 ## 10.5 Event publishing from CQRS
 
@@ -132,9 +126,7 @@ Saga는 CQRS가 눈에 띄게 event-driven해지는 지점입니다. Saga는 하
 
 ### 10.6.1 OrderPlacedEvent to ReserveInventoryCommand
 
-고객이 주문을 마친 뒤 FluoShop은 inventory를 예약해야 합니다.
-
-이것은 자연스러운 saga step입니다.
+고객이 주문을 마친 뒤 FluoShop은 inventory를 예약해야 합니다. 이것은 자연스러운 saga step입니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';

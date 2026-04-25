@@ -248,13 +248,13 @@ In Fluo, MFA is usually handled by issuing a "partial" JWT after the first facto
 You can create an `MfaGuard` that explicitly checks that the `mfa_required` claim is absent. Applying this Guard globally or to sensitive routes ensures users cannot bypass the MFA step. This pattern is easy to implement because of Fluo's normalized Principal object. The Principal object can easily store these temporary security states during the login process.
 
 ## 15.12 Handling Strategy Failures Gracefully
-A failed Authentication strategy does not always mean a security breach. The token may be expired, the header format may be wrong, or the configuration may not match.
+A failed Authentication strategy does not always mean a security breach. The token may be expired, the header format may be wrong, or the configuration may not match. For that reason, the flow should distinguish causes internally while keeping the external response consistent and safe.
 
 ### 15.12.1 Failure Shape
 For that reason, a strategy should throw semantically clear failures such as `AuthenticationRequiredError` and `AuthenticationFailedError`, while response messages and logging are organized consistently in the layer above it. This separation helps the frontend distinguish cases such as "session expired" from "credential format is invalid".
 
 ### 15.12.2 Strategy Debugging Techniques
-If you are struggling with a strategy implementation, first separate input header reading from verifier calls and log each step, as shown in the example `BearerJwtStrategy`. This helps you see exactly which part of the verification process is failing and quickly narrow down whether the cause is a cryptographic signature or the header format.
+If you are struggling with a strategy implementation, first separate input header reading from verifier calls and log each step, as shown in the example `BearerJwtStrategy`. This helps you see exactly which part of the verification process is failing and quickly narrow down whether the cause is a cryptographic signature or the header format. Breaking the flow into observable steps keeps Authentication from feeling like a black box, and the same habit helps when analyzing 401 responses in production.
 
 ## 15.13 Security Beyond the Framework
 Security is a layered effort. Even though Fluo's Guards and Passport strategies provide strong application-level protection, they should be part of a broader security strategy.

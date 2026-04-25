@@ -53,7 +53,7 @@ In this structure, logic after the `next()` call runs in reverse order. That let
 
 ## 12.3 Guard: Strict Access Control
 
-A Guard returns a `boolean` from its `canActivate` method. If `false` is returned, the Dispatcher immediately throws `ForbiddenException` and stops the pipeline.
+A Guard returns a `boolean` from its `canActivate` method. If `false` is returned, the Dispatcher immediately throws `ForbiddenException` and stops the pipeline. This simple return rule keeps authorization separate from Controller execution and response shaping, so the Guard only decides whether the request may reach business logic.
 
 `packages/http/src/guards.ts:L18-L27`
 ```typescript
@@ -103,7 +103,7 @@ The innermost point of the Interceptor Chain, `terminal`, contains the actual Co
 
 ## 12.5 How the Exception Chain Works
 
-When an error occurs during pipeline execution, Fluo handles it through the Exception Chain. This process starts in `handleDispatchError`.
+When an error occurs during pipeline execution, Fluo handles it through the Exception Chain. This process starts in `handleDispatchError` and follows the same order regardless of which stage failed: observation, user-defined handling, then standard response generation.
 
 1.  **Catch**: A `try-catch` block wrapping `runDispatchPipeline`, the Dispatcher's main loop, catches every error.
 2.  **Notify**: Error information is propagated to the `onRequestError` observer so telemetry systems can notice it.
@@ -143,7 +143,7 @@ if (details.length > 0) {
 }
 ```
 
-This process finishes before the Controller method runs. As a result, business logic receives only data that has passed binding and validation.
+This process finishes before the Controller method runs. As a result, business logic receives only data that has passed binding and validation. Because input failures are resolved at the request boundary, Controllers can focus on domain decisions instead of request shape checks.
 
 ## 12.8 Async Exception Handling and Stack Trace
 
@@ -151,7 +151,7 @@ In a Node.js environment, stack traces for async errors can easily be cut off in
 
 ## 12.9 Custom Error Mapping with an Interceptor
 
-An Interceptor is a good fit when a domain error raised by a specific Controller must be converted into an HTTP error. In a `catch` block, check whether the error is an instance of a specific class, then throw the matching `HttpException`.
+An Interceptor is a good fit when a domain error raised by a specific Controller must be converted into an HTTP error. In a `catch` block, check whether the error is an instance of a specific class, then throw the matching `HttpException`. This keeps the domain layer from knowing HTTP status codes while still letting the transport-facing layer adjust response meaning.
 
 ```typescript
 // Example: DomainError -> 404 NotFound
@@ -199,7 +199,7 @@ export async function invokeControllerHandler(
 }
 ```
 
-DTO binding also happens during this process. The Controller method receives data that has already been refined and validated as arguments.
+DTO binding also happens during this process. The Controller method receives data that has already been refined and validated as arguments. Because instance resolution and argument preparation happen inside the same request context, Scope rules and input validation stay tied to one execution unit.
 
 ## 12.12 Summary
 - The execution chain divides responsibilities among Middleware for capabilities, Guard for authorization, and Interceptor for logic.

@@ -100,7 +100,7 @@ await this.conn.transaction(async () => {
 
 ### Request-Scoped Transactions
 
-At the Controller level, you can use `MongooseTransactionInterceptor`. This Interceptor opens a session and transaction when an HTTP request starts, then commits it when the request finishes successfully.
+At the Controller level, you can use `MongooseTransactionInterceptor`. This Interceptor opens a session and transaction when an HTTP request starts, then commits it when the request finishes successfully. When several repository calls make up one request-level responsibility, this removes repeated manual session passing from the caller.
 
 ```typescript
 import { UseInterceptors } from '@fluojs/http';

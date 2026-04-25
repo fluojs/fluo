@@ -152,7 +152,7 @@ Modern backend development does not involve clicking through cloud consoles by h
 - **Pulumi**: Define infrastructure with TypeScript, so you can use the same language for backend development and DevOps.
 - **CDK (Cloud Development Kit)**: If you use AWS, use CDK to define high-level constructs for deploying FluoBlog.
 
-Managing infrastructure as code gives your production environment reproducibility and auditability.
+Managing infrastructure as code gives your production environment reproducibility and auditability. Because changes go through code review and version control, it is also easier to trace who changed the operating environment and why.
 
 ## 21.8 Security Hardening: Advanced Patterns
 Beyond the basic checklist, consider the following advanced security patterns.
@@ -215,7 +215,7 @@ Before a major launch, you should verify that the production environment can act
 The value of a production system depends on the state of its last backup. Implement an automated **backup strategy** for your database. Backups should be stored in a geographically separate region, and most importantly, you should run regular **recovery drills**. Verifying that you can recover within minutes after data loss makes your incident response plan much more realistic.
 
 ## 21.12 Community and Ecosystem
-Fluo is not just a repository. It is a developer community aimed at better engineering.
+Fluo is not just a repository. It is a developer community aimed at better engineering. To use the framework well over time, you need to understand not only the code, but also how the ecosystem evolves and how contributions are made.
 
 ### Contributing to fluo
 If you find a bug or want to suggest an improvement, check the `CONTRIBUTING.md` file in the main repository. Documentation improvements, bug fixes, and new feature proposals help the framework evolve around real use cases.

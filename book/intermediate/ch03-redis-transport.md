@@ -49,17 +49,7 @@ Redis requires a dedicated connection for subscribe mode. For that reason, subsc
 
 ## 3.2 Redis Streams for Durable Delivery
 
-Persistence is essential for important work such as order processing or payment coordination.
-
-`RedisStreamsMicroserviceTransport` uses Redis Streams and consumer groups to provide at-least-once delivery. In **FluoShop**, this is the right choice for the Order to Payment handoff. When an order is created, the requirement is not just a fast response. You need a guarantee that the Payment Service can eventually see that order, even if it is restarting.
-
-Streams are therefore a better fit when eventual completion matters more than immediate response time.
-
-FluoShop reaches exactly that point the moment money becomes involved.
-
-It is unacceptable for order intent to disappear silently.
-
-By contrast, it is much safer if payment events can be reclaimed and retried.
+Persistence is essential for important work such as order processing or payment coordination. `RedisStreamsMicroserviceTransport` uses Redis Streams and consumer groups to provide at-least-once delivery. In **FluoShop**, this is the right choice for the Order to Payment handoff. When an order is created, the requirement is not just a fast response. You need a guarantee that the Payment Service can eventually see that order, even if it is restarting. Streams are therefore a better fit when eventual completion matters more than immediate response time. FluoShop reaches exactly that point the moment money becomes involved. It is unacceptable for order intent to disappear silently. By contrast, it is much safer if payment events can be reclaimed and retried.
 
 ### 3.2.1 Consumer Groups and Acknowledgments
 
@@ -111,17 +101,11 @@ Running Redis as a microservice transport is not just a coding problem. It is al
 - Are reclaim attempts increasing after deploys?
 - Are temporary response streams actually being cleaned up during shutdown?
 
-fluo can provide the hooks needed for monitoring, but the team must prepare its own alerting system and runbooks.
-
-Redis is lighter than many brokers.
-
-That does not mean it needs no maintenance.
+fluo can provide the hooks needed for monitoring, but the team must prepare its own alerting system and runbooks. Redis is lighter than many brokers. That does not mean it needs no maintenance.
 
 ## 3.6 Choosing between Pub/Sub and Streams
 
-Choosing between Pub/Sub and Streams is not about picking the feature that looks more impressive.
-
-It is about asking whether events must survive absent subscribers and process failures.
+Choosing between Pub/Sub and Streams is not about picking the feature that looks more impressive. It is about asking whether events must survive absent subscribers and process failures.
 
 | Feature | Redis Pub/Sub | Redis Streams |
 |---------|---------------|---------------|
@@ -150,20 +134,8 @@ This design changes the system in an important way. The Order Service no longer 
 - **Decoupling**: Unlike TCP, Redis allows services to interact without a direct network connection and provides a buffer against traffic spikes and downtime.
 - **Progression**: In FluoShop, Redis Streams enables the move from synchronous request/response catalog lookup to an asynchronous, reliable order-payment workflow.
 
-The deeper lesson is architectural.
-
-Redis does not replace TCP everywhere.
-
-Redis handles only the connections where the business benefits from delayed completion, replay, and loose coupling.
-
-Distributed systems improve when each connection uses a transport that matches its own failure budget.
+The deeper lesson is architectural. Redis does not replace TCP everywhere. Redis handles only the connections where the business benefits from delayed completion, replay, and loose coupling. Distributed systems improve when each connection uses a transport that matches its own failure budget.
 
 ## 3.9 Next Part Preview
 
-In the next part, we will look at brokers such as RabbitMQ and Kafka to handle heavier messaging requirements.
-
-Those transports build on the concepts introduced here.
-
-By then, FluoShop will already have one synchronous request path and one durable event path.
-
-That contrast makes it easier to judge when a heavier broker is justified and when it is unnecessary complexity.
+In the next part, we will look at brokers such as RabbitMQ and Kafka to handle heavier messaging requirements. Those transports build on the concepts introduced here. By then, FluoShop will already have one synchronous request path and one durable event path. That contrast makes it easier to judge when a heavier broker is justified and when it is unnecessary complexity.

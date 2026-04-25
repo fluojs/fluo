@@ -24,9 +24,7 @@ We start with Modules because they give the rest of this chapter its frame.
 
 In fluo, a Module is a class marked with `@Module()`. This Decorator is not just there to make the class look nice. It gives the framework the structural information it needs to understand how the application is assembled.
 
-Every application has at least one Module, and it is usually named `AppModule`.
-
-At first, it is enough to understand a Module as a boundary with a public surface and an internal implementation area.
+Every application has at least one Module, and it is usually named `AppModule`. At first, it is enough to understand a Module as a boundary with a public surface and an internal implementation area. That view also explains why `imports`, `providers`, `controllers`, and `exports` are separated later.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -122,9 +120,7 @@ Following these principles makes the system easier to understand and change. You
 
 Once the boundary is visible, the next question is what logic should live inside it.
 
-A Provider is a reusable dependency that fluo manages for you. Services are the most common example, but factories, repositories, helpers, and adapters can also be Providers depending on the design.
-
-In fluo, a class participates in the container as a Provider when you register it in `@Module(...).providers`. If a constructor needs other Tokens, the consuming side declares those dependencies with `@Inject(...)`.
+A Provider is a reusable dependency that fluo manages for you. Services are the most common example, but factories, repositories, helpers, and adapters can also be Providers depending on the design. In fluo, a class participates in the container when you register it in `@Module(...).providers`, and if a constructor needs other Tokens, the consuming side declares those dependencies with `@Inject(...)`.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -189,7 +185,7 @@ This keeps Controllers thin and Providers meaningful.
 
 ### A Tiny Refactoring Clue
 
-If you copy the same logic into two Controllers, that is often a sign the logic wants to become a Provider.
+If you copy the same logic into two Controllers, that is often a sign the logic wants to become a Provider. When you notice duplication, ask where the responsibility should live, and you will keep Controllers thin while creating units that are easier to test.
 
 ### Provider Scopes: A Sneak Peek
 
@@ -226,9 +222,7 @@ When you split logic into small injectable Providers, you naturally move closer 
 
 If Providers hold reusable logic, Controllers describe where that logic meets incoming requests.
 
-Controllers receive incoming requests and return responses. They are the transport-facing edge of a feature.
-
-In HTTP-focused code, a Controller is where route paths are mapped to methods.
+Controllers receive incoming requests and return responses. They are the transport-facing edge of a feature. In HTTP-focused code, a Controller maps route paths to methods and acts as a thin coordinator between outside requests and the logic owned by services or Providers.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -397,9 +391,7 @@ This question keeps your architecture from leaking too much and leaves Modules a
 
 ## 3.6 FluoBlog: Creating the PostModule Skeleton
 
-Now it is time to move from terminology to real application structure.
-
-Let's apply these ideas to FluoBlog. We want to create a dedicated feature Module for posts.
+Now it is time to move from terminology to real application structure. Let's apply these ideas to FluoBlog by creating a dedicated feature Module for posts. This lets you see how Modules, Providers, and Controllers fit together inside one small feature.
 
 At minimum, this feature needs the following.
 

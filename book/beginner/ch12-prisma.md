@@ -57,13 +57,13 @@ pnpm add @fluojs/prisma @prisma/client
 pnpm add -D prisma
 ```
 
-After installation finishes, initialize Prisma in the project.
+After installation finishes, initialize Prisma in the project. This step does more than create files. It gives FluoBlog a clear starting point for declaring and tracking the database structure.
 
 ```bash
 npx prisma init
 ```
 
-This command creates a `prisma/` directory containing the `schema.prisma` file and adds a `DATABASE_URL` entry to the `.env` file.
+This command creates a `prisma/` directory containing the `schema.prisma` file and adds a `DATABASE_URL` entry to the `.env` file. Later schema definitions and migrations will center on this directory, so the data layer has a clear home in the project.
 
 ### Choosing Your Database Provider
 Prisma supports a wide range of databases, including PostgreSQL, MySQL, SQLite, SQL Server, CockroachDB, and MongoDB. For FluoBlog, PostgreSQL or SQLite is recommended for local development. SQLite is convenient for early practice because it stores data in a local file without requiring a separate database server. For production applications, however, a relational database such as PostgreSQL is the standard choice.

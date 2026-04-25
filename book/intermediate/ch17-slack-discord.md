@@ -126,10 +126,10 @@ await this.notifications.dispatch({
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 
-The strength of chat platforms is that they can structure messages in a form people can read and act on immediately.
+The strength of chat platforms is that they can structure messages in a form people can read and act on immediately. Structured blocks and embeds make information such as order IDs, status, and owners easier to scan than a plain string.
 
 ### Slack Blocks
-The Slack package supports the **Block Kit** API, so you can structure messages with sections, fields, dividers, and more.
+The Slack package supports the **Block Kit** API, so you can structure messages with sections, fields, dividers, and more. For operational alerts, Block Kit helps separate the main status from supporting details inside the same message, making the alert easier to read than plain text.
 
 ```typescript
 await this.slack.send({
@@ -153,7 +153,7 @@ await this.slack.send({
 ```
 
 ### Discord Embeds
-The Discord package supports **Embeds** for representing structured data.
+The Discord package supports **Embeds** for representing structured data. Titles, colors, fields, and descriptions help communicate the meaning of an order event quickly in community or public channels.
 
 ```typescript
 await this.discord.send({

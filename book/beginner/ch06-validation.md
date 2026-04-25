@@ -36,15 +36,7 @@ Even without validation rules yet, this code is already easier to read than an a
 
 ### DTOs Are a Boundary Tool
 
-A DTO is not just a TypeScript convenience.
-
-It is a tool for creating a transport boundary.
-
-Outside the boundary, clients send unknown input.
-
-Inside the boundary, services expect a trustworthy structure.
-
-Validation is what makes that transition safe.
+A DTO is not just a TypeScript convenience. It is a tool for creating a transport boundary. Outside the boundary, clients send unknown input, and inside the boundary, services expect a trustworthy structure. Validation makes that transition safe and makes the expected request shape clear before data reaches service logic.
 
 ### Why Classes instead of Interfaces?
 
@@ -76,23 +68,11 @@ This class now plays three useful roles. It names the request, documents the exp
 
 ### Why Field Defaults Help Beginners
 
-You will often see examples where DTO fields are initialized with simple defaults.
-
-This pattern makes the class easier to materialize and inspect visually.
-
-It also helps readers who are new to class-based validation follow the flow.
+You will often see examples where DTO fields are initialized with simple defaults. This pattern makes the class easier to materialize and inspect visually, and it helps readers who are new to class-based validation follow the flow. Defaults act like small signposts that make the example's intent easier to see.
 
 ### What These Rules Mean
 
-`title` must be a string and at least three characters long.
-
-`body` must be a string and at least ten characters long.
-
-`published` can be omitted, but if it exists, it must be a boolean.
-
-The rules are small.
-
-But even this much is enough to show the value of the system.
+`title` must be a string and at least three characters long, and `body` must be a string and at least ten characters long. `published` can be omitted, but if it exists, it must be a boolean. The rules are small, but even this much is enough to leave the request contract clearly in code and show the value of catching invalid input early.
 
 ### Why Decorators?
 
@@ -129,29 +109,11 @@ export class PostsController {
 }
 ```
 
-Once this decorator is attached, the HTTP layer no longer passes the raw body through unchanged.
-
-It binds request data.
-
-It materializes a DTO instance.
-
-It validates the result before the service sees it.
-
-That is exactly the sequence we want at the transport boundary.
+Once this decorator is attached, the HTTP layer no longer passes the raw body through unchanged. It binds request data, materializes a DTO instance, and validates the result before the service sees it. That is exactly the sequence we want at the transport boundary because the service can now assume it receives organized input.
 
 ### `materialize()` vs Plain Assignment
 
-The validation package distinguishes between creating a typed instance and validating an existing value.
-
-HTTP binding usually needs the first path.
-
-That is because it must take unknown input and turn it into a DTO instance.
-
-That is why the documentation emphasizes `materialize()`, which handles hydration and validation together.
-
-The key point you need now is simple.
-
-Incoming payloads should first be converted into a known DTO shape before business logic runs.
+The validation package distinguishes between creating a typed instance and validating an existing value. HTTP binding usually needs the first path because it must take unknown input and turn it into a DTO instance. That is why the documentation emphasizes `materialize()`, which handles hydration and validation together. The key point you need now is simple: incoming payloads should first be converted into a known DTO shape before business logic runs.
 
 ### The Role of Metadata
 
@@ -198,23 +160,11 @@ export class PostsController {
 }
 ```
 
-This is a meaningful upgrade for FluoBlog.
-
-The create route now has explicit rules.
-
-The update route clearly communicates partial update semantics while keeping the current handler contract in the form `input + requestContext`.
-
-It stays behaviorally connected to the original rules.
+This is a meaningful upgrade for FluoBlog. The create route now has explicit rules, and the update route clearly communicates partial update semantics while keeping the current handler contract in the form `input + requestContext`. It also stays behaviorally connected to the original create rules, so the same contract can be extended without duplication.
 
 ### Why Mapped DTO Helpers Matter
 
-At first, it is easy to write similar DTOs by hand.
-
-That works in the beginning.
-
-But it quickly becomes repetitive and prone to mistakes.
-
-Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving validation metadata.
+At first, it is easy to write similar DTOs by hand, and that works in the beginning. But it quickly becomes repetitive and prone to mistakes. Helpers such as `PartialType`, `PickType`, and `OmitType` reduce duplication while preserving validation metadata, so derived contracts can stay tied to one base DTO safely.
 
 ### Creating Specific DTO Variations
 
@@ -244,25 +194,11 @@ This is a healthy design choice. Silent coercion can hide bugs and make input be
 
 Imagine adding query parameters such as `?page=2` or `?limit=10` later.
 
-Those values arrive as transport data.
-
-They do not automatically become trustworthy application numbers.
-
-If conversion is needed, it should be handled deliberately in the binding or transport layer.
-
-That explicitness keeps validation honest.
+Those values arrive as transport data, not automatically trustworthy application numbers. If conversion is needed, it should be handled deliberately in the binding or transport layer. That explicitness keeps validation honest and makes it possible to explain when and where input changed shape.
 
 ### Beginner Rule of Thumb
 
-Do not assume the network sends the exact type you want.
-
-Describe the type you expect.
-
-Validate it.
-
-Convert only when you can explain where that conversion belongs.
-
-This rule prevents subtle bugs later.
+Do not assume the network sends the exact type you want. Describe the type you expect, validate it, and convert only when you can explain where that conversion belongs. This rule prevents subtle bugs later and keeps input responsibilities clear.
 
 ### Converting Query Parameters
 
@@ -285,13 +221,7 @@ This makes the conversion process explicit and visible. First you fix the DTO in
 
 ## 6.6 What FluoBlog Looks Like After Validation
 
-The posts feature now has a more realistic structure.
-
-Routing is still important.
-
-But the service is no longer exposed directly to shapeless input.
-
-That is a major architectural improvement.
+The posts feature now has a more realistic structure. Routing is still important, but the service is no longer exposed directly to shapeless input. That is a major architectural improvement because the service boundary can stay safer as persistence or authentication is added later.
 
 ```typescript
 // src/posts/posts.service.ts
@@ -314,11 +244,7 @@ export class PostsService {
 }
 ```
 
-The service signatures are much clearer now.
-
-Another developer can immediately see that create and update expect validated DTOs.
-
-That clarity makes later refactoring easier.
+The service signatures are much clearer now. Another developer can immediately see that create and update expect validated DTOs. That clarity makes later refactoring easier and leaves the responsibility for input validation in an obvious place.
 
 ### Reliability and Trust
 
@@ -334,15 +260,7 @@ When you know input is valid, you can write simpler service code. You do not nee
 
 ### Why This Chapter Stops Before Error Details
 
-Once validation exists, readers naturally ask what happens when it fails.
-
-That is a very good question.
-
-We will cover the answer soon.
-
-But first, we also need to define the shape of successful responses.
-
-It is better to decide what successful output should look like before covering every error path.
+Once validation exists, readers naturally ask what happens when it fails. That is a very good question, and we will cover the answer soon. But first, we also need to define the shape of successful responses. It is better to decide what successful output should look like before covering every error path.
 
 ## Summary
 - DTOs turn loose request objects into named, validated input contracts.

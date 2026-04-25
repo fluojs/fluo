@@ -32,7 +32,7 @@ The `@fluojs/platform-cloudflare-workers` package is optimized for Worker enviro
 
 ### 24.2.1 Installation
 
-To target the edge, install the Cloudflare Workers adapter.
+To target the edge, install the Cloudflare Workers adapter. This adapter connects a fluo application to the Worker `fetch` invocation model instead of a long-running server.
 
 ```bash
 npm install @fluojs/platform-cloudflare-workers
@@ -90,7 +90,7 @@ Cloudflare Workers have constraints that differ from traditional Node.js environ
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo's Cloudflare adapter connects the Worker `env` object, including KV namespaces and secrets, to the `ConfigService` boundary.
+fluo's Cloudflare adapter connects the Worker `env` object, including KV namespaces and secrets, to the `ConfigService` boundary. Service code can handle settings and bindings through the same configuration contract without reading Cloudflare globals directly.
 
 ```typescript
 import { ConfigService } from '@fluojs/config';
@@ -119,7 +119,7 @@ export class EdgeGateway {
 
 ## 24.6 Deployment with Wrangler
 
-Deploy the fluo application with Cloudflare's CLI tool, `wrangler`. The Worker name, entrypoint, compatibility date, and environment variables are managed in `wrangler.toml`.
+Deploy the fluo application with Cloudflare's CLI tool, `wrangler`. The Worker name, entrypoint, compatibility date, and environment variables are managed in `wrangler.toml`. This file describes the edge execution contract separately from code, so deployment settings become reviewable artifacts too.
 
 ```toml
 # wrangler.toml
@@ -138,7 +138,7 @@ npx wrangler deploy
 
 ## 24.7 Conclusion
 
-Deploying FluoShop to Cloudflare Workers gives you a serverless backend configuration that runs at edge locations around the world. fluo's adapter-centered architecture lets you compare Node.js servers and edge execution environments while keeping application logic intact.
+Deploying FluoShop to Cloudflare Workers gives you a serverless backend configuration that runs at edge locations around the world. fluo's adapter-centered architecture lets you compare Node.js servers and edge execution environments while keeping application logic intact. This comparison is useful because edge deployment changes operational limits without requiring the domain model to be rewritten.
 
 Finally, in Chapter 25, we'll review the overall FluoShop architecture and see how to scale it with a service mesh strategy.
 

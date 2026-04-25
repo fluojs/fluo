@@ -27,9 +27,7 @@ Reality gets complicated, though. APIs keep changing. Field names change, new re
 
 Eventually, the documentation falls behind the code. This is drift. Soon another developer or the frontend team notices that the docs and the real behavior do not match. Once the docs are hard to trust, people end up reading the source code directly to find the "truth." At that point, the original purpose of documentation is gone.
 
-Decorator-based OpenAPI integration exists to reduce this kind of drift.
-
-In fluo, the code should be the Source of Truth.
+Decorator-based OpenAPI integration exists to reduce this kind of drift. In fluo, the code should be the Source of Truth. If routes and DTOs already live in code, documentation should extend that information nearby instead of copying it far away.
 - Route declarations already live in Controllers.
 - DTOs already define the request shape.
 - Response types and security hints are already part of the business logic.
@@ -76,13 +74,13 @@ import { PostsModule } from './posts/posts.module';
 export class AppModule {}
 ```
 
-The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a configuration object with the following fields.
+The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a configuration object with the following fields, and those values decide the generated document's scope and public surface.
 - `title` and `description`: The human-friendly name and description of the API.
 - `version`: The semantic version of the API, for example `1.0.0`.
 - `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect. You can pass `controllerToken` directly or pass a preconfigured descriptor list.
 - `ui: true`: This setting makes fluo serve a polished Swagger UI at a specific endpoint.
 
-The generated JSON document and UI are available at standardized paths.
+The generated JSON document and UI are available at standardized paths. These two paths serve automation tools and human readers respectively.
 - `/openapi.json`: The machine-readable source document.
 - `/docs`: The interactive Swagger UI page.
 
@@ -165,7 +163,7 @@ In Chapter 6, we used `@fluojs/validation` to teach the app about request DTOs. 
 
 ### What FluoBlog Can Now Describe
 
-Thanks to this reuse, FluoBlog can now automatically express the following.
+Thanks to this reuse, FluoBlog can now automatically express the following. The important point is that this information comes from route and DTO declarations you already wrote, not from a separate document file.
 
 - **Request Body structure**: Reads fields, types, and constraints directly from `CreatePostDto`, such as "minimum 5 characters."
 - **Path and Query Parameter**: Accurately identifies dynamic URL segments such as `/posts/:id`.
@@ -184,7 +182,7 @@ This is another reason **security and documentation should be designed together,
 
 ### The Importance of Schema Names
 
-When an OpenAPI document is generated, the name given to a DTO class becomes the schema name in the final specification.
+When an OpenAPI document is generated, the name given to a DTO class becomes the schema name in the final specification. That means names are not just internal implementation details. They become part of the public vocabulary that documentation users see.
 
 For example, `CreatePostDto` becomes a component named `CreatePostDto` in the `components/schemas` section of the OpenAPI JSON. That is why consistent naming matters. If different Modules both define a class named `CreateDto`, the documentation generator can run into name collisions.
 
@@ -192,9 +190,7 @@ Using more specific names such as `PostCreateDto` or `UserCreateDto` is a good h
 
 ### Customizing Schema Properties
 
-The default mapping from TypeScript properties to OpenAPI properties is not always enough. You may want to provide example values or mark certain fields as read-only.
-
-The `@ApiProperty()` Decorator lets you override these details.
+The default mapping from TypeScript properties to OpenAPI properties is not always enough. You may want to provide example values or mark certain fields as read-only. The `@ApiProperty()` Decorator lets you override these details and add human-facing explanation on top of type information the code already knows.
 
 ```typescript
 export class PostResponseDto {
@@ -256,7 +252,7 @@ Versioned routes, such as `/v1/posts`, are reflected correctly in the generated 
 
 If the application restarts and the documentation JSON changes slightly even though the code did not change, version control systems will show ghost diffs and automation tools can behave incorrectly.
 
-Deterministic output guarantees the following.
+Deterministic output guarantees the following. This stability makes it easier to tell whether a documentation change reflects a real API change or just tool-generated noise.
 - Route order is predictable.
 - Asset URLs are stable.
 - Schema structure is consistent.
@@ -275,15 +271,11 @@ Use this final checklist.
 4. **Communication**: Do operation summaries and response descriptions actually help readers?
 5. **Autonomy**: Can another developer understand the public posts API without reading every implementation file?
 
-If the answer is yes, Part 1 is successful.
+If the answer is yes, Part 1 is successful. At this point, FluoBlog is not just an app with working routes. It is a small HTTP system where input, output, failure behavior, protection rules, and documentation reinforce one another.
 
 ### The Bigger Beginner Lesson
 
-Documentation automation is not a tool for avoiding thought. It is a way to move the important thinking close to the actual code, so the API learning flow built throughout Part 1 remains present in both implementation and documentation.
-
-When route shape, validation, security, and documentation reinforce one another, the API becomes easier to trust.
-
-That is the real benefit.
+Documentation automation is not a tool for avoiding thought. It is a way to move the important thinking close to the actual code, so the API learning flow built throughout Part 1 remains present in both implementation and documentation. When route shape, validation, security, and documentation reinforce one another, the API becomes easier to trust. That is the real benefit.
 
 ### Documenting Multiple Versions
 

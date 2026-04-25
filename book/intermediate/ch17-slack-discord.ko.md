@@ -126,10 +126,10 @@ await this.notifications.dispatch({
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 
-채팅 플랫폼의 강점은 메시지를 사람이 바로 읽고 판단할 수 있는 형태로 구성할 수 있다는 점입니다.
+채팅 플랫폼의 강점은 메시지를 사람이 바로 읽고 판단할 수 있는 형태로 구성할 수 있다는 점입니다. 단순 문자열보다 구조화된 블록과 embed를 사용하면 주문 번호, 상태, 담당자 같은 정보를 한눈에 분리해 보여줄 수 있습니다.
 
 ### Slack Blocks
-Slack 패키지는 **Block Kit** API를 지원해 섹션, 필드, 구분선 등으로 메시지를 구조화할 수 있습니다.
+Slack 패키지는 **Block Kit** API를 지원해 섹션, 필드, 구분선 등으로 메시지를 구조화할 수 있습니다. 운영 알림에서는 같은 메시지 안에서도 핵심 상태와 보조 정보를 나눠 보여주는 일이 중요하므로, Block Kit은 단순 텍스트보다 읽기 쉬운 알림을 만들게 해줍니다.
 
 ```typescript
 await this.slack.send({
@@ -153,7 +153,7 @@ await this.slack.send({
 ```
 
 ### Discord Embeds
-Discord 패키지는 구조화된 데이터를 표현하기 위해 **Embeds**를 지원합니다.
+Discord 패키지는 구조화된 데이터를 표현하기 위해 **Embeds**를 지원합니다. 제목, 색상, 필드, 설명을 함께 사용하면 커뮤니티나 공개 채널에서도 주문 이벤트의 의미를 빠르게 전달할 수 있습니다.
 
 ```typescript
 await this.discord.send({
@@ -170,9 +170,7 @@ await this.discord.send({
 
 ## 17.6 FluoShop Context: Operational Alerts
 
-FluoShop에서는 내부 운영 알림에는 Slack을 사용하고, 공개 커뮤니티에 공유할 주문 알림에는 Discord를 사용합니다.
-
-`NotificationsService`를 사용하면 하나의 도메인 이벤트를 정책에 따라 한 플랫폼 또는 여러 플랫폼으로 라우팅할 수 있습니다.
+FluoShop에서는 내부 운영 알림에는 Slack을 사용하고, 공개 커뮤니티에 공유할 주문 알림에는 Discord를 사용합니다. `NotificationsService`를 사용하면 하나의 도메인 이벤트를 정책에 따라 한 플랫폼 또는 여러 플랫폼으로 라우팅할 수 있습니다. 이 구분은 이벤트 생산자에게 채널 선택 책임을 떠넘기지 않고, 알림 정책을 중앙에서 관리하게 해줍니다.
 
 ```typescript
 @OnEvent('order.placed')
@@ -193,14 +191,14 @@ async alertOps(event: OrderPlacedEvent) {
 
 ## 17.7 Error Handling and Retries
 
-내장 웹훅 트랜스포트는 운영 환경의 실패 양상을 기준으로 설계되어 있습니다.
+내장 웹훅 트랜스포트는 운영 환경의 실패 양상을 기준으로 설계되어 있습니다. 네트워크 오류, 만료된 웹훅 URL, 플랫폼 rate limit처럼 채팅 연동에서 자주 만나는 문제를 같은 전송 경계에서 다룰 수 있습니다.
 
 - **자동 재시도**: 일시적인 `408`, `429`, `5xx` 오류에는 지수 백오프(exponential backoff)를 적용해 다시 시도합니다.
 - **명시적 에러**: 영구적인 실패(404, 403 등)는 `SlackTransportError` 또는 `DiscordTransportError`로 드러내 애플리케이션 레벨에서 처리하게 합니다.
 
 ## 17.8 Status Snapshots
 
-채팅 연동은 웹훅 URL 만료, 권한 변경, 외부 서비스 장애로 중단될 수 있습니다. 상태 스냅샷을 운영 지표와 알림에 연결해 조기에 감지합니다.
+채팅 연동은 웹훅 URL 만료, 권한 변경, 외부 서비스 장애로 중단될 수 있습니다. 상태 스냅샷을 운영 지표와 알림에 연결해 조기에 감지합니다. 이 정보를 주기적으로 확인하면 알림이 필요한 순간에야 채널 장애를 발견하는 상황을 줄일 수 있습니다.
 
 ```typescript
 const slackStatus = await createSlackPlatformStatusSnapshot(slackService);
@@ -211,6 +209,4 @@ if (!slackStatus.isReady) {
 
 ## Conclusion
 
-Slack과 Discord를 fluo 생태계에 통합하면 백엔드가 팀 커뮤니케이션 흐름에 직접 참여할 수 있습니다. 런타임 이식성을 유지하면서도 실시간 관측성과 구조화된 메시지 표현을 확보했습니다.
-
-이것으로 **Part 4: 알림 시스템**을 마칩니다. 지금까지 사용자 알림과 팀 운영 알림을 같은 오케스트레이션 모델 안에서 다루는 전략을 정리했습니다.
+Slack과 Discord를 fluo 생태계에 통합하면 백엔드가 팀 커뮤니케이션 흐름에 직접 참여할 수 있습니다. 런타임 이식성을 유지하면서도 실시간 관측성과 구조화된 메시지 표현을 확보했습니다. FluoShop에서는 이메일, Slack, Discord가 모두 같은 알림 오케스트레이션 모델 안에서 정책적으로 선택됩니다. 이것으로 **Part 4: 알림 시스템**을 마칩니다. 지금까지 사용자 알림과 팀 운영 알림을 같은 오케스트레이션 모델 안에서 다루는 전략을 정리했습니다.

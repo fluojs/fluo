@@ -26,7 +26,7 @@ Because the adapter owns this boundary, developers can write `Controller` or `Se
 
 ## 13.2 Analyzing the HttpApplicationAdapter Interface
 
-To create an adapter that supports a new platform, you must implement the `HttpApplicationAdapter` interface.
+To create an adapter that supports a new platform, you must implement the `HttpApplicationAdapter` interface. This interface fixes, with only a few methods, how the server starts and stops and where the Dispatcher is attached.
 
 `packages/http/src/adapter.ts:L68-L93`
 ```typescript
@@ -101,7 +101,7 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Using Fastify's wildcard handler, `all('*')`, to hand control of every route to the Fluo dispatcher is the typical pattern.
+Using Fastify's wildcard handler, `all('*')`, to hand control of every route to the Fluo dispatcher is the typical pattern. Fastify owns networking and plugin execution, while Fluo owns the framework pipeline after route handoff, so the two responsibilities do not overlap.
 
 ## 13.5 FrameworkResponse and Delegated Response Writing
 
@@ -116,7 +116,7 @@ const fluoResponse: FrameworkResponse = {
 };
 ```
 
-The `committed` property tells whether the response has already been sent. It is the safeguard that prevents the dispatcher from writing a duplicate response.
+The `committed` property tells whether the response has already been sent. It is the safeguard that prevents the dispatcher from writing a duplicate response. A custom adapter must keep this value aligned with the platform's real send state so error handling or Interceptors do not touch a response that has already been closed.
 
 ## 13.6 Adapter Strategy in Serverless Environments
 
@@ -126,7 +126,7 @@ In `packages/platform-cloudflare-workers/src/adapter.ts`, a short-lived adapter 
 
 ## 13.7 Reporting Realtime Capability
 
-An adapter can tell the framework whether it supports WebSocket or SSE. This report is made through `getRealtimeCapability`.
+An adapter can tell the framework whether it supports WebSocket or SSE. This report is made through `getRealtimeCapability`. By stating whether a feature is truly supported, contract-only, or unsupported, the adapter lets higher-level modules decide safely whether they can turn realtime features on.
 
 ```typescript
 // packages/http/src/adapter.ts:L49-L63
@@ -147,7 +147,7 @@ The framework uses this information to decide whether to enable modules that nee
 
 ## 13.8 No-op Adapter: Tests and Custom Runtimes
 
-`createNoopHttpApplicationAdapter()` is useful when verifying the framework lifecycle and Bootstrap process without starting a real network server.
+`createNoopHttpApplicationAdapter()` is useful when verifying the framework lifecycle and Bootstrap process without starting a real network server. It does not receive requests, but it still lets the application shell and lifecycle contract run, so you can test runtime assembly without network cost.
 
 ```typescript
 // packages/http/src/adapter.ts:L100-L110
@@ -170,7 +170,7 @@ Network errors or body parsing errors that occur inside the adapter should be pl
 
 ## 13.10 Adapter Evolution: HTTP/3 and QUIC Support
 
-Fluo's adapter structure responds flexibly to transport layer changes. Even if the underlying server library is upgraded to support HTTP/3, upper-level business logic does not change as long as the adapter preserves the `FrameworkRequest` and `FrameworkResponse` contracts. That is the practical standard for platform independence.
+Fluo's adapter structure responds flexibly to transport layer changes. Even if the underlying server library is upgraded to support HTTP/3, upper-level business logic does not change as long as the adapter preserves the `FrameworkRequest` and `FrameworkResponse` contracts. The change stays inside the transport layer, while Controllers and Services continue to work with the same input and output abstractions. That is the practical standard for platform independence.
 
 ## 13.11 Collaboration Between Adapters and the Binder
 
