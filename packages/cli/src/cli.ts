@@ -6,7 +6,7 @@ import { runGenerateCommand } from './commands/generate.js';
 import { type InspectCommandRuntimeOptions, inspectUsage, runInspectCommand } from './commands/inspect.js';
 import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './commands/new.js';
-import { generatorManifest, resolveGeneratorKind } from './generators/manifest.js';
+import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 
@@ -81,10 +81,11 @@ const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
 ];
 
 const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
-  { aliases: ['-o'], description: 'Write generated files under a specific source directory.', option: '--target-directory <path>' },
-  { aliases: ['-f'], description: 'Overwrite files that already exist.', option: '--force' },
-  { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', option: '--dry-run' },
-  { aliases: ['-h'], description: 'Show help for the generate command.', option: '--help' },
+  ...generatorOptionSchemas.map((option) => ({
+    aliases: [...option.aliases],
+    description: option.description,
+    option: option.name,
+  })),
 ];
 
 const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
@@ -118,6 +119,10 @@ function generateUsage(): string {
     '',
     '  auto   = class is auto-registered in the domain module (created if absent)',
     '  manual = files only; you must wire the generated class into a module yourself',
+    '',
+    'Collections',
+    `  ${builtInGeneratorCollection.id} (${builtInGeneratorCollection.source})`,
+    '  External or app-local generator collections are intentionally deferred; no packages or config files are loaded by generate.',
     '',
     'Options',
     renderHelpTable(GENERATE_OPTION_HELP, [
