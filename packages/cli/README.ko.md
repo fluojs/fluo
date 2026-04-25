@@ -90,6 +90,16 @@ fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fa
 
 `fluo new`가 interactive TTY에서 실행되면 wizard는 기존 flags/config 모델을 그대로 사용합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime + HTTP platform, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출도 동일한 resolved defaults를 사용합니다.
 
+side effect 없이 완전히 resolved starter를 미리 확인하려면 `--print-plan`을 사용하세요:
+
+```bash
+fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-service --shape microservice --transport tcp --print-plan
+fluo new my-mixed-app --shape mixed --print-plan
+```
+
+plan preview 모드는 실제 scaffold와 같은 프로젝트 이름, shape, runtime, platform, transport, tooling preset, package manager, install 선택, git 선택을 resolve합니다. 선택된 starter recipe와 dependency 세트를 출력한 뒤 파일 생성, dependency 설치, git 저장소 초기화 없이 종료합니다.
+
 현재 제공되는 스타터 매트릭스(Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
 
 ### 2. 기능 추가
