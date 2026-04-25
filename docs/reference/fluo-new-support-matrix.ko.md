@@ -19,6 +19,7 @@
 | **참조 문서** | 런타임/패키지 참조 문서는 shipped starter preset 바깥의 더 넓은 생태계 지도로 읽습니다. |
 | **애플리케이션 명령** | Fastify, Express, raw Node.js, Bun, Deno, Cloudflare Workers에 대한 명시적 `fluo new --shape application --transport http --runtime ... --platform ...` 명령을 runnable starter 계약으로 읽습니다. |
 | **마이크로서비스 명령** | 문서화된 `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, `grpc` 변형을 runnable starter 계약으로 읽습니다. 그 밖의 어댑터/패키지 언급은 더 넓은 생태계를 설명합니다. |
+| **plan preview** | `fluo new ... --print-plan`은 같은 resolved starter 계약을 사용하는 non-writing preview로 읽습니다. 선택된 recipe, package manager, install/git 선택, dependency 세트를 출력하지만 파일 생성, dependency 설치, git 초기화는 수행하지 않습니다. |
 
 ## 명시적 지원 스타터 값
 

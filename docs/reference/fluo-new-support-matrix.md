@@ -19,6 +19,7 @@
 | **Reference docs** | Read runtime and package references as the broader ecosystem map outside the shipped starter presets. |
 | **Application commands** | Treat explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands for Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers as the runnable starter contract. |
 | **Microservice commands** | Treat documented `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc` variants as the runnable starter contract. Other adapter or package mentions still describe the broader ecosystem. |
+| **Plan preview** | Treat `fluo new ... --print-plan` as a non-writing preview of the same resolved starter contract. It prints the selected recipe, package manager, install/git choices, and dependency sets without creating files, installing dependencies, or initializing git. |
 
 ## explicit supported starter values
 

@@ -44,10 +44,22 @@ export interface BootstrapPrompter {
 
 /** Runtime overrides for resolving bootstrap answers in tests and editors. */
 export interface ResolveBootstrapAnswersOptions {
+  completionMessage?: string | ((answers: BootstrapAnswers) => string);
   interactive?: boolean;
   prompt?: BootstrapPrompter;
   stdin?: ReadableStream;
   stdout?: WritableStream;
+}
+
+function resolveCompletionMessage(
+  completionMessage: ResolveBootstrapAnswersOptions['completionMessage'],
+  answers: BootstrapAnswers,
+): string {
+  if (typeof completionMessage === 'function') {
+    return completionMessage(answers);
+  }
+
+  return completionMessage ?? `Project created! Run: cd ${answers.targetDirectory}`;
 }
 
 function hasOwnValue<Key extends keyof BootstrapAnswers>(
@@ -364,7 +376,7 @@ export async function collectBootstrapAnswers(
     const answers = await resolveInteractiveBootstrapAnswers(partial, cwd, userAgent, prompt);
 
     if (isInteractiveShell) {
-      clack.outro(`Project created! Run: cd ${answers.targetDirectory}`);
+      clack.outro(resolveCompletionMessage(options.completionMessage, answers));
     }
 
     return answers;

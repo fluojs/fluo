@@ -697,6 +697,125 @@ void bootstrap();
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
 
+  it('prints an application scaffold plan without writing files, installing dependencies, or initializing git', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      'starter-app',
+      '--shape',
+      'application',
+      '--runtime',
+      'node',
+      '--platform',
+      'fastify',
+      '--transport',
+      'http',
+      '--install',
+      '--git',
+      '--print-plan',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('fluo new scaffold plan');
+    expect(output).toContain('Shape: application');
+    expect(output).toContain('Runtime: node');
+    expect(output).toContain('Platform: fastify');
+    expect(output).toContain('Transport: http');
+    expect(output).toContain('Starter recipe: application-node-fastify-http');
+    expect(output).toContain('Package manager: pnpm');
+    expect(output).toContain('Install dependencies: yes');
+    expect(output).toContain('Initialize git: yes');
+    expect(output).toContain('@fluojs/platform-fastify');
+    expect(output).toContain('Side effects: none.');
+    expect(output).not.toContain('Skipping dependency installation.');
+    expect(output).not.toContain('Done.');
+    expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('prints a microservice scaffold plan with resolved defaults and no scaffold side effects', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      'starter-microservice',
+      '--shape',
+      'microservice',
+      '--transport',
+      'tcp',
+      '--no-install',
+      '--no-git',
+      '--print-plan',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Project name: starter-microservice');
+    expect(output).toContain('Shape: microservice');
+    expect(output).toContain('Runtime: node');
+    expect(output).toContain('Platform: none');
+    expect(output).toContain('Transport: tcp');
+    expect(output).toContain('Starter recipe: microservice-node-none-tcp');
+    expect(output).toContain('Install dependencies: no');
+    expect(output).toContain('Initialize git: no');
+    expect(output).toContain('@fluojs/microservices');
+    expect(existsSync(join(workspaceDirectory, 'starter-microservice'))).toBe(false);
+  });
+
+  it('prints an interactive mixed scaffold plan without creating the selected project', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new', '--print-plan'], {
+      cwd: workspaceDirectory,
+      interactive: true,
+      prompt: {
+        confirm: async (message) => message === 'Install dependencies now',
+        select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+          if (message === 'Starter shape') {
+            return 'mixed' as T;
+          }
+
+          return (defaultValue ?? 'pnpm') as T;
+        },
+        text: async () => 'starter-mixed-preview',
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Project name: starter-mixed-preview');
+    expect(output).toContain('Shape: mixed');
+    expect(output).toContain('Runtime: node');
+    expect(output).toContain('Platform: fastify');
+    expect(output).toContain('Transport: tcp');
+    expect(output).toContain('Starter recipe: mixed-node-fastify-tcp');
+    expect(output).toContain('Install dependencies: yes');
+    expect(output).toContain('Initialize git: no');
+    expect(output).toContain('@fluojs/microservices');
+    expect(output).toContain('@fluojs/platform-fastify');
+    expect(existsSync(join(workspaceDirectory, 'starter-mixed-preview'))).toBe(false);
+  });
+
   it('rejects transport values that are outside the shipped microservice starter contract', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);

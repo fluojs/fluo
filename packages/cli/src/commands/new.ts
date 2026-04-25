@@ -5,6 +5,7 @@ import { spinner as clackSpinner, log as clackLog } from '@clack/prompts';
 import { renderAliasList, renderHelpTable } from '../help.js';
 import { installDependencies } from '../new/install.js';
 import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
+import { resolveBootstrapPlan } from '../new/resolver.js';
 import { scaffoldBootstrapApp } from '../new/scaffold.js';
 import {
   SUPPORTED_BOOTSTRAP_PLATFORMS,
@@ -132,6 +133,11 @@ const NEW_OPTION_HELP: NewOptionHelpEntry[] = [
     option: '--no-git',
   },
   {
+    aliases: [],
+    description: 'Print the resolved scaffold plan without writing files, installing dependencies, or initializing git.',
+    option: '--print-plan',
+  },
+  {
     aliases: ['-h'],
     description: 'Show help for the new command.',
     option: '--help',
@@ -182,8 +188,8 @@ function setBooleanSelection(
   return nextValue;
 }
 
-function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolean } {
-  const parsed: Partial<BootstrapAnswers> & { force?: boolean } = {};
+function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolean; printPlan?: boolean } {
+  const parsed: Partial<BootstrapAnswers> & { force?: boolean; printPlan?: boolean } = {};
   let hasExplicitTargetDirectory = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -254,7 +260,7 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
 
         parsed.platform = readOptionValue(argv, index, '--platform') as BootstrapAnswers['platform'];
         if (!SUPPORTED_PLATFORMS.has(parsed.platform)) {
-          throw new Error('Invalid --platform value "' + parsed.platform + '". Use one of: bun, cloudflare-workers, deno, fastify, express, nodejs, none.');
+          throw new Error(`Invalid --platform value "${parsed.platform}". Use one of: bun, cloudflare-workers, deno, fastify, express, nodejs, none.`);
         }
         index += 1;
         break;
@@ -299,6 +305,9 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
       case '--force':
         parsed.force = true;
         break;
+      case '--print-plan':
+        parsed.printPlan = true;
+        break;
       case '--install':
         parsed.installDependencies = setBooleanSelection(
           parsed.installDependencies,
@@ -339,6 +348,39 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
   }
 
   return parsed;
+}
+
+function renderDependencyList(dependencies: readonly string[]): string {
+  return dependencies.length > 0 ? dependencies.join(', ') : '(none)';
+}
+
+function renderScaffoldPlanPreview(answers: BootstrapAnswers, resolvedTargetDirectory: string): string {
+  const bootstrapPlan = resolveBootstrapPlan(answers);
+
+  return [
+    'fluo new scaffold plan',
+    '',
+    `Project name: ${answers.projectName}`,
+    `Target directory: ${answers.targetDirectory}`,
+    `Resolved target: ${resolvedTargetDirectory}`,
+    `Shape: ${answers.shape}`,
+    `Runtime: ${answers.runtime}`,
+    `Platform: ${answers.platform}`,
+    `Transport: ${answers.transport}`,
+    `Tooling preset: ${answers.tooling}`,
+    `Topology: ${answers.topology.mode}${answers.topology.deferred ? ' (deferred)' : ''}`,
+    `Starter recipe: ${bootstrapPlan.profile.id}`,
+    `Emitter: ${bootstrapPlan.emitter.type}`,
+    `Package manager: ${answers.packageManager}`,
+    `Install dependencies: ${answers.installDependencies ? 'yes' : 'no'}`,
+    `Initialize git: ${answers.initializeGit ? 'yes' : 'no'}`,
+    '',
+    'Dependencies:',
+    `  runtime: ${renderDependencyList(bootstrapPlan.dependencies.dependencies)}`,
+    `  dev: ${renderDependencyList(bootstrapPlan.dependencies.devDependencies)}`,
+    '',
+    'Side effects: none. Preview mode does not create files, install dependencies, or initialize git.',
+  ].join('\n');
 }
 
 /**
@@ -415,11 +457,18 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
 
     const answers = await collectBootstrapAnswers(partialAnswers, runtime.cwd ?? process.cwd(), runtime.userAgent, {
       interactive: runtime.interactive,
+      completionMessage: parsed.printPlan ? 'Scaffold plan resolved. No files were written.' : undefined,
       prompt: runtime.prompt,
       stdin: runtime.stdin,
       stdout,
     });
     const targetDirectory = resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory);
+
+    if (parsed.printPlan) {
+      stdout.write(`${renderScaffoldPlanPreview(answers, targetDirectory)}\n`);
+      return 0;
+    }
+
     const options = {
       ...answers,
       dependencySource: runtime.dependencySource,
