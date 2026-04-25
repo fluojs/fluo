@@ -27,7 +27,7 @@ Use this package when you need to:
 - **Bootstrap a fluo application**: Convert your modules into a running HTTP server or microservice.
 - **Orchestrate DI and Lifecycle**: Manage module-graph compilation, provider wiring, and application hooks (`onModuleInit`, `onApplicationBootstrap`).
 - **Create Standalone Contexts**: Run CLI tasks, migrations, or workers that need DI but not an HTTP server.
-- **Diagnostic Inspection**: Export machine-readable or Mermaid-based module graph topology.
+- **Diagnostic Inspection**: Produce machine-readable platform snapshots for CLI export and Studio-owned graph viewing/rendering.
 
 ## Quick Start
 
@@ -126,6 +126,7 @@ class UsersModule {}
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
+- Platform snapshot production stays in runtime; graph viewing and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
 
 ## Public API Overview
 
@@ -174,6 +175,7 @@ Lower-level Node compression internals stay behind the `@fluojs/runtime/internal
 - [@fluojs/di](../di): Dependency injection container implementation.
 - [@fluojs/http](../http): HTTP routing, controllers, and dispatcher.
 - [@fluojs/platform-nodejs](../platform-nodejs): Official Node.js HTTP adapter.
+- [@fluojs/studio](../studio): Viewer and rendering helpers for runtime-produced snapshots.
 
 ## Example Sources
 
