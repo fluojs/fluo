@@ -112,10 +112,14 @@ Run codemods to align your codebase with TC39 standard decorators.
 ```bash
 # Preview changes (dry-run)
 fluo migrate ./src
+fluo migrate ./src --json
 
 # Apply transformations
 fluo migrate ./src --apply
+fluo migrate ./src --apply --json
 ```
+
+Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.

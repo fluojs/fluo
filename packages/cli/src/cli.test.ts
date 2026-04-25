@@ -52,6 +52,52 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('# @fluojs/studio용 snapshot 내보내기');
   });
 
+  it('passes migrate --json through the top-level dispatcher', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['migrate', './src', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const report = JSON.parse(stdoutBuffer.join('')) as { command: string; mode: string };
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(report).toMatchObject({ command: 'migrate', mode: 'dry-run' });
+  });
+
+  it('keeps migrate parser failures on stderr when dispatched with --json', async () => {
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['migrate', './src', '--json', '--unknown'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('Unknown option for migrate command: --unknown');
+  });
+
   it('uses the default target directory from a single-app workspace root', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);

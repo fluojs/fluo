@@ -5,6 +5,7 @@ import {
   MIGRATION_TRANSFORMS,
   getWarningCategoryLabel,
   groupWarningsByCategory,
+  type MigrationReport,
   renderTransformList,
   runNestJsMigration,
   type MigrationTransformKind,
@@ -34,6 +35,7 @@ type MigrateOptionHelpEntry = {
 
 type ParsedMigrateArgs = {
   apply: boolean;
+  json: boolean;
   path: string;
   transforms: Set<MigrationTransformKind>;
 };
@@ -43,6 +45,11 @@ const MIGRATE_OPTION_HELP: MigrateOptionHelpEntry[] = [
     aliases: ['-a'],
     description: 'Apply file changes. Dry-run is the default mode.',
     option: '--apply',
+  },
+  {
+    aliases: [],
+    description: 'Emit a machine-readable JSON migration report to stdout. Errors still go to stderr.',
+    option: '--json',
   },
   {
     aliases: [],
@@ -86,6 +93,7 @@ function parseTransformList(rawValue: string, optionName: '--only' | '--skip'): 
 function parseArgs(argv: string[]): ParsedMigrateArgs {
   let pathArgument: string | undefined;
   let apply = false;
+  let json = false;
   let onlyTransforms: MigrationTransformKind[] | undefined;
   let skipTransforms: MigrationTransformKind[] = [];
 
@@ -94,6 +102,15 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
 
     if (arg === '--apply' || arg === '-a') {
       apply = true;
+      continue;
+    }
+
+    if (arg === '--json') {
+      if (json) {
+        throw new Error('Duplicate --json option.');
+      }
+
+      json = true;
       continue;
     }
 
@@ -144,9 +161,40 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
 
   return {
     apply,
+    json,
     path: pathArgument,
     transforms: enabled,
   };
+}
+
+function renderJsonReport(report: MigrationReport, transforms: readonly MigrationTransformKind[]): string {
+  return `${JSON.stringify(
+    {
+      command: 'migrate',
+      mode: report.apply ? 'apply' : 'dry-run',
+      apply: report.apply,
+      dryRun: !report.apply,
+      transforms,
+      scannedFiles: report.scannedFiles,
+      changedFiles: report.changedFiles,
+      warningCount: report.warningCount,
+      files: report.fileResults.map((fileResult) => ({
+        filePath: fileResult.filePath,
+        changed: fileResult.changed,
+        appliedTransforms: fileResult.appliedTransforms,
+        warningCount: fileResult.warnings.length,
+        warnings: fileResult.warnings.map((warning) => ({
+          category: warning.category,
+          categoryLabel: getWarningCategoryLabel(warning.category),
+          filePath: warning.filePath,
+          line: warning.line,
+          message: warning.message,
+        })),
+      })),
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 /**
@@ -197,6 +245,11 @@ export async function runMigrateCommand(argv: string[], runtime: MigrateCommandR
       enabledTransforms: parsed.transforms,
       targetPath,
     });
+
+    if (parsed.json) {
+      stdout.write(renderJsonReport(report, transforms));
+      return 0;
+    }
 
     stdout.write(`Mode: ${parsed.apply ? 'apply' : 'dry-run'}\n`);
     stdout.write(`Enabled transforms: ${renderTransformList(transforms)}\n`);
