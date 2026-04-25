@@ -83,6 +83,7 @@ const GENERATE_KIND_HELP: GenerateKindHelpEntry[] = [
 const GENERATE_OPTION_HELP: GenerateOptionHelpEntry[] = [
   { aliases: ['-o'], description: 'Write generated files under a specific source directory.', option: '--target-directory <path>' },
   { aliases: ['-f'], description: 'Overwrite files that already exist.', option: '--force' },
+  { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', option: '--dry-run' },
   { aliases: ['-h'], description: 'Show help for the generate command.', option: '--help' },
 ];
 
@@ -195,6 +196,7 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
   let seenRequestDtoName = false;
   let targetDirectory: string | undefined;
   let seenForce = false;
+  let seenDryRun = false;
   let seenTargetDirectory = false;
 
   for (let index = 0; index < optionArgs.length; index += 1) {
@@ -230,6 +232,16 @@ function parseGenerateArgs(argv: string[]): ParsedCliArgs {
 
       parsedOptions.force = true;
       seenForce = true;
+      continue;
+    }
+
+    if (option === '--dry-run') {
+      if (seenDryRun) {
+        throw new Error('Duplicate --dry-run option.');
+      }
+
+      parsedOptions.dryRun = true;
+      seenDryRun = true;
       continue;
     }
 
@@ -375,9 +387,17 @@ export async function runCli(
 
     const result = runGenerateCommand(parsedCommand.parsed.kind, parsedCommand.parsed.name, targetDirectory, parsedCommand.parsed.options);
 
-    stdout.write(`Generated ${result.generatedFiles.length} file(s):\n`);
-    for (const file of result.generatedFiles) {
-      stdout.write(`  CREATE ${file}\n`);
+    if (parsedCommand.parsed.options.dryRun) {
+      stdout.write('Dry run: no files were written.\n');
+      stdout.write(`Planned ${result.plannedFiles.length} file action(s):\n`);
+      for (const file of result.plannedFiles) {
+        stdout.write(`  ${file.action.toUpperCase()} ${file.path}\n`);
+      }
+    } else {
+      stdout.write(`Generated ${result.generatedFiles.length} file(s):\n`);
+      for (const file of result.generatedFiles) {
+        stdout.write(`  CREATE ${file}\n`);
+      }
     }
 
     stdout.write('\n');

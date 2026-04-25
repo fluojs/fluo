@@ -110,9 +110,12 @@ fluo generate module users
 fluo generate controller users
 fluo generate service users
 fluo generate request-dto users CreateUser
+fluo generate service users --dry-run
 ```
 
 Request DTO generation accepts the feature directory separately from the DTO class name, so multiple input contracts such as `CreateUser` and `UpdateUser` can live inside the same `src/users/` slice.
+
+Add `--dry-run` to preview the same target resolution, skipped or overwritten file decisions, module auto-registration plan, files-only wiring status, and next-step hint without creating directories, writing files, or updating modules. `--force` still changes existing-file plan entries from `SKIP` to `OVERWRITE` when content would change, and `--target-directory` scopes the preview to that source directory exactly as it does for a real run.
 
 ## Common Patterns
 

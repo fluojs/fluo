@@ -989,6 +989,7 @@ void bootstrap();
     }
 
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
+    expect(stdoutBuffer.join('')).toContain('--dry-run');
     expect(stdoutBuffer.join('')).not.toContain('Usage: fluo new|create');
     expect(stdoutBuffer.join('')).toContain('Next steps:');
     expect(stdoutBuffer.join('')).toContain("Run 'pnpm typecheck'");
@@ -1898,6 +1899,19 @@ void bootstrap();
     expect(stderrBuffer.join('')).toContain('Duplicate --target-directory option.');
   });
 
+  it('rejects duplicate --dry-run flags', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['g', 'service', 'User', '--dry-run', '--dry-run'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Duplicate --dry-run option.');
+  });
+
   it('rejects --target-directory values that look like options', async () => {
     const stderrBuffer: string[] = [];
 
@@ -2048,6 +2062,86 @@ void bootstrap();
     expect(output).toContain('Wiring: auto-registered in');
     expect(output).toContain('Next steps:');
     expect(output).toContain('pnpm typecheck');
+  });
+
+  it('prints a dry-run plan without writing files for auto-registered generate commands', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'service', 'Post', '--dry-run'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Dry run: no files were written.');
+    expect(output).toContain('CREATE');
+    expect(output).toContain('MODULE-CREATE');
+    expect(output).toContain('Wiring: auto-registered in');
+    expect(existsSync(join(workspaceDirectory, 'src', 'posts'))).toBe(false);
+  });
+
+  it('prints request DTO feature-target dry-run plans without creating feature directories', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ name: 'test-app', private: true }, null, 2),
+    );
+
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'req', 'users', 'CreateUser', '--dry-run'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Dry run: no files were written.');
+    expect(output).toContain('users/create-user.request.dto.ts');
+    expect(output).toContain('Wiring: files only');
+    expect(existsSync(join(workspaceDirectory, 'src', 'users'))).toBe(false);
+  });
+
+  it('combines --dry-run with --force and --target-directory while leaving existing files untouched', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+
+    const customSourceDirectory = join(workspaceDirectory, 'custom-src');
+    const userDirectory = join(customSourceDirectory, 'users');
+    const servicePath = join(userDirectory, 'user.service.ts');
+    mkdirSync(userDirectory, { recursive: true });
+    writeFileSync(servicePath, 'export class CustomUserService {}\n', 'utf8');
+
+    const stdoutBuffer: string[] = [];
+    const exitCode = await runCli(['g', 'service', 'User', '--dry-run', '--force', '--target-directory', 'custom-src'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('OVERWRITE');
+    expect(output).toContain('custom-src/users/user.service.ts');
+    expect(output).toContain('MODULE-CREATE');
+    expect(readFileSync(servicePath, 'utf8')).toBe('export class CustomUserService {}\n');
+    expect(existsSync(join(userDirectory, 'user.module.ts'))).toBe(false);
   });
 
   it('generate output shows files-only wiring and manual hint for non-registered kinds', async () => {

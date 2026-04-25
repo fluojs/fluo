@@ -110,9 +110,12 @@ fluo generate module users
 fluo generate controller users
 fluo generate service users
 fluo generate request-dto users CreateUser
+fluo generate service users --dry-run
 ```
 
 Request DTO 생성은 feature 디렉터리와 DTO 클래스 이름을 분리해서 받습니다. 따라서 `CreateUser`, `UpdateUser` 같은 여러 입력 계약을 같은 `src/users/` 슬라이스 안에 둘 수 있습니다.
+
+`--dry-run`을 추가하면 실제 실행과 같은 타깃 해석, 기존 파일 건너뛰기 또는 덮어쓰기 판단, 모듈 자동 등록 계획, 파일만 생성하는 wiring 상태, 다음 단계 힌트를 미리 볼 수 있습니다. 이 모드는 디렉터리 생성, 파일 쓰기, 모듈 갱신을 수행하지 않습니다. `--force`는 내용이 달라질 기존 파일의 계획 항목을 `SKIP`에서 `OVERWRITE`로 바꾸며, `--target-directory`는 실제 실행과 동일하게 지정한 소스 디렉터리 기준으로 preview 범위를 제한합니다.
 
 ## 주요 패턴
 

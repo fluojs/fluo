@@ -7,9 +7,9 @@
 ## Available Generators
 
 ```bash
-fluo generate <generator> <name> [--target-directory <path>] [--force]
-fluo g <generator> <name> [--target-directory <path>] [--force]
-fluo g request-dto <feature> <name> [--target-directory <path>] [--force]
+fluo generate <generator> <name> [--target-directory <path>] [--force] [--dry-run]
+fluo g <generator> <name> [--target-directory <path>] [--force] [--dry-run]
+fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry-run]
 ```
 
 | Generator | Accepted tokens | Example syntax | Wiring | Output scope |
@@ -50,6 +50,7 @@ Controller and service templates inspect sibling files before rendering. A contr
 | --- | --- | --- | --- |
 | `--target-directory <path>` | `-o` | All generators | Writes the slice under the provided source directory. |
 | `--force` | `-f` | All generators | Overwrites existing generated files instead of skipping them. |
+| `--dry-run` | None | All generators | Prints the planned creates, skips, overwrites, and module updates without creating directories, writing files, or updating modules. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | Prints generate-command usage and generator metadata. |
 
 | Resolution rule | Resolved base directory |
@@ -67,7 +68,10 @@ Controller and service templates inspect sibling files before rendering. A contr
 - Request DTO feature targets use the same validation and normalize to a kebab-case directory name. PascalCase feature names follow the normal resource pluralization (`fluo g req Post CreatePost` writes to `posts/`), while lower-case directory tokens such as `posts` are used as written. The one-name form (`fluo g req CreatePost`) remains supported for compatibility, but the explicit feature form keeps multiple DTOs in one slice.
 - A multi-app workspace root with more than one valid `apps/*/src` target requires `--target-directory`.
 - Existing files are skipped by default. `--force` is required for overwrite behavior.
+- `--dry-run` uses the same validation, default target resolution, `--target-directory`, and request DTO feature-target rules as a real run, but it leaves the workspace unchanged.
+- Dry-run output distinguishes files-only generators from auto-registered generators, including whether a module would be created, updated, or left unchanged.
+- Combining `--dry-run` with `--force` previews overwrite decisions without applying them.
 - Unchanged file content is not rewritten, even when the command resolves auto-registration metadata.
 - Module auto-registration is limited to controller, service, repository, guard, interceptor, and middleware generators.
 - DTO and module generators do not wire parent-module imports automatically.
-- The generate command surface documents `--target-directory`, `--force`, and `--help`. No `--dry-run` option is parsed for `fluo generate` or `fluo g`.
+- The generate command surface documents `--target-directory`, `--force`, `--dry-run`, and `--help`.

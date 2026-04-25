@@ -17,6 +17,45 @@ function writeFileIfChanged(filePath: string, content: string): boolean {
   return true;
 }
 
+/** Describes how one generated artifact would interact with the workspace. */
+export type GeneratePlanAction = 'create' | 'module-create' | 'module-unchanged' | 'module-update' | 'overwrite' | 'skip' | 'unchanged';
+
+/** One path-level action reported by generate dry-run previews and structured results. */
+export type GeneratePlanEntry = {
+  /** Planned action for this path. */
+  action: GeneratePlanAction;
+  /** Absolute path affected by the plan entry. */
+  path: string;
+};
+
+function planFileWrite(filePath: string, content: string, options: GenerateOptions): GeneratePlanEntry {
+  if (!existsSync(filePath)) {
+    return { action: 'create', path: filePath };
+  }
+
+  if (!options.force) {
+    return { action: 'skip', path: filePath };
+  }
+
+  if (readFileSync(filePath, 'utf8') === content) {
+    return { action: 'unchanged', path: filePath };
+  }
+
+  return { action: 'overwrite', path: filePath };
+}
+
+function planModuleWrite(modulePath: string, content: string): GeneratePlanEntry {
+  if (!existsSync(modulePath)) {
+    return { action: 'module-create', path: modulePath };
+  }
+
+  if (readFileSync(modulePath, 'utf8') === content) {
+    return { action: 'module-unchanged', path: modulePath };
+  }
+
+  return { action: 'module-update', path: modulePath };
+}
+
 function createGeneratorOptions(
   kind: GeneratorKind,
   domainDirectory: string,
@@ -121,6 +160,7 @@ export type GenerateResult = {
   moduleRegistered: boolean;
   modulePath: string | undefined;
   nextStepHint: string;
+  plannedFiles: GeneratePlanEntry[];
   wiringBehavior: GeneratorManifestEntry['wiringBehavior'];
 };
 
@@ -161,6 +201,20 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
     ? prepareModuleUpdate(domainDirectory, normalizedName, kind, moduleRegistration.classSuffix, moduleRegistration.arrayKey)
     : undefined;
 
+  const plannedFiles = files.map((file) => planFileWrite(join(domainDirectory, file.path), file.content, options));
+  const modulePlan = moduleUpdate ? planModuleWrite(moduleUpdate.modulePath, moduleUpdate.source) : undefined;
+
+  if (options.dryRun) {
+    return {
+      generatedFiles: [],
+      moduleRegistered: moduleUpdate !== undefined,
+      modulePath: moduleUpdate?.modulePath,
+      nextStepHint: generator.nextStepHint,
+      plannedFiles: modulePlan ? [...plannedFiles, modulePlan] : plannedFiles,
+      wiringBehavior: generator.wiringBehavior,
+    };
+  }
+
   mkdirSync(domainDirectory, { recursive: true });
 
   const writtenPaths = files.map((file) => {
@@ -193,6 +247,7 @@ export function runGenerateCommand(kind: GeneratorKind, name: string, baseDirect
     moduleRegistered: moduleRegistered,
     modulePath: resolvedModulePath,
     nextStepHint: generator.nextStepHint,
+    plannedFiles: modulePlan ? [...plannedFiles, modulePlan] : plannedFiles,
     wiringBehavior: generator.wiringBehavior,
   };
 }

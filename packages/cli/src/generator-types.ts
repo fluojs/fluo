@@ -4,8 +4,10 @@ export interface GeneratedFile {
   path: string;
 }
 
-/** Optional generation flags that influence overwrite behavior, target placement, and sibling-aware templates. */
+/** Optional generation flags that influence overwrite behavior, target placement, plan previews, and sibling-aware templates. */
 export interface GenerateOptions {
+  /** Preview planned writes and module updates without mutating the workspace. */
+  dryRun?: boolean;
   force?: boolean;
   hasRepo?: boolean;
   hasService?: boolean;
