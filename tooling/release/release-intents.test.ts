@@ -148,6 +148,44 @@ describe('validateReleaseIntentRecord', () => {
       ),
     ).toThrowError(/unknown public workspace package @fluojs\/not-a-package/u);
   });
+
+  it('fails when a release intent omits a semver bump', () => {
+    expect(() =>
+      validateReleaseIntentRecord(
+        createRecord({
+          packages: [
+            {
+              disposition: 'release',
+              package: '@fluojs/cli',
+              rationale: 'The CLI package is being published.',
+              semver: 'none',
+              summary: 'Invalid release intent should fail validation.',
+            },
+          ],
+        }),
+        dependencies(),
+      ),
+    ).toThrowError(/semver must be patch, minor, or major when disposition is release/u);
+  });
+
+  it.each(['no-release', 'downstream-evaluate'])('fails when %s carries a semver bump', (disposition) => {
+    expect(() =>
+      validateReleaseIntentRecord(
+        createRecord({
+          packages: [
+            {
+              disposition,
+              package: '@fluojs/cli',
+              rationale: 'The CLI package is not being published.',
+              semver: 'patch',
+              summary: 'Invalid non-release intent should fail validation.',
+            },
+          ],
+        }),
+        dependencies(),
+      ),
+    ).toThrowError(new RegExp(`semver must be none when disposition is ${disposition}`, 'u'));
+  });
 });
 
 describe('validateReleaseIntentRecords', () => {
@@ -162,5 +200,11 @@ describe('validateReleaseIntentRecords', () => {
     expect(() => validateReleaseIntentRecords([], { ...dependencies(), candidateVersion: '1.0.0-beta.2' })).toThrowError(
       /release intent records are required.*1\.0\.0-beta\.2/u,
     );
+  });
+
+  it('accepts one committed JSON record object as a release intent record set', () => {
+    expect(validateReleaseIntentRecords(createRecord(), { ...dependencies(), candidateVersion: '1.0.0-beta.2' })).toEqual([
+      expect.objectContaining({ version: '1.0.0-beta.2' }),
+    ]);
   });
 });

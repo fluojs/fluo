@@ -43,6 +43,6 @@ export function validateReleaseIntentRecord(
   dependencies?: ReleaseIntentValidationDependencies,
 ): ReleaseIntentRecord;
 export function validateReleaseIntentRecords(
-  records: unknown[],
+  records: unknown,
   options: ReleaseIntentValidationDependencies & { candidateVersion: string },
 ): ReleaseIntentRecord[];

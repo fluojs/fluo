@@ -188,6 +188,17 @@ export function validateReleaseIntentRecord(record, dependencies = {}) {
       errors.push(`${location}.semver must be one of ${releaseIntentSemverIntents.join(', ')}.`);
     }
 
+    if (packageIntent.disposition === 'release' && packageIntent.semver === 'none') {
+      errors.push(`${location}.semver must be patch, minor, or major when disposition is release.`);
+    }
+
+    if (
+      (packageIntent.disposition === 'no-release' || packageIntent.disposition === 'downstream-evaluate') &&
+      packageIntent.semver !== 'none'
+    ) {
+      errors.push(`${location}.semver must be none when disposition is ${packageIntent.disposition}.`);
+    }
+
     if (!isNonEmptyString(packageIntent.summary)) {
       errors.push(`${location}.summary is required.`);
     }
@@ -219,15 +230,17 @@ export function validateReleaseIntentRecords(records, options = {}) {
     throw new Error('Release intent validation failed: candidateVersion is required.');
   }
 
-  if ((!Array.isArray(records) || records.length === 0) && !requiresReleaseIntentRecords(candidateVersion)) {
+  const normalizedRecords = Array.isArray(records) ? records : records && typeof records === 'object' ? [records] : [];
+
+  if (normalizedRecords.length === 0 && !requiresReleaseIntentRecords(candidateVersion)) {
     return [];
   }
 
-  if (!Array.isArray(records) || records.length === 0) {
+  if (normalizedRecords.length === 0) {
     throw new Error(
       `Release intent validation failed: release intent records are required for ${candidateVersion}; ${firstEnforcedReleaseIntentVersion} is the first enforced fixture/candidate version.`,
     );
   }
 
-  return records.map((record) => validateReleaseIntentRecord(record, options));
+  return normalizedRecords.map((record) => validateReleaseIntentRecord(record, options));
 }

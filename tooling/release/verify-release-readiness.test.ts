@@ -349,6 +349,39 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.isPublishedVersion).toHaveBeenCalledWith('@fluojs/cli', '1.0.0-beta.2');
   });
 
+  it('accepts a file-based single release intent record matching the committed schema example', () => {
+    const dependencies = createDependencies();
+    dependencies.readFileSync = vi.fn((targetPath: string) => {
+      if (String(targetPath).endsWith('/tooling/release/intents/cli-beta.2.json')) {
+        return JSON.stringify(createCliReleaseIntentRecord());
+      }
+
+      throw new Error(`Unexpected file read: ${targetPath}`);
+    });
+
+    const result = runReleaseReadinessVerification(
+      {
+        distTag: 'beta',
+        releaseIntentFile: 'tooling/release/intents/cli-beta.2.json',
+        targetPackage: '@fluojs/cli',
+        targetVersion: '1.0.0-beta.2',
+      },
+      dependencies,
+    );
+
+    expect(result.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Release intent coverage for affected packages', pass: true }),
+        expect.objectContaining({ label: 'Single-package release target intent disposition', pass: true }),
+      ]),
+    );
+    expect(dependencies.readFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('/tooling/release/intents/cli-beta.2.json'),
+      'utf8',
+    );
+    expect(dependencies.isPublishedVersion).toHaveBeenCalledWith('@fluojs/cli', '1.0.0-beta.2');
+  });
+
   it('fails when a changed public package has no release intent after the cutoff', () => {
     const dependencies = createDependencies();
 
