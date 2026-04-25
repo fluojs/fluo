@@ -14,7 +14,7 @@
 | **Persistence** | Database and cache. | `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`, `@fluojs/redis`, `@fluojs/cache-manager` |
 | **Patterns** | Messaging and architecture. | `@fluojs/microservices`, `@fluojs/cqrs`, `@fluojs/event-bus`, `@fluojs/cron`, `@fluojs/queue`, `@fluojs/notifications`, `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord` |
 | **Operations** | Health and monitoring. | `@fluojs/metrics`, `@fluojs/terminus`, `@fluojs/throttler` |
-| **Tooling** | CLI and diagnostics. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
+| **Tooling** | CLI inspection export, Studio graph viewing/rendering, and testing diagnostics. | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing` |
 
 ## canonical runtime package matrix
 
@@ -33,7 +33,7 @@
 - **`@fluojs/core`**: Metadata helpers and TC39-standard decorator support.
 - **`@fluojs/di`**: Provider resolution, lifecycle scopes, and dependency graph analysis.
 - **`@fluojs/config`**: Environment-aware configuration loading and typed access.
-- **`@fluojs/runtime`**: Application bootstrap, module orchestration, and platform shell registration.
+- **`@fluojs/runtime`**: Application bootstrap, module orchestration, platform shell registration, and platform snapshot production.
 
 ### adapters
 - **`platform-*`**: Implement the `PlatformAdapter` interface. They bridge abstract HTTP calls to runtime-specific listeners.
@@ -53,6 +53,11 @@
 - **`@fluojs/websockets`**: Transport-neutral WebSocket gateway authoring.
 - **`@fluojs/validation`**: Class-validator based input materialization and safety.
 - **`@fluojs/prisma` / `@fluojs/drizzle`**: ORM lifecycle and ALS-backed transaction context.
+
+### tooling
+- **`@fluojs/cli`**: Project scaffolding, generation, codemods, and inspection export/delegation for runtime-produced snapshots.
+- **`@fluojs/studio`**: File-first snapshot viewer plus canonical parsing, filtering, and graph rendering helpers for CLI and automation callers.
+- **`@fluojs/testing`**: Conformance and integration helpers for verifying application and platform contracts.
 
 ## naming conventions
 - **`platform-*`**: Reserved for runtime/protocol adapters implementing `PlatformAdapter`.

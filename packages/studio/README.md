@@ -41,7 +41,7 @@ The published package serves two caller-facing entrypoints:
 
 ## Quick Start
 
-Studio consumes JSON exports from the fluo CLI. Runtime and CLI tooling produce snapshots; Studio owns the public helpers that parse, filter, and render those snapshots for viewer and automation callers.
+Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers.
 
 1. **Export a snapshot**:
    ```bash

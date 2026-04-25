@@ -27,7 +27,7 @@ npm install @fluojs/runtime
 - **fluo 애플리케이션 부트스트랩**: 모듈을 실행 중인 HTTP 서버나 마이크로서비스로 변환할 때.
 - **DI 및 라이프사이클 오케스트레이션**: 모듈 그래프 컴파일, 프로바이더 연결 및 애플리케이션 훅(`onModuleInit`, `onApplicationBootstrap`)을 관리할 때.
 - **독립형 컨텍스트 생성**: HTTP 서버는 필요 없지만 DI가 필요한 CLI 태스크, 마이그레이션 또는 워커를 실행할 때.
-- **진단 및 검사**: 기계 읽기 가능한 형태나 Mermaid 기반의 모듈 그래프 토폴로지를 내보낼 때.
+- **진단 및 검사**: CLI 내보내기와 Studio 소유 그래프 보기/렌더링을 위한 기계 읽기 가능한 플랫폼 snapshot을 생산할 때.
 
 ## 퀵 스타트
 
@@ -126,6 +126,7 @@ class UsersModule {}
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
+- 플랫폼 snapshot 생산은 런타임에 남아 있고, 그래프 보기와 Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
 
 ## 공개 API 개요
 
@@ -174,6 +175,7 @@ import {
 - [@fluojs/di](../di): 의존성 주입(DI) 컨테이너 구현체.
 - [@fluojs/http](../http): HTTP 라우팅, 컨트롤러 및 디스패처.
 - [@fluojs/platform-nodejs](../platform-nodejs): 공식 Node.js HTTP 어댑터.
+- [@fluojs/studio](../studio): 런타임이 생산한 snapshot을 위한 뷰어 및 렌더링 헬퍼.
 
 ## 예제 소스
 

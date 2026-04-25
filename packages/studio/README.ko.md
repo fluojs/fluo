@@ -41,7 +41,7 @@ pnpm add @fluojs/studio
 
 ## 빠른 시작
 
-Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임과 CLI 도구는 snapshot을 생산하고, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 렌더링하는 공개 헬퍼를 소유합니다.
+Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 검사 데이터를 내보내거나 위임하며, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 보기, 렌더링하는 공개 헬퍼를 소유합니다.
 
 1. **Snapshot 내보내기**:
    ```bash

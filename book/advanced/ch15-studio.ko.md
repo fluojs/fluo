@@ -3,15 +3,15 @@
 
 # Chapter 15. Studio — 시각적 진단과 관찰성
 
-이 장은 복잡한 모듈 그래프와 진단 정보를 사람이 읽을 수 있는 시각적 형태로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 관찰하고 해석하는 도구로 넘어갑니다.
+이 장은 런타임이 생산한 모듈 그래프 snapshot과 진단 정보를 사람이 읽을 수 있는 시각적 형태로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 관찰하며 해석하는 도구로 넘어갑니다.
 
 ## Learning Objectives
 - `@fluojs/studio`가 아키텍처 진단과 관찰성에서 맡는 역할을 이해합니다.
-- `fluo inspect`로 스냅샷을 생성하고 기본 출력 흐름을 익힙니다.
+- `fluo inspect`를 통해 런타임 snapshot을 생성하고 CLI 내보내기/위임 흐름을 익힙니다.
 - `PlatformShellSnapshot`과 `PlatformDiagnosticIssue` 계약이 무엇을 담는지 배웁니다.
 - Studio Viewer에서 그래프, 진단, 타이밍 정보를 읽는 방법을 살펴봅니다.
 - 순환 의존성이나 초기화 병목을 스냅샷으로 추적하는 접근을 분석합니다.
-- Mermaid 내보내기와 프로그래밍 방식의 스냅샷 활용으로 아키텍처 가드를 구성하는 방법을 정리합니다.
+- Studio가 소유한 Mermaid 렌더링과 프로그래밍 방식의 스냅샷 활용으로 아키텍처 가드를 구성하는 방법을 정리합니다.
 
 ## Prerequisites
 - Chapter 14 완료.
@@ -29,11 +29,11 @@
 
 ## 15.2 The Studio Ecosystem
 
-Studio는 `packages/studio/README.md`에 정의된 바와 같이 세 가지 주요 계층으로 구성됩니다.
+`packages/studio/README.md`에 정의된 바와 같이 inspection 및 Studio 흐름은 세 가지 주요 계층으로 구성됩니다.
 
-1. **생성자(Producer)**: 모듈 그래프를 탐색하고 JSON 스냅샷을 내보내는 `fluo inspect` 명령어(`@fluojs/cli`의 일부)입니다.
-2. **계약(Contracts)**: 스냅샷 및 타이밍 데이터에 대한 스키마와 검증 로직을 제공하는 `@fluojs/studio/contracts` 서브패스입니다.
-3. **뷰어(Viewer)**: 이러한 스냅샷을 로드하고 탐색하기 위한 React/Vite 기반 웹 인터페이스인 `@fluojs/studio/viewer` 패키지입니다.
+1. **Snapshot producer**: inspection-safe bootstrap 중 모듈 그래프를 컴파일하고 `PlatformShellSnapshot` 데이터를 생산하는 fluo Runtime 및 platform shell입니다.
+2. **CLI exporter/delegator**: 런타임이 생산한 snapshot을 JSON으로 직렬화하고, `--mermaid`가 요청되면 Mermaid 렌더링을 Studio에 위임하는 `@fluojs/cli`의 `fluo inspect` 명령입니다.
+3. **Studio contract and viewer**: snapshot 파싱, 필터링, 그래프 렌더링, 브라우저 보기를 소유하는 `@fluojs/studio` 루트 export, `@fluojs/studio/contracts` 서브패스, `@fluojs/studio/viewer` entrypoint입니다.
 
 ## 15.3 Generating Snapshots with `fluo inspect`
 
@@ -43,7 +43,7 @@ Studio와 상호작용하는 기본 방법은 애플리케이션의 스냅샷을
 fluo inspect ./src/app.module.ts --json > platform-state.json
 ```
 
-이 명령어는 fluo 런타임을 특수한 "검사 모드(Inspection mode)"로 호출합니다. 이 모드에서는 프로바이더를 해석하고 그래프를 구축하지만 실제 서버 리스닝은 시작하지 않습니다. 결과 JSON에는 다음 정보가 들어갑니다.
+이 명령어는 fluo 런타임에 inspection-safe platform snapshot을 요청한 뒤, CLI가 그 snapshot을 JSON으로 기록합니다. 이 모드에서는 런타임이 프로바이더를 해석하고 그래프를 구축하지만 실제 서버 리스닝은 시작하지 않습니다. 결과 JSON에는 다음 정보가 들어갑니다.
 - 등록된 모든 컴포넌트(모듈, 컨트롤러, 프로바이더)
 - 전체 의존성 매핑
 - 상태(Health) 및 준비성(Readiness) 상태
@@ -53,7 +53,7 @@ fluo inspect ./src/app.module.ts --json > platform-state.json
 
 ## 15.4 Understanding the Snapshot Contract
 
-CLI에서 내보낸 데이터는 `packages/studio/src/contracts.ts`에 정의된 `PlatformShellSnapshot` 계약을 따릅니다. 이 계약은 모든 생성자(CLI, 커스텀 스크립트, 외부 도구)가 뷰어에서 안정적으로 해석할 수 있는 데이터를 생성하도록 보장하는 역할을 합니다.
+CLI에서 내보낸 데이터는 `@fluojs/runtime`이 생산하고 `packages/studio/src/contracts.ts`가 소비하는 `PlatformShellSnapshot` 계약을 따릅니다. 이 계약은 모든 생성자(런타임 inspection, 커스텀 스크립트, 외부 도구)가 뷰어에서 안정적으로 해석할 수 있는 데이터를 생성하도록 보장하는 역할을 합니다.
 
 ### PlatformShellSnapshot Structure
 
@@ -67,7 +67,7 @@ export interface PlatformShellSnapshot {
 }
 ```
 
-이 엄격한 인터페이스 덕분에 Studio 생태계는 제3자 생성자를 받아들일 수 있습니다. 예를 들어 커스텀 테스트 하네스는 테스트 환경의 상태를 시각화하기 위해 `PlatformShellSnapshot`을 내보낼 수 있고, 별도 모니터링 에이전트는 애플리케이션 아키텍처 변화를 추적하기 위해 주기적으로 스냅샷을 만들 수 있습니다. 표준 우선 접근은 시각화 도구를 하위 데이터 소스와 분리해 두며, 생성자와 뷰어가 서로 느슨하게 결합되도록 합니다.
+이 엄격한 인터페이스 덕분에 Studio 생태계는 제3자 생성자를 받아들일 수 있습니다. 예를 들어 커스텀 테스트 하네스는 테스트 환경의 상태를 시각화하기 위해 `PlatformShellSnapshot`을 내보낼 수 있고, 별도 모니터링 에이전트는 애플리케이션 아키텍처 변화를 추적하기 위해 주기적으로 스냅샷을 만들 수 있습니다. 표준 우선 접근은 Studio의 시각화 및 렌더링 도구를 하위 데이터 소스와 분리해 두며, producer, CLI export, viewer가 서로 느슨하게 결합되도록 합니다.
 
 ### PlatformDiagnosticIssue: The Heart of Troubleshooting
 
@@ -190,7 +190,7 @@ if (payload.snapshot) {
 
 ## 15.8 Mermaid Export for Documentation
 
-Studio에서는 `renderMermaid(snapshot)` 헬퍼를 통해 시각적 그래프를 Mermaid 텍스트로 내보낼 수 있습니다. 직접 그리지 않고도 `README.md`나 Notion 페이지에 최신 아키텍처 문서를 유지할 수 있습니다. Mermaid의 텍스트 기반 형식은 표준 버전 관리 도구로 아키텍처 변경 사항을 추적하게 해주며, 시스템 구조가 어떻게 변해 왔는지 명확한 히스토리를 남깁니다.
+Studio는 `renderMermaid(snapshot)` 헬퍼를 통해 snapshot-to-Mermaid 계약을 소유합니다. CLI는 `fluo inspect --mermaid`를 이 헬퍼에 위임할 수 있고, 자동화는 `@fluojs/studio` 또는 `@fluojs/studio/contracts`에서 직접 호출할 수 있습니다. 직접 그리지 않고도 `README.md`나 Notion 페이지에 최신 아키텍처 문서를 유지할 수 있습니다. Mermaid의 텍스트 기반 형식은 표준 버전 관리 도구로 아키텍처 변경 사항을 추적하게 해주며, 시스템 구조가 어떻게 변해 왔는지 명확한 히스토리를 남깁니다.
 
 내보내기 도구는 이스케이프 처리와 노드 해싱을 수행해 컴포넌트 ID에 특수 문자가 포함되어도 유효한 Mermaid 구문을 생성합니다. 이 자동화는 아키텍처 다이어그램이 실제 구현과 어긋나는 일을 줄이며, "코드로서의 문서화(Documentation as Code)"에 가까운 흐름을 만듭니다. 빌드 프로세스에 Mermaid 내보내기를 통합하면 플랫폼의 새 버전이 출시될 때마다 문서를 자동으로 갱신할 수도 있습니다. 유지 관리자의 수동 작업을 줄이고 팀이 최신 아키텍처 맵을 기준으로 대화하게 합니다.
 
