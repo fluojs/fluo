@@ -1,22 +1,126 @@
 <!-- packages: @fluojs/di, @fluojs/core, @fluojs/runtime -->
 <!-- project-state: T15 Part 2 source-analysis draft for circular dependency detection and escape hatches -->
 
-# 6. Circular Dependency Detection and Escape Hatches
+# Chapter 6. Circular Dependency Detection and Escape Hatches
+
+This chapter explains how the Fluo container detects Circular Dependencies, when `forwardRef()` helps, and when the structure itself needs to be split again. Chapter 5 covered Scope and cache policy. Now you will learn the rules for reading and recovering from the points where the Dependency Injection (DI) graph breaks.
+
+## Learning Objectives
+- Understand how Fluo detects Circular Dependencies with an active Token set and a readable chain.
+- Distinguish what `forwardRef()` solves from what it doesn't solve.
+- Explain why cycles can also surface during alias chains and Scope validation.
+- Clarify that Provider cycles and Module import cycles fail at different phases.
+- Derive refactoring strategies for breaking cycles in real codebases.
+- Define graph stability checks before moving to the next advanced DI topic.
+
+## Prerequisites
+- Completion of Chapter 4 and Chapter 5.
+- Understanding of the Fluo resolve pipeline, alias handling, and Scope validation flow.
+- A basic sense of why circular references are a problem in constructor injection based DI graphs.
 
 ## 6.1 The container detects cycles with an active-token set plus a readable chain
-Fluo's circular dependency logic is deliberately simple and explicit. It does not rely on constructor proxies, partially initialized instances, or reflection tricks. It maintains two pieces of state during recursive resolution: an ordered `chain` array and an `activeTokens` set.
+Fluo's Circular Dependency logic is intentionally simple and explicit. It doesn't rely on constructor proxies, partially initialized instances, or reflection tricks. Instead, recursive resolution maintains two pieces of state: a `chain` array that preserves order, and an `activeTokens` set that tracks the Tokens currently active.
 
-The public `resolve()` call in `path:packages/di/src/container.ts:275-284` starts with empty versions of both. Every recursive descent then flows through `resolveWithChain()` at `path:packages/di/src/container.ts:389-402`. That method is the first place a cycle can be detected.
+The public `resolve()` call starts both structures empty at `path:packages/di/src/container.ts:275-284`. Every recursive descent then passes through `resolveWithChain()` at `path:packages/di/src/container.ts:389-402`. This is the first place where cycle detection happens.
 
-The detector itself is `resolveForwardRefCircularDependency()` in `path:packages/di/src/container.ts:457-475`. Despite the name, it handles both ordinary cycles and cycles encountered after a `forwardRef()` lookup. Its only real question is: "Is this token already active in the current construction chain?"
+Each `resolve()` call creates an empty chain and an empty active set, and the internal recursion receives those same two structures.
 
-If the token is not active, resolution continues. If the token is active, Fluo throws `CircularDependencyError`. If the current recursion edge came from a forward reference, the error includes a more specific detail string explaining that `forwardRef` only defers token lookup.
+`path:packages/di/src/container.ts:275-284`
+```typescript
+async resolve<T>(token: Token<T>): Promise<T> {
+  if (this.disposed) {
+    throw new ContainerResolutionError(
+      'Container has been disposed and can no longer resolve providers.',
+      { token, hint: 'Ensure all resolves complete before calling container.dispose().' },
+    );
+  }
 
-The chain and active set are maintained by `withTokenInChain()` at `path:packages/di/src/container.ts:582-597`. It pushes the token into the ordered array, adds it to the set, runs the nested resolution, and then removes both in a `finally` block. This is the core algorithmic pattern behind Fluo's error quality.
+  return this.resolveWithChain(token, [], new Set<Token>());
+}
+```
 
-The set gives fast membership checks. The array preserves human-readable order for diagnostics. Without both structures, the container would have to choose between performance and good messages. Fluo keeps both with negligible complexity.
+The important part in this excerpt is the last line. The root call doesn't start with previous visit history. It creates fresh active state that is valid only inside the current resolve operation.
 
-The basic cycle algorithm can be described as:
+The actual detector is `resolveForwardRefCircularDependency()` at `path:packages/di/src/container.ts:457-475`. Despite its name, it handles both ordinary cycles and cycles encountered after `forwardRef()`. The key question is only this: is this Token already active in the current construction chain?
+
+That question runs on the first line of `resolveWithChain()`. If the Token isn't active, resolution continues to registered Provider interpretation.
+
+`path:packages/di/src/container.ts:389-402`
+```typescript
+private async resolveWithChain<T>(
+  token: Token<T>,
+  chain: Token[],
+  activeTokens: Set<Token>,
+  allowForwardRef = false,
+): Promise<T> {
+  const cachedForwardRef = this.resolveForwardRefCircularDependency(token, chain, activeTokens, allowForwardRef);
+
+  if (cachedForwardRef !== undefined) {
+    return (await cachedForwardRef) as T;
+  }
+
+  return await this.resolveFromRegisteredProviders(token, chain, activeTokens);
+}
+```
+
+Here, cycle checking happens before cache behavior or Provider kind matters. So an edge that re-enters a Token still under construction follows the same rule whether it came from a class Provider, factory Provider, or alias Provider.
+
+If the Token isn't active, resolution continues. If it is already active, Fluo throws `CircularDependencyError`. When that recursive edge came from a forward reference, the error also adds a more specific explanation: `forwardRef` only delayed Token lookup.
+
+`path:packages/di/src/container.ts:457-475`
+```typescript
+private resolveForwardRefCircularDependency(
+  token: Token,
+  chain: Token[],
+  activeTokens: Set<Token>,
+  allowForwardRef: boolean,
+): Promise<unknown> | undefined {
+  if (!activeTokens.has(token)) {
+    return undefined;
+  }
+
+  if (allowForwardRef) {
+    throw new CircularDependencyError(
+      [...chain, token],
+      'forwardRef only defers token lookup and does not resolve true circular construction.',
+    );
+  }
+
+  throw new CircularDependencyError([...chain, token]);
+}
+```
+
+This code doesn't treat `forwardRef()` as a special success path. If the Token is already active, resolution fails. The only difference for a forward-ref edge is a more precise failure reason.
+
+The chain and active set are managed by `withTokenInChain()` at `path:packages/di/src/container.ts:582-597`. This helper adds the Token to the array and set, runs nested resolution, then removes it from both inside `finally`. That structure is the core algorithmic pattern behind the quality of Fluo's error messages.
+
+`withTokenInChain()` limits the lifetime of active state to exactly one resolve descent segment.
+
+`path:packages/di/src/container.ts:582-597`
+```typescript
+private async withTokenInChain<T>(
+  token: Token,
+  chain: Token[],
+  activeTokens: Set<Token>,
+  run: (chain: Token[], activeTokens: Set<Token>) => Promise<T>,
+): Promise<T> {
+  chain.push(token);
+  activeTokens.add(token);
+
+  try {
+    return await run(chain, activeTokens);
+  } finally {
+    activeTokens.delete(token);
+    chain.pop();
+  }
+}
+```
+
+This `finally` is why diamond graphs are allowed. Once resolution of `Shared` on one branch finishes, it leaves the active set, so using the same Token again from another branch is treated as a fresh descent, not as a past visit.
+
+The set provides a fast membership check. The array preserves human-readable order. With only one of them, Fluo would have to give up either performance or readable messages. Fluo keeps both with only a small increase in complexity.
+
+The basic cycle algorithm looks like this:
 
 ```text
 before resolving token T:
@@ -29,28 +133,148 @@ before resolving token T:
   pop T from chain
 ```
 
-The tests prove this exact behavior on progressively harder shapes. `path:packages/di/src/container.test.ts:219-229` covers the direct `A -> A` case. `path:packages/di/src/container.test.ts:231-267` covers the two-node `A -> B -> A` cycle. `path:packages/di/src/container.test.ts:338-363` covers the deeper `A -> B -> C -> A` chain.
+Tests verify this behavior against increasingly difficult graphs. `path:packages/di/src/container.test.ts:219-229` covers a direct `A -> A` case. `path:packages/di/src/container.test.ts:231-267` covers a two-node `A -> B -> A` cycle. `path:packages/di/src/container.test.ts:338-363` covers a deeper `A -> B -> C -> A` chain.
 
-There is also an important non-cycle control test. `path:packages/di/src/container.test.ts:269-297` verifies that a diamond graph is legal. That prevents accidental over-detection. Fluo only rejects a token when it reappears while still active, not merely because it was seen earlier somewhere else.
+The deep cycle test also confirms that the chain array is used in the actual error message.
 
-This is the right level of strictness for constructor DI. Repeated use of a shared dependency is fine. Recursive re-entry into an unfinished constructor chain is not.
+`path:packages/di/src/container.test.ts:338-363`
+```typescript
+const container = new Container().register(
+  { provide: ServiceA, useClass: ServiceA, inject: [ServiceB] },
+  { provide: ServiceB, useClass: ServiceB, inject: [ServiceC] },
+  { provide: ServiceC, useClass: ServiceC, inject: [ServiceA] },
+);
+
+const error = await container.resolve(ServiceA).catch((value: unknown) => value);
+
+expect(error).toBeInstanceOf(CircularDependencyError);
+expect((error as CircularDependencyError).message).toContain('ServiceA');
+expect((error as CircularDependencyError).message).toContain('ServiceB');
+expect((error as CircularDependencyError).message).toContain('ServiceC');
+```
+
+The test doesn't only check the error type. It fixes the contract that `ServiceA`, `ServiceB`, and `ServiceC` accumulated in the active chain must also remain in the human-readable message.
+
+There is also an important non-circular contrast test. `path:packages/di/src/container.test.ts:269-297` shows that a diamond graph is legal. In other words, Fluo doesn't reject a Token just because it has been seen before. It rejects the Token only when it appears again inside the currently unfinished chain.
+
+`path:packages/di/src/container.test.ts:269-297`
+```typescript
+const container = new Container().register(
+  Shared,
+  { provide: Left, useClass: Left, inject: [Shared] },
+  { provide: Right, useClass: Right, inject: [Shared] },
+  { provide: Root, useClass: Root, inject: [Left, Right] },
+);
+
+const root = await container.resolve(Root);
+
+expect(root).toBeInstanceOf(Root);
+expect(root.left).toBeInstanceOf(Left);
+expect(root.right).toBeInstanceOf(Right);
+expect(root.left.shared).toBe(root.right.shared);
+```
+
+This contrast case shows the effect of choosing `active` rather than `visited` as the criterion. A completed shared dependency can be reused, but an edge that returns to an unfinished constructor chain is rejected.
+
+That is the right level of strictness for constructor DI. Reusing a shared dependency from multiple paths is fine. Re-entering an unfinished constructor chain is not.
 
 ## 6.2 What forwardRef actually solves and what it does not
-The most common misunderstanding about circular dependencies is assuming that `forwardRef()` solves cycles by itself. In Fluo it does something narrower and more honest. It delays token lookup until resolution time. It does not create a lazy object and it does not allow mutual constructor completion.
+The most common misunderstanding around Circular Dependency is believing that `forwardRef()` solves the cycle itself. In Fluo, `forwardRef()` has a narrower and more honest role. It only delays Token lookup until resolution time. It doesn't create a lazy object, and it doesn't make it possible for two constructors to wait for each other to complete.
 
-The wrapper is declared in `path:packages/di/src/types.ts:123-149`. `forwardRef(fn)` returns an object with `__forwardRef__` and a `forwardRef()` callback. Nothing else is hidden inside it.
+The wrapper is declared at `path:packages/di/src/types.ts:123-149`. `forwardRef(fn)` returns an object with `__forwardRef__` and a `forwardRef()` callback. There is no other hidden mechanism inside it.
 
-Resolution treats that wrapper in one place only. `resolveDepToken()` at `path:packages/di/src/container.ts:558-579` checks `isForwardRef(depEntry)`, evaluates the callback, and then recursively calls `resolveWithChain(resolvedToken, chain, activeTokens, true)`. That last boolean is the crucial part. It marks the recursive edge as having come through a forward reference.
+`path:packages/di/src/types.ts:73-149`
+```typescript
+export type ForwardRefFn<T = unknown> = { __forwardRef__: true; forwardRef: () => Token<T> };
 
-Why does that matter? Because when the container later detects that the resolved token is already active, `resolveForwardRefCircularDependency()` can emit the more precise message from `path:packages/di/src/container.ts:467-471`. This is Fluo telling you that declaration-time lookup and construction-time cycles are different problems.
+export function forwardRef<T = unknown>(fn: () => Token<T>): ForwardRefFn<T> {
+  return { __forwardRef__: true, forwardRef: fn };
+}
 
-The tests capture both sides of the behavior. `path:packages/di/src/container.test.ts:299-318` shows a case where `forwardRef(() => ServiceB)` succeeds because the underlying graph is not a true cycle. Service A names Service B lazily, but Service B does not need Service A back during construction.
+export function isForwardRef(value: unknown): value is ForwardRefFn {
+  return typeof value === 'object' && value !== null && '__forwardRef__' in value && (value as ForwardRefFn).__forwardRef__ === true;
+}
+```
 
-The failure case is just as important. `path:packages/di/src/container.test.ts:320-336` wires both sides through `forwardRef()` and still expects `CircularDependencyError`. The test explicitly checks the message fragment `/forwardRef only defers token lookup/i`. That is the framework's intended teaching moment.
+This wrapper is only a marker that stores a callback. It doesn't contain construction-time escape hatches such as instance proxies, lazy getters, or partially initialized objects.
 
-So the rule of thumb is simple. Use `forwardRef()` when declaration order is the problem. Do not expect it to repair a design where two constructors truly need each other to finish construction.
+Resolution treats this wrapper specially in exactly one place. `resolveDepToken()` at `path:packages/di/src/container.ts:558-579` checks `isForwardRef(depEntry)`, evaluates the callback, then calls `resolveWithChain(resolvedToken, chain, activeTokens, true)`. The last boolean is the key. It marks that this recursive edge came from a forward reference.
 
-The algorithm behind `forwardRef()` can be stated like this:
+`path:packages/di/src/container.ts:558-579`
+```typescript
+private async resolveDepToken(
+  depEntry: Token | ForwardRefFn | OptionalToken,
+  chain: Token[],
+  activeTokens: Set<Token>,
+): Promise<unknown> {
+  if (isOptionalToken(depEntry)) {
+    const innerToken = depEntry.token;
+
+    if (!this.has(innerToken)) {
+      return undefined;
+    }
+
+    return this.resolveWithChain(innerToken, chain, activeTokens);
+  }
+
+  if (isForwardRef(depEntry)) {
+    const resolvedToken = depEntry.forwardRef();
+
+    return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
+  }
+
+  return this.resolveWithChain(depEntry as Token, chain, activeTokens);
+}
+```
+
+The only difference between a normal Token and a forward-ref Token is the `allowForwardRef` flag. So the later callback can solve a Token lookup problem, but if that Token is already active, the same detector still fails.
+
+Why does this matter? Because when the later resolved Token turns out to be active already, `resolveForwardRefCircularDependency()` can emit the more precise message at `path:packages/di/src/container.ts:467-471`. Fluo separates declaration-time lookup problems from construction-time cycle problems.
+
+Tests capture both sides. `path:packages/di/src/container.test.ts:299-318` shows a successful case for `forwardRef(() => ServiceB)`. Service A lazily points to Service B, but Service B doesn't ask for Service A again during construction.
+
+`path:packages/di/src/container.test.ts:299-318`
+```typescript
+const container = new Container().register(
+  { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+  { provide: ServiceB, useClass: ServiceB, inject: [] },
+);
+
+const a = await container.resolve(ServiceA);
+
+expect(a).toBeInstanceOf(ServiceA);
+expect(a.b).toBeInstanceOf(ServiceB);
+expect(a.b.value).toBe('b');
+```
+
+The success condition is that `ServiceB` doesn't ask for `ServiceA` again. What this test proves is declaration-time Token deferral, not mutually interlocked constructor completion.
+
+The failure case is just as important. `path:packages/di/src/container.test.ts:320-336` verifies that wrapping both sides in `forwardRef()` still has to produce `CircularDependencyError`. The test also checks the message fragment `/forwardRef only defers token lookup/i`. That is the lesson the framework is trying to deliver.
+
+`path:packages/di/src/container.test.ts:320-336`
+```typescript
+class ServiceA {
+  constructor(public b: ServiceB) {}
+}
+
+class ServiceB {
+  constructor(public a: ServiceA) {}
+}
+
+const container = new Container().register(
+  { provide: ServiceA, useClass: ServiceA, inject: [forwardRef(() => ServiceB)] },
+  { provide: ServiceB, useClass: ServiceB, inject: [forwardRef(() => ServiceA)] },
+);
+
+await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
+await expect(container.resolve(ServiceA)).rejects.toThrow(/forwardRef only defers token lookup/i);
+```
+
+The second assertion fixes the chapter's central sentence as a test contract. `forwardRef()` only delays lookup timing, and true circular construction is still rejected.
+
+The practical rule is simple. If the problem is declaration order, use `forwardRef()`. If two constructors really need each other, `forwardRef()` only delays the error. It isn't a solution.
+
+The `forwardRef()` algorithm can be written like this:
 
 ```text
 if dependency entry is forwardRef(factory):
@@ -60,22 +284,105 @@ if dependency entry is forwardRef(factory):
     throw cycle error explaining that lookup deferral was insufficient
 ```
 
-That clarity is one of Fluo's strengths. Many DI systems blur the line between lookup indirection and lifecycle indirection. Fluo keeps them separate, which makes circular-dependency debugging much less mystical.
+This clarity is one of Fluo's strengths. Many DI systems blur lookup indirection and lifecycle indirection. Fluo separates them, so Circular Dependency debugging feels much less mysterious.
 
 ## 6.3 Alias chains and scope validation can also surface cycles
-Most readers first think of cycles as class-to-class injection loops. Fluo's implementation reminds us that aliasing can create cycles too. This matters because `useExisting` looks harmless at first glance.
+Most readers think of cycles only as class-to-class injection loops. But Fluo's implementation shows that aliases can create cycles too. This point matters because `useExisting` can look harmless at first glance.
 
-Alias providers are normalized in `path:packages/di/src/container.ts:104-111` and resolved at runtime through `resolveAliasTarget()` in `path:packages/di/src/container.ts:451-455`. During ordinary resolution, that just redirects one token lookup to another.
+Alias Providers are normalized at `path:packages/di/src/container.ts:104-111`, and at runtime they redirect to another Token lookup through `resolveAliasTarget()` at `path:packages/di/src/container.ts:451-455`. In normal resolution, this behavior looks like simple delegation.
 
-But scope validation needs a deeper view. Before instantiating a singleton, `assertSingletonDependencyScopes()` in `path:packages/di/src/container.ts:827-847` resolves each dependency token to its effective provider. It delegates this work to `resolveEffectiveProvider()` in `path:packages/di/src/container.ts:849-876`.
+Scope validation, however, needs a deeper view. Before instantiating a singleton, `assertSingletonDependencyScopes()` at `path:packages/di/src/container.ts:827-847` traces each dependency Token to its effective Provider. `resolveEffectiveProvider()` at `path:packages/di/src/container.ts:849-876` does that work.
 
-`resolveEffectiveProvider()` walks through alias chains in a loop. It keeps a `visited` set and a `chain` array, just like the main resolver's cycle detector. If an alias chain loops back to a previously visited token, it throws `CircularDependencyError` immediately.
+Scope validation follows a dependency entry to the actual Provider, so it can also see cycles hidden behind aliases.
 
-This behavior is tested directly. `path:packages/di/src/container.test.ts:570-585` creates `TOKEN_A -> TOKEN_B -> TOKEN_A` through `useExisting` and then injects `TOKEN_A` into a service. The container rejects the graph during singleton scope checks.
+`path:packages/di/src/container.ts:827-847`
+```typescript
+private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
+  if (provider.scope !== Scope.DEFAULT) {
+    return;
+  }
 
-There is another nuance here. Scope validation follows alias chains not just for cycles, but for real lifetime semantics. `path:packages/di/src/container.test.ts:587-635` proves that when an alias chain ultimately lands on a request-scoped provider, the singleton consumer still receives `ScopeMismatchError`. Fluo refuses to let aliasing hide a short-lived dependency behind a different token name.
+  for (const depEntry of provider.inject) {
+    const depToken = this.resolveProviderDependencyToken(depEntry);
+    const effectiveProvider = this.resolveEffectiveProvider(depToken);
 
-You can think of alias traversal as a second dependency-analysis layer:
+    if (effectiveProvider?.scope === 'request') {
+      throw new ScopeMismatchError(
+        `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(depToken)}.`,
+        {
+          token: provider.provide,
+          scope: 'singleton',
+          hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(depToken)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
+        },
+      );
+    }
+  }
+}
+```
+
+This excerpt shows that the singleton check itself calls the alias resolution helper. It doesn't only check for cycles. It also checks the effective Provider and lifetime behind the alias.
+
+`resolveEffectiveProvider()` follows an alias chain in a loop. Like the main resolver's cycle detector, it maintains a `visited` set and a `chain` array. If it returns to a Token it has already seen, it immediately throws `CircularDependencyError`.
+
+`path:packages/di/src/container.ts:849-876`
+```typescript
+private resolveEffectiveProvider(
+  token: Token,
+  visited = new Set<Token>(),
+  chain: Token[] = [],
+): NormalizedProvider | undefined {
+  let currentToken = token;
+
+  while (true) {
+    if (visited.has(currentToken)) {
+      throw new CircularDependencyError([...chain, currentToken]);
+    }
+
+    visited.add(currentToken);
+
+    const provider = this.lookupProvider(currentToken);
+
+    if (!provider) {
+      return undefined;
+    }
+
+    if (provider.type !== 'existing' || provider.useExisting === undefined) {
+      return provider;
+    }
+
+    chain.push(currentToken);
+    currentToken = provider.useExisting;
+  }
+}
+```
+
+Here, Fluo tracks the alias traversal chain, not the construction chain. The principle is still the same. If the same Token appears again inside the graph path currently being resolved, that is a cycle.
+
+This behavior is verified directly by tests. `path:packages/di/src/container.test.ts:570-585` creates `TOKEN_A -> TOKEN_B -> TOKEN_A` using only `useExisting`, then injects `TOKEN_A` into a service. The container rejects the graph during singleton Scope validation.
+
+`path:packages/di/src/container.test.ts:570-585`
+```typescript
+const TOKEN_A = Symbol('TokenA');
+const TOKEN_B = Symbol('TokenB');
+
+class MyService {
+  constructor(readonly dependency: unknown) {}
+}
+
+const container = new Container().register(
+  { provide: TOKEN_A, useExisting: TOKEN_B },
+  { provide: TOKEN_B, useExisting: TOKEN_A },
+  { provide: MyService, useClass: MyService, inject: [TOKEN_A] },
+);
+
+await expect(container.resolve(MyService)).rejects.toThrow(CircularDependencyError);
+```
+
+This test shows that an alias is not just a name change. It is a graph edge. That means alias edges also participate in Scope validation and cycle detection.
+
+There is one more nuance. Scope validation follows alias chains not only because of cycles, but also because it needs to see the real lifetime semantics. `path:packages/di/src/container.test.ts:587-635` proves that if the final destination of an alias chain is a request-scoped Provider, a singleton consumer still receives `ScopeMismatchError`. Fluo doesn't allow aliasing to hide a shorter lifetime behind another Token name.
+
+Alias traversal can be understood like this:
 
 ```text
 resolveEffectiveProvider(token):
@@ -86,24 +393,101 @@ resolveEffectiveProvider(token):
   return final non-alias provider
 ```
 
-That is a small algorithm, but it prevents two subtle classes of bugs. First, alias loops cannot quietly hang the container. Second, scope checks operate on the effective provider reality, not the author's superficial token naming.
+It is a small algorithm, but it prevents two subtle bugs. First, alias loops can't quietly hang the container. Second, Scope checks use effective Provider reality, not the Token name the author attached.
 
-Advanced users should appreciate the consistency here. Fluo treats aliases as first-class graph edges. If an edge can participate in visibility, scope, or lifetime behavior, it also participates in cycle detection.
+Advanced users should read the consistency here. Fluo treats aliases as first-class graph edges. If an edge participates in visibility, Scope, and lifetime, it also participates in cycle detection.
 
 ## 6.4 Provider cycles and module import cycles are separate failure phases
-One of the most useful distinctions in Fluo is the separation between provider-level circular dependencies and module-level import cycles. They are related conceptually, but they fail in different places for different reasons.
+One of the most useful distinctions in Fluo is that Provider-level Circular Dependency and Module-level import cycles are separated. They can look conceptually similar, but they fail in different places for different reasons.
 
-Provider cycles happen inside the DI container during token resolution. We have already seen the relevant code in `path:packages/di/src/container.ts:389-597`. These errors mean the container cannot finish constructing one or more providers.
+A Provider cycle happens during Token resolution inside the DI container. The relevant code is the `path:packages/di/src/container.ts:389-597` section already covered. This error means the container can't finish one or more Provider constructors.
 
-Module import cycles are rejected earlier, during runtime module-graph compilation. The relevant algorithm is in `compileModule()` at `path:packages/runtime/src/module-graph.ts:185-233`. Before a module is compiled, the runtime checks whether its `moduleType` is already in the `visiting` set. If it is, `ModuleGraphError` is thrown with the message `Circular module import detected`.
+By contrast, a Module import cycle is rejected earlier, during runtime Module Graph compilation. The core algorithm is `compileModule()` at `path:packages/runtime/src/module-graph.ts:185-233`. Before compiling a Module, the runtime checks whether `moduleType` is already in the `visiting` set. If it is, it throws `ModuleGraphError` with the message `Circular module import detected`.
 
-The exact throw site is `path:packages/runtime/src/module-graph.ts:200-208`. Notice the hint. It recommends extracting shared providers into a separate module that both sides can import independently. That is not a DI workaround. It is a module-topology refactoring guideline.
+`compileModule()` manages DFS visit state by Module type, not by Provider Token.
 
-This failure occurs before `bootstrapModule()` ever registers providers into the container. `path:packages/runtime/src/bootstrap.ts:372-398` shows that module graph compilation comes first, container creation second, module provider registration third. So if the app fails during module compilation, the DI container was never given a chance to resolve anything.
+`path:packages/runtime/src/module-graph.ts:185-233`
+```typescript
+function compileModule(
+  moduleType: ModuleType,
+  runtimeProviderTokens: Set<Token>,
+  compiled = new Map<ModuleType, CompiledModule>(),
+  visiting = new Set<ModuleType>(),
+  ordered: CompiledModule[] = [],
+) {
+  if (compiled.has(moduleType)) {
+    const existing = compiled.get(moduleType);
 
-This phase distinction is practically valuable. If the error names tokens like `ServiceA -> ServiceB -> ServiceA`, inspect provider injection. If the error names module types and import arrays, inspect `@Module({ imports: [...] })` or `defineModule(...)` composition instead.
+    if (existing) {
+      return existing;
+    }
+  }
 
-The two algorithms look similar but answer different questions:
+  if (visiting.has(moduleType)) {
+    throw new ModuleGraphError(
+      `Circular module import detected for ${moduleType.name}.`,
+      {
+        module: moduleType.name,
+        phase: 'module graph compilation',
+        hint: 'Break the import cycle by extracting shared providers into a separate module that both sides can import independently.',
+      },
+    );
+  }
+
+  visiting.add(moduleType);
+```
+
+This excerpt shows that Provider cycles and Module cycles happen in different data structures. The failure condition is not the DI container's `activeTokens`, but the Module compiler's `visiting` set.
+
+The exact throw site is `path:packages/runtime/src/module-graph.ts:200-208`. Its hint is worth noting too. It recommends extracting shared Providers into a separate third Module so both original Modules import that Module instead of each other. This is Module topology refactoring guidance, not a DI workaround.
+
+`path:packages/runtime/src/module-graph.ts:200-208`
+```typescript
+if (visiting.has(moduleType)) {
+  throw new ModuleGraphError(
+    `Circular module import detected for ${moduleType.name}.`,
+    {
+      module: moduleType.name,
+      phase: 'module graph compilation',
+      hint: 'Break the import cycle by extracting shared providers into a separate module that both sides can import independently.',
+    },
+  );
+}
+```
+
+The solution in the hint isn't to evaluate Provider constructors later. It is to change the shape of the import graph.
+
+This failure happens before `bootstrapModule()` registers Providers in the container. In `path:packages/runtime/src/bootstrap.ts:372-398`, Module Graph compilation comes first, container creation second, and Module Provider registration third. So if the Module compilation phase fails, DI container resolution hasn't even started.
+
+`path:packages/runtime/src/bootstrap.ts:372-398`
+```typescript
+export function bootstrapModule(rootModule: ModuleType, options: BootstrapModuleOptions = {}): BootstrapResult {
+  const modules = compileModuleGraph(rootModule, options);
+  const container = new Container();
+  const policy: DuplicateProviderPolicy = options.duplicateProviderPolicy ?? 'warn';
+
+  const runtimeProviders = options.providers ?? [];
+  const runtimeProviderTokens = createRuntimeTokenSet(runtimeProviders);
+  const moduleProviders = collectProvidersForContainer(modules, runtimeProviders, policy, options.logger)
+    .filter((provider) => !runtimeProviderTokens.has(providerToken(provider)));
+
+  if (runtimeProviders.length > 0) {
+    container.register(...runtimeProviders);
+  }
+
+  if (moduleProviders.length > 0) {
+    container.register(...moduleProviders);
+  }
+
+  registerControllers(container, modules);
+  registerModuleMiddleware(container, modules);
+```
+
+Only after compiling the Module Graph on the first line does Fluo create the container. That is why Module import cycles and Provider construction cycles have separate error timing and separate recovery strategies.
+
+This phase distinction is very useful in practice. If the error names a Token chain such as `ServiceA -> ServiceB -> ServiceA`, inspect Provider injection. If the error names a Module type and an imports array, inspect `@Module({ imports: [...] })` or `defineModule(...)` configuration.
+
+The two algorithms look similar on the surface, but they ask different questions.
 
 ```text
 provider cycle question:
@@ -113,22 +497,41 @@ module cycle question:
   can the runtime topologically order imported modules without revisiting a module currently being compiled?
 ```
 
-Fluo keeps them separate because the recovery strategies differ. Provider cycles may be solved by refactoring constructor responsibilities or using `forwardRef()` for declaration ordering. Module cycles are structural and usually require moving exports into a shared module.
+Fluo separates them because their recovery strategies are different too. A Provider cycle can be fixed by redesigning constructor responsibility, or with `forwardRef()` if the issue truly is only declaration ordering. A Module cycle is structural, so shared exports usually need to move into a shared Module.
 
-That separation is a sign of architectural maturity. The framework does not flatten every graph error into one generic "dependency cycle" bucket. It tells you which graph is broken.
+This separation is a sign of architectural maturity. The framework doesn't flatten every graph error into a generic "dependency cycle" bucket. It tells you specifically which graph broke.
 
 ## 6.5 Practical strategies for breaking cycles without hiding design problems
-Once you know where Fluo detects cycles, the next question is how to remove them without sweeping them under the rug. The framework's own hints point toward three patterns.
+Now that you know where Fluo detects cycles, the next question is how to remove them without hiding design problems. The hints from the framework and the implementation structure point to three patterns.
 
-The first pattern is extracting shared logic into a third provider. This is explicitly recommended by `CircularDependencyError` in `path:packages/di/src/errors.ts:113-123`. If `UserService` and `AuditService` both need a shared policy engine, the real design may be `UserPolicyService` or `AuditFacade` rather than mutual constructor injection.
+The first pattern is extracting shared logic into a third Provider. `CircularDependencyError` directly recommends this direction at `path:packages/di/src/errors.ts:113-123`. For example, if `UserService` and `AuditService` need to inject each other directly, what they actually need may be `UserPolicyService` or `AuditFacade`, not each other.
 
-The second pattern is replacing constructor-time dependency with a later interaction boundary. For example, one service can emit an event or accept a callback rather than holding a hard constructor reference. Fluo's container design nudges you this way because it does not support half-constructed object graphs.
+`path:packages/di/src/errors.ts:113-123`
+```typescript
+export class CircularDependencyError extends FluoCodeError {
+  constructor(chain: readonly unknown[], detail?: string) {
+    const path = chain.map((token) => formatTokenName(token)).join(' -> ');
+    const hint = 'Break the cycle by extracting shared logic into a separate provider, or use forwardRef() to defer one side of the dependency.';
+    super(
+      (detail ? `Circular dependency detected: ${path}. ${detail}` : `Circular dependency detected: ${path}`) +
+        `\n  Dependency chain: ${path}` +
+        `\n  Hint: ${hint}`,
+      'CIRCULAR_DEPENDENCY',
+      { meta: { chain: chain.map((t) => formatTokenName(t)), hint } },
+    );
+  }
+}
+```
 
-The third pattern is using `forwardRef()` only when declaration order is genuinely the issue. If two files refer to each other but only one side needs the other during actual construction, `forwardRef()` is appropriate. If both constructors need each other immediately, it is only delaying the inevitable error.
+The error message gives two pieces of information together: the actual chain, and the limited choices of extracting shared logic or deferring Token lookup.
 
-For module cycles, the runtime hint in `path:packages/runtime/src/module-graph.ts:200-208` suggests the corresponding structural repair. Extract common providers into a third module, export them there, and let both original modules import that new shared module rather than importing each other.
+The second pattern is moving a constructor-time dependency to a later interaction boundary. For example, instead of one service directly holding another, the design can publish an event or receive a callback. Because the Fluo container doesn't allow a partially initialized object graph, it naturally encourages this kind of separation.
 
-An implementation-facing decision tree looks like this:
+The third pattern is using `forwardRef()` only when declaration order is the real problem. If two files reference each other but only one side needs the other during actual construction, `forwardRef()` is appropriate. If both constructors immediately need each other, it only delays the error.
+
+For Module cycles, the runtime hint proposes the corresponding structural fix. As the message at `path:packages/runtime/src/module-graph.ts:200-208` says, move the shared Provider into a third Module, export it from that Module, and have the two original Modules import that shared Module instead of each other.
+
+From an implementation perspective, the decision tree looks like this:
 
 ```text
 if cycle is in provider resolution:
@@ -142,21 +545,8 @@ if cycle is in module imports:
   let both original modules import the shared module instead
 ```
 
-The tests support these recommendations indirectly. The container permits the non-circular diamond graph in `path:packages/di/src/container.test.ts:269-297`. That is the shape you often get after extracting a shared dependency properly.
+Tests support this recommendation indirectly. The container allows the non-circular diamond graph in `path:packages/di/src/container.test.ts:269-297`. That is the shape that often appears after a shared dependency has been extracted properly.
 
-The final lesson of this chapter is that Fluo's cycle handling is intentionally conservative. It would rather reject a graph than build one out of partially initialized objects and implicit proxies. For advanced users, that conservatism is a feature. It forces the codebase to expose real ownership and dependency boundaries instead of hiding them inside container magic.
+The final lesson of this chapter is this: Fluo's cycle handling is intentionally conservative. Instead of forcing the graph to exist through partially initialized objects or implicit proxies, it rejects the graph. For advanced users, this is not only a constraint. It is a design signal, because it makes the codebase expose real ownership and dependency boundaries instead of hiding them behind container magic.
 
-To truly master this conservative approach, one must understand how the container handles transient and request-scoped providers within a circular graph. While singletons are checked early during the bootstrap phase, shorter-lived providers are often resolved lazily. Fluo maintains the same cycle-detection rigor here: the `activeTokens` set continues to guard every resolution path, ensuring that a transient provider cannot accidentally enter a recursive loop with a singleton or another transient. This unified protection layer is what makes the DI system feel predictable regardless of provider scope.
-
-The implementation of `withTokenInChain` at `path:packages/di/src/container.ts:582-597` is the ultimate guardian of this predictability. By using a stack-like structure to track the resolution depth, Fluo can provide detailed error messages that include the full path of the detected cycle. This is invaluable when debugging complex applications where a cycle might span across dozens of modules and services. The error message doesn't just say "there is a cycle"; it shows you the exact path, allowing for quick identification of the problematic dependency.
-
-Another advanced technique for breaking cycles without `forwardRef()` is the use of the `OnModuleInit` lifecycle hook. Instead of injecting a dependency into the constructor, a service can inject the `ModuleRef` or `Container` and resolve the dependency during the initialization phase. While Fluo generally discourages manual resolution as it bypasses static graph analysis, it provides a safe escape hatch for cases where constructor-based DI is logically impossible. This moves the dependency from the "construction" phase to the "initialization" phase, which is often enough to break the cycle.
-
-Furthermore, we must consider the impact of cycles on the `ModuleGraph`'s optimization steps. When the runtime compiles the module graph, it also analyzes the visibility of each provider. A circular import between modules can confuse this analysis, leading to cases where a provider is incorrectly marked as internal or external. By strictly enforcing a directed acyclic graph (DAG) for module imports, Fluo ensures that the visibility rules remain deterministic and easy to reason about. This structural integrity is what allows for reliable tree-shaking and dead-code elimination in production builds.
-
-The container's behavior in the presence of "diamond dependencies"—where multiple providers share a common dependency—is also worth revisiting. In `path:packages/di/src/container.test.ts:269-297`, the framework proves that such shapes are perfectly valid. This is because the `activeTokens` set is cleared as each branch of the diamond is fully resolved. This distinction between "visited" and "active" is what separates Fluo from simpler, more naive cycle detectors. It allows for rich, complex dependency graphs while still maintaining a hard line against true recursion.
-
-Finally, for those building reusable library modules, the advice is even stricter: avoid circular dependencies entirely, even with `forwardRef()`. A library that requires its consumers to understand and manage its internal cycles is a library with a high cognitive load. By following the "extraction to shared module" pattern, library authors can ensure that their modules remain easy to compose and test. This commitment to structural clarity is a hallmark of the Fluo ecosystem, and it begins with the discipline enforced by the circular dependency detector.
-
-Ultimately, Fluo's DI system is designed to be your architectural mentor. By refusing to hide design flaws behind proxies or partial initialization, it constantly nudges you toward a more modular, decoupled, and testable codebase. Embracing this discipline is the first step toward building truly resilient backend systems that can scale without becoming a "big ball of mud."
-
+In summary, Fluo's DI system doesn't hide design defects behind proxies or partial initialization. Instead, it exposes cycles as clear failures and demands modularity, lower coupling, and testable boundaries. If you accept that discipline, you can prevent the system from growing into a "big ball of mud" and keep the dependency graph explainable as the codebase scales.

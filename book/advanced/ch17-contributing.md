@@ -1,141 +1,158 @@
 <!-- packages: fluo-repo -->
 <!-- project-state: advanced -->
+
 # Chapter 17. fluo Contributing Guide
 
-Congratulations on reaching the final chapter of the fluo series. If you are here, it means you have mastered the intricacies of standard decorators, dependency injection, and advanced runtime architectures. The logical next step for an advanced fluo developer is to help shape the framework itself.
+This chapter explains the local development environment, verification loop, review culture, and governance flow you should follow when you contribute to the fluo repository. If Chapter 16 showed how to design extension packages, this chapter moves to the next step: proposing that work under the repository rules and contributing it in a maintainable form.
 
-Contributing to fluo is not just about writing code—it is about participating in a culture of strict behavioral contracts, explicit design, and platform-agnostic reliability. This guide provides a deep dive into the fluo repository structure, our contribution workflows, and the governance model that keeps the ecosystem stable.
+## Learning Objectives
+- Understand the fluo repository structure and the work boundaries that matter during contribution.
+- Learn how issue templates, the label system, and discussion channels shape collaboration.
+- Become familiar with the `pnpm verify` centered verification gate and review expectations.
+- See how the Behavioral Contract Policy and the standards first principle affect PR judgment.
+- Organize local development setup, worktree usage, and package level development loops.
+- Learn how to propose and finish contributions through the RFC and Release governance flow.
+
+## Prerequisites
+- Completion of Chapter 16.
+- A local development environment with Node.js 18 or later, pnpm, and git installed.
+- Basic understanding of monorepo workflows and package level test execution.
+- Basic experience reading and fixing verification failures from tests and type checks.
 
 ## Repository Structure and Philosophy
 
-The fluo repository is a high-performance monorepo managed with `pnpm`. Our philosophy is centered on **Behavioral Contracts**. This means that every change is evaluated not just by its functionality, but by its impact on the predictability of the framework across different runtimes (Node.js, Bun, Workers).
+The fluo repository is a high performance monorepo managed with `pnpm`. Its core philosophy is **Behavioral Contracts**. Every change is evaluated not only by whether it adds functionality, but also by how it affects framework predictability across different runtimes such as Node.js, Bun, and Workers.
 
-We adhere to a "Flat but Layered" strategy. Every package should be as thin as possible, delegating complexity to specialized modules while maintaining a unified interface. This ensures that the core of fluo remains small and fast, while the ecosystem can grow indefinitely. We avoid "God packages" that try to do too much; instead, we favor small, composable units that follow the Single Responsibility Principle.
+fluo follows a "Flat but Layered" strategy. Every package should stay as thin as possible, delegate complex logic to specialized modules, and keep a unified interface. This keeps the fluo core small and fast while leaving room for the ecosystem to grow. Avoid "God packages" that try to do too much, and prefer small, composable units that follow the Single Responsibility Principle.
 
 ### Workspace Organization
 
-- `packages/`: Contains the modular components of the framework. Each package (e.g., `@fluojs/core`, `@fluojs/di`) must maintain its own independent lifecycle while adhering to the monorepo's global standards.
+- `packages/`: Contains the framework's modular components. Each package, such as `@fluojs/core` or `@fluojs/di`, must keep an independent lifecycle while following the monorepo's global standards.
 - `docs/`: Centralized documentation, including operational policies, RFCs, and architectural decision records (ADRs).
-- `examples/`: Canonical application setups for verification. These serve as both learning resources and smoke tests for the entire ecosystem.
-- `.github/`: Workflow definitions and issue/PR templates that enforce our contribution quality gates.
+- `examples/`: Standard application setups for verification. They act as both learning resources and smoke tests for the whole ecosystem.
+- `.github/`: Workflow definitions and issue or PR templates that enforce contribution quality gates.
 - `scripts/`: Internal tools for workspace management, release preparation, and benchmarking.
-- `tools/`: Reusable build tools and shared configurations (ESLint, Vitest) that ensure consistency across the monorepo.
+- `tools/`: Reusable build tools and shared configurations, such as ESLint and Vitest, that keep the monorepo consistent.
 
-Every package in the `packages/` directory is treated as an independent unit with its own test suite and documentation, but they all adhere to the global repository policies regarding code style, licensing, and behavioral contracts.
+Every package in the `packages/` directory is treated as an independent unit with its own test suite and documentation, but all of them follow the repository's global policies for code style, licensing, and Behavioral Contracts.
 
 ## Issue and Label Workflow
 
-We use a highly structured issue intake process to ensure that the maintainers' time is focused on impactful work. This structure prevents "maintenance fatigue" and keeps the development velocity high. Our goal is to provide a clear path for every report, from initial submission to final resolution.
+fluo uses a structured issue intake process so maintainers can focus their time on high impact work. This structure reduces maintenance fatigue and keeps development velocity stable. The goal is to give every report a clear path from initial submission to final resolution.
 
 ### Issue Templates
 
-Blank issues are disabled in the fluo repository. All issues must follow one of these templates to ensure all necessary context is provided from the start. This reduces back-and-forth and allows maintainers to triage more effectively:
-- **Bug Report**: Requires a minimal reproduction (stackblitz or repository) and a clear description of the expected vs. actual behavior. Please include environment details (Node version, OS, etc.).
-- **Feature Request**: Requires a detailed "Why" and "How" proposal, including how it aligns with the Behavioral Contract Policy. Explain the problem you are solving and why it cannot be handled by existing APIs.
-- **Documentation Issue**: For fixing gaps, typos, or conceptual errors in the guides. Clear documentation is as important as code.
-- **DX/Maintainability**: For internal improvements that help developers work faster or more reliably (e.g., CI optimizations, build tool updates).
+Blank issues are disabled in the fluo repository. Every issue must use one of the following templates so the needed context is provided from the start. This reduces unnecessary back and forth and helps maintainers triage more accurately:
+- **Bug Report**: Requires a minimal reproduction, such as stackblitz or a repository, plus a clear description of expected behavior and actual behavior. It should also include environment details such as Node version and OS.
+- **Feature Request**: Requires a detailed "Why" and "How" proposal, including how it aligns with the Behavioral Contract Policy. Explain the problem being solved and why existing APIs cannot handle it.
+- **Documentation Issue**: Used to fix missing guide content, typos, or conceptual errors. Clear documentation matters as much as code.
+- **DX/Maintainability**: Used for internal improvements that help developers work faster and more reliably, such as CI optimization or build tool updates.
 
-Questions should be routed to **GitHub Discussions** rather than the issue tracker to keep the task list actionable and searchable for the community.
+Questions should be directed to **GitHub Discussions** rather than the issue tracker so the task list stays actionable and searchable for the community.
 
 ### Labeling System
 
-Issues are automatically labeled based on the template used, but maintainers often add secondary labels to refine the triage and signal status:
-- `bug`: Confirmed regression or unexpected behavior that violates a contract.
-- `enhancement`: A new feature or improvement that expands the framework's capabilities.
+Issues are labeled automatically based on the template used, but maintainers often add secondary labels to refine classification and signal status:
+- `bug`: A confirmed regression or unexpected behavior that violates a contract.
+- `enhancement`: A new feature or improvement that expands framework capability.
 - `type:maintainability`: Internal cleanup, tool improvement, or technical debt reduction.
-- `priority:p0` to `p2`: Criticality of the issue. P0 issues typically block the next release.
-- `status:needs-repro`: The issue is blocked until a minimal reproduction is provided by the reporter.
-- `good first issue`: Ideal for new contributors looking to get familiar with the codebase.
-- `help wanted`: Significant tasks that the core team may not have immediate capacity for.
+- `priority:p0` through `p2`: Issue severity. P0 issues usually block the next release.
+- `status:needs-repro`: Work on the issue is blocked until the reporter provides a minimal reproduction.
+- `good first issue`: Suitable for new contributors who want to get familiar with the codebase.
+- `help wanted`: Important work that the core team may not have immediate capacity to handle.
 
 ## Review Culture
 
-Reviewing a Pull Request in fluo is a rigorous process. We don't just "LGTM"—we verify. Our goal is to ensure that no PR degrades the performance or reliability of the system. We take pride in the quality of our code and the thoroughness of our review process.
+Pull Request review in fluo is a strict verification process. Reviewers do not just leave "LGTM". They check that the change does not lower system performance or reliability.
 
 ### Verification Gate
 
-Every PR must pass the `pnpm verify` command, which is a composite task that runs:
-- **Linting and Formatting**: Ensuring consistency via Prettier and specialized ESLint rules. We enforce a strict set of rules to keep the codebase readable and maintainable for everyone.
-- **Unit and Integration Tests**: Running the full Vitest suite across all packages. We target 100% coverage for the core packages and expect high quality tests that cover edge cases and error conditions.
-- **Type Checking**: Running `tsc --noEmit` to ensure type safety across the entire workspace graph. This includes checking for any implicit `any` usage or unsafe type assertions.
-- **Build Verification**: Ensuring that `pnpm build` completes without errors for all package targets (CJS, ESM, and sometimes UMD). This also checks for bundle size regressions to ensure we stay lean.
-- **Dependency Audit**: Checking for new dependencies and ensuring they are licensed correctly and do not introduce security vulnerabilities or unnecessary bloat.
+Every PR must pass the `pnpm verify` command, which runs a composite set of tasks:
+- **Linting and Formatting**: Checks consistency through Prettier and specialized ESLint rules. A strict rule set keeps the codebase readable and maintainable.
+- **Unit and Integration Tests**: Runs the full Vitest suite across all packages. Core packages target 100% coverage, and high quality tests are expected to cover edge cases.
+- **Type Checking**: Runs `tsc --noEmit` to verify type safety across the entire workspace graph. This also includes checks for implicit `any` usage and unsafe type assertions.
+- **Build Verification**: Confirms that `pnpm build` completes without errors for every package target, such as CJS, ESM, and sometimes UMD. It also checks for bundle size regressions.
+- **Dependency Audit**: Checks new dependencies, confirms licenses are correct, and verifies that they do not introduce security vulnerabilities.
 
 ### Behavioral Contract Review
 
-As an advanced contributor, your reviews should focus on whether the change preserves existing contracts. Does an optimization in `@fluojs/di` break the scoping rules in `@fluojs/platform-cloudflare-workers`? Does a new decorator in `@fluojs/core` maintain compliance with the TC39 standard?
+Reviews by advanced contributors should focus on whether a change preserves existing contracts. Check that an optimization in `@fluojs/di` does not break scoping rules in `@fluojs/platform-cloudflare-workers`, and that a new decorator in `@fluojs/core` complies with the TC39 standard.
 
-We prioritize **spec-compliance over convenience**. If a proposed feature requires deviating from the ECMAScript or TypeScript standards, it will likely be rejected unless it can be implemented as a purely opt-in external package. Every line of code added should be defensible against the core principles of the framework. We value explicitness and clarity over clever but obscure implementations.
+fluo prioritizes **spec-compliance over convenience**. If a proposed feature requires deviation from ECMAScript or TypeScript standards, it will likely be rejected unless it can be implemented as a purely optional external package. Every added line of code should be explainable through the framework's core principles. Explicitness and clarity matter more than clever but obscure implementation.
 
 ### Documentation First
 
-If a PR adds a public API, it **must** include inline documentation (JSDoc) and an update to the relevant markdown files in the `docs/` or `packages/*/README.md`. We believe that an undocumented feature does not exist. The reviewer's job includes checking the clarity, accuracy, and tone of these additions. Documentation should be written from the perspective of a user who needs to understand both the "how" and the "why". We also look for examples that demonstrate the new feature in a realistic context.
+If a PR adds a public API, it **must** include inline documentation (JSDoc) and related markdown updates in `docs/` or `packages/*/README.md`. An undocumented feature effectively does not exist. Reviewers also check the clarity, accuracy, and tone of added documentation. Documentation should be written from the perspective of users who need to understand both the "how" and the "why", and it should include examples that show the new feature in a realistic context.
 
 ## Release Process and Governance
 
-fluo follows a supervised release model to maintain high stability across its modular ecosystem.
+fluo follows a supervised release model to maintain high stability across the modular ecosystem.
 
 ### Package Tiers
 
-Packages are categorized into three tiers to communicate stability to users and set clear expectations:
-- **Official**: Production-ready, follows strict semver, and has 100% test coverage. These are the pillars of the fluo ecosystem.
-- **Preview**: Ready for early adopters, subject to change based on real-world feedback. We encourage testing in non-critical environments.
-- **Experimental**: Incubation phase, may be removed or drastically changed without notice. This is where we innovate and take risks.
+Packages are classified into three tiers to communicate stability to users and set clear expectations:
+- **Official**: Production ready, follows strict semver, and has 100% test coverage. These are baseline packages in the fluo ecosystem.
+- **Preview**: Ready for early adopters and may change based on real feedback. Testing in non-critical environments is recommended.
+- **Experimental**: In incubation and may be removed or changed heavily without notice. This is the space for validating new designs.
 
 ### SEMVER and Migration Notes
 
-For 0.x versions, we still treat breaking changes with extreme care. Any breaking change requires a detailed migration note in the `CHANGELOG.md` of the affected package. We use `changesets` to manage our versioning and changelog generation, ensuring that every significant commit is accounted for and attributed correctly. This transparency is key to building trust with our users.
+Even in 0.x versions, breaking changes are handled carefully. Every breaking change must include detailed migration notes in the affected package's `CHANGELOG.md`. fluo uses `changesets` to manage versioning and changelog generation so important commits and contributors are reflected accurately. This transparency is central to maintaining user trust.
 
 ### Release Operations
 
-Release operations are managed via GitHub Actions to ensure repeatability and security. We use a "supervised-auto" model:
-1. A maintainer runs `pnpm verify:release-readiness` locally to check for workspace consistency and pending changes.
-2. Changesets are merged into the `main` branch, triggering a "Version Packages" PR that calculates new versions.
-3. Once the versioning PR is merged, the GitHub Action automatically publishes the packages to npm and creates GitHub Releases.
-This process prevents accidental publishes of incomplete code and ensures that the published artifacts exactly match the source code in the repository.
+Release operations are managed through GitHub Actions for repeatability and security. fluo uses a "supervised-auto" model:
+1. A maintainer runs `pnpm verify:release-readiness` locally to check workspace consistency and pending changes.
+2. When a changeset is merged into the `main` branch, it triggers a "Version Packages" PR that calculates new versions.
+3. After the versioning PR is merged, a GitHub Action automatically publishes packages to npm and creates a GitHub Release.
+This process prevents incomplete code from being published by accident and ensures that published artifacts exactly match the repository source code.
 
 ## Governance and RFC Workflow
 
-While small fixes and documentation updates can be PRed directly, significant architectural changes must go through the RFC (Request for Comments) process to ensure community alignment and technical excellence. This process is designed to prevent architectural drift and ensure that every major addition is well-reasoned.
+Small fixes or documentation updates can be submitted directly as PRs, but significant architectural changes must go through the RFC (Request for Comments) process to confirm community consensus and technical validity. This process is designed to prevent architectural drift and make sure every major addition has enough justification.
 
 ### The RFC Path
 
-1. **GitHub Discussions**: Start a thread in the "Ideas" or "RFC" category to gauge community interest and identify potential pitfalls early. This is the place for "low-stakes" brainstorming.
-2. **Formal Proposal**: For complex changes, create a markdown proposal (following the template in `packages/graphql/field-resolver-rfc.md`) and open a PR to the `docs/proposals` directory. The proposal should cover motivation, detailed design, drawbacks, and alternatives.
-3. **Review and Consensus**: The core maintainers and the community review the RFC. Approval from at least two core maintainers is typically required before any implementation begins. We look for technical soundness and alignment with fluo's core philosophy.
-4. **Implementation**: Once the RFC is merged (as "Accepted"), the work is split into actionable issues and assigned to contributors. The original RFC author is often the lead for this phase, providing continuity and vision.
-5. **Finalization**: After implementation and documentation are complete, the RFC is moved to the "Implemented" state, serving as a permanent record of the design decision.
+1. **GitHub Discussions**: Start a thread in the "Ideas" or "RFC" category to check community interest and find potential pitfalls early. This is a low pressure place for brainstorming.
+2. **Formal Proposal**: For complex changes, write a markdown proposal, using the template in `packages/graphql/field-resolver-rfc.md`, and open a PR to the `docs/proposals` directory. The proposal should cover motivation, detailed design, drawbacks, and alternatives.
+3. **Review and Consensus**: Core maintainers and the community review the RFC. At least two core maintainer approvals are required before implementation begins. The review checks technical soundness and fit with fluo's core philosophy.
+4. **Implementation**: After the RFC is merged as "Accepted", the work is split into actionable issues and assigned to contributors. The original RFC author often leads this stage to provide continuity and direction.
+5. **Finalization**: After implementation and documentation are complete, the RFC moves to "Implemented" status and remains as a permanent record of the design decision.
 
 ### Behavioral Contract Policy
 
-All contributors must adhere to the `docs/contracts/behavioral-contract-policy.md`. This policy is the "Constitution" of fluo. It ensures that fluo remains the "Standard-First" framework by forbidding the use of non-standard TypeScript features that deviate from the JavaScript language path. This commitment to standards is what makes fluo future-proof.
+Every contributor must follow `docs/contracts/behavioral-contract-policy.md`. This policy is close to fluo's constitution. It keeps fluo a standards first framework by forbidding non-standard TypeScript features that diverge from the JavaScript language path. This commitment to standards supports fluo's long term compatibility.
 
 The policy covers several key areas:
-- **Decorator Standard**: Only TC39 standard decorators (as supported in TypeScript 5.0+) are allowed. Legacy experimental decorators are strictly forbidden.
-- **Reflection and Metadata**: The use of `reflect-metadata` is discouraged in favor of explicit registry and standard metadata proposal.
-- **Runtime Abstraction**: All I/O and environment-specific logic must be gated behind the `Platform` abstraction layer to ensure portability across Node.js, Bun, Deno, and Workers.
-- **Error Handling**: Use of the `Result` pattern for domain-level errors is encouraged over unchecked exceptions.
-- **Explicit Inversion of Control**: The DI system must be used in a way that allows for static analysis of the dependency graph wherever possible.
+- **Decorator Standard**: Only TC39 standard decorators, supported in TypeScript 5.0 and later, are allowed. Legacy experimental decorators are strictly forbidden.
+- **Reflection and Metadata**: Use of `reflect-metadata` is discouraged. Explicit registries and standard metadata proposals are preferred.
+- **Runtime Abstraction**: All I/O and environment specific logic must sit behind the `Platform` abstraction layer to guarantee portability across Node.js, Bun, Deno, and Workers.
+- **Error Handling**: The `Result` pattern is encouraged for domain level errors rather than unchecked exceptions.
+- **Explicit Inversion of Control (IoC)**: The DI system should be used in a way that allows static analysis of the dependency graph whenever possible.
 
-By following these rules, we ensure that the codebase remains accessible to any JavaScript developer, not just those deep into the TypeScript ecosystem's specific quirks.
+Following these rules keeps the codebase accessible to JavaScript developers instead of tying it only to specific habits in the TypeScript ecosystem.
 
-Furthermore, we maintain a strict "Public Export Baseline" which requires that every function, class, and interface exported from a package must have complete TSDoc comments. This includes `@param`, `@returns`, and at least one `@example` block. This baseline ensures that our documentation is not just present in guides like this one, but is also available directly within the IDE as developers use the framework. We believe that this level of detail is essential for a professional-grade framework and helps minimize the learning curve for new contributors and users alike.
+fluo also strictly maintains the "Public Export Baseline". Every function, class, and interface exported from a package must have complete TSDoc comments. This includes `@param`, `@returns`, and at least one `@example` block. This baseline ensures documentation is not limited to markdown guides like this one, but is also readable directly inside the IDE when developers use the framework. This level of detail is necessary for a professional framework and helps lower the learning curve for new contributors and users.
 
-In addition to our standards-first approach, we also enforce a "Minimalist Dependency" policy. Every new dependency added to a package must be justified in the PR and should ideally be a zero-dependency or low-dependency module. This keeps our supply chain secure and our bundle sizes predictable. We also favor native Node.js and Web APIs over specialized libraries whenever possible, further aligning with our goal of long-term maintainability and platform portability.
+Beyond the standards first approach, fluo enforces a "Minimal Dependency" policy. Every new dependency added to a package must be justified in the PR, and should be a zero dependency or low dependency module whenever possible. This keeps the supply chain safe and bundle sizes predictable. When possible, prefer native Node.js and Web APIs over specialized libraries to reinforce long term maintainability and platform portability goals.
 
-Every Friday, the core team and contributors dedicate time to "Maintenance Friday". This is a focused session where we do not work on new features, but instead focus on:
-- **Dependency Upgrades**: Keeping our workspace up-to-date with the latest security patches and library versions.
-- **Refactoring**: Improving code clarity and reducing complexity in older modules.
-- **Test Suite Expansion**: Increasing coverage and adding regression tests for recently fixed bugs.
-- **CI/CD Optimization**: Improving our build and verification pipelines for faster feedback loops.
+fluo also encourages "Isomorphic Testing" to improve code quality. This means verifying that the same business logic behaves consistently not only in Node.js environments, but also in browser environments. Tools such as Vitest can run virtual environment checks, which helps confirm that fluo behaves consistently across runtimes such as Cloudflare Workers and Bun.
 
-We find that this dedicated time is crucial for preventing the accumulation of technical debt and ensuring that the fluo ecosystem remains agile and high-performance. We encourage all contributors to join us in these maintenance efforts!
+It is helpful for PR descriptions to explain how these policies were applied. Reviewers check not only the technical implementation, but also the philosophical consistency behind it. Code should not be added to fluo without a reason, and every decision should point toward the core values of standards, performance, and explicitness.
+
+Every Friday, the core team and contributors set aside time for "Maintenance Friday". This session focuses on the following items instead of new feature development:
+- **Dependency Upgrades**: Keep the workspace current with the latest security patches and library versions.
+- **Refactoring**: Improve code clarity and reduce complexity in older modules.
+- **Test Suite Expansion**: Increase coverage and add regression tests for recently fixed bugs.
+- **CI/CD Optimization**: Improve build and verification pipelines for faster feedback loops.
+
+This dedicated time is necessary to prevent technical debt from accumulating and to keep the fluo ecosystem agile and high performance. Maintenance contributions are treated as just as important as feature contributions.
 
 ## Local Development Workflow
 
-To set up the fluo repository locally and start contributing, follow these precise steps to ensure your environment matches the CI expectations:
+To set up the fluo repository locally and start contributing, follow these steps so your local environment matches CI expectations:
 
-1. **Prerequisites**: Ensure you have Node.js (LTS), `pnpm` (latest), and `git` installed. We use `pnpm` specifically for its efficient workspace management and strict dependency resolution.
+1. **Prerequisites**: Make sure Node.js (LTS), `pnpm` (latest), and `git` are installed. fluo uses `pnpm` for efficient workspace management and strict dependency resolution.
 2. **Clone and Install**:
 ```bash
 # Clone the repository
@@ -145,20 +162,80 @@ cd fluo
 # Install dependencies
 pnpm install
 ```
-3. **Verify the Installation**: Run the full verification suite to confirm that your local setup is healthy and matches the repository's baseline state.
+3. **Verify the Installation**: Run the full verification suite to confirm that your local setup is healthy and matches the repository baseline.
 ```bash
 # Run verification
 pnpm verify
 ```
-4. **Development Loop**: When working on a specific package, use the filter command to keep your watch processes lean. You can also run tests in watch mode for a faster feedback loop.
+4. **Development Loop**: When working on a specific package, use filter commands to keep watch processes light. You can also run tests in watch mode for a fast feedback loop.
 ```bash
 pnpm --filter @fluojs/core dev
 
 pnpm --filter @fluojs/core test:watch
 ```
 
-Maintainers are encouraged to use **git worktrees** for isolated issue work. This allows you to keep your `main` branch clean and ready for urgent hotfixes while you work on long-term features in a separate directory. This practice prevents context-switching overhead and reduces the risk of accidental commits to the wrong branch. Additionally, we provide a set of VS Code recommended extensions in `.vscode/extensions.json` to help with linting and formatting automation. Using a consistent editor setup helps reduce trivial PR review comments about style.
+Maintainers are encouraged to use **git worktrees** for isolated issue work. This keeps the `main` branch clean and ready for urgent hotfixes while long running feature work happens in a separate directory. The practice reduces context switching cost and lowers the risk of accidentally committing to the wrong branch. The repository also provides a recommended VS Code extension set in `.vscode/extensions.json` to help with linting and formatting automation. Consistent editor settings reduce style related PR review comments.
 
 ## Final Words
 
-The strength of fluo lies in its community and its unwavering commitment to standards. By contributing to the framework, you are helping build a future where TypeScript backends are explicit, standard-compliant, and platform-agnostic. We value every contribution, from a simple typo fix to a major architectural enhancement or a new runtime integration.
+fluo's strength lies in its community and consistent commitment to standards. Contributing to the framework means helping TypeScript backends move in a more explicit, standards compliant, and less platform bound direction. Every contribution, from a simple typo fix to a major architectural improvement or new runtime integration, is handled under the same verification standard.
+
+Contributors join a group of developers who take software quality and predictability seriously. Each contribution improves fluo and can also influence the broader TypeScript ecosystem to consider better practices. Whether it is your first PR or a discussion comment, what matters is clearly recording the reason for the change and the verification results. If any part of this guide is confusing, open an issue so the contributor experience can improve.
+
+fluo also hosts a monthly "fluo Tech Talk" for knowledge sharing among contributors. These sessions discuss recently introduced architectural changes or specific performance optimization techniques in depth. Contributors can participate as speakers and share their work from the perspectives of design and verification. fluo operates as both a tool and a learnable technical community.
+
+All communication during contribution should use a respectful tone. Constructive criticism is welcome, but language that becomes a personal attack is strictly forbidden. A safe and inclusive environment enables better technical judgment. A healthy contribution culture is the foundation for protecting code quality.
+
+The importance of documentation also deserves another emphasis. Code can change or disappear, but the intent and design decisions behind it become important assets for later contributors when recorded in documentation. Therefore, every major contribution should include documentation updates that explain its background. This is required for fluo to remain a sustainable framework.
+
+Contributor expertise directly improves fluo quality. Even a small fix helps the repository's long term stability when it has a clear reason and verification behind it. It is enough for a first contribution to start small. What matters is the habit of keeping the change scope clear and sharing verification results with it.
+
+If you want to understand fluo's future roadmap, see the `docs/roadmap/` directory. It shows where the project is going and which areas need help. Reading the roadmap first also makes it easier to judge whether the change you want to propose fits the current direction.
+
+Before starting a contribution, also check `docs/CONTRIBUTING_GUIDELINES_EXTENDED.md`. This document includes detailed guidance on code style, commit message conventions, branch strategy, and writing Pull Request templates. Following these guidelines reduces reviewer burden and helps changes be reviewed faster.
+
+fluo also runs a "Deep Dive" technical blog series to help contributors understand framework internals more deeply. The blog covers topics such as implementation details of the Dependency Injection engine and how decorator metadata is processed at runtime. These resources help you predict the impact of changes more accurately.
+
+The fluo ecosystem does not stop at the core framework. You can also contribute to ecosystem growth by developing community adapters, plugins, and starter templates. These external contributions may also be introduced in the official documentation's "Ecosystem" section, giving users practical choices.
+
+Feedback that appears during contribution is important input for improving the repository. If something in the review process is unclear or you have a different opinion, explain it with evidence. Healthy technical discussion is a core force behind better design. Comments should focus on design and evidence rather than people.
+
+One of the major benefits of contributing is the insight gained from interacting with many different developers. fluo is an open source project and also a network of engineers pursuing technical excellence. Inside this network, the important habit is splitting impactful changes into small pieces and discussing them through verifiable evidence.
+
+Every contribution is recorded and becomes part of release notes and changelogs. At the end of each year, fluo also selects outstanding contributors and runs a thank you event with special ecosystem merchandise. Still, the core of contribution is not reward, but shared responsibility for repository quality. The best starting point is to leave a clear record of change scope and verification.
+
+When people work together, fluo becomes a more stable framework. Participation can take many forms, including code, documentation, tests, and issue reproductions. Use this guide to define change scope, run the needed verification, and record the results in the PR description.
+
+fluo also runs a "mentoring program" for new contributors. If it is hard to know where to start, look for issues with the `mentor-needed` label. A core team member can guide the first contribution process one on one. This program is designed to help contributors adapt quickly to fluo's development culture and verification standards.
+
+Every quarter, fluo also hosts an online "Contributor Day". On this day, contributors around the world gather to collaborate in real time, share new ideas, and solve complex bugs together in a hackathon format. To participate, subscribe to the newsletter or join the official Slack channel.
+
+The testing philosophy also needs attention. fluo strongly recommends "Test-Driven Development(TDD)". When adding a new feature, write the tests that define its specification first. This reduces bugs in advance and helps find design flaws early. Strong tests are a core pillar of fluo stability.
+
+You must also check fluo's security policy. If you discover a serious security vulnerability, do not report it as a public issue. Email `security@fluo.js` directly instead. Reported vulnerabilities are analyzed and fixed quickly, and reporter credit is officially recognized. Security is a shared responsibility, and careful observation makes fluo a safer framework.
+
+The contribution journey can start with a small reproduction or documentation fix. What matters is following repository rules and clearly recording the reason for the change and its verification results.
+
+fluo also provides a "Benchmark Suite" so contributors can measure and improve framework performance directly. The `scripts/bench/` directory contains performance measurement scripts for many scenarios. If you propose an optimization, prove its real effect with data. Performance is one of fluo's non-negotiable core values.
+
+If contribution work requires documentation, follow `docs/style-guide.md`. Technical documentation should be clear and concise, and should include examples that readers can run right away. Good documentation increases the value of code and helps other developers understand the intent of a change quickly.
+
+fluo also supports local community activities. If you want to run a fluo meetup or study group in your area, contact the core team. They can explain available support such as logo usage permission, speaker support, and promotion. fluo aims to be a global standard that can be used anywhere in the world.
+
+Another value you gain through contribution is a way of collaborating. For many people's ideas to become part of one framework, the process needs clear proposals, verifiable evidence, and calm consensus. The experience of resolving disagreements through design and data builds engineering judgment.
+
+fluo also keeps an "Enterprise Support" contribution channel open for companies using the framework. Reflecting complex requirements from real business environments into the framework is difficult, but valuable. Feedback from enterprise users helps confirm framework boundary conditions and operational needs.
+
+Every line of code and every sentence remains in fluo's change history. That is why even small fixes should be written responsibly. Read `CONTRIBUTING.md` and start with a first issue whose scope is clear. A good contribution can be small, but it must be verifiable and maintainable.
+
+For contributor convenience, fluo also provides a dedicated development container setup, `devcontainer.json`. If you use Docker, you can start development without complex local setup. A consistent development environment reduces bugs caused by environment differences and helps contributors move faster.
+
+You should also check fluo's license policy. All code follows the MIT license, which means contributions can be shared and used freely by users around the world. It is important to understand the meaning of the open source license before contributing.
+
+To increase project transparency, fluo publishes a quarterly "Transparency Report". This report shares the number of security vulnerabilities handled during the quarter, summaries of major architectural decisions, and the approval status of RFCs proposed by contributors. This kind of information sharing is necessary to run the project on community trust. Anyone can use the report to see where fluo is heading and what challenges it is addressing.
+
+For developers who want deeper understanding of fluo's technical stack, fluo is also building a separate "Advanced Learning Path". This path goes beyond simple API usage and covers difficult topics step by step, such as writing compiler plugins or designing custom DI Scopes. It is useful for preparing contributions that are close to core design.
+
+fluo also gives contributors chances to share their work. If you write a technical blog post about your contribution to fluo or a project you built with fluo, it may be shared through official social media channels. This introduces individual work and also shows the ecosystem's varied use cases.
+
+When joining the fluo community, treat even small changes with the same responsibility. Before opening a Pull Request in the repository, check related tests and documentation updates. A good contribution is judged not by flashy scale, but by a clear purpose, preserved contracts, and reproducible verification.

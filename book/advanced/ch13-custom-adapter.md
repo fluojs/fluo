@@ -3,85 +3,89 @@
 
 # Chapter 13. Custom Adapter Implementation: Building Your Own Transport Layer
 
-## What You Will Learn in This Chapter
-- The structure and role of the `HttpApplicationAdapter` interface
-- How `listen()` and `close()` manage the server lifecycle
-- How to satisfy the `FrameworkRequest` and `FrameworkResponse` contracts
-- A practical Fastify-based adapter implementation
-- Adapter strategies for serverless and edge environments
+This chapter explains the adapter contract and implementation standards you need when extending fluo's HTTP Runtime to a new platform. Chapter 12 covered the inside of the request processing chain. Here, we move to the transport layer that connects that chain to a real server.
+
+## Learning Objectives
+- Understand the responsibility `HttpApplicationAdapter` owns between the framework and the Runtime.
+- Learn how `listen()` and `close()` connect to the server lifecycle.
+- Practice mapping strategies for `FrameworkRequest` and `FrameworkResponse`.
+- Analyze which boundaries fluo owns in the Fastify adapter implementation.
+- Compare adapter design differences in serverless and edge environments.
+- Summarize the No-op adapter for tests and custom Runtime extension points.
 
 ## Prerequisites
-- Knowledge of the HTTP dispatcher and execution pipeline from Chapters 11 and 12
-- Basic familiarity with a concrete HTTP server library such as Node.js `http`, Fastify, or Express
+- Complete Chapters 11 and 12.
+- Basic understanding of Node.js HTTP servers or server libraries such as Fastify and Express.
+- Basic understanding of fluo's interface-based Runtime abstraction.
 
-## 13.1 The Adapter: A Bridge Between Framework and Runtime
+## 13.1 Adapter: The Bridge Between Framework and Runtime
 
-One of fluo's biggest strengths is runtime neutrality. The adapter pattern is what makes that possible. An adapter converts a platform-specific request object, for example from Node.js, Bun, or Cloudflare Workers, into the `FrameworkRequest` shape that fluo understands, and then converts the dispatch result back into the platform's response object.
+One of Fluo's important strengths is Runtime neutrality. The adapter pattern is the key element that makes this possible. An adapter converts the request object from a specific platform, such as Node.js, Bun, or Cloudflare Workers, into a `FrameworkRequest` that Fluo can understand, then returns the dispatcher's execution result to the platform's response object.
 
-Because of adapters, developers can write `Controller` and `Service` logic once and move from Fastify to Bun, or even to AWS Lambda, without rewriting business code.
+Because the adapter owns this boundary, developers can write `Controller` or `Service` logic once, then move the same application code from Fastify to Bun, or to AWS Lambda, depending on performance requirements.
 
-## 13.2 Understanding the HttpApplicationAdapter Interface
+## 13.2 Analyzing the HttpApplicationAdapter Interface
 
-To support a new platform, you implement the `HttpApplicationAdapter` interface.
+To create an adapter that supports a new platform, you must implement the `HttpApplicationAdapter` interface.
 
 `packages/http/src/adapter.ts:L68-L93`
 ```typescript
 export interface HttpApplicationAdapter {
   /**
-    * Expose the underlying server instance.
+   * Exposes the underlying server instance.
    */
   getServer?(): unknown;
 
   /**
-    * Report the adapter's realtime capability.
+   * Reports the adapter's realtime communication capability.
    */
   getRealtimeCapability?(): HttpAdapterRealtimeCapability;
 
   /**
-    * Start the server and bind the dispatcher.
+   * Starts the server and binds the dispatcher.
    */
   listen(dispatcher: Dispatcher): MaybePromise<void>;
 
   /**
-    * Shut the server down safely.
+   * Shuts the server down safely.
    */
   close(signal?: string): MaybePromise<void>;
 }
 ```
 
-- `listen(dispatcher)`: the key entry point that starts the server and forwards every incoming HTTP request into `dispatcher.dispatch(req, res)`.
-- `close(signal)`: called during shutdown to clean up open sockets and resources.
+- `listen(dispatcher)`: The key point that starts the server and forwards every incoming HTTP request to `dispatcher.dispatch(req, res)`.
+- `close(signal)`: Called when the Runtime shuts down to clean up open sockets and resources.
 
-## 13.3 Mapping Requests and Responses: FrameworkRequest and FrameworkResponse
+## 13.3 Request and Response Mapping: FrameworkRequest and FrameworkResponse
 
-The most important job of an adapter is mapping. fluo runs the full pipeline on top of the `FrameworkRequest` supplied by the adapter, and responses are abstracted through `FrameworkResponse`.
+The adapter's most important job is mapping. Fluo runs every pipeline from the `FrameworkRequest` provided by the adapter, and the response is abstracted as `FrameworkResponse`.
 
 ```typescript
-// Example mapping done inside an adapter
+// Example mapping performed inside an adapter
 const fluoRequest: FrameworkRequest = {
   method: rawRequest.method,
   url: rawRequest.url,
   headers: rawRequest.headers,
   body: rawRequest.body,
   query: rawRequest.query,
-  params: {}, // Filled in by the dispatcher during route matching
+  params: {}, // Filled by the dispatcher during route matching
   signal: rawRequest.signal, // AbortSignal integration
 };
 ```
 
-Connecting the `signal` field to the platform's request-abort signal, such as `req.on('close')` in Node.js, is especially important. It is a key tool for preventing wasted work inside the pipeline.
+The `signal` property must be connected to the platform's request abort signal, such as `req.on('close')` in Node.js. This connection is the key mechanism that stops the pipeline from continuing work that is no longer needed.
 
-## 13.4 In Practice: Core Fastify Adapter Logic
+## 13.4 In Practice: Analyzing the Core Fastify Adapter Logic
 
-How does `@fluojs/platform-fastify` implement this interface? Fastify already has a highly optimized routing and plugin system, but the fluo adapter uses it only as a transport layer.
+How does the `@fluojs/platform-fastify` package implement this interface? Fastify already has a highly optimized routing and plugin system, but the Fluo adapter uses it only as the transport layer.
 
 ```typescript
-// packages/platform-fastify/src/adapter.ts, conceptual code
+// packages/platform-fastify/src/adapter.ts (conceptual code)
 export class FastifyAdapter implements HttpApplicationAdapter {
   constructor(private instance = fastify()) {}
 
   async listen(dispatcher: Dispatcher) {
-    // Delegate every route to the fluo dispatcher
+    // Delegate every route to the Fluo dispatcher
     this.instance.all('*', async (req, reply) => {
       await dispatcher.dispatch(
         this.mapRequest(req),
@@ -97,11 +101,11 @@ export class FastifyAdapter implements HttpApplicationAdapter {
 }
 ```
 
-Using Fastify's wildcard handler, `all('*')`, to hand every route over to the fluo dispatcher is a common pattern.
+Using Fastify's wildcard handler, `all('*')`, to hand control of every route to the Fluo dispatcher is the typical pattern.
 
 ## 13.5 FrameworkResponse and Delegated Response Writing
 
-When the dispatcher finishes processing, it calls methods on `FrameworkResponse` to send the result to the client. The adapter must implement those methods for the target platform.
+After the dispatcher finishes processing, it calls methods on the `FrameworkResponse` interface to send the result to the client. The adapter must implement these methods for the platform.
 
 ```typescript
 const fluoResponse: FrameworkResponse = {
@@ -112,17 +116,17 @@ const fluoResponse: FrameworkResponse = {
 };
 ```
 
-The `committed` property tells fluo whether the response has already been sent. That acts as a guardrail against writing the same response twice.
+The `committed` property tells whether the response has already been sent. It is the safeguard that prevents the dispatcher from writing a duplicate response.
 
 ## 13.6 Adapter Strategy in Serverless Environments
 
-In environments such as AWS Lambda or Cloudflare Workers, `listen()` does not run continuously. Instead, the dispatcher must be triggered by events.
+In environments such as AWS Lambda or Cloudflare Workers, the `listen()` method does not run continuously. Instead, the dispatcher must be called whenever an event arrives.
 
-In `packages/platform-cloudflare-workers/src/adapter.ts`, a short-lived adapter is created for each `fetch` event, executes `dispatcher.dispatch`, and returns a `Response` object. In this way, the adapter pattern becomes the bridge between classic server environments and modern edge runtimes.
+In `packages/platform-cloudflare-workers/src/adapter.ts`, a short-lived adapter is created whenever a `fetch` event occurs. It runs `dispatcher.dispatch`, converts the response to a `Response` object, and returns it. In this way, the adapter pattern connects traditional server environments and modern edge runtimes through the same contract.
 
 ## 13.7 Reporting Realtime Capability
 
-An adapter can report whether it supports WebSocket or SSE features. It does that through `getRealtimeCapability`.
+An adapter can tell the framework whether it supports WebSocket or SSE. This report is made through `getRealtimeCapability`.
 
 ```typescript
 // packages/http/src/adapter.ts:L49-L63
@@ -139,11 +143,11 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-The framework can use this information to decide whether to enable modules that require realtime features, such as a Socket.IO integration, or to warn the developer when support is missing.
+The framework uses this information to decide whether to enable modules that need realtime features, such as a Socket.IO integration, or to show warnings.
 
-## 13.8 The No-op Adapter: Testing and Custom Runtimes
+## 13.8 No-op Adapter: Tests and Custom Runtimes
 
-`createNoopHttpApplicationAdapter()` is useful when you want to verify lifecycle and bootstrap behavior without starting a real network server.
+`createNoopHttpApplicationAdapter()` is useful when verifying the framework lifecycle and Bootstrap process without starting a real network server.
 
 ```typescript
 // packages/http/src/adapter.ts:L100-L110
@@ -158,38 +162,37 @@ export function createNoopHttpApplicationAdapter(): HttpApplicationAdapter {
 }
 ```
 
-This adapter is used in CI to test framework integrity with almost no overhead, and it is also useful when building unusual runtimes that call `dispatch` manually.
+This adapter is used in CI to test framework integrity without network overhead, or when building a special Runtime that calls `dispatch` manually.
 
 ## 13.9 Adapter Authoring Cautions: Error Propagation
 
-Network errors or body-parsing failures that happen inside the adapter should either be represented appropriately in `FrameworkRequest` before dispatch or handled at the adapter boundary if they cannot be expressed cleanly. If a fatal failure occurs during dispatch and the response can no longer be written through the normal path, the adapter should act as the last line of defense and return a 500 response using the host platform's native tools.
+Network errors or body parsing errors that occur inside the adapter should be placed into `FrameworkRequest` appropriately before they reach the dispatcher. If they cannot be handled at that level, an adapter-level exception handler should take over. If a fatal error occurs during dispatcher execution and the response can no longer be written, the adapter serves as the last line of defense by returning a 500 error with the platform's native features.
 
 ## 13.10 Adapter Evolution: HTTP/3 and QUIC Support
 
-fluo's adapter structure is designed to absorb changes in the transport layer. Even if the underlying server library upgrades to HTTP/3, upper-layer business logic does not need to change as long as the adapter continues to honor the `FrameworkRequest` and `FrameworkResponse` contracts. That is real platform independence.
+Fluo's adapter structure responds flexibly to transport layer changes. Even if the underlying server library is upgraded to support HTTP/3, upper-level business logic does not change as long as the adapter preserves the `FrameworkRequest` and `FrameworkResponse` contracts. That is the practical standard for platform independence.
 
-## 13.11 Collaboration Between Adapters and Binders
+## 13.11 Collaboration Between Adapters and the Binder
 
-Once the adapter passes a request into the dispatcher, the dispatcher uses a binder internally to turn request data into DTO inputs. `DefaultBinder` walks the fields filled by the adapter on `FrameworkRequest` and extracts the values it needs.
+When the adapter passes a request to the dispatcher, the dispatcher internally uses the binder to convert request data into a DTO. `DefaultBinder` scans each field in the `FrameworkRequest` filled by the adapter and extracts the needed values.
 
 ```typescript
-// packages/http/src/adapters/binding.ts:L32-L62
-function readSourceValue(request: FrameworkRequest, source: MetadataSource, ...) {
+// packages/http/src/adapters/binding.ts (pseudocode)
+function readSourceValue(request: FrameworkRequest, source: MetadataSource) {
   switch (source) {
     case 'path': return request.params[key];
     case 'query': return request.query[key];
     case 'header': return request.headers[key];
     case 'body': return request.body[key];
-    // ...
   }
 }
 ```
 
-When authoring a custom adapter, you can even customize the binder if the platform has unusual data sources, such as property-based session data, and expose them cleanly to DTO binding.
+When creating a custom adapter, if the platform has a special data source, such as property-based session information, you can customize the binder and bind it transparently to DTOs.
 
 ## 13.12 Exercise: A Tiny HTTP Adapter Skeleton
 
-For learning purposes, here is a minimal adapter built on the Node.js `http` module. The example shows how an adapter converts a native request into `FrameworkRequest` and maps the dispatch result back into the native response.
+For learning purposes, let's write the simplest adapter structure that uses Node.js's built-in `http` module. This example shows the flow where the adapter converts a native request into `FrameworkRequest`, then returns the dispatcher's result through the native response.
 
 ```typescript
 import * as http from 'http';
@@ -200,17 +203,17 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher) {
     this.server.on('request', async (req, res) => {
-      // 1. Request mapping: convert Node.js IncomingMessage into FrameworkRequest
+      // 1. Request mapping: convert Node.js IncomingMessage to FrameworkRequest
       const frameworkReq = this.mapRequest(req);
       
-      // 2. Response mapping: convert Node.js ServerResponse into FrameworkResponse
+      // 2. Response mapping: convert Node.js ServerResponse to FrameworkResponse
       const frameworkRes = this.mapResponse(res);
       
-      // 3. Run the dispatcher: start fluo's core pipeline
+      // 3. Dispatcher execution: start fluo's core pipeline
       try {
         await dispatcher.dispatch(frameworkReq, frameworkRes);
       } catch (err) {
-        // Last line of defense: handle fatal errors that escaped dispatcher handling
+        // Last line of defense: handle fatal errors not handled inside the dispatcher
         if (!res.headersSent) {
           res.statusCode = 500;
           res.end('Internal Server Error');
@@ -234,7 +237,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       method: req.method || 'GET',
       url: req.url || '/',
       headers: req.headers as Record<string, string>,
-      body: (req as any).body, // A real implementation needs body parsing
+      body: (req as any).body, // A real implementation needs body parsing logic
       query: {}, // URL parsing required
       params: {},
       signal: new AbortController().signal, // In practice, wire this to req.on('close')
@@ -252,20 +255,19 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 }
 ```
 
-This skeleton is simple, but it contains the core mechanics of an adapter. A production adapter such as `FastifyAdapter` adds richer buffering, multipart handling, compression, and protocol-level optimizations such as HTTP/2 support.
+This skeleton is simple, but it includes every core mechanism of an adapter. A real production adapter, such as `FastifyAdapter`, adds more precise buffering, multipart handling, compression, and protocol optimization logic such as HTTP/2.
 
 ## 13.13 Summary
 
-- Adapters translate platform APIs into fluo's standard contracts.
+- Adapters convert a specific platform's API into Fluo's standard contract.
 - `HttpApplicationAdapter` manages framework startup and shutdown.
-- Mapping `FrameworkRequest` and `FrameworkResponse` is the core of adapter authoring.
-- Cooperation with the binder completes the request-data pipeline.
-- In high-performance systems, integrating `AbortSignal` is essential for efficient cleanup.
-- Realtime capability reporting is an important compatibility contract across ecosystem modules.
+- `FrameworkRequest/Response` mapping is the core of adapter implementation.
+- Cooperation with the binder completes the pipeline where data flows.
+- In high-performance systems, resource cleanup optimization through AbortSignal integration is essential.
+- Realtime communication capability reporting is an important contract that guarantees compatibility across ecosystem modules.
 
 ## 13.14 Next Chapter Preview
 
-That closes Part 4 on HTTP pipeline internals. The next part moves into testing and diagnostics, where we look closely at portability verification, conformance, and the tooling that keeps behavior consistent across runtimes.
+This closes Part 4, HTTP Pipeline Internals. In the next part, we go deeper into integration strategies with the database layer responsible for data persistence. We will look at the boundaries where ORMs such as Prisma and Drizzle meet Fluo.
 
 ---
-<!-- lines: 271 -->

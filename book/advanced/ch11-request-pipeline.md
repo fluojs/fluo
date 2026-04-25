@@ -1,23 +1,26 @@
 <!-- packages: @fluojs/http, @fluojs/core, @fluojs/di -->
 <!-- project-state: FluoBlog v0 -->
 
-# Chapter 11. Request Pipeline Anatomy: The Life of an HTTP Request
+# Chapter 11. Request Pipeline Anatomy, The Life of an HTTP Request
 
-## What You Will Learn in This Chapter
-- The internal structure and core lifecycle of the fluo HTTP dispatcher
-- The ten pipeline stages from request arrival to response write
-- How `RequestContext` provides asynchronous context isolation
-- How the Observer pattern supports telemetry and logging
-- How aborted requests and resource cleanup are handled
-- How `DispatchPhaseContext` shares state across stages and supports performance work
+This chapter looks at the internal steps the Fluo HTTP Dispatcher follows from receiving a request to returning a response. Chapter 10 covered host branching and the adapter seam. This chapter focuses on how the real request handling pipeline works on top of that layer.
+
+## Learning Objectives
+- Understand the core lifecycle of the Fluo HTTP Dispatcher and how its internal responsibilities are separated.
+- Explain the main pipeline stages from request intake to response writing.
+- Analyze how `RequestContext` and async context isolation protect request-scoped DI.
+- See how the observer pattern connects to logging, telemetry, and error reporting.
+- Explain why request abortion and resource cleanup logic are part of pipeline stability.
+- Describe how `DispatchPhaseContext` is used for phase-level state sharing and Dispatcher optimization.
 
 ## Prerequisites
-- Basic knowledge of HTTP controllers and routing from Book 1
-- Basic familiarity with `AsyncLocalStorage` or async context propagation
+- Complete Chapter 10.
+- Understand HTTP Controllers, routing, and Middleware basics.
+- Have a basic grasp of `AsyncLocalStorage` or async context propagation.
 
-## 11.1 The Dispatcher: Command Center of the Pipeline
+## 11.1 Dispatcher, The Pipeline Command Center
 
-Every HTTP request in fluo is processed through the `Dispatcher`. The dispatcher presents a general interface that does not depend on a particular HTTP server framework such as Fastify or Express, and it turns framework metadata into executable runtime behavior.
+Every HTTP request in fluo is handled through the `Dispatcher`. The Dispatcher provides a general interface that does not depend on a specific HTTP server framework, such as Fastify or Express, and turns framework metadata into real execution logic.
 
 `packages/http/src/dispatch/dispatcher.ts:L324-L354`
 ```typescript
@@ -54,28 +57,28 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 }
 ```
 
-The dispatcher is more than a handler runner. It is the command center that manages the full lifecycle, catches failures, and releases resources safely.
+The Dispatcher does not only run handlers. It is the coordination point that manages the full lifecycle, catches errors, and safely releases request-scoped resources.
 
-## 11.2 The Ten Stages of the Request Pipeline
+## 11.2 The Ten-Step Request Pipeline Flow
 
-When a single HTTP request arrives, fluo runs the pipeline in the following order. Each stage depends on the state produced by earlier stages, and some stages can stop the flow immediately when a condition fails, such as an authorization check.
+When a single HTTP request arrives, fluo runs the pipeline in the following order. Each stage depends on the result of the previous stage or can stop the flow under a specific condition, such as failed authentication.
 
-1. **Context Creation**: fluo creates a `RequestContext` and assigns a request-specific DI scope. `createDispatchContext` is called in `dispatcher.ts:L93-L101`. The container created here owns instances that belong only to this request until the request ends.
-2. **Notification (Start)**: fluo notifies all registered observers that the request has started. `notifyRequestStart` runs in `dispatcher.ts:L211-L220`. Logging and metrics usually begin here.
-3. **Global Middleware**: application-level middleware runs first. `runMiddlewareChain` starts in `dispatcher.ts:L267`. This is where CORS or security headers are commonly handled.
-4. **Route Matching**: fluo finds the correct controller handler based on URL and method. `matchHandlerOrThrow` is called in `dispatcher.ts:L272`. If no handler is found, a 404 error is raised and the pipeline jumps to error handling.
-5. **Module Middleware**: middleware owned by the matched module runs next. The module-level chain starts in `dispatcher.ts:L283`. This is a good place for logic that only applies to one feature area.
-6. **Guards**: the guard chain for the handler runs and checks authorization. `runGuardChain` is invoked from `dispatcher.ts:L173`. If `canActivate` returns `false`, the request stops with a 403 Forbidden response.
-7. **Interceptors (Before)**: the interceptor chain begins through `intercept()`. This starts in `dispatcher.ts:L181`. Request transformation or execution-time measurement often lives here.
-8. **Handler Execution**: after DTO binding and validation, fluo calls the actual controller method. `invokeControllerHandler` handles this step, and `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` focuses heavily on successful parameter mapping here.
-9. **Interceptors (After)**: interceptors shape the returned result or error on the way back out. The reverse chain completes and normalizes the response object.
-10. **Response Writing**: the final result is serialized into the HTTP response and sent to the client. `writeSuccessResponse` is called in `dispatcher.ts:L188`, and `Content-Type` negotiation is finalized at this point.
+1.  **Context Creation**: Creates a `RequestContext` and assigns a request-specific DI Scope. `createDispatchContext` is called in `dispatcher.ts:L93-L101`. The container created at this point manages instances that belong only to this request until the request ends.
+2.  **Notification (Start)**: Notifies every registered observer that the request has started. `notifyRequestStart` runs in `dispatcher.ts:L211-L220`. Logging or metrics collection usually starts here.
+3.  **Global Middleware**: Runs application-level global Middleware. `runMiddlewareChain` starts in `dispatcher.ts:L267`. CORS, security headers, and similar concerns are usually handled here.
+4.  **Route Matching**: Finds the right Controller handler from the request URL and method. `matchHandlerOrThrow` is called in `dispatcher.ts:L272`. If no handler is found, a 404 error is raised and the pipeline jumps directly to error handling.
+5.  **Module Middleware**: Runs Module-level Middleware for the Module that owns the handler. The per-Module chain starts in `dispatcher.ts:L283`. This is a good place to insert logic that applies only to a specific feature domain.
+6.  **Guards**: Runs the Guard chain configured for the handler to verify permissions. `runGuardChain` checks authorization in `dispatcher.ts:L173`. If `canActivate` returns `false`, the pipeline stops with a 403 Forbidden error.
+7.  **Interceptors (Before)**: Runs the `intercept()` methods in the Interceptor chain. This starts in `dispatcher.ts:L181`. Logic that transforms request data or measures execution time belongs here.
+8.  **Handler Execution**: Calls the real Controller method after DTO binding and validation. `invokeControllerHandler` performs this role, and `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` focuses on testing parameter mapping for this stage.
+9.  **Interceptors (After)**: Processes the result returned by the handler, or the error it threw. The reverse-order chain in `interceptors.ts` completes here and normalizes the final response object.
+10. **Response Writing**: Serializes the final result into an HTTP response and sends it to the client. `writeSuccessResponse` is called in `dispatcher.ts:L188`. `Content-Type` negotiation is finalized at this point.
 
-## 11.3 RequestContext and Asynchronous Isolation
+## 11.3 RequestContext and Async Isolation
 
-fluo uses `AsyncLocalStorage` to manage request-wide state. That lets deeply nested functions in the service or repository layers access the current request information, such as `requestId`, `user`, or `traceId`, without passing the `req` object by hand through every call.
+fluo uses `AsyncLocalStorage` to manage global request state. This lets deep call sites, such as service layers or repository layers, access current request information like `requestId`, `user`, and `traceId` without passing the `req` object through every function argument.
 
-The system in `packages/http/src/context/request-context.ts` becomes active the moment the dispatcher calls `runWithRequestContext`. The tests in `packages/http/src/context/request-context.test.ts:L50-L148` verify that parallel requests keep their contexts strictly isolated instead of leaking into each other.
+The `packages/http/src/context/request-context.ts` system becomes active when the Dispatcher calls `runWithRequestContext`. The tests in `packages/http/src/context/request-context.test.ts:L50-L148` verify that each request's context stays strictly isolated when several requests arrive in parallel at the same time.
 
 ```typescript
 // packages/http/src/context/request-context.ts:L45-L60
@@ -88,11 +91,11 @@ export function runWithRequestContext<T>(context: RequestContext, fn: () => T): 
 }
 ```
 
-This mechanism is especially helpful for distributed tracing in large systems. A logger can call `getCurrentRequestContext()` internally and automatically tag each log line with the request it belongs to, instead of requiring every caller to pass context around manually.
+This mechanism makes distributed tracing easier in large distributed systems. A logger can call `getCurrentRequestContext()` internally and mark which request a log entry belongs to, without requiring manual context injection at every logging site.
 
 ## 11.4 Monitoring Through the Observer Pattern
 
-The dispatcher plants observer hooks throughout the pipeline. `onRequestStart`, `onHandlerMatched`, `onRequestSuccess`, `onRequestError`, and `onRequestFinish` are typical examples. Unlike controllers or middleware, observers are a side-effect layer that can watch the system without directly changing the request flow.
+The Dispatcher places observer hooks throughout the pipeline. Examples include `onRequestStart`, `onHandlerMatched`, `onRequestSuccess`, `onRequestError`, and `onRequestFinish`. Unlike Controllers or Middleware, observers watch system state without directly changing the request flow. They are a side-effect-only layer.
 
 ```typescript
 // packages/http/src/dispatch/dispatcher.ts:L124-L139
@@ -114,11 +117,11 @@ async function notifyObservers(
 }
 ```
 
-This structure makes it possible to collect global performance metrics or audit logs without touching business logic at all. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997` shows that even if an observer throws at a specific stage, the rest of the pipeline still completes safely.
+This structure lets you record global performance metrics or audit logs without changing business logic. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997` proves the fault-tolerant behavior where the whole pipeline can still complete even if an observer throws at a specific stage.
 
-## 11.5 The Precision of Aborted Request Handling
+## 11.5 Precise Handling of Aborted Requests
 
-If the client disconnects before receiving the response, such as during a browser refresh or a mobile network drop, the server should stop wasting resources on in-flight database queries or business logic. The dispatcher watches the standard `AbortSignal` and checks it carefully at several pipeline stages.
+If a client disconnects before receiving the response, such as during a browser refresh or a mobile network failure, the server should stop in-progress database queries or business logic to avoid wasting resources. The Dispatcher watches the standard `AbortSignal` and checks it at each pipeline stage.
 
 ```typescript
 // packages/http/src/dispatch/dispatcher.ts:L103-L107
@@ -129,11 +132,11 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
 }
 ```
 
-The dispatcher calls `ensureRequestNotAborted` before middleware runs, after guard execution, and right before the response is written. `packages/http/src/dispatch/dispatcher.test.ts:L622-L735` checks carefully that when a request is aborted halfway through, the cleanup logic in `finally` still runs without being skipped. That matters most for expensive work such as file uploads or large data processing.
+The Dispatcher calls `ensureRequestNotAborted` before Middleware execution, after Guard execution, and right before writing the response to avoid unnecessary work. `packages/http/src/dispatch/dispatcher.test.ts:L622-L735` tests that resource cleanup logic in the `finally` block always runs when a request is aborted in the middle of the pipeline. This behavior is needed to maintain server availability for resource-heavy requests such as file uploads or large data processing.
 
 ## 11.6 Pipeline Visualization Diagram
 
-Here is the flow again in a visual form. Each arrow represents an explicit state transition, and any exception raised at any step is forwarded immediately to the error-handling layer.
+The full flow can be visualized as follows. The arrows between stages represent explicit state transitions, and any exception raised at any stage is immediately propagated to the [Error Handling] layer.
 
 ```text
 [Incoming Request]
@@ -178,11 +181,11 @@ Here is the flow again in a visual form. Each arrow represents an explicit state
 [End of Request]
 ```
 
-This diagram shows one of fluo's core principles, guaranteed cleanup. Every layer stays independent, but the dispatcher weaves them into one coherent flow and ensures that resource disposal always happens whether the request succeeds, fails in a known way, or crashes unexpectedly.
+This diagram shows Guaranteed Cleanup, a core principle of fluo architecture. Each layer is independent, but the Dispatcher ties them together as one flow. Whether the request takes a success path, an expected error path, or an unexpected panic path, the resource release stage is designed to run every time.
 
-## 11.7 DispatchPhaseContext: Sharing State Across Stages
+## 11.7 DispatchPhaseContext, Phase-Level State Sharing
 
-Inside the dispatcher, request state is tracked through the `DispatchPhaseContext` interface. It carries the request context, the matched handler, the observer list, and other information that must be shared across the pipeline.
+Internally, the Dispatcher uses the `DispatchPhaseContext` interface to track request state. It contains the request context, matched handler information, the observer list, and other data, and it is shared across the pipeline.
 
 ```typescript
 // packages/http/src/dispatch/dispatcher.ts:L202-L209
@@ -196,26 +199,26 @@ interface DispatchPhaseContext {
 }
 ```
 
-As the context flows through the pipeline, fields such as `matchedHandler` get filled in. The final context can then be delivered to `onRequestFinish` observers so they can report on the full execution history. The core pipeline logic in `packages/http/src/dispatch/dispatcher.ts:L258-L351` uses this context as a shared state store so that each stage remains independent while still exchanging the information it needs.
+As the context passes through the pipeline, fields such as `matchedHandler` are filled in. At the end, it is passed to the `onRequestFinish` observer so the observer can report the full execution history. The core pipeline execution logic in `packages/http/src/dispatch/dispatcher.ts:L258-L351` uses this context as a state store, allowing each stage to act independently while still sharing the information it needs.
 
 ## 11.8 Error Handling Policy
 
-When an error occurs anywhere in the pipeline, `handleDispatchError` takes over and manages it centrally.
+If an error occurs anywhere in the pipeline, `handleDispatchError` is called and handles it in one central place.
 
-1. `RequestAbortedError` is ignored quietly, because the client disconnected and there is no need to pollute server logs.
-2. `onRequestError` observers are notified. This happens in `dispatcher.ts:L302` and is a good moment to report to an external monitoring system such as Sentry.
-3. If a global `onError` hook exists, fluo runs it next. It is called asynchronously from `dispatcher.ts:L304` and can perform application-level error logging.
-4. If nobody handles the error, `writeErrorResponse` sends the standard HTTP error envelope to the client. `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` checks that many business errors are converted into the correct HTTP status codes.
+1. `RequestAbortedError` is silently ignored. The client disconnected, so there is no need to pollute server logs.
+2. The `onRequestError` observer is notified. This happens in `dispatcher.ts:L302`, which is a good time to report the error to an external monitoring system such as Sentry.
+3. If a global `onError` hook exists, it runs. It is called asynchronously in `dispatcher.ts:L304` and can perform application-level custom error logging.
+4. If nobody handled the error, `writeErrorResponse` sends a standard HTTP error envelope to the client. `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` tests that various business errors are converted to the correct HTTP status codes.
 
-## 11.9 Performance Optimization: Metadata Caching with WeakMap
+## 11.9 Performance Optimization, Metadata Caching with WeakMap
 
-The dispatcher does not repeat expensive work every time it matches a route. Inside `packages/http/src/dispatch/dispatch-routing-policy.ts`, it uses a `WeakMap` to cache controller classes and their route metadata. Because it is a `WeakMap`, cached entries disappear automatically when the controller class is collected.
+The Dispatcher does not repeat complex work on every route match. Inside `packages/http/src/dispatch/dispatch-routing-policy.ts`, it uses a `WeakMap` to cache Controller classes and the route metadata for those classes. Because this is a `WeakMap`, the cached data is removed as well when the Controller class becomes eligible for garbage collection.
 
-The dispatcher also resolves content negotiation once at creation time so per-request overhead stays low. Integration tests such as `packages/http/src/public-api.test.ts:L39-L52` help show that routing latency stays consistent even in larger applications. Those optimizations let Fluo keep high throughput even though it creates and disposes a scoped container for every request.
+The Dispatcher also precomputes configuration at creation time through `resolveContentNegotiation`, reducing per-request overhead. The integration tests at the level of `packages/http/src/public-api.test.ts:L39-L52` verify that routing latency stays consistent even in large applications. These optimizations let Fluo keep high throughput even while paying the cost of creating and disposing a container for every request.
 
-## 11.10 Resource Cleanup: Disposing the DI Scope
+## 11.10 Resource Cleanup, DI Scope Disposal
 
-When request handling ends, fluo must call `requestContext.container.dispose()`. That runs `onDispose` hooks for request-scoped objects and releases memory so leaks do not accumulate.
+When request handling ends, `requestContext.container.dispose()` must be called. This runs `onDispose` hooks for non-singleton objects created during the request, meaning request-scoped providers, and releases memory to prevent leaks.
 
 `packages/http/src/dispatch/dispatcher.ts:L240-L255`
 ```typescript
@@ -234,16 +237,16 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 }
 ```
 
-This runs inside a `finally` block so it always happens whether the request succeeds or fails. `packages/http/src/public-api.test.ts:L39-L52` verifies that once the request container is disposed, providers that belonged to it can no longer be accessed, proving that isolation and cleanup rules are enforced strictly.
+This process runs inside a `finally` block, so it always runs regardless of whether the request succeeds or fails. `packages/http/src/public-api.test.ts:L39-L52` verifies the isolation and disposal policy by confirming that providers that belonged to a request container can no longer be accessed after that container is disposed.
 
-Temporary file references or open streams stored inside `RequestContext` can also be closed safely at this stage. The fluo HTTP dispatcher follows a zero-leak design so memory usage stays steady even under production-scale traffic.
+Temporary file references or open streams stored inside `RequestContext` are also closed at this stage. Fluo's HTTP Dispatcher uses a leak-prevention-centered design to help keep memory usage stable in production environments with heavy request traffic.
 
 ## Summary
-- **General-purpose dispatcher**: It provides a standardized request pipeline without tying itself to one framework.
-- **Ten-stage pipeline**: It defines a clear execution flow from global middleware to response writing.
-- **Asynchronous isolation**: `RequestContext`, built on `AsyncLocalStorage`, keeps request data isolated.
-- **Strong observability**: The Observer pattern enables full-pipeline monitoring without changing business logic.
-- **Reliable cleanup**: `AbortSignal` checks and forced `dispose()` calls prevent wasted work and resource leaks.
+- **General Dispatcher**: Provides a standardized request handling pipeline without binding to a specific framework.
+- **Ten-step pipeline**: Guarantees clearly defined phase-by-phase execution from global Middleware to response writing.
+- **Async isolation**: Isolates data between requests with `AsyncLocalStorage`-based `RequestContext`.
+- **Observability layer**: Enables monitoring across the full flow through the observer pattern without changing business logic.
+- **Reliable cleanup**: Reduces wasted resources through `AbortSignal` checks and forced `dispose()` calls.
 
 ## Next Chapter Preview
-In the next chapter, we will look closely at how guards, interceptors, and middleware form execution chains and control one another. That is where the elegance of `reduceRight`-based composition becomes very concrete.
+The next chapter looks more deeply at how Guards, Interceptors, and Middleware form chains and control each other's execution. It also covers what execution order is produced by chain composition with `reduceRight`.
