@@ -3,15 +3,15 @@
 
 # Chapter 15. Studio: Visual Diagnostics and Observability
 
-This chapter covers the Studio ecosystem, which turns complex Module Graphs and diagnostic information into a visual form that people can read. Chapter 14 used contract verification to confirm Runtime consistency. This chapter moves to the tools that observe and interpret that internal state.
+This chapter covers the Studio ecosystem, which turns runtime-produced Module Graph snapshots and diagnostic information into a visual form that people can read. Chapter 14 used contract verification to confirm Runtime consistency. This chapter moves to the tools that export, observe, and interpret that internal state.
 
 ## Learning Objectives
 - Understand the role `@fluojs/studio` plays in architecture diagnostics and observability.
-- Generate snapshots with `fluo inspect` and learn the basic output flow.
+- Generate runtime snapshots through `fluo inspect` and learn the CLI export/delegation flow.
 - Learn what the `PlatformShellSnapshot` and `PlatformDiagnosticIssue` contracts contain.
 - See how to read graphs, diagnostics, and timing information in the Studio Viewer.
 - Analyze an approach for tracking circular dependencies or initialization bottlenecks through snapshots.
-- Summarize how to build architecture guards with Mermaid export and programmatic snapshot consumption.
+- Summarize how to build architecture guards with Studio-owned Mermaid rendering and programmatic snapshot consumption.
 
 ## Prerequisites
 - Completion of Chapter 14.
@@ -29,11 +29,11 @@ Unlike heavy APM (Application Performance Monitoring) tools, Studio focuses on *
 
 ## 15.2 The Studio Ecosystem
 
-As defined in `packages/studio/README.md`, Studio is made of three main layers.
+As defined in `packages/studio/README.md`, the inspection and Studio flow is made of three main layers.
 
-1. **Producer**: The `fluo inspect` command, part of `@fluojs/cli`, which traverses the Module Graph and exports a JSON snapshot.
-2. **Contracts**: The `@fluojs/studio/contracts` subpath, which provides schemas and validation logic for snapshot and timing data.
-3. **Viewer**: The `@fluojs/studio/viewer` package, a React/Vite-based web interface for loading and exploring those snapshots.
+1. **Snapshot producer**: The fluo Runtime and platform shell, which compile the Module Graph and produce `PlatformShellSnapshot` data during inspection-safe bootstrap.
+2. **CLI exporter/delegator**: The `fluo inspect` command in `@fluojs/cli`, which serializes runtime-produced snapshots as JSON and delegates Mermaid rendering to Studio when `--mermaid` is requested.
+3. **Studio contract and viewer**: The `@fluojs/studio` root export, `@fluojs/studio/contracts` subpath, and `@fluojs/studio/viewer` entrypoint, which own snapshot parsing, filtering, graph rendering, and browser viewing.
 
 ## 15.3 Generating Snapshots with `fluo inspect`
 
@@ -43,7 +43,7 @@ The main way to interact with Studio is to generate an application snapshot.
 fluo inspect ./src/app.module.ts --json > platform-state.json
 ```
 
-This command invokes the fluo Runtime in a special "Inspection mode." In this mode, it resolves Providers and builds the graph, but it does not start the actual server listener. The resulting JSON contains the following information.
+This command asks the fluo Runtime for an inspection-safe platform snapshot, then the CLI writes that snapshot to JSON. In this mode, the runtime resolves Providers and builds the graph, but it does not start the actual server listener. The resulting JSON contains the following information.
 - Every registered component, including modules, controllers, and Providers
 - Full dependency mapping
 - Health and Readiness status
@@ -53,7 +53,7 @@ Snapshot generation is non-destructive. Unless you specify otherwise through `bo
 
 ## 15.4 Understanding the Snapshot Contract
 
-The data exported by the CLI follows the `PlatformShellSnapshot` contract defined in `packages/studio/src/contracts.ts`. This contract makes sure every producer, including the CLI, custom scripts, and external tools, creates data the viewer can interpret reliably.
+The data exported by the CLI follows the `PlatformShellSnapshot` contract produced by `@fluojs/runtime` and consumed by `packages/studio/src/contracts.ts`. This contract makes sure every producer, including runtime inspection, custom scripts, and external tools, creates data the viewer can interpret reliably.
 
 ### PlatformShellSnapshot Structure
 
@@ -67,7 +67,7 @@ export interface PlatformShellSnapshot {
 }
 ```
 
-This strict interface allows the Studio ecosystem to accept third-party producers. For example, a custom test harness can export a `PlatformShellSnapshot` to visualize the state of a test environment, and a separate monitoring agent can create periodic snapshots to track changes in application architecture. The standards-first approach keeps visualization tools decoupled from the underlying data source, and it keeps producers and viewers loosely coupled.
+This strict interface allows the Studio ecosystem to accept third-party producers. For example, a custom test harness can export a `PlatformShellSnapshot` to visualize the state of a test environment, and a separate monitoring agent can create periodic snapshots to track changes in application architecture. The standards-first approach keeps Studio's visualization and rendering tools decoupled from the underlying data source, and it keeps producers, CLI export, and viewers loosely coupled.
 
 ### PlatformDiagnosticIssue: The Heart of Troubleshooting
 
@@ -190,7 +190,7 @@ Programmatic APIs also let you create custom reports and visualizations based on
 
 ## 15.8 Mermaid Export for Documentation
 
-Studio can export the visual graph as Mermaid text through the `renderMermaid(snapshot)` helper. You can keep current architecture documentation in `README.md` or Notion pages without drawing diagrams by hand. Mermaid's text-based format lets standard version control tools track architecture changes and leaves a clear history of how the system structure has evolved.
+Studio owns the snapshot-to-Mermaid contract through the `renderMermaid(snapshot)` helper. The CLI can delegate `fluo inspect --mermaid` to that helper, and automation can call it directly from `@fluojs/studio` or `@fluojs/studio/contracts`. You can keep current architecture documentation in `README.md` or Notion pages without drawing diagrams by hand. Mermaid's text-based format lets standard version control tools track architecture changes and leaves a clear history of how the system structure has evolved.
 
 The export tool performs escaping and node hashing so it can generate valid Mermaid syntax even when component IDs contain special characters. This automation reduces drift between architecture diagrams and the actual implementation, creating a flow close to "Documentation as Code." If you integrate Mermaid export into the build process, documentation can also update automatically whenever a new version of the platform is released. That reduces manual work for maintainers and lets teams discuss the latest architecture map.
 
