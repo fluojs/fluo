@@ -1,8 +1,8 @@
 # Table of Contents
 
-- [Chapter 0. Welcome to fluo: The Standard-First Framework](ch00-introduction.md)
+- [Chapter 0. Welcome to fluo: A Standard-First Framework](ch00-introduction.md)
   - [What is fluo?](ch00-introduction.md#what-is-fluo)
-  - [Why This Book?](ch00-introduction.md#why-this-book)
+  - [Why this book?](ch00-introduction.md#why-this-book)
   - [The FluoBlog Project](ch00-introduction.md#the-fluoblog-project)
   - [Prerequisites](ch00-introduction.md#prerequisites)
   - [How to Read This Book](ch00-introduction.md#how-to-read-this-book)
@@ -12,20 +12,20 @@
   - [Setting Expectations](ch00-introduction.md#setting-expectations)
   - [Let's Begin](ch00-introduction.md#lets-begin)
 
-## Part 0
+## Part 0. Getting Started
 
-- [Chapter 1. Introduction to fluo and Design Philosophy](ch01-fluo-intro.md)
+- [Chapter 1. Introducing fluo and Its Design Philosophy](ch01-fluo-intro.md)
   - [Learning Objectives](ch01-fluo-intro.md#learning-objectives)
   - [Prerequisites](ch01-fluo-intro.md#prerequisites)
   - [1.1 The Problems fluo Solves](ch01-fluo-intro.md#11-the-problems-fluo-solves)
   - [1.2 Explicit DI: Dependency Injection Without Magic](ch01-fluo-intro.md#12-explicit-di-dependency-injection-without-magic)
-  - [1.3 Runtime Neutrality: One Codebase, Any Platform](ch01-fluo-intro.md#13-runtime-neutrality-one-codebase-any-platform)
-  - [1.4 TC39 Standard Decorators: Moving Beyond experimentalDecorators](ch01-fluo-intro.md#14-tc39-standard-decorators-moving-beyond-experimentaldecorators)
-  - [1.5 The fluo Ecosystem Map](ch01-fluo-intro.md#15-the-fluo-ecosystem-map)
-  - [1.6 Meet FluoBlog](ch01-fluo-intro.md#16-meet-fluoblog)
-  - [Summary](ch01-fluo-intro.md#summary)
   - [Next Chapter Preview](ch01-fluo-intro.md#next-chapter-preview)
-- [Chapter 2. Creating Your First Project with the CLI](ch02-cli-setup.md)
+  - [1.3 Runtime Neutrality: One Codebase, Every Platform](ch01-fluo-intro.md)
+  - [1.4 TC39 Standard Decorators: Beyond experimentalDecorators](ch01-fluo-intro.md)
+  - [1.5 Map of the fluo Ecosystem](ch01-fluo-intro.md)
+  - [1.6 Meet FluoBlog](ch01-fluo-intro.md)
+  - [Summary](ch01-fluo-intro.md)
+- [Chapter 2. Create Your First Project with the CLI](ch02-cli-setup.md)
   - [Learning Objectives](ch02-cli-setup.md#learning-objectives)
   - [Prerequisites](ch02-cli-setup.md#prerequisites)
   - [2.1 Installing @fluojs/cli](ch02-cli-setup.md#21-installing-fluojscli)
@@ -42,7 +42,7 @@
   - [3.2 What is a Provider?](ch03-modules-providers.md#32-what-is-a-provider)
   - [3.3 What is a Controller?](ch03-modules-providers.md#33-what-is-a-controller)
   - [3.4 Dependency Injection (DI) Flow](ch03-modules-providers.md#34-dependency-injection-di-flow)
-  - [3.5 Sharing Providers across Modules](ch03-modules-providers.md#35-sharing-providers-across-modules)
+  - [3.5 Sharing Providers Across Modules](ch03-modules-providers.md#35-sharing-providers-across-modules)
   - [3.6 FluoBlog: Creating the PostModule Skeleton](ch03-modules-providers.md#36-fluoblog-creating-the-postmodule-skeleton)
   - [Summary](ch03-modules-providers.md#summary)
   - [Next Chapter Preview](ch03-modules-providers.md#next-chapter-preview)
@@ -50,7 +50,7 @@
   - [Learning Objectives](ch04-decorators-intro.md#learning-objectives)
   - [Prerequisites](ch04-decorators-intro.md#prerequisites)
   - [4.1 What is a Decorator?](ch04-decorators-intro.md#41-what-is-a-decorator)
-  - [4.2 Legacy vs. Standard Decorators: Why the Shift?](ch04-decorators-intro.md#42-legacy-vs-standard-decorators-why-the-shift)
+  - [4.2 Legacy vs Standard Decorators: Why the Shift?](ch04-decorators-intro.md#42-legacy-vs-standard-decorators-why-the-shift)
   - [4.3 Class Decorators](ch04-decorators-intro.md#43-class-decorators)
   - [4.4 Method Decorators](ch04-decorators-intro.md#44-method-decorators)
   - [4.5 Accessor and Field Decorators](ch04-decorators-intro.md#45-accessor-and-field-decorators)
@@ -59,7 +59,7 @@
   - [Summary](ch04-decorators-intro.md#summary)
   - [Next Part Preview](ch04-decorators-intro.md#next-part-preview)
 
-## Part 1
+## Part 1. Building HTTP APIs
 
 - [Chapter 5. Routing and Controllers](ch05-routing-controllers.md)
   - [Learning Objectives](ch05-routing-controllers.md#learning-objectives)
@@ -98,8 +98,8 @@
   - [Learning Objectives](ch08-exceptions.md#learning-objectives)
   - [Prerequisites](ch08-exceptions.md#prerequisites)
   - [8.1 Why Exceptions Improve API Clarity](ch08-exceptions.md#81-why-exceptions-improve-api-clarity)
-  - [8.2 Built-In HTTP Exceptions in fluo](ch08-exceptions.md#82-built-in-http-exceptions-in-fluo)
-  - [8.3 Making FluoBlog Not-Found Behavior Explicit](ch08-exceptions.md#83-making-fluoblog-not-found-behavior-explicit)
+  - [8.2 Built-in HTTP Exceptions in fluo](ch08-exceptions.md#82-built-in-http-exceptions-in-fluo)
+  - [8.3 Making FluoBlog Not Found Behavior Explicit](ch08-exceptions.md#83-making-fluoblog-not-found-behavior-explicit)
   - [8.4 Validation Errors and Bad Requests](ch08-exceptions.md#84-validation-errors-and-bad-requests)
   - [8.5 Translating Business Rules into HTTP Failures](ch08-exceptions.md#85-translating-business-rules-into-http-failures)
   - [8.6 Building a Practical Beginner Error Checklist](ch08-exceptions.md#86-building-a-practical-beginner-error-checklist)
@@ -127,12 +127,12 @@
   - [Summary](ch10-openapi.md#summary)
   - [Next Part Preview](ch10-openapi.md#next-part-preview)
 
-## Part 2
+## Part 2. Configuration and Data
 
 - [Chapter 11. Configuration Management](ch11-config.md)
   - [Learning Objectives](ch11-config.md#learning-objectives)
   - [11.1 The Need for Explicit Configuration](ch11-config.md#111-the-need-for-explicit-configuration)
-  - [11.2 Setting up ConfigModule](ch11-config.md#112-setting-up-configmodule)
+  - [11.2 Setting Up ConfigModule](ch11-config.md#112-setting-up-configmodule)
   - [11.3 Using ConfigService](ch11-config.md#113-using-configservice)
   - [11.4 Advanced Pattern: Validation Schemas](ch11-config.md#114-advanced-pattern-validation-schemas)
   - [11.5 FluoBlog: Moving to Config](ch11-config.md#115-fluoblog-moving-to-config)
@@ -142,7 +142,7 @@
 - [Chapter 12. Database Integration with Prisma](ch12-prisma.md)
   - [Learning Objectives](ch12-prisma.md#learning-objectives)
   - [12.1 Why Prisma and Fluo?](ch12-prisma.md#121-why-prisma-and-fluo)
-  - [12.2 Setting up the Environment](ch12-prisma.md#122-setting-up-the-environment)
+  - [12.2 Setting Up the Environment](ch12-prisma.md#122-setting-up-the-environment)
   - [12.3 Defining the FluoBlog Schema](ch12-prisma.md#123-defining-the-fluoblog-schema)
   - [12.4 Running Migrations](ch12-prisma.md#124-running-migrations)
   - [12.5 Registering PrismaModule](ch12-prisma.md#125-registering-prismamodule)
@@ -159,9 +159,9 @@
   - [13.6 Refactoring FluoBlog](ch13-transactions.md#136-refactoring-fluoblog)
   - [13.7 Summary](ch13-transactions.md#137-summary)
 
-## Part 3
+## Part 3. Authentication and Security
 
-- [Chapter 14. Authentication with JWT](ch14-jwt.md)
+- [Chapter 14. JWT Authentication](ch14-jwt.md)
   - [Learning Objectives](ch14-jwt.md#learning-objectives)
   - [14.1 Introduction to JWT](ch14-jwt.md#141-introduction-to-jwt)
   - [14.2 The @fluojs/jwt Package](ch14-jwt.md#142-the-fluojsjwt-package)
@@ -170,14 +170,14 @@
   - [14.5 Refresh Token Rotation](ch14-jwt.md#145-refresh-token-rotation)
   - [14.6 Implementing FluoBlog Auth Endpoints](ch14-jwt.md#146-implementing-fluoblog-auth-endpoints)
   - [14.7 Verifying Tokens Manually](ch14-jwt.md#147-verifying-tokens-manually)
-  - [14.8 Best Practices for JWT in Fluo](ch14-jwt.md#148-best-practices-for-jwt-in-fluo)
+  - [14.8 Best Practices for JWT in fluo](ch14-jwt.md#148-best-practices-for-jwt-in-fluo)
   - [14.9 Summary](ch14-jwt.md#149-summary)
 - [Chapter 15. Guards and Passport Strategies](ch15-passport.md)
   - [Learning Objectives](ch15-passport.md#learning-objectives)
   - [15.1 The Role of Guards](ch15-passport.md#151-the-role-of-guards)
   - [15.2 Introduction to @fluojs/passport](ch15-passport.md#152-introduction-to-fluojspassport)
-  - [15.3 Implementing the JwtStrategy](ch15-passport.md#153-implementing-the-jwtstrategy)
-  - [15.4 Using AuthGuards](ch15-passport.md#154-using-authguards)
+  - [15.3 Implementing JwtStrategy](ch15-passport.md#153-implementing-the-jwt-authstrategy)
+  - [15.4 Using AuthGuard](ch15-passport.md#154-protecting-routes-with-passport)
   - [15.5 Role-Based Access Control (RBAC)](ch15-passport.md#155-role-based-access-control-rbac)
   - [15.6 Customizing Unauthorized Responses](ch15-passport.md#156-customizing-unauthorized-responses)
   - [15.7 Advanced Authorization: Beyond RBAC](ch15-passport.md#157-advanced-authorization-beyond-rbac)
@@ -192,7 +192,7 @@
   - [16.1 Why Throttle Your API?](ch16-throttler.md#161-why-throttle-your-api)
   - [16.2 Introduction to @fluojs/throttler](ch16-throttler.md#162-introduction-to-fluojsthrottler)
   - [16.3 Basic Configuration](ch16-throttler.md#163-basic-configuration)
-  - [16.4 Storage Providers: Memory vs. Redis](ch16-throttler.md#164-storage-providers-memory-vs-redis)
+  - [16.4 Storage Providers: Memory vs Redis](ch16-throttler.md#164-storage-providers-memory-vs-redis)
   - [16.5 Route-Specific Throttling](ch16-throttler.md#165-route-specific-throttling)
   - [16.6 Advanced: Custom Trackers](ch16-throttler.md#166-advanced-custom-trackers)
   - [16.7 Handling the "Too Many Requests" Error](ch16-throttler.md#167-handling-the-too-many-requests-error)
@@ -205,17 +205,17 @@
   - [16.14 Common Pitfalls and How to Avoid Them](ch16-throttler.md#1614-common-pitfalls-and-how-to-avoid-them)
   - [16.15 Summary](ch16-throttler.md#1615-summary)
 
-## Part 4
+## Part 4. Caching and Operations
 
-- [Chapter 17. High Performance with Caching](ch17-cache.md)
+- [Chapter 17. Caching for High Performance](ch17-cache.md)
   - [Learning Objectives](ch17-cache.md#learning-objectives)
   - [17.1 The Need for Speed: Why Caching Matters](ch17-cache.md#171-the-need-for-speed-why-caching-matters)
-  - [17.2 Introduction to @fluojs/cache](ch17-cache.md#172-introduction-to-fluojscache)
+  - [17.2 Introduction to @fluojs/cache-manager](ch17-cache.md#172-introduction-to-fluojscache-manager)
   - [17.3 Basic Configuration and Setup](ch17-cache.md#173-basic-configuration-and-setup)
   - [17.4 Automatic Response Caching](ch17-cache.md#174-automatic-response-caching)
   - [17.5 Manual Cache Management](ch17-cache.md#175-manual-cache-management)
   - [17.6 Cache Invalidation Strategies](ch17-cache.md#176-cache-invalidation-strategies)
-  - [17.7 Advanced: Multi-Layered Caching](ch17-cache.md#177-advanced-multi-layered-caching)
+  - [17.7 Advanced: Multi-Layer Caching](ch17-cache.md#177-advanced-multi-layered-caching)
   - [17.8 Summary](ch17-cache.md#178-summary)
 - [Chapter 18. Health Checks and Reliability](ch18-health.md)
   - [Learning Objectives](ch18-health.md#learning-objectives)
@@ -238,17 +238,17 @@
   - [19.8 Visualizing with Grafana](ch19-metrics.md#198-visualizing-with-grafana)
   - [19.9 Summary](ch19-metrics.md#199-summary)
 
-## Part 5
+## Part 5. Testing
 
 - [Chapter 20. Testing](ch20-testing.md)
   - [Learning Objectives](ch20-testing.md#learning-objectives)
   - [20.1 Why Testing Matters in fluo](ch20-testing.md#201-why-testing-matters-in-fluo)
   - [20.2 Setting Up the Environment](ch20-testing.md#202-setting-up-the-environment)
-  - [20.3 Unit Testing with createTestingModule](ch20-testing.md#203-unit-testing-with-createtestingmodule)
+  - [20.3 Integration Testing with createTestingModule](ch20-testing.md#203-integration-testing-with-createtestingmodule)
   - [20.4 Provider Overrides](ch20-testing.md#204-provider-overrides)
-  - [20.5 Integration Testing with createTestApp](ch20-testing.md#205-integration-testing-with-createtestapp)
+  - [20.5 E2E-Style HTTP Testing with createTestApp](ch20-testing.md#205-e2e-style-http-testing-with-createtestapp)
   - [20.6 Mocking with createMock and createDeepMock](ch20-testing.md#206-mocking-with-createmock-and-createdeepmock)
-  - [20.7 Best Practices for FluoBlog Testing](ch20-testing.md#207-best-practices-for-fluoblog-testing)
+  - [20.7 FluoBlog Testing Best Practices](ch20-testing.md#207-best-practices-for-fluoblog-testing)
   - [20.8 Advanced: Performance and Load Testing](ch20-testing.md#208-advanced-performance-and-load-testing)
   - [20.9 Summary](ch20-testing.md#209-summary)
 - [Chapter 21. Production Readiness](ch21-production.md)

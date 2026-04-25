@@ -3,25 +3,27 @@
 
 # Chapter 5. Routing and Controllers
 
+If Chapter 4 explained the language model behind Decorators, this chapter connects that model to real HTTP endpoints. We will create the first `PostsController` for FluoBlog and see how route declarations, input binding, and feature Module wiring come together as one API surface.
+
 ## Learning Objectives
-- Understand how `@Controller()` and HTTP method decorators define the API surface.
-- Build the first real `PostsController` for FluoBlog.
-- Learn how path params, query params, and request bodies reach controller methods.
-- Keep controllers thin by delegating work to a service.
-- Wire the posts feature into the running Fastify-backed application.
-- Develop a beginner habit for reviewing routes before adding more features.
+- Understand how `@Controller()` and HTTP method Decorators define an API surface.
+- Implement the first real `PostsController` for FluoBlog.
+- Learn how path parameters, query parameters, and request bodies enter Controller methods.
+- Keep Controllers thin by delegating work to services.
+- Connect the posts feature to a Fastify-based application.
+- Build an early development habit of reviewing routes before adding more features.
 
 ## Prerequisites
-- Completed Chapters 1 through 4.
-- A generated FluoBlog project with `AppModule` in place.
-- Basic familiarity with modules, providers, and decorators.
-- Comfort reading small TypeScript controller examples.
+- Completed Chapter 1 through Chapter 4.
+- Created a FluoBlog project with an `AppModule`.
+- Basic understanding of Modules, Providers, and Decorators.
+- Comfortable reading small TypeScript Controller examples.
 
 ## 5.1 Why Routing Comes First in HTTP Work
 
-Part 1 begins where backend applications become tangible. Users do not experience your dependency graph directly. They experience URLs, methods, and responses, so routing is the first practical HTTP topic.
+Part 1 starts at the point where a backend application begins to feel tangible. Users do not experience your dependency graph directly. They experience URLs, methods, and responses, so routing becomes the first practical HTTP topic.
 
-In fluo, routing is centered on controllers. A controller class groups related endpoints under a shared path prefix, and method decorators connect individual class methods to HTTP verbs. Together, they create a readable map from URL to code.
+In fluo, Controllers are the center of routing. A Controller class groups related endpoints under a shared path prefix, and method Decorators connect individual methods to HTTP verbs. This creates a readable map from URLs to code.
 
 ```typescript
 import { Controller, Get } from '@fluojs/http';
@@ -35,60 +37,57 @@ export class PostsController {
 }
 ```
 
-Even this tiny example communicates a lot. The controller owns the `/posts` area, the `list()` method handles `GET /posts`, and the returned array becomes the response payload. Before we add more HTTP features, that simple mapping is the core habit to keep in view.
+This example is tiny, but it already communicates a lot. This Controller owns the `/posts` area, the `list()` method handles `GET /posts`, and the returned array becomes the response payload. Before adding more HTTP features, this simple connection is the most important reference point.
 
 ### Routes Are an Application Contract
 
-As soon as you publish an endpoint, other code can depend on it. Frontend code, mobile clients, tests, and external integrations may all treat that route as stable, which is why route design deserves deliberate thought even in a beginner project.
+As soon as you expose an endpoint, other code can depend on that path. Frontend code, mobile clients, tests, and external integrations can all treat that route as a stable contract, so route design is worth care even in an early project.
 
-Frontend code, mobile clients, tests, and external integrations may all treat that route as stable, which is why route design deserves deliberate thought even in a beginner project.
+Frontend code, mobile clients, tests, and external integrations can all treat that route as a stable contract, so route design is worth care even in an early project.
 
 ### Route Versioning (A Peek Ahead)
 
-In real production environments, APIs evolve over time. While we won't implement it in this chapter, fluo has built-in support for route versioning (e.g., `/v1/posts` vs `/v2/posts`). Thinking about your routes as a contract now will make it much easier to manage these versions later when your application grows.
+In a real production environment, APIs evolve over time. We will not implement it directly in this chapter, but fluo supports route versioning by default, such as `/v1/posts` versus `/v2/posts`. If you start seeing routes as contracts now, you can manage these versions more safely later when the application grows.
 
 ### Standardized HTTP Verbs
 
-In fluo, we encourage using standard HTTP methods for their intended purposes:
+fluo recommends using standard HTTP methods for their intended purposes.
 
-- `@Get()`: Retrieve data. Should not have side effects.
-- `@Post()`: Create new resources.
-- `@Put()`: Replace an entire resource.
-- `@Patch()`: Partially update a resource.
-- `@Delete()`: Remove a resource.
+- `@Get()`: Reads data. It should not have side effects.
+- `@Post()`: Creates a new resource.
+- `@Put()`: Replaces an entire resource.
+- `@Patch()`: Updates part of a resource.
+- `@Delete()`: Deletes a resource.
 
-Following these standards from day one makes your API intuitive for other developers and compatible with various HTTP tools and caches.
+Following these standards from day one helps other developers understand your API intuitively, and it also works well with many HTTP tools and caches.
 
 ### Semantic URLs and Hierarchy
 
-Good routing isn't just about technical correctness; it's about semantic clarity. A URL like `/posts/1/comments` clearly communicates that you are accessing comments belonging to a specific post. fluo's nested controller capabilities (which we'll explore in the Intermediate book) help enforce this logical hierarchy. For now, focus on keeping your top-level paths descriptive and simple.
+Good routing is not only about technical correctness. Semantic clarity matters too. A URL like `/posts/1/comments` clearly communicates that you are accessing comments that belong to a specific post. fluo's nested Controller feature, which we will cover in the intermediate volume, helps enforce this kind of logical hierarchy. For now, focus on keeping top-level paths descriptive and simple.
 
-For FluoBlog, the post API is a natural first feature. Readers can understand it quickly, and it gives us room to add validation, serialization, exceptions, guards, and OpenAPI later in a clear sequence.
+For FluoBlog, the posts API is a very natural first feature. Readers can understand it quickly, and it gives later chapters room to add validation, serialization, exceptions, Guards, and OpenAPI step by step.
 
 ### The Beginner Goal in This Chapter
 
-You do not need a perfect production API yet. You need a clear mental model, and this chapter builds it in four steps:
+You do not need a perfect production API yet. What you need now is a clear model, and this chapter organizes that model into four steps.
 
-1. a controller owns route declarations,
-2. a service owns reusable post logic,
-3. the module registers both,
-4. the runtime adapter exposes the resulting HTTP server.
+1. Controllers own route declarations.
+2. Services own reusable post logic.
+3. Modules register both of them.
+4. Runtime adapters expose the completed HTTP server externally.
 
-If those four steps are clear, the rest of Part 1 becomes much easier.
+Once these four steps are clear, the rest of Part 1 becomes much easier.
 
 ## 5.2 Creating the First PostsController
 
-Now turn the post feature skeleton from Chapter 3 into a real HTTP entry point.
+Now let's turn the posts feature skeleton from Chapter 3 into a real HTTP entry point.
 
-We will begin with a tiny in-memory service.
+First, we will use a very small in-memory service.
 
-That keeps the chapter focused on routing rather than persistence.
+This keeps the focus of this chapter on routing rather than persistence.
 
 ```typescript
 // src/posts/posts.service.ts
-import { Injectable } from '@fluojs/di';
-
-@Injectable()
 export class PostsService {
   private readonly posts = [
     { id: '1', title: 'Hello fluo', body: 'First post', published: true },
@@ -100,13 +99,15 @@ export class PostsService {
 }
 ```
 
-Then connect that service to a controller.
+Next, connect this service to a Controller. Register the service in the `providers` array of `PostsModule`, and declare the constructor dependency explicitly with `@Inject(...)`.
 
 ```typescript
 // src/posts/posts.controller.ts
+import { Inject } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
 import { PostsService } from './posts.service';
 
+@Inject(PostsService)
 @Controller('/posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
@@ -118,168 +119,187 @@ export class PostsController {
 }
 ```
 
-This is the first version of FluoBlog that feels like an API.
+Now FluoBlog feels like an API for the first time.
 
-An HTTP request can now enter the application and receive post data back.
+An HTTP request can enter the application and return post data as a response.
 
 ### Why the Controller Stays Small
 
-Notice what the controller does not do.
+Notice what the Controller does not do.
 
-It does not create the array itself.
+It does not create the array directly.
 
 It does not decide how posts are stored.
 
-It does not mix route mapping with business policy.
+It does not mix route mapping with business rules.
 
-It delegates.
+Instead, it delegates.
 
 ### The Request Lifecycle (Simple Version)
 
-When a user visits `GET /posts`, this is what happens behind the scenes:
+When a user visits `GET /posts`, the following happens internally.
 
 1.  **Fastify** receives the HTTP request at the OS level.
-2.  **The Fluo Adapter** matches the URL `/posts` to the `PostsController`.
-3.  **Fluo DI** ensures that `PostsService` is instantiated and injected.
-4.  **The list() method** is called.
-5.  **The service** returns the data.
-6.  **Fluo** serializes the result and hands it back to Fastify.
+2.  **The fluo adapter** matches the URL `/posts` to `PostsController`.
+3.  **Fluo DI** instantiates and injects `PostsService`.
+4.  **The findAll() method** is called.
+5.  **The service** returns data.
+6.  **fluo** serializes the result and passes it back to Fastify.
 7.  **Fastify** sends the final HTTP response to the user.
 
-Understanding this flow helps you realize why we separate our code into different files. Each part of the system has a specific role in this journey.
+Understanding this flow helps explain why the code is split across several files. Each part of the system has its own role in this journey.
 
 ### Middleware vs. Controllers (Concepts)
 
-As you grow, you might wonder where things like logging or authentication go. In many frameworks, these are "Middleware." In fluo, we often use more specific tools like **Guards** (for auth) or **Interceptors** (for logging). However, they all sit in the request pipeline before or after your controller. By keeping your controller focused only on routing, you make it much easier to plug in these extra features later without rewriting your core logic.
+As you keep learning, you may wonder where features like logging or authentication should live. In many frameworks, these features are called "Middleware." In fluo, you usually use more specific tools, such as **Guards** for authentication or **Interceptors** for logging. They all sit in the request pipeline before or after the Controller. When the Controller stays focused on routing, you can connect these extra features later without changing the core logic.
 
 ### Controller Review Questions
 
-When you read a controller for the first time, ask:
+When you read a Controller for the first time, ask these questions.
 
-1. Which path prefix does the class own?
+1. What path prefix does this class own?
 2. Which HTTP verb does each method handle?
-3. Which service or provider does the method delegate to?
-4. Is any business logic growing too large inside the controller?
+3. Which service or Provider does this method delegate to?
+4. Is business logic growing too large inside the Controller?
 
-These questions are simple, but they keep your HTTP layer readable.
+These questions are simple, but they help keep the HTTP layer readable.
 
 ## 5.3 Path Params, Query Params, and Request Bodies
 
-Real APIs do more than list collections.
+Real APIs do more than list resources.
 
 They fetch one resource by id.
 
 They filter results.
 
-They accept payloads from the client.
+They receive payloads from clients.
 
-fluo exposes these inputs with explicit binding decorators.
+fluo exposes these inputs through DTO contracts declared on routes.
 
 ```typescript
-import { Controller, FromBody, FromPath, FromQuery, Get, Post } from '@fluojs/http';
+import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+
+class FindPostParamsDto {
+  id = '';
+}
+
+class SearchPostsQueryDto {
+  published?: string;
+}
+
+class CreatePostDto {
+  title = '';
+  body = '';
+}
 
 @Controller('/posts')
 export class PostsController {
   @Get('/:id')
-  findOne(@FromPath('id') id: string) {
-    return { id };
+  @RequestDto(FindPostParamsDto)
+  findOne(input: FindPostParamsDto) {
+    return { id: input.id };
   }
 
   @Get('/')
-  search(@FromQuery('published') published?: string) {
-    return { published };
+  @RequestDto(SearchPostsQueryDto)
+  search(input: SearchPostsQueryDto) {
+    return { published: input.published };
   }
 
   @Post('/')
-  create(@FromBody() input: { title: string; body: string }) {
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto) {
     return input;
   }
 }
 ```
 
-Each decorator answers a transport question directly.
+Each route directly declares the input DTO it receives.
 
-`@FromPath('id')` says the value comes from the URL segment.
+`FindPostParamsDto` shows the input shape bound from the `/:id` path.
 
-`@FromQuery('published')` says the value comes from the query string.
+`SearchPostsQueryDto` gathers values read from the query string into one input object.
 
-`@FromBody()` says the value comes from the request payload.
+`CreatePostDto` shows what shape the request body should have before it crosses the service boundary.
 
 ### Why Explicit Binding Matters
 
-Beginners benefit from explicit binding because it removes guessing.
+Explicit binding is especially helpful when you first read a request flow.
 
-When a handler parameter appears, the source of that value is visible on the same line.
+The handler signature immediately shows which DTO the route receives.
 
-There is no need to remember hidden conventions.
+Because the input contract is fixed as one object per method, it is also easier to trace the request flow.
 
 ### Binding vs. Raw Objects
 
-You might be tempted to use a raw `@Req()` or `@Res()` object, as seen in some other frameworks. While fluo supports this for advanced use cases, we strongly discourage it for normal development. Using explicit decorators like `@FromBody()` makes your code much easier to read and test because you are declaring exactly what data your method needs, rather than searching through a giant, complex request object.
+You may want to use raw objects such as `@Req()` or `@Res()`, as you might see in other frameworks. fluo supports this for advanced cases, but it is better to avoid it in typical development. If you fix the input DTO first with `@RequestDto()`, the method clearly declares which input contract it receives instead of forcing readers to dig through a huge, complex request object. That makes the code easier to read and test.
 
 ### A Route Path Contract to Remember
 
-What if you need multiple values from different sources? fluo makes it simple:
+What if you need values from several different sources? In fluo, this is straightforward.
 
 ```typescript
+import { Patch, RequestContext, RequestDto } from '@fluojs/http';
+
 @Patch('/:id')
-update(
-  @FromPath('id') id: string,
-  @FromBody() body: UpdatePostDto,
-  @FromHeader('x-api-key') apiKey: string
-) {
-  // Use all three values together
+@RequestDto(UpdatePostDto)
+update(input: UpdatePostDto, requestContext: RequestContext) {
+  const id = requestContext.request.params.id;
+  return { id, ...input };
 }
 ```
 
-This explicit style ensures that your method parameters remain clean and easy to test, as you know exactly where each piece of data originates.
+In this contract, the input DTO enters as the first argument, and you read `requestContext` alongside it when you need request metadata such as route parameters or headers.
 
 ### A Note on Default Values
 
-Sometimes a query parameter or header might be optional. You can use standard TypeScript default values:
+Sometimes query input can be optional. In that case, leave the DTO field optional and set the default value explicitly inside the handler.
 
 ```typescript
+class SearchLimitDto {
+  limit?: string;
+}
+
 @Get('/')
-search(@FromQuery('limit') limit: string = '10') {
-  // if 'limit' is missing in URL, it defaults to '10'
+@RequestDto(SearchLimitDto)
+search(input: SearchLimitDto) {
+  const limit = input.limit ?? '10';
+  return { limit };
 }
 ```
 
-This combines perfectly with fluo's decorators, keeping your code both idiomatic and clear.
+This approach keeps the input DTO as a single contract while leaving the default value visible in code.
 
 ### Type Safety in Binding
 
-While the transport layer always deals with strings, fluo's binding system is designed to work with Pipe-based transformation. This means that if you declare a parameter as a `number`, you can apply a pipe to automatically convert that string ID from the URL into a proper TypeScript number. We will see more of this in Chapter 7, but for now, remember that your method signatures are the start of a very safe data pipeline.
+The transport layer always deals with strings, but fluo's binding system is designed to work with Pipe-based transformation. That means if you declare a parameter as a `number` and apply a Pipe, the string ID from the URL can be converted automatically into the appropriate TypeScript number. We will cover this in more detail in Chapter 7, but for now, remember that method signatures are the starting point of a safe data pipeline.
 
 ### A Route Path Contract to Remember
 
-The HTTP package accepts literal path segments and full-segment params such as `/:id`.
+The HTTP package accepts literal path segments and full-segment parameters like `/:id`.
 
-It does not treat mixed patterns like `:id.json` or wildcard syntax like `*` as normal route declarations.
+It does not treat wildcards like `*` or mixed patterns like `:id.json` as normal route declarations.
 
-That restriction is helpful.
+This constraint is helpful.
 
-It keeps route matching simpler and easier to reason about.
+It keeps route matching simpler and more predictable.
 
-For a beginner project, clear route shapes beat clever route tricks.
+In an early project, clear route shapes matter more than clever route tricks.
 
 ## 5.4 Expanding FluoBlog with Read and Create Endpoints
 
-Let us give FluoBlog a small but believable post workflow.
+Now let's add a small but realistic posts flow to FluoBlog.
 
-We want three endpoints first.
+First, we need three endpoints.
 
 1. `GET /posts`
 2. `GET /posts/:id`
 3. `POST /posts`
 
-That set is enough to demonstrate collection reads, single-resource reads, and creation.
+This is enough to show collection reads, single-resource reads, and creation.
 
 ```typescript
 // src/posts/posts.service.ts
-import { Injectable } from '@fluojs/di';
-
-@Injectable()
 export class PostsService {
   private readonly posts = [
     { id: '1', title: 'Hello fluo', body: 'First post', published: true },
@@ -309,9 +329,21 @@ export class PostsService {
 
 ```typescript
 // src/posts/posts.controller.ts
-import { Controller, FromBody, FromPath, Get, Post } from '@fluojs/http';
+import { Inject } from '@fluojs/core';
+import { Controller, Get, Post, RequestDto } from '@fluojs/http';
+
+class FindPostParamsDto {
+  id = '';
+}
+
+class CreatePostDto {
+  title = '';
+  body = '';
+}
+
 import { PostsService } from './posts.service';
 
+@Inject(PostsService)
 @Controller('/posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
@@ -322,44 +354,46 @@ export class PostsController {
   }
 
   @Get('/:id')
-  findById(@FromPath('id') id: string) {
-    return this.postsService.findById(id);
+  @RequestDto(FindPostParamsDto)
+  findById(input: FindPostParamsDto) {
+    return this.postsService.findById(input.id);
   }
 
   @Post('/')
-  create(@FromBody() input: { title: string; body: string }) {
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto) {
     return this.postsService.create(input);
   }
 }
 ```
 
-This is still simple, and that simplicity is good. We can already talk about route ownership and request flow without mixing in too many new concepts, which keeps the foundation stable for the chapters that follow.
+It is still simple, and that simplicity is a strength. We can talk about route ownership and request flow without mixing in too many new ideas, which gives the next chapter a firmer foundation.
 
 ### What Is Still Missing?
 
-At this point, the code works as a learning example, but it is not yet robust.
+This code is enough as a learning example, but it is not solid yet.
 
-The body is just a loose object.
+The body is still a loose object.
 
 There is no validation.
 
-There is no explicit not-found behavior.
+There is no explicit not-found handling.
 
-The response shape still exposes the service output directly.
+The response shape also exposes service results directly.
 
 ### The Importance of Return Values
 
-In fluo, whatever you return from a controller method is what gets sent to the client. If you return an object, fluo automatically serializes it to JSON and sets the content-type header to `application/json`. If you return a string, it's sent as plain text. This automatic handling allows you to focus on your logic without worrying about manual response writing for common cases.
+In fluo, whatever a Controller method returns is sent to the client. If you return an object, fluo automatically serializes it to JSON and sets the `content-type` header to `application/json`. If you return a string, it is sent as plain text. This automatic handling lets you focus on route logic instead of manual response writing in common situations.
 
 ### Async Support Out of the Box
 
-Real applications often wait for databases or external APIs. fluo controllers handle `Promise` returns natively. If your service method is `async`, simply `await` it in the controller, or return the promise directly. Fluo will wait for the resolution before sending the response to the client, keeping your asynchronous code looking clean and synchronous.
+Real applications often need to wait for databases or external APIs. fluo Controllers handle `Promise` returns by default. If a service method is `async`, simply `await` it in the Controller or return the promise directly. fluo waits for the asynchronous work to finish before sending the response, so async code can keep a simple shape.
 
 ## 5.5 Wiring the Feature into the Fastify Application
 
-Controllers only matter if the application bootstraps them.
+A Controller only matters when the application actually bootstraps it.
 
-That requires module registration and a runtime adapter.
+For that, you need Module registration and a runtime adapter.
 
 ```typescript
 // src/posts/posts.module.ts
@@ -401,80 +435,81 @@ async function main() {
 void main();
 ```
 
-The Fastify adapter is a useful beginner default.
+The Fastify adapter is an excellent initial default.
 
 It is fast.
 
-It matches the examples used across the repo.
+It fits well with examples across the repo.
 
 It also keeps runtime configuration explicit through bootstrap options.
 
 ### What the Adapter Owns
 
-The adapter handles HTTP server mechanics.
+The adapter owns the mechanical parts of the HTTP server.
 
-Your controller still owns route intent.
+The Controller still owns route intent.
 
-Your module still owns composition.
+The Module still owns composition.
 
-Your service still owns post logic.
+The service still owns post logic.
 
-That separation is the architectural win.
+This separation is the architectural benefit.
 
 ### Why the Fastify Adapter?
 
-Fastify is known for being extremely fast and low-overhead. By using `@fluojs/platform-fastify`, you get all the benefits of Fastify (like high-performance routing and a rich plugin ecosystem) while writing clean, fluo-style code. As you become more advanced, you'll learn that you can swap this adapter for others (like Bun or Cloudflare Workers) without changing your controller or service logic.
+Fastify is well known for being fast and low overhead. With `@fluojs/platform-fastify`, you can keep fluo-style code while using Fastify's strengths, such as high-performance routing and a rich plugin ecosystem. Later, you will learn that you can swap this adapter for another one, such as Bun or Cloudflare Workers, without changing Controller or service logic.
 
 ### Environment Configuration (A Teaser)
 
-While we've hardcoded the port to `3000` in our `main.ts`, real applications use environment variables. fluo has a dedicated `@fluojs/config` package that makes this easy. For now, keep it simple, but know that "port 3000" is just a starting point for your development environment.
+Right now, `main.ts` hardcodes the port number as `3000`, but real applications use environment variables. fluo has a dedicated `@fluojs/config` package that makes this easier. Keep things simple for now, but remember that "port 3000" is just a starting point for the development environment.
 
 ### Troubleshooting Your First Routes
 
-If your routes aren't working, check the following:
+If a route does not work, check the following.
 
-- **Is the port correct?** Make sure you're visiting `http://localhost:3000/posts`.
-- **Did you restart the server?** If you aren't using a "watch" mode, you'll need to restart `main.ts` after changes.
-- **Is the module imported?** Ensure `AppModule` imports `PostsModule`.
-- **Are the decorators applied correctly?** Check that `@Controller()` and `@Get()` are present.
+- **Is the port correct?** Make sure you are visiting `http://localhost:3000/posts`.
+- **Did you restart the server?** If you are not using "watch" mode, you need to run `main.ts` again after changing code.
+- **Was the Module imported?** Make sure `AppModule` imports `PostsModule`.
+- **Were the Decorators applied correctly?** Make sure `@Controller()` and `@Get()` are not missing.
 
-Debugging these early issues helps you build a strong intuition for how the request pipeline works.
+Debugging these early problems helps you understand how the request pipeline works.
 
 ## 5.6 A Beginner Route Review Checklist
 
 Before moving on to validation, pause and inspect the route layer.
 
-You should now be able to answer the following.
+You should now be able to answer these questions.
 
 1. Where is the `/posts` prefix declared?
 2. Which method handles `GET /posts/:id`?
-3. Which decorator reads the id from the path?
-4. Which class currently owns in-memory post storage?
+3. Which Decorator reads the id from the path?
+4. Which class currently owns the in-memory post storage?
 5. Which file connects the posts feature to the root application?
 
-If these answers are easy to find, your route design is readable.
+If you can find these answers easily, the route design is readable.
 
-That is the standard to protect as the API grows.
+It is important to keep that standard as the API grows.
 
 ### Common Beginner Mistakes
 
-- Returning hard-coded values from the controller instead of delegating.
+- Returning hardcoded values directly from a Controller instead of delegating.
 - Mixing too many route responsibilities into one method.
-- Forgetting to register the controller in the module.
-- Treating request payloads as trusted before validation exists.
-- Using controller code to solve data-shaping problems that belong later in serialization.
+- Forgetting to register a Controller in a Module.
+- Trusting request payloads even before validation exists.
+- Trying to solve data-shape problems in the Controller that serialization should handle later.
 
 ### Why This Chapter Stops Here
 
-It can be tempting to add update, delete, auth, docs, and error handling immediately, but that would blur the teaching boundary. A better beginner sequence is to add one HTTP concern at a time: first routing, then validation, then response shaping. That layered approach creates a stronger mental model than a giant all-at-once example.
+You may want to add updates, deletes, authentication, documentation, and error handling all at once, but that blurs the learning boundary. It is better to add HTTP concerns one at a time. First routing, then validation, then response-shape adjustment. This layered approach creates a more stable model than an example that shows everything at once.
 
 ## Summary
 - Controllers map URLs and HTTP verbs to readable class methods.
-- Binding decorators such as `@FromPath()`, `@FromQuery()`, and `@FromBody()` make request sources explicit.
-- FluoBlog now exposes basic post routes for listing, reading, and creating posts.
-- The service remains responsible for reusable post logic while the controller stays thin.
-- The Fastify adapter boots the HTTP server without changing the feature architecture.
-- The project is now ready for DTO-based validation.
+- `@RequestDto(...)` and `requestContext` show input DTOs and request metadata separated according to the current handler contract.
+- FluoBlog now exposes routes for listing posts, reading one post, and creating a post.
+- Services own reusable post logic and keep Controllers thin.
+- The Fastify adapter bootstraps the HTTP server without changing the feature architecture.
+- The project is now ready to learn DTO-based validation.
 
 ## Next Chapter Preview
-In Chapter 6, we will replace loose request payloads with DTOs and validation rules. Routing gave FluoBlog a visible API surface, and validation is the next step that makes that surface safer before data reaches the post service.
+
+In Chapter 6, we will turn loose request payloads into DTOs and validation rules. If routing made FluoBlog's API surface visible, the next step, validation, makes that surface safer before the service boundary.

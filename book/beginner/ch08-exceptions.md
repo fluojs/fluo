@@ -3,37 +3,39 @@
 
 # Chapter 8. Exception Handling
 
+This chapter explains how to turn FluoBlog's failure responses into a more explicit HTTP contract. Chapter 7 refined successful responses. This chapter moves to the flow that makes failure behavior predictable through exceptions as well.
+
 ## Learning Objectives
-- Understand why explicit exceptions create clearer API behavior.
+- Understand why explicit exceptions make API behavior clearer.
 - Use built-in HTTP exceptions such as `BadRequestException` and `NotFoundException`.
-- Move not-found logic in FluoBlog from `null` results to deliberate failure responses.
-- Learn where controller responsibilities end and service exception rules begin.
-- Build a beginner mental model for expected errors versus unexpected errors.
-- Prepare the posts API for protected routes and generated docs.
+- Change FluoBlog's not-found behavior from returning `null` to sending intentional failure responses.
+- Distinguish where Controller responsibility ends and service exception rules begin.
+- Build a practical judgment rule for separating expected errors from unexpected errors.
+- Prepare the posts API for protected routes and automatic documentation.
 
 ## Prerequisites
-- Completed Chapter 7.
-- Familiarity with FluoBlog post routes and DTO validation.
-- Comfort reading small service and controller examples.
+- Completion of Chapter 7.
+- Familiarity with FluoBlog post routes and the DTO validation flow.
+- Comfort reading short service and Controller examples.
 - Basic understanding of HTTP status codes.
 
 ## 8.1 Why Exceptions Improve API Clarity
 
-So far, FluoBlog can validate requests and shape successful responses. That is only half of a trustworthy API. Clients also need predictable failure behavior.
+So far, FluoBlog can validate requests and refine successful responses. But that's only half of a trustworthy API. Clients also need predictable failure behavior.
 
-If a route cannot find a post, returning `null` may be technically possible, but it is not a very strong API contract. The client still has to guess whether `null` means missing data, temporary failure, or sloppy design. An explicit exception tells the story much more clearly: the request failed for a known reason, and the HTTP status code should communicate that reason.
+Returning `null` when a route can't find a post is technically possible, but it's hard to call that a strong API contract. The client has to guess whether `null` means the resource is missing, a temporary failure occurred, or the design is simply loose. An explicit exception tells the story much more clearly. The request failed for a known reason, and the HTTP status code should communicate that reason too.
 
 ### Expected Failures vs Unexpected Failures
 
-This is one of the most helpful beginner distinctions. Some failures are part of normal application behavior, such as invalid input, missing resources, or forbidden access. Other failures are accidental, such as coding bugs, broken infrastructure, or unhandled states.
+This distinction matters especially early in API design. Some failures are part of normal application behavior, such as invalid input, missing resources, or forbidden access. Other failures are accidental, such as code bugs, broken infrastructure, or unhandled states.
 
-Expected failures should usually become deliberate HTTP exceptions. Unexpected failures should be visible as real server problems. That difference keeps the API honest for both clients and maintainers.
+Expected failures should usually become intentional HTTP exceptions, while unexpected failures should surface as real server problems. Separating the two makes the API honest for both clients and maintainers.
 
 ## 8.2 Built-In HTTP Exceptions in fluo
 
-The HTTP package includes a set of exceptions for common API failure cases. Once the idea of expected failure is clear, these built-ins give that idea a precise HTTP shape.
+The HTTP package provides built-in exceptions for common API failure cases. Once the idea of expected failure is clear, these built-in exceptions turn that judgment into concrete HTTP behavior.
 
-These include:
+For example:
 
 - `BadRequestException` (400)
 - `UnauthorizedException` (401)
@@ -42,7 +44,7 @@ These include:
 - `InternalServerErrorException` (500)
 - `PayloadTooLargeException` (413)
 
-Each one exists so the code can express intent directly.
+These exceptions let code express intent directly.
 
 ```typescript
 import { NotFoundException } from '@fluojs/http';
@@ -56,48 +58,48 @@ function requirePost(post: unknown, id: string) {
 }
 ```
 
-This reads like application behavior instead of like a transport accident.
+This code doesn't read like transport-layer thinking.
 
-The missing resource is a recognized outcome.
+The application is intentionally expressing a known missing-resource case.
 
-The chosen exception explains how the HTTP layer should respond.
+The selected exception also explains what response the HTTP layer should return.
 
 ### Why Named Exceptions Matter
 
-Named exceptions are better than vague generic errors for common API cases.
+Named exceptions are better than vague generic errors for common API failure cases.
 
-They help readers understand the intent quickly.
+They help readers understand intent faster.
 
-They also map more clearly to the final HTTP status code.
+They also connect more clearly to the final HTTP status code.
 
 That matters for both debugging and client expectations.
 
-### Global Exception Filter
+### Global Exception Handling
 
-You might wonder: "What happens after I throw the exception?" fluo has a **Global Exception Filter** that catches any HTTP exceptions thrown from your controllers or services. It automatically formats them into a standard JSON response:
+After an exception is thrown, fluo's HTTP runtime turns the failure into a consistent response. `HttpException` family failures are serialized into the standard `{ error: ... }` envelope, and unknown failures are normalized to `INTERNAL_SERVER_ERROR`.
 
 ```json
 {
-  "statusCode": 404,
-  "message": "Post 123 was not found.",
-  "error": "Not Found"
+  "error": {
+    "code": "NOT_FOUND",
+    "status": 404,
+    "message": "Post 123 was not found."
+  }
 }
 ```
 
-This automatic formatting ensures that your API doesn't just "leak" raw stack traces to the client, which would be a security risk. Instead, it provides a clean, machine-readable error object that frontend developers can easily parse.
+This serialization rule keeps the API from exposing low-level stack traces directly to clients. It also lets clients reliably read `error.code` as a machine key and `error.message` as a human-facing message.
 
 ## 8.3 Making FluoBlog Not-Found Behavior Explicit
 
-In Chapter 5, `findById()` returned `null` when a post did not exist.
+In Chapter 5, `findById()` returned `null` when a post didn't exist.
 
-Now let us make that behavior explicit.
+Now let's make that behavior explicit.
 
 ```typescript
 // src/posts/posts.service.ts
 import { NotFoundException } from '@fluojs/http';
-import { Injectable } from '@fluojs/di';
 
-@Injectable()
 export class PostsService {
   private readonly posts = [
     { id: '1', title: 'Hello fluo', body: 'First post', published: true },
@@ -107,8 +109,8 @@ export class PostsService {
     const post = this.posts.find((item) => item.id === id);
 
     if (!post) {
-      // Throwing this exception immediately stops execution 
-      // and starts the fluo exception handling flow.
+      // Throwing this exception stops execution immediately
+      // and starts fluo's exception handling flow.
       throw new NotFoundException(`Post ${id} was not found.`);
     }
 
@@ -117,64 +119,68 @@ export class PostsService {
 }
 ```
 
-Now the controller does not need to interpret `null`.
+Now the Controller doesn't need to interpret `null`.
 
-The service owns the rule that a missing post is a real not-found condition.
+The service directly owns the rule that a post doesn't exist.
 
-That makes the behavior easier to reuse across routes.
+This style also makes it easier to reuse the same behavior across multiple routes.
 
 ### Why the Service Owns This Rule
 
-A controller can throw exceptions.
+A Controller can throw exceptions too, of course.
 
-That does not mean every exception belongs there.
+That doesn't mean every exception belongs in the Controller.
 
-If multiple routes depend on the same lookup behavior, the service is often the better home.
+If several routes depend on the same lookup behavior, the service is often the better place.
 
-The service understands the meaning of “post must exist.”
+The service understands the meaning of "a post must exist."
 
-The controller understands the route entry point.
+The Controller understands the route entry point.
 
-This is the same separation-of-concerns pattern we used in earlier chapters.
+This is the same separation-of-concerns pattern repeated throughout earlier chapters.
 
 ## 8.4 Validation Errors and Bad Requests
 
-Validation failures are another common expected error path. By the time the request reaches your service, DTO validation should already have protected the input boundary. That is one reason Chapter 6 came before this chapter, and it is why the API can now reject bad payloads with more confidence.
+Validation failure is another common expected error path. Before a request reaches the service, DTO validation should already protect the input boundary. That's exactly why Chapter 6 came before this chapter, and it's why the API can now reject invalid payloads with more confidence.
 
 ### What Makes a Request “Bad”?
 
 A bad request is not a server crash.
 
-It means the client sent data that does not satisfy the route contract.
+It means the client sent data that doesn't satisfy the route contract.
 
-Examples include:
+For example:
 
-- missing required fields,
-- wrong scalar types,
-- invalid lengths,
-- malformed payload structure.
+- a missing required field,
+- an invalid scalar type,
+- an invalid length,
+- an invalid payload shape.
 
-When `@fluojs/validation` finds an error, it doesn't just crash. It throws a structured exception (often a `BadRequestException` variant) that the HTTP layer converts into a readable response (see `docs/architecture/error-responses.md`).
+When `@fluojs/validation` finds an error, it doesn't simply stop. It throws a structured exception, usually in the `BadRequestException` family, and the HTTP layer turns it into a readable response. See `docs/architecture/error-responses.md`.
 
-The key idea is responsibility.
+The key point is ownership.
 
-The client can fix the request and try again.
+The client should be able to fix the request and try again.
 
-That is different from an internal server problem.
+That's different from an internal server problem.
 
 ### A Useful Beginner Habit
 
-When an API call fails, ask:
+When an API call fails, check the following:
 
-1. Did the client violate the contract?
+1. Did the client break the contract?
 2. Did the application reject a known business rule?
-3. Or did something unexpected break inside the server?
+3. Or did an unexpected problem happen inside the server?
 
-Those three questions help you choose the right exception style.
+Separating these three cases helps you choose the right exception style faster.
 
 ### Custom Exception Titles
 
-While the built-in messages are helpful, you can also customize them. Most exceptions accept an optional description or a custom object:
+In real production environments, logging exceptions when they occur is very important. Unexpected errors such as `InternalServerErrorException` may need to send alerts so developers know immediately. Everyday errors such as `NotFoundException`, on the other hand, are often handled as normal access logs. When exceptions are well separated, adopting observability tools later becomes much easier.
+
+## 8.5 Translating Business Rules into HTTP Failures
+
+Default messages are useful, but you can customize them when needed. Most exceptions can receive extra descriptions or custom objects as arguments.
 
 ```typescript
 throw new BadRequestException('Invalid email format', {
@@ -183,19 +189,19 @@ throw new BadRequestException('Invalid email format', {
 });
 ```
 
-This flexibility allows you to provide even more context to the client when a simple message isn't enough. As you progress to the Intermediate book, you'll learn how to create your own custom exception classes that extend the base `HttpException`.
+This flexibility lets you give clients more context when a message alone isn't enough. In the intermediate volume, you'll also learn how to create custom exception classes by extending the base `HttpException`.
 
-## 8.5 Translating Business Rules into HTTP Failures
+### What About `InternalServerErrorException`?
 
 Not every exception is about existence.
 
-Some are about policy.
+Some exceptions are about policy.
 
-Suppose FluoBlog decides that a published post cannot be edited through the beginner update route.
+For example, suppose FluoBlog decides that the current update route can't edit posts that are already published.
 
-That is a business rule.
+That's a business rule.
 
-The service can express it clearly.
+The service can express that rule clearly.
 
 ```typescript
 import { BadRequestException, NotFoundException } from '@fluojs/http';
@@ -216,79 +222,63 @@ update(id: string, input: UpdatePostDto) {
 }
 ```
 
-This gives the API a stronger contract.
+This makes the API contract stronger.
 
-The client can distinguish between “that post does not exist” and “that operation is not allowed in this route.”
+The client can distinguish "that post doesn't exist" from "this route doesn't allow that operation."
 
-Those are different failures.
-
-They should not be hidden behind the same generic error.
-
-### What About `InternalServerErrorException`?
-
-Use caution here.
-
-Expected business outcomes usually deserve more specific exception types.
-
-`InternalServerErrorException` is better reserved for conditions where the server genuinely failed to fulfill a valid request.
-
-If everything becomes an internal error, the client loses useful information.
+Different failures shouldn't hide behind the same generic error.
 
 ## 8.6 Building a Practical Beginner Error Checklist
 
-By now, FluoBlog has enough behavior to support a small error policy.
+Use this exception carefully.
 
-Use this checklist when adding a new route.
+If a failure is an expected business result, a more specific exception type is often a better fit.
 
-1. What should happen if the resource does not exist?
-2. What should happen if the payload violates the DTO contract?
-3. What should happen if a business rule blocks the action?
-4. Which errors should be explained clearly to the client?
-5. Which failures are truly unexpected server-side problems?
+It's best to reserve `InternalServerErrorException` for cases where the server truly couldn't process a valid request.
 
-This checklist is valuable because it turns error handling into a design activity.
-
-You stop treating failures as afterthoughts.
-
-You start treating them as part of the HTTP contract.
+If everything becomes an internal error, clients lose useful information.
 
 ### Common Beginner Mistakes with Exceptions
 
-- returning `null` for everything instead of choosing explicit failures,
-- throwing generic `Error` for expected client mistakes,
-- placing every error decision in the controller,
-- treating validation failures and business-rule failures as identical,
-- using internal-error responses for predictable conditions.
+FluoBlog now has enough behavior to define a small error policy.
+
+Every time you add a new route, use this checklist:
+
+1. What should happen if the resource doesn't exist?
+2. What should happen if the payload breaks the DTO contract?
+3. What should happen if a business rule blocks the behavior?
+4. Which errors should be explained clearly to the client?
+5. Which failures are truly unexpected server problems?
+
+This checklist is useful because it turns error handling into a design activity.
+
+You stop treating failure as an afterthought.
+
+Instead, you treat it as part of the HTTP contract.
 
 ### What FluoBlog Gains Here
 
-FluoBlog now speaks more clearly when things go wrong, and that matters just as much as the happy path. Clients can reason about missing posts, distinguish bad input from missing resources, and see business-rule failures as deliberate contract decisions. The service layer also becomes more honest about the rules it enforces.
+- The mistake of returning `null` for every case instead of choosing explicit failure.
+- The mistake of throwing a generic `Error` for predictable client mistakes.
+- The mistake of pushing every error decision into the Controller.
+- The mistake of treating validation failures and business rule failures as the same thing.
+- The mistake of using internal error responses for predictable conditions.
 
 ### Consistency is Key
 
-By using these patterns, your API becomes **predictable**. Predictability is the hallmark of a professional backend. Whether it's a 404 for a missing post or a 400 for a validation error, the client always knows what to expect and how to handle it. This reduces frustration for frontend developers and makes your application much easier to maintain over time.
+FluoBlog now speaks more clearly even when something goes wrong. That matters just as much as the happy path. Clients can better interpret missing posts, distinguish invalid input from missing resources, and treat business rule failures as part of the contract. The service layer also exposes the rules it enforces more honestly.
 
 ### Named Exceptions vs HTTP Status Codes
 
-You might be tempted to just return a number like `404`. While fluo supports this, using the named exception `NotFoundException` is preferred for several reasons:
-
-1.  **Readability**: `throw new NotFoundException()` is much clearer to a human reader than `res.status(404).send()`.
-2.  **Consistency**: It ensures the response body follows the framework's standard error format.
-3.  **Future-proofing**: If the framework adds more metadata to exceptions later, your code will automatically benefit from it.
-4.  **Type Safety**: Named exceptions are real classes that can be tracked and caught specifically if needed.
+Using this pattern makes the API **predictable**. Predictability is a mark of a professional backend. Whether it's a 404 for a missing post or a 400 for a validation error, clients always know what to expect and how to handle it. This reduces confusion for frontend developers and makes the application much easier to maintain over time.
 
 ### Summary
 
-This chapter turned failures into explicit API behavior. FluoBlog now distinguishes missing resources, invalid input, and blocked business actions in a way that clients can understand and handle predictably.
+It can be tempting to return only a number such as `404`. fluo supports that too, but using named exceptions such as `NotFoundException` is recommended for several reasons.
 
+1.  **Readability**: `throw new NotFoundException()` reads much more clearly to humans than `res.status(404).send()`.
+2.  **Consistency**: It guarantees that the response body follows the framework's standard error format.
+3.  **Future-proofing**: If the framework adds more metadata to exceptions later, your code automatically receives those benefits.
+4.  **Type safety**: Named exceptions are real classes, so you can track or catch them specifically when needed.
 ## Next Chapter Preview
-
-- Explicit HTTP exceptions make API failures easier to understand and easier to document.
-- `NotFoundException` is a better contract than silently returning `null` for missing resources.
-- Validation errors and business-rule errors should be treated as expected failures, not mysterious crashes.
-- The service often owns reusable exception rules better than the controller does.
-- FluoBlog now has more deliberate failure behavior for missing or invalid post operations.
-- The project is ready to add route protection and reusable request/response workflow hooks.
-
-## Next Chapter Preview
-In Chapter 9, we will add guards and interceptors. Exceptions made failure behavior explicit, and the next step is to control which requests may proceed and which reusable behaviors should wrap the route pipeline.
+Chapter 9 adds Guards and Interceptors. With them, FluoBlog can protect specific routes, introduce reusable request pipeline behavior, and connect security-style checks to the API flow. Now that exception handling has made failure behavior explicit, the next step is to clarify which requests should pass through and which reusable behaviors belong in the pipeline.

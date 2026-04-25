@@ -3,27 +3,27 @@
 
 # Chapter 2. Creating Your First Project with the CLI
 
-Chapter 1 explained the philosophy. This chapter turns that philosophy into something concrete on disk. By the end, you will have a running FluoBlog starter, a clear picture of the generated files, and a beginner-friendly baseline that you can trust before the architecture grows.
+In Chapter 1, you saw the ideas behind fluo. Now it is time to turn that philosophy into real directories and commands. By the end of this chapter, you will have a runnable FluoBlog starter, and you will understand why the generated files are placed where they are. Before building more architecture on top, you will secure a stable baseline that already works.
 
 ## Learning Objectives
-- Install the fluo CLI tool globally or invoke it through a package runner.
-- Use `fluo new` to scaffold a fresh project.
-- Analyze the generated project structure and directory roles.
-- Understand the `package.json` scripts used during local development.
-- Verify the first FluoBlog setup by running the application.
-- Learn a few beginner troubleshooting habits before moving on.
+- Learn how to install the fluo CLI globally or run it through a package runner.
+- Scaffold a new project with the `fluo new` command.
+- Analyze the generated project structure and the role of each directory.
+- Understand the `package.json` scripts used for local development.
+- Run the first FluoBlog setup and verify it.
+- Build initial troubleshooting habits before moving to the next chapter.
 
 ## Prerequisites
-- Node.js 18 or newer.
-- A package manager such as npm, pnpm, or yarn.
-- Completed Chapter 1.
-- A terminal session you can keep open while experimenting.
+- Node.js 18 or later.
+- One package manager among npm, pnpm, or yarn.
+- Completion of Chapter 1.
+- A terminal session you can keep open throughout the exercises.
 
 ## 2.1 Installing @fluojs/cli
 
-The first step is simple, but it matters because the CLI creates the environment where all later examples will make sense.
+The first step looks simple, but it matters. The CLI prepares the working environment expected by the examples that follow.
 
-The fluo CLI is the entry point for the beginner workflow. Instead of manually assembling every config file, you begin with a tool that already understands the conventions of the framework.
+The fluo CLI is the entrypoint for creating your first project. Instead of matching every configuration file by hand, you can start from a tool that already knows the framework's conventions.
 
 Install it with your preferred package manager.
 
@@ -38,72 +38,72 @@ pnpm add -g @fluojs/cli
 yarn global add @fluojs/cli
 ```
 
-After installation, confirm that the command is available.
+After installation, check that the command is actually recognized.
 
 ```bash
 fluo --version
 ```
 
-If the command prints a version string, your shell can find the executable.
+If a version string is printed, your shell can find the executable correctly.
 
 ### Global vs Local CLI
 
-Beginners often choose a global install because it is the easiest way to get started.
+When you are starting out, the simplest choice is usually a global install.
 
-That choice is fine, but it helps to know the trade-off.
+It is also common in real work. Still, knowing the difference helps you make faster decisions later when you work with a team or CI.
 
-- A **global** install is convenient on your machine.
-- A **local** invocation through `npx` or `pnpx` is easier to pin in CI.
-- Teams sometimes prefer local invocation so every contributor runs the same version.
+- **Global installation** is convenient in a personal development environment.
+- **Local execution** through tools like `npx` or `pnpx` makes it easier to pin versions in CI.
+- Team workflows may prefer local execution so everyone uses the same version.
 
-All three approaches can work. The key is to be intentional.
+All three approaches are valid. The key is to choose for the current situation, not out of habit.
 
 ### Verifying Your PATH
 
-If `fluo --version` fails after installation, the most common issue is your shell PATH.
+If `fluo --version` still fails after installation, the most common cause is your shell PATH.
 
-Use this short checklist.
+In that case, check the following in order.
 
-1. Confirm the package manager completed successfully.
+1. Confirm that the package manager installation completed successfully.
 2. Open a new terminal window.
-3. Re-run the version command.
-4. Check the package manager's global bin path if the command is still missing.
+3. Run the version command again.
+4. If it still fails, check your global binary path.
 
-This is not a fluo-specific problem. It is a normal part of CLI-based tooling on any platform.
+This is not a fluo-specific problem. It is a basic environment issue that often appears when installing a CLI tool for the first time.
 
 ### Why the Book Starts Here
 
-The CLI matters because it reduces setup noise.
+This book starts with the CLI because it reduces setup noise.
 
-Without it, a beginner would need to make many early decisions all at once.
+Without the CLI, you would need to make too many decisions at once from the moment you create the first project.
 
-- package names,
-- TypeScript config,
-- starter source layout,
-- dev scripts,
-- and runtime bootstrap wiring.
+- Package name,
+- TypeScript configuration,
+- Starter source structure,
+- Development scripts,
+- Runtime Bootstrap wiring.
 
-The CLI gives you a reliable starting point so you can spend your mental energy on framework concepts instead of setup trivia.
+The CLI gives you a trustworthy starting point. That lets you focus on how fluo structures an application instead of getting stuck on small setup details.
 
 ### Troubleshooting global installs
 
-If the global install doesn't work as expected, it's often due to permission issues or Node.js version mismatches.
+When a global install does not work as expected, the usual causes are permission issues or a Node.js version mismatch.
 
-On some systems, you might need to use `sudo` (not recommended for npm) or, better yet, use a version manager like `nvm` or `fnm` to manage your Node.js installations without needing root permissions.
+Some systems may require `sudo`, although npm does not recommend that. When possible, it is safer to manage Node.js installs without root privileges through a version manager such as `nvm` or `fnm`.
 
-If you are using `pnpm`, make sure you have run `pnpm setup` to add the global bin directory to your PATH.
+If you use pnpm, run `pnpm setup` and confirm that the global binary directory has been added to PATH.
 
 ### CLI as an Education Tool
 
-The CLI isn't just for speed; it's a teacher. By looking at the choices it makes—which dependencies it includes, how it configures TypeScript, and where it places files—you are learning the framework's best practices.
+The CLI is not only a tool for starting quickly. It is also a learning baseline that shows structure. By looking at which dependencies the CLI includes, how it configures TypeScript, and where it places files, you can learn the framework's best practices.
 
-When you run `fluo new`, pay attention to the packages it installs. You'll see `@fluojs/core`, `@fluojs/http`, and other modular components. This shows you that fluo is not a monolithic framework, but a collection of specialized tools that you can mix and match.
+Pay close attention to the packages installed when you run `fluo new`. You will see modular components such as `@fluojs/core` and `@fluojs/http`. The important point is that fluo is not a huge monolithic framework. It is a collection of focused tools that you compose as needed.
 
 ### Staying Updated with the CLI
 
-The fluo ecosystem moves fast. New features, security patches, and performance improvements are released regularly.
+The fluo ecosystem evolves quickly. New features, security patches, and performance improvements are released regularly.
 
-To ensure you have the latest features and bug fixes, periodically check for updates to the CLI:
+To keep getting the latest features and bug fixes, check for CLI updates from time to time.
 
 ```bash
 # Using npm
@@ -113,230 +113,233 @@ npm update -g @fluojs/cli
 pnpm update -g @fluojs/cli
 ```
 
-A well-maintained CLI ensures that every new project you start benefits from the latest community knowledge and framework advancements. It's a small habit that keeps your development environment healthy and efficient.
+A well-maintained CLI brings the latest community knowledge and framework benefits with it every time you start a new project.
 
 ## 2.2 fluo new: Interactive Scaffolding
 
-Once the command is available, the next move is not to handcraft files one by one. It is to let the generator establish a clean starting point.
+Now that you can use the command, you do not need to create files one by one by hand. Let the generator establish a clean starting point first.
 
-Once the CLI is installed, create the learning project for this book.
+After installing the CLI, create the learning project for this book.
 
 ```bash
 fluo new fluo-blog
 ```
 
-This command launches an interactive wizard that asks for project details.
+This command starts an interactive wizard that asks for project information.
 
-Typical prompts include:
+Typical questions include the following.
 
-1. **Description**: a short summary of the project.
-2. **Version**: usually `1.0.0` for a new app.
-3. **Author**: your name or team label.
-4. **Package Manager**: the tool the generated scripts should expect.
+1. **Description**: A short description of the project.
+2. **Version**: Usually `1.0.0` for a new app.
+3. **Author**: The author name or team name.
+4. **Package Manager**: The tool that the generated scripts will assume.
 
 ### What happens under the hood?
 
-The generator is doing more than copying a folder.
+The generator is not just a folder-copying tool.
 
-- It prepares a starter template.
-- It writes project metadata into `package.json`.
-- It creates a source tree that matches fluo conventions.
-- It installs the packages needed to run the app.
-- It leaves you with a structure that is ready to inspect immediately.
+- It prepares the starter template.
+- It records project metadata in `package.json`.
+- It creates a source tree that follows fluo conventions.
+- It installs the packages required to run the app.
+- It leaves behind a structure you can read and run right away.
 
-For beginners, this matters because it turns “I want to learn the framework” into “I have a working baseline to study.”
+This process is useful for developers new to fluo because it turns the intent to study the framework into a concrete baseline that you can open and execute.
 
 ### Naming the Project Carefully
 
-The directory name you choose becomes part of your developer experience.
+The project directory name stays with you longer than you might expect. It becomes part of the development experience.
 
-`fluo-blog` is a good learning name because it is:
+`fluo-blog` is a good name for learning.
 
-- easy to read,
-- easy to type,
-- and clearly connected to the book narrative.
+- It is easy to read,
+- It is easy to type,
+- It connects directly to the flow of this book.
 
-In real projects, teams should prefer names that are specific enough to communicate purpose without becoming overly long.
+For real projects too, it is best to choose a name that is not too long and still shows the purpose.
 
 ### Interactive Flow vs Non-Interactive Flow
 
-Many scaffolding tools support both interactive prompts and flag-based automation.
+Many scaffolding tools support both interactive flows and flag-based automation flows.
 
-For this beginner chapter, the interactive flow is useful because it makes each setup decision visible. Later, automation becomes important when teams want reproducible scripts for CI or internal templates.
+In this chapter, the interactive flow is more helpful because each configuration choice appears in front of you. Later, automation becomes important for team templates or CI reproducibility. For now, it is better to look at each question and understand what the choice means.
 
 ### A Healthy Beginner Habit
 
-Do not rush past the generator output.
+Do not skip over the generator output.
 
-Read the final terminal summary carefully.
+On the first run, you will see a short terminal summary at the end. Make sure to read it.
 
-It usually tells you:
+It usually tells you the following.
 
-- which folder was created,
-- which dependencies were installed,
-- which command to run next,
-- and whether anything needs attention before startup.
+- Which folder was created,
+- Which dependencies were installed,
+- Which command to run next,
+- Whether there is anything to watch before running the app.
+
+This habit will help you find problems faster later.
 
 ## 2.3 Analyzing the Project Structure
 
-After generation, the most useful beginner habit is to pause and read before editing.
+Right after generation finishes, it is better to read the structure before editing anything.
 
-After generation finishes, move into the new directory.
+First, move into the new directory.
 
 ```bash
 cd fluo-blog
 ```
 
-The generated structure is intentionally small so you can understand it before adding new features.
+The generated structure is intentionally small. It is designed so you can understand the whole project before adding new features.
 
 ```text
 fluo-blog/
-├── src/                # Application source
-│   ├── app.module.ts   # Root module
-│   └── main.ts         # Bootstrap entrypoint
-├── test/               # Integration or e2e tests
-├── tsconfig.json       # TypeScript configuration
-├── package.json        # Scripts and dependencies
-└── .fluo.json          # CLI metadata
+├── package.json              # Scripts and dependencies
+├── pnpm-lock.yaml            # Locked dependency versions
+├── tsconfig.json             # TypeScript configuration
+└── src/                      # Application source
+    ├── app.ts                # App assembly
+    ├── hello.controller.ts   # Default HTTP route
+    ├── hello.service.ts      # Route logic
+    └── main.ts               # Bootstrap entrypoint
 ```
 
-At this stage, every file answers a different beginner question.
+At this stage, each file answers questions that naturally come up when opening a project for the first time.
 
 - Where does the app start?
-- Which module is currently the root?
-- Which scripts will I run most often?
-- Which tool remembers project metadata for future generation commands?
+- Where is the default app assembled?
+- Which file handles the first HTTP response?
+- Which scripts will you run most often?
 
 ### src/main.ts
 
-`src/main.ts` is usually the smallest file with the biggest responsibility.
+`src/main.ts` may look like the smallest file, but its responsibility is very large.
 
-It bootstraps the application.
+This file bootstraps the application.
 
-That means it is the place where framework setup turns into a running server. Later, when you need environment configuration, logging, or platform options, this file becomes one of the most important entry points in the project.
+In other words, it is where framework configuration turns into a running server. As environment configuration, logging, and platform options are added later, this file becomes an even more important entrypoint.
 
-### src/app.module.ts
+### src/app.ts
 
-`AppModule` is the root composition point.
+`src/app.ts` is the assembly point for the default starter.
 
-At the beginning it may look almost empty, but that simplicity is helpful. It teaches you that modules are not magic folders. They are explicit composition units.
+It may look small at first, but it helps you understand the real structure. By reading this file, you can immediately see which Controller and service the starter wires together by default.
 
-As FluoBlog grows, this module will import other domain modules and establish the top-level shape of the application.
+As FluoBlog grows, this assembly point will become the starting place for more configuration in later chapters.
 
 ### package.json
 
-Beginners often treat `package.json` as a dependency list only. In practice, it is also your command surface.
+At first, it is easy to see `package.json` as just a dependency list. In practice, it is also the project's command surface.
 
-This is where you discover how the framework expects you to:
+This file tells you the following.
 
-- start local development,
-- build for production,
-- run compiled output,
-- and sometimes lint or test the app.
+- How to start local development,
+- How to create a production build,
+- How to run the compiled output,
+- How linting or testing is connected.
 
-### .fluo.json
+### src/hello.controller.ts and src/hello.service.ts
 
-This file exists to help the CLI understand your project later.
+These two files are the fastest proof that the default starter is an app that can actually respond.
 
-Think of it as a small contract between the generator and future code generation commands. It is not glamorous, but it is useful, and beginners should know it exists before they accidentally delete it.
+The Controller exposes the default route, and the service provides the value returned by that route. At the beginning, reading only this pair lets you trace where a request enters and where the returned value is created.
 
 ### Reading Before Editing
 
-Before you change anything, spend a few minutes reading the generated files.
+Before changing anything, spend a few minutes reading the generated files.
 
-That deliberate pause helps you separate three ideas.
+That short pause separates three things.
 
 1. What the framework gives you by default.
-2. What you will customize in later chapters.
+2. What you will change yourself in later chapters.
 3. Which file owns which responsibility.
 
-### The Role of .fluo.json
+### Why the starter includes hello files
 
-As mentioned earlier, `.fluo.json` is a metadata file that helps the CLI track your project's state. It includes information like the project name, the version of fluo used for scaffolding, and any custom templates applied.
+`hello.controller.ts` and `hello.service.ts` are the smallest example for verifying the first run.
 
-Avoid editing this file manually unless you are an advanced user. If this file is corrupted or deleted, some CLI commands (like adding new modules or controllers automatically) might stop working. Keeping it intact ensures that your project remains "CLI-compatible" throughout its development lifecycle.
+Before adding complex domain code, they let you see where the default route and response come from. This starting point makes it easier to tell what was newly added when you change code in later chapters.
 
 ### Exploring the `node_modules` Folder (Briefly)
 
-While beginners are usually told to ignore `node_modules`, taking a quick peek can be enlightening.
+Beginners are usually told to ignore `node_modules`, but occasionally looking inside can help you understand the structure.
 
-You'll see the `@fluojs` namespace containing the core framework logic. Notice how small these packages are. This is a direct result of fluo's "Standard-First" philosophy—it relies on native language features rather than massive external libraries.
+Under the `@fluojs` namespace, you can see the core framework logic. Notice how small these packages are. fluo's Standard-First philosophy shows up here too, because it uses native language features instead of leaning on massive external libraries.
 
-Understanding that the framework itself is just a collection of well-organized TypeScript code can demystify much of the "magic" you might feel as a newcomer. It's all just code, and the more you look at it, the more familiar it will become.
+Once you understand that the framework itself is just a well-organized collection of TypeScript code, the initial feeling of magic fades and the code becomes more approachable.
 
 ### Why TypeScript?
 
-Fluo is built on TypeScript, and the generated project reflects this.
+fluo is built on TypeScript, and the generated project reflects that.
 
-You might wonder why we don't just use plain JavaScript. TypeScript provides:
+You may wonder why it does not use plain JavaScript. TypeScript provides the following.
 
-- **Autocompletion**: Your IDE (like VS Code) will help you find the right decorators and parameters.
-- **Early Error Detection**: Many bugs are caught while you type, rather than when you run the app.
-- **Documentation as Code**: The types themselves act as a form of documentation that never goes out of date.
+- **Autocomplete**: IDEs such as VS Code can help you find the right decorators and parameters.
+- **Early error detection**: Many bugs are found while you write code, before you run the app.
+- **Documentation expressed as code**: Types themselves act as documentation that stays current.
 
-The CLI configures `tsconfig.json` for you with the optimal settings for fluo. As you grow as a developer, you'll appreciate how much more confident you feel when the compiler has your back.
+The CLI configures `tsconfig.json` for you with settings optimized for fluo. As the project grows, the compiler's ability to preserve consistency in the background becomes a major advantage.
 
 ## 2.4 Understanding package.json Scripts
 
-With the directory layout in view, the next question is how you actually work inside the project day to day.
+After looking through the directory structure, the next step is to understand which commands you will use every day inside this project.
 
-The generated project normally includes a small set of scripts that support the whole beginner workflow.
+The generated project usually includes a small set of scripts that support the full initial development workflow.
 
-- **`dev`**: runs the application in development mode with fast feedback.
-- **`build`**: compiles TypeScript into production-ready output.
-- **`start`**: runs the compiled build.
-- **`lint`**: checks code quality and style when provided by the starter.
+- **`dev`**: Runs development mode for fast feedback.
+- **`build`**: Compiles TypeScript into production output.
+- **`start`**: Runs the built result.
+- **`lint`**: Checks code quality when the starter provides it.
 
 ### Why `dev` matters most right now
 
-For Part 0, `dev` is the command you will use the most.
+In Part 0, `dev` is the command you will use most often.
 
-It shortens the feedback loop.
+It keeps the feedback loop short.
 
-- edit code,
-- save the file,
-- observe the result,
-- repeat quickly.
+- Change code,
+- Save the file,
+- Check the result,
+- Repeat quickly.
 
-That speed is important when you are still learning modules, decorators, and routing.
+That speed matters a lot while you are learning Modules, decorators, and routing.
 
 ### Why `build` still matters early
 
-Even before deployment enters the story, `build` is useful because it verifies that your source can be compiled cleanly.
+Even before deployment enters the picture, `build` matters because it verifies that the source compiles cleanly into production-ready output.
 
-A healthy beginner routine is:
+The recommended routine is as follows.
 
-1. use `dev` while changing code,
-2. use `build` when you want confirmation that the project is in a production-compilable state.
+1. Use `dev` while changing code.
+2. Run `build` when you want to confirm the project is still compilable.
 
 ### `start` is not the same as `dev`
 
-This distinction is worth learning now.
+It is better to learn this difference now.
 
-- `dev` optimizes for iteration.
-- `start` runs built output.
+- `dev` is optimized for iteration.
+- `start` runs the build output.
 
-If something works in `dev` but not in `start`, that usually reveals a build or environment assumption that needs attention.
+If something works in `dev` but not in `start`, usually either the build or an environment assumption is wrong.
 
 ### Scripts as Team Language
 
-Shared scripts also reduce team confusion.
+Shared scripts also reduce confusion on a team.
 
-When everyone uses the same command names, docs stay shorter and onboarding gets easier. A good starter template gives that common language to you from the first chapter.
+When everyone uses the same command names, documentation gets shorter and onboarding gets easier. A good starter template provides that shared language from the first chapter.
 
 ## 2.5 FluoBlog: Initial Scaffolding and First Run
 
-After inspecting the files, it is time to prove that the scaffold is not just well organized, but actually alive.
+After reading the files, it is time to confirm that this scaffold is not only well organized, but also a project that is actually alive.
 
-Now run the project.
+Run the project.
 
 ```bash
 pnpm dev
 ```
 
-If you chose npm or yarn during setup, use the equivalent command for that package manager.
+If you chose npm or yarn during installation, use the matching equivalent command.
 
-You should expect startup logs similar to these.
+On the first run, the flow looks like this. You can expect startup logs similar to the following.
 
 ```text
 [Fluo] Starting application...
@@ -344,96 +347,97 @@ You should expect startup logs similar to these.
 [Fluo] HTTP Server listening on port 3000.
 ```
 
-These messages tell you something important: the framework loaded the root module, finished bootstrapping, and bound an HTTP server.
+These logs tell you something important. The framework loaded the root Module, completed Bootstrap, and bound the HTTP server.
 
 ### Verifying the Response
 
-After startup, make one request to the app.
+After the server starts, send a real request once.
 
 ```bash
-curl http://localhost:3000
+curl http://localhost:3000/health
+curl http://localhost:3000/hello
 ```
 
-A simple starter response such as `{"message":"Hello fluo!"}` confirms that the request path, runtime bootstrap, and starter controller are functioning together.
+If you see `{"status":"ok"}` and `{"message":"Hello, World!"}`, the default health check and starter route are both working correctly according to the current contract.
 
 ### What You Actually Verified
 
-This first successful request proves more than beginners often realize.
+When the first run succeeds, it is easy to underestimate what that request proves.
 
 - The CLI generated a valid project.
-- Dependencies installed correctly.
-- TypeScript compiled or transpiled as expected for dev mode.
-- The runtime adapter started successfully.
-- The initial controller route is reachable.
+- Dependencies were installed correctly.
+- TypeScript compiled or transformed as expected in development mode.
+- The runtime adapter started correctly.
+- The default verification routes, `/health` and `/hello`, are reachable.
 
-That is a strong baseline for the chapters ahead.
+That is enough to give you a strong baseline for the chapters that follow.
 
 ### Common Beginner Issues
 
-If the app does not start, check these common causes first.
+If the app does not start, check these causes first.
 
-1. The dependency install failed partway through.
-2. Another process is already using port `3000`.
-3. The wrong package manager command was used.
-4. Node.js is older than the starter expects.
+1. Did dependency installation fail halfway through?
+2. Is another process already using port `3000`?
+3. Did you use the wrong package manager command?
+4. Is your Node.js version lower than the starter expects?
 
-In most cases, the fix is straightforward once you read the terminal output carefully.
+In most cases, reading the terminal output is enough to see the direction of the fix.
 
 ### Why We Start with the Default App
 
-Some learners feel tempted to customize the starter immediately.
+Some learners want to customize the starter right away.
 
-Resist that urge for a moment.
+That flow can work, but it is safer to verify the default app first and then edit it.
 
-The default app is valuable because it gives you a known-good reference state. When you later add modules or controllers, you will know that any new failure came from your change rather than from the initial scaffold.
+The default app is valuable because it provides a known-good state. If a new error appears after you add a Module or Controller later, it will be easier to tell that the problem came from your change rather than the initial scaffold.
 
 ### A Short Reflection Before Chapter 3
 
-At the end of this chapter, your goal is not merely “I ran a generator.”
+The goal at the end of this chapter is not just to say that you tried the generator once.
 
-Your real goal is stronger.
+The stronger goal is this.
 
-- You know how the project started.
-- You know what the core files are for.
+- You know how the project was started.
+- You know the role of the core files.
 - You know how to run the app.
 - You know what a healthy starter state looks like.
 
-That context makes the next chapter on modules, providers, and controllers much easier to understand.
+With that context, the Modules, Providers, and Controllers in the next chapter will be much easier to understand.
 
 ### Developing with a Plan
 
-Even as a beginner, it's good to start with a plan. Before you dive into the code, take a moment to think about what you want to achieve.
+Even when working with your first project, it is better to start with a plan. Before jumping into code, first write down what you want to achieve.
 
-1. **Understand the Goal**: What problem are you trying to solve?
-2. **Break it Down**: What are the smaller steps needed to reach that goal?
-3. **Write it Down**: A simple checklist (like the one you're reading now!) can keep you focused and motivated.
+1. **Understand the goal**: What problem are you trying to solve?
+2. **Break it into steps**: What small steps are needed to reach that goal?
+3. **Write it down**: Even a simple checklist like the one you are reading now can help you stay focused.
 
-The FluoBlog project we are building together will follow this pattern. In each chapter, we'll define a clear goal and then implement it step-by-step. This disciplined approach will help you master fluo more quickly and effectively than just "hacking away."
+The FluoBlog project in this book will follow the same pattern. Each chapter defines a clear goal and implements it by breaking it into smaller steps. This disciplined approach helps you learn fluo much faster and more safely than simply coding as you go.
 
 ### The Joy of the First Green Log
 
-There is a special kind of satisfaction in seeing that first "Application started successfully" log in your terminal.
+There is a clear sense of achievement when the first `Application started successfully` log appears in the terminal.
 
-It marks the moment when an abstract concept becomes a living, breathing program. Don't rush past this moment. Take a second to appreciate that you've successfully set up a modern, high-performance backend environment.
+That is the moment when an abstract concept becomes a program that actually runs. Instead of passing over it, take a moment to recognize that you have successfully set up a modern, high-performance backend environment.
 
-You are now part of a growing community of developers who prioritize standards, performance, and clean architecture. Welcome to the fluo family!
+Now you are ready to work directly with fluo's basic flow, which values standards, performance, and clean architecture.
 
 ### Learning from the Logs
 
-The logs that fluo prints are not just status updates; they are a diagnostic tool.
+The logs printed by fluo are not just status updates. They are diagnostic tools.
 
-If you see an error, don't panic. Read the stack trace. It usually tells you exactly which file and line number caused the problem. Developing the habit of reading and understanding logs is one of the most important skills you can acquire as a backend developer.
+When an error occurs, read the stack trace first. It usually tells you exactly which file and line caused the problem. The habit of reading and understanding logs is a core backend development skill that will help you for a long time.
 
-The more you interact with the framework through the CLI and logs, the more intuitive it will become. It's like learning a new language—at first, you're just repeating phrases, but soon you'll be composing your own sentences.
+The more you interact with the framework through the CLI and logs, the more intuitive fluo will feel. It is similar to learning a new language. At first you follow the patterns the framework presents, but soon you will be able to adapt them to your project's situation.
 
 ## Summary
-- The fluo CLI gives beginners a consistent starting point.
-- `fluo new` scaffolds both files and conventions, not just folders.
-- The generated source tree teaches where bootstrap, module composition, and project metadata live.
-- `dev`, `build`, and `start` serve different parts of the development lifecycle.
-- A successful first request proves the scaffold is genuinely working.
+- The fluo CLI gives developers new to fluo a consistent starting point.
+- `fluo new` scaffolds not just a folder, but files and conventions together.
+- The generated source tree shows where Bootstrap, Module composition, and project metadata live.
+- `dev`, `build`, and `start` each handle a different stage of the development lifecycle.
+- The first successful request is strong evidence that the scaffold actually works.
 
-That is the real outcome of this chapter. You now have more than a generated folder, you have a known-good starting state that will make the next architectural concepts easier to place.
+The real result of this chapter is not simply that you ran the generator once. You now have a working starting state where you can build the architecture concepts from the next chapter.
 
 ## Next Chapter Preview
-In the next chapter, we will take the generated starter and explain the three core architectural roles you will keep seeing in fluo: modules, providers, and controllers. That is where FluoBlog stops being only a scaffold and starts becoming your own application structure.
+In the next chapter, you will build on the generated starter to explain the three core roles that appear throughout fluo: Modules, Providers, and Controllers. From that point on, FluoBlog will begin growing from a simple scaffold into your application structure.
