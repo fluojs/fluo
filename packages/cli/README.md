@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The canonical CLI for fluo — bootstrap new applications, generate components, inspect runtime graphs, and run code transforms.
+The canonical CLI for fluo — bootstrap new applications, generate components, export runtime inspection data, and run code transforms.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ pnpm dlx @fluojs/cli new my-app
 - **Bootstrapping**: When starting a new project with a standard, verifiable structure.
 - **Generation**: To create modules, controllers, services, and repositories with consistent naming and automatic wiring.
 - **Code transforms**: When aligning an existing codebase with fluo's standard decorator model.
-- **Inspection**: To visualize the runtime dependency graph and diagnose platform-level issues.
+- **Inspection**: To export runtime snapshot data and delegate graph viewing or rendering to Studio-owned helpers.
 
 ## Quick Start
 
@@ -120,17 +120,17 @@ fluo migrate ./src --apply
 - Updates `tsconfig.json` to disable `experimentalDecorators` and rewrites `baseUrl`-backed path aliases to TS6-safe `paths` entries.
 
 ### Runtime Inspection
-Visualize your application structure and troubleshoot initialization issues.
+Export your application structure and troubleshoot initialization issues without making the CLI own graph rendering.
 
 ```bash
-# Export dependency graph as Mermaid
+# Export Mermaid through the optional Studio renderer
 fluo inspect ./src/app.module.ts --mermaid
 
 # Export snapshot for @fluojs/studio
 fluo inspect ./src/app.module.ts --json > snapshot.json
 ```
 
-`fluo inspect --mermaid` keeps the CLI as the runtime snapshot producer and delegates graph rendering to the optional `@fluojs/studio` contract. Install Studio in the project that runs the command when you need Mermaid output:
+The runtime produces the inspection snapshot. `fluo inspect` serializes that snapshot as JSON, and `fluo inspect --mermaid` delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. Install Studio in the project that runs the command when you need Mermaid output:
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -150,8 +150,8 @@ The package can be used programmatically to trigger CLI actions from within othe
 
 ## Related Packages
 
-- **[@fluojs/runtime](../runtime/README.md)**: The underlying engine used for inspection and bootstrap.
-- **[@fluojs/studio](../studio/README.md)**: The web-based UI for visualizing `inspect --json` exports and the canonical renderer used by `inspect --mermaid`.
+- **[@fluojs/runtime](../runtime/README.md)**: The underlying engine that produces inspection snapshots during bootstrap-safe runtime inspection.
+- **[@fluojs/studio](../studio/README.md)**: The web-based UI for viewing `inspect --json` exports and the canonical renderer used by `inspect --mermaid`.
 - **[@fluojs/testing](../testing/README.md)**: Used by generated test templates for integration and E2E testing.
 - **[Canonical Runtime Package Matrix](../../docs/reference/package-surface.md)**: The source of truth for official runtime/package combinations.
 
