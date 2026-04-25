@@ -22,7 +22,8 @@
 | **프로젝트 생성 (mixed)** | `fluo new my-app --shape mixed --transport tcp --runtime node --platform fastify` | Fastify HTTP 앱 하나와 연결된(attached) TCP 마이크로서비스 하나를 함께 생성하는 혼합 단일 패키지 스타터를 생성합니다. |
 | **대화형 위저드 (Interactive wizard)** | TTY에서 `fluo new` 실행 | 비대화형(non-interactive) 플래그 경로와 동일한 shape-first 스키마(프로젝트 이름, shape, tooling preset, package manager, install 선택, git 선택)로 해석됩니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. Request DTO는 `fluo g req users CreateUser`처럼 명시적 feature 디렉터리를 대상으로 지정할 수 있습니다. |
-| **진단 (JSON)** | `fluo inspect --json` | 런타임이 생산한 그래프, 준비성, 상태, 진단, 타이밍 snapshot 데이터를 JSON 형식으로 내보냅니다. |
+| **진단 (JSON)** | `fluo inspect --json` | 런타임이 생산한 그래프, 준비성, 상태, 진단 snapshot 데이터를 JSON 형식으로 내보냅니다. `--timing`은 `--json`과 함께 사용해 bootstrap timing diagnostics를 포함할 수 있습니다. |
+| **진단 report** | `fluo inspect --report --output artifacts/inspect-report.json` | 안정적인 요약, 런타임이 생산한 snapshot, diagnostics, bootstrap timing을 포함하는 CI/support triage JSON report를 씁니다. `--output <path>`는 명시적 artifact 경로이며 inspection이 애플리케이션 write를 소유하게 만들지 않습니다. |
 | **진단 (Mermaid)** | `fluo inspect --mermaid` | snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. CLI는 그래프 렌더링 의미론을 소유하지 않습니다. |
 
 ## 명명 규칙 (CLI 출력)

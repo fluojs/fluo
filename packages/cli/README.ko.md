@@ -131,9 +131,18 @@ fluo inspect ./src/app.module.ts --mermaid
 
 # @fluojs/studio용 snapshot 내보내기
 fluo inspect ./src/app.module.ts --json > snapshot.json
+
+# shell redirection 없이 같은 JSON snapshot을 CI artifact 경로에 쓰기
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+
+# 런타임이 생산한 snapshot 옆에 bootstrap timing 포함하기
+fluo inspect ./src/app.module.ts --json --timing
+
+# 요약, snapshot, diagnostics, timing을 포함한 support triage report 내보내기
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 ```
 
-런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
+런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--timing`은 JSON 출력에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
 
 ```bash
 pnpm add -D @fluojs/studio
