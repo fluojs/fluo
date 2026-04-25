@@ -7,9 +7,9 @@
 ## Available Generators
 
 ```bash
-fluo generate <generator> <name> [--target-directory <path>] [--force]
-fluo g <generator> <name> [--target-directory <path>] [--force]
-fluo g request-dto <feature> <name> [--target-directory <path>] [--force]
+fluo generate <generator> <name> [--target-directory <path>] [--force] [--dry-run]
+fluo g <generator> <name> [--target-directory <path>] [--force] [--dry-run]
+fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry-run]
 ```
 
 | 생성기 | 허용 토큰 | 예시 문법 | 배선 방식 | 출력 범위 |
@@ -50,6 +50,7 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force]
 | --- | --- | --- | --- |
 | `--target-directory <path>` | `-o` | 모든 생성기 | 지정한 소스 디렉터리 아래에 슬라이스를 기록합니다. |
 | `--force` | `-f` | 모든 생성기 | 기존 생성 파일을 건너뛰지 않고 덮어씁니다. |
+| `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
 
 | 해석 규칙 | 결정되는 기본 디렉터리 |
@@ -67,7 +68,10 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force]
 - Request DTO feature 타깃도 같은 검증을 거치며 kebab-case 디렉터리 이름으로 정규화됩니다. PascalCase feature 이름은 일반 리소스 plural 규칙을 따르므로 `fluo g req Post CreatePost`는 `posts/`에 기록하고, `posts` 같은 lower-case 디렉터리 토큰은 입력한 그대로 사용합니다. 1-인자 형식(`fluo g req CreatePost`)은 호환성을 위해 계속 지원하지만, 명시적 feature 형식을 사용하면 여러 DTO를 하나의 슬라이스에 모을 수 있습니다.
 - 유효한 `apps/*/src` 타깃이 둘 이상인 멀티 앱 워크스페이스 루트에서는 `--target-directory`가 필요합니다.
 - 기존 파일은 기본적으로 건너뜁니다. 덮어쓰기는 `--force`가 필요합니다.
+- `--dry-run`은 실제 실행과 같은 검증, 기본 타깃 해석, `--target-directory`, request DTO feature 타깃 규칙을 사용하지만 작업공간은 변경하지 않습니다.
+- Dry-run 출력은 파일만 생성하는 생성기와 자동 등록 생성기를 구분하며, 모듈이 생성, 갱신, 또는 변경 없음 상태인지도 표시합니다.
+- `--dry-run`과 `--force`를 함께 사용하면 덮어쓰기 결정을 적용하지 않고 미리 볼 수 있습니다.
 - 자동 등록 메타데이터가 해석되더라도 변경되지 않은 파일 내용은 다시 쓰지 않습니다.
 - 모듈 자동 등록은 controller, service, repository, guard, interceptor, middleware 생성기에만 적용됩니다.
 - DTO 생성기와 module 생성기는 상위 모듈 import를 자동으로 연결하지 않습니다.
-- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--help`입니다. `fluo generate`와 `fluo g`에는 `--dry-run` 파서가 없습니다.
+- generate 명령이 문서화하는 옵션은 `--target-directory`, `--force`, `--dry-run`, `--help`입니다.
