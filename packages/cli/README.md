@@ -117,6 +117,8 @@ Request DTO generation accepts the feature directory separately from the DTO cla
 
 Add `--dry-run` to preview the same target resolution, skipped or overwritten file decisions, module auto-registration plan, files-only wiring status, and next-step hint without creating directories, writing files, or updating modules. `--force` still changes existing-file plan entries from `SKIP` to `OVERWRITE` when content would change, and `--target-directory` scopes the preview to that source directory exactly as it does for a real run.
 
+Generator discovery is intentionally limited to the built-in `@fluojs/cli/builtin` collection. External package-owned or app-local generator collections are deferred: `fluo generate` does not scan config files, load arbitrary packages, or execute workspace-owned collection code. This keeps generator metadata, option schemas, help output, and file-write boundaries deterministic and testable while preserving the shipped generator contract.
+
 ## Common Patterns
 
 ### Decorator Codemods
