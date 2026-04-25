@@ -9,6 +9,7 @@
 ```bash
 fluo generate <generator> <name> [--target-directory <path>] [--force]
 fluo g <generator> <name> [--target-directory <path>] [--force]
+fluo g request-dto <feature> <name> [--target-directory <path>] [--force]
 ```
 
 | Generator | Accepted tokens | Example syntax | Wiring | Output scope |
@@ -20,14 +21,14 @@ fluo g <generator> <name> [--target-directory <path>] [--force]
 | Guard | `guard`, `gu` | `fluo generate guard Billing` | Auto-registered | Guard file, module update |
 | Interceptor | `interceptor`, `in` | `fluo generate interceptor Billing` | Auto-registered | Interceptor file, module update |
 | Middleware | `middleware`, `mi` | `fluo generate middleware Billing` | Auto-registered | Middleware file, module update |
-| Request DTO | `request-dto`, `req` | `fluo generate request-dto CreateBilling` | Files only | Request DTO file |
+| Request DTO | `request-dto`, `req` | `fluo generate request-dto billing CreateBilling` | Files only | Request DTO file |
 | Response DTO | `response-dto`, `res` | `fluo generate response-dto Billing` | Files only | Response DTO file |
 
 Auto-registered generators create or update the slice module and append the generated class to `controllers`, `providers`, or `middleware`. Files-only generators emit files without parent-module registration.
 
 ## Generated Artifacts
 
-All generator outputs are written under `<resolved-target>/<plural-resource>/`. For `fluo g service Post`, the slice directory is `src/posts/` when the resolved target directory is `src/`.
+Most generator outputs are written under `<resolved-target>/<plural-resource>/`. For `fluo g service Post`, the slice directory is `src/posts/` when the resolved target directory is `src/`. Request DTOs also accept an explicit feature target: `fluo g req posts CreatePost` writes into `src/posts/` instead of deriving a `create-posts/` directory from the DTO class name.
 
 | Generator | Files emitted in the slice directory | Module effect |
 | --- | --- | --- |
@@ -38,7 +39,7 @@ All generator outputs are written under `<resolved-target>/<plural-resource>/`. 
 | Guard | `post.guard.ts` | Creates or updates `post.module.ts`, adds `PostGuard` to `providers`. |
 | Interceptor | `post.interceptor.ts` | Creates or updates `post.module.ts`, adds `PostInterceptor` to `providers`. |
 | Middleware | `post.middleware.ts` | Creates or updates `post.module.ts`, adds `PostMiddleware` to `middleware`. |
-| Request DTO | `create-post.request.dto.ts` | None. Import into controllers manually. |
+| Request DTO | `create-post.request.dto.ts` in `posts/` when using `fluo g req posts CreatePost` | None. Import into controllers manually. |
 | Response DTO | `post.response.dto.ts` | None. Use as a controller return type manually. |
 
 Controller and service templates inspect sibling files before rendering. A controller stub imports `post.service.ts` only when that service file already exists in the same slice. A service stub imports `post.repo.ts` only when the repository file already exists in the same slice.
@@ -63,6 +64,7 @@ Controller and service templates inspect sibling files before rendering. A contr
 - Resource names must not start with `-`.
 - Resource names must not contain path separators or `..` traversal segments.
 - Accepted name characters are letters, numbers, spaces, underscores, and hyphens. The generated file stem is normalized to kebab case.
+- Request DTO feature targets use the same validation and normalize to a kebab-case directory name. PascalCase feature names follow the normal resource pluralization (`fluo g req Post CreatePost` writes to `posts/`), while lower-case directory tokens such as `posts` are used as written. The one-name form (`fluo g req CreatePost`) remains supported for compatibility, but the explicit feature form keeps multiple DTOs in one slice.
 - A multi-app workspace root with more than one valid `apps/*/src` target requires `--target-directory`.
 - Existing files are skipped by default. `--force` is required for overwrite behavior.
 - Unchanged file content is not rewritten, even when the command resolves auto-registration metadata.
