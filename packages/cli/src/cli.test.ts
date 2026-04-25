@@ -844,6 +844,8 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('--mermaid');
     expect(stdoutBuffer.join('')).toContain('@fluojs/studio');
     expect(stdoutBuffer.join('')).toContain('--timing');
+    expect(stdoutBuffer.join('')).toContain('--report');
+    expect(stdoutBuffer.join('')).toContain('--output <path>');
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md');
   });
 
@@ -875,6 +877,106 @@ describe('CLI command runner', () => {
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+  });
+
+  it('writes inspect JSON artifacts to an explicit output path without stdout payloads', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const outputPath = join(workspaceDirectory, 'artifacts', 'snapshot.json');
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--output', outputPath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const payload = JSON.parse(readFileSync(outputPath, 'utf8')) as {
+      components: unknown[];
+      diagnostics: unknown[];
+      health: { status: string };
+      readiness: { status: string };
+    };
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toBe('');
+    expect(payload.components).toEqual([]);
+    expect(payload.diagnostics).toEqual([]);
+    expect(payload.readiness.status).toBe('ready');
+    expect(payload.health.status).toBe('healthy');
+  });
+
+  it('emits snapshot JSON with timing diagnostics when --json and --timing are combined', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      snapshot: {
+        diagnostics: unknown[];
+        health: { status: string };
+        readiness: { status: string };
+      };
+      timing: {
+        phases: Array<{ name: string }>;
+        totalMs: number;
+        version: number;
+      };
+    };
+
+    expect(exitCode).toBe(0);
+    expect(payload.snapshot.diagnostics).toEqual([]);
+    expect(payload.snapshot.readiness.status).toBe('ready');
+    expect(payload.snapshot.health.status).toBe('healthy');
+    expect(payload.timing.version).toBe(1);
+    expect(payload.timing.totalMs).toBeGreaterThanOrEqual(0);
+    expect(payload.timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
+  });
+
+  it('emits a CI-friendly inspect report with summary, snapshot, and timing', async () => {
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--report'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    const report = JSON.parse(stdoutBuffer.join('')) as {
+      snapshot: { diagnostics: unknown[] };
+      summary: {
+        componentCount: number;
+        diagnosticCount: number;
+        errorCount: number;
+        healthStatus: string;
+        readinessStatus: string;
+        timingTotalMs: number;
+        warningCount: number;
+      };
+      timing: { totalMs: number; version: number };
+      version: number;
+    };
+
+    expect(exitCode).toBe(0);
+    expect(report.version).toBe(1);
+    expect(report.summary).toEqual({
+      componentCount: 0,
+      diagnosticCount: 0,
+      errorCount: 0,
+      healthStatus: 'healthy',
+      readinessStatus: 'ready',
+      timingTotalMs: report.timing.totalMs,
+      warningCount: 0,
+    });
+    expect(report.snapshot.diagnostics).toEqual([]);
+    expect(report.timing.version).toBe(1);
+    expect(report.timing.totalMs).toBeGreaterThanOrEqual(0);
   });
 
   it('delegates inspect --mermaid output to Studio when resolvable', async () => {
@@ -964,10 +1066,10 @@ describe('CLI command runner', () => {
     expect(timing.phases.some((phase) => phase.name === 'bootstrap_module')).toBe(true);
   });
 
-  it('rejects conflicting inspect output modes', async () => {
+  it('rejects conflicting inspect JSON and Mermaid output modes', async () => {
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--timing'], {
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json', '--mermaid'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
@@ -975,6 +1077,19 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(1);
     expect(stderrBuffer.join('')).toContain('Choose only one inspect output mode');
+  });
+
+  it('rejects Mermaid timing because graph rendering stays Studio-owned', async () => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid', '--timing'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Mermaid rendering remains delegated to @fluojs/studio');
   });
 
   it('prints generate usage for `generate --help`', async () => {

@@ -22,7 +22,8 @@
 | **Project Creation (mixed)** | `fluo new my-app --shape mixed --transport tcp --runtime node --platform fastify` | Generates the mixed single-package starter: one Fastify HTTP app with an attached TCP microservice. |
 | **Interactive wizard** | `fluo new` in a TTY | Resolves onto the same shape-first schema as the non-interactive flags path: project name, shape, tooling preset, package manager, install choice, and git choice. |
 | **Resource Generation** | `fluo g <type>` | Produces consistent naming suffixes (`.service.ts`, `.controller.ts`). Request DTOs may target an explicit feature directory with `fluo g req users CreateUser`. |
-| **Diagnostics (JSON)** | `fluo inspect --json` | Exports runtime-produced graph, readiness, health, diagnostics, and timing snapshot data in JSON format. |
+| **Diagnostics (JSON)** | `fluo inspect --json` | Exports runtime-produced graph, readiness, health, and diagnostics snapshot data in JSON format. `--timing` may be combined with `--json` to include bootstrap timing diagnostics. |
+| **Diagnostics report** | `fluo inspect --report --output artifacts/inspect-report.json` | Writes a CI/support triage JSON report containing a stable summary, the runtime-produced snapshot, diagnostics, and bootstrap timing. `--output <path>` is an explicit artifact path and does not make inspection own application writes. |
 | **Diagnostics (Mermaid)** | `fluo inspect --mermaid` | Delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract; the CLI does not own graph rendering semantics. |
 
 ## naming conventions (CLI output)

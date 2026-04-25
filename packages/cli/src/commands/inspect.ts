@@ -1,12 +1,14 @@
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { resolve } from 'node:path';
 
 import * as clack from '@clack/prompts';
 import {
   FluoFactory,
   type BootstrapTimingDiagnostics,
   type ModuleType,
+  type PlatformDiagnosticIssue,
   type PlatformShell,
   type PlatformShellSnapshot,
   PLATFORM_SHELL,
@@ -58,7 +60,25 @@ type ParsedInspectArgs = {
   json: boolean;
   mermaid: boolean;
   modulePath: string;
+  outputPath?: string;
+  report: boolean;
   timing: boolean;
+};
+
+type InspectReport = {
+  generatedAt: string;
+  snapshot: PlatformShellSnapshot;
+  summary: {
+    componentCount: number;
+    diagnosticCount: number;
+    errorCount: number;
+    healthStatus: PlatformShellSnapshot['health']['status'];
+    readinessStatus: PlatformShellSnapshot['readiness']['status'];
+    timingTotalMs: number;
+    warningCount: number;
+  };
+  timing: BootstrapTimingDiagnostics;
+  version: 1;
 };
 
 type InspectOptionHelpEntry = {
@@ -82,6 +102,16 @@ const INSPECT_OPTION_HELP: InspectOptionHelpEntry[] = [
     aliases: [],
     description: 'Bootstrap the application context and emit versioned timing diagnostics.',
     option: '--timing',
+  },
+  {
+    aliases: [],
+    description: 'Emit a CI-friendly JSON report with summary, snapshot, diagnostics, and timing.',
+    option: '--report',
+  },
+  {
+    aliases: [],
+    description: 'Write the selected inspect payload to a file instead of stdout.',
+    option: '--output <path>',
   },
   {
     aliases: [],
@@ -130,6 +160,8 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
   let exportName = 'AppModule';
   let json = false;
   let mermaid = false;
+  let outputPath: string | undefined;
+  let report = false;
   let timing = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -151,6 +183,22 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
 
     if (option === '--timing') {
       timing = true;
+      continue;
+    }
+
+    if (option === '--report') {
+      report = true;
+      continue;
+    }
+
+    if (option === '--output') {
+      const next = argv[index + 1];
+      if (!next || next.startsWith('-')) {
+        throw new Error('Expected --output to have a file path value.');
+      }
+
+      outputPath = next;
+      index += 1;
       continue;
     }
 
@@ -180,14 +228,18 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
     throw new Error(inspectUsage());
   }
 
-  if (!json && !mermaid && !timing) {
+  if (!json && !mermaid && !timing && !report) {
     json = true;
   }
 
-  const selectedModes = [json, mermaid, timing].filter(Boolean).length;
+  const selectedModes = [json, mermaid, report].filter(Boolean).length;
 
   if (selectedModes > 1) {
-    throw new Error('Choose only one inspect output mode: --json, --mermaid, or --timing.');
+    throw new Error('Choose only one inspect output mode: --json, --mermaid, or --report.');
+  }
+
+  if (mermaid && timing) {
+    throw new Error('Use --timing only with JSON inspect output or --report. Mermaid rendering remains delegated to @fluojs/studio.');
   }
 
   return {
@@ -195,6 +247,8 @@ function parseInspectArgs(argv: string[]): ParsedInspectArgs {
     json,
     mermaid,
     modulePath,
+    outputPath,
+    report,
     timing,
   };
 }
@@ -219,6 +273,54 @@ function stringifyTiming(timing: BootstrapTimingDiagnostics | undefined): string
 
 function stringifySnapshot(snapshot: PlatformShellSnapshot): string {
   return JSON.stringify(snapshot, null, 2);
+}
+
+function createEmptyTimingDiagnostics(): BootstrapTimingDiagnostics {
+  return {
+    phases: [],
+    totalMs: 0,
+    version: 1,
+  };
+}
+
+function createInspectReport(snapshot: PlatformShellSnapshot, timing: BootstrapTimingDiagnostics | undefined): InspectReport {
+  const resolvedTiming = timing ?? createEmptyTimingDiagnostics();
+  const errorCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'error').length;
+  const warningCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'warning').length;
+
+  return {
+    generatedAt: snapshot.generatedAt,
+    snapshot,
+    summary: {
+      componentCount: snapshot.components.length,
+      diagnosticCount: snapshot.diagnostics.length,
+      errorCount,
+      healthStatus: snapshot.health.status,
+      readinessStatus: snapshot.readiness.status,
+      timingTotalMs: resolvedTiming.totalMs,
+      warningCount,
+    },
+    timing: resolvedTiming,
+    version: 1,
+  };
+}
+
+function stringifySnapshotWithTiming(snapshot: PlatformShellSnapshot, timing: BootstrapTimingDiagnostics | undefined): string {
+  return JSON.stringify({
+    snapshot,
+    timing: timing ?? createEmptyTimingDiagnostics(),
+  }, null, 2);
+}
+
+async function emitInspectPayload(payload: string, parsed: ParsedInspectArgs, cwd: string, stdout: CliStream): Promise<void> {
+  if (!parsed.outputPath) {
+    stdout.write(`${payload}\n`);
+    return;
+  }
+
+  const outputPath = resolve(cwd, parsed.outputPath);
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${payload}\n`, 'utf8');
 }
 
 function createInspectPrompter(): InspectPrompter {
@@ -329,7 +431,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const importedModule = await import(pathToFileURL(modulePath).href);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
-    if (parsed.timing) {
+    if (parsed.timing && !parsed.json && !parsed.report) {
       const context = await FluoFactory.createApplicationContext(rootModule, {
         diagnostics: { timing: true },
         logger: {
@@ -341,7 +443,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
       });
 
       try {
-        stdout.write(`${stringifyTiming(context.bootstrapTiming)}\n`);
+        await emitInspectPayload(stringifyTiming(context.bootstrapTiming), parsed, cwd, stdout);
       } finally {
         await context.close();
       }
@@ -350,6 +452,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     }
 
     const context = await FluoFactory.createApplicationContext(rootModule, {
+      diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
       logger: {
         debug() {},
         error() {},
@@ -363,12 +466,16 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
       const snapshot = await platformShell.snapshot();
 
       if (parsed.json) {
-        stdout.write(`${stringifySnapshot(snapshot)}\n`);
+        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, context.bootstrapTiming) : stringifySnapshot(snapshot), parsed, cwd, stdout);
+      }
+
+      if (parsed.report) {
+        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, context.bootstrapTiming), null, 2), parsed, cwd, stdout);
       }
 
       if (parsed.mermaid) {
         const renderMermaid = await resolveStudioMermaidRenderer(cwd, runtime);
-        stdout.write(`${renderMermaid(snapshot)}\n`);
+        await emitInspectPayload(renderMermaid(snapshot), parsed, cwd, stdout);
       }
     } finally {
       await context.close();
