@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0-beta.2",
+  "packages": [
+    {
+      "package": "@fluojs/cli",
+      "disposition": "release",
+      "semver": "minor",
+      "summary": "Allow request DTO generation to target an explicit feature slice directory.",
+      "rationale": "The CLI package owns generator argument parsing, generated DTO placement, and the related documentation contract."
+    }
+  ]
+}

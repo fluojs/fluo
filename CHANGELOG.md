@@ -54,6 +54,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Root release documentation now removes draft release-readiness placeholder text, uses the current public CLI commands (`fluo new`, `fluo g`) and package name (`@fluojs/websockets`), and aligns the documented Node.js baseline with the `>=20.0.0` contract declared by the root and published package manifests.
 
+## [1.0.0-beta.2] - 2026-04-25
+
+### @fluojs/cli
+
+- Request DTO generation now accepts an explicit feature target, so `fluo g req users CreateUser` and `fluo generate request-dto users CreateUser` write `create-user.request.dto.ts` inside `src/users/` while preserving the legacy one-name request DTO form.
+
 ## [1.0.0-beta.1] - 2026-04-24
 
 ### Changed
