@@ -35,6 +35,8 @@ type StudioMermaidRendererLoader = (cwd: string) => Promise<StudioMermaidRendere
  * Runtime options for the inspect command when used programmatically.
  */
 export interface InspectCommandRuntimeOptions {
+  /** Whether the caller is running under CI/non-interactive automation. */
+  ci?: boolean;
   /** Current working directory for module resolution. */
   cwd?: string;
   /** Force or disable interactive prompts for optional Studio guidance. */
@@ -237,17 +239,13 @@ function createInspectPrompter(): InspectPrompter {
   };
 }
 
-function isCiEnvironment(): boolean {
-  return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
-}
-
 function shouldPromptForStudio(runtime: InspectCommandRuntimeOptions): boolean {
-  if (isCiEnvironment()) {
-    return false;
-  }
-
   if (runtime.prompt !== undefined) {
     return runtime.interactive ?? true;
+  }
+
+  if (runtime.ci === true) {
+    return false;
   }
 
   return runtime.stdout === undefined

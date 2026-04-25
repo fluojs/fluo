@@ -895,6 +895,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
+      ci: true,
       cwd: process.cwd(),
       interactive: false,
       loadStudioMermaidRenderer: async () => undefined,
@@ -916,6 +917,7 @@ describe('CLI command runner', () => {
     const promptMessages: string[] = [];
 
     const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
+      ci: true,
       cwd: process.cwd(),
       interactive: true,
       loadStudioMermaidRenderer: async () => undefined,
