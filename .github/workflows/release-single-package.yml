@@ -22,6 +22,10 @@ on:
         required: true
         default: false
         type: boolean
+      release_intent_file:
+        description: Optional committed release-intent JSON record; required by release-readiness for 1.0.0-beta.2+ publishes
+        required: false
+        type: string
 
 concurrency:
   group: release-single-package-${{ inputs.package_name }}
@@ -38,6 +42,7 @@ jobs:
       DIST_TAG: ${{ inputs.dist_tag }}
       GH_TOKEN: ${{ github.token }}
       RELEASE_PRERELEASE: ${{ inputs.release_prerelease }}
+      RELEASE_INTENT_FILE: ${{ inputs.release_intent_file }}
       TARGET_PACKAGE: ${{ inputs.package_name }}
       TARGET_VERSION: ${{ inputs.package_version }}
 
@@ -122,13 +127,20 @@ jobs:
           EOF
 
       - name: Canonical release-readiness preflight
-        run: pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"
-
-      - name: Publish package to npm
-        run: pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks
+        run: pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"
 
       - name: Prepare GitHub Release notes
         run: node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"
+
+      - name: Validate target git tag is absent
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${{ steps.resolve.outputs.release_tag }}"; then
+            echo "::error::Release tag ${{ steps.resolve.outputs.release_tag }} already exists."
+            exit 1
+          fi
+
+      - name: Publish package to npm
+        run: pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks
 
       - name: Create and push git tag
         run: |

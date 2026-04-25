@@ -132,6 +132,14 @@ function collectMarkdownFiles(relativeRoot: string): string[] {
   return markdownFiles;
 }
 
+function requireWorkflowStepIndex(workflow: string, stepName: string): number {
+  const index = workflow.indexOf(`- name: ${stepName}`);
+
+  expect(index, `Expected workflow step "${stepName}" to exist`).toBeGreaterThanOrEqual(0);
+
+  return index;
+}
+
 describe('platform consistency governance docs', () => {
   it('keeps SSOT English/Korean heading structures synchronized', () => {
     for (const [englishPath, koreanPath] of ssotPairs) {
@@ -238,22 +246,56 @@ describe('platform consistency governance docs', () => {
     expect(releaseWorkflow).toContain('package_version:');
     expect(releaseWorkflow).toContain('dist_tag:');
     expect(releaseWorkflow).toContain('release_prerelease:');
+    expect(releaseWorkflow).toContain('release_intent_file:');
+    expect(releaseWorkflow).toContain('Optional committed release-intent JSON record; required by release-readiness for 1.0.0-beta.2+ publishes');
+    expect(releaseWorkflow).toContain('required: false');
+    expect(releaseWorkflow).not.toContain('default: tooling/release/intents/release-intent.json');
+    expect(releaseWorkflow).toContain('RELEASE_INTENT_FILE: ${{ inputs.release_intent_file }}');
     expect(releaseWorkflow).toContain('id-token: write');
-    expect(releaseWorkflow).toContain('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"');
+    expect(releaseWorkflow).toContain('registry-url: https://registry.npmjs.org');
+    expect(releaseWorkflow).toContain('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"');
     expect(releaseWorkflow).toContain('pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks');
     expect(releaseWorkflow).toContain('node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"');
     expect(releaseWorkflow).toContain('git tag "${{ steps.resolve.outputs.release_tag }}"');
     expect(releaseWorkflow).toContain('gh release create "${{ steps.resolve.outputs.release_tag }}"');
     expect(releaseWorkflow).toContain('"$RUNNER_TEMP/release-readiness/release-readiness-summary.md#release-readiness-summary.md"');
-    expect(releaseWorkflow.indexOf('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"')).toBeLessThan(
-      releaseWorkflow.indexOf('pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks'),
+    expect(requireWorkflowStepIndex(releaseWorkflow, 'Canonical release-readiness preflight')).toBeLessThan(
+      requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm'),
     );
-    expect(releaseWorkflow.indexOf('pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks')).toBeLessThan(
-      releaseWorkflow.indexOf('git tag "${{ steps.resolve.outputs.release_tag }}"'),
+    expect(requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm')).toBeLessThan(
+      requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag'),
     );
-    expect(releaseWorkflow.indexOf('git tag "${{ steps.resolve.outputs.release_tag }}"')).toBeLessThan(
-      releaseWorkflow.indexOf('gh release create "${{ steps.resolve.outputs.release_tag }}"'),
+    expect(requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag')).toBeLessThan(
+      requireWorkflowStepIndex(releaseWorkflow, 'Create GitHub Release'),
     );
+  });
+
+  it('keeps single-package release safety gates before publish in the intended resolve/preflight/notes/tag/readiness/publish/release order', () => {
+    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release-single-package.yml'), 'utf8');
+
+    const mainBranchGuard = requireWorkflowStepIndex(releaseWorkflow, 'Require main branch dispatch');
+    const resolveTarget = requireWorkflowStepIndex(releaseWorkflow, 'Resolve single-package release target');
+    const validatePackageVersionDistTag = requireWorkflowStepIndex(releaseWorkflow, 'Canonical release-readiness preflight');
+    const validatePackageSpecificNotes = requireWorkflowStepIndex(releaseWorkflow, 'Prepare GitHub Release notes');
+    const validateTargetTagAbsence = requireWorkflowStepIndex(releaseWorkflow, 'Validate target git tag is absent');
+    const publishPackage = requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm');
+    const createTag = requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag');
+    const createGitHubRelease = requireWorkflowStepIndex(releaseWorkflow, 'Create GitHub Release');
+
+    expect(releaseWorkflow).toContain("if [ \"$GITHUB_REF\" != 'refs/heads/main' ]; then");
+    expect(releaseWorkflow).toContain('Single-package release workflow must run from refs/heads/main.');
+    expect(releaseWorkflow).toContain('node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"');
+    expect(releaseWorkflow).toContain('git rev-parse --verify --quiet "refs/tags/${{ steps.resolve.outputs.release_tag }}"');
+    expect(releaseWorkflow).toContain('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"');
+
+    expect(mainBranchGuard).toBeLessThan(resolveTarget);
+    expect(resolveTarget).toBeLessThan(validatePackageVersionDistTag);
+    expect(validatePackageVersionDistTag).toBeLessThan(validatePackageSpecificNotes);
+    expect(validatePackageSpecificNotes).toBeLessThan(validateTargetTagAbsence);
+    expect(validateTargetTagAbsence).toBeLessThan(publishPackage);
+    expect(validatePackageVersionDistTag).toBeLessThan(publishPackage);
+    expect(publishPackage).toBeLessThan(createTag);
+    expect(createTag).toBeLessThan(createGitHubRelease);
   });
 
   it('blocks removed runtime module factory names from docs/prose surfaces', () => {

@@ -2,6 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { expandPublicPackageDependencyImpact } from './dependency-impact.mjs';
+import { buildGitHubReleaseNotes } from './prepare-github-release.mjs';
+import { requiresReleaseIntentRecords, validateReleaseIntentRecords } from './release-intents.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -32,6 +35,8 @@ function parseCliOptions(argv = process.argv.slice(2)) {
   let targetPackage;
   let targetVersion;
   let distTag;
+  let releaseIntentFile;
+  const changedPackages = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -90,6 +95,28 @@ function parseCliOptions(argv = process.argv.slice(2)) {
       continue;
     }
 
+    if (argument === '--changed-package') {
+      changedPackages.push(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith('--changed-package=')) {
+      changedPackages.push(argument.slice('--changed-package='.length));
+      continue;
+    }
+
+    if (argument === '--release-intent-file') {
+      releaseIntentFile = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith('--release-intent-file=')) {
+      releaseIntentFile = argument.slice('--release-intent-file='.length);
+      continue;
+    }
+
     throw new Error(`Unknown option: ${argument}`);
   }
 
@@ -102,10 +129,12 @@ function parseCliOptions(argv = process.argv.slice(2)) {
   }
 
   return {
+    changedPackages: changedPackages.filter((packageName) => typeof packageName === 'string' && packageName.length > 0),
     distTag,
     summaryOutputDirectory,
     targetPackage,
     targetVersion,
+    releaseIntentFile,
     writeDrafts,
     writeSummary,
   };
@@ -189,6 +218,51 @@ function isPublishedVersion(packageName, version) {
   throw new Error(
     `Release readiness check failed: Unable to query npm for ${packageName}@${version}. ${stderr.trim() || 'npm view failed.'}`,
   );
+}
+
+function releaseTagForPackageVersion(packageName, version) {
+  return `${packageName}@${version}`;
+}
+
+function isReleaseTagExisting(tag) {
+  const localResult = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (localResult.status === 0) {
+    return true;
+  }
+
+  if (localResult.status !== 1) {
+    throw new Error(
+      `Release readiness check failed: Unable to query local git tag ${tag}. ${(localResult.stderr ?? '').trim() || 'git rev-parse failed.'}`,
+    );
+  }
+
+  const remoteResult = spawnSync('git', ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${tag}`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (remoteResult.status === 0) {
+    return true;
+  }
+
+  if (remoteResult.status === 2) {
+    return false;
+  }
+
+  throw new Error(
+    `Release readiness check failed: Unable to query remote git tag ${tag}. ${(remoteResult.stderr ?? '').trim() || 'git ls-remote failed.'}`,
+  );
+}
+
+function hasReleaseNotesForPackage(changelog, packageName, version) {
+  buildGitHubReleaseNotes(releaseTagForPackageVersion(packageName, version), changelog);
+  return true;
 }
 
 function assertCheck(checks, label, condition, detail) {
@@ -385,6 +459,138 @@ function collectSinglePackageDependencyShapeViolations(targetManifest, workspace
   return sorted(violations);
 }
 
+
+function uniqueSortedPackageNames(packageNames) {
+  if (!Array.isArray(packageNames)) {
+    throw new Error('Release readiness check failed: changedPackages must be an array of package names.');
+  }
+
+  return sorted(
+    new Set(
+      packageNames.map((packageName) => {
+        if (typeof packageName !== 'string' || packageName.trim().length === 0) {
+          throw new Error('Release readiness check failed: changedPackages entries must be non-empty package names.');
+        }
+
+        return packageName.trim();
+      }),
+    ),
+  );
+}
+
+function releaseIntentRecordsFromOptions(options, dependencies = {}) {
+  if (Array.isArray(options.releaseIntentRecords)) {
+    return options.releaseIntentRecords;
+  }
+
+  if (typeof options.releaseIntentFile === 'string' && options.releaseIntentFile.length > 0) {
+    const readFile = dependencies.readFileSync ?? readFileSync;
+    const releaseIntentPath = resolve(repoRoot, options.releaseIntentFile);
+    return JSON.parse(readFile(releaseIntentPath, 'utf8'));
+  }
+
+  return [];
+}
+
+function collectReleaseIntentPackageEntries(records) {
+  const entries = new Map();
+
+  for (const record of records) {
+    for (const packageIntent of record.packages) {
+      entries.set(packageIntent.package, packageIntent);
+    }
+  }
+
+  return entries;
+}
+
+function verifyReleaseIntentReadiness(checks, options, packageManifests, publicPackageNames, dependencies = {}) {
+  const { targetPackage, targetVersion } = options;
+  const hasTargetRelease = typeof targetPackage === 'string' && typeof targetVersion === 'string';
+  const targetRequiresIntent = hasTargetRelease && requiresReleaseIntentRecords(targetVersion);
+  const rawChangedPackages = Array.isArray(options.changedPackages) && options.changedPackages.length > 0
+    ? options.changedPackages
+    : targetRequiresIntent
+      ? [targetPackage]
+      : [];
+  const changedPackages = uniqueSortedPackageNames(rawChangedPackages);
+  const rawReleaseIntentRecords = releaseIntentRecordsFromOptions(options, dependencies);
+  const hasExplicitReleaseIntentRecords = rawReleaseIntentRecords.length > 0;
+  const shouldValidateIntentRecords = targetRequiresIntent || hasExplicitReleaseIntentRecords;
+
+  if (!shouldValidateIntentRecords) {
+    return;
+  }
+
+  assertCheck(
+    checks,
+    'Release intent candidate version',
+    typeof targetVersion === 'string' && isValidSemver(targetVersion),
+    'Release intent readiness requires a target SemVer candidate version when changed packages or intent records are supplied.',
+  );
+
+  const validatedRecords = validateReleaseIntentRecords(rawReleaseIntentRecords, {
+    candidateVersion: targetVersion,
+    packageManifests,
+    publicPackageNames,
+  });
+  const candidateIntentRecords = validatedRecords.filter((record) => record.version === targetVersion);
+  const intentByPackage = collectReleaseIntentPackageEntries(candidateIntentRecords);
+  const publicPackageSet = new Set(publicPackageNames);
+  const unknownChangedPackages = changedPackages.filter((packageName) => !publicPackageSet.has(packageName));
+
+  assertCheck(
+    checks,
+    'Release intent affected package membership',
+    unknownChangedPackages.length === 0,
+    unknownChangedPackages.length === 0
+      ? 'All explicitly changed packages are public packages in the intended publish surface.'
+      : `Changed package(s) must be public packages in the intended publish surface: ${unknownChangedPackages.join(', ')}.`,
+  );
+
+  const impactedPackages = expandPublicPackageDependencyImpact(changedPackages, { packageManifests });
+  const missingIntentPackages = impactedPackages
+    .filter(({ package: packageName }) => !intentByPackage.has(packageName))
+    .map(({ package: packageName }) => packageName);
+
+  assertCheck(
+    checks,
+    'Release intent coverage for affected packages',
+    missingIntentPackages.length === 0,
+    missingIntentPackages.length === 0
+      ? 'Every changed public package and downstream public impact has an explicit release intent or evaluation decision.'
+      : `Missing release intent or evaluation decision for affected package(s): ${missingIntentPackages.join(', ')}.`,
+  );
+
+  if (hasTargetRelease && requiresReleaseIntentRecords(targetVersion)) {
+    const targetIntent = intentByPackage.get(targetPackage);
+
+    assertCheck(
+      checks,
+      'Single-package release target intent disposition',
+      targetIntent?.disposition === 'release',
+      `Target package ${targetPackage} must have a release intent with disposition \`release\` for ${targetVersion}.`,
+    );
+  }
+
+  const invalidDownstreamDecisions = impactedPackages
+    .filter(({ disposition }) => disposition === 'downstream-evaluate')
+    .filter(({ package: packageName }) => {
+      const intent = intentByPackage.get(packageName);
+      return intent?.disposition !== 'downstream-evaluate' && intent?.disposition !== 'no-release';
+    })
+    .map(({ package: packageName }) => `${packageName} (${intentByPackage.get(packageName)?.disposition ?? 'missing'})`);
+
+  assertCheck(
+    checks,
+    'Release intent downstream evaluation decisions',
+    invalidDownstreamDecisions.length === 0,
+    invalidDownstreamDecisions.length === 0
+      ? 'Downstream public package impacts have explicit `downstream-evaluate` or `no-release` decisions.'
+      : `Downstream package(s) need explicit \`downstream-evaluate\` or \`no-release\` decisions: ${invalidDownstreamDecisions.join(', ')}.`,
+  );
+}
+
 function verifySinglePackageReleasePreflight(checks, options, packageManifests, publicPackageNames, dependencies = {}) {
   const { targetPackage, targetVersion, distTag } = options;
 
@@ -395,9 +601,12 @@ function verifySinglePackageReleasePreflight(checks, options, packageManifests, 
   const manifestMap = workspaceManifestByName(packageManifests);
   const publicPackageSet = new Set(publicPackageNames);
   const registryVersionExists = dependencies.isPublishedVersion ?? isPublishedVersion;
+  const releaseTagExists = dependencies.isReleaseTagExisting ?? isReleaseTagExisting;
+  const validateReleaseNotes = dependencies.hasReleaseNotesForPackage ?? hasReleaseNotesForPackage;
   const targetPackageRecord = manifestMap.get(targetPackage);
   const targetPackagePath = packageRelativePath(targetPackage);
   const isPrerelease = isPrereleaseVersion(targetVersion);
+  const releaseTag = releaseTagForPackageVersion(targetPackage, targetVersion);
 
   assertCheck(
     checks,
@@ -444,6 +653,18 @@ function verifySinglePackageReleasePreflight(checks, options, packageManifests, 
       targetPackageRecord.manifest.private !== true &&
       targetPackageRecord.manifest.publishConfig?.access === 'public',
     `${targetPackage} must remain a public workspace package with publishConfig.access set to \`public\`.`,
+  );
+  assertCheck(
+    checks,
+    'Single-package release package notes',
+    validateReleaseNotes(dependencies.changelog, targetPackage, targetVersion),
+    `CHANGELOG.md must include package release notes for ${targetPackage} ${targetVersion} before publish.`,
+  );
+  assertCheck(
+    checks,
+    'Single-package release target git tag absence',
+    !releaseTagExists(releaseTag),
+    `${releaseTag} already exists locally or on origin and cannot be recreated.`,
   );
   assertCheck(
     checks,
@@ -565,7 +786,7 @@ function upsertReleaseCandidateDraft(dependencies = {}) {
 }
 
 export function runReleaseReadinessVerification(options = {}, dependencies = {}) {
-  const { distTag, summaryOutputDirectory, targetPackage, targetVersion, writeDrafts = false, writeSummary: shouldWriteSummary = false } = options;
+  const { changedPackages = [], distTag, releaseIntentFile, releaseIntentRecords, summaryOutputDirectory, targetPackage, targetVersion, writeDrafts = false, writeSummary: shouldWriteSummary = false } = options;
   const {
     isPublishedVersion: registryVersionExists = isPublishedVersion,
     run: runCommand = run,
@@ -708,8 +929,18 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
       ? 'Intended public package manifests use `workspace:^` for internal `@fluojs/*` dependencies across dependency, optional, peer, and dev dependency fields.'
       : `Use exact \`workspace:^\` ranges for internal public package dependencies in: ${publicWorkspaceProtocolViolations.join('; ')}`,
   );
+  verifyReleaseIntentReadiness(
+    checks,
+    { changedPackages, releaseIntentFile, releaseIntentRecords, targetPackage, targetVersion },
+    packageManifests,
+    governancePackageList,
+    { readFileSync: readFile },
+  );
   verifySinglePackageReleasePreflight(checks, { distTag, targetPackage, targetVersion }, packageManifests, governancePackageList, {
+    changelog,
+    hasReleaseNotesForPackage: dependencies.hasReleaseNotesForPackage,
     isPublishedVersion: registryVersionExists,
+    isReleaseTagExisting: dependencies.isReleaseTagExisting,
   });
 
   if (writeDrafts) {

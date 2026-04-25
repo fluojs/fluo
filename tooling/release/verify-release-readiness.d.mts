@@ -1,3 +1,5 @@
+import type { ReleaseIntentRecord } from './release-intents.mjs';
+
 export type ReleaseReadinessCheck = {
   detail: string;
   label: string;
@@ -10,6 +12,8 @@ export type ReleaseReadinessDependencies = {
     packageJsonPath: string;
   }>;
   isPublishedVersion?: (packageName: string, version: string) => boolean;
+  isReleaseTagExisting?: (tag: string) => boolean;
+  hasReleaseNotesForPackage?: (changelog: string, packageName: string, version: string) => boolean;
   run?: (command: string, args: string[]) => void;
   read?: (relativePath: string) => string;
   existsSync?: (targetPath: string) => boolean;
@@ -27,7 +31,10 @@ export type ReleaseReadinessResult = {
 
 export function runReleaseReadinessVerification(
   options?: {
+    changedPackages?: string[];
     distTag?: string;
+    releaseIntentFile?: string;
+    releaseIntentRecords?: ReleaseIntentRecord[];
     summaryOutputDirectory?: string;
     targetPackage?: string;
     targetVersion?: string;
