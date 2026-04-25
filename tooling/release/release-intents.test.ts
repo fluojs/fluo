@@ -207,4 +207,35 @@ describe('validateReleaseIntentRecords', () => {
       expect.objectContaining({ version: '1.0.0-beta.2' }),
     ]);
   });
+
+  it('fails when the same package intent appears in multiple records for the same version', () => {
+    expect(() =>
+      validateReleaseIntentRecords(
+        [
+          createRecord({
+            packages: [
+              {
+                disposition: 'no-release',
+                package: '@fluojs/cli',
+                rationale: 'The CLI package is not being published in this candidate.',
+                semver: 'none',
+                summary: 'Do not release CLI in beta.2.',
+              },
+            ],
+          }),
+          createRecord(),
+        ],
+        { ...dependencies(), candidateVersion: '1.0.0-beta.2' },
+      ),
+    ).toThrowError(/duplicate package intents across records: 1\.0\.0-beta\.2 @fluojs\/cli/u);
+  });
+
+  it('allows the same package to appear in records for different versions', () => {
+    const result = validateReleaseIntentRecords(
+      [createRecord({ version: '1.0.0-beta.2' }), createRecord({ version: '1.0.0-beta.3' })],
+      { ...dependencies(), candidateVersion: '1.0.0-beta.3' },
+    );
+
+    expect(result.map((record) => record.version)).toEqual(['1.0.0-beta.2', '1.0.0-beta.3']);
+  });
 });

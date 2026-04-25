@@ -242,5 +242,28 @@ export function validateReleaseIntentRecords(records, options = {}) {
     );
   }
 
-  return normalizedRecords.map((record) => validateReleaseIntentRecord(record, options));
+  const validatedRecords = normalizedRecords.map((record) => validateReleaseIntentRecord(record, options));
+  const seenCandidatePackageIntents = new Set();
+  const duplicateCandidatePackageIntents = [];
+
+  for (const record of validatedRecords) {
+    for (const packageIntent of record.packages) {
+      const key = `${record.version}:${packageIntent.package}`;
+
+      if (seenCandidatePackageIntents.has(key)) {
+        duplicateCandidatePackageIntents.push(`${record.version} ${packageIntent.package}`);
+        continue;
+      }
+
+      seenCandidatePackageIntents.add(key);
+    }
+  }
+
+  if (duplicateCandidatePackageIntents.length > 0) {
+    throw new Error(
+      `Release intent validation failed: duplicate package intents across records: ${duplicateCandidatePackageIntents.join(', ')}.`,
+    );
+  }
+
+  return validatedRecords;
 }
