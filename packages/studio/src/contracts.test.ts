@@ -102,6 +102,14 @@ describe('parseStudioPayload', () => {
     expect(studio.renderMermaid).toBeTypeOf('function');
   });
 
+  it('publishes snapshot contract types from the root package entrypoint', () => {
+    const snapshot: studio.PlatformShellSnapshot = snapshotFixture;
+    const issue: studio.PlatformDiagnosticIssue = snapshotFixture.diagnostics[0];
+
+    expect(snapshot.components).toHaveLength(2);
+    expect(issue.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
+  });
+
   it('parses platform snapshot payload', () => {
     const parsed = parseStudioPayload(JSON.stringify(snapshotFixture));
     expect(parsed.payload.snapshot?.components[0]?.id).toBe('redis.default');
@@ -192,8 +200,27 @@ describe('renderMermaid', () => {
     const output = renderMermaid(snapshotFixture);
     expect(output).toContain('graph TD');
     expect(output).toContain('queue.default');
-    expect(output).toContain('-->');
+    expect(output).toContain('  C2 --> C1');
     expect(output).toContain('degraded');
+  });
+
+  it('renders external dependency nodes from snapshot dependencies', () => {
+    const output = renderMermaid({
+      ...snapshotFixture,
+      components: [
+        {
+          ...snapshotFixture.components[0],
+          dependencies: ['aws.sqs.orders'],
+          id: 'queue.consumer',
+        },
+      ],
+      diagnostics: [],
+    });
+
+    const externalNodeId = output.match(/ {2}(EXT_[A-Za-z0-9_]+)\["aws\.sqs\.orders"\]/)?.[1];
+
+    expect(externalNodeId).toBeDefined();
+    expect(output).toContain(`  C1 --> ${externalNodeId}`);
   });
 
   it('uses distinct external node ids when dependency names sanitize to the same base', () => {
@@ -209,8 +236,8 @@ describe('renderMermaid', () => {
       diagnostics: [],
     });
 
-    const dotNodeId = output.match(/  (EXT_[A-Za-z0-9_]+)\["cache\.one"\]/)?.[1];
-    const dashNodeId = output.match(/  (EXT_[A-Za-z0-9_]+)\["cache-one"\]/)?.[1];
+    const dotNodeId = output.match(/ {2}(EXT_[A-Za-z0-9_]+)\["cache\.one"\]/)?.[1];
+    const dashNodeId = output.match(/ {2}(EXT_[A-Za-z0-9_]+)\["cache-one"\]/)?.[1];
 
     expect(dotNodeId).toBeDefined();
     expect(dashNodeId).toBeDefined();

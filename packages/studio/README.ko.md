@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 확인하는 뷰어입니다.
+fluo 런타임 내보내기의 공유 플랫폼 snapshot을 파일 기반으로 확인하고 그래프로 렌더링하는 canonical provider입니다.
 
 ## 목차
 
@@ -23,14 +23,14 @@ pnpm add @fluojs/studio
 
 배포된 패키지는 두 가지 caller-facing entrypoint를 제공합니다.
 
-- `@fluojs/studio` / `@fluojs/studio/contracts`: snapshot 파싱, 필터링, Mermaid 내보내기 헬퍼
+- `@fluojs/studio` / `@fluojs/studio/contracts`: canonical snapshot 파싱, 필터링, Mermaid 그래프 렌더링 헬퍼
 - `@fluojs/studio/viewer`: 패키징된 브라우저 뷰어 HTML 진입 파일
 
 ## 릴리스 정책
 
 - `@fluojs/studio`는 fluo의 intended public publish surface에 포함되는 공개 배포 패키지입니다.
 - Studio의 npm 설치 계약은 `pnpm add @fluojs/studio`이며, 저장소 내부 개발 경로는 계속 `pnpm --dir packages/studio dev`를 사용합니다.
-- 이번 릴리스에서 지원하는 공개 패키지 표면은 파일 기반 뷰어와 문서화된 snapshot 소비 계약까지입니다. 내부 workspace 연결 방식은 지원되는 설치 경로가 아닙니다.
+- 이번 릴리스에서 지원하는 공개 패키지 표면은 파일 기반 뷰어와 문서화된 snapshot 소비, 필터링, 그래프 렌더링 계약까지입니다. 내부 workspace 연결 방식은 지원되는 설치 경로가 아닙니다.
 
 ## 사용 시점
 
@@ -41,7 +41,7 @@ pnpm add @fluojs/studio
 
 ## 빠른 시작
 
-Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다.
+Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임과 CLI 도구는 snapshot을 생산하고, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 렌더링하는 공개 헬퍼를 소유합니다.
 
 1. **Snapshot 내보내기**:
    ```bash
@@ -68,9 +68,11 @@ Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다.
 2. 시각화하려는 모듈이나 컴포넌트를 선택합니다.
 3. **Export to Mermaid** 버튼을 사용하여 문서에 사용할 수 있는 텍스트 기반 다이어그램을 가져옵니다.
 
+자동화에서는 `@fluojs/studio` 또는 `@fluojs/studio/contracts`에서 `renderMermaid(snapshot)`을 호출합니다. 이 헬퍼가 지원되는 snapshot-to-Mermaid 계약입니다. 런타임 패키지는 snapshot producer로 남고, Studio는 그래프 렌더링 시 내부 dependency edge와 외부 dependency node를 처리합니다.
+
 ## 공개 API
 
-Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 snapshot 소비 헬퍼도 함께 공개합니다.
+Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 snapshot 소비 헬퍼도 함께 공개합니다. `@fluojs/studio`를 snapshot 파싱, 필터링, Mermaid 그래프 렌더링 의미론의 canonical owner로 취급합니다.
 
 | 규격 | 설명 |
 |---|---|
@@ -78,11 +80,11 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 | `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
 | `parseStudioPayload(rawJson)` | CLI/export JSON을 Studio snapshot/timing envelope로 검증합니다. |
 | `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query 필터를 적용합니다. |
-| `renderMermaid(snapshot)` | 로드된 플랫폼 그래프를 Mermaid 텍스트로 변환합니다. |
+| `renderMermaid(snapshot)` | 내부 컴포넌트 dependency edge와 외부 dependency node를 포함해 로드된 플랫폼 그래프를 Mermaid 텍스트로 변환합니다. |
 
 ### 배포 패키지 entrypoint
 
-- `@fluojs/studio`: snapshot 파싱/필터링/렌더링용 루트 헬퍼 배럴
+- `@fluojs/studio`: snapshot 파싱/필터링/렌더링 자동화용 루트 헬퍼 배럴
 - `@fluojs/studio/contracts`: 계약 헬퍼를 직접 가져오고 싶은 도구용 명시적 서브패스
 - `@fluojs/studio/viewer`: 브라우저 뷰어 번들의 `dist/index.html` 진입 파일
 

@@ -5,7 +5,16 @@ import type {
   PlatformSnapshot,
 } from '@fluojs/runtime';
 
+export type { PlatformDiagnosticIssue, PlatformShellSnapshot } from '@fluojs/runtime';
+
+/**
+ * Readiness statuses supported by Studio snapshot filtering and graph annotations.
+ */
 export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
+
+/**
+ * Diagnostic severities supported by Studio snapshot filtering.
+ */
 export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];
 
 /**
@@ -263,6 +272,11 @@ function createExternalMermaidNodeId(value: string): string {
 
 /**
  * Renders the loaded platform snapshot as a Mermaid dependency graph.
+ *
+ * @remarks
+ * `@fluojs/studio` owns the snapshot consumption and graph rendering contract. Runtime packages remain the
+ * snapshot producers, while automation and viewer callers use this helper to turn a loaded snapshot into a
+ * stable Mermaid graph.
  *
  * @param snapshot - The platform snapshot to render.
  * @returns Mermaid graph text suitable for docs or clipboard export.

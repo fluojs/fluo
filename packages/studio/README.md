@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-File-first shared platform snapshot viewer for fluo runtime exports.
+File-first shared platform snapshot viewer and canonical graph rendering provider for fluo runtime exports.
 
 ## Table of Contents
 
@@ -23,14 +23,14 @@ pnpm add @fluojs/studio
 
 The published package serves two caller-facing entrypoints:
 
-- `@fluojs/studio` / `@fluojs/studio/contracts` for snapshot parsing, filtering, and Mermaid export helpers.
+- `@fluojs/studio` / `@fluojs/studio/contracts` for the canonical snapshot parsing, filtering, and Mermaid graph rendering helpers.
 - `@fluojs/studio/viewer` for the packaged browser viewer HTML entry file.
 
 ## Release Policy
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
 - The npm install contract for Studio is `pnpm add @fluojs/studio`; local repo development still uses `pnpm --dir packages/studio dev`.
-- Studio's public package surface in this release is the file-first viewer and its documented snapshot-consumption contracts. Internal workspace wiring is not a supported install path.
+- Studio's public package surface in this release is the file-first viewer and its documented snapshot-consumption, filtering, and graph rendering contracts. Internal workspace wiring is not a supported install path.
 
 ## When to Use
 
@@ -41,7 +41,7 @@ The published package serves two caller-facing entrypoints:
 
 ## Quick Start
 
-Studio consumes JSON exports from the fluo CLI.
+Studio consumes JSON exports from the fluo CLI. Runtime and CLI tooling produce snapshots; Studio owns the public helpers that parse, filter, and render those snapshots for viewer and automation callers.
 
 1. **Export a snapshot**:
    ```bash
@@ -68,9 +68,11 @@ Use the **Diagnostics** tab to see issues collected during the runtime bootstrap
 2. Select the modules or components you want to visualize.
 3. Use the **Export to Mermaid** button to get a text-based diagram for your documentation.
 
+For automation, call `renderMermaid(snapshot)` from `@fluojs/studio` or `@fluojs/studio/contracts`. The helper is the supported snapshot-to-Mermaid contract: runtime packages remain snapshot producers, and Studio handles internal dependency edges plus external dependency nodes when rendering the graph.
+
 ## Public API
 
-Studio is primarily a web application, but the published package also exposes the documented snapshot-consumption helpers used by tooling and automation.
+Studio is primarily a web application, but the published package also exposes the documented snapshot-consumption helpers used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, and Mermaid graph rendering semantics.
 
 | Contract | Description |
 |---|---|
@@ -78,11 +80,11 @@ Studio is primarily a web application, but the published package also exposes th
 | `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
 | `parseStudioPayload(rawJson)` | Validates CLI/exported JSON into the Studio snapshot/timing envelope. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
-| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph. |
+| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
 
 ### Published package entrypoints
 
-- `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering.
+- `@fluojs/studio`: root helper barrel for snapshot parsing/filtering/rendering automation.
 - `@fluojs/studio/contracts`: explicit helper subpath for tooling that wants the contract helpers directly.
 - `@fluojs/studio/viewer`: packaged `dist/index.html` entrypoint for the browser viewer bundle.
 
