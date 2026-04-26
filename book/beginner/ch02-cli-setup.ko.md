@@ -8,6 +8,8 @@ Chapter 1에서 fluo가 어떤 생각으로 만들어졌는지 봤다면, 이제
 ## Learning Objectives
 - fluo CLI를 전역 설치하거나 패키지 러너로 실행하는 방법을 익힙니다.
 - `fluo new` 명령으로 새 프로젝트를 스캐폴딩합니다.
+- 파일을 쓰기 전에 `--print-plan`으로 스캐폴드 선택을 미리 확인합니다.
+- 이후 만나게 될 초보자용 CLI 명령인 `generate`/`g`, `inspect`, `migrate`를 알아봅니다.
 - 생성된 프로젝트 구조와 각 디렉터리의 역할을 분석합니다.
 - 로컬 개발에 사용되는 `package.json` 스크립트를 이해합니다.
 - 첫 번째 FluoBlog 설정을 실행하며 확인합니다.
@@ -51,10 +53,18 @@ fluo --version
 처음 시작할 때는 보통 가장 간단한 방법인 전역 설치를 선택합니다. 실무에서도 흔한 선택이지만, 차이를 알고 있으면 나중에 팀 작업이나 CI를 만날 때 판단이 빨라집니다. 중요한 것은 하나의 방식만 정답으로 외우는 것이 아니라 실행 환경에 맞춰 고르는 습관입니다.
 
 - **전역 설치**는 개인 개발 환경에서 편리합니다.
-- `npx`, `pnpx` 같은 **로컬 실행**은 CI에서 버전을 고정하기 쉽습니다.
+- `npx`, `pnpx`, `pnpm dlx` 같은 **로컬 실행**은 CI에서 버전을 고정하기 쉽습니다.
 - 팀 단위 작업에서는 모두가 같은 버전을 쓰도록 로컬 실행을 선호하기도 합니다.
 
 셋 다 사용할 수 있습니다. 핵심은 습관적으로 고르기보다, 지금 상황에 맞게 선택하는 것입니다.
+
+예를 들어 전역 설치 없이 CLI를 실행하고 싶다면 다음처럼 프로젝트를 시작할 수 있습니다.
+
+```bash
+pnpm dlx @fluojs/cli new fluo-blog
+```
+
+이 명령도 같은 `fluo new` 흐름을 실행합니다. 차이는 셸이 CLI 실행 파일을 얻는 방식뿐입니다.
 
 ### Verifying Your PATH
 
@@ -125,10 +135,23 @@ fluo new fluo-blog
 
 일반적인 질문은 다음과 같습니다.
 
-1. **Description**: 프로젝트의 짧은 설명.
-2. **Version**: 새 앱이라면 보통 `1.0.0`.
-3. **Author**: 작성자 이름 또는 팀 이름.
-4. **Package Manager**: 생성된 스크립트가 전제로 할 도구.
+1. **Project name**: 생성할 디렉터리와 패키지 이름.
+2. **Shape**: 애플리케이션, 마이크로서비스, mixed 스타터 중 하나.
+3. **Runtime and platform**: 이 책에서는 초보자 흐름을 Node.js HTTP 애플리케이션 스타터에 둡니다.
+4. **Tooling and package manager**: 생성 프로젝트가 사용할 스크립트와 설치 흐름.
+5. **Install and git choices**: CLI가 의존성 설치와 git 초기화를 바로 수행할지 여부.
+
+### Previewing the starter plan
+
+처음에는 CLI가 파일을 쓰기 전에 무엇을 하려는지 먼저 보는 편이 도움이 됩니다. 이때 `--print-plan`을 사용합니다.
+
+```bash
+fluo new fluo-blog --shape application --runtime node --platform fastify --print-plan
+```
+
+Plan preview 모드는 실제 스캐폴딩과 같은 프로젝트 이름, shape, runtime, platform, package manager, install 선택, git 선택을 해석합니다. 그런 다음 선택된 recipe를 출력하고, 파일 생성, 의존성 설치, git 초기화 없이 종료합니다.
+
+이 책에서는 `--print-plan`을 안전한 리허설로 생각해도 됩니다. 선택지를 이해하고 싶다면 한 번 실행해 보고, 준비가 되면 `fluo new fluo-blog`로 실제 프로젝트를 생성하세요.
 
 ### What happens under the hood?
 
@@ -168,6 +191,24 @@ fluo new fluo-blog
 - 실행 전 주의할 점이 있는지.
 
 이 확인 습관이 나중에 문제를 빨리 찾는 힘이 됩니다.
+
+### The CLI commands you will meet next
+
+`fluo new`는 첫 명령일 뿐입니다. 오늘 CLI 전체를 익힐 필요는 없지만, 이후 보게 될 이름을 알아 두면 흐름을 따라가기 쉽습니다.
+
+```bash
+fluo generate module posts
+fluo g service posts
+fluo inspect ./src/app.ts --json
+fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json
+fluo migrate ./src --json
+```
+
+- `generate`, 또는 짧은 별칭인 `g`는 기존 프로젝트 안에 모듈, 컨트롤러, 서비스, 리포지토리, request DTO 같은 프레임워크 파일을 만듭니다.
+- `inspect`는 런타임 검사 데이터를 내보냅니다. 로컬에서는 사람이 읽는 출력이 유용하고, CI, 지원, Studio용 파일이 필요할 때는 `--json`, `--report`, `--output`이 더 적합합니다.
+- `migrate`는 오래된 decorator 스타일 코드를 fluo 쪽으로 옮길 때 코드 변환을 미리 보거나 적용합니다. 기본 모드는 dry run이며, `--json`은 자동화가 읽기 좋은 안정적인 report를 제공합니다.
+
+지금은 이것을 지도로만 기억하세요. Chapter 3부터 생성된 빌딩 블록을 쓰기 시작하고, Chapter 6에서는 생성된 request DTO 파일을 validation과 연결합니다.
 
 ## 2.3 Analyzing the Project Structure
 
@@ -413,6 +454,8 @@ CLI와 로그를 통해 프레임워크와 더 많이 상호작용할수록 fluo
 ## Summary
 - fluo CLI는 처음 fluo를 접하는 개발자에게 일관된 출발점을 제공합니다.
 - `fluo new`는 단순한 폴더가 아니라 파일과 관례를 함께 스캐폴딩합니다.
+- `--print-plan`은 파일을 쓰지 않고 스타터 계획을 미리 보여 줍니다.
+- `generate`/`g`, `inspect`, `migrate`는 다음에 알아볼 CLI 명령이지만, 아직 외울 필요는 없습니다.
 - 생성된 소스 트리는 부트스트랩, 모듈 구성, 프로젝트 메타데이터의 위치를 알려 줍니다.
 - `dev`, `build`, `start`는 개발 생명주기의 서로 다른 단계를 담당합니다.
 - 첫 성공 요청은 스캐폴드가 실제로 동작한다는 강한 증거입니다.
