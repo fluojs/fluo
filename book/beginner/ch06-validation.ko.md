@@ -8,6 +8,7 @@ Chapter 5가 라우트와 컨트롤러의 뼈대를 세웠다면, 이 장은 그
 ## Learning Objectives
 - DTO가 느슨한 요청 객체보다 왜 더 나은지 이해합니다.
 - FluoBlog 게시글 생성 입력을 설명하는 검증 데코레이터를 사용합니다.
+- CLI로 request DTO 파일을 생성하고 어디에 연결되는지 이해합니다.
 - `@RequestDto()`가 HTTP 바인딩과 DTO materialization을 어떻게 연결하는지 배웁니다.
 - 업데이트 작업에 optional 및 partial DTO 패턴을 적용합니다.
 - fluo가 암시적 스칼라 강제 변환을 피하는 이유를 이해합니다.
@@ -65,6 +66,19 @@ export class CreatePostDto {
 ```
 
 이 클래스는 이제 세 가지 유용한 역할을 합니다. 요청에 이름을 붙이고, 기대하는 필드를 문서화하고, 런타임 검증 규칙을 정의합니다. 그 조합 덕분에 FluoBlog는 단순히 라우트가 있는 API에서 더 안전한 API로 넘어갑니다.
+
+### Starting the DTO file with the CLI
+
+학습 중에는 `CreatePostDto`를 직접 작성해 보는 것도 좋습니다. 현재 CLI는 feature 디렉터리 안에 request DTO 파일의 시작점을 만들어 줄 수도 있습니다.
+
+```bash
+fluo generate request-dto posts CreatePost
+fluo g request-dto posts UpdatePost --dry-run
+```
+
+이 명령은 feature 디렉터리와 DTO 클래스 이름을 분리해서 받습니다. 이 예제에서 `posts`는 `src/posts/` slice를 가리키고, `CreatePost`는 DTO 클래스 이름입니다. 그래서 하나의 합쳐진 이름에서 추측하지 않아도 `CreatePostDto`와 `UpdatePostDto`가 같은 feature 안에 나란히 있을 수 있습니다.
+
+프로젝트를 바꾸기 전에 대상 경로와 파일 쓰기 계획을 보고 싶다면 먼저 `--dry-run`을 사용하세요. 생성 후에는 여전히 파일을 읽고, 필요한 validation decorator를 추가하거나 조정한 뒤, 컨트롤러에서 `@RequestDto(CreatePostDto)`로 클래스를 연결해야 합니다. generator는 시작 파일을 만듭니다. HTTP route가 런타임에 그 DTO를 사용하게 만드는 것은 `@RequestDto()`입니다.
 
 ### Why Field Defaults Help Beginners
 
@@ -254,6 +268,7 @@ export class PostsService {
 
 - DTO가 이미 있는데도 컨트롤러 메서드에 인라인 객체 타입을 남겨 두는 실수.
 - 검증 데코레이터는 달아 놓고 `@RequestDto()`를 빼먹는 실수.
+- request DTO 파일을 생성한 뒤, 컨트롤러가 `@RequestDto()`로 참조하기 전에도 활성화됐다고 생각하는 실수.
 - 쿼리 문자열이 자동으로 숫자가 될 것이라 기대하는 실수.
 - mapped helper를 쓰지 않고 create DTO 필드를 update DTO에 손으로 복사하는 실수.
 - DTO 클래스를 전송 경계 모델이 아니라 도메인 모델처럼 취급하는 실수.
@@ -264,6 +279,7 @@ export class PostsService {
 
 ## Summary
 - DTO는 느슨한 요청 객체를 이름 있는 검증 가능한 입력 계약으로 바꿉니다.
+- `fluo generate request-dto <feature> <name>`은 feature slice 안에 DTO 파일을 시작해 주지만, 컨트롤러에는 여전히 `@RequestDto()`가 필요합니다.
 - `@RequestDto()`는 HTTP 바인딩과 DTO materialization 및 validation을 연결합니다.
 - 검증 데코레이터는 FluoBlog 생성 및 업데이트 라우트를 더 안전하게 만듭니다.
 - `PartialType()`은 update DTO를 만들 때 유용한 초기 패턴입니다.

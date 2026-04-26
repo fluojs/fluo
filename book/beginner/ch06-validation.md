@@ -8,6 +8,7 @@ If Chapter 5 built the skeleton of routes and controllers, this chapter handles 
 ## Learning Objectives
 - Understand why DTOs are better than loose request objects.
 - Use validation decorators that describe FluoBlog post creation input.
+- Generate a request DTO file with the CLI and understand where it fits.
 - Learn how `@RequestDto()` connects HTTP binding and DTO materialization.
 - Apply optional and partial DTO patterns to update operations.
 - Understand why fluo avoids implicit scalar coercion.
@@ -65,6 +66,19 @@ export class CreatePostDto {
 ```
 
 This class now plays three useful roles. It names the request, documents the expected fields, and defines runtime validation rules. Together, those roles move FluoBlog from an API that simply has routes to an API that is safer.
+
+### Starting the DTO file with the CLI
+
+You can write `CreatePostDto` by hand, and doing so is useful while learning. The current CLI can also create the request DTO file in the feature directory for you.
+
+```bash
+fluo generate request-dto posts CreatePost
+fluo g request-dto posts UpdatePost --dry-run
+```
+
+The command keeps the feature directory and DTO class name separate. In this example, `posts` points to the `src/posts/` slice, while `CreatePost` is the DTO class name. That means `CreatePostDto` and `UpdatePostDto` can live beside each other in the same feature without guessing from a single combined name.
+
+Use `--dry-run` first when you want to see the target path and file-write plan without changing the project. After generation, you still read the file, add or adjust validation decorators, and connect the class to the controller with `@RequestDto(CreatePostDto)`. The generator creates the starting file. `@RequestDto()` is what makes the HTTP route use that DTO at runtime.
 
 ### Why Field Defaults Help Beginners
 
@@ -254,6 +268,7 @@ When you know input is valid, you can write simpler service code. You do not nee
 
 - Leaving inline object types on controller methods even though a DTO already exists.
 - Adding validation decorators but forgetting `@RequestDto()`.
+- Generating a request DTO file and assuming it is active before the controller references it with `@RequestDto()`.
 - Expecting query strings to become numbers automatically.
 - Manually copying create DTO fields into an update DTO instead of using a mapped helper.
 - Treating DTO classes like domain models instead of transport-boundary models.
@@ -264,6 +279,7 @@ Once validation exists, readers naturally ask what happens when it fails. That i
 
 ## Summary
 - DTOs turn loose request objects into named, validated input contracts.
+- `fluo generate request-dto <feature> <name>` starts a DTO file in the feature slice, but the controller still needs `@RequestDto()`.
 - `@RequestDto()` connects HTTP binding with DTO materialization and validation.
 - Validation decorators make FluoBlog create and update routes safer.
 - `PartialType()` is a useful early pattern for creating update DTOs.
