@@ -39,6 +39,30 @@ describe('DefaultJwtVerifier', () => {
     );
   });
 
+  it('rejects runtime string and prototype-key verification algorithms', () => {
+    expect(() => new DefaultJwtVerifier({ algorithms: ['none' as never], secret: 'secret' })).toThrow(
+      'JWT verifier received unsupported JWT algorithm "none".',
+    );
+    expect(() => new DefaultJwtVerifier({ algorithms: ['toString' as never], secret: 'secret' })).toThrow(
+      'JWT verifier received unsupported JWT algorithm "toString".',
+    );
+  });
+
+  it('rejects tokens whose header algorithm is a prototype key', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const token = signToken(
+      { exp: Math.floor(Date.now() / 1000) + 60, sub: 'prototype-alg' },
+      'secret',
+      { alg: 'toString', typ: 'JWT' },
+    );
+
+    await expect(verifier.verifyAccessToken(token)).rejects.toThrow(JwtInvalidTokenError);
+    await expect(verifier.verifyAccessToken(token)).rejects.toThrow('JWT algorithm is not allowed.');
+  });
+
   it('verifies a valid token and normalizes the principal', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS256'],

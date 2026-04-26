@@ -34,8 +34,15 @@ export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   ES512: 'sha512',
 };
 
+function hasOwnAlgorithmMapping(
+  mappings: Partial<Record<JwtAlgorithm, string>>,
+  alg: string | undefined,
+): alg is JwtAlgorithm {
+  return typeof alg === 'string' && Object.hasOwn(mappings, alg);
+}
+
 function isSupportedAlgorithm(alg: string | undefined): alg is JwtAlgorithm {
-  return typeof alg === 'string' && (alg in HMAC_HASH || alg in ASYMMETRIC_HASH);
+  return hasOwnAlgorithmMapping(HMAC_HASH, alg) || hasOwnAlgorithmMapping(ASYMMETRIC_HASH, alg);
 }
 
 function assertJwtAlgorithms(algorithms: JwtAlgorithm[], context: string): void {
@@ -285,7 +292,7 @@ export class DefaultJwtVerifier {
   private createRefreshVerificationOptions(
     refreshToken: ReturnType<typeof normalizeRefreshTokenOptions>,
   ): JwtVerifierOptions {
-    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH);
+    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(HMAC_HASH, algorithm));
 
     if (algorithms.length === 0) {
       throw new JwtConfigurationError(
@@ -353,7 +360,7 @@ export class DefaultJwtVerifier {
     keyResolutionState: KeyResolutionState,
     jwksClient: JwksClient | undefined,
   ): Promise<void> {
-    if (header.alg in HMAC_HASH) {
+    if (hasOwnAlgorithmMapping(HMAC_HASH, header.alg)) {
       await this.verifyHmacTokenSignature(header, signingInput, signatureSegment, options, keyResolutionState);
       return;
     }
