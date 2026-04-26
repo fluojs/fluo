@@ -9,6 +9,7 @@ import {
   getApplicationStarterProfiles,
 } from './starter-profiles.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
+import { CliPromptCancelledError } from '../prompt-cancel.js';
 
 /** Default package manager used when detection has no signal. */
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
@@ -79,7 +80,7 @@ function createBootstrapPrompter(): BootstrapPrompter {
 
       if (clack.isCancel(result)) {
         clack.cancel('Operation cancelled.');
-        process.exit(0);
+        throw new CliPromptCancelledError();
       }
 
       return result;
@@ -93,7 +94,7 @@ function createBootstrapPrompter(): BootstrapPrompter {
 
       if (clack.isCancel(result)) {
         clack.cancel('Operation cancelled.');
-        process.exit(0);
+        throw new CliPromptCancelledError();
       }
 
       return result;
@@ -110,7 +111,7 @@ function createBootstrapPrompter(): BootstrapPrompter {
 
       if (clack.isCancel(result)) {
         clack.cancel('Operation cancelled.');
-        process.exit(0);
+        throw new CliPromptCancelledError();
       }
 
       return result;

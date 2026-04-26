@@ -15,6 +15,7 @@ import {
 } from '@fluojs/runtime';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
+import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -333,7 +334,7 @@ function createInspectPrompter(): InspectPrompter {
 
       if (clack.isCancel(result)) {
         clack.cancel('Operation cancelled.');
-        process.exit(0);
+        throw new CliPromptCancelledError();
       }
 
       return result;
@@ -483,6 +484,10 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     return 0;
   } catch (error: unknown) {
+    if (isCliPromptCancelledError(error)) {
+      return 0;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`${message}\n`);
     return 1;

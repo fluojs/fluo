@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { spinner as clackSpinner, log as clackLog } from '@clack/prompts';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
+import { isCliPromptCancelledError } from '../prompt-cancel.js';
 import { installDependencies } from '../new/install.js';
 import { collectBootstrapAnswers, type BootstrapPrompter } from '../new/prompt.js';
 import { resolveBootstrapPlan } from '../new/resolver.js';
@@ -533,6 +534,10 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
     );
     return 0;
   } catch (error: unknown) {
+    if (isCliPromptCancelledError(error)) {
+      return 0;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
     stderr.write(`${message}\n`);
     return 1;

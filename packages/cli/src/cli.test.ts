@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runCli } from './cli.js';
 import { generatorManifest } from './generators/manifest.js';
+import { CliPromptCancelledError, runCli } from './index.js';
 
 const createdDirectories: string[] = [];
 
@@ -69,6 +69,21 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('dist-built CLI entrypoint');
     expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('dist 빌드 CLI 엔트리포인트');
     expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('# @fluojs/studio용 snapshot 내보내기');
+  });
+
+  it('keeps process ownership isolated to the binary entrypoint', () => {
+    const sourceRoot = dirname(fileURLToPath(import.meta.url));
+    const embeddableSourceFiles = [
+      join(sourceRoot, 'commands', 'inspect.ts'),
+      join(sourceRoot, 'commands', 'new.ts'),
+      join(sourceRoot, 'new', 'prompt.ts'),
+    ];
+
+    for (const sourceFile of embeddableSourceFiles) {
+      expect(readFileSync(sourceFile, 'utf8')).not.toContain('process.exit(');
+    }
+
+    expect(readFileSync(join(sourceRoot, '..', 'bin', 'fluo.mjs'), 'utf8')).toContain('process.exitCode = await runCli');
   });
 
   it('asks before installing a newer CLI and continues when the update is declined', async () => {
@@ -1489,6 +1504,58 @@ void bootstrap();
     expect(promptMessages).toEqual(['Install @fluojs/studio before rendering Mermaid output?']);
     expect(stdoutBuffer.join('')).toBe('');
     expect(stderrBuffer.join('')).toContain('Installation declined; no package-manager command was run.');
+  });
+
+  it('returns success for cancelled inspect prompts without terminating the host process', async () => {
+    const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--mermaid'], {
+      cwd: process.cwd(),
+      interactive: true,
+      loadStudioMermaidRenderer: async () => undefined,
+      prompt: {
+        confirm: async () => {
+          throw new CliPromptCancelledError();
+        },
+        select: async () => {
+          throw new Error('inspect should not request select prompts');
+        },
+        text: async () => {
+          throw new Error('inspect should not request text prompts');
+        },
+      },
+      stderr: { write: () => undefined },
+      stdin: { isTTY: true },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('returns success for cancelled new prompts through the public embedding sentinel', async () => {
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new'], {
+      interactive: true,
+      prompt: {
+        confirm: async () => {
+          throw new Error('fluo new should stop at the cancelled project name prompt');
+        },
+        select: async () => {
+          throw new Error('fluo new should stop at the cancelled project name prompt');
+        },
+        text: async () => {
+          throw new CliPromptCancelledError();
+        },
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdin: { isTTY: true },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(stdoutBuffer.join('')).toBe('');
   });
 
   it('emits bootstrap timing diagnostics for inspect --timing', async () => {
