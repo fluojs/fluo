@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
 import { SseResponse, encodeSseComment, encodeSseMessage } from './sse.js';
@@ -155,7 +155,7 @@ describe('SseResponse', () => {
     expect(stream.flushCalls).toBe(1);
     expect(stream.writes).toEqual(['event: message\nid: 1\ndata: hello\n\n', ': note\n\n']);
     expect(stream.closeCalls).toBe(1);
-    expect(stream.removeCloseListenerCalls).toBe(0);
+    expect(stream.removeCloseListenerCalls).toBe(1);
   });
 
   it('closes the stream when the request signal aborts', () => {
@@ -169,7 +169,8 @@ describe('SseResponse', () => {
 
     expect(stream.closeCalls).toBe(1);
     expect(stream.writes).toEqual([]);
-    expect(stream.onCloseCalls).toBe(0);
+    expect(stream.onCloseCalls).toBe(1);
+    expect(stream.removeCloseListenerCalls).toBe(1);
   });
 
   it('surfaces backpressure from send and comment calls', () => {
@@ -220,14 +221,50 @@ describe('SseResponse', () => {
     expect(stream.writes).toEqual([]);
   });
 
-  it('does not register a raw close listener when the request signal exists', () => {
+  it('removes the request abort listener when the raw stream closes first', () => {
     const stream = createMockSseStream();
     const response = createMockResponse(stream);
     const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, 'removeEventListener');
+    const sse = new SseResponse(createContext(response, controller.signal));
 
-    new SseResponse(createContext(response, controller.signal));
+    expect(stream.onCloseCalls).toBe(1);
 
-    expect(stream.onCloseCalls).toBe(0);
+    stream.emitClose();
+    sse.send('ignored-after-close');
+
+    expect(removeEventListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(stream.closeCalls).toBe(1);
+    expect(stream.removeCloseListenerCalls).toBe(1);
+    expect(stream.writes).toEqual([]);
+  });
+
+  it('does not leak a late abort listener when raw onClose closes synchronously', () => {
+    const stream = createMockSseStream();
+    stream._closed = true;
+    stream.onClose = (listener: () => void) => {
+      stream.onCloseCalls += 1;
+      listener();
+
+      return () => {
+        stream.removeCloseListenerCalls += 1;
+      };
+    };
+    const response = createMockResponse(stream);
+    const controller = new AbortController();
+    const addEventListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListener = vi.spyOn(controller.signal, 'removeEventListener');
+    const sse = new SseResponse(createContext(response, controller.signal));
+
+    controller.abort(new Error('late-client-disconnect'));
+    sse.send('ignored-after-sync-close');
+
+    expect(addEventListener).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+    expect(removeEventListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(stream.onCloseCalls).toBe(1);
+    expect(stream.closeCalls).toBe(0);
+    expect(stream.removeCloseListenerCalls).toBe(1);
+    expect(stream.writes).toEqual([]);
   });
 
   it('throws when the adapter does not expose response.stream support', () => {

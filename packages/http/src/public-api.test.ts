@@ -34,6 +34,13 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('normalizeRoutePattern');
     expect(httpPublicApi).toHaveProperty('matchRoutePattern');
     expect(httpPublicApi).toHaveProperty('isMiddlewareRouteConfig');
+    expect(httpPublicApi).toHaveProperty('createCorrelationMiddleware');
+    expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
+    expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
+    expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
+    expect(httpPublicApi).toHaveProperty('SseResponse');
+    expect(httpPublicApi).toHaveProperty('encodeSseComment');
+    expect(httpPublicApi).toHaveProperty('encodeSseMessage');
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {

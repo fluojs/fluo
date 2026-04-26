@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -112,14 +113,20 @@ stream(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+## 요청 정리와 런타임 이식성
+
+디스패처는 활성 dispatch 동안에만 `AsyncLocalStorage`로 `RequestContext`를 바인딩하고, 요청 observer가 끝난 뒤 `finally` 경로에서 request-scoped DI 컨테이너를 dispose합니다. 이 동작은 정상 성공, 처리된 오류, 중단된 요청 경로에서 request-scoped provider가 다음 요청으로 새지 않게 합니다.
+
+어댑터는 플랫폼이 제공한다면 `FrameworkRequest.signal`에 `AbortSignal`을 전달해야 합니다. SSE에서는 가능하면 `FrameworkResponse.stream.onClose(...)`도 노출해야 합니다. `SseResponse`는 request abort와 raw stream close를 모두 구독하고, 멱등하게 닫히며, 어느 쪽이 먼저 종료되더라도 등록한 listener를 제거합니다.
+
 ## 공개 API
 
-- **라우팅 데코레이터**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`
-- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`
-- **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`
+- **라우팅 데코레이터**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
+- **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **핵심 런타임 타입**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
 - **예외**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `createRateLimitMiddleware`, `getCurrentRequestContext`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `getCurrentRequestContext`, `encodeSseComment`, `encodeSseMessage`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 

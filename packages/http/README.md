@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Request Cleanup and Portability](#request-cleanup-and-portability)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -114,14 +115,20 @@ stream(_input: undefined, ctx: RequestContext) {
 }
 ```
 
+## Request Cleanup and Portability
+
+The dispatcher binds `RequestContext` with `AsyncLocalStorage` for the active dispatch only and disposes the request-scoped DI container from its `finally` path after request observers finish. This keeps per-request providers from leaking across normal success, handled error, and aborted request paths.
+
+Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the platform exposes one. For SSE, adapters should also expose `FrameworkResponse.stream.onClose(...)` when possible; `SseResponse` listens to both request abort and raw stream close, closes idempotently, and removes registered listeners when either side terminates first.
+
 ## Public API
 
-- **Routing decorators**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`
-- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`
-- **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`
+- **Routing decorators**: `Controller`, `Get`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
+- **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
+- **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Core runtime types**: `RequestContext`, `FrameworkRequest`, `FrameworkResponse`, `SseResponse`
 - **Exceptions**: `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `InternalServerErrorException`, `PayloadTooLargeException`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorsMiddleware`, `createRateLimitMiddleware`, `getCurrentRequestContext`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createSecurityHeadersMiddleware`, `getCurrentRequestContext`, `encodeSseComment`, `encodeSseMessage`
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
