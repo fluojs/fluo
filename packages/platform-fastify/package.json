@@ -45,7 +45,7 @@
     "@fastify/multipart": "^9.2.1",
     "@fluojs/http": "workspace:^",
     "@fluojs/runtime": "workspace:^",
-    "fastify": "^5.6.1",
+    "fastify": "^5.8.5",
     "fastify-raw-body": "^5.0.0"
   },
   "devDependencies": {
