@@ -10,6 +10,7 @@ HTTP에 독립적인 JWT 토큰 코어로, 액세스 토큰의 서명 및 검증
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
+- [설정 가드레일](#설정-가드레일)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -144,6 +145,12 @@ const verifier = new DefaultJwtVerifier({
 ```
 
 `jwksRequestTimeoutMs`의 기본값은 `5_000`이며, 예산을 넘기면 진행 중인 JWKS fetch를 abort합니다.
+
+## 설정 가드레일
+
+JWT 서명과 검증에는 `algorithms`에 지원되는 알고리즘이 하나 이상 필요합니다. 기본 signer는 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`를 지원하며, 빈 알고리즘 목록은 모호한 토큰을 발행하거나 수락하지 않도록 즉시 실패합니다.
+
+액세스 토큰 TTL도 양의 유한 숫자여야 합니다. `accessTokenTtlSeconds`를 생략하면 `DefaultJwtSigner`는 문서화된 기본값인 `3600`초를 사용합니다. 소수 초는 JWT NumericDate `exp` 클레임에 그대로 보존됩니다. `0`, 음수 또는 유한하지 않은 값이 제공되면 토큰을 발행하기 전에 `JwtConfigurationError`로 실패합니다.
 
 ## 공개 API 개요
 

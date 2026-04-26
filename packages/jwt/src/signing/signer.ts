@@ -22,11 +22,44 @@ function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgor
     return undefined;
   }
 
-  if (algorithm in HMAC_HASH) {
+  if (hasOwnAlgorithmMapping(HMAC_HASH, algorithm)) {
     return keys.find((entry) => typeof entry.secret === 'string' && entry.secret.length > 0);
   }
 
   return keys.find((entry) => entry.privateKey !== undefined);
+}
+
+function hasOwnAlgorithmMapping(
+  mappings: Partial<Record<JwtAlgorithm, string>>,
+  algorithm: string | undefined,
+): algorithm is JwtAlgorithm {
+  return typeof algorithm === 'string' && Object.hasOwn(mappings, algorithm);
+}
+
+function isSupportedSigningAlgorithm(algorithm: string | undefined): algorithm is JwtAlgorithm {
+  return hasOwnAlgorithmMapping(HMAC_HASH, algorithm) || hasOwnAlgorithmMapping(ASYMMETRIC_HASH, algorithm);
+}
+
+function assertSigningAlgorithms(algorithms: JwtAlgorithm[]): void {
+  if (!Array.isArray(algorithms) || algorithms.length === 0) {
+    throw new JwtConfigurationError('JWT signer requires at least one allowed JWT algorithm.');
+  }
+
+  for (const algorithm of algorithms) {
+    if (!isSupportedSigningAlgorithm(algorithm)) {
+      throw new JwtConfigurationError(`JWT signer received unsupported JWT algorithm "${String(algorithm)}".`);
+    }
+  }
+}
+
+function resolveAccessTokenTtlSeconds(options: JwtVerifierOptions): number {
+  const ttl = options.accessTokenTtlSeconds ?? 3600;
+
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new JwtConfigurationError('JWT accessTokenTtlSeconds must be a positive finite number.');
+  }
+
+  return ttl;
 }
 
 /**
@@ -37,8 +70,9 @@ export class DefaultJwtSigner {
   private readonly refreshAlgorithms: JwtAlgorithm[];
 
   constructor(private readonly options: JwtVerifierOptions) {
+    assertSigningAlgorithms(options.algorithms);
     this.refreshAlgorithms = this.options.algorithms.filter(
-      (algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH,
+      (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(HMAC_HASH, algorithm),
     );
   }
 
@@ -66,10 +100,10 @@ export class DefaultJwtSigner {
   private async signToken(claims: JwtClaims, options: JwtVerifierOptions, hmacOnly: boolean): Promise<string> {
     const algorithm: JwtAlgorithm | undefined = options.algorithms.find((alg) => {
       if (hmacOnly) {
-        return alg in HMAC_HASH;
+        return hasOwnAlgorithmMapping(HMAC_HASH, alg);
       }
 
-      return alg in HMAC_HASH || alg in ASYMMETRIC_HASH;
+      return isSupportedSigningAlgorithm(alg);
     });
 
     if (!algorithm) {
@@ -84,10 +118,10 @@ export class DefaultJwtSigner {
       );
     }
 
-    const isAsymmetric = algorithm in ASYMMETRIC_HASH;
+    const isAsymmetric = hasOwnAlgorithmMapping(ASYMMETRIC_HASH, algorithm);
 
     const now = Math.floor(Date.now() / 1000);
-    const ttl = options.accessTokenTtlSeconds ?? 3600;
+    const ttl = resolveAccessTokenTtlSeconds(options);
     const payload: JwtClaims = {
       ...claims,
       aud: claims.aud ?? options.audience,
