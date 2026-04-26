@@ -45,7 +45,9 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 2. worktree canonical path는 `.worktrees/`다.
 3. package/runtime 변경은 `README.md`와 behavioral contract를 binding contract로 본다.
 4. PR body는 `.github/PULL_REQUEST_TEMPLATE.md`의 축을 실질적으로 채워야 한다.
-5. release/tooling/CI 관련 변경은 `docs/operations/release-governance.md`, `docs/operations/testing-guide.md`와 정합해야 한다.
+5. release/tooling/CI 관련 변경은 `docs/contracts/release-governance.md`, `docs/contracts/testing-guide.md`와 정합해야 한다.
+6. 패키지 버전업/배포 준비 자체는 root `CHANGELOG.md`와 `tooling/release/intents/*.json` release intent record를 함께 다룬다.
+7. `1.0.0-beta.2` 이상 후보 릴리스는 release intent record가 필요하며, Changesets/Beachball은 현재 승인된 릴리스 경로가 아니다.
 
 ## Authority Boundary
 
@@ -77,7 +79,7 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 
 1. 공통 문서
    - `CONTRIBUTING.md`
-   - `docs/operations/behavioral-contract-policy.md`
+   - `docs/contracts/behavioral-contract-policy.md`
    - `.github/PULL_REQUEST_TEMPLATE.md`
 
 2. 패키지/모듈 문서
@@ -86,13 +88,14 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 
 3. 주제별 보강 문서
    - release / publish / CLI / tooling 관련 변경:
-     - `docs/operations/release-governance.md`
-     - `docs/operations/testing-guide.md`
-     - `docs/reference/toolchain-contract-matrix.md`
+      - `docs/contracts/release-governance.md`
+      - `docs/contracts/testing-guide.md`
+      - `tooling/release/intents/README.md`
+      - `docs/reference/toolchain-contract-matrix.md`
    - public API / docs contract 관련 변경:
-     - `docs/operations/public-export-tsdoc-baseline.md`
+      - `docs/contracts/public-export-tsdoc-baseline.md`
    - platform/runtime 계약 관련 변경:
-     - `docs/operations/platform-conformance-authoring-checklist.md`
+      - `docs/contracts/platform-conformance-authoring-checklist.md`
 
 ### 4. Create branch in dedicated worktree
 - 먼저 remote 상태를 갱신한다: `git fetch origin`
@@ -116,6 +119,8 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 - documented limitation은 issue가 명시하지 않는 이상 조용히 없애지 않는다.
 - contract-affecting change는 regression test를 반드시 포함한다.
 - release/tooling/CI 계약을 바꾸면 related docs와 governance checks를 같이 맞춘다.
+- 패키지 릴리스 준비 PR이면 `package.json` version, root `CHANGELOG.md`, `tooling/release/intents/*.json`, `pnpm verify:release-readiness --target-package ... --target-version ... --dist-tag ...`를 같은 릴리스 단위로 맞춘다.
+- `downstream-evaluate`는 자동 publish 트리거가 아니라 명시적 review decision으로 취급한다.
 - `Co-Authored-By` trailer를 절대 넣지 않는다.
 
 ### 6. Verification before PR
@@ -127,6 +132,7 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 - 일반 코드 변경: `pnpm verify` 또는 관련 package test/build/typecheck
 - docs/governance 변경: `pnpm verify:platform-consistency-governance`
 - release/publish/tooling 변경: `pnpm verify:release-readiness`
+- 단건 패키지 릴리스 준비: `pnpm verify:release-readiness --target-package <pkg> --target-version <version> --dist-tag <tag>` 및 필요 시 `--release-intent-file <path>`
 - public export docs 변경: `pnpm lint` 및 필요시 `pnpm verify:public-export-tsdoc:baseline`
 
 ### 7. Commit
@@ -166,10 +172,11 @@ fluo 저장소의 GitHub issue를 전용 worktree에서 해결하고, fluo의 be
 fluo에서 package/runtime/tooling behavior는 문서 경계의 일부다.
 
 - affected package `README.md`를 먼저 읽는다.
-- `docs/operations/behavioral-contract-policy.md`를 binding policy로 취급한다.
+- `docs/contracts/behavioral-contract-policy.md`를 binding policy로 취급한다.
 - documented supported behavior를 silent narrowing 하지 않는다.
 - behavior가 바뀌면 docs/test를 같은 PR에 포함한다.
 - release/tooling contract를 바꾸면 `release-governance`와 `testing-guide`도 함께 확인한다.
+- release intent가 필요한 버전에서 `tooling/release/intents/*.json` 갱신이 빠졌으면 PR 생성 전에 보완한다.
 
 ## Mandatory Rules
 

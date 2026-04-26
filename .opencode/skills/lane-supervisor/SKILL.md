@@ -48,6 +48,7 @@ fluo 저장소에서 여러 문제를 GitHub issue 단위로 쪼개고, 각 issu
 4. PR 중앙 리뷰 게이트는 repo-local `pr-to-merge`를 사용한다.
 5. worktree canonical path는 `.worktrees/`다.
 6. merge 판단은 merge policy와 `pr-to-merge` verdict를 함께 따른다.
+7. 패키지 릴리스 준비/배포는 repo-local `package-publish`가 담당하며, root `CHANGELOG.md`와 `tooling/release/intents/*.json` release intent record를 source of truth로 본다.
 
 ## Authority Boundary
 
@@ -316,6 +317,8 @@ PR이 생기면 반드시 repo-local `pr-to-merge`를 호출한다.
 ### Phase 11.5 — Release handoff
 
 - confirmed issue가 패키지 릴리스 준비/배포 자체를 다루는 경우에는 `issue-to-pr` 대신 `package-publish` handoff를 고려한다.
+- `1.0.0-beta.2` 이상 후보 릴리스는 release intent record가 필요하므로, handoff에는 target package, target version, dist-tag, release_prerelease, release_intent_file 여부를 포함한다.
+- Changesets/Beachball 기반 version PR이나 local publish 흐름으로 우회하지 않는다.
 - lane ledger와 package-publish ledger를 하나로 합치지 않는다.
 - package publish run state는 `package-publish`가 source of truth를 가진다.
 

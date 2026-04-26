@@ -124,7 +124,17 @@ changed files를 다음 bucket으로 분류한다.
 - governed SSOT EN/KO 문서 쌍의 heading structure parity
 - section coverage drift
 - package lists / publish surface drift
+- release intent / CHANGELOG / GitHub Release note source drift
 - 서로 참조하는 anchor/link drift
+
+release metadata drift는 아래 현재 정책을 기준으로 판단한다.
+
+- root `CHANGELOG.md`는 사람용 release narrative다.
+- `tooling/release/intents/*.json`은 release preparation/review용 canonical machine input이다.
+- `1.0.0-beta.2` 이상 후보 릴리스는 release intent record가 필요하다.
+- release intent는 package별 `release` / `no-release` / `downstream-evaluate` 판단을 명시해야 하며, `downstream-evaluate`는 자동 publish trigger가 아니다.
+- GitHub Release notes는 CI-only flow가 root `CHANGELOG.md`에서 생성한다.
+- Changesets/Beachball 또는 다른 release automation dependency는 현재 승인된 릴리스 경로가 아니다.
 
 주요 기준 문서:
 - `docs/contracts/release-governance.md` / `.ko.md`
@@ -132,6 +142,8 @@ changed files를 다음 bucket으로 분류한다.
 - `docs/contracts/public-export-tsdoc-baseline.md` / `.ko.md`
 - `docs/contracts/platform-conformance-authoring-checklist.md` / `.ko.md`
 - `docs/reference/package-surface.md` / `.ko.md`
+- `tooling/release/intents/README.md`
+- root `CHANGELOG.md`
 
 ### Phase 5 — Companion update check
 contract-bearing docs가 바뀌면 companion update도 같이 봐야 한다.
