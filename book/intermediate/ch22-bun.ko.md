@@ -74,15 +74,24 @@ Bun은 런타임에 내장된 WebSocket 구현을 제공합니다. fluo의 WebSo
 fluo에서 WebSockets는 게이트웨이(Gateways)를 통해 처리됩니다. Bun에서 실행될 때 프레임워크는 Bun의 네이티브 `Upgrade` 메커니즘과 게이트웨이 계약을 연결합니다.
 
 ```typescript
-import { WebSocketGateway, OnGatewayConnection } from '@fluojs/websockets';
+import { Module } from '@fluojs/core';
+import { OnConnect, WebSocketGateway } from '@fluojs/websockets';
+import { BunWebSocketModule } from '@fluojs/websockets/bun';
 
 @WebSocketGateway({ path: '/events' })
-export class NotificationGateway implements OnGatewayConnection {
+export class NotificationGateway {
+  @OnConnect()
   handleConnection(client: any) {
     console.log('Client connected via Bun native WebSockets');
   }
   // fluo가 내부적으로 Bun 전용 업그레이드 로직을 처리합니다.
 }
+
+@Module({
+  imports: [BunWebSocketModule.forRoot()],
+  providers: [NotificationGateway],
+})
+export class RealtimeModule {}
 ```
 
 내부적으로 Bun 어댑터는 `Upgrade` 헤더를 감지하고 Bun 런타임에서 요구하는 대로 `server.upgrade(request)`를 호출합니다. 애플리케이션 코드는 게이트웨이 계약에 머물고, 업그레이드 세부 사항은 어댑터 경계에 남습니다.

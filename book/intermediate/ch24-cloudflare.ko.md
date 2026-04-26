@@ -111,10 +111,20 @@ Cloudflare는 서버 측 WebSockets를 위해 `WebSocketPair`를 지원합니다
 
 ```typescript
 // 어댑터가 활성화된 경우 게이트웨이가 자동으로 Cloudflare의 WebSocketPair를 사용합니다.
+import { Module } from '@fluojs/core';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
+
 @WebSocketGateway({ path: '/ws' })
 export class EdgeGateway {
   // 로직은 Node/Bun 버전과 동일하게 유지됩니다.
 }
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
 ```
 
 ## 24.6 Deployment with Wrangler

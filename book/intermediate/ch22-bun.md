@@ -74,15 +74,24 @@ Bun provides a WebSocket implementation built into the runtime. When the Bun ada
 In fluo, WebSockets are handled through Gateways. When running on Bun, the framework connects Bun's native `Upgrade` mechanism to the gateway contract.
 
 ```typescript
-import { WebSocketGateway, OnGatewayConnection } from '@fluojs/websockets';
+import { Module } from '@fluojs/core';
+import { OnConnect, WebSocketGateway } from '@fluojs/websockets';
+import { BunWebSocketModule } from '@fluojs/websockets/bun';
 
 @WebSocketGateway({ path: '/events' })
-export class NotificationGateway implements OnGatewayConnection {
+export class NotificationGateway {
+  @OnConnect()
   handleConnection(client: any) {
     console.log('Client connected via Bun native WebSockets');
   }
   // fluo handles Bun-specific upgrade logic internally.
 }
+
+@Module({
+  imports: [BunWebSocketModule.forRoot()],
+  providers: [NotificationGateway],
+})
+export class RealtimeModule {}
 ```
 
 Internally, the Bun adapter detects the `Upgrade` header and calls `server.upgrade(request)` as required by the Bun runtime. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary.

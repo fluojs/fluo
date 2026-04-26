@@ -91,16 +91,24 @@ Like Bun, Deno provides its own WebSocket implementation through `Deno.upgradeWe
 
 ```typescript
 // When the Deno adapter is active, gateways automatically use Deno's native upgrade.
-import { WebSocketGateway, SubscribeMessage } from '@fluojs/websockets';
+import { Module } from '@fluojs/core';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
-  @SubscribeMessage('ping')
+  @OnMessage('ping')
   handlePing() {
     return { event: 'pong', data: 'hello from deno' };
   }
   // fluo handles Deno-native upgrades internally.
 }
+
+@Module({
+  imports: [DenoWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class RealtimeModule {}
 ```
 
 ## 23.5 Handling Deno Permissions in FluoShop

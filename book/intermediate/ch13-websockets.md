@@ -85,7 +85,10 @@ WebSocketModule.forRoot({
   upgrade: {
     guard(request) {
       // Handshake-level security
-      const token = request.headers.authorization;
+      const token = request instanceof Request
+        ? request.headers.get('authorization')
+        : request.headers.authorization;
+
       if (!isValid(token)) throw new UnauthorizedException();
     }
   }
@@ -198,7 +201,7 @@ This flow reduces repeated polling by users and gives them an experience where t
 - `WebSocketModule.forRoot()` initializes the engine with bounded defaults for production stability.
 - `@WebSocketGateway` classes manage the connection lifecycle and message routing.
 - You can use `upgrade.guard` to reject unauthenticated handshakes before they consume server resources.
-- Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, and Deno.
+- Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, Deno, and Cloudflare Workers.
 - Heartbeat and bounded defaults prevent resource leaks and ghost connections.
 
 The practical lesson is that WebSockets should be just as structured as REST APIs.

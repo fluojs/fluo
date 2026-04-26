@@ -91,16 +91,24 @@ Bun과 마찬가지로 Deno는 `Deno.upgradeWebSocket`을 통한 자체 WebSocke
 
 ```typescript
 // Deno 어댑터가 활성화된 경우 게이트웨이가 자동으로 Deno의 네이티브 업그레이드를 사용합니다.
-import { WebSocketGateway, SubscribeMessage } from '@fluojs/websockets';
+import { Module } from '@fluojs/core';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
 
 @WebSocketGateway({ path: '/ws' })
 export class MyGateway {
-  @SubscribeMessage('ping')
+  @OnMessage('ping')
   handlePing() {
     return { event: 'pong', data: 'hello from deno' };
   }
   // fluo가 내부적으로 Deno 네이티브 업그레이드를 처리합니다.
 }
+
+@Module({
+  imports: [DenoWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class RealtimeModule {}
 ```
 
 ## 23.5 Handling Deno Permissions in FluoShop
