@@ -32,6 +32,23 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   nats: '^2.29.3',
 } as const;
 
+const PUBLISHED_INTERNAL_DEPENDENCIES = {
+  '@fluojs/cli': '^1.0.0-beta.2',
+  '@fluojs/config': '^1.0.0-beta.1',
+  '@fluojs/core': '^1.0.0-beta.1',
+  '@fluojs/di': '^1.0.0-beta.1',
+  '@fluojs/http': '^1.0.0-beta.1',
+  '@fluojs/microservices': '^1.0.0-beta.1',
+  '@fluojs/platform-bun': '^1.0.0-beta.1',
+  '@fluojs/platform-cloudflare-workers': '^1.0.0-beta.1',
+  '@fluojs/platform-deno': '^1.0.0-beta.1',
+  '@fluojs/platform-express': '^1.0.0-beta.1',
+  '@fluojs/platform-fastify': '^1.0.0-beta.2',
+  '@fluojs/platform-nodejs': '^1.0.0-beta.1',
+  '@fluojs/runtime': '^1.0.0-beta.1',
+  '@fluojs/testing': '^1.0.0-beta.1',
+} as const;
+
 
 type ApplicationStarterDescriptor = {
   adapterCall?: string;
@@ -127,6 +144,7 @@ function createDependencySpec(
 ): string {
   return packageSpecs[packageName]
     ?? PUBLISHED_RUNTIME_DEPENDENCIES[packageName as keyof typeof PUBLISHED_RUNTIME_DEPENDENCIES]
+    ?? PUBLISHED_INTERNAL_DEPENDENCIES[packageName as keyof typeof PUBLISHED_INTERNAL_DEPENDENCIES]
     ?? createPublishedInternalDependencySpec(releaseVersion);
 }
 
