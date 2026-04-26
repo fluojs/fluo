@@ -181,6 +181,20 @@ function workspaceManifestByName(packageManifests) {
   return new Map(packageManifests.map(({ manifest, packageJsonPath }) => [manifest.name, { manifest, packageJsonPath }]));
 }
 
+function publicWorkspacePackageNamesFromManifests(packageManifests) {
+  return sorted(
+    packageManifests
+      .map(({ manifest }) => manifest)
+      .filter(
+        (manifest) =>
+          typeof manifest.name === 'string' &&
+          manifest.private !== true &&
+          manifest.publishConfig?.access === 'public',
+      )
+      .map((manifest) => manifest.name),
+  );
+}
+
 function isValidSemver(version) {
   return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
     version,
@@ -815,6 +829,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
   const governancePackageList = sorted(parsePackageListFromSection(releaseGovernance, 'intended publish surface'));
   const packageSurfaceList = parsePackageNamesFromFamilyTable(packageSurface, 'public package families');
   const workspacePackages = listWorkspacePackageNames();
+  const publicWorkspacePackageList = publicWorkspacePackageNamesFromManifests(packageManifests);
   const publicWorkspaceProtocolViolations = collectWorkspaceProtocolViolations(
     packageManifests,
     governancePackageList,
@@ -920,6 +935,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     'Documented public packages exist in workspace',
     governancePackageList.every((packageName) => workspacePackages.includes(packageName)),
     'Every documented public package maps to an existing workspace package manifest.',
+  );
+  assertCheck(
+    checks,
+    'Publishable workspace surface is explicitly allowlisted',
+    areSameStringArrays(publicWorkspacePackageList, governancePackageList),
+    areSameStringArrays(publicWorkspacePackageList, governancePackageList)
+      ? 'Every publishable public workspace package is explicitly listed in release-governance before automated Changesets publish can run.'
+      : `Publishable public workspace packages must exactly match docs/contracts/release-governance.md intended publish surface. Workspace: ${publicWorkspacePackageList.join(', ') || '(none)'}; governance: ${governancePackageList.join(', ') || '(none)'}.`,
   );
   assertCheck(
     checks,

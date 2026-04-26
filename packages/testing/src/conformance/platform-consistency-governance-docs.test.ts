@@ -162,6 +162,8 @@ describe('platform consistency governance docs', () => {
   it('verifies CI-only Changesets release runbook discoverability', () => {
     const releaseGovernance = readFileSync(resolve(repoRoot, 'docs/contracts/release-governance.md'), 'utf8');
     const releaseGovernanceKo = readFileSync(resolve(repoRoot, 'docs/contracts/release-governance.ko.md'), 'utf8');
+    const contributing = readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf8');
+    const contributingKo = readFileSync(resolve(repoRoot, 'CONTRIBUTING.ko.md'), 'utf8');
 
     expect(releaseGovernance).toContain('.github/workflows/release.yml');
     expect(releaseGovernanceKo).toContain('.github/workflows/release.yml');
@@ -169,6 +171,12 @@ describe('platform consistency governance docs', () => {
     expect(releaseGovernanceKo).toContain('Version Packages PR');
     expect(releaseGovernance).toContain('pnpm changeset status --since=main');
     expect(releaseGovernanceKo).toContain('pnpm changeset status --since=main');
+    expect(contributing).toContain('Version Packages PR');
+    expect(contributingKo).toContain('Version Packages PR');
+    expect(contributing).toContain('.changeset/*.md');
+    expect(contributingKo).toContain('.changeset/*.md');
+    expect(contributing).not.toContain('.github/workflows/release-single-package.yml');
+    expect(contributingKo).not.toContain('.github/workflows/release-single-package.yml');
   });
 
   it('keeps intended publish surface synchronized between English and Korean release-governance docs', () => {
@@ -248,13 +256,17 @@ describe('platform consistency governance docs', () => {
     expect(releaseWorkflow).toContain('- main');
     expect(releaseWorkflow).toContain('id-token: write');
     expect(releaseWorkflow).toContain('registry-url: https://registry.npmjs.org');
-    expect(releaseWorkflow).toContain('uses: changesets/action@v1');
+    expect(releaseWorkflow).toMatch(/uses: actions\/checkout@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: pnpm\/action-setup@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: actions\/setup-node@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: changesets\/action@[0-9a-f]{40} # v1/u);
     expect(releaseWorkflow).toContain('version: pnpm version-packages');
     expect(releaseWorkflow).toContain('publish: pnpm publish-packages');
     expect(releaseWorkflow).toContain('createGithubReleases: true');
     expect(releaseWorkflow).toContain('run: pnpm verify:release-readiness');
     expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');
-    expect(releaseWorkflow).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+    expect(releaseWorkflow).not.toContain('NODE_AUTH_TOKEN');
+    expect(releaseWorkflow).not.toContain('secrets.NPM_TOKEN');
   });
 
   it('keeps Changesets release safety gates before versioning or publish', () => {

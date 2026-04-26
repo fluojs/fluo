@@ -40,41 +40,36 @@ A package is ready for `1.0` and the Official tier only when all of the followin
 
 ## Release Metadata Contract
 
-Committed release-intent records are the canonical long-term machine input for release preparation. The root `CHANGELOG.md` remains the human-facing narrative, and GitHub Releases are generated artifacts produced by the supervised CI-only flow.
+Changesets (`.changeset/*.md`) is the canonical release metadata tool. Contributors record semver intent and changelog text in committed changeset files at PR time; the Changesets GitHub Action consumes those files to version packages, generate changelogs, and publish to npm. Package-level changelogs are generated automatically, and the root `CHANGELOG.md` remains available for repo-wide narrative. GitHub Releases are created automatically by the Changesets action.
 
-Each release intent entry must include these fields:
+Each changeset must include:
 
-1. Package name, using the published `@fluojs/*` package name.
-2. Semver intent, one of `major`, `minor`, `patch`, or `none` when the package has no release.
-3. Prerelease or stable intent, including the expected dist-tag when a package is released.
-4. Summary, written for maintainers and release reviewers.
-5. Migration note when the semver intent is breaking for the package's stability tier.
-6. Affected-package rationale, explaining why the package is included in the release set or why it is excluded.
+1. Affected package names, using the published `@fluojs/*` package name.
+2. Semver intent per package, one of `major`, `minor`, or `patch`.
+3. A summary describing the change for consumers and release reviewers.
 
-Every package in a release preparation run must use one disposition:
+Packages that are not listed in a changeset are not versioned or published for that release. Downstream dependent packages are evaluated through Changesets' internal dependency graph; dependent version bumps are computed automatically during versioning.
 
-- `release`: publish this package through the supervised CI-only release workflow after release-readiness passes.
-- `no-release`: do not publish this package in the current release set, while preserving the rationale in the release-intent record.
-- `downstream-evaluate`: review this package because upstream changes may affect it, but do not treat the disposition as automatic downstream publishing.
+The release workflow is triggered automatically on pushes to `main`. When pending changesets exist, the Changesets action opens a "Version Packages" PR that bumps versions, updates changelogs, and removes consumed changesets. Merging that PR triggers the publish step, which publishes affected packages to npm with OIDC provenance and creates scoped git tags and GitHub Releases.
 
-Package-scoped notes and release-intent records are required for releases prepared after this work lands. `1.0.0-beta.2` is the first enforced fixture/candidate version; releases at or before `1.0.0-beta.1` stay legacy-compatible.
+Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`). Enter prerelease mode on a dedicated branch when needed; exit with `changeset pre exit` before stable releases.
+
+Legacy `tooling/release/intents/*.json` records are retained for historical reference but are no longer required for new releases.
 
 
 ## Migration Assessment: Changesets and Beachball
 
-The current repo-local intent model remains the approved release metadata path. It keeps the release decision inside committed JSON records, requires explicit package dispositions, and treats `downstream-evaluate` as a review decision rather than an automatic publish trigger. This matches the supervised CI-only workflow because `.github/workflows/release-single-package.yml` still publishes exactly one requested package from `refs/heads/main` after release-readiness passes.
+Changesets has been adopted as the primary release automation tool. It replaces the previous repo-local JSON intent model with a standard contributor-authored changeset workflow. The `.github/workflows/release.yml` handles versioning, publishing, and GitHub Release creation automatically.
 
-Changesets is a useful comparison point because it records contributor-authored semver intent and changelog text in committed files, then consumes those records during version and publish steps. Beachball is a useful comparison point because it records PR-reviewed change files, validates their presence, computes version bumps, generates changelogs, and can publish packages. Neither tool is approved here until its workflow can preserve fluo's release contract without adding local publish paths or broadening the single-package CI boundary.
+The previous single-package manual dispatch workflow is deprecated. The new workflow publishes all packages with pending changesets when the Version Packages PR is merged, while preserving CI-only, OIDC-provenanced, `main`-branch publishing.
 
-Go/no-go criteria for any future migration proposal:
+Beachball remains a valid comparison point but is not adopted. The evaluation criteria below are preserved for future reference if Changesets proves unsuitable:
 
-1. **Packages per release**: migration is only worth reconsidering if normal releases routinely include multiple `@fluojs/*` packages and the current single-package intent records become harder to review than generated release files.
-2. **Downstream evaluation frequency**: migration must show how often `downstream-evaluate` decisions occur and must keep them as human review gates, not automatic dependent-package releases.
-3. **Intent maintenance cost**: migration must prove that generated or tool-managed change files reduce maintainer work compared with repo-local intent JSON, without hiding package rationale from review.
-4. **Generated package changelog need**: migration must wait until maintainers need package-level changelogs beyond the root `CHANGELOG.md` narrative and generated GitHub Release notes.
-5. **CI-only single-package compatibility**: migration must keep main-only workflow dispatch, release-readiness preflight, OIDC npm publish, tag creation, and GitHub Release generation inside `.github/workflows/release-single-package.yml`, with no local `npm publish` replacement.
-
-Recommendation: defer migration. Do not install Changesets, Beachball, or another release automation dependency until package-aware release notes and release intent gates complete at least one real release cycle and the criteria above show that migration would reduce risk instead of expanding the release surface.
+1. **Packages per release**: Changesets handles multiple packages per release automatically.
+2. **Downstream evaluation frequency**: Changesets computes and bumps dependent packages automatically during versioning.
+3. **Intent maintenance cost**: Changeset files are authored at PR time by contributors, reducing maintainer release-time work.
+4. **Generated package changelog need**: Changesets generates per-package changelogs automatically.
+5. **CI-only compatibility**: The new `.github/workflows/release.yml` maintains CI-only publish with OIDC provenance.
 
 ## intended publish surface
 
@@ -134,11 +129,11 @@ pnpm verify:public-export-tsdoc
 pnpm verify:platform-consistency-governance
 pnpm verify:release-readiness
 pnpm generate:release-readiness-drafts
-pnpm verify:release-readiness --target-package @fluojs/cli --target-version 0.1.0 --dist-tag latest
+pnpm changeset status --since=main
 ```
 
 - `pnpm verify:platform-consistency-governance` checks heading parity and governed documentation consistency.
 - `pnpm verify:release-readiness` reuses the canonical build, typecheck, split Vitest, sandbox, package-surface sync, and publish-safety checks.
 - `pnpm verify:public-export-tsdoc` enforces the public export documentation baseline used by governed packages.
 - `pnpm generate:release-readiness-drafts` refreshes draft release-readiness summary artifacts and the draft release block in `CHANGELOG.md` when maintainers prepare notes.
-- `pnpm verify:release-readiness --target-package ... --target-version ... --dist-tag ...` is the single-package publish preflight used by `.github/workflows/release-single-package.yml`.
+- `pnpm changeset status --since=main` previews the packages and semver buckets Changesets will version before the Version Packages PR is merged.

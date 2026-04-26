@@ -74,9 +74,9 @@ Release-readiness verification is now read-only by default:
 
 fluo uses a `supervised-auto` policy for releases.
 
-1. **Automation**: Maintainers trigger the `.github/workflows/release-single-package.yml` workflow via GitHub Actions for single-package publishing. This handles validation, npm publish (via OIDC), git tag creation, and GitHub Release generation.
-2. **Supervision**: After the CI workflow completes, the central supervisor handles the final review of the release artifacts, branch merge (if any), and cleanup boundaries.
-3. **Consistency**: Do not manually tag or publish packages. Always use the canonical CI-only flow to maintain the integrity of behavioral contracts and release artifacts.
+1. **Automation**: Contributors record release intent in `.changeset/*.md`. On `main`, `.github/workflows/release.yml` opens or updates the Version Packages PR and, after that PR is merged, publishes the changed public packages through CI with npm trusted publishing/provenance.
+2. **Supervision**: Maintainers review the Version Packages PR, generated package changelogs, package version bumps, and release-readiness evidence before merge. The central supervisor handles final review and cleanup boundaries.
+3. **Consistency**: Do not manually tag or publish packages. Do not use the deprecated single-package workflow for releases. Always use the canonical CI-only Changesets flow to maintain the integrity of behavioral contracts and release artifacts.
 
 ### CLI sandbox verification
 

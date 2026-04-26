@@ -40,41 +40,36 @@
 
 ## Release Metadata Contract
 
-커밋된 release-intent record는 릴리스 준비를 위한 장기 canonical machine input입니다. 루트 `CHANGELOG.md`는 사람이 읽는 narrative로 남고, GitHub Releases는 supervised CI-only flow가 만드는 generated artifact입니다.
+Changesets(`.changeset/*.md`)는 canonical release metadata 도구입니다. 기여자는 PR 시점에 committed changeset 파일에 semver intent와 changelog text를 기록하고, Changesets GitHub Action은 이 파일들을 소비해 패키지 버전을 올리고, changelog를 생성하며, npm에 publish합니다. 패키지별 changelog는 자동으로 생성되고, 루트 `CHANGELOG.md`는 repo-wide narrative로 남습니다. GitHub Releases는 Changesets action이 자동으로 생성합니다.
 
-각 release intent entry는 다음 필드를 포함해야 합니다.
+각 changeset은 다음을 포함해야 합니다.
 
-1. 패키지 이름, published `@fluojs/*` package name을 사용합니다.
-2. Semver intent, `major`, `minor`, `patch`, 또는 패키지 릴리스가 없을 때의 `none` 중 하나입니다.
-3. Prerelease 또는 stable intent, 패키지를 릴리스하는 경우 expected dist-tag를 포함합니다.
-4. Summary, maintainer와 release reviewer가 읽는 설명입니다.
-5. 패키지의 stability tier에서 breaking으로 분류되는 semver intent인 경우 migration note입니다.
-6. Affected-package rationale, 패키지가 release set에 포함되거나 제외되는 이유입니다.
+1. 영향받는 패키지 이름, published `@fluojs/*` package name을 사용합니다.
+2. 패키지별 semver intent, `major`, `minor`, `patch` 중 하나입니다.
+3. 변경 사항을 설명하는 summary.
 
-릴리스 준비 run의 모든 패키지는 하나의 disposition을 사용해야 합니다.
+changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거나 publish되지 않습니다. Downstream dependent 패키지는 Changesets의 낶은 dependency graph를 통해 평가되며, dependent 버전 bump는 versioning 단계에서 자동으로 계산됩니다.
 
-- `release`: release-readiness가 통과한 뒤 supervised CI-only release workflow를 통해 이 패키지를 publish합니다.
-- `no-release`: 현재 release set에서 이 패키지를 publish하지 않고, release-intent record에 rationale을 남깁니다.
-- `downstream-evaluate`: upstream 변경이 이 패키지에 영향을 줄 수 있어 review하지만, 이 disposition을 automatic downstream publishing으로 취급하지 않습니다.
+릴리스 workflow는 `main`에 push될 때 자동으로 트리거됩니다. pending changeset이 있으면 Changesets action이 "Version Packages" PR을 열어 버전을 올리고, changelog를 업데이트하며, 소비된 changeset을 제거합니다. 이 PR을 merge하면 publish 단계가 트리거되어 OIDC provenance와 함께 영향받는 패키지를 npm에 publish하고, scoped git tag와 GitHub Release를 생성합니다.
 
-이 작업이 landing된 뒤 준비되는 릴리스에는 package-scoped notes와 release-intent records가 필요합니다. `1.0.0-beta.2`는 첫 enforced fixture/candidate version이며, `1.0.0-beta.1` 이하의 릴리스는 legacy-compatible로 유지됩니다.
+Prerelease workflow는 Changesets prerelease mode(`changeset pre enter <tag>`)를 사용합니다. 필요할 때 dedicated branch에서 prerelease mode에 진입하고, stable 릴리스 전에 `changeset pre exit`로 종료합니다.
+
+레거시 `tooling/release/intents/*.json` record는 역사적 참고용으로 보존하지만, 새 릴리스에서는 더 이상 필요하지 않습니다.
 
 
 ## Migration Assessment: Changesets and Beachball
 
-현재 repo-local intent model이 승인된 release metadata path로 남습니다. 이 모델은 release decision을 committed JSON records 안에 두고, package disposition을 명시적으로 요구하며, `downstream-evaluate`를 automatic publish trigger가 아니라 review decision으로 취급합니다. `.github/workflows/release-single-package.yml`이 release-readiness 통과 뒤 `refs/heads/main`에서 요청된 패키지 하나만 publish하므로 supervised CI-only workflow와도 맞습니다.
+Changesets가 primary release automation 도구로 채택되었습니다. 이는 기존 repo-local JSON intent model을 표준 contributor-authored changeset workflow로 교체합니다. `.github/workflows/release.yml`이 versioning, publishing, GitHub Release 생성을 자동으로 처리합니다.
 
-Changesets는 contributor가 작성한 semver intent와 changelog text를 committed files에 기록한 뒤 version과 publish step에서 소비하므로 좋은 비교 대상입니다. Beachball은 PR에서 review 가능한 change files를 기록하고, 해당 파일 존재를 검증하며, version bump를 계산하고, changelog를 생성하고, package publish까지 수행할 수 있으므로 좋은 비교 대상입니다. 두 도구 모두 fluo의 release contract를 유지하면서 local publish path를 추가하지 않고 single-package CI boundary를 넓히지 않는다는 점이 증명되기 전까지는 승인하지 않습니다.
+이전 single-package manual dispatch workflow는 deprecated됩니다. 새 workflow는 Version Packages PR이 merge될 때 pending changeset이 있는 모든 패키지를 publish하며, CI-only, OIDC-provenanced, `main`-branch publish를 유지합니다.
 
-향후 migration proposal의 go/no-go criteria는 다음과 같습니다.
+Beachball은 여전히 유효한 비교 대상이지만 채택되지 않습니다. 아래 evaluation criteria는 Changesets가 적합하지 않은 경우를 대비해 보존됩니다.
 
-1. **Packages per release**: 일반 릴리스가 여러 `@fluojs/*` 패키지를 자주 포함하고 현재 single-package intent records가 generated release files보다 review하기 어려워질 때만 migration을 다시 검토합니다.
-2. **Downstream evaluation frequency**: migration은 `downstream-evaluate` decision이 얼마나 자주 발생하는지 보여야 하며, 이를 automatic dependent-package release가 아니라 human review gate로 유지해야 합니다.
-3. **Intent maintenance cost**: migration은 generated 또는 tool-managed change files가 repo-local intent JSON보다 maintainer work를 줄인다는 점을 증명해야 하며, package rationale을 review에서 숨기면 안 됩니다.
-4. **Generated package changelog need**: migration은 maintainer가 root `CHANGELOG.md` narrative와 generated GitHub Release notes를 넘어 package-level changelogs를 필요로 할 때까지 기다려야 합니다.
-5. **CI-only single-package compatibility**: migration은 main-only workflow dispatch, release-readiness preflight, OIDC npm publish, tag creation, GitHub Release generation을 `.github/workflows/release-single-package.yml` 안에 유지해야 하며, local `npm publish` replacement를 만들면 안 됩니다.
-
-Recommendation: migration을 defer합니다. Package-aware release notes와 release intent gates가 적어도 한 번의 실제 release cycle을 완료하고 위 criteria가 migration이 release surface를 넓히는 대신 risk를 줄인다는 점을 보여주기 전까지 Changesets, Beachball, 또는 다른 release automation dependency를 설치하지 않습니다.
+1. **Packages per release**: Changesets는 여러 패키지를 자동으로 한 번에 릴리스합니다.
+2. **Downstream evaluation frequency**: Changesets는 versioning 중 dependent 패키지를 자동으로 bump합니다.
+3. **Intent maintenance cost**: Changeset 파일은 기여자가 PR 시점에 작성하므로 maintainer의 릴리스 시점 작업이 줄어듭니다.
+4. **Generated package changelog need**: Changesets는 패키지별 changelog를 자동으로 생성합니다.
+5. **CI-only compatibility**: 새 `.github/workflows/release.yml`은 CI-only publish와 OIDC provenance를 유지합니다.
 
 ## intended publish surface
 
@@ -134,11 +129,11 @@ pnpm verify:public-export-tsdoc
 pnpm verify:platform-consistency-governance
 pnpm verify:release-readiness
 pnpm generate:release-readiness-drafts
-pnpm verify:release-readiness --target-package @fluojs/cli --target-version 0.1.0 --dist-tag latest
+pnpm changeset status --since=main
 ```
 
 - `pnpm verify:platform-consistency-governance`는 heading parity와 governed 문서 일관성을 검사합니다.
 - `pnpm verify:release-readiness`는 canonical build, typecheck, 분리된 Vitest, sandbox, package-surface 동기화, publish-safety 검사를 다시 실행합니다.
 - `pnpm verify:public-export-tsdoc`는 governed 패키지에 적용되는 public export 문서 기준을 강제합니다.
 - `pnpm generate:release-readiness-drafts`는 메인테이너가 릴리스 노트를 준비할 때 release-readiness summary 초안과 `CHANGELOG.md`의 draft release block을 갱신합니다.
-- `pnpm verify:release-readiness --target-package ... --target-version ... --dist-tag ...`는 `.github/workflows/release-single-package.yml`이 사용하는 단건 패키지 publish preflight입니다.
+- `pnpm changeset status --since=main`은 Version Packages PR을 merge하기 전에 Changesets가 version할 package와 semver bucket을 미리 보여줍니다.

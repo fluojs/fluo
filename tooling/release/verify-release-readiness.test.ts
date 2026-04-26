@@ -657,50 +657,53 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.isPublishedVersion).not.toHaveBeenCalled();
   });
 
-  it('fails when the single-package target is outside the intended publish surface', () => {
-    const dependencies = createDependencies();
-    dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/private-devtool']);
-    dependencies.workspacePackageManifests = vi.fn(() => [
-      {
-        manifest: {
-          name: '@fluojs/cli',
-          dependencies: {
-            '@fluojs/core': 'workspace:^',
-          },
-          private: false,
-          publishConfig: { access: 'public' },
-        },
-        packageJsonPath: '/repo/packages/cli/package.json',
-      },
-      {
-        manifest: {
-          name: '@fluojs/core',
-          private: false,
-          publishConfig: { access: 'public' },
-        },
-        packageJsonPath: '/repo/packages/core/package.json',
-      },
-      {
-        manifest: {
-          name: '@fluojs/private-devtool',
-          private: false,
-          publishConfig: { access: 'public' },
-        },
-        packageJsonPath: '/repo/packages/private-devtool/package.json',
-      },
-    ]);
-
-    expect(() =>
-      runReleaseReadinessVerification(
+  it.each(['@fluojs/private-devtool', '@example/public-devtool'])(
+    'fails when publishable public workspace %s is outside the intended publish surface',
+    (packageName) => {
+      const dependencies = createDependencies();
+      dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', packageName]);
+      dependencies.workspacePackageManifests = vi.fn(() => [
         {
-          distTag: 'latest',
-          targetPackage: '@fluojs/private-devtool',
-          targetVersion: '0.1.0',
+          manifest: {
+            name: '@fluojs/cli',
+            dependencies: {
+              '@fluojs/core': 'workspace:^',
+            },
+            private: false,
+            publishConfig: { access: 'public' },
+          },
+          packageJsonPath: '/repo/packages/cli/package.json',
         },
-        dependencies,
-      ),
-    ).toThrowError('Release readiness check failed: Single-package release intended publish surface membership.');
-  });
+        {
+          manifest: {
+            name: '@fluojs/core',
+            private: false,
+            publishConfig: { access: 'public' },
+          },
+          packageJsonPath: '/repo/packages/core/package.json',
+        },
+        {
+          manifest: {
+            name: packageName,
+            private: false,
+            publishConfig: { access: 'public' },
+          },
+          packageJsonPath: '/repo/packages/public-devtool/package.json',
+        },
+      ]);
+
+      expect(() =>
+        runReleaseReadinessVerification(
+          {
+            distTag: 'latest',
+            targetPackage: packageName,
+            targetVersion: '0.1.0',
+          },
+          dependencies,
+        ),
+      ).toThrowError('Release readiness check failed: Publishable workspace surface is explicitly allowlisted.');
+    },
+  );
 
   it('fails when a single-package target depends on a non-public internal workspace package', () => {
     const dependencies = createDependencies();
