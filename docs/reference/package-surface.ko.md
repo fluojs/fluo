@@ -56,12 +56,12 @@
 
 ### tooling
 - **`@fluojs/cli`**: 프로젝트 스캐폴딩, 생성, codemod, 런타임이 생산한 snapshot에 대한 inspection 내보내기/위임. `fluo inspect`는 CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact 쓰기, `--output <path>` file emission, Mermaid rendering을 위한 Studio handoff를 소유합니다.
-- **`@fluojs/studio`**: 파일 우선 snapshot/report 뷰어와 CLI 및 자동화 호출자를 위한 canonical 파싱, 필터링, 그래프 렌더링 헬퍼. Studio는 `fluo inspect --json` snapshot, `--json --timing` envelope, `--report` artifact, `renderMermaid(snapshot)`을 통한 Mermaid graph rendering을 소비하는 책임 경계를 소유합니다.
+- **`@fluojs/studio`**: 파일 우선 snapshot/report/timing 뷰어와 CLI 및 자동화 호출자를 위한 canonical 파싱, 필터링, 그래프 렌더링 헬퍼. Studio는 `fluo inspect --json` snapshot, standalone `--timing` diagnostics, `--json --timing` envelope, `--report` artifact, `renderMermaid(snapshot)`을 통한 Mermaid graph rendering을 소비하는 책임 경계를 소유합니다.
 - **`@fluojs/testing`**: 애플리케이션 및 플랫폼 계약을 검증하기 위한 conformance 및 통합 헬퍼.
 
 ## Studio inspect artifact ownership
 
-런타임 패키지는 inspection snapshot과 timing diagnostics의 원천으로 남습니다. CLI는 그 런타임 값을 이동 가능한 artifact로 바꿉니다. Artifact는 raw JSON, timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text가 될 수 있습니다. Studio는 사람과 자동화 호출자를 위해 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.
+런타임 패키지는 inspection snapshot과 timing diagnostics의 원천으로 남습니다. CLI는 그 런타임 값을 이동 가능한 artifact로 바꿉니다. Artifact는 raw JSON, standalone timing diagnostics, snapshot-plus-timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text가 될 수 있습니다. Studio는 사람과 자동화 호출자를 위해 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.
 
 이 경계는 graph semantics를 `@fluojs/cli` 밖에 둡니다. CLI는 `@fluojs/studio/contracts`를 찾아 `renderMermaid(snapshot)`을 호출할 수 있지만, 내부 dependency edge와 외부 dependency node를 Mermaid output으로 바꾸는 방식은 Studio가 정의합니다. 지속 보관할 artifact가 필요한 소비자는 raw snapshot에는 `fluo inspect --json --output <path>`, standalone timing diagnostics에는 `fluo inspect --timing --output <path>`, snapshot-plus-timing envelope에는 `fluo inspect --json --timing --output <path>`, support report에는 `fluo inspect --report --output <path>`를 사용해야 합니다.
 

@@ -56,12 +56,12 @@
 
 ### tooling
 - **`@fluojs/cli`**: Project scaffolding, generation, codemods, and inspection export/delegation for runtime-produced snapshots. `fluo inspect` owns CLI argument validation, application bootstrap/close, JSON snapshot serialization, report artifact writing, `--output <path>` file emission, and the handoff to Studio for Mermaid rendering.
-- **`@fluojs/studio`**: File-first snapshot/report viewer plus canonical parsing, filtering, and graph rendering helpers for CLI and automation callers. Studio owns the responsibility boundary for consuming `fluo inspect --json` snapshots, `--json --timing` envelopes, `--report` artifacts, and Mermaid graph rendering through `renderMermaid(snapshot)`.
+- **`@fluojs/studio`**: File-first snapshot/report/timing viewer plus canonical parsing, filtering, and graph rendering helpers for CLI and automation callers. Studio owns the responsibility boundary for consuming `fluo inspect --json` snapshots, standalone `--timing` diagnostics, `--json --timing` envelopes, `--report` artifacts, and Mermaid graph rendering through `renderMermaid(snapshot)`.
 - **`@fluojs/testing`**: Conformance and integration helpers for verifying application and platform contracts.
 
 ## Studio inspect artifact ownership
 
-Runtime packages remain the source of inspection snapshots and timing diagnostics. The CLI turns those runtime values into transportable artifacts, either raw JSON, a timing envelope, a report artifact, or Mermaid text when Studio is installed. Studio is responsible for reading, validating, filtering, viewing, and rendering those inspect artifacts for humans and automation callers.
+Runtime packages remain the source of inspection snapshots and timing diagnostics. The CLI turns those runtime values into transportable artifacts, either raw JSON, standalone timing diagnostics, a snapshot-plus-timing envelope, a report artifact, or Mermaid text when Studio is installed. Studio is responsible for reading, validating, filtering, viewing, and rendering those inspect artifacts for humans and automation callers.
 
 This boundary keeps graph semantics out of `@fluojs/cli`: the CLI may locate `@fluojs/studio/contracts` and call `renderMermaid(snapshot)`, but Studio defines how internal dependency edges and external dependency nodes become Mermaid output. Consumers that need a persistent artifact should use `fluo inspect --json --output <path>` for raw snapshots, `fluo inspect --timing --output <path>` for standalone timing diagnostics, `fluo inspect --json --timing --output <path>` for snapshot-plus-timing envelopes, or `fluo inspect --report --output <path>` for support reports.
 
