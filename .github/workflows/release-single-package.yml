@@ -1,161 +1,24 @@
-# Release single package
-# Governance: documents/operators runbook updated in issue #1128
-name: Release single package
+# Deprecated single-package release
+# Governance: Changesets release automation is canonical. This workflow is retained
+# only to make legacy dispatch attempts fail with a clear migration message.
+name: Deprecated single-package release
 
 on:
   workflow_dispatch:
-    inputs:
-      package_name:
-        description: Public workspace package to publish (for example @fluojs/cli)
-        required: true
-        type: string
-      package_version:
-        description: Exact package.json version expected for this publish
-        required: true
-        type: string
-      dist_tag:
-        description: npm dist-tag to publish under (latest for stable releases, next/beta/rc for prereleases)
-        required: true
-        type: string
-      release_prerelease:
-        description: Mark the GitHub Release as a prerelease (must match whether package_version is a prerelease)
-        required: true
-        default: false
-        type: boolean
-      release_intent_file:
-        description: Optional committed release-intent JSON record; required by release-readiness for 1.0.0-beta.2+ publishes
-        required: false
-        type: string
+    inputs: {}
 
 concurrency:
-  group: release-single-package-${{ inputs.package_name }}
+  group: deprecated-release-single-package
   cancel-in-progress: false
 
 jobs:
-  publish-and-release:
-    name: Publish package and create GitHub Release
+  deprecated:
+    name: Deprecated workflow guard
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-    env:
-      DIST_TAG: ${{ inputs.dist_tag }}
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_PRERELEASE: ${{ inputs.release_prerelease }}
-      RELEASE_INTENT_FILE: ${{ inputs.release_intent_file }}
-      TARGET_PACKAGE: ${{ inputs.package_name }}
-      TARGET_VERSION: ${{ inputs.package_version }}
+    permissions: {}
 
     steps:
-      - name: Require main branch dispatch
+      - name: Stop legacy single-package release dispatch
         run: |
-          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
-            echo "::error::Single-package release workflow must run from refs/heads/main."
-            exit 1
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          cache: pnpm
-          node-version: '20'
-          registry-url: https://registry.npmjs.org
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Resolve single-package release target
-        id: resolve
-        run: |
-          node --input-type=module <<'EOF'
-          import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
-          import { join } from 'node:path';
-
-          const packagesDirectory = 'packages';
-          const targetPackage = process.env.TARGET_PACKAGE;
-          const targetVersion = process.env.TARGET_VERSION;
-          const releasePrerelease = process.env.RELEASE_PRERELEASE === 'true';
-
-          let packageDirectory = null;
-          let packageVersion = null;
-
-          for (const entry of readdirSync(packagesDirectory, { withFileTypes: true })) {
-            if (!entry.isDirectory()) {
-              continue;
-            }
-
-            const packageJsonPath = join(packagesDirectory, entry.name, 'package.json');
-
-            try {
-              const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-              if (manifest.name === targetPackage) {
-                packageDirectory = join(packagesDirectory, entry.name);
-                packageVersion = manifest.version;
-                break;
-              }
-            } catch {
-              continue;
-            }
-          }
-
-          if (!packageDirectory || !packageVersion) {
-            throw new Error(`Could not resolve ${targetPackage} to a workspace package under packages/*.`);
-          }
-
-          if (packageVersion !== targetVersion) {
-            throw new Error(`${targetPackage} package.json version is ${packageVersion}, expected ${targetVersion}.`);
-          }
-
-          const versionIsPrerelease = targetVersion.includes('-');
-          if (versionIsPrerelease !== releasePrerelease) {
-            throw new Error(
-              `release_prerelease=${String(releasePrerelease)} does not match package_version prerelease state for ${targetVersion}.`,
-            );
-          }
-
-          const output = process.env.GITHUB_OUTPUT;
-          const releaseTag = `${targetPackage}@${targetVersion}`;
-          appendFileSync(output, `package_dir=${packageDirectory}\nrelease_tag=${releaseTag}\n`, 'utf8');
-          EOF
-
-      - name: Canonical release-readiness preflight
-        run: pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"
-
-      - name: Prepare GitHub Release notes
-        run: node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"
-
-      - name: Validate target git tag is absent
-        run: |
-          if git rev-parse --verify --quiet "refs/tags/${{ steps.resolve.outputs.release_tag }}"; then
-            echo "::error::Release tag ${{ steps.resolve.outputs.release_tag }} already exists."
-            exit 1
-          fi
-
-      - name: Publish package to npm
-        run: pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks
-
-      - name: Create and push git tag
-        run: |
-          git tag "${{ steps.resolve.outputs.release_tag }}"
-          git push origin "refs/tags/${{ steps.resolve.outputs.release_tag }}"
-
-      - name: Create GitHub Release
-        run: |
-          prerelease_flag=''
-          if [ "$RELEASE_PRERELEASE" = 'true' ]; then
-            prerelease_flag='--prerelease'
-          fi
-
-          gh release create "${{ steps.resolve.outputs.release_tag }}" \
-            --title "${{ steps.resolve.outputs.release_tag }}" \
-            --notes-file tooling/release/github-release-notes.md \
-            $prerelease_flag \
-            "$RUNNER_TEMP/release-readiness/release-readiness-summary.md#release-readiness-summary.md"
+          echo "::error::This workflow is deprecated and cannot publish packages. Use the Changesets Release workflow and merge the Version Packages PR instead."
+          exit 1
