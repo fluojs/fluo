@@ -74,9 +74,9 @@ pnpm test
 
 fluo는 릴리스를 위해 `supervised-auto` 정책을 사용합니다.
 
-1. **자동화**: 관리자는 단일 패키지 배포를 위해 GitHub Actions를 통해 `.github/workflows/release-single-package.yml` 워크플로우를 트리거합니다. 이는 검증, npm 배포(OIDC 사용), git 태그 생성, 그리고 GitHub Release 생성을 처리합니다.
-2. **감독**: CI 워크플로우가 완료된 후, 중앙 감독자(supervisor)가 릴리스 아티팩트의 최종 검토, 브랜치 병합(있는 경우), 그리고 정리 작업을 처리합니다.
-3. **일관성**: 패키지에 수동으로 태그를 지정하거나 배포하지 마세요. 동작 계약과 릴리스 아티팩트의 무결성을 유지하기 위해 항상 정식 CI 전용 흐름을 사용하세요.
+1. **자동화**: 기여자는 릴리스 의도를 `.changeset/*.md`에 기록합니다. `main`에서는 `.github/workflows/release.yml`이 Version Packages PR을 생성하거나 갱신하고, 해당 PR이 merge된 뒤 변경된 공개 패키지를 npm trusted publishing/provenance와 함께 CI에서 배포합니다.
+2. **감독**: 관리자는 Version Packages PR의 생성된 package changelog, package version bump, release-readiness 증거를 merge 전에 검토합니다. 중앙 감독자(supervisor)는 최종 검토와 정리 경계를 처리합니다.
+3. **일관성**: 패키지에 수동으로 태그를 지정하거나 배포하지 마세요. 릴리스에 deprecated single-package workflow를 사용하지 마세요. 동작 계약과 릴리스 아티팩트의 무결성을 유지하기 위해 항상 정식 CI 전용 Changesets 흐름을 사용하세요.
 
 ### CLI 샌드박스 검증
 

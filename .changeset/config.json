@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
+  "changelog": "@changesets/changelog-github",
+  "commit": false,
+  "fixed": [],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [
+    "@fluojs/example-auth-jwt-passport",
+    "@fluojs/example-minimal",
+    "@fluojs/example-ops-metrics-terminus",
+    "@fluojs/example-realworld-api",
+    "@fluojs-internal/tooling-babel",
+    "@fluojs-internal/tooling-tsconfig",
+    "@fluojs-internal/tooling-vite",
+    "@fluojs-internal/tooling-vitest"
+  ]
+}

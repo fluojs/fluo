@@ -1,10 +1,12 @@
 # Committed release intent records
 
-Release intent records are the repo-local machine input for future release preparation. They complement the human-facing root `CHANGELOG.md`; GitHub Releases remain generated CI artifacts, and this schema does not adopt Changesets, Beachball, or any other release automation dependency.
+**DEPRECATED**: This directory is retained for historical reference. fluo has migrated to [Changesets](https://github.com/changesets/changesets) (`.changeset/*.md`) for release intent tracking. New releases should use Changesets instead of JSON intent records.
+
+Release intent records were the repo-local machine input for release preparation before Changesets adoption.
 
 ## Record shape
 
-Use one committed JSON record per fixture/candidate release under this directory. The shape is intentionally close to Changesets-style committed change files: a small version header plus package-scoped intent entries that can be converted later without changing the governed release policy.
+Legacy records used one committed JSON record per fixture/candidate release under this directory. The shape is intentionally close to Changesets-style committed change files: a small version header plus package-scoped intent entries that historical tests can still validate.
 
 ```json
 {
@@ -21,7 +23,7 @@ Use one committed JSON record per fixture/candidate release under this directory
 }
 ```
 
-Each package entry must include:
+Each legacy package entry included:
 
 - `package`: a public workspace package name from `packages/*/package.json` with the `@fluojs/*` scope and `publishConfig.access: "public"`.
 - `disposition`: exactly one of `release`, `no-release`, or `downstream-evaluate`.
@@ -30,16 +32,34 @@ Each package entry must include:
 - `rationale`: why the package is included, excluded, or marked for downstream evaluation.
 - `migrationNote`: required when `semver` is `major` or the entry sets `breaking: true`; optional for non-breaking intents.
 
-## Cutoff policy
+## Dependency impact tracking
 
-Release intent records are not backfilled for legacy releases. Releases at or before `1.0.0-beta.1` remain compatible without committed intent records, while fixture/candidate releases from `1.0.0-beta.2` onward must provide them.
+The legacy readiness flow started from public packages selected as candidate impact roots. Maintainers passed those
+package names to `tooling/release/verify-release-readiness.mjs` with repeated `--changed-package <name>` flags when
+auditing a candidate release set. The readiness check called `expandPublicPackageDependencyImpact(...)`, which walks
+public workspace `dependencies`, `peerDependencies`, and `optionalDependencies` from the released package set to every
+public dependent package.
+
+When reading old records, use the `--changed-package` roots deliberately: a docs-only package that is recorded as `no-release` can remain in the
+intent record for audit context, but adding it as a readiness impact root also requires explicit decisions for every
+public dependent that the dependency graph reaches.
+
+Every directly changed package and every downstream public dependent in the legacy flow had to include a committed intent entry for
+the candidate version. Directly released packages use `disposition: "release"` with `semver` set to `patch`,
+`minor`, or `major`. A downstream-only package must use `disposition: "downstream-evaluate"` or
+`disposition: "no-release"` with `semver: "none"`; `downstream-evaluate` records a required human review gate and
+does not trigger automatic dependent-package publishing.
+
+## Historical cutoff policy
+
+Release intent records are not backfilled for releases at or before `1.0.0-beta.1`. The `1.0.0-beta.2` release candidate has a retained JSON record only as migration history and a `.changeset/*.md` backfill. New releases use `.changeset/*.md` instead of adding JSON records here.
 
 ## Validation helper
 
-`tooling/release/release-intents.mjs` exports lightweight Node ESM helpers for tests and later readiness integration:
+`tooling/release/release-intents.mjs` exports lightweight Node ESM helpers for historical tests and migration audits:
 
 - `validateReleaseIntentRecord(record, dependencies)` validates a single record.
 - `validateReleaseIntentRecords(records, { candidateVersion, ...dependencies })` enforces the cutoff behavior.
 - `workspacePackageManifests()` and `publicWorkspacePackageNames(...)` derive the public package surface from local package manifests.
 
-The validator is intentionally local and side-effect free so Task 9 can wire it into release readiness without changing package versions, tags, publishing workflows, or external tooling.
+The validator remains local and side-effect free so historical records can be checked without changing package versions, tags, publishing workflows, or external tooling. It is not the source of truth for new release intent after the Changesets migration.

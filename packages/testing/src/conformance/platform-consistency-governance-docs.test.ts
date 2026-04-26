@@ -159,14 +159,24 @@ describe('platform consistency governance docs', () => {
     expect(docsContextKo).toContain('docs/contracts/public-export-tsdoc-baseline.md');
   });
 
-  it('verifies CI-only single-package release runbook discoverability', () => {
+  it('verifies CI-only Changesets release runbook discoverability', () => {
     const releaseGovernance = readFileSync(resolve(repoRoot, 'docs/contracts/release-governance.md'), 'utf8');
     const releaseGovernanceKo = readFileSync(resolve(repoRoot, 'docs/contracts/release-governance.ko.md'), 'utf8');
+    const contributing = readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf8');
+    const contributingKo = readFileSync(resolve(repoRoot, 'CONTRIBUTING.ko.md'), 'utf8');
 
-    expect(releaseGovernance).toContain('.github/workflows/release-single-package.yml');
-    expect(releaseGovernanceKo).toContain('.github/workflows/release-single-package.yml');
-    expect(releaseGovernance).toContain('pnpm verify:release-readiness --target-package ... --target-version ... --dist-tag ...');
-    expect(releaseGovernanceKo).toContain('pnpm verify:release-readiness --target-package ... --target-version ... --dist-tag ...');
+    expect(releaseGovernance).toContain('.github/workflows/release.yml');
+    expect(releaseGovernanceKo).toContain('.github/workflows/release.yml');
+    expect(releaseGovernance).toContain('Version Packages PR');
+    expect(releaseGovernanceKo).toContain('Version Packages PR');
+    expect(releaseGovernance).toContain('pnpm changeset status --since=main');
+    expect(releaseGovernanceKo).toContain('pnpm changeset status --since=main');
+    expect(contributing).toContain('Version Packages PR');
+    expect(contributingKo).toContain('Version Packages PR');
+    expect(contributing).toContain('.changeset/*.md');
+    expect(contributingKo).toContain('.changeset/*.md');
+    expect(contributing).not.toContain('.github/workflows/release-single-package.yml');
+    expect(contributingKo).not.toContain('.github/workflows/release-single-package.yml');
   });
 
   it('keeps intended publish surface synchronized between English and Korean release-governance docs', () => {
@@ -238,64 +248,59 @@ describe('platform consistency governance docs', () => {
     expect(ciWorkflow).toContain('run: pnpm verify:release-readiness');
   });
 
-  it('keeps single-package release automation bound to the canonical preflight and post-publish release creation', () => {
-    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release-single-package.yml'), 'utf8');
+  it('keeps Changesets release automation bound to main pushes and OIDC npm publish', () => {
+    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
 
-    expect(releaseWorkflow).toContain('workflow_dispatch:');
-    expect(releaseWorkflow).toContain('package_name:');
-    expect(releaseWorkflow).toContain('package_version:');
-    expect(releaseWorkflow).toContain('dist_tag:');
-    expect(releaseWorkflow).toContain('release_prerelease:');
-    expect(releaseWorkflow).toContain('release_intent_file:');
-    expect(releaseWorkflow).toContain('Optional committed release-intent JSON record; required by release-readiness for 1.0.0-beta.2+ publishes');
-    expect(releaseWorkflow).toContain('required: false');
-    expect(releaseWorkflow).not.toContain('default: tooling/release/intents/release-intent.json');
-    expect(releaseWorkflow).toContain('RELEASE_INTENT_FILE: ${{ inputs.release_intent_file }}');
+    expect(releaseWorkflow).toContain('name: Changesets Release');
+    expect(releaseWorkflow).toContain('push:');
+    expect(releaseWorkflow).toContain('- main');
     expect(releaseWorkflow).toContain('id-token: write');
     expect(releaseWorkflow).toContain('registry-url: https://registry.npmjs.org');
-    expect(releaseWorkflow).toContain('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"');
-    expect(releaseWorkflow).toContain('pnpm --dir "${{ steps.resolve.outputs.package_dir }}" publish --access public --tag "$DIST_TAG" --provenance --no-git-checks');
-    expect(releaseWorkflow).toContain('node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"');
-    expect(releaseWorkflow).toContain('git tag "${{ steps.resolve.outputs.release_tag }}"');
-    expect(releaseWorkflow).toContain('gh release create "${{ steps.resolve.outputs.release_tag }}"');
-    expect(releaseWorkflow).toContain('"$RUNNER_TEMP/release-readiness/release-readiness-summary.md#release-readiness-summary.md"');
-    expect(requireWorkflowStepIndex(releaseWorkflow, 'Canonical release-readiness preflight')).toBeLessThan(
-      requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm'),
-    );
-    expect(requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm')).toBeLessThan(
-      requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag'),
-    );
-    expect(requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag')).toBeLessThan(
-      requireWorkflowStepIndex(releaseWorkflow, 'Create GitHub Release'),
-    );
+    expect(releaseWorkflow).toMatch(/uses: actions\/checkout@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: pnpm\/action-setup@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: actions\/setup-node@[0-9a-f]{40} # v5/u);
+    expect(releaseWorkflow).toMatch(/uses: changesets\/action@[0-9a-f]{40} # v1/u);
+    expect(releaseWorkflow).toContain('version: pnpm version-packages');
+    expect(releaseWorkflow).toContain('publish: pnpm publish-packages');
+    expect(releaseWorkflow).toContain('createGithubReleases: true');
+    expect(releaseWorkflow).toContain('run: pnpm verify:release-readiness');
+    expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');
+    expect(releaseWorkflow).not.toContain('NODE_AUTH_TOKEN');
+    expect(releaseWorkflow).not.toContain('secrets.NPM_TOKEN');
   });
 
-  it('keeps single-package release safety gates before publish in the intended resolve/preflight/notes/tag/readiness/publish/release order', () => {
-    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release-single-package.yml'), 'utf8');
+  it('keeps Changesets release safety gates before versioning or publish', () => {
+    const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
 
-    const mainBranchGuard = requireWorkflowStepIndex(releaseWorkflow, 'Require main branch dispatch');
-    const resolveTarget = requireWorkflowStepIndex(releaseWorkflow, 'Resolve single-package release target');
-    const validatePackageVersionDistTag = requireWorkflowStepIndex(releaseWorkflow, 'Canonical release-readiness preflight');
-    const validatePackageSpecificNotes = requireWorkflowStepIndex(releaseWorkflow, 'Prepare GitHub Release notes');
-    const validateTargetTagAbsence = requireWorkflowStepIndex(releaseWorkflow, 'Validate target git tag is absent');
-    const publishPackage = requireWorkflowStepIndex(releaseWorkflow, 'Publish package to npm');
-    const createTag = requireWorkflowStepIndex(releaseWorkflow, 'Create and push git tag');
-    const createGitHubRelease = requireWorkflowStepIndex(releaseWorkflow, 'Create GitHub Release');
+    const checkout = requireWorkflowStepIndex(releaseWorkflow, 'Checkout');
+    const installPnpm = requireWorkflowStepIndex(releaseWorkflow, 'Install pnpm');
+    const setupNode = requireWorkflowStepIndex(releaseWorkflow, 'Setup Node.js');
+    const installDependencies = requireWorkflowStepIndex(releaseWorkflow, 'Install dependencies');
+    const buildPackages = requireWorkflowStepIndex(releaseWorkflow, 'Build packages');
+    const verifyReleaseReadiness = requireWorkflowStepIndex(releaseWorkflow, 'Verify release readiness');
+    const releaseStep = requireWorkflowStepIndex(releaseWorkflow, 'Create Release Pull Request or Publish to npm');
 
-    expect(releaseWorkflow).toContain("if [ \"$GITHUB_REF\" != 'refs/heads/main' ]; then");
-    expect(releaseWorkflow).toContain('Single-package release workflow must run from refs/heads/main.');
-    expect(releaseWorkflow).toContain('node tooling/release/prepare-github-release.mjs "${{ steps.resolve.outputs.release_tag }}"');
-    expect(releaseWorkflow).toContain('git rev-parse --verify --quiet "refs/tags/${{ steps.resolve.outputs.release_tag }}"');
-    expect(releaseWorkflow).toContain('pnpm verify:release-readiness --target-package "$TARGET_PACKAGE" --target-version "$TARGET_VERSION" --dist-tag "$DIST_TAG" --release-intent-file "$RELEASE_INTENT_FILE" --write-summary --summary-output-dir "$RUNNER_TEMP/release-readiness"');
+    expect(releaseWorkflow).toContain('fetch-depth: 0');
+    expect(releaseWorkflow).toContain('pnpm install --frozen-lockfile');
+    expect(releaseWorkflow).toContain('run: pnpm build');
+    expect(releaseWorkflow).toContain('run: pnpm verify:release-readiness');
 
-    expect(mainBranchGuard).toBeLessThan(resolveTarget);
-    expect(resolveTarget).toBeLessThan(validatePackageVersionDistTag);
-    expect(validatePackageVersionDistTag).toBeLessThan(validatePackageSpecificNotes);
-    expect(validatePackageSpecificNotes).toBeLessThan(validateTargetTagAbsence);
-    expect(validateTargetTagAbsence).toBeLessThan(publishPackage);
-    expect(validatePackageVersionDistTag).toBeLessThan(publishPackage);
-    expect(publishPackage).toBeLessThan(createTag);
-    expect(createTag).toBeLessThan(createGitHubRelease);
+    expect(checkout).toBeLessThan(installPnpm);
+    expect(installPnpm).toBeLessThan(setupNode);
+    expect(setupNode).toBeLessThan(installDependencies);
+    expect(installDependencies).toBeLessThan(buildPackages);
+    expect(buildPackages).toBeLessThan(verifyReleaseReadiness);
+    expect(verifyReleaseReadiness).toBeLessThan(releaseStep);
+  });
+
+  it('keeps the legacy single-package workflow disabled for publish authority', () => {
+    const legacyReleaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release-single-package.yml'), 'utf8');
+
+    expect(legacyReleaseWorkflow).toContain('name: Deprecated single-package release');
+    expect(legacyReleaseWorkflow).toContain('This workflow is deprecated and cannot publish packages');
+    expect(legacyReleaseWorkflow).toContain('exit 1');
+    expect(legacyReleaseWorkflow).not.toContain('pnpm publish');
+    expect(legacyReleaseWorkflow).not.toContain('gh release create');
   });
 
   it('blocks removed runtime module factory names from docs/prose surfaces', () => {

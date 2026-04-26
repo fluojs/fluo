@@ -49,7 +49,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 | 저장소 정체성과 위반 불가 규칙 확인 | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | 패키지 계열 조회 또는 런타임 범위 확인 | `docs/reference/package-surface.md` | 선택 로직이 필요하면 `docs/reference/package-chooser.md` |
-| behavioral guarantee와 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
+| behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |

@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0-beta.2",
+  "packages": [
+    {
+      "package": "@fluojs/cli",
+      "disposition": "release",
+      "semver": "minor",
+      "summary": "Expand CLI automation outputs for generation, inspection, migration, scaffolding, and generator metadata.",
+      "rationale": "The CLI package owns command parsing and user-visible behavior for request DTO feature targets, inspect reports and file output, migrate JSON reports, generate dry-run plans, new command plan previews, and built-in generator collection help."
+    },
+    {
+      "package": "@fluojs/studio",
+      "disposition": "release",
+      "semver": "minor",
+      "summary": "Expose Studio-owned snapshot-to-Mermaid rendering helpers and platform snapshot types.",
+      "rationale": "Studio owns the public snapshot consumption and graph rendering contract used by CLI and automation callers through renderMermaid(snapshot) and the exported platform snapshot and diagnostic types."
+    },
+    {
+      "package": "@fluojs/platform-fastify",
+      "disposition": "release",
+      "semver": "patch",
+      "summary": "Refresh the published Fastify adapter dependency metadata.",
+      "rationale": "The platform-fastify package manifest now depends on fastify@^5.8.5 as a maintenance update for the published adapter package."
+    },
+    {
+      "package": "@fluojs/runtime",
+      "disposition": "no-release",
+      "semver": "none",
+      "summary": "Keep runtime out of the beta.2 publish set because only README wording changed.",
+      "rationale": "The runtime package has post-beta.1 documentation wording updates, but no runtime source, manifest, or public API change that requires a package publish for this candidate."
+    },
+    {
+      "package": "@fluojs/testing",
+      "disposition": "no-release",
+      "semver": "none",
+      "summary": "Keep testing out of the beta.2 publish set because only governance conformance tests changed.",
+      "rationale": "The testing package changes are release-governance test coverage only and do not alter the published testing helpers or package metadata."
+    }
+  ]
+}

@@ -59,6 +59,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### @fluojs/cli
 
 - Request DTO generation now accepts an explicit feature target, so `fluo g req users CreateUser` and `fluo generate request-dto users CreateUser` write `create-user.request.dto.ts` inside `src/users/` while preserving the legacy one-name request DTO form.
+- CLI inspection, migration, generation, and scaffolding flows now expose richer automation outputs, including inspect reports and file output, migrate `--json`, generate `--dry-run` plans, `fluo new --print-plan`, and documented built-in generator collection metadata.
+
+### @fluojs/studio
+
+- Studio now owns the public snapshot-to-Mermaid rendering contract through `renderMermaid(snapshot)` and exports the platform snapshot and diagnostic types used by CLI and automation callers.
+
+### @fluojs/platform-fastify
+
+- Fastify dependency metadata now targets `fastify@^5.8.5` as a patch-level maintenance update for the published adapter package.
 
 ## [1.0.0-beta.1] - 2026-04-24
 
