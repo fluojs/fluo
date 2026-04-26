@@ -184,9 +184,10 @@ The package can be used programmatically to trigger CLI actions from within othe
 |---|---|
 | `runCli(argv?, options?)` | Main entry point to execute any CLI command. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
+| `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
 | `GeneratorKind` | Union type of all supported generator types (e.g., `'controller'`, `'service'`). |
 
-Programmatic entry points preserve caller process ownership. `runCli(...)` and `runNewCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them.
+Programmatic entry points preserve caller process ownership. `runCli(...)` and `runNewCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
 ## Related Packages
 
