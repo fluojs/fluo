@@ -23,20 +23,22 @@
 | **대화형 위저드 (Interactive wizard)** | TTY에서 `fluo new` 실행 | 비대화형(non-interactive) 플래그 경로와 동일한 shape-first 스키마(프로젝트 이름, shape, tooling preset, package manager, install 선택, git 선택)로 해석됩니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. Request DTO는 `fluo g req users CreateUser`처럼 명시적 feature 디렉터리를 대상으로 지정할 수 있습니다. |
 | **진단 (JSON)** | `fluo inspect <module-path> --json` | 런타임이 생산한 그래프, 준비성, 상태, 진단 snapshot 데이터를 JSON 형식으로 내보냅니다. 출력 모드를 고르지 않으면 JSON이 기본 출력 모드입니다. `--timing`은 `--json`과 함께 사용해 snapshot 옆에 bootstrap timing diagnostics를 포함할 수 있습니다. |
+| **진단 (timing)** | `fluo inspect <module-path> --timing --output artifacts/inspect-timing.json` | Standalone bootstrap timing diagnostics를 JSON artifact로 씁니다. `--output`이 없으면 같은 timing JSON을 stdout에 씁니다. |
 | **진단 report** | `fluo inspect <module-path> --report --output artifacts/inspect-report.json` | 안정적인 요약, 런타임이 생산한 snapshot, diagnostics, bootstrap timing을 포함하는 CI/support triage JSON report를 씁니다. `--output <path>`는 명시적 artifact 경로이며 inspection이 애플리케이션 write를 소유하게 만들지 않습니다. |
 | **진단 (Mermaid)** | `fluo inspect <module-path> --mermaid` | snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. CLI는 Studio renderer를 로드하고 Mermaid text를 stdout 또는 `--output <path>`에 쓰며, 그래프 렌더링 의미론을 소유하지 않습니다. |
 
 ## inspect artifact output contract
 
-`fluo inspect`는 한 번에 하나의 주요 artifact 출력 모드만 지원합니다. 가능한 모드는 `--json`, `--mermaid`, `--report`입니다. `--output <path>`는 선택된 payload를 요청한 경로에 쓰고, 필요한 parent directory를 생성하며, 해당 payload의 terminal 출력을 생략합니다. `--output`이 없으면 선택된 payload를 stdout에 쓰므로 CI artifact용 shell redirection도 계속 유효합니다.
+`fluo inspect`는 한 번에 하나의 주요 artifact 출력 모드만 지원합니다. 가능한 모드는 `--json`, `--mermaid`, `--report`, standalone `--timing`입니다. `--output <path>`는 선택된 payload를 요청한 경로에 쓰고, 필요한 parent directory를 생성하며, 해당 payload의 terminal 출력을 생략합니다. `--output`이 없으면 선택된 payload를 stdout에 쓰므로 CI artifact용 shell redirection도 계속 유효합니다.
 
 | 모드 | payload | artifact 계약 |
 | --- | --- | --- |
 | `--json` | 런타임 platform shell이 생산한 `PlatformShellSnapshot` JSON. | Studio, script, support triage가 사용할 수 있는 안정적인 machine-readable snapshot입니다. `--timing`을 함께 쓰면 payload는 `{ snapshot, timing }`이 되며, `timing`은 versioned bootstrap timing diagnostics입니다. |
+| `--timing` | Versioned bootstrap timing diagnostics JSON. | 전체 snapshot 없이 bootstrap 작업을 profiling하기 위한 standalone timing artifact입니다. `--timing --output <path>`는 해당 timing JSON을 요청한 artifact 경로에 씁니다. |
 | `--mermaid` | 런타임 snapshot에서 `@fluojs/studio`가 렌더링한 Mermaid graph text. | 검사 대상 프로젝트나 CLI 패키지에서 `@fluojs/studio`를 resolve할 수 있어야 합니다. Non-interactive 실행에서 Studio가 없으면 설치 안내와 함께 빠르게 실패합니다. |
 | `--report` | `summary`, `snapshot`, `timing`, `generatedAt`을 포함한 versioned JSON report. | `artifacts/inspect-report.json` 같은 CI/support artifact에 쓰기 위한 형식입니다. Summary에는 component, diagnostic, warning, error, readiness, health, timing total이 포함됩니다. |
 
-`--timing`은 JSON 및 report workflow에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
+`--timing`은 standalone timing JSON artifact로 또는 JSON/report workflow 옆에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
 
 ## 명명 규칙 (CLI 출력)
 

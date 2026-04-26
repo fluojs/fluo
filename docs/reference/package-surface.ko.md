@@ -63,7 +63,7 @@
 
 런타임 패키지는 inspection snapshot과 timing diagnostics의 원천으로 남습니다. CLI는 그 런타임 값을 이동 가능한 artifact로 바꿉니다. Artifact는 raw JSON, timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text가 될 수 있습니다. Studio는 사람과 자동화 호출자를 위해 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.
 
-이 경계는 graph semantics를 `@fluojs/cli` 밖에 둡니다. CLI는 `@fluojs/studio/contracts`를 찾아 `renderMermaid(snapshot)`을 호출할 수 있지만, 내부 dependency edge와 외부 dependency node를 Mermaid output으로 바꾸는 방식은 Studio가 정의합니다. 지속 보관할 artifact가 필요한 소비자는 raw snapshot에는 `fluo inspect --json --output <path>`, timing envelope에는 `fluo inspect --json --timing --output <path>`, support report에는 `fluo inspect --report --output <path>`를 사용해야 합니다.
+이 경계는 graph semantics를 `@fluojs/cli` 밖에 둡니다. CLI는 `@fluojs/studio/contracts`를 찾아 `renderMermaid(snapshot)`을 호출할 수 있지만, 내부 dependency edge와 외부 dependency node를 Mermaid output으로 바꾸는 방식은 Studio가 정의합니다. 지속 보관할 artifact가 필요한 소비자는 raw snapshot에는 `fluo inspect --json --output <path>`, standalone timing diagnostics에는 `fluo inspect --timing --output <path>`, snapshot-plus-timing envelope에는 `fluo inspect --json --timing --output <path>`, support report에는 `fluo inspect --report --output <path>`를 사용해야 합니다.
 
 ## 명명 규칙
 - **`platform-*`**: `PlatformAdapter`를 구현하는 런타임/프로토콜 어댑터 전용.

@@ -63,7 +63,7 @@
 
 Runtime packages remain the source of inspection snapshots and timing diagnostics. The CLI turns those runtime values into transportable artifacts, either raw JSON, a timing envelope, a report artifact, or Mermaid text when Studio is installed. Studio is responsible for reading, validating, filtering, viewing, and rendering those inspect artifacts for humans and automation callers.
 
-This boundary keeps graph semantics out of `@fluojs/cli`: the CLI may locate `@fluojs/studio/contracts` and call `renderMermaid(snapshot)`, but Studio defines how internal dependency edges and external dependency nodes become Mermaid output. Consumers that need a persistent artifact should use `fluo inspect --json --output <path>` for raw snapshots, `fluo inspect --json --timing --output <path>` for timing envelopes, or `fluo inspect --report --output <path>` for support reports.
+This boundary keeps graph semantics out of `@fluojs/cli`: the CLI may locate `@fluojs/studio/contracts` and call `renderMermaid(snapshot)`, but Studio defines how internal dependency edges and external dependency nodes become Mermaid output. Consumers that need a persistent artifact should use `fluo inspect --json --output <path>` for raw snapshots, `fluo inspect --timing --output <path>` for standalone timing diagnostics, `fluo inspect --json --timing --output <path>` for snapshot-plus-timing envelopes, or `fluo inspect --report --output <path>` for support reports.
 
 ## naming conventions
 - **`platform-*`**: Reserved for runtime/protocol adapters implementing `PlatformAdapter`.
