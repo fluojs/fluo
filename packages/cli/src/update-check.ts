@@ -430,7 +430,7 @@ export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUp
 }
 
 export async function runCliUpdateCheck(argv: string[], options: CliUpdateCheckRuntimeOptions = {}): Promise<CliUpdateCheckResult> {
-  const env = options.env ?? process.env;
+  const env = options.env ?? {};
   const stderr = options.stderr ?? process.stderr;
   const stdout = options.stdout ?? process.stdout;
 
