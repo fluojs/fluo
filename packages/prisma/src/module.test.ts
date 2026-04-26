@@ -704,6 +704,57 @@ describe('PrismaModule.forRootAsync', () => {
     void prisma;
   });
 
+  it('resolves async options independently for each application container', async () => {
+    const factoryEvents: string[] = [];
+    let factoryCalls = 0;
+
+    const prismaModule = PrismaModule.forRootAsync({
+      useFactory: () => {
+        factoryCalls += 1;
+        const id = `client-${factoryCalls}`;
+        factoryEvents.push(`factory:${id}`);
+
+        const client = {
+          async $connect() {
+            factoryEvents.push(`connect:${id}`);
+          },
+          async $disconnect() {
+            factoryEvents.push(`disconnect:${id}`);
+          },
+        };
+
+        return { client };
+      },
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, { imports: [prismaModule] });
+    defineModule(SecondAppModule, { imports: [prismaModule] });
+
+    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+    const firstClient = await firstApp.container.resolve(PRISMA_CLIENT);
+
+    const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+    const secondClient = await secondApp.container.resolve(PRISMA_CLIENT);
+
+    expect(firstClient).not.toBe(secondClient);
+    expect(factoryEvents).toEqual(['factory:client-1', 'connect:client-1', 'factory:client-2', 'connect:client-2']);
+
+    await firstApp.close();
+    await secondApp.close();
+
+    expect(factoryEvents).toEqual([
+      'factory:client-1',
+      'connect:client-1',
+      'factory:client-2',
+      'connect:client-2',
+      'disconnect:client-1',
+      'disconnect:client-2',
+    ]);
+  });
+
   it('factory returning a promise resolves the client correctly', async () => {
     const { client, transactionClient } = makeFakeClient();
 
