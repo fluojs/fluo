@@ -1,4 +1,4 @@
-import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
+import type { AsyncModuleOptions } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -90,27 +90,14 @@ function buildPrismaModuleAsync<
 >(options: AsyncModuleOptions<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>): ModuleType {
   class PrismaAsyncModuleDefinition {}
 
-  const factory = options.useFactory as (
-    ...args: unknown[]
-  ) => MaybePromise<PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>>;
-
-  let cachedResult: Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>> | undefined;
-  const memoizedFactory = (
-    ...deps: unknown[]
-  ): Promise<NormalizedPrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) =>
-        normalizePrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>(resolved),
-      );
-    }
-    return cachedResult;
-  };
+  const factory = options.useFactory;
 
   const normalizedOptionsProvider = {
     inject: options.inject,
     provide: PRISMA_NORMALIZED_OPTIONS,
     scope: 'singleton' as const,
-    useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+    useFactory: async (...deps: unknown[]) =>
+      normalizePrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>(await factory(...deps)),
   };
 
   return defineModule(PrismaAsyncModuleDefinition, {
@@ -143,7 +130,7 @@ export class PrismaModule {
    * Registers Prisma providers from an async DI factory.
    *
    * @param options Async module options that resolve Prisma client/module configuration.
-   * @returns A module definition that memoizes async options resolution per module instance.
+   * @returns A module definition that resolves async options once per application container.
    */
   static forRootAsync<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,

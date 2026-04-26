@@ -13,6 +13,7 @@ Prisma lifecycle and ALS-backed transaction context for fluo applications. Conne
   - [PrismaService and current()](#prismaservice-and-current)
   - [Manual Transactions](#manual-transactions)
   - [Automatic Request Transactions](#automatic-request-transactions)
+  - [Async Configuration and Isolation](#async-configuration-and-isolation)
   - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -101,6 +102,25 @@ class UserController {
 }
 ```
 
+### Async Configuration and Isolation
+
+Use `PrismaModule.forRootAsync(...)` when the Prisma client must be created from injected configuration or another async source. The async factory is resolved once per application container and is not shared across separate bootstraps, even when the same module definition is reused in tests or multi-app processes.
+
+```typescript
+import { PrismaClient } from '@prisma/client';
+import { PrismaModule } from '@fluojs/prisma';
+
+PrismaModule.forRootAsync({
+  inject: [DatabaseConfig],
+  useFactory: (config: DatabaseConfig) => ({
+    client: new PrismaClient({ datasources: { db: { url: config.url } } }),
+    strictTransactions: true,
+  }),
+});
+```
+
+Within one compiled application, downstream providers share the same resolved `PrismaService`, ALS transaction context, and lifecycle-managed client. Separate application containers receive independent factory results, so `$connect` / `$disconnect` ownership and request transaction state remain isolated.
+
 ### Manual Module Composition
 
 Use `PrismaModule.forRoot(...)` / `forRootAsync(...)` to register Prisma. When you need to compose Prisma support inside a custom `defineModule(...)` registration, import the module entrypoint there as well.
@@ -126,6 +146,7 @@ defineModule(ManualPrismaModule, {
 
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
+- `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ### `PrismaService<TClient>`
