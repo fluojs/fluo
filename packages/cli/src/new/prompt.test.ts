@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { collectBootstrapAnswers, detectPackageManager, resolveBootstrapAnswers, type BootstrapPrompter } from './prompt.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
+import { CliPromptCancelledError } from '../prompt-cancel.js';
 
 const createdDirectories: string[] = [];
 
@@ -244,5 +245,15 @@ describe('collectBootstrapAnswers', () => {
       projectName: 'starter-app',
       targetDirectory: './starter-app',
     });
+  });
+
+  it('surfaces wizard cancellation as an embeddable error instead of exiting the process', async () => {
+    const prompt = createPrompt({
+      text: async () => {
+        throw new CliPromptCancelledError();
+      },
+    });
+
+    await expect(collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt })).rejects.toBeInstanceOf(CliPromptCancelledError);
   });
 });
