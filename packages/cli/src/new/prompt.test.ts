@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { collectBootstrapAnswers, detectPackageManager, resolveBootstrapAnswers, type BootstrapPrompter } from './prompt.js';
 import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
-import { CliPromptCancelledError } from '../prompt-cancel.js';
+import { CliPromptCancelledError } from '../index.js';
 
 const createdDirectories: string[] = [];
 

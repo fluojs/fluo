@@ -6,9 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runCli } from './cli.js';
 import { generatorManifest } from './generators/manifest.js';
-import { CliPromptCancelledError } from './prompt-cancel.js';
+import { CliPromptCancelledError, runCli } from './index.js';
 
 const createdDirectories: string[] = [];
 
@@ -1529,6 +1528,34 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
+  });
+
+  it('returns success for cancelled new prompts through the public embedding sentinel', async () => {
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['new'], {
+      interactive: true,
+      prompt: {
+        confirm: async () => {
+          throw new Error('fluo new should stop at the cancelled project name prompt');
+        },
+        select: async () => {
+          throw new Error('fluo new should stop at the cancelled project name prompt');
+        },
+        text: async () => {
+          throw new CliPromptCancelledError();
+        },
+      },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdin: { isTTY: true },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(stdoutBuffer.join('')).toBe('');
   });
 
   it('emits bootstrap timing diagnostics for inspect --timing', async () => {
