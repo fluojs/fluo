@@ -90,6 +90,8 @@ export class OrderService {
 QueueModule.forRoot({ clientName: 'jobs' })
 ```
 
+`@fluojs/queue`는 애플리케이션 부트스트랩 중 해당 Redis 클라이언트를 조회한 뒤 BullMQ용으로 큐가 소유하는 duplicate 연결을 만듭니다. 공유 `@fluojs/redis` 클라이언트의 소유권은 `RedisModule`에 남아 있으며, Queue는 자신이 만든 BullMQ duplicate 연결만 닫습니다. 이 duplicate 연결은 BullMQ Worker가 요구하는 `maxRetriesPerRequest: null` 설정으로 구성되어 시작 동작이 BullMQ의 실제 런타임 제약과 일치합니다.
+
 ### 분산 재시도 (Distributed Retries)
 
 워커 설정에서 최대 시도 횟수와 백오프 전략을 지정하여 일시적인 실패를 자동으로 처리할 수 있습니다.

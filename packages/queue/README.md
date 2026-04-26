@@ -90,6 +90,8 @@ Leave `clientName` unset to keep using the default `@fluojs/redis` client from y
 QueueModule.forRoot({ clientName: 'jobs' })
 ```
 
+`@fluojs/queue` resolves that Redis client during application bootstrap, then creates queue-owned duplicate connections for BullMQ. The shared `@fluojs/redis` client remains owned by `RedisModule`; Queue closes only the duplicate BullMQ connections it creates. Those duplicate connections are configured with BullMQ's required `maxRetriesPerRequest: null` worker setting so startup behavior matches BullMQ's runtime constraints.
+
 ### Distributed Retries
 
 Workers can be configured with a maximum number of attempts and backoff strategies to handle transient failures automatically.
