@@ -25,8 +25,13 @@ interface MockRedisConnection {
   connect: () => Promise<void>;
   disconnect: () => void;
   id: string;
+  maxRetriesPerRequest?: number | null;
   quit: () => Promise<'OK'>;
   status: string;
+}
+
+interface MockRedisDuplicateOptions {
+  maxRetriesPerRequest?: number | null;
 }
 
 type FailedListener = (job: MockQueueJob | undefined, error: Error) => void
@@ -198,6 +203,10 @@ vi.mock('bullmq', () => ({
         throw new Error(`worker construct fail:${name}`);
       }
 
+      if (options.connection.maxRetriesPerRequest !== null) {
+        throw new Error('BullMQ Worker requires Redis connections with maxRetriesPerRequest set to null.');
+      }
+
       this.worker = bullmqState.createWorker(name, processor, options);
     }
 
@@ -233,12 +242,14 @@ class MockRedisClient {
   failConnectOnDuplicate: number | undefined;
 
   readonly deadLetters = new Map<string, string[]>();
+  readonly duplicateOptions: MockRedisDuplicateOptions[] = [];
   readonly duplicates: MockRedisConnection[] = [];
 
-  duplicate(): MockRedisConnection {
+  duplicate(options: MockRedisDuplicateOptions = {}): MockRedisConnection {
     this.duplicateSequence += 1;
     const id = `dup-${this.duplicateSequence}`;
     const duplicateIndex = this.duplicateSequence;
+    this.duplicateOptions.push(options);
     const connection: MockRedisConnection = {
       connect: async () => {
         if (this.failConnectOnDuplicate === duplicateIndex) {
@@ -251,6 +262,7 @@ class MockRedisClient {
         connection.status = 'end';
       },
       id,
+      maxRetriesPerRequest: Object.hasOwn(options, 'maxRetriesPerRequest') ? options.maxRetriesPerRequest : 20,
       quit: async () => {
         connection.status = 'end';
         return 'OK';
@@ -496,6 +508,52 @@ describe('@fluojs/queue', () => {
     expect(workerStore.handled).toEqual(['user-9']);
 
     await app.close();
+  });
+
+  it('duplicates Redis with the BullMQ worker retry constraint without taking shared client ownership', async () => {
+    class BullMqStartupJob {
+      constructor(public readonly value: string) {}
+    }
+
+    class WorkerStore {
+      handled: string[] = [];
+    }
+
+    @Inject(WorkerStore)
+    @QueueWorker(BullMqStartupJob)
+    class BullMqStartupWorker {
+      constructor(private readonly store: WorkerStore) {}
+
+      async handle(job: BullMqStartupJob): Promise<void> {
+        this.store.handled.push(job.value);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+      providers: [BullMqStartupWorker, WorkerStore],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    const workerStore = await app.container.resolve(WorkerStore);
+
+    await expect(queue.enqueue(new BullMqStartupJob('ready'))).resolves.toBe('1');
+    expect(workerStore.handled).toEqual(['ready']);
+    expect(redis.duplicateOptions).toEqual([
+      { maxRetriesPerRequest: null },
+      { maxRetriesPerRequest: null },
+    ]);
+    expect(redis.duplicates.every((connection) => connection.maxRetriesPerRequest === null)).toBe(true);
+
+    await app.close();
+
+    expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
   });
 
   it('warns and skips @QueueWorker() classes registered with non-singleton scopes', async () => {

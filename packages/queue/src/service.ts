@@ -35,11 +35,16 @@ type QueueOwnedConnection = ConnectionOptions & {
   connect(): Promise<unknown>;
   disconnect(): void;
   quit(): Promise<unknown>;
+  maxRetriesPerRequest?: number | null;
   status?: string;
 };
 
+interface QueueBullMqConnectionOptions {
+  maxRetriesPerRequest: null;
+}
+
 interface QueueRedisClient extends QueueRedisDeadLetterClient {
-  duplicate(): QueueOwnedConnection;
+  duplicate(options?: QueueBullMqConnectionOptions): QueueOwnedConnection;
 }
 
 interface WorkerInitializationResources {
@@ -397,7 +402,9 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   private async createOwnedConnection(redis: QueueRedisClient): Promise<QueueOwnedConnection> {
-    const connection = redis.duplicate();
+    const connection = redis.duplicate({
+      maxRetriesPerRequest: null,
+    });
 
     try {
       if (connection.status === 'wait' || connection.status === 'reconnecting') {
