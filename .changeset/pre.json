@@ -50,5 +50,7 @@
     "@fluojs-internal/tooling-vite": "0.0.0",
     "@fluojs-internal/tooling-vitest": "0.0.0"
   },
-  "changesets": []
+  "changesets": [
+    "beta-2-release"
+  ]
 }
