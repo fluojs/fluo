@@ -1,237 +1,241 @@
 <!-- packages: @fluojs/studio, @fluojs/runtime, @fluojs/cli -->
 <!-- project-state: FluoBlog v0 -->
 
-# Chapter 15. Studio — 시각적 진단과 관찰성
+# Chapter 15. Studio: Visual Diagnostics and Observability
 
-이 장은 런타임이 생산한 모듈 그래프 snapshot과 진단 정보를 사람이 읽을 수 있는 시각적 형태로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 관찰하며 해석하는 도구로 넘어갑니다.
+이 장은 런타임이 만든 모듈 그래프 snapshot, 진단, 타이밍 데이터, inspect report를 사람이 읽을 수 있는 artifact로 바꾸는 Studio 생태계를 다룹니다. Chapter 14가 계약 검증으로 런타임 일관성을 확인했다면, 이 장은 그 내부 상태를 내보내고 저장하고 보고 해석하는 도구로 넘어갑니다.
 
 ## Learning Objectives
+
 - `@fluojs/studio`가 아키텍처 진단과 관찰성에서 맡는 역할을 이해합니다.
-- `fluo inspect`를 통해 런타임 snapshot을 생성하고 CLI 내보내기/위임 흐름을 익힙니다.
-- `PlatformShellSnapshot`과 `PlatformDiagnosticIssue` 계약이 무엇을 담는지 배웁니다.
-- Studio Viewer에서 그래프, 진단, 타이밍 정보를 읽는 방법을 살펴봅니다.
-- 순환 의존성이나 초기화 병목을 스냅샷으로 추적하는 접근을 분석합니다.
-- Studio가 소유한 Mermaid 렌더링과 프로그래밍 방식의 스냅샷 활용으로 아키텍처 가드를 구성하는 방법을 정리합니다.
+- `fluo inspect`로 런타임 snapshot, report, Mermaid diagram, timing payload를 생성합니다.
+- raw JSON 출력, `--report` artifact, `--output` 파일, `--timing` 진단을 구분합니다.
+- `PlatformShellSnapshot`과 `PlatformDiagnosticIssue` 계약이 무엇을 담는지 학습 흐름 수준에서 파악합니다.
+- Studio가 inspect artifact를 소비하고 검증하고 필터링하고 그래프를 렌더링하는 방식을 살펴봅니다.
+- Studio가 소유한 Mermaid 렌더링과 프로그래밍 방식의 artifact 소비로 아키텍처 가드를 구성하는 방법을 정리합니다.
 
 ## Prerequisites
+
 - Chapter 14 완료.
 - fluo 모듈 시스템과 의존성 주입 해석 흐름에 대한 기본 이해.
 - `fluo inspect`를 포함한 fluo CLI 사용 경험.
-- JSON 데이터와 웹 기반 시각화 도구를 읽고 다루는 기초 감각.
+- JSON, Mermaid, 브라우저 기반 시각화 도구에 대한 기본 감각.
 
 ## 15.1 Beyond the Terminal: Why Studio?
 
-애플리케이션이 커질수록 의존성 그래프는 머릿속에 담아두기에는 너무 복잡해집니다. 순환 의존성, 스코프 불일치, 프로바이더 해석 실패 등은 터미널 로그만으로는 추적하기가 점점 더 어려워집니다. 마이크로서비스 아키텍처에서는 이러한 복잡성이 수십 개의 독립적인 서비스에 걸쳐 배가되며, 각 서비스는 자신만의 내부 모듈 그래프를 가집니다.
+애플리케이션이 커질수록 의존성 그래프는 머릿속에 담아두기에는 너무 복잡해집니다. 순환 의존성, scope 불일치, provider 해석 실패, 느린 bootstrap 단계는 터미널 로그만으로 추적하기 어려워집니다. 마이크로서비스 아키텍처에서는 이런 복잡성이 여러 독립 서비스에 걸쳐 커지고, 각 서비스는 자신만의 내부 Module Graph를 가집니다.
 
-**@fluojs/studio**는 이 복잡성을 다루기 위한 fluo의 진단 계층입니다. 애플리케이션의 내부 상태를 파일 우선(File-first) 스냅샷으로 받아 사람이 검토할 수 있는 플랫폼 지도로 바꿉니다. DI 컨테이너의 "블랙박스"를 추측의 대상이 아니라 검토 가능한 구조로 드러내는 셈입니다. 이 투명성은 디버깅에만 쓰이지 않습니다. 팀이 같은 모듈 그래프와 같은 진단 결과를 보며 시스템 아키텍처에 대한 공통 모델을 유지하게 합니다.
+`@fluojs/studio`는 이 복잡성을 다루기 위한 fluo의 진단 계층입니다. inspect artifact를 파일로 받아 구조를 검증하고, 팀이 함께 검토할 수 있는 view로 바꿉니다. 다시 말해 DI 컨테이너의 "black box"를 추측의 대상이 아니라 검사할 수 있는 구조로 드러냅니다.
 
-무거운 APM(Application Performance Monitoring) 도구와 달리, Studio는 **정적 및 부트스트랩 타임 아키텍처**에 집중합니다. "왜 지금 느린가"보다 먼저 "왜 시작되지 않았는가"를 확인하게 해줍니다. 첫 번째 요청을 처리하기 전에 애플리케이션을 분석하므로, 런타임 모니터링 도구가 놓치기 쉬운 구조적 문제를 사전 점검(pre-flight check) 단계에서 포착할 수 있습니다. 진단을 배포 전으로 당기는 shift-left 방식은 클라우드 환경에서 가용성을 지키는 실무적인 기반이 됩니다.
+Studio는 정적 및 bootstrap-time 아키텍처에 집중합니다. "왜 이 요청이 느린가"를 묻기 전에 "왜 시작되지 않았는가"를 확인하게 합니다. inspect 데이터는 inspection-safe bootstrap에서 나오므로, 팀은 애플리케이션이 트래픽을 받기 전에 graph shape, readiness, diagnostics, timing을 검토할 수 있습니다.
 
 ## 15.2 The Studio Ecosystem
 
-`packages/studio/README.md`에 정의된 바와 같이 inspection 및 Studio 흐름은 세 가지 주요 계층으로 구성됩니다.
+`packages/studio/README.md`에 정의된 inspection 및 Studio 흐름은 세 가지 주요 계층으로 구성됩니다.
 
-1. **Snapshot producer**: inspection-safe bootstrap 중 모듈 그래프를 컴파일하고 `PlatformShellSnapshot` 데이터를 생산하는 fluo Runtime 및 platform shell입니다.
-2. **CLI exporter/delegator**: 런타임이 생산한 snapshot을 JSON으로 직렬화하고, `--mermaid`가 요청되면 Mermaid 렌더링을 Studio에 위임하는 `@fluojs/cli`의 `fluo inspect` 명령입니다.
-3. **Studio contract and viewer**: snapshot 파싱, 필터링, 그래프 렌더링, 브라우저 보기를 소유하는 `@fluojs/studio` 루트 export, `@fluojs/studio/contracts` 서브패스, `@fluojs/studio/viewer` entrypoint입니다.
+1. **Snapshot producer**: fluo Runtime과 platform shell은 inspection-safe bootstrap 중 Module Graph를 컴파일하고 `PlatformShellSnapshot` 데이터를 생산합니다.
+2. **CLI exporter/delegator**: `fluo inspect` 명령은 런타임이 생산한 데이터를 JSON으로 직렬화하고, 요청 시 report로 감싸고, `--output`으로 artifact 경로에 쓰며, `--mermaid`가 요청되면 Mermaid 렌더링을 Studio에 위임합니다.
+3. **Studio contract and viewer**: `@fluojs/studio` 루트 export, `@fluojs/studio/contracts` subpath, `@fluojs/studio/viewer` entrypoint는 snapshot parsing, filtering, graph rendering, browser viewing을 소유합니다.
 
-## 15.3 Generating Snapshots with `fluo inspect`
+이 분리는 중요합니다. Runtime은 진실을 생산합니다. CLI는 artifact shape를 고릅니다. Studio는 viewer와 Mermaid rendering semantics를 소유합니다. CLI는 graph rendering logic을 중복하지 않고, Studio는 애플리케이션을 직접 bootstrap할 필요가 없습니다.
 
-Studio와 상호작용하는 기본 방법은 애플리케이션의 스냅샷을 생성하는 것입니다.
+## 15.3 Generating Inspect Artifacts with `fluo inspect`
+
+Studio와 상호작용하는 기본 방법은 root module에서 inspect artifact를 생성하는 것입니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --json > platform-state.json
+fluo inspect ./src/app.module.ts --json > artifacts/inspect-snapshot.json
 ```
 
-이 명령어는 fluo 런타임에 inspection-safe platform snapshot을 요청한 뒤, CLI가 그 snapshot을 JSON으로 기록합니다. 이 모드에서는 런타임이 프로바이더를 해석하고 그래프를 구축하지만 실제 서버 리스닝은 시작하지 않습니다. 결과 JSON에는 다음 정보가 들어갑니다.
-- 등록된 모든 컴포넌트(모듈, 컨트롤러, 프로바이더)
-- 전체 의존성 매핑
-- 상태(Health) 및 준비성(Readiness) 상태
-- 단계별 상세 부트스트랩 타이밍
+명시적인 출력 mode가 없으면 `fluo inspect`는 JSON snapshot 출력을 기본값으로 사용합니다. Runtime은 inspection-safe application context를 통해 provider를 해석하고 platform shell을 만든 뒤, CLI가 snapshot을 stdout에 씁니다. 검사 대상 애플리케이션은 inspection을 위해 bootstrap된 뒤 닫힙니다. 서버 listener는 시작하지 않습니다.
 
-스냅샷 생성은 비파괴적으로 동작합니다. `bootstrapOptions`로 따로 지정하지 않는 한, 비즈니스 로직을 실행하거나 외부 데이터베이스에 연결하지 않고 모듈 트리를 탐색합니다. 그래서 CI/CD에서 `fluo inspect`를 실행해 배포 전 아키텍처 무결성을 확인할 수 있습니다. 이 명령은 터미널에서 주요 문제를 바로 읽을 수 있는 요약도 제공하므로, 자동화된 스크립트와 수동 디버깅 세션 양쪽에 맞습니다.
+CI와 support workflow에서는 shell redirection보다 명시적인 artifact 경로를 사용하는 편이 좋습니다.
 
-## 15.4 Understanding the Snapshot Contract
-
-CLI에서 내보낸 데이터는 `@fluojs/runtime`이 생산하고 `packages/studio/src/contracts.ts`가 소비하는 `PlatformShellSnapshot` 계약을 따릅니다. 이 계약은 모든 생성자(런타임 inspection, 커스텀 스크립트, 외부 도구)가 뷰어에서 안정적으로 해석할 수 있는 데이터를 생성하도록 보장하는 역할을 합니다.
-
-### PlatformShellSnapshot Structure
-
-```typescript
-export interface PlatformShellSnapshot {
-  generatedAt: string;
-  readiness: { status: 'ready' | 'not-ready' | 'degraded'; critical: boolean };
-  health: { status: 'healthy' | 'unhealthy' | 'degraded' };
-  components: PlatformComponent[];
-  diagnostics: PlatformDiagnosticIssue[];
-}
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-이 엄격한 인터페이스 덕분에 Studio 생태계는 제3자 생성자를 받아들일 수 있습니다. 예를 들어 커스텀 테스트 하네스는 테스트 환경의 상태를 시각화하기 위해 `PlatformShellSnapshot`을 내보낼 수 있고, 별도 모니터링 에이전트는 애플리케이션 아키텍처 변화를 추적하기 위해 주기적으로 스냅샷을 만들 수 있습니다. 표준 우선 접근은 Studio의 시각화 및 렌더링 도구를 하위 데이터 소스와 분리해 두며, producer, CLI export, viewer가 서로 느슨하게 결합되도록 합니다.
+`--output <path>`는 선택된 payload를 파일에 쓰고 필요한 parent directory를 만듭니다. 실패한 bootstrap check 이후 CI 시스템이 `artifacts/`를 업로드할 때 유용합니다. 이 옵션은 애플리케이션을 쓰기 가능하게 만들지 않으며, 정상적인 bootstrap 및 close cycle 외에 module graph state를 바꾸지 않습니다.
 
-### PlatformDiagnosticIssue: The Heart of Troubleshooting
+snapshot 옆에 bootstrap timing이 필요하면 `--timing`을 사용합니다.
 
-각 진단 이슈는 구성 오류를 고치는 데 필요한 실행 가능한 메타데이터를 제공합니다. 특히 `fixHint`와 `docsUrl` 필드는 가이드된 문제 해결(Guided Troubleshooting) 흐름에서 핵심 단서가 됩니다.
-
-```typescript
-export interface PlatformDiagnosticIssue {
-  code: string;           // 예: "FL0042"
-  severity: 'error' | 'warning' | 'info';
-  componentId: string;    // 실패한 컴포넌트
-  message: string;        // 사람이 읽을 수 있는 설명
-  cause?: string;         // 근본 원인 분석
-  fixHint?: string;       // 명시적인 제안: "X에 @Inject(TOKEN)을 추가하세요"
-  dependsOn?: string[];   // 해석을 방해하는 차단 요소들
-  docsUrl?: string;       // 상세 가이드 링크
-}
+```bash
+fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
 ```
 
-진단은 단순한 오류 문자열이 아니라 자동화된 복구 워크플로우가 읽을 수 있는 구조화된 데이터입니다. 예를 들어 CI 봇은 `PlatformDiagnosticIssue`를 파싱해 코드 변경을 제안하거나 순환 의존성을 도입하는 PR을 차단할 수 있습니다. `code` 필드는 fluo 문서의 특정 섹션에 매핑되는 고유 식별자입니다. 이 연결 덕분에 오류, 수정 힌트, 문서가 같은 기준으로 움직입니다.
+summary, 전체 snapshot, diagnostics, timing이 함께 들어 있는 CI-friendly support artifact가 필요하면 `--report`를 사용합니다.
+
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+```
+
+문서화나 review를 위한 text diagram이 필요하면 `--mermaid`를 사용합니다.
+
+```bash
+fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
+```
+
+Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치합니다.
+
+```bash
+pnpm add -D @fluojs/studio
+```
+
+비대화형 실행에서는 Studio dependency가 없을 때 install guidance와 함께 빠르게 실패합니다. 대화형 실행은 확인을 물을 수 있지만, `fluo inspect`는 패키지를 조용히 설치하지 않습니다.
+
+## 15.4 Understanding the Snapshot and Report Shapes
+
+CLI가 내보내는 데이터는 `@fluojs/runtime`이 생산하고 Studio가 소비하는 계약을 따릅니다. 이 절은 학습 모델을 설명합니다. 필드 단위의 reference 세부 정보는 contract docs와 package README가 맡습니다.
+
+### Raw JSON snapshot
+
+Raw JSON은 가장 작은 Studio 입력입니다. `--json` 또는 기본 inspect mode로 생성됩니다.
+
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+```
+
+payload는 `PlatformShellSnapshot`입니다. 큰 흐름에서 다음 정보를 포함합니다.
+
+- `generatedAt`, snapshot이 생성된 시각.
+- `readiness`와 `health`, platform-level status signal.
+- `components`, 해석된 graph 안의 modules, controllers, providers, related platform components.
+- `diagnostics`, platform shell을 만들거나 검사하는 동안 발견된 구조화된 issue.
+
+Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(rawJson)`로 JSON을 파싱하고, 지원하는 version 및 schema expectation을 검증한 뒤, graph, diagnostics, filtering view에 snapshot을 전달합니다.
+
+### Timing envelope
+
+모든 workflow가 bootstrap phase 측정을 필요로 하지는 않으므로 timing data는 opt-in입니다.
+
+```bash
+fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+```
+
+`--json --timing`을 사용하면 CLI는 `snapshot`과 `timing` key를 가진 envelope를 씁니다. `timing` 값은 `BootstrapTimingDiagnostics`를 따르며, `totalMs`와 phase list를 포함합니다. Studio는 이 데이터를 사용해 module graph construction, provider resolution, lifecycle hooks 같은 bootstrap 시간이 어디에 쓰였는지 설명할 수 있습니다.
+
+Timing은 변경이 startup을 깨지는 않지만 눈에 띄게 느리게 만들 때 특히 유용합니다. snapshot 옆에 timing을 보관하면 reviewer가 graph shape와 bootstrap cost를 연결해서 볼 수 있습니다.
+
+### Report artifact
+
+Report는 CI triage와 support handoff에 가장 좋은 artifact입니다.
+
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+```
+
+Report는 런타임이 생산한 snapshot을 stable summary와 timing data로 감쌉니다. Summary에는 components, diagnostics, errors, warnings, health, readiness, total timing count가 들어 있습니다. 그래서 CI job이나 reviewer가 전체 graph를 먼저 파싱하지 않아도 기본 질문에 답할 수 있습니다.
+
+Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와 automation이 보통 필요로 하는 추가 context와 함께 snapshot을 포장합니다. Studio는 여전히 snapshot 부분을 소비할 수 있고, script는 build를 실패시킬지 ticket에 artifact를 붙일지 결정하기 전에 summary를 먼저 읽을 수 있습니다.
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer는 독립 실행형 웹 애플리케이션입니다. 모노레포 내에서 로컬로 실행하거나 공개된 버전을 사용할 수 있습니다.
+Studio Viewer는 독립 실행형 web application입니다. 모노레포 안에서 로컬로 실행하거나, install path가 제공하는 packaged viewer entry를 사용할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev
 ```
 
-뷰어가 열리면 `platform-state.json` 파일을 브라우저로 드래그 앤 드롭하면 됩니다. 내부적으로 `parseStudioPayload` 헬퍼가 렌더링 전에 버전 및 스키마 규칙에 따라 파일 유효성을 즉시 검증합니다.
+Viewer가 열리면 inspect artifact를 브라우저로 drag and drop합니다. Raw `--json` snapshot이 가장 단순한 입력입니다. `--json --timing` envelope는 viewer에 timing data도 제공합니다. `--report` artifact는 report를 canonical CI file로 보관하고 그 안의 snapshot 및 timing data를 Studio-aware tool에 전달하는 workflow에서 사용할 수 있습니다.
 
-Studio는 독립적인 웹 애플리케이션으로 설계되어 가볍게 실행되고, 낮은 오버헤드로 애플리케이션 아키텍처를 탐색하게 합니다. React와 Vite 기반으로 구성되어 스냅샷 로딩과 필터링에 빠르게 반응합니다. 터미널 로그만 읽는 방식에서 벗어나, 모듈 그래프와 진단을 같은 화면에서 검토하는 전용 환경을 제공합니다.
-
-또한 뷰어에는 "스냅샷 관리자(Snapshot Manager)"가 포함되어 여러 스냅샷을 정리하고 검색할 수 있습니다. 시간에 따른 애플리케이션 아키텍처 변화를 추적하는 데 유용합니다. 각 스냅샷에는 커밋 해시, 환경(dev, staging, prod), 작성자 같은 메타데이터를 태그로 붙일 수 있어 플랫폼 구조 변화의 히스토리를 남길 수 있습니다. 이 맥락은 근본 원인 분석과 아키텍처 결정의 일관성 검토에 중요합니다.
+내부적으로 Studio는 렌더링 전에 `parseStudioPayload(rawJson)`를 사용합니다. 덕분에 viewer는 임의의 JSON을 유효한 platform graph로 취급하지 않습니다. Parsing 이후 Studio는 `applyFilters(snapshot, filter)`로 filter를 적용하고, severity별 diagnostics를 보여주며, CLI의 Mermaid path와 같은 graph ownership model을 통해 graph를 렌더링할 수 있습니다.
 
 ### Key Features of the Viewer
 
-- **그래프 뷰(Graph View)**: 애플리케이션을 Mermaid 기반 의존성 다이어그램으로 렌더링합니다. 어떤 서비스가 어떤 레포지토리에 의존하는지 한눈에 볼 수 있습니다. 노드는 색상 코드로 서로 다른 모듈 유형(Core, Platform, Application)을 구분합니다.
-- **진단 탭(Diagnostics Tab)**: 모든 `PlatformDiagnosticIssue` 항목을 나열합니다. 심각도별로 그룹화하고 컴포넌트별로 필터링할 수 있어 특정 실패 원인을 추적하기 쉽습니다.
-- **타이밍 탭(Timing Tab)**: 부트스트랩 시퀀스를 시각화하여 각 단계(모듈 그래프 구축, 인스턴스 해석, 생명주기 훅 등)가 몇 밀리초씩 걸렸는지 보여줍니다. 이 탭은 애플리케이션 시작 시 "가장 긴 지점(long poles)"을 식별하는 데 도움이 됩니다.
-- **타임라인 뷰(The Timeline View)**: 부트스트랩 프로세스의 계층적 표현을 표시하여 어떤 모듈이 병렬로 초기화되었고 어떤 모듈이 순차적으로 초기화되었는지 확인하게 합니다.
-- **의존성 추적(The Dependency Trace)**: 임의의 노드를 클릭해 의존성의 전체 경로를 추적하고, 잠재적인 실패 지점이나 불필요한 복잡성을 하이라이트합니다.
-- **프로바이더 상세 정보(Provider Details)**: 선택한 프로바이더의 메타데이터(주입 토큰, 구현 유형(클래스, 팩토리 또는 값), 해석된 의존성 등)를 확인합니다.
-- **모듈 분해(Module Breakdown)**: 각 모듈의 export 및 import를 보여주는 탭으로, 캡슐화 전략이 지켜지고 있는지 확인하는 데 도움이 됩니다.
+- **Graph View**: 애플리케이션 dependency graph를 렌더링해 modules, providers, dependency edges를 한눈에 보게 합니다.
+- **Diagnostics Tab**: `PlatformDiagnosticIssue` 항목을 severity, message, cause, fix hints, blockers, docs links와 함께 나열합니다.
+- **Timing View**: Timing data가 있을 때 `BootstrapTimingDiagnostics`를 사용해 total bootstrap time과 phase-level cost를 보여줍니다.
+- **Filtering**: 로드된 snapshot을 변경하지 않고 query, readiness, severity filter를 적용합니다.
+- **Mermaid Export**: Internal dependency edges와 external dependency nodes를 포함해 Studio가 소유한 `renderMermaid(snapshot)` logic으로 text diagram을 생성합니다.
 
-뷰어는 `@fluojs/studio`의 `applyFilters` 로직을 사용해 전체 플랫폼 상태에 대한 실시간 검색을 제공합니다. 검색바에 키워드를 입력하면 컴포넌트와 진단 이슈를 동시에 필터링하고, 그래프 노드와 이슈 목록에서 일치 항목을 즉시 하이라이트합니다. 이 피드백 루프는 수백 개 이상의 모듈로 구성된 대규모 모노레포를 탐색할 때 특히 유용합니다.
-
-모듈이나 컴포넌트를 선택하면 특정 하위 그래프에 집중할 수 있습니다. Studio는 관련 없는 노드를 흐리게 처리하고 선택한 항목의 직접 의존성과 종속성을 하이라이트합니다. 이 "포커스 모드"는 핵심 유틸리티나 공유 레포지토리 변경의 영향 범위를 확인할 때 중요합니다. 인터랙티브 필터링은 "싱글톤 데이터베이스 연결에 의존하는 모든 요청 범위(request-scoped) 프로바이더 표시" 같은 복잡한 쿼리도 지원합니다. 덕분에 런타임 오류로 나타나기 전에 잠재적인 스코프 불일치를 찾을 수 있습니다. "포커스 모드" 결과는 아키텍처 결정 기록(ADR)에 넣거나 피어 리뷰에서 공유할 독립형 다이어그램으로 내보낼 수도 있습니다.
-
-그래프는 준비성 상태(readiness status)에 따른 색상 코딩도 지원합니다. `degraded` 노드는 주황색, `not-ready` 노드는 빨간색으로 표시됩니다. 운영자는 수만 줄의 로그를 먼저 훑지 않고도 클러스터 전체 장애의 근본 원인을 좁힐 수 있습니다. 그래프 뷰의 렌더링 엔진은 캔버스 기반 가상화를 사용해 수천 개의 노드를 처리하도록 최적화되어 있으며, 복잡한 엔터프라이즈 그래프에서도 확대/축소와 팬 제스처에 반응하도록 설계되어 있습니다. 이 성능은 스냅샷 로드 시 한 번 수행되는 레이아웃 계산과 인터랙티브 렌더링 루프를 분리해 얻습니다.
-
-뷰어의 "스냅샷 히스토리(Snapshot History)" 기능은 여러 스냅샷을 로드하고 나란히 비교하게 합니다. 의존성 그래프가 시간에 따라 어떻게 성장하는지 추적하거나, 리팩토링이 애플리케이션 구조를 실제로 단순화했는지 확인할 때 유용합니다. 비교 엔진은 추가, 제거, 수정된 의존성을 하이라이트해 아키텍처 변경의 차이(delta)를 보여줍니다. 각 비교에는 부트스트랩 타이밍과 상태 변화 요약이 함께 제공되어, 구조 변화와 성능 및 신뢰성 변화를 함께 검토할 수 있습니다.
+이 기능들은 팀에 공유 artifact review flow를 제공합니다. CLI가 파일을 내보내고, CI가 저장하고, Studio가 같은 파일을 graph, issue list, timing explanation으로 바꿉니다.
 
 ### Visualizing Scopes and Lifecycles
 
-Studio의 중요한 역할 중 하나는 프로바이더 스코프(Scope)를 시각화하는 것입니다. 복잡한 애플리케이션에서는 Request 스코프 프로바이더를 Singleton 스코프 프로바이더에 잘못 주입해 런타임 오류나 메모리 누수를 만들기 쉽습니다.
+Studio의 중요한 역할 중 하나는 scope와 lifecycle 문제를 보이게 만드는 것입니다. 복잡한 애플리케이션에서는 request-scoped provider를 singleton path에 잘못 주입하거나, dependency chain만 봐서는 분명하지 않은 느린 provider를 도입하기 쉽습니다.
 
-Studio는 컴포넌트 상세 뷰에서 이런 스코프 불일치를 명확히 표시합니다. 컴포넌트를 선택하면 해석된 스코프와 의존성 체인의 잠재적인 위반 사항을 확인할 수 있습니다. 시각화 엔진은 상속 및 주입 경로를 하이라이트해 스코프 경계가 침범된 지점을 드러냅니다. 이 기능은 DI 컨테이너가 해석한 원시 스코프 토큰을 포함하는 `PlatformComponent.details` 메타데이터를 기반으로 동작합니다.
-
-또한 뷰어는 각 컴포넌트에 대한 "생명주기 추적(Lifecycle Trace)"을 제공해 언제 인스턴스화되었고 여러 훅(`onModuleInit`, `onApplicationBootstrap` 등)이 언제 실행되었는지 보여줍니다. 이는 코드만 봐서는 드러나지 않는 초기화 순서 문제를 디버깅할 때 유용합니다. 그래프 노드를 클릭하면 텔레메트리 데이터로 드릴다운해 fluo 런타임 환경에서 각 생명주기 단계의 정밀한 타임스탬프를 확인할 수 있습니다.
-
-텔레메트리 데이터는 `BootstrapTimingDiagnostics` 인터페이스를 통해 수집됩니다. fluo 런타임은 시작될 때 모든 생명주기 훅의 시작 및 종료 시간을 기록합니다. Studio의 타이밍 탭은 이 구간을 파싱해 플레임 차트나 순차적 목록으로 보여줍니다. 이 트레이스는 정적 기록이 아니라 프레임워크 내부 디스패처가 실제로 지나간 실행 경로입니다. 이를 분석하면 의존성 그래프 깊숙한 곳에 있더라도 "데드락"이나 느린 시작을 일으키는 프로바이더를 찾아낼 수 있습니다.
-
-```typescript
-// packages/studio/src/contracts.ts (계약 참조)
-export interface BootstrapTimingDiagnostics {
-  version: 1;
-  totalMs: number;
-  phases: {
-    name: string;
-    durationMs: number;
-    details?: string;
-  }[];
-}
-```
-
-이 데이터를 보면 부트스트랩 프로세스를 지연시키는 프로바이더를 정확히 식별할 수 있습니다. 모듈 초기화에 500ms가 걸린다면, Studio를 통해 데이터베이스 연결을 기다리는지 비용이 큰 계산을 수행하는지 확인할 수 있습니다. 고급 시나리오에서는 서로 다른 두 스냅샷을 비교해 구성 변경이 전체 부트스트랩 성능에 어떤 영향을 미쳤는지 보여줄 수 있으며, 이는 성능 회귀 테스트에 필요한 "텔레메트리 디프(telemetry diff)"가 됩니다.
-
-타이밍 외에도 Studio는 부트스트랩 단계에서 여러 모듈의 메모리 풋프린트를 시각화할 수 있습니다. 런타임의 내부 프로파일링 훅과 통합되면 타이밍 탭은 각 컴포넌트의 힙 할당량을 표시해 시작 중 과도한 리소스를 쓰는 모듈을 식별하게 합니다. 이는 리소스가 제한적이고 효율적인 초기화가 콜드 스타트 지연 시간을 줄이는 데 중요한 엣지 런타임에서 특히 의미가 큽니다. 메모리 시각화에는 고메모리 모듈에 대한 잠재적 최적화를 제안하는 "휴리스틱 영향 점수(Heuristic Impact Score)"도 포함되어 있습니다.
-
-타이밍 탭은 "초기화 핫스팟(Initialization Hotspots)"을 식별하는 데도 쓸 수 있습니다. 이는 초기화에 오래 걸리지만 반드시 많은 컴포넌트에 의존하지는 않는 프로바이더입니다. 이런 프로바이더는 독립적인 작업 단위로 리팩토링할 수 있는 경우가 많아 최적화 후보가 됩니다. Studio는 이 핫스팟을 전체 부트스트랩 시간에 대한 기여도 순서의 "순위 목록"으로 제공합니다.
+Snapshot은 Studio에 해석된 component graph와 diagnostics를 제공합니다. Timing data는 bootstrap phase cost를 제공합니다. 두 artifact를 함께 보면 viewer는 구조와 startup behavior를 모두 설명할 수 있습니다. Graph는 어떤 component가 느린 provider에 의존하는지 보여주고, timing view는 지연이 graph construction, instance resolution, lifecycle hooks 중 어디에서 발생했는지 보여줄 수 있습니다.
 
 ## 15.6 Scenario: Diagnosing a Provider Deadlock
 
-애플리케이션이 시작 중에 멈췄다고 가정해 봅니다. Studio에서 스냅샷을 검사하면 진단 탭에서 "순환 의존성(Circular Dependency)" 오류를 발견할 수 있습니다.
+애플리케이션이 startup 중 멈추거나 실패한다고 가정해 봅니다. 로그에만 의존하지 말고 report artifact를 생성합니다.
 
-1. **확인(Identify)**: Studio는 CSS `classDef`로 매핑된 `not-ready` 상태를 사용하여 문제가 되는 컴포넌트를 빨간색으로 표시합니다.
-2. **분석(Analyze)**: `dependsOn` 필드는 순환 고리를 보여줍니다: `ServiceA -> ServiceB -> ServiceA`.
-3. **수정(Fix)**: `fixHint`는 `forwardRef()`를 사용하거나 공통 로직을 제3의 서비스로 리팩토링할 것을 제안할 수 있습니다.
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+```
 
-데드락 시나리오는 도메인 모듈 간 결합이 지나치게 강할 때 자주 발생합니다. Studio는 교차 모듈 의존성을 시각화해 소스 코드만으로는 바로 드러나지 않는 다계층 순환 경로를 보여줍니다. 전체 순환 경로를 분석하면 이벤트 기반 통신 패턴을 도입하거나 공유 상태를 전용 프로바이더로 옮기는 등 구조적인 해결책을 찾을 수 있습니다. 이런 선제적 분석은 흔한 런타임 실패를 줄이고, 시스템 복잡성이 커져도 플랫폼 안정성을 유지하는 데 도움이 됩니다. 또한 도메인 경계를 다시 검토하고 더 모듈화된 느슨한 결합 구조를 설계하게 만듭니다.
+그다음 artifact trail을 따라갑니다.
 
-## 15.7 Programmatic Consumption of Snapshots
+1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 failure shape를 파악합니다.
+2. **Open the snapshot in Studio**: Viewer로 graph와 diagnostics를 검사합니다. Diagnostics tab은 가능한 경우 `dependsOn`, `cause`, `fixHint`를 포함한 structured issue를 보여줍니다.
+3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd`를 사용합니다.
+4. **Keep the artifact**: 다른 개발자가 같은 inspection view를 재현할 수 있도록 report를 CI log나 support ticket에 첨부합니다.
 
-커스텀 CI/CD 도구를 구축한다면 `parseStudioPayload` 및 `applyFilters` 같은 `@fluojs/studio` 라이브러리를 사용해 스냅샷을 프로그래밍 방식으로 파싱하고 검증할 수 있습니다. 이렇게 하면 아키텍처 체크를 개발 워크플로우에 직접 넣을 수 있습니다.
+이 workflow는 터미널 출력을 채팅에 복사하는 방식보다 반복 가능합니다. Report는 summary, snapshot, diagnostics, timing을 함께 보관합니다. Studio는 그 사실들을 reviewer가 직접 앱을 bootstrap하지 않아도 검사할 수 있는 graph와 issue list로 바꿉니다.
+
+## 15.7 Consuming Inspect Artifacts Programmatically
+
+Custom CI/CD tooling을 만든다면 `parseStudioPayload`, `applyFilters`, `renderMermaid` 같은 `@fluojs/studio` helper로 inspect artifact를 프로그래밍 방식으로 파싱하고 검증할 수 있습니다.
 
 ```typescript
-// packages/studio/src/contracts.test.ts (로직 흐름 참조)
-import { parseStudioPayload, applyFilters } from '@fluojs/studio';
-import { readFileSync } from 'node:fs';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-const raw = readFileSync('platform-state.json', 'utf8');
+const raw = readFileSync('artifacts/inspect-with-timing.json', 'utf8');
 const { payload } = parseStudioPayload(raw);
 
 if (payload.snapshot) {
   const errors = applyFilters(payload.snapshot, {
     query: '',
     readinessStatuses: [],
-    severities: ['error']
+    severities: ['error'],
   });
-  
+
   if (errors.diagnostics.length > 0) {
-    console.error('플랫폼에 심각한 문제가 있습니다!');
+    writeFileSync('artifacts/module-graph.mmd', renderMermaid(payload.snapshot));
+    throw new Error('Inspect diagnostics include errors. See artifacts/module-graph.mmd.');
   }
 }
 ```
 
-이 프로그래밍 방식의 접근은 fluo 생태계에서 "코드로서의 아키텍처(Architecture as Code)"를 구성하는 토대가 됩니다. "어떤 컨트롤러도 레포지토리에 직접 의존해서는 안 된다" 같은 커스텀 규칙을 정의하고, 생성된 스냅샷에 대해 간단한 스크립트를 실행해 강제할 수 있습니다. 완전히 해석된 모듈 그래프와 각 컴포넌트의 런타임 문맥을 사용하므로 전통적인 린팅보다 더 넓은 정보를 봅니다. 정적 분석 도구에는 보이지 않는 복잡한 아키텍처 문제도 포착할 수 있습니다.
-
-프로그래밍 방식의 API를 사용하면 애플리케이션 아키텍처를 기반으로 커스텀 보고서와 시각화 자료도 만들 수 있습니다. 시스템의 "모듈 깊이(Module Depth)"를 추적하는 대시보드나 팀을 위한 의존성 문서를 자동 생성하는 도구를 구축할 수 있습니다. `@fluojs/studio`는 아키텍처 데이터를 읽고 실행 가능한 형태로 다루게 하므로, 내부 도구와 외부 통합 양쪽에서 같은 스냅샷 계약을 기준으로 작업할 수 있습니다.
+이 pattern은 architecture check를 사람이 검사하는 artifact와 가깝게 유지합니다. CI job은 심각한 diagnostics에서 실패하고, report JSON을 업로드하고, Mermaid graph를 review comment에 붙일 수 있습니다. 중요한 경계는 그대로입니다. Runtime은 snapshot을 생산하고, CLI는 artifact를 내보내며, Studio는 parsing, filtering, rendering을 맡습니다.
 
 ## 15.8 Mermaid Export for Documentation
 
-Studio는 `renderMermaid(snapshot)` 헬퍼를 통해 snapshot-to-Mermaid 계약을 소유합니다. CLI는 `fluo inspect --mermaid`를 이 헬퍼에 위임할 수 있고, 자동화는 `@fluojs/studio` 또는 `@fluojs/studio/contracts`에서 직접 호출할 수 있습니다. 직접 그리지 않고도 `README.md`나 Notion 페이지에 최신 아키텍처 문서를 유지할 수 있습니다. Mermaid의 텍스트 기반 형식은 표준 버전 관리 도구로 아키텍처 변경 사항을 추적하게 해주며, 시스템 구조가 어떻게 변해 왔는지 명확한 히스토리를 남깁니다.
+Studio는 `renderMermaid(snapshot)`을 통해 snapshot-to-Mermaid 계약을 소유합니다. CLI는 명령을 실행하는 프로젝트에서 Studio를 찾을 수 있을 때 `fluo inspect --mermaid`를 이 helper에 위임합니다.
 
-내보내기 도구는 이스케이프 처리와 노드 해싱을 수행해 컴포넌트 ID에 특수 문자가 포함되어도 유효한 Mermaid 구문을 생성합니다. 이 자동화는 아키텍처 다이어그램이 실제 구현과 어긋나는 일을 줄이며, "코드로서의 문서화(Documentation as Code)"에 가까운 흐름을 만듭니다. 빌드 프로세스에 Mermaid 내보내기를 통합하면 플랫폼의 새 버전이 출시될 때마다 문서를 자동으로 갱신할 수도 있습니다. 유지 관리자의 수동 작업을 줄이고 팀이 최신 아키텍처 맵을 기준으로 대화하게 합니다.
+```bash
+fluo inspect ./src/app.module.ts --mermaid --output docs/generated/module-graph.mmd
+```
 
-`renderMermaid` 헬퍼는 여러 구성 옵션을 지원해 생성된 다이어그램의 레이아웃과 외관을 조정할 수 있게 합니다. 특정 모듈 그룹만 표시하거나, 특정 컴포넌트 유형을 하이라이트하거나, 노드에 커스텀 스타일을 적용할 수 있습니다. 이 유연성 덕분에 Mermaid 내보내기는 고수준 개요와 상세 기술 다이어그램 모두에 사용할 수 있습니다. 아키텍처 문서화를 개발 워크플로우의 일급 구성 요소로 두면, `@fluojs/studio`는 더 투명하고 지속 가능한 플랫폼 운영을 돕습니다.
+Mermaid output은 architecture decision records, README diagrams, review threads에 유용합니다. 텍스트이므로 일반 version control에서 graph 변화를 시간에 따라 보여줄 수 있습니다. 이는 architecture diagram과 실제 Module Graph 사이의 drift를 줄입니다.
+
+Mermaid는 raw snapshot이나 report와 같은 artifact가 아닙니다. Graph를 렌더링한 view입니다. Diagnostics, readiness, health, timing, machine-readable details가 필요하면 raw JSON이나 report artifact를 보관합니다. 독자가 빠르게 훑을 수 있는 diagram이 필요하면 Mermaid를 보관합니다.
 
 ### Studio as an Architecture Guard
 
-Studio 스냅샷은 대화형 도구를 넘어 CI/CD 파이프라인의 아키텍처 가드(Architecture Guard)로도 통합할 수 있습니다. `PlatformShellSnapshot`을 프로그래밍 방식으로 분석하면 린터(Linter)만으로는 확인하기 어려운 규칙을 강제할 수 있습니다. 이를 통해 아키텍처 회귀가 프로덕션 환경에 도달하기 전에 발견됩니다. 이런 가드는 자동화된 품질 게이트로 동작하며, 변경 사항이 팀의 아키텍처 표준을 따르는지 확인합니다.
+Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니다. Guard는 `fluo inspect --report --output artifacts/inspect-report.json`을 실행하고, report를 파싱한 뒤, diagnostics에 error가 있으면 실패할 수 있습니다. 또 다른 guard는 `renderMermaid(snapshot)`을 호출해 graph가 바뀔 때마다 diagram을 게시할 수 있습니다.
 
-예를 들어 `billing` 모듈의 서비스가 `inventory` 모듈의 레포지토리에 의존하면 빌드를 실패하게 만드는 스크립트를 작성해 엄격한 도메인 격리를 유지할 수 있습니다. fluo의 투명한 메타데이터를 활용한 "코드로서의 정책(Policy as Code)" 접근은 대규모 TypeScript 프로젝트에 실질적인 거버넌스를 제공합니다. 같은 가드로 모듈의 "결합 계수(coupling coefficient)"를 모니터링하고, 모듈이 시스템의 다른 부분과 지나치게 얽히기 시작하면 팀에 알릴 수도 있습니다. 데이터 기반 아키텍처 검토는 모듈을 언제 리팩토링하거나 분리해야 할지 판단하는 데 도움을 주며, 플랫폼이 성장해도 작고 유지 가능한 코드베이스를 유지하게 합니다.
-
-아키텍처 가드는 서로 다른 팀과 프로젝트 사이에서 "표준 준수"를 강제하는 방법도 제공합니다. 공통 진단 규칙 세트를 공유하면 조직 내 모든 Fluo 애플리케이션이 같은 기준을 따르게 할 수 있습니다. 이 일관성은 프로젝트 간 이동 시 마찰을 줄이고 플랫폼 생태계의 품질과 신뢰성을 높입니다. 장기적으로 이런 자동 체크는 엔지니어링 프로세스 안에 아키텍처의 엄격함을 직접 넣는 문화적 장치가 됩니다.
+이 접근은 architecture regression이 production에 도달하기 전에 발견하게 합니다. 또한 reviewer에게 매번 같은 증거를 제공합니다. Machine-readable facts를 위한 report, exploration을 위한 Studio viewer, discussion을 위한 Mermaid입니다.
 
 ### Future Directions: Live Studio
 
-현재 버전의 Studio는 스냅샷에 의존하는 파일 우선 방식입니다. 다만 기본 계약은 라이브 업데이트를 수용할 수 있도록 설계되어 있습니다. 향후 fluo 런타임 버전에서는 Studio가 실행 중인 프로세스에 연결할 수 있도록 진단 소켓을 노출할 수 있습니다.
+현재 Studio workflow는 file-first입니다. 이는 의도적인 선택입니다. 파일은 CI에 저장하기 쉽고, support ticket에 첨부하기 쉽고, review에서 비교하기 쉽습니다. 같은 계약이 나중에 live 또는 streaming diagnostics를 지원할 수 있지만, 이 장은 artifact를 안정적인 학습 경로로 다룹니다.
 
-이 방식이 도입되면 요청 흐름의 실시간 시각화, 디버깅을 위한 프로바이더 동적 교체, 전체 재시작 없는 구성 변경 피드백 등이 가능해질 수 있습니다. `PlatformReadinessStatus`는 정적 기록에서 라이브 하트비트로 전환되어 분산 시스템 상태에 대한 즉각적인 가시성을 제공하게 됩니다. 라이브 스냅샷을 사용해 동적 스케일링 결정을 내리고, 관찰된 로드와 개별 모듈 상태에 따라 플랫폼이 리소스 할당을 조정하도록 하는 가능성도 탐색 중입니다. 이런 실시간 상호작용은 Studio를 진단 도구에서 플랫폼 관리 및 관찰성을 위한 중앙 허브로 확장해 개발과 운영 사이의 간극을 줄입니다.
+미래의 live workflow가 생겨도 inspect artifact의 필요성은 사라지지 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 지금 제공합니다.
 
-"라이브 스튜디오"로의 이동은 협업 디버깅에도 새 가능성을 엽니다. 여러 개발자가 같은 라이브 진단 스트림에 연결하면, 복잡한 문제를 함께 해결하면서 플랫폼 상태에 대한 공통 뷰를 공유할 수 있습니다. 이 공유 컨텍스트는 한 사람이 전체 시스템을 모두 보기 어려운 분산 팀과 복잡한 모노레포에서 중요합니다. 진단을 함께 검토할 수 있는 대화형 경험으로 만들면 Fluo 개발자의 피드백 루프도 짧아집니다. Studio의 미래는 플랫폼을 관찰하는 데서 멈추지 않고, 플랫폼의 진화와 관리에 실시간으로 참여하는 방향에 있습니다.
+## 15.9 Why Heading Parity Matters
 
-오늘 Studio 생태계에 투자하는 일은 앞으로 더 대화형이고 반응성 높은 개발 경험을 준비하는 일입니다. Studio가 플랫폼 관찰성의 중심 허브로 진화할수록 정적 분석과 런타임 모니터링 사이의 경계는 더 낮아질 것입니다. 이 방향은 복잡한 시스템을 구축하고 관리하는 데 필요한 실용적인 도구를 제공하려는 fluo의 원칙과 맞닿아 있습니다.
+fluo book은 영어와 한국어 chapter pair를 heading structure 기준으로 맞춥니다. 이는 단순한 형식 문제가 아닙니다. Maintainer가 번역 편집 중 기술 section이 빠지지 않았는지 확인할 수 있는 안정적인 기준을 제공합니다.
 
-## 15.9 Why Line-by-Line Consistency Matters
+Chapter 15는 특히 민감합니다. Studio diagnostics와 inspect artifact는 독자를 문서로 다시 안내하는 경우가 많기 때문입니다. 영어와 한국어 파일이 같은 heading level과 section order를 유지하면 link, review, future sync check를 더 쉽게 판단할 수 있습니다.
 
-fluo 프로젝트에서는 영어와 한국어 문서가 동일한 제목(Heading)을 유지해야 한다는 엄격한 정책을 따릅니다. 이는 단순한 형식 문제가 아닙니다. CI/CD 파이프라인이 자동화된 diff를 수행해 번역 과정에서 기술 섹션이 누락되지 않았는지 확인할 수 있게 하기 위한 기준입니다.
-
-이 파일의 모든 제목은 영어 버전의 섹션과 정확히 일치합니다. 이 일관성은 Studio 진단 자체에도 중요합니다. Studio 이슈는 문서 URL로 매핑되는 경우가 많으므로, 안정적이고 동기화된 제목 구조가 있어야 프레임워크가 영어 및 한국어 독자 모두에게 정확한 링크를 제공할 수 있습니다.
-
-오류 코드를 찾거나 특정 시각화 기능을 읽을 때, 모든 언어 버전의 책에서 해당 정보가 같은 위치에 있어야 합니다. 이 언어적 대칭성은 글로벌 기여자가 같은 기술 기반 위에서 협업하도록 돕습니다. 또한 다국어 검색 인덱스 유지보수를 단순하게 만들어, 개발자가 선호하는 언어와 관계없이 필요한 답을 찾을 수 있게 합니다. 엄격한 정렬을 유지하는 일은 모든 배경의 개발자가 TypeScript 플랫폼을 같은 기준으로 이해하도록 돕는 접근성 작업이기도 합니다. 이 언어적 엄격함은 fluo의 기술 철학과도 맞습니다. 모든 측면에서 명시적이고, 표준을 따르며, 플랫폼에 중립적이어야 합니다.
+이 장을 업데이트할 때는 두 언어 파일을 함께 업데이트합니다. 한 파일에 새 artifact나 viewer behavior에 대한 section을 추가했다면, 같은 변경에서 다른 파일에도 대응 section을 추가합니다.
 
 ## Summary
 
-Studio는 DI 컨테이너의 "블랙박스"를 투명하고 시각적인 지도로 변환합니다. 스냅샷, 진단 및 타이밍 데이터를 활용하면 의존성이 실패한 이유를 추측하는 대신 정확한 차단 요소와 제안된 해결책을 직접 확인할 수 있습니다.
+Studio는 runtime inspection data를 공유 가능한 diagnostic workflow로 바꿉니다. `fluo inspect`는 raw JSON snapshot, timing envelope, CI-friendly report, Studio-rendered Mermaid diagram을 생성합니다. `--output`은 이 payload들을 CI와 support workflow가 보관할 수 있는 stable artifact로 만듭니다.
 
-효과적인 진단은 신입 개발자의 피드백 루프도 단축합니다. 모듈 그래프의 모든 세부 사항을 설명하기 전에, Studio 뷰어를 통해 시스템을 직접 탐색하게 할 수 있습니다. Mermaid 내보내기는 문서를 코드베이스의 살아있는 일부로 유지하게 하며, 실제 구현과 어긋난 아키텍처 다이어그램을 줄입니다.
+경계는 분명합니다. Runtime은 platform truth를 생산하고, CLI는 그것을 export하거나 delegate하며, Studio는 consume, filter, view, render를 맡습니다. 이 구조 덕분에 Studio는 애플리케이션 동작을 바꾸지 않고도 local debugging, architecture review, CI gate, support handoff에 유용합니다.
 
-생태계가 성숙해질수록 이런 표준 스냅샷을 기반으로 하는 도구가 더 늘어나고, 다양한 환경과 조직 규모에서 fluo 애플리케이션의 관찰성을 높일 것입니다. 고성능 백엔드를 구축하려면 효율적인 코드뿐 아니라 그 코드가 어떻게 상호작용하는지 이해해야 합니다. Studio는 소스 코드와 런타임 동작 사이의 핵심 연결 고리를 제공합니다.
-
-스냅샷 형식의 표준화 덕분에 다양한 시각화 도구가 공존할 수 있습니다. 한 팀은 Mermaid 기반 그래프를 선호할 수 있고, 다른 팀은 3D 의존성 탐색기나 정적 그래프 위에 실시간 메트릭을 오버레이하는 모니터를 만들 수도 있습니다. Studio의 목표는 현재 상태를 보여주는 데 그치지 않고 더 나은 아키텍처 결정을 내리도록 돕는 것입니다. 명시적인 의존성 관리, 명확한 컴포넌트 경계, 관찰 가능한 생명주기는 잘 설계된 fluo 애플리케이션의 특징입니다. 이 원칙들은 애플리케이션 규모가 커질수록 더 중요해지며, 팀이 기술 부채를 줄이면서 빠른 속도를 유지하게 합니다.
-
-시스템을 시각화하는 일은 복잡성을 다루기 위한 첫 단계입니다. 마이크로서비스와 복잡한 모노레포 환경에서 의존성에 대한 명확하고 정확한 지도는 엔지니어링 팀의 중요한 자산입니다. Studio는 애플리케이션이 새로운 요구에 맞춰 확장될 때 아키텍처가 어디에서 흔들리는지 보여줍니다. 아키텍처는 코드만큼 중요하며, Studio는 그 중요성을 검토 가능한 형태로 드러냅니다.
-
-진단 워크플로우에서는 "Studio 우선" 사고방식을 유지하는 편이 좋습니다. 복잡한 구성 문제에 부딪힐 때마다 `fluo inspect`를 실행하고, 시각적 데이터로 문제 범위를 좁히십시오. 이 시리즈의 마지막 부분에서는 커스텀 패키지를 만들고 프레임워크에 기여함으로써 fluo 생태계 자체를 확장하는 방법을 살펴봅니다.
+복잡한 구성 문제가 나타나면 Studio-first workflow를 유지합니다. Inspect artifact를 생성하고, handoff가 필요하면 report를 보관하고, 탐색이 필요하면 Studio에서 snapshot을 열고, review 가능한 diagram이 필요하면 Mermaid를 사용합니다.

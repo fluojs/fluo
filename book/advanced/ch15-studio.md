@@ -3,235 +3,239 @@
 
 # Chapter 15. Studio: Visual Diagnostics and Observability
 
-This chapter covers the Studio ecosystem, which turns runtime-produced Module Graph snapshots and diagnostic information into a visual form that people can read. Chapter 14 used contract verification to confirm Runtime consistency. This chapter moves to the tools that export, observe, and interpret that internal state.
+This chapter covers the Studio ecosystem, which turns runtime-produced Module Graph snapshots, diagnostics, timing data, and inspect reports into artifacts that people can read. Chapter 14 used contract verification to confirm runtime consistency. This chapter moves to the tools that export, store, view, and interpret that internal state.
 
 ## Learning Objectives
+
 - Understand the role `@fluojs/studio` plays in architecture diagnostics and observability.
-- Generate runtime snapshots through `fluo inspect` and learn the CLI export/delegation flow.
-- Learn what the `PlatformShellSnapshot` and `PlatformDiagnosticIssue` contracts contain.
-- See how to read graphs, diagnostics, and timing information in the Studio Viewer.
-- Analyze an approach for tracking circular dependencies or initialization bottlenecks through snapshots.
-- Summarize how to build architecture guards with Studio-owned Mermaid rendering and programmatic snapshot consumption.
+- Generate runtime snapshots, reports, Mermaid diagrams, and timing payloads through `fluo inspect`.
+- Distinguish raw JSON output, `--report` artifacts, `--output` files, and `--timing` diagnostics.
+- Learn what the `PlatformShellSnapshot` and `PlatformDiagnosticIssue` contracts contain at a learning level.
+- See how Studio consumes inspect artifacts, validates them, filters them, and renders graphs.
+- Summarize how to build architecture guards with Studio-owned Mermaid rendering and programmatic artifact consumption.
 
 ## Prerequisites
+
 - Completion of Chapter 14.
-- A basic understanding of the fluo module system and Dependency Injection resolution flow.
+- A basic understanding of the fluo module system and dependency injection resolution flow.
 - Experience using the fluo CLI, including `fluo inspect`.
-- Basic familiarity with reading and handling JSON data and web-based visualization tools.
+- Basic familiarity with JSON, Mermaid, and browser-based visualization tools.
 
 ## 15.1 Beyond the Terminal: Why Studio?
 
-As an application grows, its dependency graph becomes too complex to keep in your head. Circular dependencies, Scope mismatches, and Provider resolution failures become harder to trace with terminal logs alone. In a microservice architecture, this complexity multiplies across dozens of independent services, and each service has its own internal Module Graph.
+As an application grows, its dependency graph becomes too complex to keep in your head. Circular dependencies, scope mismatches, provider resolution failures, and slow bootstrap phases become harder to trace with terminal logs alone. In a microservice architecture, this complexity multiplies across many independent services, and each service has its own internal Module Graph.
 
-**@fluojs/studio** is fluo's diagnostic layer for managing that complexity. It receives the application's internal state as a file-first snapshot and turns it into a platform map that people can review. In other words, it exposes the DI container's "black box" as a structure you can inspect instead of guessing about it. This transparency is not only for debugging. It lets teams look at the same Module Graph and the same diagnostic output, then keep a shared model of the system architecture.
+`@fluojs/studio` is fluo's diagnostic layer for managing that complexity. It receives inspect artifacts as files, validates their structure, and turns them into views that teams can review together. In other words, it exposes the DI container's "black box" as a structure you can inspect instead of guessing about it.
 
-Unlike heavy APM (Application Performance Monitoring) tools, Studio focuses on **static and bootstrap-time architecture**. It helps you ask "why did this fail to start?" before "why is this slow right now?" Because it analyzes the application before the first request is handled, it can catch structural issues during the pre-flight check stage that runtime monitoring tools often miss. This shift-left approach to diagnostics is a practical foundation for protecting availability in cloud environments.
+Studio focuses on static and bootstrap-time architecture. It helps you ask "why did this fail to start?" before you ask "why is this request slow?" Because inspect data comes from an inspection-safe bootstrap, teams can review graph shape, readiness, diagnostics, and timing before the application starts serving traffic.
 
 ## 15.2 The Studio Ecosystem
 
 As defined in `packages/studio/README.md`, the inspection and Studio flow is made of three main layers.
 
-1. **Snapshot producer**: The fluo Runtime and platform shell, which compile the Module Graph and produce `PlatformShellSnapshot` data during inspection-safe bootstrap.
-2. **CLI exporter/delegator**: The `fluo inspect` command in `@fluojs/cli`, which serializes runtime-produced snapshots as JSON and delegates Mermaid rendering to Studio when `--mermaid` is requested.
-3. **Studio contract and viewer**: The `@fluojs/studio` root export, `@fluojs/studio/contracts` subpath, and `@fluojs/studio/viewer` entrypoint, which own snapshot parsing, filtering, graph rendering, and browser viewing.
+1. **Snapshot producer**: The fluo Runtime and platform shell compile the Module Graph and produce `PlatformShellSnapshot` data during inspection-safe bootstrap.
+2. **CLI exporter/delegator**: The `fluo inspect` command serializes runtime-produced data as JSON, wraps it as a report when requested, writes it to artifact paths through `--output`, and delegates Mermaid rendering to Studio when `--mermaid` is requested.
+3. **Studio contract and viewer**: The `@fluojs/studio` root export, `@fluojs/studio/contracts` subpath, and `@fluojs/studio/viewer` entrypoint own snapshot parsing, filtering, graph rendering, and browser viewing.
 
-## 15.3 Generating Snapshots with `fluo inspect`
+This split matters. Runtime produces truth. The CLI chooses an artifact shape. Studio owns the viewer and Mermaid rendering semantics. The CLI does not duplicate graph rendering logic, and Studio does not need to bootstrap the application itself.
 
-The main way to interact with Studio is to generate an application snapshot.
+## 15.3 Generating Inspect Artifacts with `fluo inspect`
+
+The main way to interact with Studio is to generate an inspect artifact from your root module.
 
 ```bash
-fluo inspect ./src/app.module.ts --json > platform-state.json
+fluo inspect ./src/app.module.ts --json > artifacts/inspect-snapshot.json
 ```
 
-This command asks the fluo Runtime for an inspection-safe platform snapshot, then the CLI writes that snapshot to JSON. In this mode, the runtime resolves Providers and builds the graph, but it does not start the actual server listener. The resulting JSON contains the following information.
-- Every registered component, including modules, controllers, and Providers
-- Full dependency mapping
-- Health and Readiness status
-- Detailed step-by-step Bootstrap timing
+With no explicit output mode, `fluo inspect` defaults to JSON snapshot output. The runtime resolves providers and builds the platform shell through an inspection-safe application context, then the CLI writes the snapshot to stdout. The inspected application is bootstrapped for inspection and then closed. It does not start a server listener.
 
-Snapshot generation is non-destructive. Unless you specify otherwise through `bootstrapOptions`, it traverses the module tree without running business logic or connecting to external databases. That makes it safe to run `fluo inspect` in CI/CD to verify architecture integrity before deployment. The command also provides a summary that surfaces the main problems directly in the terminal, so it fits both automated scripts and manual debugging sessions.
+For CI and support workflows, prefer an explicit artifact path instead of shell redirection.
 
-## 15.4 Understanding the Snapshot Contract
-
-The data exported by the CLI follows the `PlatformShellSnapshot` contract produced by `@fluojs/runtime` and consumed by `packages/studio/src/contracts.ts`. This contract makes sure every producer, including runtime inspection, custom scripts, and external tools, creates data the viewer can interpret reliably.
-
-### PlatformShellSnapshot Structure
-
-```typescript
-export interface PlatformShellSnapshot {
-  generatedAt: string;
-  readiness: { status: 'ready' | 'not-ready' | 'degraded'; critical: boolean };
-  health: { status: 'healthy' | 'unhealthy' | 'degraded' };
-  components: PlatformComponent[];
-  diagnostics: PlatformDiagnosticIssue[];
-}
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-This strict interface allows the Studio ecosystem to accept third-party producers. For example, a custom test harness can export a `PlatformShellSnapshot` to visualize the state of a test environment, and a separate monitoring agent can create periodic snapshots to track changes in application architecture. The standards-first approach keeps Studio's visualization and rendering tools decoupled from the underlying data source, and it keeps producers, CLI export, and viewers loosely coupled.
+`--output <path>` writes the selected payload to a file and creates parent directories when needed. This is useful for CI systems that upload `artifacts/` after a failed bootstrap check. It does not make the application writable, and it does not change module graph state beyond the normal bootstrap and close cycle.
 
-### PlatformDiagnosticIssue: The Heart of Troubleshooting
+Use `--timing` when you need bootstrap timing alongside the snapshot.
 
-Each diagnostic issue provides actionable metadata needed to fix a configuration error. The `fixHint` and `docsUrl` fields are especially important clues in a guided troubleshooting flow.
-
-```typescript
-export interface PlatformDiagnosticIssue {
-  code: string;           // Example: "FL0042"
-  severity: 'error' | 'warning' | 'info';
-  componentId: string;    // Failed component
-  message: string;        // Human-readable description
-  cause?: string;         // Root cause analysis
-  fixHint?: string;       // Explicit suggestion: "Add @Inject(TOKEN) to X"
-  dependsOn?: string[];   // Blockers preventing resolution
-  docsUrl?: string;       // Link to the detailed guide
-}
+```bash
+fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
 ```
 
-Diagnostics are not simple error strings. They are structured data that automated recovery workflows can read. For example, a CI bot can parse `PlatformDiagnosticIssue` to suggest code changes or block a PR that introduces a circular dependency. The `code` field is a unique identifier that maps to a specific section of the fluo documentation. That connection keeps errors, fix hints, and docs moving from the same baseline.
+Use `--report` when you want a single CI-friendly support artifact with a summary, the full snapshot, diagnostics, and timing.
+
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+```
+
+Use `--mermaid` when you need a text diagram for documentation or review.
+
+```bash
+fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
+```
+
+Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio in the project that runs the command when you need this output.
+
+```bash
+pnpm add -D @fluojs/studio
+```
+
+In non-interactive runs, a missing Studio dependency fails fast with install guidance. Interactive runs may ask for confirmation, but `fluo inspect` does not silently install packages.
+
+## 15.4 Understanding the Snapshot and Report Shapes
+
+The data exported by the CLI follows contracts produced by `@fluojs/runtime` and consumed by Studio. This section explains the learning model. Reference-level field details belong in the contract docs and package README files.
+
+### Raw JSON snapshot
+
+Raw JSON is the smallest Studio input. It is produced by `--json` or by the default inspect mode.
+
+```bash
+fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
+```
+
+The payload is a `PlatformShellSnapshot`. At a high level, it includes:
+
+- `generatedAt`, the time the snapshot was produced.
+- `readiness` and `health`, the platform-level status signals.
+- `components`, the modules, controllers, providers, and related platform components in the resolved graph.
+- `diagnostics`, the structured issues found while the platform shell was built or inspected.
+
+Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views.
+
+### Timing envelope
+
+Timing data is opt-in because not every workflow needs bootstrap phase measurement.
+
+```bash
+fluo inspect ./src/app.module.ts --json --timing --output artifacts/inspect-with-timing.json
+```
+
+With `--json --timing`, the CLI writes an envelope with `snapshot` and `timing` keys. The `timing` value follows `BootstrapTimingDiagnostics`, including a `totalMs` value and a list of phases. Studio can use this data to explain where bootstrap time is spent, such as module graph construction, provider resolution, and lifecycle hooks.
+
+Timing is especially useful when a change does not break startup but makes it noticeably slower. Keeping timing beside the snapshot lets reviewers connect graph shape to bootstrap cost.
+
+### Report artifact
+
+A report is the best artifact for CI triage and support handoff.
+
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
+```
+
+The report wraps the runtime-produced snapshot with a stable summary and timing data. Its summary includes counts for components, diagnostics, errors, warnings, health, readiness, and total timing. That lets a CI job or reviewer answer basic questions without parsing the whole graph first.
+
+A report does not replace the raw snapshot. It packages the snapshot with the extra context that support and automation usually need. Studio can still consume the snapshot part, while scripts can read the summary first to decide whether to fail a build or attach the artifact to a ticket.
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. You can run it locally inside the monorepo or use a published version.
+Studio Viewer is a standalone web application. You can run it locally inside the monorepo or use a packaged viewer entry when your install path provides one.
 
 ```bash
 pnpm --dir packages/studio dev
 ```
 
-Once the viewer opens, drag and drop the `platform-state.json` file into the browser. Internally, the `parseStudioPayload` helper immediately validates the file against version and schema rules before rendering.
+Once the viewer opens, drag and drop an inspect artifact into the browser. A raw `--json` snapshot is the simplest input. A `--json --timing` envelope gives the viewer timing data as well. A `--report` artifact can be used by workflows that keep the report as the canonical CI file and pass its snapshot and timing data to Studio-aware tools.
 
-Studio is designed as an independent web application so it stays lightweight and lets you explore application architecture with low overhead. Built on React and Vite, it responds quickly to snapshot loading and filtering. Instead of reading terminal logs alone, it gives you a dedicated environment for reviewing the Module Graph and diagnostics on the same screen.
-
-The viewer also includes a "Snapshot Manager" for organizing and searching multiple snapshots. It is useful when you need to track how application architecture changes over time. You can tag each snapshot with metadata such as commit hash, environment (dev, staging, prod), and author, leaving a history of platform structure changes. This context matters for root cause analysis and for checking the consistency of architecture decisions.
+Internally, Studio uses `parseStudioPayload(rawJson)` before rendering. This keeps the viewer from treating arbitrary JSON as a valid platform graph. After parsing, Studio can apply filters with `applyFilters(snapshot, filter)`, show diagnostics by severity, and render the graph through the same graph ownership model used by the CLI's Mermaid path.
 
 ### Key Features of the Viewer
 
-- **Graph View**: Renders the application as a Mermaid-based dependency diagram. You can see at a glance which service depends on which repository. Nodes are color-coded to distinguish different module types, such as Core, Platform, and Application.
-- **Diagnostics Tab**: Lists every `PlatformDiagnosticIssue` entry. You can group by severity and filter by component, which makes it easier to trace the cause of a specific failure.
-- **Timing Tab**: Visualizes the Bootstrap sequence and shows how many milliseconds each phase took, such as Module Graph construction, instance resolution, and lifecycle hooks. This tab helps identify the "long poles" during application startup.
-- **The Timeline View**: Shows a hierarchical representation of the Bootstrap process, letting you see which modules initialized in parallel and which initialized sequentially.
-- **The Dependency Trace**: Lets you click any node to trace the full dependency path and highlight potential failure points or unnecessary complexity.
-- **Provider Details**: Shows metadata for the selected Provider, including injection Token, implementation type (class, factory, or value), and resolved dependencies.
-- **Module Breakdown**: A tab that shows each module's exports and imports, helping you confirm whether the encapsulation strategy is being preserved.
+- **Graph View**: Renders the application dependency graph so you can see modules, providers, and dependency edges at a glance.
+- **Diagnostics Tab**: Lists `PlatformDiagnosticIssue` entries with severity, message, cause, fix hints, blockers, and docs links when present.
+- **Timing View**: Uses `BootstrapTimingDiagnostics` to show total bootstrap time and phase-level cost when timing data is present.
+- **Filtering**: Applies query, readiness, and severity filters without mutating the loaded snapshot.
+- **Mermaid Export**: Produces text diagrams through Studio-owned `renderMermaid(snapshot)` logic, including internal dependency edges and external dependency nodes.
 
-The viewer uses the `applyFilters` logic from `@fluojs/studio` to provide real-time search across the full platform state. When you type a keyword into the search bar, it filters components and diagnostic issues at the same time and immediately highlights matches in both the graph nodes and the issue list. This feedback loop is especially useful when exploring large monorepos with hundreds of modules or more.
-
-When you select a module or component, you can focus on a specific subgraph. Studio dims unrelated nodes and highlights the selected item's direct dependencies and dependents. This "focus mode" matters when checking the blast radius of changes to a core utility or shared repository. Interactive filtering also supports complex queries such as "show every request-scoped Provider that depends on a singleton database connection." That helps you find potential Scope mismatches before they appear as runtime errors. You can also export the "focus mode" result as a standalone diagram for an architecture decision record (ADR) or peer review.
-
-The graph also supports color coding by readiness status. `degraded` nodes are shown in orange, and `not-ready` nodes are shown in red. Operators can narrow down the root cause of a cluster-wide failure without first scanning tens of thousands of log lines. The Graph View rendering engine is optimized to handle thousands of nodes with canvas-based virtualization, and it is designed to respond to zoom and pan gestures even in complex enterprise graphs. This performance comes from separating the layout calculation, which runs once when the snapshot loads, from the interactive rendering loop.
-
-The viewer's "Snapshot History" feature lets you load multiple snapshots and compare them side by side. It is useful when tracking how a dependency graph grows over time or when checking whether a refactor actually simplified application structure. The comparison engine highlights added, removed, and modified dependencies to show the delta of an architecture change. Each comparison also includes summaries of Bootstrap timing and status changes, so you can review structure changes together with performance and reliability changes.
+These features give teams a shared artifact review flow. The CLI exports the file, CI stores it, and Studio turns the same file into a graph, issue list, and timing explanation.
 
 ### Visualizing Scopes and Lifecycles
 
-One important role of Studio is visualizing Provider Scope. In complex applications, it is easy to inject a Request-scoped Provider into a Singleton-scoped Provider by mistake, creating runtime errors or memory leaks.
+One important role of Studio is making scope and lifecycle problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious.
 
-Studio clearly marks these Scope mismatches in the component detail view. When you select a component, you can see the resolved Scope and potential violations in the dependency chain. The visualization engine highlights inheritance and injection paths to show where a Scope boundary has been crossed. This feature works from `PlatformComponent.details` metadata, which contains the raw Scope Tokens resolved by the DI container.
-
-The viewer also provides a "Lifecycle Trace" for each component, showing when it was instantiated and when hooks such as `onModuleInit` and `onApplicationBootstrap` ran. This is useful when debugging initialization order problems that are hard to see from code alone. Clicking a graph node lets you drill down into telemetry data and inspect precise timestamps for each lifecycle phase in the fluo Runtime environment.
-
-Telemetry data is collected through the `BootstrapTimingDiagnostics` interface. When fluo Runtime starts, it records the start and end time of every lifecycle hook. Studio's Timing Tab parses those intervals and shows them as a flame chart or a sequential list. This trace is not a static record. It is the actual execution path taken by the framework's internal dispatcher. By analyzing it, you can find the Provider causing a "deadlock" or slow startup even when it sits deep in the dependency graph.
-
-```typescript
-// packages/studio/src/contracts.ts (contract reference)
-export interface BootstrapTimingDiagnostics {
-  version: 1;
-  totalMs: number;
-  phases: {
-    name: string;
-    durationMs: number;
-    details?: string;
-  }[];
-}
-```
-
-This data lets you identify the exact Provider delaying the Bootstrap process. If module initialization takes 500 ms, Studio can help you see whether it is waiting for a database connection or running an expensive calculation. In advanced scenarios, you can compare two snapshots to show how a configuration change affected total Bootstrap performance, producing the "telemetry diff" needed for performance regression testing.
-
-Beyond timing, Studio can visualize the memory footprint of multiple modules during the Bootstrap phase. When integrated with the Runtime's internal profiling hooks, the Timing Tab can show heap allocation for each component and identify modules that use excessive resources during startup. This is especially meaningful in edge runtimes, where resources are limited and efficient initialization is important for reducing cold start latency. Memory visualization also includes a "Heuristic Impact Score" that suggests possible optimizations for high-memory modules.
-
-You can also use the Timing Tab to identify "Initialization Hotspots." These are Providers that take a long time to initialize but do not necessarily depend on many components. Such Providers are often good optimization candidates because they can be refactored into independent units of work. Studio presents these hotspots as a "ranked list" ordered by contribution to total Bootstrap time.
+The snapshot gives Studio the resolved component graph and diagnostics. Timing data gives it bootstrap phase cost. Together, those artifacts let the viewer explain both structure and startup behavior. A graph can show which component depends on a slow provider, while the timing view can show whether the delay happened during graph construction, instance resolution, or lifecycle hooks.
 
 ## 15.6 Scenario: Diagnosing a Provider Deadlock
 
-Assume an application hangs during startup. When you inspect its snapshot in Studio, you may find a "Circular Dependency" error in the Diagnostics Tab.
+Assume an application hangs or fails during startup. Instead of relying only on logs, generate a report artifact.
 
-1. **Identify**: Studio marks the problematic component in red by using the `not-ready` state mapped through CSS `classDef`.
-2. **Analyze**: The `dependsOn` field shows the cycle: `ServiceA -> ServiceB -> ServiceA`.
-3. **Fix**: The `fixHint` may suggest using `forwardRef()` or refactoring common logic into a third service.
+```bash
+fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+```
 
-Deadlock scenarios often happen when domain modules are coupled too tightly. Studio visualizes cross-module dependencies and reveals multi-layer circular paths that may not be obvious from source code alone. By analyzing the full cycle path, you can find structural fixes such as introducing event-driven communication patterns or moving shared state into a dedicated Provider. This proactive analysis reduces common runtime failures and helps keep the platform stable as system complexity grows. It also prompts teams to revisit domain boundaries and design a more modular, loosely coupled structure.
+Then follow the artifact trail.
 
-## 15.7 Programmatic Consumption of Snapshots
+1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the failure shape.
+2. **Open the snapshot in Studio**: Use the viewer to inspect the graph and diagnostics. The Diagnostics tab shows structured issues, including `dependsOn`, `cause`, and `fixHint` when available.
+3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd` when an architecture review needs a text diagram in a PR or decision record.
+4. **Keep the artifact**: Attach the report to CI logs or a support ticket so another developer can reproduce the same inspection view.
 
-If you are building custom CI/CD tooling, you can use `@fluojs/studio` libraries such as `parseStudioPayload` and `applyFilters` to parse and validate snapshots programmatically. This lets you place architecture checks directly into the development workflow.
+This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a graph and issue list that reviewers can inspect without bootstrapping the app themselves.
+
+## 15.7 Consuming Inspect Artifacts Programmatically
+
+If you are building custom CI/CD tooling, you can use `@fluojs/studio` helpers such as `parseStudioPayload`, `applyFilters`, and `renderMermaid` to parse and validate inspect artifacts programmatically.
 
 ```typescript
-// packages/studio/src/contracts.test.ts (logic flow reference)
-import { parseStudioPayload, applyFilters } from '@fluojs/studio';
-import { readFileSync } from 'node:fs';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-const raw = readFileSync('platform-state.json', 'utf8');
+const raw = readFileSync('artifacts/inspect-with-timing.json', 'utf8');
 const { payload } = parseStudioPayload(raw);
 
 if (payload.snapshot) {
   const errors = applyFilters(payload.snapshot, {
     query: '',
     readinessStatuses: [],
-    severities: ['error']
+    severities: ['error'],
   });
-  
+
   if (errors.diagnostics.length > 0) {
-    console.error('The platform has critical problems!');
+    writeFileSync('artifacts/module-graph.mmd', renderMermaid(payload.snapshot));
+    throw new Error('Inspect diagnostics include errors. See artifacts/module-graph.mmd.');
   }
 }
 ```
 
-This programmatic approach becomes the foundation for "Architecture as Code" in the fluo ecosystem. You can define custom rules such as "no controller may depend directly on a repository" and enforce them by running a simple script against the generated snapshot. Because it uses the fully resolved Module Graph and each component's Runtime context, it sees more than traditional linting. It can catch complex architecture issues that static analysis tools cannot see.
-
-Programmatic APIs also let you create custom reports and visualizations based on application architecture. You can build dashboards that track the system's "Module Depth" or tools that automatically generate dependency documentation for a team. `@fluojs/studio` lets you read architecture data and handle it in actionable forms, so internal tooling and external integrations can work from the same snapshot contract.
+This pattern keeps architecture checks close to the same artifacts humans inspect. A CI job can fail on severe diagnostics, upload the report JSON, and attach a Mermaid graph to a review comment. The important boundary stays clear: runtime produces the snapshot, CLI exports the artifact, and Studio parses, filters, and renders it.
 
 ## 15.8 Mermaid Export for Documentation
 
-Studio owns the snapshot-to-Mermaid contract through the `renderMermaid(snapshot)` helper. The CLI can delegate `fluo inspect --mermaid` to that helper, and automation can call it directly from `@fluojs/studio` or `@fluojs/studio/contracts`. You can keep current architecture documentation in `README.md` or Notion pages without drawing diagrams by hand. Mermaid's text-based format lets standard version control tools track architecture changes and leaves a clear history of how the system structure has evolved.
+Studio owns the snapshot-to-Mermaid contract through `renderMermaid(snapshot)`. The CLI delegates `fluo inspect --mermaid` to that helper when Studio is resolvable from the project running the command.
 
-The export tool performs escaping and node hashing so it can generate valid Mermaid syntax even when component IDs contain special characters. This automation reduces drift between architecture diagrams and the actual implementation, creating a flow close to "Documentation as Code." If you integrate Mermaid export into the build process, documentation can also update automatically whenever a new version of the platform is released. That reduces manual work for maintainers and lets teams discuss the latest architecture map.
+```bash
+fluo inspect ./src/app.module.ts --mermaid --output docs/generated/module-graph.mmd
+```
 
-The `renderMermaid` helper supports multiple configuration options so you can adjust the layout and appearance of the generated diagram. You can show only specific module groups, highlight specific component types, or apply custom styles to nodes. This flexibility makes Mermaid export useful for both high-level overviews and detailed technical diagrams. By treating architecture documentation as a first-class part of the development workflow, `@fluojs/studio` helps platform operations become more transparent and sustainable.
+Mermaid output is useful for architecture decision records, README diagrams, and review threads. Because it is text, normal version control can show graph changes over time. That reduces drift between architecture diagrams and the actual Module Graph.
+
+Mermaid is not the same artifact as a raw snapshot or report. It is a rendered view of the graph. Keep raw JSON or report artifacts when you need diagnostics, readiness, health, timing, or machine-readable details. Keep Mermaid when you need a diagram that readers can scan quickly.
 
 ### Studio as an Architecture Guard
 
-Studio snapshots can go beyond interactive tooling and become Architecture Guards inside CI/CD pipelines. By analyzing `PlatformShellSnapshot` programmatically, you can enforce rules that are hard to check with a Linter alone. This catches architecture regressions before they reach production. These guards act as automated quality gates and confirm that changes follow the team's architecture standards.
+Studio artifacts can become architecture guards inside CI/CD pipelines. A guard can run `fluo inspect --report --output artifacts/inspect-report.json`, parse the report, and fail when diagnostics include errors. Another guard can call `renderMermaid(snapshot)` and publish a diagram whenever the graph changes.
 
-For example, you can write a script that fails the build when a service in the `billing` module depends on a repository from the `inventory` module, preserving strict domain isolation. A "Policy as Code" approach using fluo's transparent metadata gives large TypeScript projects practical governance. The same guard can monitor a module's "coupling coefficient" and alert the team when a module starts becoming too entangled with the rest of the system. Data-driven architecture reviews help decide when to refactor or split modules, keeping the codebase small and maintainable as the platform grows.
-
-Architecture Guards also provide a way to enforce "standards compliance" across different teams and projects. By sharing a common set of diagnostic rules, every Fluo application in an organization can follow the same baseline. This consistency reduces friction when moving between projects and improves quality and reliability across the platform ecosystem. In the long term, these automated checks become a cultural mechanism that places architecture rigor directly into the engineering process.
+This approach catches architecture regressions before they reach production. It also gives reviewers the same evidence every time: the report for machine-readable facts, the Studio viewer for exploration, and Mermaid for discussion.
 
 ### Future Directions: Live Studio
 
-The current version of Studio uses a file-first approach based on snapshots. The underlying contracts, however, are designed to allow live updates. Future fluo Runtime versions may expose a diagnostic socket so Studio can connect to a running process.
+The current Studio workflow is file-first. That is intentional. Files are easy to store in CI, attach to support tickets, and compare in reviews. The same contracts could later support live or streaming diagnostics, but this chapter treats artifacts as the stable learning path.
 
-If this approach lands, it could enable real-time visualization of request flows, dynamic Provider replacement for debugging, and configuration change feedback without a full restart. `PlatformReadinessStatus` would move from a static record to a live heartbeat, providing immediate visibility into distributed system state. The project is also exploring the possibility of using live snapshots to make dynamic scaling decisions and let the platform adjust resource allocation based on observed load and individual module state. This real-time interaction would expand Studio from a diagnostic tool into a central hub for platform management and observability, narrowing the gap between development and operations.
+A future live workflow would not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports give that evidence today.
 
-The move toward "Live Studio" also opens new possibilities for collaborative debugging. When multiple developers connect to the same live diagnostic stream, they can share a common view of platform state while solving complex problems together. This shared context matters in distributed teams and complex monorepos where one person cannot easily hold the whole system in view. Turning diagnostics into an interactive shared review experience also shortens the feedback loop for Fluo developers. Studio's future is not limited to observing the platform. It points toward participating in platform evolution and management in real time.
+## 15.9 Why Heading Parity Matters
 
-Investing in the Studio ecosystem today prepares for a more interactive and responsive development experience later. As Studio evolves into the central hub for platform observability, the boundary between static analysis and runtime monitoring will become lower. This direction aligns with fluo's principle of providing practical tools for building and managing complex systems.
+The fluo book keeps English and Korean chapter pairs aligned by heading structure. This is not just a formatting concern. It gives maintainers a stable baseline for checking that translated technical sections were not lost during editing.
 
-## 15.9 Why Line-by-Line Consistency Matters
+Chapter 15 is especially sensitive because Studio diagnostics and inspect artifacts often point readers back to documentation. When the English and Korean files keep the same heading levels and section order, links, reviews, and future sync checks stay easier to reason about.
 
-The fluo project follows a strict policy that English and Korean documents must keep the same Heading structure. This is not just a formatting concern. It gives CI/CD pipelines a stable baseline for automated diffs that verify technical sections were not lost during translation.
-
-Every heading in this file exactly matches the sections in the English version. This consistency also matters for Studio diagnostics. Studio issues often map to documentation URLs, so the framework needs a stable and synchronized Heading structure to provide accurate links for both English and Korean readers.
-
-When looking up an error code or reading about a specific visualization feature, the information should appear in the same place across every language version of the book. This linguistic symmetry helps global contributors collaborate from the same technical foundation. It also simplifies multilingual search index maintenance, letting developers find the answers they need regardless of their preferred language. Maintaining strict alignment is also accessibility work because it helps developers from all backgrounds understand the TypeScript platform from the same baseline. This linguistic rigor matches fluo's technical philosophy as well. Every aspect should be explicit, standards-compliant, and platform-neutral.
+When you update this chapter, update both language files together. If you add a section about a new artifact or viewer behavior in one file, add the matching section in the other file during the same change.
 
 ## Summary
 
-Studio transforms the DI container's "black box" into a transparent visual map. By using snapshots, diagnostics, and timing data, you can stop guessing why a dependency failed and directly inspect the exact blockers and suggested fixes.
+Studio transforms runtime inspection data into a shared diagnostic workflow. `fluo inspect` produces raw JSON snapshots, timing envelopes, CI-friendly reports, and Studio-rendered Mermaid diagrams. `--output` turns those payloads into stable artifacts that CI and support workflows can keep.
 
-Effective diagnostics also shorten the feedback loop for new developers. Before explaining every detail of the Module Graph, you can let them explore the system directly through the Studio Viewer. Mermaid export keeps documentation as a living part of the codebase and reduces architecture diagrams that drift away from the real implementation.
+The boundary is clear. Runtime produces platform truth, the CLI exports or delegates it, and Studio consumes, filters, views, and renders it. That makes Studio useful for local debugging, architecture reviews, CI gates, and support handoffs without changing application behavior.
 
-As the ecosystem matures, more tools will be built on these standard snapshots, improving observability for fluo applications across different environments and organization sizes. Building high-performance backends requires efficient code, but it also requires understanding how that code interacts. Studio provides the key link between source code and runtime behavior.
-
-Standardizing the snapshot format lets many visualization tools coexist. One team may prefer Mermaid-based graphs, while another may build a 3D dependency explorer or a monitor that overlays live metrics on a static graph. Studio's goal is not only to show the current state, but also to help teams make better architecture decisions. Explicit dependency management, clear component boundaries, and observable lifecycles are marks of a well-designed fluo application. These principles matter more as applications grow, helping teams reduce technical debt while keeping a fast pace.
-
-Visualizing a system is the first step in managing complexity. In microservice and complex monorepo environments, a clear and accurate dependency map is a major asset for engineering teams. Studio shows where the architecture starts to strain as the application expands to meet new requirements. Architecture matters as much as code, and Studio makes that importance reviewable.
-
-In diagnostic workflows, it is useful to keep a "Studio-first" mindset. Whenever you hit a complex configuration problem, run `fluo inspect` and use visual data to narrow the problem scope. In the final part of this series, we will look at extending the fluo ecosystem itself by creating custom packages and contributing to the framework.
+When a complex configuration problem appears, keep a Studio-first workflow: generate an inspect artifact, keep the report when you need a handoff, open the snapshot in Studio when you need to explore, and use Mermaid when you need a reviewable diagram.
