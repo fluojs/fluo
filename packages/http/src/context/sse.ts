@@ -116,14 +116,21 @@ export class SseResponse {
     context.response.committed = true;
     this.stream.flush?.();
 
-    this.removeCloseListener = this.stream.onClose?.(this.onAbort) ?? undefined;
-
     if (context.request.signal?.aborted) {
       this.close();
       return;
     }
 
     context.request.signal?.addEventListener('abort', this.onAbort, { once: true });
+
+    const removeCloseListener = this.stream.onClose?.(this.onAbort) ?? undefined;
+
+    if (this.closed) {
+      removeCloseListener?.();
+      return;
+    }
+
+    this.removeCloseListener = removeCloseListener;
   }
 
   /**
