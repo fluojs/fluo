@@ -53,6 +53,20 @@ Controller and service templates inspect sibling files before rendering. A contr
 | `--dry-run` | None | All generators | Prints the planned creates, skips, overwrites, and module updates without creating directories, writing files, or updating modules. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | Prints generate-command usage and generator metadata. |
 
+## Dry-run Preview
+
+Use `--dry-run` before changing a shared workspace or a generated slice that already has hand edits:
+
+```bash
+fluo generate service Billing --dry-run
+fluo g request-dto billing CreateInvoice --target-directory ./src --dry-run
+fluo g controller Billing --force --dry-run
+```
+
+Dry-run mode prints `Dry run: no files were written.`, followed by each planned file action. Possible actions include `CREATE`, `SKIP`, `OVERWRITE`, `UNCHANGED`, `MODULE-CREATE`, `MODULE-UPDATE`, and `MODULE-UNCHANGED`. The preview uses the same validation, target-directory resolution, request DTO feature-target parsing, and `--force` overwrite planning as a real run, but it never creates directories, writes generated files, or updates modules.
+
+Auto-registered generators still resolve the module plan during dry-run. Files-only generators such as `module`, `request-dto`, and `response-dto` still report their file actions and leave parent-module wiring to the caller.
+
 ## Generator Collections
 
 `fluo generate` currently discovers exactly one deterministic collection: `@fluojs/cli/builtin`. It is bundled with `@fluojs/cli`, contains the generator metadata listed above, and is the source of truth for CLI help output, option schemas, aliases, wiring behavior, and tests.

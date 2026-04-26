@@ -89,6 +89,18 @@ my-fluo-app/
 
 interactive terminal에서 `fluo new` wizard를 실행할 경우, 파일을 쓰기 전에 동일한 유지보수 대상 스타터 매트릭스를 기준으로 선택지가 해석됩니다.
 
+### Previewing a starter plan
+
+파일시스템을 건드리지 않고 해석된 스타터를 확인해야 할 때는 `--print-plan`을 사용하세요:
+
+```bash
+fluo new my-fluo-app --print-plan
+fluo new my-service --shape microservice --transport tcp --print-plan
+fluo new my-mixed-app --shape mixed --print-plan
+```
+
+Plan preview 모드는 실제 scaffold와 같은 프로젝트 이름, target directory, shape, runtime, platform, transport, tooling preset, package manager, dependency installation 선택, git initialization 선택을 resolve합니다. 선택된 starter recipe와 runtime/dev dependency 세트를 출력한 뒤 side effect 없이 종료합니다. 파일을 생성하거나, dependency를 설치하거나, git을 초기화하지 않습니다.
+
 ## Development Server
 
 프로젝트 루트 기준 생성된 프로젝트 시작 명령:
@@ -124,3 +136,4 @@ curl http://localhost:3000/hello
 - 기본 생성 애플리케이션은 `pnpm dev` 중 포트 `3000`에서 리슨합니다.
 - 기본 생성 애플리케이션은 `/health`와 `/hello`를 노출합니다.
 - `fluo new` 스타터 변형은 CLI README와 지원 매트릭스에 문서화된 유지보수 대상 스타터 매트릭스에 맞춰집니다.
+- `fluo new --print-plan`은 읽기 전용 preview 경로입니다. 프로젝트 파일 작성, dependency 설치, git 초기화 없이 starter plan과 dependency 세트를 해석합니다.
