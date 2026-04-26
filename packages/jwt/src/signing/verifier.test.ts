@@ -2,7 +2,7 @@ import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
+import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
 function encodeBase64Url(value: string): string {
@@ -32,6 +32,13 @@ function signToken(
 }
 
 describe('DefaultJwtVerifier', () => {
+  it('fails fast when no verification algorithms are configured', () => {
+    expect(() => new DefaultJwtVerifier({ algorithms: [], secret: 'secret' })).toThrow(JwtConfigurationError);
+    expect(() => new DefaultJwtVerifier({ algorithms: [], secret: 'secret' })).toThrow(
+      'JWT verifier requires at least one allowed JWT algorithm.',
+    );
+  });
+
   it('verifies a valid token and normalizes the principal', async () => {
     const verifier = new DefaultJwtVerifier({
       algorithms: ['HS256'],

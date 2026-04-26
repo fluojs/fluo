@@ -1,12 +1,12 @@
-import { createHmac, createVerify, timingSafeEqual } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
+import { createHmac, createVerify, timingSafeEqual } from 'node:crypto';
 
 import { Inject } from '@fluojs/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
-import { JwksClient } from './jwks.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
+import { JwksClient } from './jwks.js';
 
 /**
  * Provides the resolved JWT verifier options through dependency injection.
@@ -34,8 +34,24 @@ export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   ES512: 'sha512',
 };
 
+function isSupportedAlgorithm(alg: string | undefined): alg is JwtAlgorithm {
+  return typeof alg === 'string' && (alg in HMAC_HASH || alg in ASYMMETRIC_HASH);
+}
+
+function assertJwtAlgorithms(algorithms: JwtAlgorithm[], context: string): void {
+  if (!Array.isArray(algorithms) || algorithms.length === 0) {
+    throw new JwtConfigurationError(`${context} requires at least one allowed JWT algorithm.`);
+  }
+
+  for (const algorithm of algorithms) {
+    if (!isSupportedAlgorithm(algorithm)) {
+      throw new JwtConfigurationError(`${context} received unsupported JWT algorithm "${String(algorithm)}".`);
+    }
+  }
+}
+
 function isAllowedAlgorithm(alg: string | undefined, allowed: JwtAlgorithm[]): alg is JwtAlgorithm {
-  return typeof alg === 'string' && (allowed as string[]).includes(alg) && (alg in HMAC_HASH || alg in ASYMMETRIC_HASH);
+  return isSupportedAlgorithm(alg) && (allowed as string[]).includes(alg);
 }
 
 function isFiniteNumericDate(value: unknown): value is number {
@@ -242,6 +258,7 @@ export class DefaultJwtVerifier {
   private readonly refreshVerificationOptions: JwtVerifierOptions | undefined;
 
   constructor(private readonly options: JwtVerifierOptions) {
+    assertJwtAlgorithms(options.algorithms, 'JWT verifier');
     this.jwksClient = options.jwksUri
       ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs)
       : undefined;

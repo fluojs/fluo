@@ -2,6 +2,7 @@ import { generateKeyPairSync, sign, verify } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
+import { JwtConfigurationError } from '../errors.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
@@ -15,6 +16,26 @@ function decodeJwtHeader(token: string): Record<string, unknown> {
 }
 
 describe('DefaultJwtSigner', () => {
+  it('fails fast when no signing algorithms are configured', () => {
+    expect(() => new DefaultJwtSigner({ algorithms: [], secret: 'secret' })).toThrow(JwtConfigurationError);
+    expect(() => new DefaultJwtSigner({ algorithms: [], secret: 'secret' })).toThrow(
+      'JWT signer requires at least one allowed JWT algorithm.',
+    );
+  });
+
+  it('rejects non-positive access token ttl values before issuing a token', async () => {
+    const signer = new DefaultJwtSigner({
+      accessTokenTtlSeconds: 0,
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+
+    await expect(signer.signAccessToken({ sub: 'ttl-user' })).rejects.toThrow(JwtConfigurationError);
+    await expect(signer.signAccessToken({ sub: 'ttl-user' })).rejects.toThrow(
+      'JWT accessTokenTtlSeconds must be a positive finite number.',
+    );
+  });
+
   it('creates an access token that the verifier accepts (HS256)', async () => {
     const signer = new DefaultJwtSigner({
       accessTokenTtlSeconds: 120,

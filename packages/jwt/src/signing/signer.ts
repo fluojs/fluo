@@ -29,6 +29,32 @@ function resolveSigningKeyEntry(options: JwtVerifierOptions, algorithm: JwtAlgor
   return keys.find((entry) => entry.privateKey !== undefined);
 }
 
+function isSupportedSigningAlgorithm(algorithm: string | undefined): algorithm is JwtAlgorithm {
+  return typeof algorithm === 'string' && (algorithm in HMAC_HASH || algorithm in ASYMMETRIC_HASH);
+}
+
+function assertSigningAlgorithms(algorithms: JwtAlgorithm[]): void {
+  if (!Array.isArray(algorithms) || algorithms.length === 0) {
+    throw new JwtConfigurationError('JWT signer requires at least one allowed JWT algorithm.');
+  }
+
+  for (const algorithm of algorithms) {
+    if (!isSupportedSigningAlgorithm(algorithm)) {
+      throw new JwtConfigurationError(`JWT signer received unsupported JWT algorithm "${String(algorithm)}".`);
+    }
+  }
+}
+
+function resolveAccessTokenTtlSeconds(options: JwtVerifierOptions): number {
+  const ttl = options.accessTokenTtlSeconds ?? 3600;
+
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new JwtConfigurationError('JWT accessTokenTtlSeconds must be a positive finite number.');
+  }
+
+  return Math.floor(ttl);
+}
+
 /**
  * Issues access and refresh tokens with the configured signing keys and algorithms.
  */
@@ -37,6 +63,7 @@ export class DefaultJwtSigner {
   private readonly refreshAlgorithms: JwtAlgorithm[];
 
   constructor(private readonly options: JwtVerifierOptions) {
+    assertSigningAlgorithms(options.algorithms);
     this.refreshAlgorithms = this.options.algorithms.filter(
       (algorithm): algorithm is JwtAlgorithm => algorithm in HMAC_HASH,
     );
@@ -87,7 +114,7 @@ export class DefaultJwtSigner {
     const isAsymmetric = algorithm in ASYMMETRIC_HASH;
 
     const now = Math.floor(Date.now() / 1000);
-    const ttl = options.accessTokenTtlSeconds ?? 3600;
+    const ttl = resolveAccessTokenTtlSeconds(options);
     const payload: JwtClaims = {
       ...claims,
       aud: claims.aud ?? options.audience,
