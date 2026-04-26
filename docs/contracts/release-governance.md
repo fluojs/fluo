@@ -50,7 +50,7 @@ Each changeset must include:
 
 Packages that are not listed in a changeset are not versioned or published for that release. Downstream dependent packages are evaluated through Changesets' internal dependency graph; dependent version bumps are computed automatically during versioning.
 
-The release workflow is triggered automatically on pushes to `main`. When pending changesets exist, the Changesets action opens a "Version Packages" PR that bumps versions, updates changelogs, and removes consumed changesets. Merging that PR triggers the publish step, which publishes affected packages to npm with OIDC provenance and creates scoped git tags and GitHub Releases.
+The release workflow is triggered automatically on pushes to `main`. When pending changesets exist, the Changesets action opens a "Version Packages" PR that bumps versions, updates changelogs, and removes consumed changesets. Merging that PR triggers the publish step, which publishes affected packages to npm with token-backed npm authentication and provenance, then creates scoped git tags and GitHub Releases.
 
 Prerelease workflow uses Changesets prerelease mode (`changeset pre enter <tag>`). Enter prerelease mode on a dedicated branch when needed; exit with `changeset pre exit` before stable releases.
 
@@ -61,7 +61,7 @@ Legacy `tooling/release/intents/*.json` records are retained for historical refe
 
 Changesets has been adopted as the primary release automation tool. It replaces the previous repo-local JSON intent model with a standard contributor-authored changeset workflow. The `.github/workflows/release.yml` handles versioning, publishing, and GitHub Release creation automatically.
 
-The previous single-package manual dispatch workflow is deprecated. The new workflow publishes all packages with pending changesets when the Version Packages PR is merged, while preserving CI-only, OIDC-provenanced, `main`-branch publishing.
+The previous single-package manual dispatch workflow is deprecated. The new workflow publishes all packages with pending changesets when the Version Packages PR is merged, while preserving CI-only, token-authenticated, provenance-enabled `main`-branch publishing.
 
 Beachball remains a valid comparison point but is not adopted. The evaluation criteria below are preserved for future reference if Changesets proves unsuitable:
 
@@ -69,7 +69,7 @@ Beachball remains a valid comparison point but is not adopted. The evaluation cr
 2. **Downstream evaluation frequency**: Changesets computes and bumps dependent packages automatically during versioning.
 3. **Intent maintenance cost**: Changeset files are authored at PR time by contributors, reducing maintainer release-time work.
 4. **Generated package changelog need**: Changesets generates per-package changelogs automatically.
-5. **CI-only compatibility**: The new `.github/workflows/release.yml` maintains CI-only publish with OIDC provenance.
+5. **CI-only compatibility**: The new `.github/workflows/release.yml` maintains CI-only publish with npm token authentication and provenance.
 
 ## intended publish surface
 

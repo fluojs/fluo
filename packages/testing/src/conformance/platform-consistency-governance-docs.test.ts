@@ -248,7 +248,7 @@ describe('platform consistency governance docs', () => {
     expect(ciWorkflow).toContain('run: pnpm verify:release-readiness');
   });
 
-  it('keeps Changesets release automation bound to main pushes and OIDC npm publish', () => {
+  it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {
     const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
 
     expect(releaseWorkflow).toContain('name: Changesets Release');
@@ -265,8 +265,8 @@ describe('platform consistency governance docs', () => {
     expect(releaseWorkflow).toContain('createGithubReleases: true');
     expect(releaseWorkflow).toContain('run: pnpm verify:release-readiness');
     expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');
+    expect(releaseWorkflow).toContain('NPM_TOKEN: ${{ secrets.NPM_TOKEN }}');
     expect(releaseWorkflow).not.toContain('NODE_AUTH_TOKEN');
-    expect(releaseWorkflow).not.toContain('secrets.NPM_TOKEN');
   });
 
   it('keeps Changesets release safety gates before versioning or publish', () => {
