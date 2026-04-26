@@ -17,6 +17,25 @@ const inspectFixtureModulePath = join(
   'inspect-app.module.mjs',
 );
 
+const updateCheckEnv: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH,
+};
+
+function createTtyBufferStream(buffer: string[]): { isTTY: true; write(message: string): void } {
+  return {
+    isTTY: true,
+    write: (message: string) => {
+      buffer.push(message);
+    },
+  };
+}
+
+function createUpdateCacheFile(): string {
+  const cacheDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-update-'));
+  createdDirectories.push(cacheDirectory);
+  return join(cacheDirectory, 'cache.json');
+}
+
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -50,6 +69,263 @@ describe('CLI command runner', () => {
     expect(readFileSync(join(packageRoot, 'README.md'), 'utf8')).toContain('dist-built CLI entrypoint');
     expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('dist 빌드 CLI 엔트리포인트');
     expect(readFileSync(join(packageRoot, 'README.ko.md'), 'utf8')).toContain('# @fluojs/studio용 snapshot 내보내기');
+  });
+
+  it('asks before installing a newer CLI and continues when the update is declined', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    let confirmMessage = '';
+    let confirmDefault = true;
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        prompt: {
+          confirm: async (message, defaultValue) => {
+            confirmMessage = message;
+            confirmDefault = defaultValue;
+            return false;
+          },
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.2.');
+    expect(stderrBuffer.join('')).toContain('Continuing with @fluojs/cli@1.0.0-beta.1.');
+    expect(confirmMessage).toBe('Install @fluojs/cli@1.0.0-beta.2 now and restart this command?');
+    expect(confirmDefault).toBe(false);
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+  });
+
+  it('installs the accepted update and reruns the same CLI argv with update checks suppressed', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const installCommands: string[] = [];
+    const rerunArgv: string[][] = [];
+    const rerunEnvValues: Array<string | undefined> = [];
+
+    const exitCode = await runCli(['help', 'new'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async (installCommand) => {
+          installCommands.push(installCommand.display);
+          return 0;
+        },
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async (argv, runtime) => {
+          rerunArgv.push([...argv]);
+          rerunEnvValues.push(runtime.env.FLUO_UPDATE_CHECK_REEXEC);
+          return 42;
+        },
+      },
+    });
+
+    expect(exitCode).toBe(42);
+    expect(installCommands).toEqual(['pnpm add -g @fluojs/cli@1.0.0-beta.2']);
+    expect(rerunArgv).toEqual([['help', 'new']]);
+    expect(rerunEnvValues).toEqual(['1']);
+    expect(stderrBuffer.join('')).toContain('Updated @fluojs/cli to 1.0.0-beta.2. Restarting fluo...');
+    expect(stdoutBuffer.join('')).toBe('');
+  });
+
+  it('continues the original CLI command when the accepted update install fails', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    let reran = false;
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        installPackage: async () => 7,
+        prompt: {
+          confirm: async () => true,
+        },
+        rerunCli: async () => {
+          reran = true;
+          return 0;
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(reran).toBe(false);
+    expect(stderrBuffer.join('')).toContain('Update install failed with exit code 7; continuing with @fluojs/cli@1.0.0-beta.1.');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+  });
+
+  it('skips the update prompt in CI and non-TTY contexts', async () => {
+    let fetchCount = 0;
+    const fetchLatestVersion = async (): Promise<string> => {
+      fetchCount += 1;
+      return '1.0.0-beta.2';
+    };
+
+    const ciStdoutBuffer: string[] = [];
+    const ciExitCode = await runCli(['help'], {
+      ci: true,
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(ciStdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion,
+      },
+    });
+
+    const nonTtyStdoutBuffer: string[] = [];
+    const nonTtyExitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: { write: () => undefined },
+      stdin: { isTTY: false },
+      stdout: { write: (message) => nonTtyStdoutBuffer.push(message) },
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion,
+      },
+    });
+
+    expect(ciExitCode).toBe(0);
+    expect(nonTtyExitCode).toBe(0);
+    expect(fetchCount).toBe(0);
+    expect(ciStdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(nonTtyStdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+  });
+
+  it('honors explicit update-check opt-out flags before command dispatch', async () => {
+    let fetchCount = 0;
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['--no-update-check', 'help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.2';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+    expect(stdoutBuffer.join('')).toContain('--no-update-notifier');
+  });
+
+  it('uses the update-check cache instead of hitting npm on every invocation', async () => {
+    const cacheFile = createUpdateCacheFile();
+    let fetchCount = 0;
+
+    const createRuntime = (stdoutBuffer: string[], stderrBuffer: string[]) => ({
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile,
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async (): Promise<string> => {
+          fetchCount += 1;
+          return '1.0.0-beta.2';
+        },
+        now: () => new Date('2026-04-26T00:00:00.000Z'),
+        prompt: {
+          confirm: async () => false,
+        },
+      },
+    });
+
+    const firstStdoutBuffer: string[] = [];
+    const firstStderrBuffer: string[] = [];
+    const secondStdoutBuffer: string[] = [];
+    const secondStderrBuffer: string[] = [];
+
+    await runCli(['help'], createRuntime(firstStdoutBuffer, firstStderrBuffer));
+    await runCli(['help'], createRuntime(secondStdoutBuffer, secondStderrBuffer));
+
+    expect(fetchCount).toBe(1);
+    expect(firstStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
+    expect(secondStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
+  });
+
+  it('does not prompt when the public CLI version is already current', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    let prompted = false;
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.2',
+        fetchLatestVersion: async () => '1.0.0-beta.2',
+        prompt: {
+          confirm: async () => {
+            prompted = true;
+            return true;
+          },
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(prompted).toBe(false);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
+  });
+
+  it('ignores registry failures so the original CLI command still runs', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['help'], {
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream(stderrBuffer),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream(stdoutBuffer),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          throw new Error('registry unavailable');
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderrBuffer.join('')).toBe('');
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo <command> [options]');
   });
 
   it('passes migrate --json through the top-level dispatcher', async () => {

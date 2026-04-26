@@ -9,9 +9,15 @@ import { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './comman
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
+import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
 
 type CliStream = {
+  isTTY?: boolean;
   write(message: string): unknown;
+};
+
+type CliReadableStream = {
+  isTTY?: boolean;
 };
 
 /**
@@ -20,8 +26,11 @@ type CliStream = {
 export interface CliRuntimeOptions {
   ci?: boolean;
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
   stderr?: CliStream;
+  stdin?: CliReadableStream;
   stdout?: CliStream;
+  updateCheck?: false | CliUpdateCheckRuntimeOptions;
 }
 
 type ParsedCliArgs = {
@@ -149,6 +158,10 @@ function usage(): string {
       { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
       { header: 'Description', render: (entry) => entry.description },
     ]),
+    '',
+    'Options',
+    '  --no-update-check  Skip the interactive CLI update check for this invocation.',
+    '                     Alias: --no-update-notifier.',
     '',
     "Run 'fluo help <command>' for more information on a command.",
     'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
@@ -321,14 +334,33 @@ export async function runCli(
   const cwd = runtime.cwd ? resolve(runtime.cwd) : process.cwd();
   const stdout = runtime.stdout ?? process.stdout;
   const stderr = runtime.stderr ?? process.stderr;
+  const env = runtime.env ?? process.env;
+  const updateFlagResult = removeUpdateCheckFlags(argv);
+  const commandArgv = updateFlagResult.argv;
 
   try {
-    if (argv.length === 0) {
+    const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
+    const updateCheckResult = await runCliUpdateCheck(commandArgv, {
+      ...updateCheckOptions,
+      ci: runtime.ci,
+      env,
+      interactive: runtime.interactive,
+      skip: updateFlagResult.skipUpdateCheck || runtime.updateCheck === false,
+      stderr,
+      stdin: runtime.stdin,
+      stdout,
+    });
+
+    if (updateCheckResult.action === 'reran') {
+      return updateCheckResult.exitCode;
+    }
+
+    if (commandArgv.length === 0) {
       throw new Error(usage());
     }
 
-    if (argv[0] === 'help') {
-      const topic = argv[1];
+    if (commandArgv[0] === 'help') {
+      const topic = commandArgv[1];
 
       if (topic === 'new' || topic === 'create') {
         stdout.write(`${newUsage()}\n`);
@@ -354,27 +386,27 @@ export async function runCli(
       return 0;
     }
 
-    if (isHelpFlag(argv[0])) {
+    if (isHelpFlag(commandArgv[0])) {
       stdout.write(`${usage()}\n`);
       return 0;
     }
 
-    if ((argv[0] === 'g' || argv[0] === 'generate') && argv.slice(1).some(isHelpFlag)) {
+    if ((commandArgv[0] === 'g' || commandArgv[0] === 'generate') && commandArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${generateUsage()}\n`);
       return 0;
     }
 
-    if (argv[0] === 'migrate' && argv.slice(1).some(isHelpFlag)) {
+    if (commandArgv[0] === 'migrate' && commandArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${migrateUsage()}\n`);
       return 0;
     }
 
-    if (argv[0] === 'inspect' && argv.slice(1).some(isHelpFlag)) {
+    if (commandArgv[0] === 'inspect' && commandArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${inspectUsage()}\n`);
       return 0;
     }
 
-    const parsedCommand = parseCommand(argv);
+    const parsedCommand = parseCommand(commandArgv);
 
     if (parsedCommand.command === 'new') {
       return runNewCommand(parsedCommand.argv, runtime);
