@@ -186,6 +186,8 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
 | `GeneratorKind` | Union type of all supported generator types (e.g., `'controller'`, `'service'`). |
 
+Programmatic entry points preserve caller process ownership. `runCli(...)` and `runNewCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them.
+
 ## Related Packages
 
 - **[@fluojs/runtime](../runtime/README.md)**: The underlying engine that produces inspection snapshots during bootstrap-safe runtime inspection.
