@@ -267,6 +267,36 @@ describe('SseResponse', () => {
     expect(stream.writes).toEqual([]);
   });
 
+  it('does not keep an abort listener for an already-closed stream with passive onClose', () => {
+    const stream = createMockSseStream();
+    stream._closed = true;
+    stream.onClose = (listener: () => void) => {
+      stream.onCloseCalls += 1;
+      stream.closeListeners.push(listener);
+
+      return () => {
+        stream.removeCloseListenerCalls += 1;
+        stream.closeListeners = stream.closeListeners.filter((entry) => entry !== listener);
+      };
+    };
+    const response = createMockResponse(stream);
+    const controller = new AbortController();
+    const addEventListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListener = vi.spyOn(controller.signal, 'removeEventListener');
+    const sse = new SseResponse(createContext(response, controller.signal));
+
+    controller.abort(new Error('late-client-disconnect'));
+    sse.send('ignored-after-passive-close');
+
+    expect(addEventListener).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+    expect(removeEventListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(stream.onCloseCalls).toBe(1);
+    expect(stream.closeListeners).toEqual([]);
+    expect(stream.closeCalls).toBe(0);
+    expect(stream.removeCloseListenerCalls).toBe(1);
+    expect(stream.writes).toEqual([]);
+  });
+
   it('throws when the adapter does not expose response.stream support', () => {
     expect(() => new SseResponse(createContext(createMockResponse()))).toThrow(
       'SseResponse requires adapter-provided response.stream support.',

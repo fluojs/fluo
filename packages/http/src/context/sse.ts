@@ -131,6 +131,10 @@ export class SseResponse {
     }
 
     this.removeCloseListener = removeCloseListener;
+
+    if (this.stream.closed) {
+      this.close();
+    }
   }
 
   /**
