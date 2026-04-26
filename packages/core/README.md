@@ -62,6 +62,14 @@ class UserService {
 
 fluo uses TC39 standard decorators. You do not need `experimentalDecorators: true` or `emitDecoratorMetadata: true` to use `@Module`, `@Inject`, `@Global`, or `@Scope`.
 
+Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Call `ensureMetadataSymbol()` at test or bootstrap boundaries when a runtime needs the `Symbol.metadata` polyfill installed before evaluating custom standard decorators.
+
+```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+```
+
 ### Explicit dependency metadata
 
 `@Inject(...)` keeps dependency wiring visible in code instead of relying on emitted reflection metadata. Call `@Inject()` when you want to record an explicit empty override for inherited constructor tokens.
@@ -77,9 +85,13 @@ class UsesConfigValue {
 
 Pass multiple tokens as variadic arguments such as `@Inject(A, B)`.
 
+The legacy array form `@Inject([A, B])` remains normalized during the migration window, but new code should prefer the variadic form so constructor tokens stay aligned with standard decorator usage.
+
 ### Shared metadata helpers for sibling packages
 
 Internal readers and writers live under `@fluojs/core/internal`, which is how packages like `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime` consume the same metadata model.
+
+Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need to read cloned metadata records, merge explicit stores with `Symbol.metadata`, or build framework-level decorators.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -151,6 +163,7 @@ Standard decorators cannot automatically infer types for abstract classes or int
 
 - **Decorators**: `Module`, `Global`, `Inject`, `Scope`
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`
+- **Metadata runtime**: `ensureMetadataSymbol`
 - **Types**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
 - **Internal subpath**: metadata helpers via `@fluojs/core/internal`
 

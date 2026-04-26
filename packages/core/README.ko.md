@@ -60,6 +60,14 @@ class UserService {
 
 fluo는 TC39 표준 데코레이터를 사용하므로 `experimentalDecorators: true`나 `emitDecoratorMetadata: true`에 의존하지 않습니다.
 
+core 메타데이터는 fluo가 소유한 저장소와 TC39 `Symbol.metadata` 통합 지점을 통해 기록되며, `reflect-metadata`나 컴파일러가 생성하는 design type 메타데이터를 사용하지 않습니다. 런타임이 사용자 정의 표준 데코레이터를 평가하기 전에 `Symbol.metadata` 폴리필을 설치해야 한다면 테스트나 부트스트랩 경계에서 `ensureMetadataSymbol()`을 호출하세요.
+
+```ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+```
+
 ### 명시적인 의존성 메타데이터
 
 `@Inject(...)`는 리플렉션 기반 추론 대신 코드 안에서 의존성 토큰을 직접 드러냅니다. 상속된 constructor 토큰을 명시적으로 비우려면 `@Inject()`를 사용하면 됩니다.
@@ -75,9 +83,13 @@ class UsesConfigValue {
 
 여러 토큰을 지정할 때는 `@Inject(A, B)`처럼 variadic 호출을 사용하면 됩니다.
 
+마이그레이션 기간 동안 legacy 배열 형식인 `@Inject([A, B])`도 계속 정규화되지만, 새 코드는 constructor 토큰을 표준 데코레이터 사용 방식과 맞추기 위해 variadic 형식을 권장합니다.
+
 ### 형제 패키지를 위한 공용 메타데이터 헬퍼
 
 내부 메타데이터 reader/writer는 `@fluojs/core/internal` 아래에 있으며, `@fluojs/di`, `@fluojs/http`, `@fluojs/runtime` 같은 패키지들이 같은 메타데이터 모델을 공유할 수 있게 합니다.
+
+애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 복제된 메타데이터 레코드를 읽거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -149,6 +161,7 @@ class Logger {}
 
 - **데코레이터**: `Module`, `Global`, `Inject`, `Scope`
 - **에러**: `FluoError`, `InvariantError`, `FluoCodeError`
+- **메타데이터 런타임**: `ensureMetadataSymbol`
 - **타입**: `Constructor<T>`, `Token<T>`, `MaybePromise<T>`, `AsyncModuleOptions`
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 메타데이터 헬퍼
 
