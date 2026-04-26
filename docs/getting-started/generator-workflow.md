@@ -53,6 +53,12 @@ Controller and service templates inspect sibling files before rendering. A contr
 | `--dry-run` | None | All generators | Prints the planned creates, skips, overwrites, and module updates without creating directories, writing files, or updating modules. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | Prints generate-command usage and generator metadata. |
 
+## Generator Collections
+
+`fluo generate` currently discovers exactly one deterministic collection: `@fluojs/cli/builtin`. It is bundled with `@fluojs/cli`, contains the generator metadata listed above, and is the source of truth for CLI help output, option schemas, aliases, wiring behavior, and tests.
+
+External package-owned or app-local generator collections are intentionally deferred. The CLI does not scan local config files, import arbitrary packages, or execute collection code from the application workspace. Future collection support must remain explicit and reviewable: callers should opt into a known collection source, metadata and option schemas must be testable, and file writes must stay constrained to validated generator outputs under the resolved target directory.
+
 | Resolution rule | Resolved base directory |
 | --- | --- |
 | Current directory contains `package.json` and `src/` | `<cwd>/src` |
@@ -72,6 +78,7 @@ Controller and service templates inspect sibling files before rendering. A contr
 - Dry-run output distinguishes files-only generators from auto-registered generators, including whether a module would be created, updated, or left unchanged.
 - Combining `--dry-run` with `--force` previews overwrite decisions without applying them.
 - Unchanged file content is not rewritten, even when the command resolves auto-registration metadata.
+- Generator discovery is limited to the built-in `@fluojs/cli/builtin` collection; external or app-local collections are deferred and are not loaded by this command.
 - Module auto-registration is limited to controller, service, repository, guard, interceptor, and middleware generators.
 - DTO and module generators do not wire parent-module imports automatically.
 - The generate command surface documents `--target-directory`, `--force`, `--dry-run`, and `--help`.

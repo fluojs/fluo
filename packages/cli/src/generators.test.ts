@@ -3,7 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { generateControllerFiles } from './generators/controller.js';
 import { generateGuardFiles } from './generators/guard.js';
 import { generateInterceptorFiles } from './generators/interceptor.js';
-import { generatorManifest } from './generators/manifest.js';
+import {
+  builtInGeneratorCollection,
+  generatorCollections,
+  generatorManifest,
+  generatorOptionSchemas,
+  listGeneratorCollections,
+  listGeneratorDefinitions,
+} from './generators/manifest.js';
 import { generateMiddlewareFiles } from './generators/middleware.js';
 import { ensureModuleImport, generateModuleFiles, registerInModule } from './generators/module.js';
 import { generateRepoFiles } from './generators/repository.js';
@@ -230,14 +237,47 @@ describe('CLI generators', () => {
 });
 
 describe('GeneratorRegistry', () => {
+  it('exposes a single deterministic built-in collection and defers external loading', () => {
+    expect(generatorCollections).toEqual([builtInGeneratorCollection]);
+    expect(listGeneratorCollections()).toEqual([builtInGeneratorCollection]);
+    expect(builtInGeneratorCollection).toMatchObject({
+      id: '@fluojs/cli/builtin',
+      source: 'built-in',
+    });
+    expect(listGeneratorDefinitions()).toEqual(generatorManifest);
+    expect(generatorManifest.map((entry) => entry.kind)).toEqual([
+      'controller',
+      'guard',
+      'interceptor',
+      'middleware',
+      'module',
+      'repo',
+      'request-dto',
+      'response-dto',
+      'service',
+    ]);
+    expect(() => listGeneratorDefinitions('@app/local')).toThrow('Unknown generator collection: @app/local');
+  });
+
+  it('keeps generator option schemas explicit for help and docs alignment', () => {
+    expect(generatorOptionSchemas).toEqual([
+      { aliases: ['-o'], description: 'Write generated files under a specific source directory.', name: '--target-directory <path>', value: 'path' },
+      { aliases: ['-f'], description: 'Overwrite files that already exist.', name: '--force', value: 'boolean' },
+      { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', name: '--dry-run', value: 'boolean' },
+      { aliases: ['-h'], description: 'Show help for the generate command.', name: '--help', value: 'boolean' },
+    ]);
+  });
+
   it('resolves all built-in generator kinds from defaultRegistry', () => {
     for (const entry of generatorManifest) {
       expect(defaultRegistry.has(entry.kind), `expected defaultRegistry to have kind: ${entry.kind}`).toBe(true);
+      expect(defaultRegistry.collectionId(entry.kind)).toBe(builtInGeneratorCollection.id);
 
       const aliases = 'registryAliases' in entry ? entry.registryAliases : undefined;
       if (aliases) {
         for (const alias of aliases) {
           expect(defaultRegistry.has(alias), `expected defaultRegistry to have alias: ${alias}`).toBe(true);
+          expect(defaultRegistry.collectionId(alias)).toBe(builtInGeneratorCollection.id);
         }
       }
     }

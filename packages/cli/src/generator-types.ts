@@ -24,6 +24,15 @@ export type GeneratorFactory = (name: string, options?: GenerateOptions) => Gene
 
 /** Registry shape used by generator manifests to bind a factory to CLI metadata. */
 export interface GeneratorRegistration {
+  collectionId?: string;
   factory: GeneratorFactory;
   description?: string;
+}
+
+/** Describes a supported option for generator metadata, help output, and docs alignment tests. */
+export interface GeneratorOptionSchema {
+  aliases: readonly string[];
+  description: string;
+  name: string;
+  value: 'boolean' | 'path';
 }

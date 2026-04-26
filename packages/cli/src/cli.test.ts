@@ -990,6 +990,9 @@ void bootstrap();
 
     expect(stdoutBuffer.join('')).toContain('| Option                    | Aliases | Description');
     expect(stdoutBuffer.join('')).toContain('--dry-run');
+    expect(stdoutBuffer.join('')).toContain('Collections');
+    expect(stdoutBuffer.join('')).toContain('@fluojs/cli/builtin (built-in)');
+    expect(stdoutBuffer.join('')).toContain('External or app-local generator collections are intentionally deferred');
     expect(stdoutBuffer.join('')).not.toContain('Usage: fluo new|create');
     expect(stdoutBuffer.join('')).toContain('Next steps:');
     expect(stdoutBuffer.join('')).toContain("Run 'pnpm typecheck'");
