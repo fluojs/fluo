@@ -46,4 +46,4 @@ You can also use this hub as a chooser. Finish one volume's Table of Contents, t
 - If you want orientation before the full chapter list, you can start with **[Beginner Chapter 0](./beginner/ch00-introduction.md)**, **[Intermediate Chapter 0](./intermediate/ch00-introduction.md)**, or **[Advanced Chapter 0](./advanced/ch00-introduction.md)**.
 - If you have finished the Beginner volume, continue with the **[Intermediate Table of Contents](./intermediate/toc.md)**.
 - If you need internals or contribution context, move to the **[Advanced Table of Contents](./advanced/toc.md)**.
-- If you need broader framework documentation beyond the book path, see the **[Documentation Hub](../docs/CONTEXT.md)**.
+- If you are an AI tool or need contract references rather than reading material, see the **[AI Context Hub](../docs/CONTEXT.md)**.

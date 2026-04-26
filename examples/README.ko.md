@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-이 디렉토리는 fluo의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, docs hub와 함께 읽는 것을 전제로 합니다.
+이 디렉토리는 fluo의 공식 runnable example 애플리케이션을 모아 둔 곳입니다. 각 예제는 개별 README를 가지며, `../book/`의 학습 경로와 함께 읽는 것을 전제로 합니다. AI 도구이거나 계약 레퍼런스가 필요하다면 `../docs/CONTEXT.ko.md`를 출발점으로 삼으세요.
 
 이 예제들은 생성 스캐폴드와 runnable 예제가 계속 일치하도록 의도적으로 공개된 `fluo new` v2 매트릭스의 HTTP 쪽 경로를 유지합니다. 다른 first-class 스타터 계약은 Express, raw Node.js HTTP, Bun, Deno, Cloudflare Workers용 runnable 애플리케이션 스타터 변형, 실행 가능한 microservice starter 경로들(TCP 기본값, 그리고 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC), 그리고 mixed single-package 경로(Fastify HTTP 앱 + attached TCP microservice)입니다.
 
@@ -21,8 +21,8 @@
 2. `./realworld-api/README.ko.md` — 첫 실제 도메인 모듈과 DTO 경계
 3. `./auth-jwt-passport/README.ko.md` — auth, JWT 발급, 보호 라우트 경로
 4. `./ops-metrics-terminus/README.ko.md` — metrics와 health/readiness 경로
-5. `../docs/getting-started/first-feature-path.ko.md` — 스타터 앱에서 첫 기능까지 가는 공식 경로
-6. `../docs/reference/package-chooser.ko.md` — 작업별 다음 패키지 선택
+5. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
+6. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
 
 ## 예제가 문서에서 맡는 역할
 
@@ -31,7 +31,7 @@
 - `auth-jwt-passport`는 현재 공식 bearer-token auth 경로를 증명합니다
 - `ops-metrics-terminus`는 현재 markdown-first observability/health 경로를 증명합니다
 
-다른 v2 스타터 계약은 아래 문서를 기준으로 확인하세요.
+다른 v2 스타터 계약은 CLI README에서 명령을 확인하고, 전체 계약 명세는 매트릭스 문서를 참고하세요.
 
 - `../packages/cli/README.ko.md` — HTTP, microservice, mixed, interactive wizard 흐름의 명령 예시
 - `../docs/reference/toolchain-contract-matrix.ko.md` — 공개 스타터 계약 매트릭스
@@ -51,6 +51,7 @@ pnpm vitest run examples/ops-metrics-terminus
 ## 관련 문서
 
 - `../README.ko.md`
-- `../docs/README.ko.md`
+- `../book/README.ko.md`
+- `../docs/CONTEXT.ko.md`
 - `../docs/getting-started/quick-start.ko.md`
 - `../docs/getting-started/first-feature-path.ko.md`
