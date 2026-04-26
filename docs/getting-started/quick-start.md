@@ -89,6 +89,18 @@ Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-su
 
 In an interactive terminal, the `fluo new` wizard resolves the same maintained starter matrix before writing files.
 
+### Previewing a starter plan
+
+Use `--print-plan` when you need to inspect the resolved starter without touching the filesystem:
+
+```bash
+fluo new my-fluo-app --print-plan
+fluo new my-service --shape microservice --transport tcp --print-plan
+fluo new my-mixed-app --shape mixed --print-plan
+```
+
+Plan preview mode resolves the same project name, target directory, shape, runtime, platform, transport, tooling preset, package manager, dependency installation choice, and git initialization choice as a real scaffold. It prints the selected starter recipe and runtime/dev dependency sets, then exits with no side effects. It does not create files, install dependencies, or initialize git.
+
 ## Development Server
 
 Generated project start command from the project root:
@@ -124,3 +136,4 @@ Expected output:
 - The default generated application listens on port `3000` during `pnpm dev`.
 - The default generated application exposes `/health` and `/hello`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
+- `fluo new --print-plan` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, or initializing git.

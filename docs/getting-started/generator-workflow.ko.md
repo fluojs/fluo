@@ -53,6 +53,20 @@ fluo g request-dto <feature> <name> [--target-directory <path>] [--force] [--dry
 | `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
 
+## Dry-run Preview
+
+공유 작업공간이나 이미 손으로 수정한 생성 슬라이스를 바꾸기 전에 `--dry-run`을 사용하세요:
+
+```bash
+fluo generate service Billing --dry-run
+fluo g request-dto billing CreateInvoice --target-directory ./src --dry-run
+fluo g controller Billing --force --dry-run
+```
+
+Dry-run 모드는 `Dry run: no files were written.`를 출력한 뒤 각 예정 파일 동작을 나열합니다. 가능한 동작에는 `CREATE`, `SKIP`, `OVERWRITE`, `UNCHANGED`, `MODULE-CREATE`, `MODULE-UPDATE`, `MODULE-UNCHANGED`가 포함됩니다. Preview는 실제 실행과 같은 validation, target-directory 해석, request DTO feature-target 파싱, `--force` overwrite planning을 사용하지만 디렉터리를 만들거나, 생성 파일을 쓰거나, 모듈을 갱신하지 않습니다.
+
+자동 등록 생성기는 dry-run 중에도 module plan을 해석합니다. `module`, `request-dto`, `response-dto`처럼 파일만 생성하는 생성기도 파일 동작을 보고하며, parent-module wiring은 호출자가 직접 처리해야 합니다.
+
 ## Generator Collections
 
 `fluo generate`는 현재 결정적인 단일 collection인 `@fluojs/cli/builtin`만 discovery합니다. 이 collection은 `@fluojs/cli`에 함께 포함되며, 위에 나열된 generator metadata와 CLI help output, option schema, alias, wiring behavior, test의 기준입니다.
