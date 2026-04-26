@@ -64,6 +64,28 @@ try {
 - `materialize(value, Target)` builds a typed instance and validates it recursively
 - `validate(instance, Target)` only validates an already-created value
 
+`materialize()` copies safe own enumerable properties from plain input objects,
+applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
+fields. It preserves the request-pipeline contract that transports or binders own
+source selection and scalar conversion before validation runs.
+
+### Validation issue shape
+
+`DtoValidationError.issues` is a stable DTO for request-pipeline error details:
+
+```ts
+type ValidationIssue = {
+  code: string;
+  field?: string;
+  message: string;
+  source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
+};
+```
+
+Nested DTOs use dot paths and collection indexes, such as `address.city` or
+`items[0].name`. HTTP bindings attach `source` when the rule came from request
+metadata; standalone validation and Standard Schema issues may leave it unset.
+
 ### Mapped DTO helpers
 
 ```ts
@@ -100,9 +122,13 @@ class RestrictedUserDto {
 
 ## Public API
 
-- **Validator engine**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`
-- **Core decorators**: `IsString`, `IsNumber`, `IsBoolean`, `IsEmail`, `IsUrl`, `ValidateNested`, `ValidateIf`, `IsOptional`, `ValidateClass`
+- **Validator engine**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`, `Validator`
+- **Core decorators**: `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt`, `IsDefined`, `IsOptional`, `ValidateNested`, `ValidateIf`, `Validate`, `ValidateClass`
+- **String and network decorators**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsDateString`, `IsJSON`, `IsJWT`, `IsNumberString`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
+- **Number and date decorators**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`
+- **Array decorators**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
 - **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
+- **Standard Schema contract**: `StandardSchemaV1Like` for typing `ValidateClass(...)` schemas
 - **Validation flow**: `materialize()` for hydration + validation, `validate()` for validation-only checks
 
 ## Related Packages

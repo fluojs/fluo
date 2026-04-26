@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { DefaultValidator } from './validation.js';
 import { DtoValidationError } from './errors.js';
 import { ArrayUnique, IsDateString, IsEmail, IsNotEmpty, MinLength, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import type { StandardSchemaV1Like } from './index.js';
 
 describe('DefaultValidator', () => {
   it('validates basic rules without HTTP bindings', async () => {
@@ -707,6 +708,48 @@ describe('DefaultValidator', () => {
       validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
     ).rejects.toMatchObject({
       issues: expect.arrayContaining([expect.objectContaining({ field: 'email' })]),
+    });
+  });
+
+  it('accepts the public StandardSchemaV1Like type for class-level DTO validation', async () => {
+    const schema: StandardSchemaV1Like<{ email: string }> = {
+      '~standard': {
+        validate: async (value) => {
+          if (
+            typeof value === 'object'
+            && value !== null
+            && 'email' in value
+            && typeof value.email === 'string'
+            && value.email === 'hello@fluo.dev'
+          ) {
+            return { value: { email: value.email } };
+          }
+
+          return {
+            issues: [
+              {
+                message: 'email must match the public schema contract',
+                path: ['email'],
+              },
+            ],
+          };
+        },
+        vendor: 'test',
+        version: 1,
+      },
+    };
+
+    @ValidateClass(schema)
+    class CreateUserDto {
+      email = '';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(
+      validator.validate(Object.assign(new CreateUserDto(), { email: 'bad' }), CreateUserDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_FIELD', field: 'email', message: 'email must match the public schema contract' }],
     });
   });
 

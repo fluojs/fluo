@@ -3,6 +3,12 @@ import type { CustomClassValidator } from '@fluojs/core/internal';
 
 import type { ValidationIssue } from './types.js';
 
+/**
+ * Standard Schema v1-compatible validator accepted by `ValidateClass`.
+ *
+ * @typeParam Input Input DTO shape consumed by the schema validator.
+ * @typeParam Output Output DTO shape produced by the schema validator.
+ */
 export type StandardSchemaV1Like<Input = unknown, Output = Input> = StandardSchemaV1<Input, Output>;
 
 type StandardSchemaPathSegmentLike = StandardSchemaV1.PathSegment;
@@ -45,6 +51,12 @@ function normalizeCode(code: string | undefined, fallback: string): string {
   return code.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase() || fallback;
 }
 
+/**
+ * Detect whether a value implements the Standard Schema v1 contract.
+ *
+ * @param value Candidate schema value supplied to validation decorators.
+ * @returns `true` when the candidate exposes a Standard Schema v1 validator.
+ */
 export function isStandardSchemaLike(value: unknown): value is StandardSchemaV1Like {
   if ((typeof value !== 'object' && typeof value !== 'function') || value === null) {
     return false;
@@ -107,6 +119,12 @@ function isStandardSchemaFailureResult(
   return typeof result === 'object' && result !== null && 'issues' in result;
 }
 
+/**
+ * Adapt a Standard Schema validator to fluo class-level validation.
+ *
+ * @param schema Standard Schema-compatible validator definition.
+ * @returns A class validator that reports normalized validation issues.
+ */
 export function createClassValidatorFromStandardSchema(schema: StandardSchemaV1Like): CustomClassValidator {
   return async (value: unknown) => {
     const result = await schema['~standard'].validate(value);

@@ -62,6 +62,28 @@ console.log(user.name); // "Ko"
 - **`materialize<T>(value, target)`**: **입력 처리**에 가장 적합합니다. plain 객체를 받아 대상 클래스의 인스턴스를 생성하고, 값을 복사하며, 중첩된 DTO를 재귀적으로 처리한 후 모든 검증 규칙을 실행합니다.
 - **`validate(instance, target)`**: **기존 객체 확인**에 적합합니다. 이미 생성된 인스턴스에 대해 검증 규칙만 실행합니다. 타입 변환이나 중첩된 객체의 실체화는 수행하지 않습니다.
 
+`materialize()`는 plain 입력 객체의 안전한 own enumerable 속성을 복사하고,
+DTO 바인딩 메타데이터를 적용한 뒤 `@ValidateNested(...)` 필드를 재귀적으로
+실체화합니다. 어떤 요청 소스를 선택하고 스칼라 값을 변환할지는 transport 또는
+binder가 검증 전에 담당한다는 request-pipeline 계약을 유지합니다.
+
+### 검증 이슈 형태
+
+`DtoValidationError.issues`는 request-pipeline 오류 상세에 사용하는 안정적인 DTO입니다.
+
+```ts
+type ValidationIssue = {
+  code: string;
+  field?: string;
+  message: string;
+  source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
+};
+```
+
+중첩 DTO는 `address.city`, `items[0].name` 같은 dot path와 collection index를
+사용합니다. HTTP 바인딩에서 온 규칙은 `source`를 붙이며, standalone validation이나
+Standard Schema 이슈에서는 값이 없을 수 있습니다.
+
 ### Mapped Types (Pick, Omit, Partial)
 
 모든 검증 데코레이터와 바인딩 메타데이터를 보존하면서 새로운 DTO 클래스를 파생합니다.
@@ -121,9 +143,13 @@ class UserDto {
 
 ## 공개 API
 
-- **검증 엔진**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`
-- **핵심 데코레이터**: `IsString`, `IsNumber`, `IsBoolean`, `IsEmail`, `IsUrl`, `ValidateNested`, `ValidateIf`, `IsOptional`, `ValidateClass`
+- **검증 엔진**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`, `Validator`
+- **핵심 데코레이터**: `IsString`, `IsNumber`, `IsBoolean`, `IsDate`, `IsArray`, `IsObject`, `IsEnum`, `IsInt`, `IsDefined`, `IsOptional`, `ValidateNested`, `ValidateIf`, `Validate`, `ValidateClass`
+- **문자열 및 네트워크 데코레이터**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsDateString`, `IsJSON`, `IsJWT`, `IsNumberString`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
+- **숫자 및 날짜 데코레이터**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`
+- **배열 데코레이터**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
 - **Mapped DTO 헬퍼**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
+- **Standard Schema 계약**: `ValidateClass(...)` 스키마를 타입 지정하기 위한 `StandardSchemaV1Like`
 - **검증 흐름**: 실체화 및 검증을 위한 `materialize()`, 단순 검증을 위한 `validate()`
 
 ## 관련 패키지
