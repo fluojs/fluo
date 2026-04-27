@@ -33,7 +33,7 @@ const transport = createSlackWebhookTransport({
 });
 ```
 
-표준 `fetch` API에 의존하므로 이 트랜스포트는 Node.js 18+, Bun, Deno, Cloudflare Workers에서 별도 어댑터 없이 동작합니다.
+표준 `fetch` API에 의존하므로 이 트랜스포트는 저장소의 Node.js 20+ baseline, Bun, Deno, Cloudflare Workers에서 별도 어댑터 없이 동작합니다.
 
 ## 17.2 Registering the Chat Modules
 
@@ -201,8 +201,8 @@ async alertOps(event: OrderPlacedEvent) {
 채팅 연동은 웹훅 URL 만료, 권한 변경, 외부 서비스 장애로 중단될 수 있습니다. 상태 스냅샷을 운영 지표와 알림에 연결해 조기에 감지합니다. 이 정보를 주기적으로 확인하면 알림이 필요한 순간에야 채널 장애를 발견하는 상황을 줄일 수 있습니다.
 
 ```typescript
-const slackStatus = await createSlackPlatformStatusSnapshot(slackService);
-if (!slackStatus.isReady) {
+const slackStatus = slackService.createPlatformStatusSnapshot();
+if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
 }
 ```

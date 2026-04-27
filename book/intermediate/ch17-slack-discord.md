@@ -33,7 +33,7 @@ const transport = createSlackWebhookTransport({
 });
 ```
 
-Because it depends on the standard `fetch` API, this transport works in Node.js 18+, Bun, Deno, and Cloudflare Workers without a separate adapter.
+Because it depends on the standard `fetch` API, this transport works in the repository's Node.js 20+ baseline, Bun, Deno, and Cloudflare Workers without a separate adapter.
 
 ## 17.2 Registering the Chat Modules
 
@@ -203,8 +203,8 @@ The built-in webhook transports are designed around failure patterns seen in pro
 Chat integrations can stop working because webhook URLs expire, permissions change, or external services fail. Connect status snapshots to operational metrics and alerts so you can detect issues early.
 
 ```typescript
-const slackStatus = await createSlackPlatformStatusSnapshot(slackService);
-if (!slackStatus.isReady) {
+const slackStatus = slackService.createPlatformStatusSnapshot();
+if (slackStatus.readiness.status !== 'ready') {
   metrics.increment('notifications.slack.offline');
 }
 ```

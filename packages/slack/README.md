@@ -126,6 +126,7 @@ Behavioral contract notes:
 
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
+- `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
 
 ### Integration with `@fluojs/notifications`
