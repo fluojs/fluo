@@ -78,6 +78,7 @@ export class CronLifecycleService
 {
   private readonly tasks = new Map<string, RuntimeTaskState>();
   private readonly activeTasks = new Set<Promise<void>>();
+  private readonly runningDistributedLockKeys = new Set<string>();
   private readonly distributedLocks: CronDistributedLockManager;
   private readonly taskRunner: CronTaskRunner;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
@@ -427,15 +428,7 @@ export class CronLifecycleService
   }
 
   private getRunningDistributedLockKeys(): ReadonlySet<string> {
-    const lockKeys = new Set<string>();
-
-    for (const task of this.tasks.values()) {
-      if (task.running && this.shouldUseDistributedExecution(task.descriptor)) {
-        lockKeys.add(task.descriptor.lockKey);
-      }
-    }
-
-    return lockKeys;
+    return new Set(this.runningDistributedLockKeys);
   }
 
   private registerDecoratorTasks(): void {
@@ -607,6 +600,7 @@ export class CronLifecycleService
     }
 
     const lockRenewalMonitor = this.distributedLocks.startLockRenewalMonitor(descriptor);
+    this.runningDistributedLockKeys.add(descriptor.lockKey);
 
     try {
       await this.executeTask(descriptor, taskState, async () => {
@@ -616,6 +610,7 @@ export class CronLifecycleService
     } finally {
       lockRenewalMonitor.stop();
       await this.distributedLocks.releaseLock(descriptor);
+      this.runningDistributedLockKeys.delete(descriptor.lockKey);
     }
   }
 
