@@ -1332,6 +1332,45 @@ describe('@fluojs/event-bus', () => {
       expect(shutdownResolved).toBe(true);
     });
 
+    it('records transport close failures in the lifecycle status snapshot', async () => {
+      const loggerEvents: string[] = [];
+      const transport = {
+        async close() {
+          throw new Error('close failed');
+        },
+        async publish(_channel: string, _payload: unknown) {},
+        async subscribe(_channel: string, _handler: (payload: unknown) => Promise<void>) {},
+      } satisfies EventBusTransport;
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [EventBusModule.forRoot({ transport })],
+      });
+
+      const app = await bootstrapApplication({
+        logger: createLogger(loggerEvents),
+        rootModule: AppModule,
+      });
+      const service = await app.container.resolve(EventBusLifecycleService);
+
+      await expect(closeApplication(app)).resolves.toBeUndefined();
+
+      expect(loggerEvents.some((event) => event.includes('EventBusTransport failed to close.'))).toBe(true);
+      expect(service.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          lifecycleState: 'failed',
+          transportCloseFailures: 1,
+          transportConfigured: true,
+        },
+        health: {
+          status: 'unhealthy',
+        },
+        readiness: {
+          status: 'not-ready',
+        },
+      });
+    });
+
     it('does not call transport when no transport is configured (backward compat)', async () => {
       class EventStore {
         calls = 0;
