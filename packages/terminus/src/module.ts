@@ -135,6 +135,52 @@ function createPlatformReadinessDiagnostic(readiness: PlatformReadinessReport): 
   };
 }
 
+function createPlatformDiagnosticCollisionKey(
+  diagnosticKey: string,
+  seenKeys: ReadonlySet<string>,
+): string {
+  const baseKey = `${diagnosticKey}-duplicate-key-error`;
+
+  if (!seenKeys.has(baseKey)) {
+    return baseKey;
+  }
+
+  let suffix = 2;
+  let candidate = `${baseKey}-${String(suffix)}`;
+
+  while (seenKeys.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseKey}-${String(suffix)}`;
+  }
+
+  return candidate;
+}
+
+function appendPlatformDiagnostic(
+  entries: Record<string, HealthIndicatorState>,
+  existingKeys: ReadonlySet<string>,
+  diagnosticKey: string,
+  diagnostic: HealthIndicatorState | undefined,
+): void {
+  if (diagnostic === undefined) {
+    return;
+  }
+
+  if (!existingKeys.has(diagnosticKey) && !(diagnosticKey in entries)) {
+    entries[diagnosticKey] = diagnostic;
+    return;
+  }
+
+  const collisionKey = createPlatformDiagnosticCollisionKey(diagnosticKey, new Set([
+    ...existingKeys,
+    ...Object.keys(entries),
+  ]));
+  entries[collisionKey] = {
+    message: `Platform diagnostic key "${diagnosticKey}" collided with an existing health result key.`,
+    status: 'down',
+  };
+}
+
 function withPlatformDiagnostics(
   report: HealthCheckReport,
   health: PlatformHealthReport,
@@ -143,14 +189,10 @@ function withPlatformDiagnostics(
   const platformDiagnostics: Record<string, HealthIndicatorState> = {};
   const healthDiagnostic = createPlatformHealthDiagnostic(health);
   const readinessDiagnostic = createPlatformReadinessDiagnostic(readiness);
+  const existingKeys = new Set(Object.keys(report.details));
 
-  if (healthDiagnostic !== undefined) {
-    platformDiagnostics['fluo-platform-health'] = healthDiagnostic;
-  }
-
-  if (readinessDiagnostic !== undefined) {
-    platformDiagnostics['fluo-platform-readiness'] = readinessDiagnostic;
-  }
+  appendPlatformDiagnostic(platformDiagnostics, existingKeys, 'fluo-platform-health', healthDiagnostic);
+  appendPlatformDiagnostic(platformDiagnostics, existingKeys, 'fluo-platform-readiness', readinessDiagnostic);
 
   const platformDiagnosticKeys = Object.keys(platformDiagnostics);
 
