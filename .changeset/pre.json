@@ -51,6 +51,27 @@
     "@fluojs-internal/tooling-vitest": "0.0.0"
   },
   "changesets": [
-    "beta-2-release"
+    "beta-2-release",
+    "bun-adapter-docs-conformance",
+    "cache-manager-ownership-reset",
+    "clean-metrics-telemetry",
+    "cqrs-event-contracts",
+    "deno-https-portability",
+    "di-request-scope-provider-validation",
+    "email-queue-boundary",
+    "fastify-portability-stream-edge",
+    "graphql-resolver-lifecycle-contracts",
+    "microservices-transport-abort-contracts",
+    "mongoose-transaction-shutdown-docs",
+    "nodejs-adapter-docs-tsdoc",
+    "openapi-schema-surface",
+    "preserve-cron-shutdown-locks",
+    "recover-lane-2026-04-27-metadata",
+    "runtime-lifecycle-health-readiness",
+    "slack-lifecycle-tutorial-contracts",
+    "studio-artifact-validation",
+    "terminus-diagnostics-health-regressions",
+    "testing-module-identity-contracts",
+    "throttler-failure-learning-docs"
   ]
 }
