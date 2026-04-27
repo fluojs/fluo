@@ -73,6 +73,33 @@ function getOwnStandardMetadataBagForEra(target: object, activeMetadataSymbol: s
   return undefined;
 }
 
+function getInheritedStandardMetadataBag(target: object, activeMetadataSymbol: symbol): StandardMetadataBag | undefined {
+  let prototype = Object.getPrototypeOf(target) as object | null;
+
+  while (prototype) {
+    const inheritedMetadata = getOwnStandardMetadataBagForEra(prototype, activeMetadataSymbol);
+
+    if (inheritedMetadata) {
+      return inheritedMetadata;
+    }
+
+    prototype = Object.getPrototypeOf(prototype) as object | null;
+  }
+
+  return undefined;
+}
+
+function overlayStandardMetadataBag(
+  ownMetadata: StandardMetadataBag,
+  inheritedMetadata: StandardMetadataBag | undefined,
+): StandardMetadataBag {
+  if (!inheritedMetadata) {
+    return ownMetadata;
+  }
+
+  return Object.create(inheritedMetadata, Object.getOwnPropertyDescriptors(ownMetadata)) as StandardMetadataBag;
+}
+
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -186,8 +213,9 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
 /**
  * Reads the standard metadata bag owned directly by a constructor.
  *
- * This preserves own-only inheritance semantics for packages that manually walk
- * constructor chains while still honoring mixed native/fallback metadata eras.
+ * Own current/native metadata wins over own fallback-era metadata. When the
+ * constructor owns neither era, this helper returns `undefined`; it does not
+ * inspect inherited constructors.
  *
  * @param constructor Constructor whose own metadata bag should be inspected.
  * @returns The own metadata bag when present, otherwise `undefined`.
@@ -197,36 +225,43 @@ export function getOwnStandardConstructorMetadataBag(constructor: Function): Sta
 }
 
 /**
- * Reads the standard metadata bag stored directly on a target.
+ * Reads the effective standard metadata bag for a target.
+ *
+ * Lookup prefers the target's own current/native metadata bag, then the target's
+ * own fallback-era bag, then inherited bags using the same per-object era order.
+ * When an own current/native bag exists alongside inherited metadata from either
+ * era, the returned bag preserves own-key precedence while allowing property
+ * lookup to fall through to inherited records.
  *
  * @param target Target object that may own standard metadata.
  * @returns The metadata bag when present, otherwise `undefined`.
  */
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
   const activeMetadataSymbol = getActiveMetadataSymbol();
-  const ownMetadata = getOwnStandardMetadataBagForEra(target, activeMetadataSymbol);
+  const ownActiveMetadata = getOwnStandardMetadataBagFromSymbol(target, activeMetadataSymbol);
 
-  if (ownMetadata) {
-    return ownMetadata;
+  if (ownActiveMetadata) {
+    return overlayStandardMetadataBag(ownActiveMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
   }
 
-  let prototype = Object.getPrototypeOf(target) as object | null;
+  if (activeMetadataSymbol !== fallbackMetadataSymbol) {
+    const ownFallbackMetadata = getOwnStandardMetadataBagFromSymbol(target, fallbackMetadataSymbol);
 
-  while (prototype) {
-    const inheritedMetadata = getOwnStandardMetadataBagForEra(prototype, activeMetadataSymbol);
-
-    if (inheritedMetadata) {
-      return inheritedMetadata;
+    if (ownFallbackMetadata) {
+      return ownFallbackMetadata;
     }
-
-    prototype = Object.getPrototypeOf(prototype) as object | null;
   }
 
-  return undefined;
+  return getInheritedStandardMetadataBag(target, activeMetadataSymbol);
 }
 
 /**
- * Reads the standard metadata bag stored on a target's constructor.
+ * Reads the effective standard metadata bag stored on a target's constructor.
+ *
+ * Constructor lookup delegates to {@link getStandardMetadataBag}, so it uses the
+ * constructor's own current/native bag, own fallback-era bag, then inherited
+ * constructor bags. Own current/native records retain precedence while inherited
+ * records remain visible through property lookup.
  *
  * @param target Instance or prototype whose constructor metadata should be inspected.
  * @returns The constructor metadata bag when present, otherwise `undefined`.

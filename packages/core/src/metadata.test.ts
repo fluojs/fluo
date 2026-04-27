@@ -864,6 +864,57 @@ describe('metadata helpers', () => {
     }
   });
 
+  it('reads inherited fallback-era metadata when the child owns native metadata', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+    const inheritedFallbackInjectionMetadata = new Map([['service', { optional: true, token: 'FALLBACK_LOGGER' }]]);
+    const inheritedFallbackBag: StandardMetadataBag = {
+      [standardMetadataKeys.injection]: inheritedFallbackInjectionMetadata,
+    };
+    const ownNativeBag: StandardMetadataBag = {
+      [standardMetadataKeys.controller]: { basePath: '/child-native' },
+    };
+
+    class BaseController {}
+    class ChildController extends BaseController {}
+
+    Object.defineProperty(BaseController, fallbackSymbol, {
+      configurable: true,
+      value: inheritedFallbackBag,
+    });
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+    Object.defineProperty(ChildController, nativeSymbol, {
+      configurable: true,
+      value: ownNativeBag,
+    });
+
+    try {
+      const metadataBag = getStandardMetadataBag(ChildController);
+
+      expect(metadataBag?.[standardMetadataKeys.controller]).toEqual({ basePath: '/child-native' });
+      expect(metadataBag?.[standardMetadataKeys.injection]).toBe(inheritedFallbackInjectionMetadata);
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        ChildController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/child-native' });
+      expect(getStandardConstructorMetadataMap(ChildController.prototype, standardMetadataKeys.injection)).toBe(
+        inheritedFallbackInjectionMetadata,
+      );
+      expect(getOwnStandardConstructorMetadataBag(ChildController)).toBe(ownNativeBag);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
+  });
+
   it('reads standard metadata bags and constructor-level records through Symbol.metadata', () => {
     const metadataSymbol = ensureMetadataSymbol();
     const injectionMetadata = new Map([['service', { optional: true, token: 'LOGGER' }]]);
