@@ -11,6 +11,7 @@ fluo를 위한 인프로세스(In-process) 이벤트 발행 및 구독 패키지
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
 - [공개 API 개요](#공개-api-개요)
+- [런타임별 및 통합 서브패스](#런타임별-및-통합-서브패스)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
 
@@ -104,13 +105,23 @@ class UserRegisteredEvent {
 ## 공개 API 개요
 
 ### 핵심 구성 요소
-- `EventBusModule`: 이벤트 버스 기능을 위한 기본 모듈입니다.
+- `EventBusModule.forRoot(...)`: 이벤트 버스 등록을 위한 기본 진입점입니다.
 - `EventBusLifecycleService`: 이벤트를 발행(`publish(event)`)하기 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
-- `EventBusModule.forRoot(...)`: in-process 이벤트 버스 구성을 설정합니다.
+- `EVENT_BUS`: 발행 facade를 위한 호환성 주입 토큰입니다.
+- `createEventBusPlatformStatusSnapshot(...)`: diagnostics와 health surface에서 사용하는 상태 스냅샷 헬퍼입니다.
 
 ### 인터페이스
 - `EventBusTransport`: 외부 트랜스포트 어댑터 구현을 위한 계약입니다.
+- `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
+
+## 런타임별 및 통합 서브패스
+
+| 관심사 | 서브패스 | 내보내는 항목 |
+| --- | --- | --- |
+| Redis Pub/Sub 트랜스포트 | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
+
+`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 트랜스포트는 shutdown 중 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, 호출자가 소유한 Redis 클라이언트를 disconnect하지 않습니다.
 
 ## 관련 패키지
 
