@@ -42,7 +42,7 @@ The biggest advantage of JWT is its stateless nature. In a traditional session b
 With JWT, the server only performs a cryptographic check that finishes in a few microseconds without a network call. This efficiency is crucial for high traffic APIs where latency is a key metric. By delegating state to the client, you can simplify infrastructure and improve overall system resilience. Statelessness also makes an application cloud native by default. As long as every server instance shares the same signing secret or public key, it does not matter which instance handles the request. This separation of server state from identity is essential in modern containerized and auto-scaling environments.
 
 ## 14.2 The @fluojs/jwt Package
-Fluo provides the dedicated `@fluojs/jwt` package, built for the transport agnostic, Standard-First era. This package handles the heavy work of token signing, token verification, and data extraction while following the standard Web Crypto API. Using the standard Web Crypto API makes Authentication logic easier to move across runtimes such as Node.js, Bun, and Deno, and reduces the risk of being tied to vendor-specific implementations. Because the package is transport agnostic, FluoBlog can start with HTTP and later reuse the same token model for WebSockets or RPC calls.
+Fluo provides the dedicated `@fluojs/jwt` package, built for the transport agnostic, Standard-First era. This package handles token signing, token verification, and data extraction behind an HTTP-independent API. Because the package is transport agnostic, FluoBlog can start with HTTP and later reuse the same token model for WebSockets or RPC calls.
 
 ### Core Philosophy: Principal Normalization
 One of Fluo's most powerful features is **Principal Normalization**. In real projects, different systems may use different naming conventions for claims. For example, one system may use `uid`, another may use `sub`, and a legacy system may use `userId`. These inconsistencies often lead to messy code full of conditionals just to extract a user's identity.
@@ -70,6 +70,7 @@ import { JwtModule } from '@fluojs/jwt';
 @Module({
   imports: [
     JwtModule.forRoot({
+      algorithms: ['HS256'],
       secret: 'your-very-secure-secret',
       issuer: 'fluoblog-api',
       audience: 'fluoblog-client',
@@ -93,6 +94,7 @@ import { ConfigService } from '@fluojs/config';
     JwtModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        algorithms: ['HS256'],
         // Use a strong, environment-specific secret key.
         secret: config.get('JWT_SECRET'),
         issuer: 'fluoblog-api',
@@ -107,9 +109,9 @@ export class AuthModule {}
 ```
 
 ### Advanced Configuration Options
-Beyond a simple secret key, `JwtModule` supports a broad set of configuration options. You can define multiple issuers, customize clock skew for verification, or provide custom signers for specific use cases. For example, you might allow a longer clock skew for tokens from mobile devices whose clocks may not be synchronized, preventing unnecessary unauthenticated errors for users.
+Beyond a simple secret key, `JwtModule` supports explicit configuration for algorithms, issuer, audience, clock skew, key material, JWKS lookup, and token lifetimes. Always provide at least one supported algorithm, and keep `accessTokenTtlSeconds` as a positive finite number so misconfiguration fails before a token is issued.
 
-Fluo keeps the default experience simple and safe while still giving you the fine-grained control needed for real-world exceptions. You can also set different algorithms per environment, such as `HS256` for local development and `RS256` with certificates in production. This flexibility is built into the core architecture of the Module. You can even define different TTL (Time To Live) settings by token type, such as extremely short lived tokens for one-time jobs or longer lived access tokens for trusted internal services.
+Fluo keeps the default experience simple and safe while still giving you the fine-grained control needed for real-world exceptions. You can also set different supported algorithms per environment, such as `HS256` for local development and `RS256` with certificates in production. For asymmetric or multi-key setups, use `privateKey` / `publicKey`, `keys`, or JWKS options rather than leaving algorithm or key selection implicit.
 
 ## 14.4 Signing Tokens
 After configuration is complete, you can inject `DefaultJwtSigner` to create tokens during login. The signer handles the complex encoding and signing logic, so service code can focus on the payload that represents the user's identity.
@@ -252,12 +254,12 @@ In a multi-tenant environment where a single Fluo application serves multiple or
 This sophistication makes Fluo a professional choice for SaaS backends. You can start simply with a single global secret and grow into a complex multi-provider, multi-tenant Authentication system without leaving the Fluo ecosystem. The `JwtPrincipal` normalization discussed earlier is especially powerful here because it gives multi-tenant business logic a stable interface no matter how many identity sources you integrate.
 
 ### Cryptographic Agility
-As cryptographic standards evolve, applications must evolve with them. Fluo's `@fluojs/jwt` is designed with **Cryptographic Agility** in mind, allowing you to rotate signing algorithms and keys without downtime. You can configure `JwtModule` to support multiple active verification keys at the same time. This lets you keep accepting valid existing tokens signed with an old key during a transition period while issuing new tokens with a newer, stronger algorithm, such as moving from `HS256` to `EdDSA`.
+As cryptographic standards evolve, applications must evolve with them. Fluo's `@fluojs/jwt` is designed with **Cryptographic Agility** in mind, allowing you to rotate supported signing algorithms and keys without downtime. You can configure `JwtModule` with multiple active key entries at the same time. This lets you keep accepting valid existing tokens signed with an old key during a transition period while issuing new tokens with a supported stronger algorithm, such as moving from `HS256` to `RS256`.
 
 This zero-downtime key rotation is a hallmark of resilient enterprise grade systems. It ensures security upgrades do not become a source of user frustration. When the architecture anticipates the need for change, it lowers long term maintenance cost and protects users.
 
 ### Auth in a Serverless World
-In serverless environments such as AWS Lambda or Cloudflare Workers, cold starts and execution time matter a lot. Traditional Authentication libraries that rely on heavy native dependencies or synchronous file I/O can severely hurt performance. Fluo's JWT package is lightweight and built on the native Web Crypto API, making it well suited to these environments. It minimizes cold start overhead and runs verification in a tiny fraction of the time required by legacy libraries.
+In serverless environments such as AWS Lambda, cold starts and execution time matter a lot. Traditional Authentication libraries that rely on heavy dependency chains or synchronous file I/O can hurt performance. Fluo's JWT package keeps the API small and transport independent, so the same signing and verification contract can sit behind different HTTP adapters without tying business logic to request transport details.
 
 This performance advantage becomes more visible as scale grows. When you handle millions of requests, every millisecond saved on every Authentication check translates into significant cost savings and a smoother user experience. Whether you run on a large Kubernetes cluster or a small edge worker, Fluo's Authentication logic stays light, fast, and safe.
 
@@ -267,12 +269,12 @@ Chapter 15 will cover Guards in detail, but it is useful to understand how JWT A
 This principal centered approach lets some routes remain public, where user information is optional, while other routes are strictly protected. By centralizing this logic, you can ensure Authentication is handled consistently across the whole API surface, and Controllers become simpler because they only need to trust the verified principal instead of the raw request object. This pattern encourages the Secure by Default principle and prevents developers from accidentally exposing sensitive data through unprotected endpoints.
 
 ### Debugging JWT Issues
-When issues occur, such as a client reporting unexpected 401 errors, proper debugging tools are essential. When running in development mode, Fluo's `JwtModule` provides detailed internal logs. You can see the exact reason token verification failed, such as an expired timestamp, signature mismatch, or invalid issuer.
+When issues occur, such as a client reporting unexpected 401 errors, proper debugging tools are essential. Fluo's JWT errors distinguish expired tokens, invalid tokens, and configuration failures, so application-level logging can record the failure category without trusting unverified token contents.
 
 For client side debugging, tools such as `jwt.io` are useful for inspecting token payloads, but do not use them with sensitive production data. On the server side, you can use Fluo middleware to log the incoming request's `JwtPrincipal` and confirm that claim mapping works as expected. This transparency reduces the "magic" often associated with Authentication and helps teams resolve issues quickly.
 
 ### Integrating with External Identity Providers
-If your organization uses an external identity provider (IdP) such as Auth0, Okta, or AWS Cognito, Fluo's JWT Module becomes the main integration point. Most modern IdPs issue standard JWTs that can be verified with a JSON Web Key Set (JWKS). Fluo provides a built-in `JwksVerifier` that automatically fetches and caches public keys from the IdP and handles key rotation smoothly behind the scenes.
+If your organization uses an external identity provider (IdP) such as Auth0, Okta, or AWS Cognito, Fluo's JWT Module becomes the main integration point. Most modern IdPs issue standard JWTs that can be verified with a JSON Web Key Set (JWKS). Configure `jwksUri` on `DefaultJwtVerifier` or `JwtModule` options to fetch and cache public keys by `kid` with a bounded request timeout.
 
 This sophistication makes Fluo a good fit for SaaS backends. You can start simply with a single global secret and grow into a complex multi-provider, multi-tenant Authentication system without leaving the Fluo ecosystem. The `JwtPrincipal` normalization discussed earlier matters here because it can map complex proprietary claims from an IdP into a stable form that Fluo services can understand. You get the security of major identity providers together with the developer experience of a Standard-First framework.
 
@@ -292,7 +294,7 @@ Combining these Modules creates an API boundary that can respond to both acciden
 ### Handling Logout and Session Invalidation
 Logout in a stateless JWT environment differs from traditional sessions. Because the server does not store state, it cannot simply "delete" a session. The primary way to log users out is to tell the client to delete its tokens. For true security, however, you must invalidate refresh tokens in the database or Redis store.
 
-By removing refresh tokens, you can ensure the user cannot obtain new tokens after the current token expires, even if a short lived access token remains valid for a few more minutes. This layered approach to logout provides a high level of security without sacrificing the performance benefits of statelessness. Fluo's `JwtModule` provides hooks that make this invalidation logic easy to implement inside `AuthService`.
+By removing refresh tokens from the configured refresh-token store, you can ensure the user cannot obtain new tokens after the current token expires, even if a short lived access token remains valid for a few more minutes. This layered approach to logout provides a high level of security without sacrificing the performance benefits of statelessness.
 
 ### Token Expiration and User Experience
 Managing token expiration is a delicate balance between security and user experience. If tokens expire too quickly, users will become frustrated by frequent reauthentication. If they last too long, the risk of misuse grows. Fluo's dual token pattern, access plus refresh, is the industry's answer to this dilemma.
@@ -317,12 +319,12 @@ In Fluo, this is handled through **Guards** and **metadata**, which we will exam
 ### Handling Token Replay Attacks
 A token replay attack occurs when an attacker intercepts a valid JWT and tries to reuse it after the legitimate user's session has ended. Short expiration times help reduce this risk, but you can further strengthen security by using a **Nonce**, a one-time unique number, in the token payload. By tracking these Nonces in a fast data store, the server can ensure each token is used only once and only within its intended context.
 
-Fluo's Authentication utilities provide built-in support for Nonce management, making these advanced security measures easy to implement without complex boilerplate. This level of protection is especially important for high-value actions such as financial transactions or administrator setting changes. It prevents even a perfectly valid signed token from being replayed by an attacker and causing unintended side effects.
+Track these nonces in application storage when a route needs one-time-use semantics. This level of protection is especially important for high-value actions such as financial transactions or administrator setting changes. It prevents even a perfectly valid signed token from being replayed by an attacker and causing unintended side effects.
 
 ### The Role of Encryption (JWE)
 Standard JWS, a signed JWT, provides integrity, but sometimes you need **Confidentiality**, where even the token holder cannot read the contents. This is where **JSON Web Encryption (JWE)** comes in. JWE encrypts the payload so only parties with the correct decryption key can see the internal data.
 
-With Fluo's flexible architecture, you can wrap a signed JWT inside a JWE envelope for highly sensitive use cases. This nested JWT approach provides both integrity through signing and confidentiality through encryption. The extra cryptographic work adds some performance overhead, but it is essential in industries such as healthcare or finance where personally identifiable information (PII) must always be protected with the highest level of rigor.
+If your application needs confidentiality, handle JWE at the application or identity-provider boundary before handing the signed JWT to Fluo verification. This nested JWT approach can provide both integrity through signing and confidentiality through encryption, but it is separate from the current `@fluojs/jwt` signing and verification surface.
 
 ### Token Size and Performance Trade-offs
 As you add more claims, Nonces, and potentially encryption to JWTs, token size grows. Larger tokens consume more bandwidth on every request and require more CPU cycles for encoding, decoding, and cryptographic verification. In APIs with frequent calls, these small costs can accumulate into a meaningful performance bottleneck.
@@ -340,14 +342,14 @@ Managing the token lifecycle, from issuance to expiration and final revocation, 
 When you treat tokens not as static strings but as dynamic entities with a beginning, middle, and end, the operational boundary of the Authentication system becomes clear. This perspective keeps security from becoming an afterthought and manages issuance, verification, and revocation as a single flow.
 
 ### Handling Large Payloads with Token Compression
-As discussed earlier, token size is an important performance factor. But sometimes a JWT must include a large amount of metadata. For these scenarios, Fluo supports **Token Compression**. By using algorithms such as `zlib` or `deflate` before signing and encoding, you can significantly reduce the size of the final JWT string.
+As discussed earlier, token size is an important performance factor. If a JWT begins to carry a large amount of metadata, first remove claims that can be loaded from server-side storage or cache. Keep compression or envelope transformations at an application boundary so every verifier in the system knows exactly which token format it accepts.
 
-Compression adds some CPU overhead to encoding and decoding, but the network bandwidth savings often outweigh that cost, especially for users on slow mobile networks. With Fluo's `JwtModule`, compression can be enabled with a single configuration flag, providing a smooth way to handle complex payloads without sacrificing the performance of a stateless architecture. This is another example of how Fluo anticipates the practical needs of large production applications.
+Compression adds CPU overhead to encoding and decoding and can complicate interoperability. Treat it as an explicit protocol decision rather than a hidden JWT module option.
 
 ### Security Headers and Token Protection
 The security of JWT based Authentication does not end with the token itself. You also need to consider how the browser handles requests. Security headers such as `Strict-Transport-Security` (HSTS) ensure the browser communicates with the server only over encrypted channels, preventing accidental token leakage. The `X-Content-Type-Options: nosniff` header also prevents the browser from misinterpreting API responses, adding another defensive layer against potential attacks.
 
-Fluo provides dedicated Middleware for managing these security headers across the application. Configure these settings once in `AppModule`, and every API response becomes stronger against common web based attack vectors. A security hardened API looks at the entire request/response lifecycle, and Fluo helps you apply these industry practices consistently.
+Apply these headers through the HTTP adapter or middleware layer you use for the application. A security hardened API looks at the entire request/response lifecycle, not only at JWT verification.
 
 ### Token Security in Native Mobile Apps
 When building a mobile app with Fluo as the backend, token storage is fundamentally different from web browsers. Mobile does not have cookies or LocalStorage in the same sense. Instead, you should use platform native security features such as iOS **Keychain** or Android **EncryptedSharedPreferences**. These stores are protected at the hardware level and are specifically designed to protect sensitive credentials from unauthorized access.
@@ -367,12 +369,12 @@ But knowing who someone is is not enough. Now you need to use that identity to c
 ### Advanced: Handling Token Claims with Zod
 Fluo's `JwtPrincipal` provides a normalized view of common claims, but you often need to handle custom domain-specific data inside tokens. To preserve Fluo's Standard-First and type safe philosophy, it is a good idea to use **Zod** during verification to validate these custom claims. By defining a Zod schema for the token payload, you can ensure the application only processes tokens that meet strict data requirements.
 
-This Zod integration provides an additional defensive layer against malformed or malicious tokens. If a token contains invalid data, schema validation fails before business logic ever reaches the claims. This "Validate, Don't Parse" approach is a hallmark of modern TypeScript development and keeps the Authentication layer as safe as possible. Fluo's `JwtModule` makes it easy to attach these custom validation schemas, giving every token operation a clean, typed interface.
+This validation step provides an additional defensive layer against malformed or malicious custom claims. If a token contains invalid domain data, schema validation should fail before business logic relies on the claims. This "Validate, Don't Parse" approach is a hallmark of modern TypeScript development and keeps the Authentication layer as safe as possible.
 
 ### Performance Tuning: Caching Public Keys
-When using asymmetric signing (`RS256`), a Fluo application often needs to fetch public keys from an external JWKS endpoint. To prevent this from becoming a performance bottleneck or a Single Point of Failure, Fluo implements **automatic JWKS caching**. `JwksVerifier` stores fetched keys in a high performance in-memory cache, reducing the need for repeated network calls.
+When using asymmetric signing (`RS256`), a Fluo application often needs to fetch public keys from an external JWKS endpoint. To prevent this from becoming a performance bottleneck or a Single Point of Failure, Fluo implements **automatic JWKS caching**. `DefaultJwtVerifier` stores fetched keys in an in-memory cache, reducing the need for repeated network calls.
 
-You can customize cache duration and background refresh intervals to match your application's needs. For example, you can use a shorter cache time for highly sensitive services or a longer cache time for internal tools with lower security risk. This caching keeps the Authentication layer responsive even when it interacts with external identity providers over the internet. It is how the Authentication Module manages the realities of distributed systems.
+You can customize cache duration with `jwksCacheTtl` and bound outbound fetches with `jwksRequestTimeoutMs`. This caching keeps the Authentication layer responsive even when it interacts with external identity providers over the internet.
 
 ### Securing the Login Flow: Rate Limiting
 Even the strongest JWT implementation can be vulnerable to brute force attacks against the login endpoint. To protect FluoBlog users, always combine Authentication logic with **rate limiting**, which we will examine in detail in Chapter 16. By limiting login attempts per IP address or user account, you can effectively stop automated password guessing attempts.
@@ -380,12 +382,12 @@ Even the strongest JWT implementation can be vulnerable to brute force attacks a
 In Fluo, adding rate limiting to `AuthController` is as simple as adding a Decorator. This modular approach keeps security concerns separate while keeping them integrated. `AuthService` focuses on identity verification logic, while `ThrottlerGuard` focuses on protecting that logic from abuse. Together, they create a comprehensive security posture that is greater than the sum of its parts. This defense-in-depth strategy is essential for every production API.
 
 ### Identity Portability and Vendor Lock-in
-By building on standard JWT and the Web Crypto API, Fluo ensures that Authentication logic remains **portable**. If you decide to move an application from one cloud provider to another, or from one identity provider to another, the core Fluo code does not change. You are not trapped by proprietary SDKs or vendor-specific Authentication mechanisms.
+By building on standard JWT claims and transport-independent verification boundaries, Fluo keeps Authentication logic **portable**. If you decide to move an application from one cloud provider to another, or from one identity provider to another, the core Fluo code can keep the same signing and principal-normalization contract. You are not trapped by proprietary SDKs or vendor-specific Authentication mechanisms.
 
-This portability is a core value of the Fluo framework. Code should belong to your team's architectural decisions, not to a specific vendor. By following the Standard-First approach described in this chapter, you build systems that can adapt to the changing cloud industry. The key is making sure today's implementation does not narrow tomorrow's operational choices.
+This portability is a core value of the Fluo framework. Code should belong to your team's architectural decisions, not to a specific vendor. By following explicit JWT contracts and transport-independent auth boundaries, you build systems that can adapt to the changing cloud industry. The key is making sure today's implementation does not narrow tomorrow's operational choices.
 
 ### Auth Auditing and Compliance
-In many industries, keeping detailed audit logs of Authentication events is a legal requirement, such as for GDPR, HIPAA, or SOC2 compliance. Fluo's `JwtModule` provides hooks that can easily integrate with your organization's audit systems. You can record successful logins, failed attempts, token refreshes, and more, along with metadata such as IP addresses and user agents.
+In many industries, keeping detailed audit logs of Authentication events is a legal requirement, such as for GDPR, HIPAA, or SOC2 compliance. Record successful logins, failed attempts, token refreshes, and more in your application services, along with metadata such as IP addresses and user agents.
 
 Centralizing this logging inside a Fluo application creates a clear, auditable record of who is accessing data and when. This transparency is essential for maintaining user trust and meeting regulatory obligations. Security is not only a technical problem. It is also a question of accountability. Fluo lets you handle that accountability inside the system structure.
 
@@ -397,7 +399,7 @@ In non-browser environments such as mobile apps, you do not have the same concer
 ### Token Revocation Strategies: Beyond the Denylist
 A denylist is effective, but it can become very large in high traffic systems. An alternative is a **Versioned Token** strategy. Add a `version` claim to the JWT and store each user's current valid version in the database. Then you can invalidate all active tokens for that user simply by incrementing the version number.
 
-When a token is verified, `JwtVerifier` checks that the version in the claim matches the version in the database, or in a fast cache. This lets you revoke all of a user's sessions almost instantly after a password reset or security incident without tracking every individual token ID. Fluo's normalization layer makes it easy to add and check these version claims, providing a powerful tool for large scale session management.
+After `JwtVerifier` validates the signature and standard claims, application code can compare the version claim with the value in a database or fast cache. This lets you revoke all of a user's sessions almost instantly after a password reset or security incident without tracking every individual token ID.
 
 ### Designing for Federated Identity
 On the modern web, users often prefer "Sign in with Google" or GitHub instead of creating yet another password. This is called **Federated Identity**. By integrating with OAuth2 providers, a Fluo application can delegate initial Authentication to a trusted third party.

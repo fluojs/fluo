@@ -1,7 +1,8 @@
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { JwtConfigurationError } from '../errors.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
@@ -15,6 +16,72 @@ function decodeJwtHeader(token: string): Record<string, unknown> {
 }
 
 describe('DefaultJwtSigner', () => {
+  it('fails fast when no signing algorithms are configured', () => {
+    expect(() => new DefaultJwtSigner({ algorithms: [], secret: 'secret' })).toThrow(JwtConfigurationError);
+    expect(() => new DefaultJwtSigner({ algorithms: [], secret: 'secret' })).toThrow(
+      'JWT signer requires at least one allowed JWT algorithm.',
+    );
+  });
+
+  it('rejects runtime string and prototype-key signing algorithms', () => {
+    expect(() => new DefaultJwtSigner({ algorithms: ['none' as never], secret: 'secret' })).toThrow(
+      'JWT signer received unsupported JWT algorithm "none".',
+    );
+    expect(() => new DefaultJwtSigner({ algorithms: ['toString' as never], secret: 'secret' })).toThrow(
+      'JWT signer received unsupported JWT algorithm "toString".',
+    );
+  });
+
+  it('rejects non-positive access token ttl values before issuing a token', async () => {
+    const signer = new DefaultJwtSigner({
+      accessTokenTtlSeconds: 0,
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+
+    await expect(signer.signAccessToken({ sub: 'ttl-user' })).rejects.toThrow(JwtConfigurationError);
+    await expect(signer.signAccessToken({ sub: 'ttl-user' })).rejects.toThrow(
+      'JWT accessTokenTtlSeconds must be a positive finite number.',
+    );
+  });
+
+  it('rejects non-finite access token ttl values before issuing a token', async () => {
+    for (const accessTokenTtlSeconds of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const signer = new DefaultJwtSigner({
+        accessTokenTtlSeconds,
+        algorithms: ['HS256'],
+        secret: 'secret',
+      });
+
+      await expect(signer.signAccessToken({ sub: 'non-finite-ttl-user' })).rejects.toThrow(JwtConfigurationError);
+      await expect(signer.signAccessToken({ sub: 'non-finite-ttl-user' })).rejects.toThrow(
+        'JWT accessTokenTtlSeconds must be a positive finite number.',
+      );
+    }
+  });
+
+  it('preserves fractional access token ttl seconds in the exp claim', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-26T20:00:00.000Z'));
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const signer = new DefaultJwtSigner({
+        accessTokenTtlSeconds: 0.5,
+        algorithms: ['HS256'],
+        secret: 'secret',
+      });
+      const token = await signer.signAccessToken({ sub: 'fractional-ttl-user' });
+      const [, payloadSegment] = token.split('.');
+      const payload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as { exp: number; iat: number };
+
+      expect(payload.iat).toBe(now);
+      expect(payload.exp).toBe(now + 0.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('creates an access token that the verifier accepts (HS256)', async () => {
     const signer = new DefaultJwtSigner({
       accessTokenTtlSeconds: 120,
