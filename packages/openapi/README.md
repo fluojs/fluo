@@ -90,9 +90,11 @@ When `ui: true` is enabled, the generated `/docs` page references an exact `swag
 
 - `OpenApiModule`: Main entry point for OpenAPI integration.
 - `ApiTag`, `ApiOperation`, `ApiResponse`: Documentation decorators.
+- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: Explicit request-body and parameter documentation decorators that override inferred request documentation when names overlap.
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
 - `buildOpenApiDocument`: Programmatic document builder (low-level).
+- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), object/array constraints, examples/defaults, and read/write/deprecated annotations.
 
 ## Related Packages
 

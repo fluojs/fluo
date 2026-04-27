@@ -90,9 +90,11 @@ fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를
 
 - `OpenApiModule`: OpenAPI 통합을 위한 메인 엔트리 포인트.
 - `ApiTag`, `ApiOperation`, `ApiResponse`: 문서화 데코레이터.
+- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: 이름이 겹칠 때 추론된 요청 문서를 대체하는 명시적 요청 본문 및 파라미터 문서화 데코레이터.
 - `ApiBearerAuth`, `ApiSecurity`: 보안 요구사항 데코레이터.
 - `ApiExcludeEndpoint`: 특정 핸들러를 문서화에서 제외.
 - `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
+- `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다.
 
 ## 관련 패키지
 

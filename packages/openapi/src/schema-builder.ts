@@ -12,6 +12,11 @@ import {
 type OpenApiOperationMethod = Lowercase<HttpMethod>;
 
 /**
+ * JSON Schema primitive type names accepted by OpenAPI 3.1 schema objects.
+ */
+export type OpenApiSchemaPrimitiveType = 'array' | 'boolean' | 'integer' | 'null' | 'number' | 'object' | 'string';
+
+/**
  * OpenAPI `info` object emitted in the generated document.
  */
 export interface OpenApiInfoObject {
@@ -39,7 +44,7 @@ export interface OpenApiSecurityRequirementObject {
  */
 export interface OpenApiSchemaObject {
   $ref?: string;
-  type?: 'array' | 'boolean' | 'integer' | 'number' | 'object' | 'string';
+  type?: OpenApiSchemaPrimitiveType | readonly OpenApiSchemaPrimitiveType[];
   format?: string;
   description?: string;
   allOf?: OpenApiSchemaObject[];
@@ -54,11 +59,28 @@ export interface OpenApiSchemaObject {
   items?: OpenApiSchemaObject;
   required?: string[];
   enum?: unknown[];
+  const?: unknown;
+  default?: unknown;
+  example?: unknown;
+  examples?: unknown[];
   additionalProperties?: boolean | OpenApiSchemaObject;
+  deprecated?: boolean;
+  readOnly?: boolean;
+  writeOnly?: boolean;
+  nullable?: boolean;
   minimum?: number;
   maximum?: number;
+  exclusiveMinimum?: number | boolean;
+  exclusiveMaximum?: number | boolean;
+  multipleOf?: number;
   minLength?: number;
   maxLength?: number;
+  pattern?: string;
+  minItems?: number;
+  maxItems?: number;
+  uniqueItems?: boolean;
+  minProperties?: number;
+  maxProperties?: number;
 }
 
 /**
