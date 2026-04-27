@@ -4,6 +4,7 @@ import {
   type MetadataSource,
 } from '@fluojs/core';
 import {
+  getStandardMetadataBag as readStandardMetadataBag,
   metadataSymbol,
   type ControllerMetadata,
   type DtoFieldBindingMetadata,
@@ -304,7 +305,7 @@ export const HttpCode = createRouteValueDecorator<number>((record, status) => {
  * @returns A defensive copy of declared media types, or `undefined` when not configured.
  */
 export function getRouteProducesMetadata(controllerToken: Constructor, propertyKey: MetadataPropertyKey): string[] | undefined {
-  const bag = (controllerToken as unknown as Record<PropertyKey, unknown>)[metadataSymbol] as StandardMetadataBag | undefined;
+  const bag = readStandardMetadataBag(controllerToken);
   const routeMap = bag?.[standardRouteMetadataKey] as Map<MetadataPropertyKey, StandardRouteMetadataRecord> | undefined;
   const produces = routeMap?.get(propertyKey)?.produces;
 
