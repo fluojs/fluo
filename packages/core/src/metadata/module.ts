@@ -20,11 +20,11 @@ function cloneProvider(provider: unknown): unknown {
 }
 
 function cloneProviders(providers: readonly unknown[] | undefined): unknown[] | undefined {
-  return providers ? freezeMetadataSnapshot(providers.map(cloneProvider)) : undefined;
+  return providers ? (Object.freeze(providers.map(cloneProvider)) as unknown[]) : undefined;
 }
 
 function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
-  return freezeMetadataSnapshot({
+  return Object.freeze({
     controllers: cloneFrozenCollection(metadata.controllers),
     exports: cloneFrozenCollection(metadata.exports),
     global: metadata.global,

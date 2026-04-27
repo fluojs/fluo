@@ -89,6 +89,32 @@ describe('metadata helpers', () => {
     });
   });
 
+  it('keeps caller-owned useValue payloads mutable inside frozen module provider snapshots', () => {
+    const transport = { subscribed: [] as string[] };
+    const transports = [transport];
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      providers: [{ provide: 'TRANSPORTS', useValue: transports }],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const provider = metadata?.providers?.[0] as { useValue: typeof transports } | undefined;
+
+    expect(Object.isFrozen(metadata?.providers)).toBe(true);
+    expect(Object.isFrozen(provider)).toBe(true);
+    expect(provider?.useValue).toBe(transports);
+    expect(Object.isFrozen(provider?.useValue)).toBe(false);
+    expect(Object.isFrozen(provider?.useValue[0])).toBe(false);
+
+    provider?.useValue.push({ subscribed: [] });
+    provider?.useValue[0]?.subscribed.push('UserCreatedEvent');
+
+    expect(transports).toHaveLength(2);
+    expect(transport.subscribed).toEqual(['UserCreatedEvent']);
+  });
+
   it('preserves explicit global false across partial module metadata writes', () => {
     class ExampleModule {}
 
