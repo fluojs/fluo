@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Inject } from '@fluojs/core';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
+import type Redis from 'ioredis';
 
 interface MockRedisInstance {
   options: Record<string, unknown>;
@@ -83,8 +84,10 @@ import {
   RedisModule,
   createRedisPlatformStatusSnapshot,
   REDIS_CLIENT,
+  type RedisModuleOptions,
   RedisService,
 } from './index.js';
+import { RedisLifecycleService } from './service.js';
 
 describe('@fluojs/redis', () => {
   beforeEach(() => {
@@ -185,6 +188,8 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.instances).toHaveLength(2);
     expect(defaultConsumer.redis).toBe(mockRedisState.instances[0]);
     expect(namedConsumer.redis).toBe(mockRedisState.instances[1]);
+    expect(defaultConsumer.redis.options).toMatchObject({ db: 0, lazyConnect: true });
+    expect(namedConsumer.redis.options).toMatchObject({ db: 1, lazyConnect: true });
     expect(facadeConsumer.defaultRedis.getRawClient()).toBe(defaultConsumer.redis);
     expect(facadeConsumer.namedRedis.getRawClient()).toBe(namedConsumer.redis);
     expect(await app.container.resolve(NAMED_REDIS_SERVICE)).toBe(facadeConsumer.namedRedis);
@@ -208,6 +213,50 @@ describe('@fluojs/redis', () => {
     expect(Symbol.keyFor(REDIS_CLIENT)).toBeUndefined();
     expect(Symbol.keyFor(cacheClientToken)).toBeUndefined();
     expect(Symbol.keyFor(cacheServiceToken as symbol)).toBeUndefined();
+  });
+
+  it('forces lazyConnect on even when caller options try to disable lifecycle ownership', async () => {
+    const options = {
+      host: '127.0.0.1',
+      lazyConnect: false,
+      port: 6379,
+    } as unknown as RedisModuleOptions;
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [RedisModule.forRoot(options)],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(mockRedisState.instances).toHaveLength(1);
+    expect(mockRedisState.instances[0]?.options).toMatchObject({
+      lazyConnect: true,
+    });
+    expect(mockRedisState.events).toEqual(['connect']);
+
+    await app.close();
+  });
+
+  it('reports default and named lifecycle component ids without changing resource ownership', () => {
+    const defaultClient = { status: 'ready' } as Redis;
+    const namedClient = { status: 'wait' } as Redis;
+
+    const defaultSnapshot = new RedisLifecycleService(defaultClient).createPlatformStatusSnapshot();
+    const namedSnapshot = new RedisLifecycleService(namedClient, 'cache').createPlatformStatusSnapshot();
+
+    expect(defaultSnapshot.details).toMatchObject({
+      componentId: 'redis.default',
+      connectionState: 'ready',
+      lazyConnect: true,
+    });
+    expect(defaultSnapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
+    expect(namedSnapshot.details).toMatchObject({
+      componentId: 'redis.cache',
+      connectionState: 'wait',
+      lazyConnect: true,
+    });
+    expect(namedSnapshot.ownership).toEqual({ externallyManaged: false, ownsResources: true });
   });
 
   it('falls back to disconnect when quit fails during shutdown', async () => {

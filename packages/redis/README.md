@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Shared Redis connection layer for fluo. It provides a singleton `ioredis` client managed by the application lifecycle.
+Shared Redis connection layer for fluo. It provides application-scoped `ioredis` clients managed by the application lifecycle.
 
 ## Table of Contents
 
@@ -10,6 +10,9 @@ Shared Redis connection layer for fluo. It provides a singleton `ioredis` client
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Named Clients](#named-clients)
+  - [Raw Client Access](#raw-client-access)
+  - [Lifecycle and Ownership](#lifecycle-and-ownership)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -127,6 +130,18 @@ export class AdvancedService {
   }
 }
 ```
+
+### Lifecycle and Ownership
+
+`RedisModule` owns every client it creates, including the default registration from `forRoot(...)` and each named registration from `forRootNamed(...)`.
+
+- The module always constructs clients with `lazyConnect: true`, even if caller options try to override it. This keeps connection startup under Fluo lifecycle control.
+- During module initialization, a client in the `wait` state is connected with `client.connect()`.
+- During application shutdown, connected or reconnecting clients are closed with `client.quit()`. If `quit()` fails, Fluo falls back to `client.disconnect()` and only rethrows when the client is still not closed.
+- Clients already in `end` are left untouched, and clients still in `wait` are disconnected without attempting `quit()`.
+- Platform status snapshots use stable component ids: `redis.default` for the default client and `redis.<name>` for named clients. The snapshot reports `ownsResources: true` because `RedisModule` owns these connections.
+
+Redis-consuming packages keep their own lifecycle boundaries: `@fluojs/queue` creates and closes BullMQ duplicate connections itself, while `@fluojs/cron`, `@fluojs/cache-manager`, and `@fluojs/throttler` consume the shared client/token without taking over ownership of the `RedisModule` connection.
 
 ## Public API Overview
 
