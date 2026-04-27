@@ -47,7 +47,7 @@ export class ConfigReloadManager implements ConfigReloader {
   ) {}
 
   current(): ConfigDictionary {
-    return this.ensureReloader().current();
+    return this.config.snapshot();
   }
 
   reload(): ConfigDictionary {
