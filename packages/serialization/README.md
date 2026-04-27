@@ -97,6 +97,8 @@ class UsersController {
 }
 ```
 
+`SerializerInterceptor` only serializes values that still belong to the normal HTTP response writer. If a handler or response helper commits `RequestContext.response` directly, such as an SSE stream, the interceptor returns that handler-owned value unchanged so the request pipeline preserves response ownership.
+
 ### Cycle-safe serialization
 
 The serializer cuts cyclic references safely instead of recursing forever, so complex object graphs can still be turned into plain response-shaped objects without unbounded recursion.

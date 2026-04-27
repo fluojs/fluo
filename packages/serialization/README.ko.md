@@ -129,6 +129,8 @@ class UsersController {
 }
 ```
 
+`SerializerInterceptor`는 일반 HTTP 응답 writer가 아직 소유한 값만 직렬화합니다. 핸들러나 응답 헬퍼가 SSE 스트림처럼 `RequestContext.response`를 직접 커밋한 경우, 인터셉터는 해당 핸들러 소유 값을 그대로 반환하여 request pipeline의 응답 소유권을 보존합니다.
+
 ## 공개 API 개요
 
 ### 데코레이터
