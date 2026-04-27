@@ -295,6 +295,62 @@ export class HttpAdapterPortabilityHarness<
     }
   }
 
+  async assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void> {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          fileCount: context.request.files?.length ?? 0,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      maxBodySize: 8,
+      multipart: {
+        maxFileSize: 1024,
+      },
+      port,
+    } as TBootstrapOptions);
+
+    await app.listen();
+
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
+
+      if (response.status !== 413) {
+        throw new Error(`${this.options.name} adapter did not default multipart.maxTotalSize to maxBodySize.`);
+      }
+
+      const body = await response.json();
+      if (
+        typeof body !== 'object' ||
+        body === null ||
+        (body as { error?: { code?: unknown } }).error?.code !== 'PAYLOAD_TOO_LARGE'
+      ) {
+        throw new Error(`${this.options.name} adapter changed multipart limit error semantics.`);
+      }
+    } finally {
+      await closeSilently(app);
+    }
+  }
+
   async assertSupportsSseStreaming(): Promise<void> {
     @Controller('/events')
     class EventsController {

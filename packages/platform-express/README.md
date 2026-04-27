@@ -53,7 +53,7 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### Body Parsing and Multipart
-The adapter handles `rawBody` and multipart form-data parsing out of the box. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`.
+The adapter handles `rawBody` and multipart form-data parsing out of the box. When you construct the adapter directly, pass multipart limits as the second argument. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` accept the same multipart settings under `options.multipart`. When `multipart.maxTotalSize` is not set, `maxBodySize` becomes the default total multipart payload cap so body-size limits stay portable across HTTP adapters.
 
 ```typescript
 const adapter = createExpressAdapter(

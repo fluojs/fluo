@@ -408,7 +408,10 @@ async function createFrameworkRequest(
   let rawBody: Uint8Array | undefined;
 
   if (isMultipart) {
-    const parsed = await parseMultipartRequest(request, multipartOptions);
+    const parsed = await parseMultipartRequest(request, {
+      ...multipartOptions,
+      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+    });
     body = parsed.fields;
     files = parsed.files;
   } else {

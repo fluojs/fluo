@@ -53,7 +53,7 @@ async streamEvents(@Res() res: FrameworkResponse) {
 ```
 
 ### 바디 파싱 및 멀티파트
-`rawBody` 및 멀티파트 form-data 파싱을 즉시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다.
+`rawBody` 및 멀티파트 form-data 파싱을 즉시 사용할 수 있습니다. 어댑터를 직접 생성할 때는 멀티파트 제한을 두 번째 인자로 전달하고, `bootstrapExpressApplication(...)` 및 `runExpressApplication(...)`에서는 같은 설정을 `options.multipart` 아래에 전달하면 됩니다. `multipart.maxTotalSize`를 지정하지 않으면 `maxBodySize`가 기본 총 멀티파트 payload 제한으로 사용되어 HTTP 어댑터 간 바디 크기 제한 동작이 portable하게 유지됩니다.
 
 ```typescript
 const adapter = createExpressAdapter(

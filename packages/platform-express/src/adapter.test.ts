@@ -297,6 +297,54 @@ describe('@fluojs/platform-express', () => {
     await app.close();
   });
 
+  it('defaults multipart.maxTotalSize to maxBodySize when no explicit multipart total is provided', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          fileCount: context.request.files?.length ?? 0,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapExpressApplication(AppModule, {
+      cors: false,
+      maxBodySize: 8,
+      multipart: {
+        maxFileSize: 1024,
+      },
+      port,
+    });
+
+    await app.listen();
+
+    const form = new FormData();
+    form.set('name', 'Ada');
+    form.set('payload', new Blob(['12345678'], { type: 'text/plain' }), 'payload.txt');
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/uploads`, {
+      body: form,
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+      },
+    });
+
+    await app.close();
+  });
+
   it('accepts a cors string and merges framework defaults', async () => {
     @Controller('/ping')
     class PingController {
@@ -746,7 +794,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const originalExitCode = process.exitCode;
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number | string | null) => undefined as never) as typeof process.exit);
     const port = await findAvailablePort();
     const app = await runExpressApplication(AppModule, {
       cors: false,
