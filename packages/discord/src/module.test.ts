@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Constructor, Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
+import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
 
 import { DiscordChannel } from './channel.js';
 import { DiscordConfigurationError, DiscordMessageValidationError, DiscordTransportError } from './errors.js';
 import { DiscordModule } from './module.js';
 import { DiscordService } from './service.js';
-import { DISCORD } from './tokens.js';
+import { DISCORD, DISCORD_CHANNEL } from './tokens.js';
 import { createDiscordWebhookTransport } from './webhook.js';
 import type {
   Discord,
@@ -54,7 +55,13 @@ class RecordingTransport implements DiscordTransport {
 }
 
 class PassiveTransport implements DiscordTransport {
+  closeCalls = 0;
   readonly sent: string[] = [];
+  verifyCalls = 0;
+
+  async close(): Promise<void> {
+    this.closeCalls += 1;
+  }
 
   async send(message: NormalizedDiscordMessage) {
     this.sent.push(message.content ?? '');
@@ -67,6 +74,10 @@ class PassiveTransport implements DiscordTransport {
       threadId: message.threadId,
       warnings: [],
     };
+  }
+
+  async verify(): Promise<void> {
+    this.verifyCalls += 1;
   }
 }
 
@@ -175,6 +186,70 @@ describe('DiscordModule', () => {
     expect(factoryCalls).toEqual(['thread-release']);
   });
 
+  it('wires module-first async Discord and notifications registration through DISCORD_CHANNEL', async () => {
+    const DISCORD_CONFIG = Symbol('discord-config');
+    const container = new Container();
+    const discordModuleType = DiscordModule.forRootAsync({
+      inject: [DISCORD_CONFIG],
+      useFactory: async (...deps: unknown[]) => {
+        const [defaultThreadId] = deps;
+
+        if (typeof defaultThreadId !== 'string') {
+          throw new Error('default thread id must be a string');
+        }
+
+        return {
+          defaultThreadId,
+          notifications: { channel: ' alerts ' },
+          transport: createRecordingTransportFactory({ responsePrefix: 'integration' }),
+        };
+      },
+    });
+    const notificationsModuleType = NotificationsModule.forRootAsync({
+      inject: [DISCORD_CHANNEL],
+      useFactory: async (...deps: unknown[]) => {
+        const [channel] = deps;
+
+        return {
+          channels: [channel as DiscordChannel],
+        };
+      },
+    });
+
+    container.register(
+      { provide: DISCORD_CONFIG as Token<string>, useValue: ' thread-release ' },
+      ...moduleProviders(discordModuleType),
+      ...moduleProviders(notificationsModuleType),
+    );
+
+    const notifications = await container.resolve(NotificationsService);
+    const channels = await container.resolve(NOTIFICATION_CHANNELS);
+    const result = await notifications.dispatch({
+      channel: 'alerts',
+      metadata: { source: 'ci' },
+      payload: {
+        content: 'Async integration ready',
+        metadata: { correlationId: 'deploy-1' },
+      },
+    });
+
+    expect(result).toMatchObject({
+      channel: 'alerts',
+      deliveryId: 'integration-1',
+      queued: false,
+      status: 'delivered',
+    });
+    expect(channels.map((channel: { channel: string }) => channel.channel)).toEqual(['alerts']);
+    expect(transportState.sent[0]).toMatchObject({
+      content: 'Async integration ready',
+      metadata: {
+        correlationId: 'deploy-1',
+        source: 'ci',
+      },
+      threadId: 'thread-release',
+    });
+  });
+
   it('renders notification templates and adapts them through DiscordChannel', async () => {
     const container = new Container();
     const moduleType = DiscordModule.forRoot({
@@ -244,6 +319,64 @@ describe('DiscordModule', () => {
     expect(calls).toEqual([
       {
         body: JSON.stringify({ content: 'Webhook path' }),
+        input: 'https://discord.com/api/webhooks/123/abc?wait=true&thread_id=thread-ops',
+        method: 'POST',
+      },
+    ]);
+  });
+
+  it('serializes the documented Discord webhook payload fields through the built-in transport', async () => {
+    const calls: Array<{ body?: string; input: string; method?: string }> = [];
+    const fetchLike: DiscordFetchLike = async (input, init) => {
+      calls.push({ body: init?.body, input, method: init?.method });
+
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ id: 'msg-1', thread_id: 'thread-ops' });
+        },
+      };
+    };
+    const transport = createDiscordWebhookTransport({
+      fetch: fetchLike,
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    await transport.send(
+      {
+        allowedMentions: { parse: ['users'] },
+        attachments: [{ id: '0', filename: 'deploy.txt' }],
+        avatarUrl: 'https://cdn.example.com/avatar.png',
+        components: [{ type: 1 }],
+        content: 'Deploy finished',
+        embeds: [{ description: 'Build 124 succeeded.' }],
+        flags: 4096,
+        metadata: { correlationId: 'deploy-1' },
+        poll: { question: { text: 'Ship?' } },
+        threadId: 'thread-ops',
+        threadName: 'Deploy thread',
+        tts: true,
+        username: 'Deploy Bot',
+      },
+      {},
+    );
+
+    expect(calls).toEqual([
+      {
+        body: JSON.stringify({
+          allowed_mentions: { parse: ['users'] },
+          attachments: [{ id: '0', filename: 'deploy.txt' }],
+          avatar_url: 'https://cdn.example.com/avatar.png',
+          components: [{ type: 1 }],
+          content: 'Deploy finished',
+          embeds: [{ description: 'Build 124 succeeded.' }],
+          flags: 4096,
+          poll: { question: { text: 'Ship?' } },
+          thread_name: 'Deploy thread',
+          tts: true,
+          username: 'Deploy Bot',
+        }),
         input: 'https://discord.com/api/webhooks/123/abc?wait=true&thread_id=thread-ops',
         method: 'POST',
       },
@@ -394,7 +527,52 @@ describe('DiscordModule', () => {
     expect(result.ok).toBe(true);
     expect(result.threadId).toBe('thread-provider');
     expect(transport.sent).toEqual(['Provider transport']);
-    expect(transportState.verifyCalls).toBe(0);
+    expect(transport.verifyCalls).toBe(0);
+  });
+
+  it('preserves direct transport ownership across bootstrap and shutdown lifecycle hooks', async () => {
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      defaultThreadId: 'thread-owned-by-app',
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+
+    await service.onModuleInit();
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lifecycleState: 'ready',
+        transportKind: 'custom-instance',
+        verifiedOnModuleInit: true,
+      },
+      ownership: {
+        externallyManaged: true,
+        ownsResources: false,
+      },
+      readiness: { critical: true, status: 'ready' },
+    });
+
+    await service.send({ content: 'App-owned transport' });
+    await service.onApplicationShutdown();
+
+    expect(transport.sent).toEqual(['App-owned transport']);
+    expect(transport.closeCalls).toBe(0);
+    expect(transport.verifyCalls).toBe(1);
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      ownership: {
+        externallyManaged: true,
+        ownsResources: false,
+      },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
+    });
   });
 
   it('rejects module registration without an explicit transport contract', () => {
