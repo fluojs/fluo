@@ -595,6 +595,9 @@ importers:
         specifier: workspace:^
         version: link:../runtime
     devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(tsx@4.21.0)

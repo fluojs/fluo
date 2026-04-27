@@ -17,7 +17,9 @@ export interface DenoServeOnListenInfo {
 
 /** Options forwarded to the Deno-native `serve(...)` implementation. */
 export interface DenoServeOptions {
+  cert?: string;
   hostname?: string;
+  key?: string;
   onListen?: (localAddr: DenoServeOnListenInfo) => void;
   port?: number;
   signal?: AbortSignal;
@@ -81,9 +83,17 @@ type DenoGlobalLike = {
   upgradeWebSocket: DenoUpgradeWebSocketFunction;
 };
 
+/** TLS certificate and private key material forwarded to Deno.serve for HTTPS startup. */
+export interface DenoAdapterHttpsOptions {
+  cert: string;
+  key: string;
+}
+
 /** Transport and parsing options for the Deno HTTP adapter factory. */
 export interface DenoAdapterOptions {
+  host?: string;
   hostname?: string;
+  https?: DenoAdapterHttpsOptions;
   maxBodySize?: number;
   multipart?: MultipartOptions;
   onListen?: (localAddr: DenoServeOnListenInfo) => void;
@@ -131,7 +141,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   getListenTarget(): HttpAdapterListenTarget {
-    return createListenTarget(this.options.hostname, this.options.port);
+    return createListenTarget(this.options.hostname, this.options.port, this.options.https !== undefined);
   }
 
   getRealtimeCapability() {
@@ -192,7 +202,9 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
     this.abortController = abortController;
     this.server = serve({
+      cert: this.options.https?.cert,
       hostname: this.options.hostname,
+      key: this.options.https?.key,
       onListen: this.options.onListen,
       port: this.options.port,
       signal: abortController.signal,
@@ -279,7 +291,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 export function createDenoAdapter(options: DenoAdapterOptions = {}): DenoHttpApplicationAdapter {
   return new DenoHttpApplicationAdapter({
     ...options,
-    hostname: options.hostname ?? DEFAULT_HOSTNAME,
+    hostname: options.hostname ?? options.host ?? DEFAULT_HOSTNAME,
     port: options.port ?? DEFAULT_PORT,
   });
 }
@@ -357,14 +369,15 @@ function createDenoShutdownSignalRegistration(
   };
 }
 
-function createListenTarget(hostname: string, port: number): HttpAdapterListenTarget {
+function createListenTarget(hostname: string, port: number, usesHttps: boolean): HttpAdapterListenTarget {
   const isWildcard = hostname === '0.0.0.0' || hostname === '::';
   const bindTarget = `${formatHostForAuthority(hostname)}:${String(port)}`;
   const publicHostname = isWildcard ? 'localhost' : formatHostForAuthority(hostname);
+  const scheme = usesHttps ? 'https' : 'http';
 
   return {
     bindTarget,
-    url: `http://${publicHostname}:${String(port)}`,
+    url: `${scheme}://${publicHostname}:${String(port)}`,
   };
 }
 

@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [HTTPS와 런타임 이식성](#https와-런타임-이식성)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -66,12 +67,30 @@ const response = await adapter.handle(new Request('http://localhost:3000/health'
 export class MyGateway {}
 ```
 
+## HTTPS와 런타임 이식성
+
+`https` 옵션으로 Deno TLS 인증서 자료를 전달하면 `Deno.serve`를 HTTPS 모드로 시작할 수 있습니다. 어댑터는 `https.cert`와 `https.key`를 Deno의 `cert` 및 `key`로 전달하며, 시작 로그도 `https://` listen URL을 보고하므로 Deno 패키지가 공유 HTTP 어댑터 이식성 계약과 정렬됩니다.
+
+```typescript
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`hostname`은 Deno 네이티브 옵션 이름으로 유지됩니다. 공유 HTTP 어댑터 테스트와 교차 런타임 설정 헬퍼를 위해 `host`도 이식성 alias로 허용하며, 둘 다 제공하면 `hostname`이 우선합니다.
+
 ## 공개 API 개요
 
 - `createDenoAdapter(options)`: Deno HTTP 어댑터를 위한 팩토리입니다.
 - `bootstrapDenoApplication(module, options)`: 커스텀 오케스트레이션을 위한 고급 부트스트랩입니다.
 - `runDenoApplication(module, options)`: Deno를 위한 권장 빠른 시작 헬퍼입니다.
 - `handle(request)`: 수동 `Request` to `Response` 디스패처입니다.
+- `https: { cert, key }`: `Deno.serve`로 전달되고 보고되는 listen URL에 반영되는 HTTPS 시작 옵션입니다.
 
 ## 관련 패키지
 

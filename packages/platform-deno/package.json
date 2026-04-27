@@ -43,6 +43,7 @@
     "@fluojs/runtime": "workspace:^"
   },
   "devDependencies": {
+    "@fluojs/testing": "workspace:^",
     "vitest": "^3.2.4"
   }
 }

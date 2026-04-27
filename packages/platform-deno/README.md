@@ -10,6 +10,7 @@ Deno-backed HTTP adapter for the fluo runtime, built on native `Deno.serve`.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [HTTPS and Runtime Portability](#https-and-runtime-portability)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -66,12 +67,30 @@ The adapter supports Deno's native `Deno.upgradeWebSocket` through the `@fluojs/
 export class MyGateway {}
 ```
 
+## HTTPS and Runtime Portability
+
+Pass Deno TLS certificate material through the `https` option to start `Deno.serve` in HTTPS mode. The adapter forwards `https.cert` and `https.key` to Deno as `cert` and `key`, and startup logging reports an `https://` listen URL so the Deno package stays aligned with the shared HTTP adapter portability contract.
+
+```typescript
+await runDenoApplication(AppModule, {
+  hostname: '127.0.0.1',
+  https: {
+    cert: await Deno.readTextFile('./cert.pem'),
+    key: await Deno.readTextFile('./key.pem'),
+  },
+  port: 3443,
+});
+```
+
+`hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins.
+
 ## Public API Overview
 
 - `createDenoAdapter(options)`: Factory for the Deno HTTP adapter.
 - `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
 - `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
 - `handle(request)`: Manual `Request` to `Response` dispatcher.
+- `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
 
 ## Related Packages
 

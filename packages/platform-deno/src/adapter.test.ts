@@ -1,3 +1,6 @@
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -9,14 +12,18 @@ import {
   type FrameworkResponse,
   type RequestContext,
 } from '@fluojs/http';
-import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
+import { defineModule, type Application, type ApplicationLogger, type ModuleType } from '@fluojs/runtime';
+import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 
 import {
   bootstrapDenoApplication,
+  type BootstrapDenoApplicationOptions,
   DenoHttpApplicationAdapter,
   createDenoAdapter,
   runDenoApplication,
+  type RunDenoApplicationOptions,
   type DenoServeController,
+  type DenoServeFunction,
   type DenoServeHandler,
   type DenoServerWebSocket,
   type DenoServeOptions,
@@ -24,6 +31,53 @@ import {
   type DenoWebSocketMessage,
   type DenoUpgradeWebSocketFunction,
 } from './adapter.js';
+
+const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
+yNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4PEgAic+840rq
+tyTN/MvmaAQg5OtNwsY7wp3Owaomr0sqw+wHM7NkPYMB0apxcWEBC7IWph1sKGcC
+iRxNDBBMEUmhxscatvhfkB/aqlQxLYjDylFcIX0A3NzIW0Rfaydk7/3R0hqkiF5x
+k/98U2cEPZn1E890q4IsfQ6mGMNi/fh1jMWiR5RFL9MlIhLEJPCyuW/sQMYSglan
+T2sKcABWjIShAc4gn87ncbmSv/6IDgfXtVRD6mehvFz9iHVSbV5sGM/bE4y3pgj2
+kQXpbdUnAgMBAAECggEAT8yIc7kPMmgrACw5YLGOxuhbqb3/51r+s1PIC9/B14IQ
+VCejxsrejp6EGe6tBZZmOu47kiVIk5d9h7mIsIZTJDnTQjLOtGTfXTYb3nldFdqJ
+exoa3JnCr18FFhIGbAinSUQm81sSllVQseYYy9xnOMqFAv27lFTZwKr3yUEtvJ9h
+oYqq5/yRNwwR1AT6lfWgSJa5S9cvs9YHK4k2XCnhKTqWkQ3Bh9awKy83142r1FWy
+rXk3IUwNaNAgRHSEw/9MGbcM6it+l55XjwzEBP/lI+DdDzhRhKgp3QsM/v26eHRl
+CwP0NA4d4i1m2kcT8dvtSTxrnwbylSxhVRDYXrsOMQKBgQDn+f9I9LlQJdGPWRda
+0YiyZtQZTGYfG/ZJvHPvhLA37rAfV7MGDqKgn22FJPJHT9vE+wVkUT531VErKKlO
+dOv6GIz/C3AolVTOTDKxTZnFkicxy4J7pZYHPRo8mIVGFlsKsPQVPz63UZMUkbR6
+0HkgcihnxKKlYFb+az7hNvPZbwKBgQDVdlglrw9jGreXtGplZLapsTmAc+GuL17R
+fqY4/aXNul0k6MNlSrm2/cUm/KI8AsHvRn2tvdFJnM1drmzEpTvcFx5a9N2F5HOU
+N1smlv31RT5B0XqoHTB7df2+zVeAGGcpDY8n27KI9/zigVdVQR/aR+fR7CFfNhCv
+sI8PQUkzyQKBgQDWKHckjEF0m6VuuGoWPvD6+nF+9Ygl2jOyeRdzHUVuLZ5NITK2
+OdargOOkEqrVaQVUQgYFSffou3eW54/+TXT5S6cHYjDmVo6XccMu6pw2yKoEj4Pj
+0MfD4QYSwR/wx3y/TwPXha7JoLavO6Cp7UKV0K46tk8Na/aEJNBFLO1MYwKBgElV
+jfTsTnn6rMYmikLpNcPYieuyY/8GcSnBu/NqWLLz6poKiU5cPK88QaYiNs4tGFlO
+u1CcHLGQeBFOIjnwlj8HhjszUoN0N6zc06jPSNIhhsDv6Zal6IkRwSnyu7PbLl2x
+NdQ4qv5ZS/y4+LrmU74W4/J/j/t4xITHQG66PB7ZAoGANNL4daB3T46IElDHnCbl
+j4hWQezWEMRCf4Ruqy24peC4Y8CXMaGA0oN6auePuTdLmGYa9nDn0J77rMqLIG7+
+v8OLobYRGfklwPOBs5puVFTEgihMq7Ejh2r9HhoRiCAZS5hIirS08BgrAskgVw9P
+dM+3fSZauOH3r+7JXAvrtMo=
+-----END PRIVATE KEY-----`;
+
+const TEST_TLS_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIICpDCCAYwCCQCAEWnETUdMHDANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAkx
+MjcuMC4wLjEwHhcNMjYwMzE4MDEzNTQ2WhcNMjYwMzE5MDEzNTQ2WjAUMRIwEAYD
+VQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDB
+bj6DdMPNvDMryNUM0dreceSBINfH+VDV750R3X57mdoqebUgjKOXjbjR7JRkloJ4
+PEgAic+840rqtyTN/MvmaAQg5OtNwsY7wp3Owaomr0sqw+wHM7NkPYMB0apxcWEB
+C7IWph1sKGcCiRxNDBBMEUmhxscatvhfkB/aqlQxLYjDylFcIX0A3NzIW0Rfaydk
+7/3R0hqkiF5xk/98U2cEPZn1E890q4IsfQ6mGMNi/fh1jMWiR5RFL9MlIhLEJPCy
+uW/sQMYSglanT2sKcABWjIShAc4gn87ncbmSv/6IDgfXtVRD6mehvFz9iHVSbV5s
+GM/bE4y3pgj2kQXpbdUnAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAJhOoDgzUsiV
+XE0p5DznahRbv85K05BS6iXfMRnjgHziJyED0h6dD3vpFTnQLW9I7SQeMA21sZPx
+MNm+gL8/Jq2G2CGwx0naD9bsTFYboWhBk+SuQVj8f7g8xM7ya2nB8AJg07/n3VD5
+NJFlJnyXlpchaxikKeaLWWGJCzPosbqUDdS5Y9S3VkqxM3na4Z+04qLaLQSEEpSi
+WZWkDdOMceoMbJC0CpyVtWCW7mKKFOwL/yEtmJ0Uw0aaHwFOEj9+FQUPYjThCcbz
+fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
+JNCDpGwh8us=
+-----END CERTIFICATE-----`;
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -62,6 +116,95 @@ function createServeStub() {
     }),
     shutdown,
   };
+}
+
+function createNodeBackedDenoServe(): DenoServeFunction {
+  return (options, handler) => {
+    const finished = createDeferred<void>();
+    const server = options.cert && options.key
+      ? createHttpsServer({ cert: options.cert, key: options.key })
+      : createHttpServer();
+
+    server.on('request', (request, response) => {
+      void dispatchNodeRequest(request, response, options, handler).catch((error: unknown) => {
+        response.statusCode = 500;
+        response.end(error instanceof Error ? error.message : 'Unhandled test server error.');
+      });
+    });
+    server.on('close', () => {
+      finished.resolve();
+    });
+    server.on('error', (error) => {
+      finished.reject(error);
+    });
+    options.signal?.addEventListener('abort', () => {
+      server.close();
+    }, { once: true });
+    server.listen(options.port, options.hostname, () => {
+      const address = server.address();
+
+      if (address && typeof address !== 'string') {
+        options.onListen?.({ hostname: address.address, port: address.port });
+      }
+    });
+
+    return {
+      finished: finished.promise,
+      shutdown: async () => {
+        await new Promise<void>((resolve, reject) => {
+          if (!server.listening) {
+            resolve();
+            return;
+          }
+
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      },
+    };
+  };
+}
+
+async function dispatchNodeRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  options: DenoServeOptions,
+  handler: DenoServeHandler,
+): Promise<void> {
+  const protocol = options.cert && options.key ? 'https' : 'http';
+  const host = request.headers.host ?? `${options.hostname ?? '127.0.0.1'}:${String(options.port ?? 0)}`;
+  const headers = new Headers();
+
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(name, item);
+      }
+      continue;
+    }
+
+    if (value !== undefined) {
+      headers.set(name, value);
+    }
+  }
+
+  const webResponse = await handler(new Request(`${protocol}://${host}${request.url ?? '/'}`, {
+    headers,
+    method: request.method,
+  }));
+  const body = Buffer.from(await webResponse.arrayBuffer());
+
+  response.statusCode = webResponse.status;
+  webResponse.headers.forEach((value, name) => {
+    response.setHeader(name, value);
+  });
+  response.end(body);
 }
 
 function createUpgradeWebSocketStub() {
@@ -296,6 +439,64 @@ describe('@fluojs/platform-deno', () => {
     );
 
     await app.close();
+  });
+
+  it('forwards HTTPS certificate options to Deno.serve and reports an HTTPS listen target', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const server = createServeStub();
+    const logger: ApplicationLogger = {
+      debug() {},
+      error() {},
+      log: vi.fn(),
+      warn() {},
+    };
+
+    const app = await runDenoApplication(AppModule, {
+      hostname: '127.0.0.1',
+      https: {
+        cert: TEST_TLS_CERTIFICATE,
+        key: TEST_TLS_PRIVATE_KEY,
+      },
+      logger,
+      port: 3443,
+      serve: server.serve,
+    });
+
+    expect(server.options).toMatchObject({
+      cert: TEST_TLS_CERTIFICATE,
+      hostname: '127.0.0.1',
+      key: TEST_TLS_PRIVATE_KEY,
+      port: 3443,
+    });
+    expect(logger.log).toHaveBeenCalledWith(
+      'Listening on https://127.0.0.1:3443',
+      'FluoFactory',
+    );
+
+    await app.close();
+  });
+
+  it('satisfies the shared HTTPS startup portability expectation', async () => {
+    const createServe = () => createNodeBackedDenoServe();
+    const harness = createHttpAdapterPortabilityHarness<BootstrapDenoApplicationOptions, RunDenoApplicationOptions>({
+      bootstrap: async (rootModule: ModuleType, options: BootstrapDenoApplicationOptions): Promise<Application> => await bootstrapDenoApplication(rootModule, {
+        ...options,
+        serve: createServe(),
+      }),
+      name: 'deno',
+      run: async (rootModule: ModuleType, options: RunDenoApplicationOptions): Promise<Application> => await runDenoApplication(rootModule, {
+        ...options,
+        serve: createServe(),
+        shutdownSignals: false,
+      }),
+    });
+
+    await harness.assertReportsHttpsStartupUrl({
+      cert: TEST_TLS_CERTIFICATE,
+      key: TEST_TLS_PRIVATE_KEY,
+    });
   });
 
   it('formats explicit IPv6 listen targets with brackets', () => {
