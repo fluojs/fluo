@@ -4,7 +4,6 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { EmailConfigurationError } from './errors.js';
 import { EmailChannel } from './channel.js';
-import { EmailNotificationsQueueWorker } from './queue.js';
 import { EmailService } from './service.js';
 import { EMAIL, EMAIL_CHANNEL, EMAIL_OPTIONS } from './tokens.js';
 import type {
@@ -76,7 +75,6 @@ function createEmailRuntimeProviders(optionsProvider: Provider): Provider[] {
     optionsProvider,
     EmailService,
     EmailChannel,
-    EmailNotificationsQueueWorker,
     {
       inject: [EmailService],
       provide: EMAIL,
@@ -143,7 +141,7 @@ export class EmailModule {
    * Registers email providers using static options.
    *
    * @param options Static email module options including transport wiring and optional template rendering behavior.
-   * @returns A global module definition that exports {@link EmailService}, {@link EmailChannel}, and queue integration tokens.
+   * @returns A global module definition that exports {@link EmailService}, {@link EmailChannel}, and email facade tokens.
    *
    * @example
     * ```ts

@@ -1,6 +1,5 @@
 import type { AsyncModuleOptions, MaybePromise } from '@fluojs/core';
 import type { NotificationDispatchRequest } from '@fluojs/notifications';
-import type { QueueBackoffOptions, QueueRateLimiterOptions } from '@fluojs/queue';
 
 /** RFC 5322-style email address with an optional display name. */
 export interface EmailAddress {
@@ -201,15 +200,6 @@ export interface EmailSendOptions {
 /** Additional controls applied to one batch send operation. */
 export interface EmailSendManyOptions extends EmailSendOptions {
   continueOnError?: boolean;
-}
-
-/** Queue worker execution defaults used by the built-in notifications queue integration. */
-export interface EmailQueueWorkerOptions {
-  attempts?: number;
-  backoff?: QueueBackoffOptions;
-  concurrency?: number;
-  jobName?: string;
-  rateLimiter?: QueueRateLimiterOptions;
 }
 
 /** Module options accepted by {@link EmailModule.forRoot} and `forRootAsync`. */
