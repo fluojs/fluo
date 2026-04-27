@@ -438,12 +438,21 @@ function createFrameworkResponseStream(reply: FastifyReply): FrameworkResponseSt
     waitForDrain() {
       ensureHijacked();
 
-      if (reply.raw.writableEnded) {
+      if (reply.raw.writableEnded || reply.raw.destroyed) {
         return Promise.resolve();
       }
 
       return new Promise<void>((resolve) => {
-        reply.raw.once('drain', () => resolve());
+        const settle = () => {
+          reply.raw.removeListener('drain', settle);
+          reply.raw.removeListener('close', settle);
+          reply.raw.removeListener('error', settle);
+          resolve();
+        };
+
+        reply.raw.once('drain', settle);
+        reply.raw.once('close', settle);
+        reply.raw.once('error', settle);
       });
     },
     write(chunk: string | Uint8Array) {

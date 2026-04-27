@@ -279,6 +279,62 @@ describe('@fluojs/platform-fastify', () => {
     await app.close();
   });
 
+  it('settles stream drain waits when the response stream closes before drain', async () => {
+    const drainSettled = createDeferred<void>();
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      async stream(_input: undefined, context: RequestContext) {
+        const stream = new SseResponse(context);
+        const responseStream = context.response.stream;
+
+        if (!responseStream?.waitForDrain) {
+          throw new Error('Fastify response stream did not expose waitForDrain().');
+        }
+
+        const drainWait = responseStream.waitForDrain();
+        stream.close();
+        await drainWait;
+        drainSettled.resolve();
+
+        return stream;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [EventsController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+        headers: { accept: 'text/event-stream' },
+      });
+
+      expect(response.status).toBe(200);
+      await response.text();
+      await expect(Promise.race([
+        drainSettled.promise,
+        new Promise<void>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Fastify response stream waitForDrain() did not settle after close.'));
+          }, 2_000);
+        }),
+      ])).resolves.toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('does not preserve rawBody for multipart requests', async () => {
     @Controller('/uploads')
     class UploadController {

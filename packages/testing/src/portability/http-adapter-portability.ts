@@ -401,6 +401,63 @@ export class HttpAdapterPortabilityHarness<
     }
   }
 
+  /**
+   * Asserts that adapter stream backpressure waiters settle when the response
+   * closes before a `drain` event is emitted.
+   */
+  async assertSettlesStreamDrainWaitOnClose(): Promise<void> {
+    const adapterName = this.options.name;
+    let resolveDrainWait!: () => void;
+    const drainWaitSettled = new Promise<void>((resolve) => {
+      resolveDrainWait = resolve;
+    });
+
+    @Controller('/events')
+    class EventsController {
+      @Get('/')
+      async stream(_input: undefined, context: RequestContext) {
+        const stream = new SseResponse(context);
+        const responseStream = context.response.stream;
+
+        if (!responseStream?.waitForDrain) {
+          throw new Error(`${adapterName} adapter did not expose response.stream.waitForDrain().`);
+        }
+
+        const drainWait = responseStream.waitForDrain();
+        stream.close();
+        await drainWait;
+        resolveDrainWait();
+
+        return stream;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [EventsController],
+    });
+
+    const port = await findAvailablePort();
+    const app = await this.options.bootstrap(AppModule, { cors: false, port } as TBootstrapOptions);
+
+    await app.listen();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
+        headers: { accept: 'text/event-stream' },
+      });
+
+      if (response.status !== 200) {
+        throw new Error(`${this.options.name} adapter changed closed stream response status semantics.`);
+      }
+
+      await response.text();
+      await withTimeout(drainWaitSettled, 2_000, `${this.options.name} adapter left response.stream.waitForDrain() pending after close.`);
+    } finally {
+      await closeSilently(app);
+    }
+  }
+
   async assertReportsConfiguredHostInStartupLogs(): Promise<void> {
     const loggerEvents: string[] = [];
     const logger: ApplicationLogger = {
@@ -573,4 +630,20 @@ export function createHttpAdapterPortabilityHarness<
   options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
 ): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp> {
   return new HttpAdapterPortabilityHarness(options);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  });
 }

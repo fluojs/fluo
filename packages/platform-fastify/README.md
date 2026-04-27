@@ -65,6 +65,9 @@ Fastify provides a `server-backed` capability that allows `@fluojs/websockets` t
 export class MyGateway {}
 ```
 
+### Streaming Responses
+Fastify-backed response streams support the shared fluo stream contract used by SSE and other streaming writers. `response.stream.waitForDrain()` settles when the underlying response emits `drain`, `close`, or `error`, so writers do not hang when a client disconnects or the stream closes before backpressure clears.
+
 ### CORS Configuration
 CORS is handled via bootstrap options. fluo manages the underlying CORS logic rather than relying on a separate Fastify plugin.
 
