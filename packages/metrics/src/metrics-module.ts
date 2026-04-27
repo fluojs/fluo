@@ -222,9 +222,9 @@ class RuntimePlatformTelemetry {
   }
 
   async refresh(ctx: RequestContext): Promise<void> {
-
     const platformShell = await this.resolvePlatformShell(ctx);
     if (!platformShell) {
+      this.clearPlatformTelemetry();
       return;
     }
 
@@ -267,6 +267,51 @@ class RuntimePlatformTelemetry {
       statuses: READINESS_STATUSES,
       toMetricValue: toReadinessValue,
     });
+  }
+
+  private clearPlatformTelemetry(): void {
+    this.clearGaugeStatuses({
+      env: this.labels?.env ?? 'unknown',
+      gauge: this.healthGauge,
+      instance: this.labels?.instance ?? 'local',
+      lastStatuses: this.lastHealthStatuses,
+      operation: 'health',
+      statuses: HEALTH_STATUSES,
+    });
+    this.clearGaugeStatuses({
+      env: this.labels?.env ?? 'unknown',
+      gauge: this.readinessGauge,
+      instance: this.labels?.instance ?? 'local',
+      lastStatuses: this.lastReadinessStatuses,
+      operation: 'readiness',
+      statuses: READINESS_STATUSES,
+    });
+  }
+
+  private clearGaugeStatuses<TStatus extends string>({
+    env,
+    gauge,
+    instance,
+    lastStatuses,
+    operation,
+    statuses,
+  }: {
+    env: string;
+    gauge: Gauge<string>;
+    instance: string;
+    lastStatuses: Map<string, TStatus>;
+    operation: 'health' | 'readiness';
+    statuses: readonly TStatus[];
+  }): void {
+    for (const componentKey of lastStatuses.keys()) {
+      const [componentId, componentKind] = this.fromComponentKey(componentKey);
+
+      for (const status of statuses) {
+        gauge.remove(componentId, componentKind, operation, status, env, instance);
+      }
+    }
+
+    lastStatuses.clear();
   }
 
   private syncGaugeStatuses<TStatus extends string>({

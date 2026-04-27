@@ -126,6 +126,7 @@ MetricsModule.forRoot({
 Platform telemetry refreshes `fluo_component_ready` and `fluo_component_health` on each `/metrics` scrape by resolving `PLATFORM_SHELL`.
 
 - If `PLATFORM_SHELL` is not registered, the scrape still succeeds and omits the platform telemetry series.
+- If `PLATFORM_SHELL` becomes unavailable after a previous successful scrape, stale `fluo_component_ready` and `fluo_component_health` series are removed before metrics are returned.
 - If resolving `PLATFORM_SHELL` fails for any other reason, the scrape surfaces that failure instead of swallowing it.
 
 ### Disable default process and Node metrics
@@ -143,7 +144,9 @@ MetricsModule.forRoot({
 - `MetricsModule.forRoot(options)`
 - `MetricsService`
 - `METER_PROVIDER`
-- Prometheus-backed helpers for counters, gauges, histograms, and registry access
+- `PrometheusMeterProvider`
+- `HttpMetricsMiddleware` and HTTP path-label option types
+- `Registry` from `prom-client`
 
 ### Operational defaults
 
@@ -153,6 +156,7 @@ MetricsModule.forRoot({
 - HTTP metrics default to template-normalized path labels.
 - Raw path labels require `allowUnsafeRawPathLabelMode: true` and should stay limited to bounded internal routes.
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
+- Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after a prior successful scrape.
 
 ## Related Packages
 

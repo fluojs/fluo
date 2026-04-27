@@ -476,6 +476,59 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('clears stale platform telemetry series when the platform shell becomes unavailable', async () => {
+    const missingPlatformShellError = new ContainerResolutionError(
+      `No provider registered for token ${String(PLATFORM_SHELL)}.`,
+      {
+        hint: 'Ensure the provider is registered in a module\'s providers array, or that the module exporting it is imported by the consuming module.',
+        token: PLATFORM_SHELL,
+      },
+    );
+    let platformShellAvailable = true;
+    const intermittentPlatformShellMiddleware = {
+      async handle(context: MiddlewareContext, next: Next): Promise<void> {
+        const originalResolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+
+        context.requestContext.container.resolve = (async (token: Parameters<typeof originalResolve>[0]) => {
+          if (token === PLATFORM_SHELL && !platformShellAvailable) {
+            throw missingPlatformShellError;
+          }
+
+          return await originalResolve(token);
+        }) as typeof context.requestContext.container.resolve;
+
+        await next();
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, middleware: [intermittentPlatformShellMiddleware] })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    const initialResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), initialResponse);
+    expect(String(initialResponse.body)).toContain('fluo_component_ready{');
+    expect(String(initialResponse.body)).toContain('fluo_component_health{');
+
+    platformShellAvailable = false;
+    const missingShellResponse = createResponse();
+    await app.dispatch(createRequest('/metrics'), missingShellResponse);
+
+    const metricsText = String(missingShellResponse.body);
+    expect(missingShellResponse.statusCode).toBe(200);
+    expect(metricsText).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+    expect(metricsText).not.toContain('fluo_component_ready{');
+    expect(metricsText).not.toContain('fluo_component_health{');
+
+    await app.close();
+  });
+
   it('surfaces unexpected platform shell resolution failures during scrape refresh', async () => {
     const resolutionFailure = new ContainerResolutionError(
       `Failed to resolve token ${String(PLATFORM_SHELL)} because the provider factory threw an unexpected error.`,
