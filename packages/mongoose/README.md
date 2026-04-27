@@ -9,6 +9,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Lifecycle and Shutdown](#lifecycle-and-shutdown)
 - [Common Patterns](#common-patterns)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -46,6 +47,18 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 })
 class AppModule {}
 ```
+
+## Lifecycle and Shutdown
+
+`MongooseModule` registers `MongooseConnection` with the fluo application lifecycle. The package does not create or own the raw Mongoose connection for you; pass a `dispose` hook when the application should close that external connection during shutdown.
+
+Shutdown preserves request transaction cleanup order:
+
+1. Open request-scoped transactions are aborted with `Application shutdown interrupted an open request transaction.`
+2. Their Mongoose sessions finish `abortTransaction()` and `endSession()` cleanup.
+3. The configured `dispose(connection)` hook runs only after active request transactions have settled.
+
+`createMongoosePlatformStatusSnapshot(...)` reports `ready` while serving traffic, `shutting-down` while request transactions are draining, and `stopped` after the dispose hook completes. Manual `transaction()` calls still use the same explicit-session contract as request-scoped transactions: repository code must pass `conn.currentSession()` into Mongoose model operations that participate in the transaction.
 
 ## Common Patterns
 
