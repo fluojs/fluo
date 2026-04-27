@@ -574,6 +574,25 @@ describe('ThrottlerGuard — Redis store mock', () => {
     ).rejects.toThrow(/store count/i);
   });
 
+  it('propagates store failures without emitting rate-limit retry headers', async () => {
+    const storeFailure = new Error('redis connection refused');
+    const store: ThrottlerStore = {
+      consume: vi.fn(async () => {
+        throw storeFailure;
+      }),
+    };
+
+    class TestController {
+      action() {}
+    }
+
+    const guard = new ThrottlerGuard({ limit: 2, store, ttl: 60 });
+    const ctx = createRequestContext();
+
+    await expect(guard.canActivate(createGuardContext(TestController, 'action', ctx))).rejects.toThrow(storeFailure);
+    expect(ctx.response.headers['Retry-After']).toBeUndefined();
+  });
+
   it('builds store keys from route and token identity context', async () => {
     const store: ThrottlerStore = {
       consume: vi.fn(async (_key: string, input: ThrottlerConsumeInput) => ({

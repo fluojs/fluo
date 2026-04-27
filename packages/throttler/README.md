@@ -31,12 +31,12 @@ npm install @fluojs/throttler
 
 ## Quick Start
 
-Register the `ThrottlerModule` and apply the `Throttle` decorator to your controllers or methods.
+Register the `ThrottlerModule`, wire `ThrottlerGuard` with `@UseGuards(...)`, and apply the `Throttle` decorator to controllers or methods that need route-specific limits.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
-import { Controller, Post } from '@fluojs/http';
+import { ThrottlerGuard, ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
+import { Controller, Post, UseGuards } from '@fluojs/http';
 
 @Module({
   imports: [
@@ -49,6 +49,7 @@ import { Controller, Post } from '@fluojs/http';
 class AppModule {}
 
 @Controller('/auth')
+@UseGuards(ThrottlerGuard)
 class AuthController {
   @Post('/login')
   @Throttle({ ttl: 60, limit: 5 }) // Override: 5 requests per minute
@@ -101,8 +102,14 @@ ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
   keyGenerator: (context) => {
-    const request = context.switchToHttp().getRequest();
-    return request.headers['x-api-key'] || request.ip;
+    const apiKeyHeader = context.request.headers['x-api-key'];
+    const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
+
+    if (!apiKey) {
+      throw new Error('Missing API key for throttler tracking.');
+    }
+
+    return `api-key:${apiKey}`;
   },
 });
 ```
@@ -110,7 +117,7 @@ ThrottlerModule.forRoot({
 ## Public API Overview
 
 ### Modules
-- `ThrottlerModule.forRoot(options)`: Configures the global throttling behavior and storage.
+- `ThrottlerModule.forRoot(options)`: Provides throttler options, storage, and `ThrottlerGuard` to the module graph.
 - Package-level registration is supported through `ThrottlerModule.forRoot(options)`. Internal provider-composition helpers are not part of the public contract.
 
 ### Decorators
@@ -118,7 +125,7 @@ ThrottlerModule.forRoot({
 - `@SkipThrottle()`: Disables throttling for a class or method.
 
 ### Guards
-- `ThrottlerGuard`: The guard responsible for enforcing the rate limits. Automatically registered when using `ThrottlerModule.forRoot()`.
+- `ThrottlerGuard`: The guard responsible for enforcing rate limits. `ThrottlerModule.forRoot()` makes it injectable; route handlers still activate it through Fluo guard metadata such as `@UseGuards(ThrottlerGuard)`.
 
 ### Stores
 - `createMemoryThrottlerStore()`: Creates a simple in-memory store (default).

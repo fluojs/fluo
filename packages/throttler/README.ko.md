@@ -31,12 +31,12 @@ npm install @fluojs/throttler
 
 ## 빠른 시작
 
-`ThrottlerModule`을 등록하고 컨트롤러나 메서드에 `Throttle` 데코레이터를 적용합니다.
+`ThrottlerModule`을 등록하고, `@UseGuards(...)`로 `ThrottlerGuard`를 연결한 뒤, 라우트별 제한이 필요한 컨트롤러나 메서드에 `Throttle` 데코레이터를 적용합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
-import { Controller, Post } from '@fluojs/http';
+import { ThrottlerGuard, ThrottlerModule, Throttle, SkipThrottle } from '@fluojs/throttler';
+import { Controller, Post, UseGuards } from '@fluojs/http';
 
 @Module({
   imports: [
@@ -49,6 +49,7 @@ import { Controller, Post } from '@fluojs/http';
 class AppModule {}
 
 @Controller('/auth')
+@UseGuards(ThrottlerGuard)
 class AuthController {
   @Post('/login')
   @Throttle({ ttl: 60, limit: 5 }) // 오버라이드: 분당 5회 요청
@@ -101,8 +102,14 @@ ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
   keyGenerator: (context) => {
-    const request = context.switchToHttp().getRequest();
-    return request.headers['x-api-key'] || request.ip;
+    const apiKeyHeader = context.request.headers['x-api-key'];
+    const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
+
+    if (!apiKey) {
+      throw new Error('Missing API key for throttler tracking.');
+    }
+
+    return `api-key:${apiKey}`;
   },
 });
 ```
@@ -110,7 +117,7 @@ ThrottlerModule.forRoot({
 ## 공개 API 개요
 
 ### 모듈
-- `ThrottlerModule.forRoot(options)`: 글로벌 속도 제한 동작 및 저장소를 설정합니다.
+- `ThrottlerModule.forRoot(options)`: throttler 옵션, 저장소, `ThrottlerGuard`를 모듈 그래프에 제공합니다.
 - 패키지 수준 등록은 `ThrottlerModule.forRoot(options)`를 통해 지원합니다. 내부 프로바이더 조합 헬퍼는 공개 계약에 포함되지 않습니다.
 
 ### 데코레이터
@@ -118,7 +125,7 @@ ThrottlerModule.forRoot({
 - `@SkipThrottle()`: 클래스나 메서드에 대해 속도 제한을 비활성화합니다.
 
 ### 가드
-- `ThrottlerGuard`: 속도 제한을 강제하는 가드입니다. `ThrottlerModule.forRoot()` 사용 시 자동으로 등록됩니다.
+- `ThrottlerGuard`: 속도 제한을 강제하는 가드입니다. `ThrottlerModule.forRoot()`는 이를 주입 가능하게 만들며, 라우트 핸들러는 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata로 직접 활성화해야 합니다.
 
 ### 저장소(Store)
 - `createMemoryThrottlerStore()`: 간단한 메모리 내 저장소를 생성합니다 (기본값).
