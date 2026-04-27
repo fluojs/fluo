@@ -111,7 +111,9 @@ TerminusModule.forRoot({
 - 준비 상태(readiness)와 관련된 인디케이터가 실패하면 `/ready`는 HTTP `503`을 반환합니다.
 - 응답 본문은 `status`, `contributors`, `info`, `error`, `details`를 포함한 구조화된 JSON 객체입니다.
 - 하나의 인디케이터가 여러 keyed entry를 반환할 수도 있으며, 이 경우 `/health`는 모든 entry를 `details`와 `contributors.up` / `contributors.down` 요약에 그대로 반영합니다.
+- 지원하지 않는 status, 빈 결과, 객체가 아닌 인디케이터 결과는 조용히 버려지지 않고 `down` 진단으로 보고됩니다.
 - 같은 실행에서 이미 보고된 key를 다른 인디케이터가 다시 사용하면, Terminus는 먼저 기록된 entry를 유지하고 데이터를 조용히 덮어쓰는 대신 결정적인 `*-duplicate-key-error` contributor를 추가합니다.
+- 플랫폼 health/readiness 실패는 `/health` 응답에서 결정적인 `fluo-platform-health`, `fluo-platform-readiness` contributor로 노출됩니다.
 
 ## 공개 API 개요
 

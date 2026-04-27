@@ -111,7 +111,9 @@ When an indicator fails, it throws a `HealthCheckError`. The `TerminusHealthServ
 - `/ready` returns HTTP `503` if any indicator associated with readiness fails.
 - The response body contains a structured JSON object with `status`, `contributors`, `info`, `error`, and `details`.
 - Indicators may emit multiple keyed entries in a single check result; `/health` preserves every keyed entry in `details` and in the `contributors.up` / `contributors.down` summaries.
+- Unsupported, empty, or non-object indicator results are reported as `down` diagnostics instead of being silently discarded.
 - If an indicator reuses a key that was already reported earlier in the same run, Terminus keeps the first entry and adds a deterministic `*-duplicate-key-error` contributor instead of silently overwriting data.
+- Platform health/readiness failures are surfaced as deterministic `fluo-platform-health` and `fluo-platform-readiness` contributors in `/health` responses.
 
 ## Public API Overview
 

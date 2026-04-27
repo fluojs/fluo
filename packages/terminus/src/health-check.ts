@@ -64,19 +64,47 @@ function hasIndicatorStatus(value: unknown): value is HealthIndicatorState {
   return status === 'up' || status === 'down';
 }
 
-function normalizeIndicatorResult(key: string, result: HealthIndicatorResult): HealthIndicatorResult {
-  const normalizedEntries = Object.entries(result).filter(([, entryValue]) => hasIndicatorStatus(entryValue));
+function createUnsupportedEntryMessage(entryKey: string): string {
+  return entryKey.trim().length > 0
+    ? `Indicator returned an unsupported status value for result key "${entryKey}".`
+    : 'Indicator returned an unsupported status value for an empty result key.';
+}
 
-  if (normalizedEntries.length > 0) {
-    return Object.fromEntries(normalizedEntries);
+function normalizeIndicatorResult(key: string, result: unknown): HealthIndicatorResult {
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) {
+    return {
+      [key]: {
+        message: 'Indicator returned a non-object health result.',
+        status: 'down',
+      },
+    };
   }
 
-  return {
-    [key]: {
-      message: 'Indicator returned an unsupported status value.',
+  const normalizedResult: HealthIndicatorResult = {};
+  const entries = Object.entries(result as Record<string, unknown>);
+
+  if (entries.length === 0) {
+    return {
+      [key]: {
+        message: 'Indicator returned no health result entries.',
+        status: 'down',
+      },
+    };
+  }
+
+  for (const [entryKey, entryValue] of entries) {
+    if (hasIndicatorStatus(entryValue)) {
+      normalizedResult[entryKey] = entryValue;
+      continue;
+    }
+
+    normalizedResult[entryKey.trim().length > 0 ? entryKey : key] = {
+      message: createUnsupportedEntryMessage(entryKey),
       status: 'down',
-    },
-  };
+    };
+  }
+
+  return normalizedResult;
 }
 
 function inferIndicatorKey(indicator: HealthIndicator, index: number): string {

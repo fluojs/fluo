@@ -4,6 +4,12 @@ import { HealthCheckError } from './errors.js';
 import { assertHealthCheck, runHealthCheck } from './health-check.js';
 import type { HealthIndicator } from './types.js';
 
+type TestHealthIndicatorResult = Awaited<ReturnType<HealthIndicator['check']>>;
+
+function unsafeHealthIndicatorResult(result: unknown): TestHealthIndicatorResult {
+  return result as TestHealthIndicatorResult;
+}
+
 describe('runHealthCheck', () => {
   it('aggregates up and down results into a structured report', async () => {
     const indicators: HealthIndicator[] = [
@@ -127,6 +133,59 @@ describe('runHealthCheck', () => {
     expect(report.details).toEqual({
       database: { latencyMs: 4, status: 'up' },
       redis: { message: 'timeout', status: 'down' },
+    });
+  });
+
+  it('keeps malformed entries visible as down diagnostics in mixed indicator results', async () => {
+    const indicators: HealthIndicator[] = [
+      {
+        key: 'dependencies',
+        check: async () => unsafeHealthIndicatorResult({
+          database: { latencyMs: 4, status: 'up' },
+          redis: { message: 'unexpected status', status: 'degraded' },
+        }),
+      },
+    ];
+
+    const report = await runHealthCheck(indicators);
+
+    expect(report.status).toBe('error');
+    expect(report.contributors).toEqual({
+      down: ['redis'],
+      up: ['database'],
+    });
+    expect(report.details).toEqual({
+      database: { latencyMs: 4, status: 'up' },
+      redis: {
+        message: 'Indicator returned an unsupported status value for result key "redis".',
+        status: 'down',
+      },
+    });
+  });
+
+  it('reports non-object and empty indicator results as down diagnostics', async () => {
+    const reports = await Promise.all([
+      runHealthCheck([
+        {
+          key: 'nullish',
+          check: async () => unsafeHealthIndicatorResult(null),
+        },
+      ]),
+      runHealthCheck([
+        {
+          key: 'empty',
+          check: async () => ({}),
+        },
+      ]),
+    ]);
+
+    expect(reports[0]?.error.nullish).toEqual({
+      message: 'Indicator returned a non-object health result.',
+      status: 'down',
+    });
+    expect(reports[1]?.error.empty).toEqual({
+      message: 'Indicator returned no health result entries.',
+      status: 'down',
     });
   });
 
