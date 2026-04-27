@@ -91,7 +91,7 @@ The legacy array form `@Inject([A, B])` remains normalized during the migration 
 
 Internal readers and writers live under `@fluojs/core/internal`, which is how packages like `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime` consume the same metadata model.
 
-Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need to read cloned metadata records, merge explicit stores with `Symbol.metadata`, or build framework-level decorators.
+Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need to read metadata records, merge explicit stores with `Symbol.metadata`, or build framework-level decorators. To reduce DI and module-graph hot-path allocations, `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` return frozen snapshots and may reuse the same reference between writes. Treat those results and their collection fields as immutable. Other metadata readers keep their existing defensive-read behavior unless their own tests document stable-reference reuse.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
