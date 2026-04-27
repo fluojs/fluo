@@ -33,6 +33,16 @@ export function ensureMetadataSymbol(): symbol {
 
 void ensureMetadataSymbol();
 
+function getActiveMetadataSymbol(): symbol {
+  const nativeMetadataSymbol = symbolWithMetadata.metadata;
+
+  if (nativeMetadataSymbol && nativeMetadataSymbol !== metadataSymbol) {
+    metadataSymbol = nativeMetadataSymbol;
+  }
+
+  return metadataSymbol;
+}
+
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -149,7 +159,7 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
  * @returns The metadata bag when present, otherwise `undefined`.
  */
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  const metadata = Reflect.get(target, metadataSymbol);
+  const metadata = Reflect.get(target, getActiveMetadataSymbol());
 
   if (typeof metadata !== 'object' || metadata === null) {
     return undefined;

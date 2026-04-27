@@ -1,8 +1,7 @@
 import { cloneCollection, cloneMutableValue } from './shared.js';
-import { createClonedWeakMapStore } from './store.js';
 import type { ModuleMetadata } from './types.js';
 
-const moduleMetadataStore = createClonedWeakMapStore<Function, ModuleMetadata>(cloneModuleMetadata);
+const moduleMetadataStore = new WeakMap<Function, ModuleMetadata>();
 
 function isValueProvider(provider: unknown): provider is { useValue: unknown } {
   return typeof provider === 'object' && provider !== null && 'useValue' in provider;
@@ -34,6 +33,21 @@ function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
   };
 }
 
+function freezeCollection<T>(collection: T[] | undefined): T[] | undefined {
+  return collection ? Object.freeze(collection) as T[] : undefined;
+}
+
+function freezeModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
+  return Object.freeze({
+    controllers: freezeCollection(metadata.controllers),
+    exports: freezeCollection(metadata.exports),
+    global: metadata.global,
+    imports: freezeCollection(metadata.imports),
+    middleware: freezeCollection(metadata.middleware),
+    providers: freezeCollection(metadata.providers),
+  }) as ModuleMetadata;
+}
+
 /**
  * Defines module metadata while preserving previously written fields for partial decorator passes.
  *
@@ -41,22 +55,24 @@ function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
  * @param metadata Partial or complete module metadata payload.
  */
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
-  moduleMetadataStore.update(target, (existing) => ({
+  const existing = moduleMetadataStore.get(target);
+
+  moduleMetadataStore.set(target, freezeModuleMetadata(cloneModuleMetadata({
     controllers: metadata.controllers ?? existing?.controllers,
     exports: metadata.exports ?? existing?.exports,
     global: metadata.global !== undefined ? metadata.global : existing?.global,
     imports: metadata.imports ?? existing?.imports,
     middleware: metadata.middleware ?? existing?.middleware,
     providers: metadata.providers ?? existing?.providers,
-  }));
+  })));
 }
 
 /**
- * Reads cloned module metadata for the provided module class.
+ * Reads frozen module metadata for the provided module class.
  *
  * @param target Module class being inspected.
- * @returns A defensive clone of module metadata, or `undefined` when none was defined.
+ * @returns A frozen module metadata snapshot, or `undefined` when none was defined.
  */
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
-  return moduleMetadataStore.read(target);
+  return moduleMetadataStore.get(target);
 }

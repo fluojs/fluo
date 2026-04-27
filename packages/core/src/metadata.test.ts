@@ -25,6 +25,7 @@ import {
   getStandardConstructorMetadataMap,
   getStandardConstructorMetadataRecord,
   getStandardMetadataBag,
+  metadataSymbol,
   standardMetadataKeys,
   type StandardMetadataBag,
 } from './metadata/shared.js';
@@ -51,7 +52,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('preserves prior module collections across partial writes and returns clones', () => {
+  it('preserves prior module collections across partial writes and returns a frozen stable snapshot', () => {
     class ExampleModule {}
 
     defineModuleMetadata(ExampleModule, {
@@ -74,9 +75,10 @@ describe('metadata helpers', () => {
       providers: ['LoggerProvider'],
     });
 
-    if (metadata?.imports) {
-      (metadata.imports as unknown as unknown[]).push('MutatedModule');
-    }
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.imports)).toBe(true);
+    expect(getModuleMetadata(ExampleModule)).toBe(metadata);
+    expect(() => (metadata?.imports as unknown as unknown[]).push('MutatedModule')).toThrow(TypeError);
 
     expect(getModuleMetadata(ExampleModule)).toEqual({
       controllers: undefined,
@@ -182,7 +184,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('preserves custom middleware instances while still cloning the module middleware array', () => {
+  it('preserves custom middleware instances while freezing and reusing the module middleware array', () => {
     class ExampleMiddleware {
       calls = 0;
 
@@ -203,8 +205,86 @@ describe('metadata helpers', () => {
     const returnedMiddleware = metadata?.middleware?.[0] as typeof middleware | undefined;
 
     expect(returnedMiddleware).toBe(middleware);
+    expect(Object.isFrozen(returnedMiddleware)).toBe(false);
     expect(metadata?.middleware).not.toBeUndefined();
-    expect(metadata?.middleware).not.toBe((getModuleMetadata(ExampleModule)?.middleware as unknown[] | undefined));
+    expect(metadata?.middleware).toBe((getModuleMetadata(ExampleModule)?.middleware as unknown[] | undefined));
+    returnedMiddleware?.handle();
+    expect(middleware.calls).toBe(1);
+  });
+
+  it('preserves useValue payload identity and mutability in frozen module snapshots', () => {
+    const value = { count: 0 };
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      providers: [{ provide: 'COUNTER', useValue: value }],
+    });
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const provider = metadata?.providers?.[0] as { useValue: typeof value } | undefined;
+
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.providers)).toBe(true);
+    expect(provider?.useValue).toBe(value);
+    expect(Object.isFrozen(provider?.useValue)).toBe(false);
+
+    value.count += 1;
+    expect(provider?.useValue.count).toBe(1);
+  });
+
+  it('does not freeze runtime guard or interceptor instances read from controller and route metadata', () => {
+    class RuntimeGuard {
+      calls = 0;
+
+      canActivate() {
+        return true;
+      }
+    }
+
+    class RuntimeInterceptor {
+      calls = 0;
+
+      intercept() {
+        return undefined;
+      }
+    }
+
+    const guard = new RuntimeGuard();
+    const interceptor = new RuntimeInterceptor();
+
+    class ExampleController {
+      getUser() {
+        return { ok: true };
+      }
+    }
+
+    defineControllerMetadata(ExampleController, {
+      basePath: '/users',
+      guards: [guard],
+      interceptors: [interceptor],
+    });
+    defineRouteMetadata(ExampleController.prototype, 'getUser', {
+      guards: [guard],
+      interceptors: [interceptor],
+      method: 'GET',
+      path: '/:id',
+    });
+
+    const controllerMetadata = getControllerMetadata(ExampleController);
+    const routeMetadata = getRouteMetadata(ExampleController.prototype, 'getUser');
+
+    expect(controllerMetadata?.guards?.[0]).toBe(guard);
+    expect(controllerMetadata?.interceptors?.[0]).toBe(interceptor);
+    expect(routeMetadata?.guards?.[0]).toBe(guard);
+    expect(routeMetadata?.interceptors?.[0]).toBe(interceptor);
+    expect(Object.isFrozen(guard)).toBe(false);
+    expect(Object.isFrozen(interceptor)).toBe(false);
+
+    guard.calls += 1;
+    interceptor.calls += 1;
+    expect(guard.calls).toBe(1);
+    expect(interceptor.calls).toBe(1);
   });
 
   it('builds DTO binding schema from field metadata', () => {
@@ -424,7 +504,7 @@ describe('metadata helpers', () => {
     });
   });
 
-  it('merges child DI metadata with inherited fallback and clones returned arrays', () => {
+  it('merges child DI metadata with inherited fallback and freezes the cached effective snapshot', () => {
     class BaseService {}
 
     defineClassDiMetadata(BaseService, {
@@ -448,10 +528,11 @@ describe('metadata helpers', () => {
       inject: ['CACHE'],
       scope: 'request',
     });
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata?.inject)).toBe(true);
+    expect(getInheritedClassDiMetadata(ChildService)).toBe(metadata);
 
-    if (metadata?.inject) {
-      (metadata.inject as unknown as unknown[]).push('MUTATED');
-    }
+    expect(() => (metadata?.inject as unknown as unknown[]).push('MUTATED')).toThrow(TypeError);
 
     expect(getInheritedClassDiMetadata(ChildService)).toEqual({
       inject: ['CACHE'],
@@ -487,6 +568,40 @@ describe('metadata helpers', () => {
 
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
+  });
+
+  it('tracks a native Symbol.metadata replacement after the fallback was installed', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    const fallbackSymbol = ensureMetadataSymbol();
+    const nativeSymbol = Symbol('native.metadata');
+
+    class ExampleController {}
+
+    Object.defineProperty(Symbol, 'metadata', {
+      configurable: true,
+      value: nativeSymbol,
+    });
+    Object.defineProperty(ExampleController, nativeSymbol, {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.controller]: { basePath: '/native' },
+      },
+    });
+
+    try {
+      expect(fallbackSymbol).not.toBe(nativeSymbol);
+      expect(getStandardMetadataBag(ExampleController)).toEqual({
+        [standardMetadataKeys.controller]: { basePath: '/native' },
+      });
+      expect(metadataSymbol).toBe(nativeSymbol);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as typeof Symbol & { metadata?: symbol }).metadata;
+      }
+      ensureMetadataSymbol();
+    }
   });
 
   it('reads standard metadata bags and constructor-level records through Symbol.metadata', () => {
