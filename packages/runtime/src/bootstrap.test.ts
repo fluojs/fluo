@@ -9,6 +9,17 @@ import type { PlatformComponent, PlatformState } from './platform-contract.js';
 import { HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL } from './tokens.js';
 import type { MicroserviceRuntime } from './types.js';
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe('bootstrapModule', () => {
   it('boots a simple module graph deterministically', () => {
     class Logger {}
@@ -536,6 +547,78 @@ describe('FluoFactory.createApplicationContext', () => {
     await expect(context.get(AppService)).resolves.toBeInstanceOf(AppService);
     await expect(context.get(HTTP_APPLICATION_ADAPTER)).rejects.toThrow('No provider registered');
     await expect(context.get(PLATFORM_SHELL)).resolves.toBeDefined();
+
+    await context.close();
+  });
+
+  it('memoizes ApplicationContext.get() for singleton tokens', async () => {
+    class AppService {}
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+    const resolve = vi.spyOn(context.container, 'resolve');
+
+    const first = await context.get(AppService);
+    const second = await context.get(AppService);
+
+    expect(first).toBe(second);
+    expect(resolve).toHaveBeenCalledTimes(1);
+
+    await context.close();
+  });
+
+  it('resolves independent singleton lifecycle providers concurrently before ordered hooks', async () => {
+    const events: string[] = [];
+    const FIRST = Symbol('first');
+    const SECOND = Symbol('second');
+    const firstCanResolve = createDeferred<void>();
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: FIRST,
+          async useFactory() {
+            events.push('first:resolve:start');
+            await firstCanResolve.promise;
+            events.push('first:resolve:end');
+            return {
+              onModuleInit() {
+                events.push('first:init');
+              },
+            };
+          },
+        },
+        {
+          provide: SECOND,
+          useFactory() {
+            events.push('second:resolve');
+            firstCanResolve.resolve();
+            return {
+              onModuleInit() {
+                events.push('second:init');
+              },
+            };
+          },
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+    });
+
+    expect(events).toEqual([
+      'first:resolve:start',
+      'second:resolve',
+      'first:resolve:end',
+      'first:init',
+      'second:init',
+    ]);
 
     await context.close();
   });

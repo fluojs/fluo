@@ -123,6 +123,9 @@ class UsersModule {}
 ## 동작 계약
 
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다.
+- 쿠키와 쿼리 파라미터 같은 요청 메타데이터는 요청별로 lazy하게 materialize되고 memoize됩니다. 동일한 `FrameworkRequest` 필드를 반복 접근해도 공개 요청 shape은 유지하면서 같은 파싱 값을 재사용합니다.
+- `ApplicationContext.get()`과 `Application.get()`은 context 수준 singleton 토큰 조회를 memoize하며, request/transient provider 해석 의미는 그대로 유지합니다.
+- Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.

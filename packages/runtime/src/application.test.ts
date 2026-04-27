@@ -3,7 +3,7 @@ import { request as httpsRequest } from 'node:https';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@fluojs/core';
+import { Inject, Scope } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import {
   Controller,
@@ -2175,6 +2175,51 @@ describe('bootstrapApplication', () => {
     expect(response.body).toEqual({ ok: true });
     expect(loggerEvents).toContain('error:HttpDispatcher:Request observer threw an unhandled error.:observer seam failed');
     expect(loggerEvents).toContain('error:HttpDispatcher:Request-scoped container dispose threw an error.:scope dispose failed');
+  });
+
+  it('isolates request-scoped providers during concurrent dispatch', async () => {
+    const seenIds = new Set<number>();
+    let nextId = 0;
+
+    @Scope('request')
+    class RequestScopedCounter {
+      readonly id = ++nextId;
+    }
+
+    @Controller('/concurrent-scope')
+    class ConcurrentScopeController {
+      @Get('/')
+      async get(_input: unknown, ctx: RequestContext) {
+        const counter = await ctx.container.resolve(RequestScopedCounter);
+        seenIds.add(counter.id);
+        return { id: counter.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ConcurrentScopeController],
+      providers: [RequestScopedCounter],
+    });
+
+    const port = await findAvailablePort();
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    }));
+
+    await app.listen();
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, () => fetchForTest(`http://127.0.0.1:${String(port)}/concurrent-scope`)),
+    );
+    const bodies = await Promise.all(responses.map(async (response) => response.json() as Promise<{ id: number }>));
+
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(new Set(bodies.map((body) => body.id)).size).toBe(20);
+    expect(seenIds.size).toBe(20);
+
+    await app.close();
   });
 
   it('parses Cookie header and exposes individual cookies via FromCookie', async () => {

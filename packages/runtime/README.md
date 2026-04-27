@@ -123,6 +123,9 @@ class UsersModule {}
 ## Behavioral Contracts
 
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests.
+- Request metadata such as cookies and query parameters is materialized lazily and memoized per request; accessing the same `FrameworkRequest` field repeatedly returns the same parsed value without changing the public request shape.
+- `ApplicationContext.get()` and `Application.get()` memoize context-level singleton token lookups while preserving request and transient provider resolution semantics.
+- Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.

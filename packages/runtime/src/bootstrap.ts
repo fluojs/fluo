@@ -44,6 +44,8 @@ import type {
 const DEFAULT_MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service') as Token<MicroserviceRuntime>;
 const runtimePerformance = globalThis.performance;
 
+type ContextResolutionCache = Map<Token, Promise<unknown>>;
+
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
   error: unknown,
@@ -410,6 +412,7 @@ class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
 
@@ -425,6 +428,7 @@ class FluoApplication implements Application {
     lifecycleInstances: unknown[],
     private readonly logger: ApplicationLogger,
     private readonly runtimeCleanup: Array<() => void>,
+    private readonly contextCacheableTokens: ReadonlySet<Token>,
   ) {
     this.lifecycleInstances = lifecycleInstances;
   }
@@ -434,7 +438,7 @@ class FluoApplication implements Application {
   }
 
   async get<T>(token: Token<T>): Promise<T> {
-    return this.container.resolve(token);
+    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
   /**
@@ -538,6 +542,7 @@ class FluoApplication implements Application {
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
 
   constructor(
     readonly container: Container,
@@ -546,10 +551,11 @@ class FluoApplicationContext implements ApplicationContext {
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
     private readonly runtimeCleanup: Array<() => void>,
+    private readonly contextCacheableTokens: ReadonlySet<Token>,
   ) {}
 
   async get<T>(token: Token<T>): Promise<T> {
-    return this.container.resolve(token);
+    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
   async close(signal?: string): Promise<void> {
@@ -672,7 +678,7 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
  * lifecycle hook이 있는 singleton provider 인스턴스를 미리 해석해 둔다.
  */
 async function resolveLifecycleInstances(container: Container, providers: Provider[]): Promise<unknown[]> {
-  const instances: unknown[] = [];
+  const tokens: Token[] = [];
   const seen = new Set<Token>();
 
   for (const provider of providers) {
@@ -689,10 +695,63 @@ async function resolveLifecycleInstances(container: Container, providers: Provid
     }
 
     seen.add(token);
-    instances.push(await container.resolve(token));
+    tokens.push(token);
   }
 
-  return instances;
+  return Promise.all(tokens.map((token) => container.resolve(token)));
+}
+
+function createContextCacheableTokenSet(
+  modules: readonly CompiledModule[],
+  runtimeProviders: readonly Provider[],
+  runtimeTokens: readonly Token[],
+): Set<Token> {
+  const cacheableTokens = new Set<Token>(runtimeTokens);
+
+  for (const provider of runtimeProviders) {
+    if (providerScope(provider) !== 'singleton') {
+      continue;
+    }
+
+    cacheableTokens.add(providerToken(provider));
+  }
+
+  for (const compiledModule of modules) {
+    for (const provider of compiledModule.definition.providers ?? []) {
+      if (providerScope(provider) !== 'singleton') {
+        continue;
+      }
+
+      cacheableTokens.add(providerToken(provider));
+    }
+  }
+
+  return cacheableTokens;
+}
+
+async function resolveContextToken<T>(
+  container: Container,
+  token: Token<T>,
+  cacheableTokens: ReadonlySet<Token>,
+  cache: ContextResolutionCache,
+): Promise<T> {
+  if (!cacheableTokens.has(token)) {
+    return container.resolve(token);
+  }
+
+  const cached = cache.get(token);
+
+  if (cached) {
+    return cached as Promise<T>;
+  }
+
+  const resolution = container.resolve(token).catch((error: unknown) => {
+    cache.delete(token);
+    throw error;
+  });
+  cache.set(token, resolution);
+
+  return resolution;
 }
 
 /**
@@ -1019,6 +1078,11 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       lifecycleInstances,
       logger,
       runtimeCleanup,
+      createContextCacheableTokenSet(
+        bootstrapped.modules,
+        runtimeProviders,
+        [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL],
+      ),
     );
   } catch (error: unknown) {
     logger.error(
@@ -1145,6 +1209,11 @@ export class FluoFactory {
         bootstrapTiming,
         lifecycleInstances,
         runtimeCleanup,
+        createContextCacheableTokenSet(
+          bootstrapped.modules,
+          runtimeProviders,
+          [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL],
+        ),
       );
     } catch (error: unknown) {
       logger.error(

@@ -72,6 +72,8 @@ type WebFrameworkRequest = FrameworkRequest & {
   rawBody?: Uint8Array;
 };
 
+type MemoizedValue<T> = () => T;
+
 class WebResponseStream implements WebFrameworkResponseStream {
   private readonly closeListeners = new Set<() => void>();
   private controller?: ReadableStreamDefaultController<Uint8Array>;
@@ -314,7 +316,9 @@ export async function createWebFrameworkRequest(
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url);
-  const headers = cloneWebHeaders(request.headers);
+  const headers = createMemoizedValue(() => cloneWebHeaders(request.headers));
+  const cookies = createMemoizedValue(() => parseCookieHeader(request.headers.get('cookie') ?? undefined));
+  const query = createMemoizedValue(() => parseQueryParams(url.searchParams));
   const contentType = request.headers.get('content-type') ?? undefined;
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
@@ -337,12 +341,18 @@ export async function createWebFrameworkRequest(
 
   const frameworkRequest: WebFrameworkRequest = {
     body,
-    cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
-    headers,
+    get cookies() {
+      return cookies();
+    },
+    get headers() {
+      return headers();
+    },
     method: request.method,
     params: {},
     path: url.pathname,
-    query: parseQueryParams(url.searchParams),
+    get query() {
+      return query();
+    },
     raw: request,
     signal,
     url: url.pathname + url.search,
@@ -357,6 +367,20 @@ export async function createWebFrameworkRequest(
   }
 
   return frameworkRequest;
+}
+
+function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    if (!initialized) {
+      value = factory();
+      initialized = true;
+    }
+
+    return value;
+  };
 }
 
 function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
