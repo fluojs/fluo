@@ -89,7 +89,7 @@ class UsesConfigValue {
 
 내부 메타데이터 reader/writer는 `@fluojs/core/internal` 아래에 있으며, `@fluojs/di`, `@fluojs/http`, `@fluojs/runtime` 같은 패키지들이 같은 메타데이터 모델을 공유할 수 있게 합니다.
 
-애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 메타데이터 레코드를 읽거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다. DI와 모듈 그래프 hot path의 allocation을 줄이기 위해 `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()`는 frozen snapshot을 반환하며 write 사이에는 같은 reference를 재사용할 수 있습니다. 이 결과와 collection 필드는 immutable로 취급해야 합니다. 다른 metadata reader는 각 reader의 테스트가 stable-reference 재사용을 문서화하지 않는 한 기존 defensive-read 동작을 유지합니다.
+애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 메타데이터 레코드를 읽거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다. DI와 모듈 그래프 hot path의 allocation을 줄이기 위해 `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()`는 frozen snapshot을 반환하며 write 사이에는 같은 reference를 재사용할 수 있습니다. 이 결과, collection 필드, module provider descriptor wrapper는 immutable로 취급해야 합니다. `useValue` payload 객체와 runtime middleware/guard/interceptor instance는 mutable reference로 유지되며 이 snapshot 때문에 freeze되지 않습니다. 다른 metadata reader는 각 reader의 테스트가 stable-reference 재사용을 문서화하지 않는 한 기존 defensive-read 동작을 유지합니다.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
