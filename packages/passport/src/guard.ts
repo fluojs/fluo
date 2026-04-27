@@ -32,6 +32,50 @@ function resolvePrincipal(result: AuthStrategyResult): Principal | undefined {
   return result;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isPrincipal(value: unknown): value is Principal {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.subject !== 'string' || value.subject.length === 0) {
+    return false;
+  }
+
+  if (!isRecord(value.claims)) {
+    return false;
+  }
+
+  if (value.issuer !== undefined && typeof value.issuer !== 'string') {
+    return false;
+  }
+
+  if (
+    value.audience !== undefined
+    && typeof value.audience !== 'string'
+    && !isStringArray(value.audience)
+  ) {
+    return false;
+  }
+
+  if (value.roles !== undefined && !isStringArray(value.roles)) {
+    return false;
+  }
+
+  if (value.scopes !== undefined && !isStringArray(value.scopes)) {
+    return false;
+  }
+
+  return true;
+}
+
 function hasRequiredScopes(principal: { scopes?: string[] }, scopes: string[]): boolean {
   return scopes.every((scope) => principal.scopes?.includes(scope));
 }
@@ -45,7 +89,7 @@ function isAuthenticationFailure(error: unknown): boolean {
 }
 
 function hasRegisteredStrategy(registry: AuthStrategyRegistry, strategyName: string): boolean {
-  return  Object.hasOwn(registry, strategyName);
+  return Object.hasOwn(registry, strategyName);
 }
 
 function toErrorMessage(error: unknown): string {
@@ -131,6 +175,10 @@ export class AuthGuard implements AuthGuardContract {
 
       if (!principal) {
         throw new AuthenticationFailedError('Authentication strategy did not return a principal.');
+      }
+
+      if (!isPrincipal(principal)) {
+        throw new AuthenticationFailedError('Authentication strategy returned an invalid principal.');
       }
 
       if (requirement?.scopes?.length && !hasRequiredScopes(principal, requirement.scopes)) {

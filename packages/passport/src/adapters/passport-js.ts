@@ -167,6 +167,15 @@ function cloneStrategyStateValue(value: unknown): unknown {
   return value;
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && 'then' in value
+    && typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
 /**
  * A bridge strategy that allows using Passport.js strategies within the fluo
  * authentication framework.
@@ -198,7 +207,22 @@ export class PassportJsAuthStrategy implements AuthStrategy {
       this.bindStrategyActions(strategy);
 
       try {
-        strategy.authenticate(request, this.options.authenticateOptions);
+        const result = strategy.authenticate(request, this.options.authenticateOptions);
+
+        if (isPromiseLike(result)) {
+          result.then(
+            () => {
+              this.settle(strategy, (state) => {
+                state.reject(new AuthenticationRequiredError('Passport strategy did not settle authentication.'));
+              });
+            },
+            (error: unknown) => {
+              this.settle(strategy, (state) => {
+                state.reject(error);
+              });
+            },
+          );
+        }
       } catch (error: unknown) {
         this.settle(strategy, () => reject(error));
       }

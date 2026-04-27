@@ -319,6 +319,145 @@ describe('AuthGuard', () => {
     });
   });
 
+  it('maps invalid Passport.js mapped principals to the canonical 401 path', async () => {
+    class PassportLikeInvalidPrincipalStrategy {
+      success?: (user: unknown, info?: unknown) => void;
+
+      authenticate() {
+        this.success?.({ id: 'google-user-1' });
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-invalid-principal', PassportLikeInvalidPrincipalStrategy, {
+      mapPrincipal: () => ({ claims: {}, subject: '' }),
+    });
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-invalid-principal')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeInvalidPrincipalStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-invalid-principal' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-invalid-principal' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-invalid-principal',
+        status: 401,
+      },
+    });
+  });
+
+  it('settles Passport.js promise rejections as authentication failures', async () => {
+    class PassportLikeAsyncFailureStrategy {
+      async authenticate(): Promise<void> {
+        throw new AuthenticationRequiredError('Async passport failure.');
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-async-failure', PassportLikeAsyncFailureStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-async-failure')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeAsyncFailureStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-async-failure' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-async-failure' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-async-failure',
+        status: 401,
+      },
+    });
+  });
+
+  it('rejects Passport.js promise completion that never settles a strategy action', async () => {
+    class PassportLikeUnsettledStrategy {
+      async authenticate(): Promise<void> {
+        return undefined;
+      }
+    }
+
+    const bridge = createPassportJsStrategyBridge('google-unsettled', PassportLikeUnsettledStrategy);
+
+    @Controller('/oauth')
+    class ProtectedController {
+      @Get('/profile')
+      @UseAuth('google-unsettled')
+      getProfile() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(
+      ProtectedController,
+      PassportLikeUnsettledStrategy,
+      ...bridge.providers,
+      ...createPassportModuleProviders({ defaultStrategy: 'google-unsettled' }, [bridge.strategy]),
+    );
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ProtectedController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/oauth/profile', { 'x-request-id': 'req-unsettled' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHORIZED',
+        details: undefined,
+        message: 'Authentication required.',
+        meta: undefined,
+        requestId: 'req-unsettled',
+        status: 401,
+      },
+    });
+  });
+
   it('isolates Passport.js bridge request state across concurrent authentications', async () => {
     let sequence = 0;
 
