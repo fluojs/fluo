@@ -85,9 +85,14 @@ class MyService {
 | 클래스/헬퍼 | 설명 |
 |---|---|
 | `ConfigModule` | 설정을 전역 또는 지역으로 등록하기 위한 모듈입니다. |
+| `ConfigReloadModule` | 리로드 매니저를 등록하고 의존성 주입용 공유 `CONFIG_RELOADER` 토큰을 내보냅니다. |
+| `ConfigReloadManager` | 주입된 `ConfigService`의 리로드를 조정하며, 서비스 identity는 유지하고 스냅샷만 리로드 경로로 교체합니다. |
+| `CONFIG_RELOADER` | 공유 config reloader 계약을 위한 주입 토큰입니다. |
 | `ConfigService` | 설정 값에 타입 안전하게 접근하기 위한 읽기 전용 서비스입니다. 스냅샷 교체는 config reload 경로 내부에만 남습니다. |
 | `loadConfig(options)` | 설정을 수동으로 로드하기 위한 함수형 엔트리 포인트입니다. |
 | `createConfigReloader(options)` | 동적 설정 업데이트를 위한 리로더를 생성합니다. |
+
+`ConfigReloadManager.reload()`는 기존 `ConfigService` 인스턴스를 갱신하므로 소비자는 주입받은 서비스 identity를 유지하면서 새 스냅샷을 관찰합니다. 리로드 listener가 에러를 던지면 매니저는 이전 스냅샷을 복구하고 listener 에러를 다시 던집니다.
 
 ## 관련 패키지
 

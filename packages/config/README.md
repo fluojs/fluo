@@ -90,9 +90,14 @@ The `validate` function runs after all sources are merged but before the applica
 | Class/Helper | Description |
 |---|---|
 | `ConfigModule` | Module for registering configuration globally or locally. |
+| `ConfigReloadModule` | Registers the reload manager and exports the shared `CONFIG_RELOADER` token for dependency injection. |
+| `ConfigReloadManager` | Coordinates reloads for the injected `ConfigService`, preserving service identity while replacing snapshots through the reload path. |
+| `CONFIG_RELOADER` | Injection token for the shared config reloader contract. |
 | `ConfigService` | Read-only service for typed access to configuration values. Snapshot replacement stays inside the config reload path. |
 | `loadConfig(options)` | Functional entry point for loading configuration manually. |
 | `createConfigReloader(options)` | Creates a reloader for dynamic configuration updates. |
+
+`ConfigReloadManager.reload()` updates the existing `ConfigService` instance so consumers keep their injected service identity while observing the new snapshot. If a reload listener throws, the manager restores the previous snapshot and rethrows the listener error.
 
 ## Related Packages
 
