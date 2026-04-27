@@ -41,7 +41,7 @@ pnpm add @fluojs/studio
 
 ## 빠른 시작
 
-Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 검사 데이터를 내보내거나 위임하며, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 보기, 렌더링하는 공개 헬퍼를 소유합니다.
+Studio는 fluo CLI에서 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 검사 데이터를 내보내거나 위임하며, Studio는 뷰어와 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 보기, 렌더링하는 공개 헬퍼를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, standalone timing diagnostics, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact가 포함됩니다.
 
 1. **Snapshot 내보내기**:
    ```bash
@@ -79,6 +79,7 @@ Studio는 주로 웹 애플리케이션이지만, 배포된 패키지는 도구/
 | `PlatformShellSnapshot` | 애플리케이션 상태를 나타내는 핵심 데이터 구조입니다. |
 | `PlatformDiagnosticIssue` | 플랫폼 오류 보고 및 수정을 위한 스키마입니다. |
 | `parseStudioPayload(rawJson)` | CLI/export JSON을 Studio snapshot/timing envelope로 검증합니다. |
+| `StudioReportArtifact` | CI/support 자동화를 위해 summary, snapshot, timing 데이터를 함께 보존한 `fluo inspect --report` artifact입니다. |
 | `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query 필터를 적용합니다. |
 | `renderMermaid(snapshot)` | 내부 컴포넌트 dependency edge와 외부 dependency node를 포함해 로드된 플랫폼 그래프를 Mermaid 텍스트로 변환합니다. |
 

@@ -41,7 +41,7 @@ The published package serves two caller-facing entrypoints:
 
 ## Quick Start
 
-Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers.
+Studio consumes JSON exports from the fluo CLI. Runtime produces snapshots, the CLI exports or delegates inspection data, and Studio owns the public helpers that parse, filter, view, and render those snapshots for viewer and automation callers. Supported inspect artifacts include raw snapshots, standalone timing diagnostics, snapshot-plus-timing envelopes, and report artifacts produced by `fluo inspect --report`.
 
 1. **Export a snapshot**:
    ```bash
@@ -79,6 +79,7 @@ Studio is primarily a web application, but the published package also exposes th
 | `PlatformShellSnapshot` | The core data structure representing the application state. |
 | `PlatformDiagnosticIssue` | Schema for reporting and fixing platform errors. |
 | `parseStudioPayload(rawJson)` | Validates CLI/exported JSON into the Studio snapshot/timing envelope. |
+| `StudioReportArtifact` | Preserved `fluo inspect --report` artifact with summary, snapshot, and timing data for CI/support automation. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
 | `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
 

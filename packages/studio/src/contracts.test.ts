@@ -1,13 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { describe, expect, it } from 'vitest';
-
-import * as studio from './index.js';
-import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
+import { describe, expect, it } from 'vitest';
 import { runWorkspaceBuildClosure } from '../../../tooling/scripts/run-workspace-build-closure.mjs';
+import { applyFilters, parseStudioPayload, renderMermaid } from './contracts.js';
+import * as studio from './index.js';
 
 const packageDir = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const repoRoot = resolve(packageDir, '..', '..');
@@ -131,6 +129,111 @@ describe('parseStudioPayload', () => {
     expect(parsed.payload.timing?.phases).toHaveLength(1);
   });
 
+  it('parses standalone timing diagnostics without requiring a snapshot', () => {
+    const parsed = parseStudioPayload(
+      JSON.stringify({
+        phases: [{ durationMs: 1.23, name: 'bootstrap_module' }],
+        totalMs: 1.23,
+        version: 1,
+      }),
+    );
+
+    expect(parsed.payload.snapshot).toBeUndefined();
+    expect(parsed.payload.timing).toEqual({
+      phases: [{ durationMs: 1.23, name: 'bootstrap_module' }],
+      totalMs: 1.23,
+      version: 1,
+    });
+  });
+
+  it('preserves inspect report artifacts with summary, snapshot, and timing', () => {
+    const parsed = parseStudioPayload(
+      JSON.stringify({
+        generatedAt: snapshotFixture.generatedAt,
+        snapshot: snapshotFixture,
+        summary: {
+          componentCount: 2,
+          diagnosticCount: 1,
+          errorCount: 0,
+          healthStatus: 'degraded',
+          readinessStatus: 'degraded',
+          timingTotalMs: 4.56,
+          warningCount: 1,
+        },
+        timing: {
+          phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+          totalMs: 4.56,
+          version: 1,
+        },
+        version: 1,
+      }),
+    );
+
+    expect(parsed.payload.report).toEqual({
+      generatedAt: snapshotFixture.generatedAt,
+      snapshot: snapshotFixture,
+      summary: {
+        componentCount: 2,
+        diagnosticCount: 1,
+        errorCount: 0,
+        healthStatus: 'degraded',
+        readinessStatus: 'degraded',
+        timingTotalMs: 4.56,
+        warningCount: 1,
+      },
+      timing: {
+        phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+        totalMs: 4.56,
+        version: 1,
+      },
+      version: 1,
+    });
+    expect(parsed.payload.snapshot).toBe(parsed.payload.report?.snapshot);
+    expect(parsed.payload.timing).toBe(parsed.payload.report?.timing);
+  });
+
+  it('rejects malformed inspect report summaries before automation consumes them', () => {
+    expect(() =>
+      parseStudioPayload(
+        JSON.stringify({
+          generatedAt: snapshotFixture.generatedAt,
+          snapshot: snapshotFixture,
+          summary: {
+            componentCount: 2,
+            diagnosticCount: 1,
+            errorCount: 0,
+            healthStatus: 'degraded',
+            readinessStatus: 'degraded',
+            warningCount: 1,
+          },
+          timing: {
+            phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+            totalMs: 4.56,
+            version: 1,
+          },
+          version: 1,
+        }),
+      )
+    ).toThrow('Invalid inspect report summary payload.');
+  });
+
+  it('rejects inspect report artifacts missing the required summary', () => {
+    expect(() =>
+      parseStudioPayload(
+        JSON.stringify({
+          generatedAt: snapshotFixture.generatedAt,
+          snapshot: snapshotFixture,
+          timing: {
+            phases: [{ durationMs: 4.56, name: 'bootstrap_module' }],
+            totalMs: 4.56,
+            version: 1,
+          },
+          version: 1,
+        }),
+      )
+    ).toThrow('Invalid inspect report artifact payload.');
+  });
+
   it('keeps the Studio release contract aligned across manifest and README docs', () => {
     const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
       name: string;
@@ -164,10 +267,12 @@ describe('parseStudioPayload', () => {
     expect(readme).toContain('pnpm add @fluojs/studio');
     expect(readme).toContain('@fluojs/studio/contracts');
     expect(readme).toContain('@fluojs/studio/viewer');
+    expect(readme).toContain('report artifacts');
     expect(readme).toContain('intended public publish surface');
     expect(readmeKo).toContain('pnpm add @fluojs/studio');
     expect(readmeKo).toContain('@fluojs/studio/contracts');
     expect(readmeKo).toContain('@fluojs/studio/viewer');
+    expect(readmeKo).toContain('report artifact');
     expect(readmeKo).toContain('공개 배포 패키지');
   });
 

@@ -7,6 +7,8 @@ export {
   type PlatformDiagnosticIssue,
   type PlatformDiagnosticSeverity,
   type PlatformReadinessStatus,
+  type StudioReportArtifact,
+  type StudioReportSummary,
   type PlatformShellSnapshot,
   type StudioPayload,
 } from './contracts.js';

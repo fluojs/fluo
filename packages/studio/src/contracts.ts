@@ -18,9 +18,34 @@ export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
 export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];
 
 /**
+ * Stable summary emitted by `fluo inspect --report` for support and CI triage.
+ */
+export interface StudioReportSummary {
+  componentCount: number;
+  diagnosticCount: number;
+  errorCount: number;
+  healthStatus: PlatformShellSnapshot['health']['status'];
+  readinessStatus: PlatformShellSnapshot['readiness']['status'];
+  timingTotalMs: number;
+  warningCount: number;
+}
+
+/**
+ * CI-friendly report artifact emitted by `fluo inspect --report`.
+ */
+export interface StudioReportArtifact {
+  generatedAt: string;
+  snapshot: PlatformShellSnapshot;
+  summary: StudioReportSummary;
+  timing: BootstrapTimingDiagnostics;
+  version: 1;
+}
+
+/**
  * Serializable Studio payload envelope built from inspect snapshot/timing exports.
  */
 export interface StudioPayload {
+  report?: StudioReportArtifact;
   snapshot?: PlatformShellSnapshot;
   timing?: BootstrapTimingDiagnostics;
 }
@@ -44,6 +69,10 @@ export interface ParsedPayload {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(value, key);
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -171,6 +200,49 @@ function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
   return value as unknown as BootstrapTimingDiagnostics;
 }
 
+function validateReportSummary(value: unknown): StudioReportSummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid inspect report summary payload.');
+  }
+
+  if (
+    typeof value.componentCount !== 'number'
+    || typeof value.diagnosticCount !== 'number'
+    || typeof value.errorCount !== 'number'
+    || !isHealthStatus(value.healthStatus)
+    || !isReadinessStatus(value.readinessStatus)
+    || typeof value.timingTotalMs !== 'number'
+    || typeof value.warningCount !== 'number'
+  ) {
+    throw new Error('Invalid inspect report summary payload.');
+  }
+
+  return value as unknown as StudioReportSummary;
+}
+
+function isReportArtifactEnvelope(value: Record<string, unknown>): boolean {
+  return value.summary !== undefined
+    || (hasOwn(value, 'snapshot') && hasOwn(value, 'timing') && (hasOwn(value, 'generatedAt') || hasOwn(value, 'version')));
+}
+
+function validateReport(value: unknown, snapshot: PlatformShellSnapshot | null, timing: BootstrapTimingDiagnostics | null): StudioReportArtifact | null {
+  if (!isRecord(value) || !isReportArtifactEnvelope(value)) {
+    return null;
+  }
+
+  if (value.summary === undefined || value.version !== 1 || typeof value.generatedAt !== 'string' || !snapshot || !timing) {
+    throw new Error('Invalid inspect report artifact payload.');
+  }
+
+  return {
+    generatedAt: value.generatedAt,
+    snapshot,
+    summary: validateReportSummary(value.summary),
+    timing,
+    version: 1,
+  };
+}
+
 /**
  * Parses a Studio JSON file into the documented snapshot/timing envelope.
  *
@@ -181,9 +253,18 @@ function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
 export function parseStudioPayload(rawJson: string): ParsedPayload {
   const parsed = JSON.parse(rawJson) as unknown;
   const envelope = isRecord(parsed) ? parsed : undefined;
+  const hasSnapshotEnvelope = envelope !== undefined && hasOwn(envelope, 'snapshot');
+  const hasTimingEnvelope = envelope !== undefined && hasOwn(envelope, 'timing');
+  const standaloneTiming = envelope !== undefined
+    && !hasSnapshotEnvelope
+    && !hasTimingEnvelope
+    && hasOwn(envelope, 'version')
+    && hasOwn(envelope, 'totalMs')
+    && hasOwn(envelope, 'phases');
 
-  const snapshot = validateSnapshot(envelope?.snapshot ?? parsed);
-  const timing = validateTiming(envelope?.timing ?? (!snapshot ? parsed : undefined));
+  const snapshot = validateSnapshot(hasSnapshotEnvelope ? envelope.snapshot : standaloneTiming ? undefined : parsed);
+  const timing = validateTiming(hasTimingEnvelope ? envelope.timing : !snapshot ? parsed : undefined);
+  const report = validateReport(parsed, snapshot, timing);
 
   if (!snapshot && !timing) {
     throw new Error('Unsupported file format. Expected platform snapshot JSON or timing JSON.');
@@ -191,6 +272,7 @@ export function parseStudioPayload(rawJson: string): ParsedPayload {
 
   return {
     payload: {
+      ...(report ? { report } : {}),
       ...(snapshot ? { snapshot } : {}),
       ...(timing ? { timing } : {}),
     },
