@@ -11,6 +11,7 @@ In-process event publishing and subscription for fluo. It features decorator-bas
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Public API](#public-api)
+- [Runtime-Specific and Integration Subpaths](#runtime-specific-and-integration-subpaths)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -104,12 +105,23 @@ class UserRegisteredEvent {
 ## Public API Overview
 
 ### Core
-- `EventBusModule`: Main entry point for event bus registration.
+- `EventBusModule.forRoot(...)`: Main entry point for event bus registration.
 - `EventBusLifecycleService`: Primary service for publishing events (`publish(event)`).
 - `@OnEvent(EventClass)`: Decorator to mark a method as an event handler.
+- `EVENT_BUS`: Compatibility injection token for the publish facade.
+- `createEventBusPlatformStatusSnapshot(...)`: Status snapshot helper used by diagnostics and health surfaces.
 
 ### Interfaces
 - `EventBusTransport`: Contract for implementing external transport adapters.
+- `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
+
+## Runtime-Specific and Integration Subpaths
+
+| Concern | Subpath | Exports |
+| --- | --- | --- |
+| Redis Pub/Sub transport | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
+
+`RedisEventBusTransport` stays on the explicit `@fluojs/event-bus/redis` subpath so the root `@fluojs/event-bus` entrypoint remains focused on module registration, local publishing, decorators, and type-only contracts. The transport unsubscribes the channels it registered and detaches its message listener during shutdown, but it does not disconnect caller-owned Redis clients.
 
 ## Related Packages
 
