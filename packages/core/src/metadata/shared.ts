@@ -229,9 +229,9 @@ export function getOwnStandardConstructorMetadataBag(constructor: Function): Sta
  *
  * Lookup prefers the target's own current/native metadata bag, then the target's
  * own fallback-era bag, then inherited bags using the same per-object era order.
- * When an own current/native bag exists alongside inherited metadata from either
- * era, the returned bag preserves own-key precedence while allowing property
- * lookup to fall through to inherited records.
+ * When an own bag from either era exists alongside inherited metadata from
+ * either era, the returned bag preserves own-key precedence while allowing
+ * property lookup to fall through to inherited records.
  *
  * @param target Target object that may own standard metadata.
  * @returns The metadata bag when present, otherwise `undefined`.
@@ -248,7 +248,7 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
     const ownFallbackMetadata = getOwnStandardMetadataBagFromSymbol(target, fallbackMetadataSymbol);
 
     if (ownFallbackMetadata) {
-      return ownFallbackMetadata;
+      return overlayStandardMetadataBag(ownFallbackMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
     }
   }
 

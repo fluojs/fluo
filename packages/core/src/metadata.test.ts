@@ -823,12 +823,14 @@ describe('metadata helpers', () => {
     }
   });
 
-  it('prefers own fallback-era standard metadata before inherited active metadata', () => {
+  it('overlays own fallback-era standard metadata over inherited active metadata', () => {
     const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
     const fallbackSymbol = ensureMetadataSymbol();
     const nativeSymbol = Symbol('native.metadata');
+    const inheritedNativeInjectionMetadata = new Map([['service', { optional: true, token: 'NATIVE_LOGGER' }]]);
     const inheritedNativeBag: StandardMetadataBag = {
       [standardMetadataKeys.controller]: { basePath: '/base-native' },
+      [standardMetadataKeys.injection]: inheritedNativeInjectionMetadata,
     };
     const ownFallbackBag: StandardMetadataBag = {
       [standardMetadataKeys.controller]: { basePath: '/child-fallback' },
@@ -851,8 +853,17 @@ describe('metadata helpers', () => {
     });
 
     try {
-      expect(getStandardMetadataBag(ChildController)).toBe(ownFallbackBag);
-      expect(getStandardConstructorMetadataBag(ChildController.prototype)).toBe(ownFallbackBag);
+      const metadataBag = getStandardMetadataBag(ChildController);
+
+      expect(metadataBag?.[standardMetadataKeys.controller]).toEqual({ basePath: '/child-fallback' });
+      expect(metadataBag?.[standardMetadataKeys.injection]).toBe(inheritedNativeInjectionMetadata);
+      expect(getStandardConstructorMetadataRecord<{ basePath: string }>(
+        ChildController.prototype,
+        standardMetadataKeys.controller,
+      )).toEqual({ basePath: '/child-fallback' });
+      expect(getStandardConstructorMetadataMap(ChildController.prototype, standardMetadataKeys.injection)).toBe(
+        inheritedNativeInjectionMetadata,
+      );
       expect(getOwnStandardConstructorMetadataBag(ChildController)).toBe(ownFallbackBag);
     } finally {
       if (originalDescriptor) {
