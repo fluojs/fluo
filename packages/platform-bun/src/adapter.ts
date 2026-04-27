@@ -37,11 +37,20 @@ type BunGlobal = {
 };
 
 type BunHostname = string;
+
+/** Shutdown signal names that `runBunApplication()` can register. */
 export type BunApplicationSignal = 'SIGINT' | 'SIGTERM';
+
+/** CORS input accepted by Bun application bootstrap helpers. */
 export type BunCorsInput = false | string | string[] | CorsOptions;
+
+/** TLS options forwarded to `Bun.serve()` without adapter-level normalization. */
 export type BunTlsOptions = Record<string, unknown>;
+
+/** Message payloads accepted by Bun server websocket bindings. */
 export type BunWebSocketMessage = string | ArrayBuffer | Uint8Array;
 
+/** Minimal Bun server websocket shape used by the official websocket binding seam. */
 export interface BunServerWebSocket<TData = unknown> {
   readonly data: TData;
   readonly readyState: number;
@@ -56,6 +65,7 @@ export interface BunServerWebSocket<TData = unknown> {
   unsubscribe(topic: string): void;
 }
 
+/** Callback contract forwarded to the `websocket` option of `Bun.serve()`. */
 export interface BunWebSocketHandler<TData = unknown> {
   backpressureLimit?: number;
   close?(socket: BunServerWebSocket<TData>, code: number, reason: string): void | Promise<void>;
@@ -77,6 +87,7 @@ export interface BunWebSocketHandler<TData = unknown> {
   sendPings?: boolean;
 }
 
+/** Fetch-style websocket binding consumed before normal HTTP dispatch. */
 export interface BunWebSocketBinding<TData = unknown> {
   fetch(request: Request, server: BunServerLike): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   idleTimeout?: number;
@@ -84,14 +95,17 @@ export interface BunWebSocketBinding<TData = unknown> {
   websocket: BunWebSocketHandler<TData>;
 }
 
+/** Host contract exposed by Bun adapters that can install a realtime binding. */
 export interface BunRealtimeBindingHost {
   configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
 }
 
+/** Backward-compatible host contract for Bun websocket-specific bindings. */
 export interface BunWebSocketBindingHost extends BunRealtimeBindingHost {
   configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void;
 }
 
+/** Subset of `Bun.serve()` options used by the adapter and its tests. */
 export interface BunServeOptions {
   development?: boolean;
   error?: (error: Error) => Response | Promise<Response>;
@@ -104,6 +118,7 @@ export interface BunServeOptions {
   websocket?: BunWebSocketHandler;
 }
 
+/** Minimal Bun server handle used by fluo for fetch dispatch, upgrades, and shutdown. */
 export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   hostname?: BunHostname;
@@ -119,46 +134,81 @@ export interface BunServerLike {
   url?: URL;
 }
 
+/** Options for `createBunAdapter()`. */
 export interface BunAdapterOptions {
+  /** Enables Bun development-mode behavior when supported by the host runtime. */
   development?: boolean;
+  /** Hostname passed through to `Bun.serve()`. */
   hostname?: BunHostname;
+  /** Idle timeout passed through to `Bun.serve()`. */
   idleTimeout?: number;
+  /** Maximum request body size forwarded as Bun's `maxRequestBodySize`. */
   maxBodySize?: number;
+  /** Multipart parsing limits used by the shared web request dispatcher. */
   multipart?: MultipartOptions;
+  /** Port passed through to `Bun.serve()`, defaulting to 3000. */
   port?: number;
+  /** Preserves raw bodies for non-multipart requests when enabled. */
   rawBody?: boolean;
+  /** Whether shutdown asks Bun to stop active connections immediately. */
   stopActiveConnections?: boolean;
+  /** TLS options forwarded to `Bun.serve()` for HTTPS startup. */
   tls?: BunTlsOptions;
 }
 
+/** Options for creating a standalone Bun `fetch(request)` handler. */
 export interface CreateBunFetchHandlerOptions {
+  /** Dispatcher that receives translated fluo framework requests. */
   dispatcher: Dispatcher;
+  /** Error message used when a request arrives before dispatcher binding is ready. */
   dispatcherNotReadyMessage?: string;
+  /** Maximum request body size enforced by the shared web dispatcher. */
   maxBodySize?: number;
+  /** Multipart parsing limits used by the shared web dispatcher. */
   multipart?: MultipartOptions;
+  /** Preserves raw bodies for JSON and text requests when enabled. */
   rawBody?: boolean;
 }
 
+/** Bootstrap options for Bun applications that do not install shutdown signal wiring. */
 export interface BootstrapBunApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
+  /** CORS policy applied by the shared HTTP bootstrap path. */
   cors?: BunCorsInput;
+  /** Enables Bun development-mode behavior when supported by the host runtime. */
   development?: boolean;
+  /** Global route prefix applied by the shared HTTP bootstrap path. */
   globalPrefix?: string;
+  /** Routes excluded from the global prefix. */
   globalPrefixExclude?: readonly string[];
+  /** Hostname passed through to `Bun.serve()`. */
   hostname?: BunHostname;
+  /** Idle timeout passed through to `Bun.serve()`. */
   idleTimeout?: number;
+  /** Application logger used for startup, shutdown, and failure reporting. */
   logger?: ApplicationLogger;
+  /** Maximum request body size forwarded as Bun's `maxRequestBodySize`. */
   maxBodySize?: number;
+  /** Middleware applied by the shared HTTP bootstrap path. */
   middleware?: MiddlewareLike[];
+  /** Multipart parsing limits used by the shared web request dispatcher. */
   multipart?: MultipartOptions;
+  /** Port passed through to `Bun.serve()`, defaulting to 3000. */
   port?: number;
+  /** Preserves raw bodies for non-multipart requests when enabled. */
   rawBody?: boolean;
+  /** Security header policy applied by the shared HTTP bootstrap path. */
   securityHeaders?: false | SecurityHeadersOptions;
+  /** Whether shutdown asks Bun to stop active connections immediately. */
   stopActiveConnections?: boolean;
+  /** TLS options forwarded to `Bun.serve()` for HTTPS startup. */
   tls?: BunTlsOptions;
 }
 
+/** Run options for Bun applications with optional shutdown signal wiring. */
 export interface RunBunApplicationOptions extends BootstrapBunApplicationOptions {
+  /** Maximum signal-driven shutdown duration before fluo reports timeout via `process.exitCode`. */
   forceExitTimeoutMs?: number;
+  /** Shutdown signals to register, or `false` to disable signal wiring. */
   shutdownSignals?: false | readonly BunApplicationSignal[];
 }
 
@@ -168,6 +218,7 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 const BUN_WEBSOCKET_SUPPORT_REASON =
   'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.';
 
+/** HTTP application adapter backed by native `Bun.serve()`. */
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
@@ -178,10 +229,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
   constructor(private readonly options: BunAdapterOptions = {}) {}
 
+  /** Returns the active Bun server handle after `listen()` starts. */
   getServer(): BunServerLike | undefined {
     return this.server;
   }
 
+  /** Returns the bind target and externally logged URL for the current Bun server. */
   getListenTarget(): HttpAdapterListenTarget {
     const protocol = this.options.tls ? 'https' : 'http';
     const configuredHostname = this.options.hostname ?? 'localhost';
@@ -195,6 +248,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     };
   }
 
+  /** Reports Bun's fetch-style websocket capability for realtime package integration. */
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       BUN_WEBSOCKET_SUPPORT_REASON,
@@ -202,6 +256,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     );
   }
 
+  /** Configures the official realtime binding before the Bun server starts. */
   configureRealtimeBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     if (this.server && binding !== undefined) {
       throw new Error('Bun websocket binding must be configured before Bun adapter listen() starts the server.');
@@ -210,10 +265,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     this.realtimeBinding = binding;
   }
 
+  /** Configures a Bun websocket binding through the legacy websocket host name. */
   configureWebSocketBinding<TData>(binding: BunWebSocketBinding<TData> | undefined): void {
     this.configureRealtimeBinding(binding);
   }
 
+  /** Starts the Bun server and binds framework dispatch to native fetch requests. */
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.dispatcher = dispatcher;
 
@@ -250,6 +307,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     });
   }
 
+  /** Stops ingress, waits for in-flight HTTP handlers, and releases adapter state. */
   async close(): Promise<void> {
     if (this.closeInFlight) {
       await waitForCloseWithTimeout(this.closeInFlight, DEFAULT_SHUTDOWN_TIMEOUT_MS);
@@ -333,6 +391,12 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   }
 }
 
+/**
+ * Creates a standalone Bun-compatible fetch handler.
+ *
+ * @param options - Dispatcher and request parsing options for translating native requests.
+ * @returns A `fetch(request)` handler suitable for custom `Bun.serve()` calls.
+ */
 export function createBunFetchHandler({
   dispatcher,
   dispatcherNotReadyMessage = DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
@@ -352,10 +416,23 @@ export function createBunFetchHandler({
   };
 }
 
+/**
+ * Creates the recommended Bun HTTP adapter instance.
+ *
+ * @param options - Bun server and request parsing options.
+ * @returns A fluo HTTP application adapter backed by `Bun.serve()`.
+ */
 export function createBunAdapter(options: BunAdapterOptions = {}): HttpApplicationAdapter {
   return new BunHttpApplicationAdapter(options);
 }
 
+/**
+ * Bootstraps a fluo application with the Bun adapter without starting signal wiring.
+ *
+ * @param rootModule - Root fluo module to compile.
+ * @param options - Bun adapter and application bootstrap options.
+ * @returns The bootstrapped application; call `listen()` to start serving.
+ */
 export async function bootstrapBunApplication(
   rootModule: ModuleType,
   options: BootstrapBunApplicationOptions,
@@ -377,6 +454,13 @@ export async function bootstrapBunApplication(
   );
 }
 
+/**
+ * Bootstraps, starts, and wires shutdown handling for a Bun-hosted fluo application.
+ *
+ * @param rootModule - Root fluo module to compile.
+ * @param options - Bun adapter, application, and shutdown options.
+ * @returns The running application instance.
+ */
 export async function runBunApplication(
   rootModule: ModuleType,
   options: RunBunApplicationOptions,
