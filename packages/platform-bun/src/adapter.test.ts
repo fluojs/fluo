@@ -4,10 +4,12 @@ import { Controller, Get, Post, SseResponse, type FrameworkRequest, type Framewo
 import { defineModule, type ApplicationLogger } from '@fluojs/runtime';
 
 import {
+  bootstrapBunApplication,
   BunHttpApplicationAdapter,
   createBunAdapter,
   createBunFetchHandler,
   runBunApplication,
+  type BootstrapBunApplicationOptions,
   type BunServeOptions,
   type BunServerLike,
   type BunServerWebSocket,
@@ -116,7 +118,180 @@ function createMockServerWebSocket(data: unknown): BunServerWebSocket<unknown> {
   };
 }
 
+function registerBunWebRuntimePortabilitySuite(): void {
+  describe('Bun web-runtime portability conformance', () => {
+    it('preserves malformed cookie values', async () => {
+      const mockBun = installMockBun();
+
+      @Controller('/cookies')
+      class CookieController {
+        @Get('/')
+        readCookies(_input: undefined, context: RequestContext) {
+          return context.request.cookies;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [CookieController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
+
+      try {
+        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/cookies', {
+          headers: { cookie: 'good=hello%20world; bad=%E0%A4%A' },
+        }));
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ bad: '%E0%A4%A', good: 'hello world' });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('preserves raw body for JSON and text requests when enabled', async () => {
+      const mockBun = installMockBun();
+
+      @Controller('/webhooks')
+      class WebhookController {
+        @Post('/json')
+        handleJson(_input: undefined, context: RequestContext) {
+          return {
+            parsed: context.request.body,
+            raw: decodeUtf8(context.request.rawBody),
+          };
+        }
+
+        @Post('/text')
+        handleText(_input: undefined, context: RequestContext) {
+          return {
+            parsed: context.request.body,
+            raw: decodeUtf8(context.request.rawBody),
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [WebhookController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
+
+      try {
+        const [jsonResponse, textResponse] = await Promise.all([
+          dispatchMockBunRequest(mockBun, new Request('https://runtime.test/webhooks/json', {
+            body: JSON.stringify({ provider: 'stripe' }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          })),
+          dispatchMockBunRequest(mockBun, new Request('https://runtime.test/webhooks/text', {
+            body: 'ping=1',
+            headers: { 'content-type': 'text/plain; charset=utf-8' },
+            method: 'POST',
+          })),
+        ]);
+
+        expect(jsonResponse.status).toBe(201);
+        expect(textResponse.status).toBe(201);
+        await expect(jsonResponse.json()).resolves.toEqual({ parsed: { provider: 'stripe' }, raw: '{"provider":"stripe"}' });
+        await expect(textResponse.json()).resolves.toEqual({ parsed: 'ping=1', raw: 'ping=1' });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('does not preserve rawBody for multipart requests', async () => {
+      const mockBun = installMockBun();
+
+      @Controller('/uploads')
+      class UploadController {
+        @Post('/')
+        upload(_input: undefined, context: RequestContext) {
+          return {
+            body: context.request.body,
+            fileCount: context.request.files?.length ?? 0,
+            hasRawBody: context.request.rawBody !== undefined,
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [UploadController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false, rawBody: true });
+
+      try {
+        const form = new FormData();
+        form.set('name', 'Ada');
+        form.set('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+
+        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/uploads', {
+          body: form,
+          method: 'POST',
+        }));
+
+        expect(response.status).toBe(201);
+        await expect(response.json()).resolves.toEqual({ body: { name: 'Ada' }, fileCount: 1, hasRawBody: false });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('supports SSE streaming', async () => {
+      const mockBun = installMockBun();
+
+      @Controller('/events')
+      class EventsController {
+        @Get('/')
+        stream(_input: undefined, context: RequestContext) {
+          const stream = new SseResponse(context);
+
+          stream.comment('connected');
+          stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+          stream.close();
+
+          return stream;
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [EventsController] });
+
+      const app = await bootstrapAndListenBunApplication(AppModule, { cors: false });
+
+      try {
+        const response = await dispatchMockBunRequest(mockBun, new Request('https://runtime.test/events', {
+          headers: { accept: 'text/event-stream' },
+        }));
+        const body = await response.text();
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain('text/event-stream');
+        expect(body).toContain('event: ready');
+        expect(body).toContain('data: {"ready":true}');
+      } finally {
+        await app.close();
+      }
+    });
+  });
+}
+
+async function bootstrapAndListenBunApplication(rootModule: Parameters<typeof bootstrapBunApplication>[0], options: BootstrapBunApplicationOptions) {
+  const app = await bootstrapBunApplication(rootModule, options);
+
+  await app.listen();
+  return app;
+}
+
+async function dispatchMockBunRequest(mockBun: MockBun, request: Request): Promise<Response> {
+  return await mockBun.lastServer!.fetch(request) ?? new Response(null, { status: 404 });
+}
+
+function decodeUtf8(input: Uint8Array | undefined): string {
+  return new TextDecoder().decode(input ?? new Uint8Array());
+}
+
 describe('@fluojs/platform-bun', () => {
+  registerBunWebRuntimePortabilitySuite();
+
   it('translates Bun-style Request semantics into the framework request contract', async () => {
     const fetch = createBunFetchHandler({
       dispatcher: {
@@ -304,7 +479,7 @@ describe('@fluojs/platform-bun', () => {
     defineModule(AppModule, { controllers: [HealthController] });
 
     const originalExitCode = process.exitCode;
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number | string | null) => undefined as never) as typeof process.exit);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined as never) as typeof process.exit);
     const app = await runBunApplication(AppModule, {
       forceExitTimeoutMs: 25,
       hostname: '127.0.0.1',

@@ -11,6 +11,8 @@ Bun-backed HTTP adapter for the fluo runtime, built on native `Bun.serve()`.
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Public API Overview](#public-api-overview)
+- [Adapter Contract](#adapter-contract)
+- [Conformance Coverage](#conformance-coverage)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
 
@@ -75,6 +77,28 @@ export class MyGateway {}
 - `createBunFetchHandler(options)`: Creates a native `fetch(request)` handler for custom `Bun.serve()` setups.
 - `bootstrapBunApplication(module, options)`: Advanced bootstrap without implicit startup logging.
 - `runBunApplication(module, options)`: Compatibility helper for quick startup with signal wiring.
+
+The adapter also exports the typed Bun integration seams used by realtime packages:
+
+- `BunHttpApplicationAdapter`: `HttpApplicationAdapter` implementation backed by `Bun.serve()`.
+- `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `createBunAdapter()`.
+- `BootstrapBunApplicationOptions` and `RunBunApplicationOptions`: application bootstrap/run options for Bun-hosted apps.
+- `BunWebSocketBinding` and `BunRealtimeBindingHost`: binding contracts used by `@fluojs/websockets/bun` before normal HTTP dispatch.
+
+## Adapter Contract
+
+- **Runtime host**: This package requires `globalThis.Bun.serve()` at listen time. Tests may provide a Bun-compatible test double, but production use is Bun-only.
+- **Request portability**: Fetch requests are translated through the shared web dispatcher, preserving malformed cookie values, query arrays, JSON/text raw bodies when `rawBody: true`, and SSE framing.
+- **Multipart behavior**: Multipart requests never expose `rawBody`, and multipart limits continue to flow through the shared runtime parser.
+- **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
+- **Shutdown ownership**: `close()` stops new ingress, waits for in-flight HTTP handlers, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
+- **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch.
+
+## Conformance Coverage
+
+`packages/platform-bun/src/adapter.test.ts` is the package-local regression target for the documented contract. It includes Bun fetch-style portability assertions for malformed cookies, JSON/text raw-body preservation, multipart raw-body exclusion, and SSE framing, plus focused tests for startup logging, shutdown listener cleanup, in-flight drain behavior, timeout reporting, and websocket binding delegation.
+
+The broader repository suite also exercises Bun through `createWebRuntimeHttpAdapterPortabilityHarness(...)` alongside Deno and Cloudflare Workers in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`, keeping the shared web-runtime portability baseline aligned across fetch-style platforms.
 
 ## Related Packages
 
