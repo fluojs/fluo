@@ -48,14 +48,19 @@ import { Resolver, Query, Mutation, Arg } from '@fluojs/graphql';
 import { Inject } from '@fluojs/core';
 import { ProductService } from './product.service';
 
+class ProductInput {
+  @Arg('id')
+  id = '';
+}
+
 @Inject(ProductService)
 @Resolver()
 export class ProductResolver {
   constructor(private readonly productService: ProductService) {}
 
-  @Query()
-  async product(@Arg('id') id: string) {
-    return this.productService.findById(id);
+  @Query({ input: ProductInput })
+  async product(input: ProductInput) {
+    return this.productService.findById(input.id);
   }
 
   @Query()
@@ -64,6 +69,8 @@ export class ProductResolver {
   }
 }
 ```
+
+`@Arg(...)`는 resolver input DTO용 필드 데코레이터입니다. GraphQL 인자로 노출할 DTO 필드에 표시한 뒤, operation의 `input` 옵션으로 해당 DTO 클래스를 전달합니다.
 
 ### Registering the Module
 
@@ -103,11 +110,16 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 ### Using the Loader in a Resolver
 
 ```typescript
+class BookInput {
+  @Arg('id')
+  id = '';
+}
+
 @Resolver()
 export class BookResolver {
-  @Query()
-  async book(@Arg('id') id: string) {
-    return bookService.findById(id);
+  @Query({ input: BookInput })
+  async book(input: BookInput) {
+    return bookService.findById(input.id);
   }
 
   // Book의 'author' 필드에 대한 필드 리졸버

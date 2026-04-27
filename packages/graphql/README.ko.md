@@ -10,6 +10,7 @@ fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Graph
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [핵심 기능](#핵심-기능)
+- [Resolver Lifecycle 계약](#resolver-lifecycle-계약)
 - [운영 가드레일](#운영-가드레일)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
@@ -37,11 +38,16 @@ import { Module } from '@fluojs/core';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { GraphqlModule, Query, Resolver, Arg } from '@fluojs/graphql';
 
+class HelloInput {
+  @Arg('name')
+  name = '';
+}
+
 @Resolver()
 class HelloResolver {
-  @Query()
-  hello(@Arg('name') name: string): string {
-    return `Hello, ${name}!`;
+  @Query({ input: HelloInput })
+  hello(input: HelloInput): string {
+    return `Hello, ${input.name}!`;
   }
 }
 
@@ -65,7 +71,7 @@ await app.listen(3000);
 ## 핵심 기능
 
 ### Code-first Resolvers
-fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다.
+fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다. GraphQL 인자는 input DTO 필드에 `@Arg(...)`로 선언하고, resolver 메서드는 작업의 `input` 옵션을 통해 해당 DTO를 받습니다.
 
 ### Request-Scoped DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
@@ -83,6 +89,36 @@ class UserResolver {
   @Query()
   async user(@Arg('id') id: string, context: GraphQLContext) {
     return userLoader(context).load(id);
+  }
+}
+```
+
+## Resolver Lifecycle 계약
+
+- Singleton resolver가 기본값이며, 각 operation에서 애플리케이션 컨테이너를 통해 resolve됩니다.
+- Request-scoped provider를 주입하는 resolver는 resolver 자체에도 `@Scope('request')`를 지정해야 합니다. 이렇게 해야 DI lifetime 규칙이 명시적으로 유지되고 singleton-to-request dependency mismatch를 피할 수 있습니다.
+- `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
+- Request-scoped DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
+
+```typescript
+import { Inject, Scope } from '@fluojs/core';
+import { Query, Resolver } from '@fluojs/graphql';
+
+@Scope('request')
+class RequestState {
+  private static nextId = 0;
+  readonly requestId = `request-${++RequestState.nextId}`;
+}
+
+@Inject(RequestState)
+@Scope('request')
+@Resolver()
+class RequestResolver {
+  constructor(private readonly state: RequestState) {}
+
+  @Query('requestId')
+  requestId(): string {
+    return this.state.requestId;
   }
 }
 ```
@@ -142,7 +178,7 @@ GraphqlModule.forRoot({
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: 작업 데코레이터.
-- `Arg`: 인자 매핑 데코레이터.
+- `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`: DataLoader 팩토리 헬퍼.
 - `GraphQLContext`: GraphQL 실행 컨텍스트를 위한 타입 정의.
 

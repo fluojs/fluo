@@ -48,14 +48,19 @@ import { Resolver, Query, Mutation, Arg } from '@fluojs/graphql';
 import { Inject } from '@fluojs/core';
 import { ProductService } from './product.service';
 
+class ProductInput {
+  @Arg('id')
+  id = '';
+}
+
 @Inject(ProductService)
 @Resolver()
 export class ProductResolver {
   constructor(private readonly productService: ProductService) {}
 
-  @Query()
-  async product(@Arg('id') id: string) {
-    return this.productService.findById(id);
+  @Query({ input: ProductInput })
+  async product(input: ProductInput) {
+    return this.productService.findById(input.id);
   }
 
   @Query()
@@ -64,6 +69,8 @@ export class ProductResolver {
   }
 }
 ```
+
+`@Arg(...)` is a field decorator for resolver input DTOs. Mark the DTO fields you want to expose as GraphQL arguments, then pass that DTO class through the operation's `input` option.
 
 ### Registering the Module
 
@@ -103,11 +110,16 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 ### Using the Loader in a Resolver
 
 ```typescript
+class BookInput {
+  @Arg('id')
+  id = '';
+}
+
 @Resolver()
 export class BookResolver {
-  @Query()
-  async book(@Arg('id') id: string) {
-    return bookService.findById(id);
+  @Query({ input: BookInput })
+  async book(input: BookInput) {
+    return bookService.findById(input.id);
   }
 
   // Field resolver for the 'author' field on Book

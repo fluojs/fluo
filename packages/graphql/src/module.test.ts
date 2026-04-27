@@ -254,6 +254,11 @@ class IncrementInput {
   count = 0;
 }
 
+class RequestLifecycleInput {
+  @Arg('marker')
+  marker = '';
+}
+
 class ValuesInput {
   @Arg('values')
   values: string[] = [];
@@ -535,6 +540,90 @@ describe('@fluojs/graphql', () => {
     expect(missingArgResult.errors[0]?.message).toBe('Validation failed.');
     expect(missingArgResult.errors[0]?.extensions?.code).toBe('BAD_USER_INPUT');
     expect(missingArgResult.data.echo).toBeNull();
+
+    await app.close();
+  });
+
+  it('keeps request-scoped resolver providers isolated and disposed per GraphQL operation', async () => {
+    let nextRequestId = 0;
+    const lifecycleEvents: string[] = [];
+
+    @Inject()
+    @Scope('request')
+    class RequestLifecycleState {
+      readonly id = ++nextRequestId;
+
+      onDestroy(): void {
+        lifecycleEvents.push(`state:${String(this.id)}:destroy`);
+      }
+    }
+
+    @Inject(RequestLifecycleState)
+    @Scope('request')
+    @Resolver('RequestLifecycleResolver')
+    class RequestLifecycleResolver {
+      constructor(private readonly state: RequestLifecycleState) {}
+
+      @Query({ fieldName: 'requestLifecycleId', input: RequestLifecycleInput })
+      requestLifecycleId(input: RequestLifecycleInput): string {
+        lifecycleEvents.push(`resolve:${input.marker}:${String(this.state.id)}`);
+        return `${input.marker}:${String(this.state.id)}`;
+      }
+
+      onDestroy(): void {
+        lifecycleEvents.push(`resolver:${String(this.state.id)}:destroy`);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          resolvers: [RequestLifecycleResolver],
+        }),
+      ],
+      providers: [RequestLifecycleState, RequestLifecycleResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    await expect(
+      postGraphql(port, '{ first: requestLifecycleId(marker: "first") second: requestLifecycleId(marker: "second") }'),
+    ).resolves.toEqual({
+      data: {
+        first: 'first:1',
+        second: 'second:1',
+      },
+    });
+
+    expect(lifecycleEvents).toEqual(
+      expect.arrayContaining([
+        'resolve:first:1',
+        'resolve:second:1',
+        'resolver:1:destroy',
+        'state:1:destroy',
+      ]),
+    );
+
+    await expect(postGraphql(port, '{ requestLifecycleId(marker: "next") }')).resolves.toEqual({
+      data: {
+        requestLifecycleId: 'next:2',
+      },
+    });
+
+    expect(lifecycleEvents).toEqual(
+      expect.arrayContaining([
+        'resolve:next:2',
+        'resolver:2:destroy',
+        'state:2:destroy',
+      ]),
+    );
 
     await app.close();
   });
