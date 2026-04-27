@@ -9,6 +9,7 @@ fluo 애플리케이션을 위한 Mongoose 라이프사이클 및 세션 기반 
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
+- [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
@@ -49,6 +50,18 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 })
 class AppModule {}
 ```
+
+## 라이프사이클과 종료
+
+`MongooseModule`은 `MongooseConnection`을 fluo 애플리케이션 라이프사이클에 등록합니다. 이 패키지는 원본 Mongoose 연결을 직접 생성하거나 소유하지 않습니다. 애플리케이션 종료 시 외부 연결을 닫아야 한다면 `dispose` 훅을 전달하세요.
+
+종료 과정은 요청 트랜잭션 정리 순서를 보존합니다.
+
+1. 열려 있는 요청 범위 트랜잭션은 `Application shutdown interrupted an open request transaction.` 오류로 abort됩니다.
+2. 해당 Mongoose 세션은 `abortTransaction()`과 `endSession()` 정리를 끝냅니다.
+3. 설정한 `dispose(connection)` 훅은 활성 요청 트랜잭션이 모두 settled된 뒤에만 실행됩니다.
+
+`createMongoosePlatformStatusSnapshot(...)`은 트래픽 처리 중에는 `ready`, 요청 트랜잭션 drain 중에는 `shutting-down`, dispose 훅 완료 뒤에는 `stopped`를 보고합니다. 수동 `transaction()`도 요청 범위 트랜잭션과 같은 명시적 세션 계약을 사용하므로, 트랜잭션에 참여해야 하는 Mongoose 모델 작업에는 repository 코드가 `conn.currentSession()`을 전달해야 합니다.
 
 ## 공통 패턴
 
