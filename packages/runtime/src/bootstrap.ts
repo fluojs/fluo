@@ -46,6 +46,8 @@ const runtimePerformance = globalThis.performance;
 
 type ContextResolutionCache = Map<Token, Promise<unknown>>;
 
+type CacheInvalidatingContainer = Container & { override(...providers: Provider[]): Container };
+
 async function runExceptionFilters(
   filters: readonly ExceptionFilterHandler[],
   error: unknown,
@@ -431,6 +433,7 @@ class FluoApplication implements Application {
     private readonly contextCacheableTokens: ReadonlySet<Token>,
   ) {
     this.lifecycleInstances = lifecycleInstances;
+    installContextCacheInvalidation(this.container, this.contextResolutionCache);
   }
 
   get state(): ApplicationState {
@@ -438,6 +441,10 @@ class FluoApplication implements Application {
   }
 
   async get<T>(token: Token<T>): Promise<T> {
+    if (this.closed) {
+      return this.container.resolve(token);
+    }
+
     return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
@@ -552,9 +559,15 @@ class FluoApplicationContext implements ApplicationContext {
     private readonly lifecycleInstances: unknown[],
     private readonly runtimeCleanup: Array<() => void>,
     private readonly contextCacheableTokens: ReadonlySet<Token>,
-  ) {}
+  ) {
+    installContextCacheInvalidation(this.container, this.contextResolutionCache);
+  }
 
   async get<T>(token: Token<T>): Promise<T> {
+    if (this.closed) {
+      return this.container.resolve(token);
+    }
+
     return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
@@ -682,9 +695,7 @@ async function resolveLifecycleInstances(container: Container, providers: Provid
   const seen = new Set<Token>();
 
   for (const provider of providers) {
-    const scope = providerScope(provider);
-
-    if (scope === 'request' || scope === 'transient') {
+    if (!isDirectSingletonContextProvider(provider)) {
       continue;
     }
 
@@ -703,13 +714,14 @@ async function resolveLifecycleInstances(container: Container, providers: Provid
 
 function createContextCacheableTokenSet(
   modules: readonly CompiledModule[],
+  rootModule: ModuleType,
   runtimeProviders: readonly Provider[],
   runtimeTokens: readonly Token[],
 ): Set<Token> {
   const cacheableTokens = new Set<Token>(runtimeTokens);
 
   for (const provider of runtimeProviders) {
-    if (providerScope(provider) !== 'singleton') {
+    if (!isDirectSingletonContextProvider(provider)) {
       continue;
     }
 
@@ -717,8 +729,12 @@ function createContextCacheableTokenSet(
   }
 
   for (const compiledModule of modules) {
+    if (compiledModule.type !== rootModule) {
+      continue;
+    }
+
     for (const provider of compiledModule.definition.providers ?? []) {
-      if (providerScope(provider) !== 'singleton') {
+      if (!isDirectSingletonContextProvider(provider)) {
         continue;
       }
 
@@ -727,6 +743,30 @@ function createContextCacheableTokenSet(
   }
 
   return cacheableTokens;
+}
+
+function isDirectSingletonContextProvider(provider: Provider): boolean {
+  if (typeof provider === 'function') {
+    return providerScope(provider) === 'singleton';
+  }
+
+  if ('useExisting' in provider || 'useValue' in provider) {
+    return false;
+  }
+
+  return providerScope(provider) === 'singleton';
+}
+
+function installContextCacheInvalidation(container: Container, cache: ContextResolutionCache): void {
+  const cacheInvalidatingContainer = container as CacheInvalidatingContainer;
+  const override = cacheInvalidatingContainer.override.bind(container);
+
+  cacheInvalidatingContainer.override = (...providers: Provider[]): Container => {
+    const result = override(...providers);
+    cache.clear();
+
+    return result;
+  };
 }
 
 async function resolveContextToken<T>(
@@ -1080,6 +1120,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
       runtimeCleanup,
       createContextCacheableTokenSet(
         bootstrapped.modules,
+        options.rootModule,
         runtimeProviders,
         [RUNTIME_CONTAINER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL],
       ),
@@ -1211,6 +1252,7 @@ export class FluoFactory {
         runtimeCleanup,
         createContextCacheableTokenSet(
           bootstrapped.modules,
+          rootModule,
           runtimeProviders,
           [RUNTIME_CONTAINER, COMPILED_MODULES, PLATFORM_SHELL],
         ),
