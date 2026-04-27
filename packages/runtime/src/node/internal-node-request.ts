@@ -67,8 +67,10 @@ export async function createFrameworkRequest(
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const headers = cloneRequestHeaders(request.headers);
-  const cookies = createMemoizedValue(() => parseCookieHeader(headers.cookie));
-  const query = createMemoizedValue(() => parseQueryParams(url.searchParams));
+  const cookieHeader = cloneHeaderValue(headers.cookie);
+  const searchParams = new URLSearchParams(url.searchParams);
+  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
+  const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = readPrimaryHeaderValue(headers['content-type']);
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
@@ -196,9 +198,13 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
 }
 
 function cloneRequestHeaders(headers: IncomingHttpHeaders): FrameworkRequest['headers'] {
-  const clonedEntries = Object.entries(headers).map(([name, value]) => [name, Array.isArray(value) ? [...value] : value]);
+  const clonedEntries = Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]);
 
   return Object.fromEntries(clonedEntries);
+}
+
+function cloneHeaderValue<T extends string | string[] | undefined>(value: T): T {
+  return (Array.isArray(value) ? [...value] : value) as T;
 }
 
 function readPrimaryHeaderValue(headerValue: string | string[] | undefined): string | undefined {

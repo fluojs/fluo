@@ -72,7 +72,7 @@ describe('node request adapter', () => {
     });
   });
 
-  it('materializes cookies lazily and memoizes the parsed object', async () => {
+  it('captures cookies at creation, then materializes and memoizes the parsed object lazily', async () => {
     const request = createIncomingMessage({
       headers: {
         cookie: 'session=before',
@@ -83,16 +83,19 @@ describe('node request adapter', () => {
     const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
     const mutableHeaders = frameworkRequest.headers as Record<string, string | string[] | undefined>;
 
-    mutableHeaders.cookie = 'session=after';
-    const firstCookies = frameworkRequest.cookies;
+    request.headers.cookie = 'session=after';
     mutableHeaders.cookie = 'session=ignored';
+    const firstCookies = frameworkRequest.cookies;
+    request.headers.cookie = 'session=after-second-access';
+    mutableHeaders.cookie = 'session=ignored-second-access';
     const secondCookies = frameworkRequest.cookies;
 
-    expect(firstCookies).toEqual({ session: 'after' });
+    expect(firstCookies).toEqual({ session: 'before' });
     expect(secondCookies).toBe(firstCookies);
+    expect(secondCookies).toEqual({ session: 'before' });
   });
 
-  it('materializes query parameters lazily and memoizes the parsed object', async () => {
+  it('captures query parameters at creation, then materializes and memoizes the parsed object lazily', async () => {
     const entries = vi.spyOn(URLSearchParams.prototype, 'entries');
     const request = createIncomingMessage({
       headers: {},
@@ -102,13 +105,16 @@ describe('node request adapter', () => {
     try {
       const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
 
+      request.url = '/search?tag=after';
       expect(entries).not.toHaveBeenCalled();
 
       const firstQuery = frameworkRequest.query;
+      request.url = '/search?tag=ignored';
       const secondQuery = frameworkRequest.query;
 
       expect(firstQuery).toEqual({ tag: ['one', 'two'] });
       expect(secondQuery).toBe(firstQuery);
+      expect(secondQuery).toEqual({ tag: ['one', 'two'] });
       expect(entries).toHaveBeenCalledTimes(1);
     } finally {
       entries.mockRestore();
