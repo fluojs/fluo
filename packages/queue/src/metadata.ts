@@ -1,8 +1,6 @@
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
+import { ensureSymbolMetadataPolyfill, getStandardMetadataBag } from '@fluojs/core/internal';
 
 import type { QueueWorkerMetadata } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 void ensureSymbolMetadataPolyfill();
 
@@ -14,10 +12,6 @@ function cloneQueueWorkerMetadata(metadata: QueueWorkerMetadata): QueueWorkerMet
     jobType: metadata.jobType,
     options: { ...metadata.options },
   };
-}
-
-function getStandardMetadataBag(target: Function): StandardMetadataBag | undefined {
-  return (target as unknown as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
 }
 
 function getStandardQueueWorkerMetadata(target: Function): QueueWorkerMetadata | undefined {
