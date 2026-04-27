@@ -1,20 +1,27 @@
 import { createServer } from 'node:net';
-
-import { describe, expect, it } from 'vitest';
-
 import { Controller, FromBody, Get, Post, RequestDto } from '@fluojs/http';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import {
+  type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
+  type NodeApplicationSignal,
+  type NodeHttpAdapterOptions,
+  type NodeHttpApplicationAdapter,
+  type RunNodeApplicationOptions,
   runNodeApplication,
 } from '@fluojs/runtime/node';
-
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import * as platformNodejsApi from './index.js';
 import {
+  type BootstrapNodejsApplicationOptions,
   bootstrapNodejsApplication,
   createNodejsAdapter,
+  type NodejsAdapterOptions,
+  type NodejsApplicationSignal,
+  type NodejsHttpApplicationAdapter,
+  type RunNodejsApplicationOptions,
   runNodejsApplication,
 } from './index.js';
-import * as platformNodejsApi from './index.js';
 
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
@@ -45,6 +52,22 @@ describe('@fluojs/platform-nodejs', () => {
   it('re-exports the existing Node compatibility helpers through the platform package', () => {
     expect(bootstrapNodejsApplication).toBe(bootstrapNodeApplication);
     expect(runNodejsApplication).toBe(runNodeApplication);
+  });
+
+  it('keeps the documented runtime value surface focused on Node.js startup helpers', () => {
+    expect(Object.keys(platformNodejsApi).sort()).toEqual([
+      'bootstrapNodejsApplication',
+      'createNodejsAdapter',
+      'runNodejsApplication',
+    ]);
+  });
+
+  it('keeps the documented Node.js type aliases aligned with the runtime adapter surface', () => {
+    expectTypeOf<BootstrapNodejsApplicationOptions>().toEqualTypeOf<BootstrapNodeApplicationOptions>();
+    expectTypeOf<NodejsAdapterOptions>().toEqualTypeOf<NodeHttpAdapterOptions>();
+    expectTypeOf<NodejsApplicationSignal>().toEqualTypeOf<NodeApplicationSignal>();
+    expectTypeOf<NodejsHttpApplicationAdapter>().toEqualTypeOf<NodeHttpApplicationAdapter>();
+    expectTypeOf<RunNodejsApplicationOptions>().toEqualTypeOf<RunNodeApplicationOptions>();
   });
 
   it('keeps advanced process and compression utilities off the primary platform startup surface', () => {

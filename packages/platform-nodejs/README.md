@@ -10,6 +10,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Behavioral Contracts](#behavioral-contracts)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -68,15 +69,28 @@ import { AppModule } from './app.module';
 await runNodejsApplication(AppModule, {
   port: 3000,
   globalPrefix: 'api',
+  shutdownSignals: ['SIGINT', 'SIGTERM'],
 });
 ```
+
+## Behavioral Contracts
+
+- `createNodejsAdapter(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
+- `maxBodySize` is enforced while raw Node request bytes are still streaming, and it becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
+- `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
+- `runNodejsApplication(module, options)` bootstraps, starts, and wires graceful shutdown. When signal-driven shutdown times out or fails, it logs the condition and sets `process.exitCode`; final process termination remains owned by the host process.
+- Advanced compression and shutdown utility functions remain on `@fluojs/runtime/node` or internal runtime seams rather than this primary platform startup surface.
 
 ## Public API Overview
 
 - `createNodejsAdapter(options)`: Primary factory for the raw Node.js HTTP adapter.
 - `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
 - `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
+- `BootstrapNodejsApplicationOptions`: Options for bootstrap-only Node.js application creation.
+- `NodejsAdapterOptions`: Transport-level options for `createNodejsAdapter(...)`, including `port`, `host`, `https`, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
+- `NodejsApplicationSignal`: Supported signal names for `runNodejsApplication(...)` shutdown registration.
 - `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/runtime/node`.
+- `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.
 
 ## Related Packages
 
