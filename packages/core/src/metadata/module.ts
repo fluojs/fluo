@@ -46,13 +46,34 @@ function cloneProviders(providers: readonly unknown[] | undefined): unknown[] | 
   return providers ? providers.map(cloneProvider) : undefined;
 }
 
+function isMiddlewareRouteConfig(middleware: unknown): middleware is { middleware: unknown; routes: unknown } {
+  return typeof middleware === 'object' && middleware !== null && 'middleware' in middleware && 'routes' in middleware;
+}
+
+function cloneMiddlewareRouteConfig<T extends { middleware: unknown; routes: unknown }>(middleware: T): T {
+  const routes = Array.isArray(middleware.routes) ? Object.freeze([...middleware.routes]) : middleware.routes;
+
+  return Object.freeze({
+    ...middleware,
+    routes,
+  }) as T;
+}
+
+function cloneMiddleware(middleware: unknown): unknown {
+  return isMiddlewareRouteConfig(middleware) ? cloneMiddlewareRouteConfig(middleware) : middleware;
+}
+
+function cloneMiddlewareCollection(middleware: readonly unknown[] | undefined): unknown[] | undefined {
+  return middleware ? middleware.map(cloneMiddleware) : undefined;
+}
+
 function cloneModuleMetadata(metadata: ModuleMetadata): ModuleMetadata {
   return {
     controllers: cloneCollection(metadata.controllers),
     exports: cloneCollection(metadata.exports),
     global: metadata.global,
     imports: cloneCollection(metadata.imports),
-    middleware: cloneCollection(metadata.middleware),
+    middleware: cloneMiddlewareCollection(metadata.middleware),
     providers: cloneProviders(metadata.providers),
   };
 }

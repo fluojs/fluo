@@ -212,6 +212,42 @@ describe('metadata helpers', () => {
     expect(middleware.calls).toBe(1);
   });
 
+  it('freezes middleware route-config wrappers while preserving runtime middleware references', () => {
+    class ExampleMiddleware {
+      calls = 0;
+
+      handle() {
+        this.calls += 1;
+      }
+    }
+
+    const middleware = new ExampleMiddleware();
+    const routes = ['/users'];
+    const routeConfig = { middleware, routes };
+
+    class ExampleModule {}
+
+    defineModuleMetadata(ExampleModule, {
+      middleware: [routeConfig],
+    });
+
+    routes.push('/mutated');
+    routeConfig.routes = ['/replaced'];
+
+    const metadata = getModuleMetadata(ExampleModule);
+    const returnedConfig = metadata?.middleware?.[0] as { middleware: ExampleMiddleware; routes: string[] } | undefined;
+
+    expect(Object.isFrozen(returnedConfig)).toBe(true);
+    expect(Object.isFrozen(returnedConfig?.routes)).toBe(true);
+    expect(returnedConfig?.routes).toEqual(['/users']);
+    expect(returnedConfig?.routes).not.toBe(routes);
+    expect(returnedConfig?.middleware).toBe(middleware);
+    expect(Object.isFrozen(returnedConfig?.middleware)).toBe(false);
+
+    returnedConfig?.middleware.handle();
+    expect(middleware.calls).toBe(1);
+  });
+
   it('preserves useValue payload identity and mutability in frozen module snapshots', () => {
     const value = { count: 0 };
 
