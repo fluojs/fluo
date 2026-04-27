@@ -145,6 +145,7 @@ MetricsModule.forRoot({
 플랫폼 텔레메트리는 매 `/metrics` 스크레이프마다 `PLATFORM_SHELL`을 resolve하여 `fluo_component_ready`와 `fluo_component_health`를 갱신합니다.
 
 - `PLATFORM_SHELL` 등록 자체가 빠진 경우에는 스크레이프가 계속 성공하고 플랫폼 텔레메트리 시리즈만 생략됩니다.
+- 이전 스크레이프에서 플랫폼 텔레메트리를 노출한 뒤 `PLATFORM_SHELL`을 사용할 수 없게 되면, stale `fluo_component_ready` 및 `fluo_component_health` 시리즈를 제거한 뒤 메트릭을 반환합니다.
 - 그 외의 `PLATFORM_SHELL` resolve 실패는 조용히 삼키지 않고 스크레이프 실패로 그대로 드러납니다.
 
 ### 기본 프로세스/Node 메트릭 비활성화
@@ -162,7 +163,9 @@ MetricsModule.forRoot({
 - `MetricsModule.forRoot(options)`
 - `MetricsService`
 - `METER_PROVIDER` (Token)
-- 카운터, 게이지, 히스토그램 및 레지스트리 접근을 위한 Prometheus 기반 헬퍼
+- `PrometheusMeterProvider`
+- `HttpMetricsMiddleware` 및 HTTP path-label 옵션 타입
+- `prom-client`의 `Registry`
 
 ### 운영 기본값
 
@@ -172,6 +175,7 @@ MetricsModule.forRoot({
 - HTTP 메트릭은 기본적으로 템플릿 기반 경로 라벨 정규화를 사용합니다.
 - raw path 라벨은 `allowUnsafeRawPathLabelMode: true`를 명시한 bounded internal route에서만 사용해야 합니다.
 - 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.
+- 이전에 노출된 플랫폼 텔레메트리 시리즈는 `PLATFORM_SHELL`을 사용할 수 없게 된 스크레이프에서 제거됩니다.
 
 ## 관련 패키지
 

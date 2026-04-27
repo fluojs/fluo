@@ -10,7 +10,9 @@ describe('@fluojs/metrics public surface', () => {
     expect(metrics).toHaveProperty('MetricsService');
     expect(metrics).toHaveProperty('METER_PROVIDER');
     expect(metrics).toHaveProperty('PrometheusMeterProvider');
+    expect(metrics).toHaveProperty('HttpMetricsMiddleware');
     expect(metrics).toHaveProperty('Registry');
+    expect(metrics).not.toHaveProperty('RuntimePlatformTelemetry');
     expect(metrics).not.toHaveProperty('createMetricsModule');
   });
 
