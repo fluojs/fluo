@@ -393,9 +393,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   private bootstrapTestingModule(): BootstrapResult {
-    const rootModule = this._applyModuleReplacements(this.options.rootModule);
-
-    const bootstrapped = this.bootstrapWithPatchedModuleImports(rootModule);
+    const bootstrapped = this.bootstrapWithPatchedModuleImports();
 
     if (this.overrides.length > 0) {
       bootstrapped.container.override(...this.overrides);
@@ -404,8 +402,10 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     return bootstrapped;
   }
 
-  private bootstrapWithPatchedModuleImports(rootModule: ModuleType): BootstrapResult {
+  private bootstrapWithPatchedModuleImports(): BootstrapResult {
     try {
+      const rootModule = this._applyModuleReplacements(this.options.rootModule);
+
       return bootstrapModule(rootModule, {
         providers: this.options.providers,
       });

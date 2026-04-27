@@ -696,6 +696,44 @@ describe('overrideModule', () => {
     expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
     expect(consumer.dep.value()).toBe('fake');
   });
+
+  it('restores module metadata when replacement bootstrap fails', async () => {
+    class RealService {
+      value() {
+        return 'real';
+      }
+    }
+
+    @Inject(RealService)
+    class ConsumerService {
+      constructor(readonly dep: RealService) {}
+    }
+
+    @Module({ providers: [RealService], exports: [RealService] })
+    class RealModule {}
+
+    @Module({ exports: [RealService] })
+    class InvalidFakeModule {}
+
+    @Module({ imports: [RealModule], providers: [ConsumerService] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class RootModule {}
+
+    await expect(
+      createTestingModule({ rootModule: RootModule })
+        .overrideModule(RealModule, InvalidFakeModule)
+        .compile(),
+    ).rejects.toThrow(/cannot export token/);
+
+    expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+
+    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
+    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+
+    expect(consumer.dep.value()).toBe('real');
+  });
 });
 
 describe('createDeepMock', () => {
