@@ -67,6 +67,7 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 interface PortabilityAssertions {
+  assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
   assertExcludesRawBodyForMultipart(): Promise<void>;
   assertPreservesMalformedCookieValues(): Promise<void>;
   assertPreservesRawBodyForJsonAndText(): Promise<void>;
@@ -88,6 +89,10 @@ function registerPortabilitySuite(name: string, harness: PortabilityAssertions):
 
     it('does not preserve rawBody for multipart requests', async () => {
       await harness.assertExcludesRawBodyForMultipart();
+    });
+
+    it('defaults multipart.maxTotalSize to maxBodySize', async () => {
+      await harness.assertDefaultsMultipartTotalLimitToMaxBodySize();
     });
 
     it('supports SSE streaming', async () => {
