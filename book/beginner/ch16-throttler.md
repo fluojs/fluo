@@ -94,29 +94,21 @@ Beyond simple IP tracking, global throttling can enforce **aggregate system limi
 Once you have global rules, you can tune them for each route's character. You can override global settings or skip rate limiting for specific Controllers or methods.
 
 ### 16.3.2 Multiple Throttling Definitions
-Modern applications often need several layers of throttling. For example, you may want a "burst" limit, such as 10 requests per second, and a "sustained" limit, such as 1,000 requests per hour, at the same time. `ThrottlerModule` supports defining multiple named configurations, so different time horizons can be applied together for stronger protection. This defense-in-depth strategy prevents attackers from slowly draining resources while also blocking sudden, intense traffic spikes.
+Modern applications often need several layers of throttling. For example, you may want a "burst" limit, such as 10 requests per second, and a "sustained" limit, such as 1,000 requests per hour. The current `@fluojs/throttler` contract exposes one module-level default policy plus class- and method-level `@Throttle({ ttl, limit })` overrides. To combine multiple horizons today, register application-level HTTP rate-limit middleware for one layer and use `ThrottlerGuard` for handler-specific limits, or provide a custom `ThrottlerStore`/guard wrapper that encodes the extra policy explicitly.
 
 ```typescript
-ThrottlerModule.forRoot([
-  {
-    name: 'short',
-    ttl: 1,
-    limit: 5,
-  },
-  {
-    name: 'long',
-    ttl: 3600,
-    limit: 1000,
-  }
-])
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+})
 ```
 
-When multiple definitions are used, `ThrottlerGuard` ensures that a request is allowed only if it passes **all** defined limits. If a user sends six requests in one second, the 'short' limit blocks them even if they haven't reached the 'long' limit. This layered approach is a common way to reduce many kinds of traffic abuse, from large botnet attacks to subtle, slow scraping.
+`ThrottlerGuard` enforces that active policy at the guard stage after route matching. If you need both burst and sustained limits for the same handler, model that as an explicit store or guard extension rather than assuming named definitions are built in.
 
 ### 16.3.3 Throttling by Request Type
-In addition to time-based limits, you can throttle based on HTTP method or other request attributes. For example, `POST` and `PUT` requests that involve database writes or expensive processing can have much lower limits than `GET` requests that may be served from a cache. By defining named settings for each request type, you can tune your security posture to the specific cost of each interaction.
+In addition to time-based limits, you can throttle based on HTTP method or other request attributes. For example, `POST` and `PUT` requests that involve database writes or expensive processing can have much lower limits than `GET` requests that may be served from a cache. By applying route-specific `@Throttle()` overrides for each request type, you can tune your security posture to the specific cost of each interaction.
 
-This fine-grained control also extends to the `@Throttle()` decorator, where you can specify which named setting a route should use. This lets you centralize the most common policies in the Module while keeping the flexibility to apply specialized rules where needed. It combines central governance with local adjustment.
+This fine-grained control also extends to the `@Throttle()` decorator, where you can specify a route-specific `{ ttl, limit }` policy. This lets you centralize the common default in the Module while keeping the flexibility to apply specialized rules where needed. It combines central governance with local adjustment.
 
 ### 16.3.4 The Throttler Decorator Structure
 When you use the `@Throttle()` decorator, you pass metadata that `ThrottlerGuard` references at runtime. This metadata overrides the Module-level defaults for that scope. Fluo's decorator system ensures that these overrides are type-safe and validated at startup, preventing common configuration errors such as negative limits or a zero-second TTL.
@@ -130,11 +122,11 @@ The throttler needs somewhere to store each tracker's request count. Choosing th
 - **Redis**: The production standard for distributed systems. It preserves counts across server restarts and lets multiple server instances share the same throttling state. Redis's native support for key expiration and atomic operations fits rate limiting implementations well.
 
 ### 16.4.1 The Role of the Storage Provider Interface
-Fluo defines the standard `ThrottlerStorage` interface that every Provider must implement. This abstraction lets you swap the storage backend without changing Guard or decorator logic. If you decide to move from Redis to another distributed store, such as Memcached or DynamoDB, you only need to provide a new implementation of the storage Provider.
+Fluo defines the standard `ThrottlerStore` interface that every store adapter must implement. This abstraction lets you swap the storage backend without changing Guard or decorator logic. If you decide to move from Redis to another distributed store, such as Memcached or DynamoDB, you provide a new store with the same `consume(...)` contract.
 
 ```typescript
-export interface ThrottlerStorage {
-  increment(key: string, ttl: number): Promise<ThrottlerStorageRecord>;
+export interface ThrottlerStore {
+  consume(key: string, input: ThrottlerConsumeInput): ThrottlerStoreEntry | Promise<ThrottlerStoreEntry>;
 }
 ```
 
@@ -144,18 +136,18 @@ This interface-based design is central to Fluo's standard-first approach, becaus
 When using Redis in production, a managed service such as AWS ElastiCache or a highly available cluster setup is strongly recommended. Because the throttler depends on Redis for every request, the availability of your Redis cluster directly affects the availability of your API.
 
 ```typescript
-// Redis cluster connection example
-ThrottlerModule.forRootAsync({
-  useFactory: () => ({
-    limit: 100,
-    ttl: 60,
-    storage: new ThrottlerRedisStorage({
-      nodes: [{ host: 'redis-node-1', port: 6379 }, { host: 'redis-node-2', port: 6379 }],
-      cluster: true,
-    }),
-  }),
+import { ThrottlerModule, RedisThrottlerStore } from '@fluojs/throttler';
+
+const redisStore = new RedisThrottlerStore(redisClient);
+
+ThrottlerModule.forRoot({
+  limit: 100,
+  ttl: 60,
+  store: redisStore,
 });
 ```
+
+If the configured store rejects or returns malformed counters, `ThrottlerGuard` lets that failure propagate as a request failure instead of converting it into a `429`. Only true limit exceedance writes `Retry-After`. Use the platform status helpers to report non-critical Redis readiness as degraded during bootstrap, and decide at the application boundary whether your deployment should fail closed, fall back to memory, or temporarily disable a non-critical throttling layer.
 
 ## 16.5 Route-Specific Throttling
 Global limits are good for broad protection, but specific routes often need stricter or looser constraints. Use the `@Throttle()` decorator to override global settings.
@@ -186,10 +178,10 @@ Conversely, for routes that are called frequently, such as real-time analytics h
 ### 16.5.2 Skipping Throttling
 In some cases, you may want to exclude a specific route or Controller from throttling entirely. A health check endpoint used by an internal load balancer is one example. The `@SkipThrottle()` decorator provides an easy way to exclude trusted internal traffic from global throttling logic. This prevents internal infrastructure from accidentally triggering security blocks during routine operations.
 
-You can also apply `@SkipThrottle()` at the Controller level to exclude a whole group of routes, or target only specific named throttler definitions while leaving the rest active. This precise control lets Fluo support complex, mixed environments where different clients, such as mobile apps and server-side integrations, have very different traffic patterns and trust levels.
+You can also apply `@SkipThrottle()` at the Controller level to exclude a whole group of routes while leaving other controllers protected. This precise control lets Fluo support complex, mixed environments where different clients, such as mobile apps and server-side integrations, have very different traffic patterns and trust levels.
 
 ### 16.5.3 Dynamic Throttle Limits
-In more advanced scenarios, you may need to adjust throttle limits dynamically based on current system load or user status. By creating a custom Guard that extends `ThrottlerGuard`, you can override the `getTracker` and `handleRequest` methods to integrate external data sources.
+In more advanced scenarios, you may need to adjust throttle limits dynamically based on current system load or user status. The supported extension seam is configuration: provide a `keyGenerator` for custom requester identity, a custom `ThrottlerStore` for policy-specific counting, or an application guard wrapper that calls `ThrottlerGuard` after resolving your own policy inputs.
 
 For example, you can check a "system health" service and tighten all limits when database latency crosses a threshold. Or you can check a user's subscription status in real time and grant higher limits to "premium" members. This reactive throttling approach keeps the system safe and fair while automatically adapting defenses to the constantly changing conditions of production.
 
@@ -204,36 +196,37 @@ Identity-based throttling prevents one malicious user from exhausting a shared I
 By default, the throttler identifies clients by IP address. That is a good starting point, but you should also consider the real deployment path. If your application is behind a proxy, such as Nginx, Cloudflare, or a load balancer, every user's IP may appear to be the same. In those cases, another basis can be fairer than raw IP: use the user ID for authenticated users, or the API key for API-key-based clients.
 
 ### 16.6.2 Throttling by API Key
-For B2B applications, you may want to throttle based on the client's API key. By overriding `getTracker`, you can extract the API key from request headers and apply limits specific to that client regardless of where the traffic comes from. This is a common pattern in API services with usage-based pricing tiers. It enforces business contracts directly at the infrastructure layer, ensuring customers only consume the resources they have paid for.
+For B2B applications, you may want to throttle based on the client's API key. Configure `keyGenerator` to extract the API key from request headers and apply limits specific to that client regardless of where the traffic comes from. This is a common pattern in API services with usage-based pricing tiers. It enforces business contracts directly at the infrastructure layer, ensuring customers only consume the resources they have paid for.
 
 ### 16.6.3 Implementing Geo-Aware Throttling
 In global applications, you may want to apply different limits based on a user's geographic location. For example, you might tighten limits for regions with high suspicious activity. By integrating a GeoIP service into a custom `ThrottlerGuard`, you can extract a country code from the request and use it as part of the tracker key. This kind of geographic defense is an option for responding dynamically to regional threats without affecting the entire global user base.
 
 ## 16.7 Handling the "Too Many Requests" Error
-When a user exceeds a limit, Fluo throws `ThrottlerException`, which appears as the `429 Too Many Requests` HTTP status code. The response includes the `Retry-After` header, which tells the user how long to wait.
+When a user exceeds a limit, Fluo throws the HTTP package's `TooManyRequestsException`, which appears as the `429 Too Many Requests` HTTP status code. The response includes the `Retry-After` header, which tells the user how long to wait.
 
 ### 16.7.1 Client-Side Responsibility
 A well-designed client-side application should detect this 429 status and disable the "Submit" button or show a countdown timer. This keeps users from repeating the same request unnecessarily and reduces situations where the server keeps processing pointless retries. Good error handling is completed through cooperation between backend and frontend, and Fluo provides the metadata needed for that cooperation. Transparent limit information helps healthy integration code respect system boundaries.
 
 ### 16.7.2 Customizing the Exception Response
-If the default error message doesn't match your API style, you can catch `ThrottlerException` in a global exception filter. This lets you return a custom JSON body with extra guidance, support links, or branding. Keeping a consistent error format is essential for a high-quality developer experience (DX).
+If the default error message doesn't match your API style, you can catch `TooManyRequestsException` in a global exception filter. This lets you return a custom JSON body with extra guidance, support links, or branding. Keeping a consistent error format is essential for a high-quality developer experience (DX).
 
 When customizing the response, it is also good practice to include **localization (L10n)**. Based on the client's preferred language, such as the `Accept-Language` header, you can provide a localized message that helps users understand why they were blocked. This is especially important in consumer-facing applications where the technical "429 Too Many Requests" message may be confusing. Localized 429 guidance should focus on neutrally explaining that the limit was exceeded and when retrying is possible.
 
-You can also use an exception filter to trigger **external security alerts**. If a specific IP or user ID repeatedly causes `ThrottlerException` within a short period, the filter can notify the security team or automatically update a temporary hard-block list in the firewall. This active response transformation turns the throttling layer from a passive filter into an active participant in the system-wide security posture.
+You can also use an exception filter to trigger **external security alerts**. If a specific IP or user ID repeatedly causes `TooManyRequestsException` within a short period, the filter can notify the security team or automatically update a temporary hard-block list in the firewall. This active response transformation turns the throttling layer from a passive filter into an active participant in the system-wide security posture.
 
 ```typescript
-@Catch(ThrottlerException)
-export class ThrottlerExceptionFilter implements ExceptionFilter {
-  catch(exception: ThrottlerException, host: ArgumentsHost) {
+@Catch(TooManyRequestsException)
+export class TooManyRequestsExceptionFilter implements ExceptionFilter {
+  catch(_exception: TooManyRequestsException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();
+    const retryAfter = response.getHeader('Retry-After');
     
     response.status(429).json({
       statusCode: 429,
       message: 'Take a short breather! You have exceeded the rate limit.',
       error: 'Too Many Requests',
-      retryAfter: exception.getRetryAfter(),
+      retryAfter,
     });
   }
 }
@@ -284,7 +277,7 @@ Also consider the thundering herd problem, which happens when many clients retry
 ## 16.11 Implementing a "Token Bucket" Algorithm
 The default throttler uses a fixed-window counter, but some high-performance scenarios need the **token bucket** algorithm. In this model, tokens are added to a "bucket" at a steady rate. Each request consumes one token. If the bucket is empty, the request is blocked. This allows controlled burst traffic while preserving the average rate.
 
-In Fluo, you can implement this by extending `ThrottlerStorage`. In the `increment` method, track the `lastUpdated` timestamp and calculate how many tokens should have been added since the last request. This approach is very effective for smoothing temporary traffic spikes instead of simply rejecting all of them.
+In Fluo, you can implement this by providing a custom `ThrottlerStore`. In the `consume` method, track the `lastUpdated` timestamp and calculate how many tokens should have been added since the last request. This approach is very effective for smoothing temporary traffic spikes instead of simply rejecting all of them.
 
 ### 16.11.1 Bucket Capacity vs. Refill Rate
 Bucket capacity determines the maximum burst size, and refill rate determines sustained throughput. For example, a bucket with capacity 50 that refills at 10 tokens per second allows a user to send 50 requests immediately, but once the initial burst is exhausted, it limits them to 10 per second. This flexibility is ideal for applications where users perform quick sequences of actions and then have periods of inactivity.
@@ -298,7 +291,7 @@ A throttling system is only as strong as its visibility. You need to monitor who
 As we wrap up Part 3, collecting the practices built so far in one place makes the big picture clearer. Let's review the checklist for a production-ready FluoBlog:
 
 ### 16.12.1 Logging Throttled Requests
-By default, Fluo logs a warning whenever a request is blocked. For security analysis, though, you should produce structured logs that include the tracker ID, meaning IP or user ID, the specific route, and the timestamp. This data is critical for identifying botnet patterns and distinguishing buggy clients from intentional attacks. You can integrate these logs with tools such as ELK or Datadog to build real-time security dashboards.
+The throttler emits deterministic 429 responses with `Retry-After`; applications that need security analysis should add structured logging around those exceptions. Include the tracker ID, meaning IP or user ID, the specific route, and the timestamp. This data is critical for identifying botnet patterns and distinguishing buggy clients from intentional attacks. You can integrate these logs with tools such as ELK or Datadog to build real-time security dashboards.
 
 When implementing structured logging, it is useful to include **correlation IDs**. If a request is blocked, you can use that correlation ID to trace the transaction's full history across microservices. This helps you understand the impact of a throttling event. For example, did the event prevent a cascading downstream database failure? Or was it triggered by an upstream load balancer during a retry storm? This end-to-end visibility is essential for root-cause analysis in complex distributed environments.
 
@@ -308,7 +301,7 @@ You should also consider **audit logging for configuration changes**. Whenever a
 Use the `@fluojs/metrics` package to track the rate of 429 errors. A sudden spike in blocked requests is a strong signal of a security incident or a serious defect in a client application. Setting alerts on these metrics lets the SRE team respond before system stability is affected.
 
 ### 16.12.3 Visualizing Traffic Windows
-For a truly professional setup, you can build a dashboard that visualizes the "remaining" capacity for top users. This helps customer support answer questions such as "Why am I getting 429 errors?" by clearly showing the user's recent traffic history. In Fluo, you can query `ThrottlerStorage` directly and expose a secured administrator endpoint that provides this transparency.
+For a truly professional setup, you can build a dashboard that visualizes the "remaining" capacity for top users. This helps customer support answer questions such as "Why am I getting 429 errors?" by clearly showing the user's recent traffic history. With a custom `ThrottlerStore`, you can expose a secured administrator endpoint that reads your store's counters and provides this transparency.
 
 ## 16.13 Throttling Beyond HTTP
 Rate limiting is not only for REST APIs. In modern Fluo applications, you may need to apply these principles to other communication channels.
