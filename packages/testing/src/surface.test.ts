@@ -112,6 +112,16 @@ describe('@fluojs/testing surface', () => {
     expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');
   });
 
+  it('documents the testing module identity contract in both README mirrors', () => {
+    const englishReadme = readFileSync(resolve(packageRootPath, 'README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8');
+
+    expect(englishReadme).toContain('`createTestingModule({ rootModule })` requires an explicit root module');
+    expect(englishReadme).toContain('preserves the original `rootModule` and compiled `modules[].type` identities');
+    expect(koreanReadme).toContain('`createTestingModule({ rootModule })`에는 명시적인 루트 모듈이 필요합니다');
+    expect(koreanReadme).toContain('원래 `rootModule`과 컴파일된 `modules[].type` identity를 보존합니다');
+  });
+
   it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
     await runBuild();
 

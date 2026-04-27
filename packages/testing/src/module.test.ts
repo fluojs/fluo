@@ -650,6 +650,52 @@ describe('overrideModule', () => {
     const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
     expect(consumer.dep.value()).toBe('fake');
   });
+
+  it('preserves original testing module identity while applying replacements', async () => {
+    class RealService {
+      value() {
+        return 'real';
+      }
+    }
+
+    class FakeService {
+      value() {
+        return 'fake';
+      }
+    }
+
+    @Inject(RealService)
+    class ConsumerService {
+      constructor(readonly dep: RealService) {}
+    }
+
+    @Module({ providers: [RealService], exports: [RealService] })
+    class RealModule {}
+
+    @Module({ providers: [{ provide: RealService, useClass: FakeService }], exports: [RealService] })
+    class FakeModule {}
+
+    @Module({ imports: [RealModule], providers: [ConsumerService] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class RootModule {}
+
+    const testingModule = await createTestingModule({ rootModule: RootModule })
+      .overrideModule(RealModule, FakeModule)
+      .compile();
+
+    const moduleTypes = testingModule.modules.map((compiledModule) => compiledModule.type);
+    const featureModule = testingModule.modules.find((compiledModule) => compiledModule.type === FeatureModule);
+    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+
+    expect(testingModule.rootModule).toBe(RootModule);
+    expect(moduleTypes).toContain(FeatureModule);
+    expect(moduleTypes).not.toContainEqual(expect.objectContaining({ name: 'PatchedModule' }));
+    expect(featureModule?.definition.imports).toEqual([FakeModule]);
+    expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+    expect(consumer.dep.value()).toBe('fake');
+  });
 });
 
 describe('createDeepMock', () => {

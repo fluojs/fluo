@@ -65,6 +65,19 @@ const module = await createTestingModule({ rootModule: AppModule })
   .compile();
 ```
 
+### `overrideModule()` 사용 시 모듈 identity 보존
+
+`createTestingModule({ rootModule })`에는 명시적인 루트 모듈이 필요합니다. 그래야 테스트가 프로덕션 bootstrap과 같은 모듈 그래프 형태를 컴파일합니다. `overrideModule(source, replacement)`로 import된 모듈을 교체해도, 컴파일된 testing module은 provider 해석에 replacement import를 사용하면서 원래 `rootModule`과 컴파일된 `modules[].type` identity를 보존합니다. 따라서 diagnostics, graph assertion, module introspection 헬퍼는 테스트 전용 synthetic wrapper 클래스가 아니라 사용자가 작성한 애플리케이션 모듈 클래스에 계속 연결됩니다.
+
+```typescript
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideModule(StripeModule, FakeStripeModule)
+  .compile();
+
+expect(module.rootModule).toBe(AppModule);
+expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+```
+
 ### HTTP 통합 테스트
 
 ```typescript

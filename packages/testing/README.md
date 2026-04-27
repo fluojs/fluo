@@ -63,6 +63,19 @@ const module = await createTestingModule({ rootModule: AppModule })
   .compile();
 ```
 
+### Preserve module identity with `overrideModule()`
+
+`createTestingModule({ rootModule })` requires an explicit root module so tests compile the same module graph shape that production bootstrap uses. When `overrideModule(source, replacement)` swaps imported modules, the compiled testing module preserves the original `rootModule` and compiled `modules[].type` identities while using the replacement imports for provider resolution. This keeps diagnostics, graph assertions, and module-introspection helpers tied to the application module classes you authored instead of synthetic test-only wrapper classes.
+
+```ts
+const module = await createTestingModule({ rootModule: AppModule })
+  .overrideModule(StripeModule, FakeStripeModule)
+  .compile();
+
+expect(module.rootModule).toBe(AppModule);
+expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+```
+
 ### Request-level tests with `createTestApp()`
 
 ```ts

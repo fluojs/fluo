@@ -103,6 +103,7 @@ Use `createTestingModule` to compile the smallest Module Graph needed for the te
 
 ```typescript
 import { createTestingModule } from '@fluojs/testing';
+import { Module } from '@fluojs/core';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { PostService } from './post.service';
 import { PostRepository } from './post.repository';
@@ -118,8 +119,13 @@ describe('PostService', () => {
     };
 
     // 2. Create the testing module.
+    @Module({
+      providers: [PostRepository, PostService],
+    })
+    class PostTestModule {}
+
     const module = await createTestingModule({
-      providers: [PostService],
+      rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
       .compile();
@@ -171,7 +177,10 @@ class FakePostRepository {
   async save(post: any) { this.data.set(post.id, post); }
 }
 
-const module = await createTestingModule({ providers: [PostService] })
+@Module({ providers: [PostRepository, PostService] })
+class PostTestModule {}
+
+const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
 ```
@@ -186,7 +195,10 @@ If a service depends on an external library, such as `axios` or `aws-sdk`, use V
 In real applications, Providers often depend on configuration values. During tests, it is safer not to depend on a local `.env` file. You can replace `ConfigService` with a mock that returns predefined values for tests. This keeps tests portable and independent of the specific environment where they run.
 
 ```typescript
-const module = await createTestingModule({ providers: [PostService] })
+@Module({ providers: [ConfigService, PostService] })
+class PostTestModule {}
+
+const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(ConfigService, {
     get: vi.fn().mockReturnValue('test-secret'),
   })

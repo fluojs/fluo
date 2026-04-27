@@ -335,6 +335,7 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
 class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   private readonly overrides: Provider[] = [];
   private readonly moduleReplacements = new Map<ModuleType, ModuleType>();
+  private readonly originalModuleDefinitions = new Map<ModuleType, ModuleDefinition>();
 
   constructor(private readonly options: TestingModuleOptions) {}
 
@@ -394,15 +395,23 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   private bootstrapTestingModule(): BootstrapResult {
     const rootModule = this._applyModuleReplacements(this.options.rootModule);
 
-    const bootstrapped = bootstrapModule(rootModule, {
-      providers: this.options.providers,
-    });
+    const bootstrapped = this.bootstrapWithPatchedModuleImports(rootModule);
 
     if (this.overrides.length > 0) {
       bootstrapped.container.override(...this.overrides);
     }
 
     return bootstrapped;
+  }
+
+  private bootstrapWithPatchedModuleImports(rootModule: ModuleType): BootstrapResult {
+    try {
+      return bootstrapModule(rootModule, {
+        providers: this.options.providers,
+      });
+    } finally {
+      this.restorePatchedModuleImports();
+    }
   }
 
   private createTestingModuleRef(bootstrapped: BootstrapResult): TestingModuleRef {
@@ -464,19 +473,32 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
       return module;
     }
 
-    class PatchedModule {}
-    const patchedModule: ModuleType = PatchedModule;
+    this.patchModuleImports(module, metadata as ModuleDefinition, rewrittenImports);
 
-    defineModule(patchedModule, {
-      ...(metadata as ModuleDefinition),
-      imports: rewrittenImports,
-    });
-
-    return patchedModule;
+    return module;
   }
 
   private rewriteModuleImports(imports: ModuleType[]): ModuleType[] {
     return imports.map((moduleImport) => this._applyModuleReplacements(moduleImport));
+  }
+
+  private patchModuleImports(module: ModuleType, metadata: ModuleDefinition, imports: ModuleType[]): void {
+    if (!this.originalModuleDefinitions.has(module)) {
+      this.originalModuleDefinitions.set(module, metadata);
+    }
+
+    defineModule(module, {
+      ...metadata,
+      imports,
+    });
+  }
+
+  private restorePatchedModuleImports(): void {
+    for (const [module, metadata] of this.originalModuleDefinitions) {
+      defineModule(module, metadata);
+    }
+
+    this.originalModuleDefinitions.clear();
   }
 }
 

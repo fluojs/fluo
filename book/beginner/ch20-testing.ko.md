@@ -103,6 +103,7 @@ export class PostService {
 
 ```typescript
 import { createTestingModule } from '@fluojs/testing';
+import { Module } from '@fluojs/core';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { PostService } from './post.service';
 import { PostRepository } from './post.repository';
@@ -118,8 +119,13 @@ describe('PostService', () => {
     };
 
     // 2. 테스트 모듈 생성
+    @Module({
+      providers: [PostRepository, PostService],
+    })
+    class PostTestModule {}
+
     const module = await createTestingModule({
-      providers: [PostService],
+      rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
       .compile();
@@ -171,7 +177,10 @@ class FakePostRepository {
   async save(post: any) { this.data.set(post.id, post); }
 }
 
-const module = await createTestingModule({ providers: [PostService] })
+@Module({ providers: [PostRepository, PostService] })
+class PostTestModule {}
+
+const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
 ```
@@ -186,7 +195,10 @@ const module = await createTestingModule({ providers: [PostService] })
 실제 애플리케이션에서 프로바이더들은 종종 설정 값에 의존합니다. 테스트 중에는 로컬 `.env` 파일에 의존하지 않는 편이 안전합니다. 테스트를 위해 미리 정의된 값을 반환하는 모의 객체로 `ConfigService`를 교체할 수 있습니다. 이를 통해 테스트의 이식성을 유지하고 실행 중인 특정 환경에 의존하지 않게 만들 수 있습니다.
 
 ```typescript
-const module = await createTestingModule({ providers: [PostService] })
+@Module({ providers: [ConfigService, PostService] })
+class PostTestModule {}
+
+const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(ConfigService, {
     get: vi.fn().mockReturnValue('test-secret'),
   })
