@@ -164,6 +164,33 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
   return merged;
 }
 
+
+/**
+ * Reads the standard metadata bag owned directly by a constructor.
+ *
+ * This preserves own-only inheritance semantics for packages that manually walk
+ * constructor chains while still honoring mixed native/fallback metadata eras.
+ *
+ * @param constructor Constructor whose own metadata bag should be inspected.
+ * @returns The own metadata bag when present, otherwise `undefined`.
+ */
+export function getOwnStandardConstructorMetadataBag(constructor: Function): StandardMetadataBag | undefined {
+  const activeMetadataSymbol = getActiveMetadataSymbol();
+
+  if (Object.prototype.hasOwnProperty.call(constructor, activeMetadataSymbol)) {
+    return getStandardMetadataBagFromSymbol(constructor, activeMetadataSymbol);
+  }
+
+  if (
+    activeMetadataSymbol !== fallbackMetadataSymbol &&
+    Object.prototype.hasOwnProperty.call(constructor, fallbackMetadataSymbol)
+  ) {
+    return getStandardMetadataBagFromSymbol(constructor, fallbackMetadataSymbol);
+  }
+
+  return undefined;
+}
+
 /**
  * Reads the standard metadata bag stored directly on a target.
  *
