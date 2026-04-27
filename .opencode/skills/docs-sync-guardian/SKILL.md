@@ -124,17 +124,17 @@ changed files를 다음 bucket으로 분류한다.
 - governed SSOT EN/KO 문서 쌍의 heading structure parity
 - section coverage drift
 - package lists / publish surface drift
-- release intent / CHANGELOG / GitHub Release note source drift
+- Changesets / package changelog / GitHub Release note source drift
 - 서로 참조하는 anchor/link drift
 
 release metadata drift는 아래 현재 정책을 기준으로 판단한다.
 
-- root `CHANGELOG.md`는 사람용 release narrative다.
-- `tooling/release/intents/*.json`은 release preparation/review용 canonical machine input이다.
-- `1.0.0-beta.2` 이상 후보 릴리스는 release intent record가 필요하다.
-- release intent는 package별 `release` / `no-release` / `downstream-evaluate` 판단을 명시해야 하며, `downstream-evaluate`는 자동 publish trigger가 아니다.
-- GitHub Release notes는 CI-only flow가 root `CHANGELOG.md`에서 생성한다.
-- Changesets/Beachball 또는 다른 release automation dependency는 현재 승인된 릴리스 경로가 아니다.
+- `.changeset/*.md`는 package별 semver intent와 release summary의 canonical source다.
+- package-level `CHANGELOG.md`는 `changeset version`이 생성하는 GitHub Release note source다.
+- root `CHANGELOG.md`는 repo-wide 사람용 release narrative로 남는다.
+- `tooling/release/intents/*.json`은 legacy reference이며 새 릴리스의 canonical machine input이 아니다.
+- GitHub Release notes와 npm publish는 `.github/workflows/release.yml`의 Changesets action이 생성/실행한다.
+- Changesets 외 release automation dependency나 local publish path를 추가하면 `docs/contracts/release-governance.md` 기준으로 별도 검토한다.
 
 주요 기준 문서:
 - `docs/contracts/release-governance.md` / `.ko.md`
@@ -142,7 +142,7 @@ release metadata drift는 아래 현재 정책을 기준으로 판단한다.
 - `docs/contracts/public-export-tsdoc-baseline.md` / `.ko.md`
 - `docs/contracts/platform-conformance-authoring-checklist.md` / `.ko.md`
 - `docs/reference/package-surface.md` / `.ko.md`
-- `tooling/release/intents/README.md`
+- `.changeset/config.json`
 - root `CHANGELOG.md`
 
 ### Phase 5 — Companion update check
@@ -164,7 +164,7 @@ contract-bearing docs가 바뀌면 companion update도 같이 봐야 한다.
 - `tooling/governance/verify-platform-consistency-governance.mjs`
 - `packages/testing/src/conformance/platform-consistency-governance-docs.test.ts`
 - `.github/workflows/ci.yml`
-- `.github/workflows/release-single-package.yml`
+- `.github/workflows/release.yml`
 - `package.json` scripts
 
 ### Phase 7 — Regression evidence check
