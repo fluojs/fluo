@@ -1735,6 +1735,178 @@ describe('@fluojs/cron', () => {
     ).toBe(true);
   });
 
+  it('preserves active distributed locks when bounded shutdown times out', async () => {
+    const firstScheduler = createManualScheduler();
+    const secondScheduler = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+
+    class SharedStore {
+      count = 0;
+    }
+
+    @Inject(SharedStore)
+    class DistributedTaskService {
+      constructor(private readonly store: SharedStore) {}
+
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-shutdown-timeout' })
+      async run() {
+        this.store.count += 1;
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-shutdown-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: firstScheduler.scheduler,
+          shutdown: {
+            timeoutMs: 1,
+          },
+        }),
+      ],
+      providers: [SharedStore, DistributedTaskService],
+    });
+
+    class SecondAppModule {}
+    defineModule(SecondAppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-shutdown-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: secondScheduler.scheduler,
+        }),
+      ],
+      providers: [SharedStore, DistributedTaskService],
+    });
+
+    const appOne = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const appTwo = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: SecondAppModule,
+    });
+    const firstStore = await appOne.container.resolve(SharedStore);
+    const secondStore = await appTwo.container.resolve(SharedStore);
+
+    const firstTick = firstScheduler.records[0]!.tick();
+    await started.promise;
+    await appOne.close();
+
+    await secondScheduler.records[0]!.tick();
+
+    expect(firstStore.count).toBe(1);
+    expect(secondStore.count).toBe(0);
+
+    release.resolve();
+    await firstTick;
+    await secondScheduler.records[0]!.tick();
+
+    expect(secondStore.count).toBe(1);
+
+    await appTwo.close();
+  });
+
+  it('preserves active dynamic distributed locks after remove when bounded shutdown times out', async () => {
+    const firstScheduler = createManualScheduler();
+    const secondScheduler = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const taskName = 'dynamic-distributed-remove-timeout';
+
+    class Store {
+      count = 0;
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-remove-shutdown-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: firstScheduler.scheduler,
+          shutdown: {
+            timeoutMs: 1,
+          },
+        }),
+      ],
+      providers: [Store],
+    });
+
+    class SecondAppModule {}
+    defineModule(SecondAppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-remove-shutdown-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: secondScheduler.scheduler,
+        }),
+      ],
+      providers: [Store],
+    });
+
+    const appOne = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const appTwo = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: SecondAppModule,
+    });
+
+    const registryOne = await appOne.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const registryTwo = await appTwo.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const storeOne = await appOne.container.resolve(Store);
+    const storeTwo = await appTwo.container.resolve(Store);
+
+    registryOne.addCron(taskName, CronExpression.EVERY_SECOND, async () => {
+      storeOne.count += 1;
+      started.resolve();
+      await release.promise;
+    }, { distributed: true });
+    registryTwo.addCron(taskName, CronExpression.EVERY_SECOND, () => {
+      storeTwo.count += 1;
+    }, { distributed: true });
+
+    const firstTick = firstScheduler.records[0]!.tick();
+    await started.promise;
+    expect(registryOne.remove(taskName)).toBe(true);
+    await appOne.close();
+
+    await secondScheduler.records[0]!.tick();
+
+    expect(storeOne.count).toBe(1);
+    expect(storeTwo.count).toBe(0);
+
+    release.resolve();
+    await firstTick;
+    await secondScheduler.records[0]!.tick();
+
+    expect(storeTwo.count).toBe(1);
+
+    await appTwo.close();
+  });
+
   it('uses distributed lock path for dynamic interval tasks across nodes', async () => {
     vi.useFakeTimers();
 

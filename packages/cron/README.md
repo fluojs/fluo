@@ -141,7 +141,7 @@ class TaskManager {
 
 `CronModule` drains active task executions during application shutdown, but it now does so with a bounded timeout so one hung task cannot block process termination forever.
 
-By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle.
+By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle. When distributed locking is enabled, locks held by still-running tasks are not eagerly released on timeout; they remain owned by that task until it settles normally, or until Redis expires the lock after the process exits. This prevents another node from starting the same job while the original task is still running.
 
 ```typescript
 @Module({

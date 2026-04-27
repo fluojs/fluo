@@ -4,11 +4,13 @@ import type { ApplicationLogger } from '@fluojs/runtime';
 
 import type { CronTaskDescriptor, NormalizedCronModuleOptions } from './types.js';
 
+/** Minimal Redis command surface required for distributed cron locks. */
 export interface RedisLockClient {
   eval(script: string, keysLength: number, ...keysAndArgs: string[]): Promise<unknown>;
   set(key: string, value: string, mode: 'PX', ttl: number, existence: 'NX'): Promise<'OK' | null | undefined>;
 }
 
+/** Tracks renewal state for one acquired distributed cron lock. */
 export interface LockRenewalMonitor {
   getPostRunError(): Promise<Error | undefined>;
   stop(): void;
@@ -29,6 +31,7 @@ const RELEASE_LOCK_SCRIPT =
 const RENEW_LOCK_SCRIPT =
   'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], ARGV[2]) else return 0 end';
 
+/** Coordinates Redis lock acquisition, renewal, and release for scheduled cron tasks. */
 export class CronDistributedLockManager {
   private readonly ownedLockKeys = new Set<string>();
   private redisClient: RedisLockClient | undefined;
@@ -146,12 +149,16 @@ export class CronDistributedLockManager {
     await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
   }
 
-  async releaseOwnedLocks(): Promise<void> {
+  async releaseOwnedLocks(excludedLockKeys: ReadonlySet<string> = new Set()): Promise<void> {
     if (!this.redisClient || this.ownedLockKeys.size === 0) {
       return;
     }
 
-    const lockKeys = Array.from(this.ownedLockKeys);
+    const lockKeys = Array.from(this.ownedLockKeys).filter((lockKey) => !excludedLockKeys.has(lockKey));
+
+    if (lockKeys.length === 0) {
+      return;
+    }
 
     await Promise.all(
       lockKeys.map(async (lockKey) => {
