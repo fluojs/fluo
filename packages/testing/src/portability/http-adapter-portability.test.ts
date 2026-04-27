@@ -74,10 +74,11 @@ interface PortabilityAssertions {
   assertRemovesShutdownSignalListenersAfterClose(): Promise<void>;
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
+  assertSettlesStreamDrainWaitOnClose(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
 }
 
-function registerPortabilitySuite(name: string, harness: PortabilityAssertions): void {
+function registerPortabilitySuite(name: string, harness: PortabilityAssertions, options: { streamDrainCloseEdge?: boolean } = {}): void {
   describe(`${name} adapter portability`, () => {
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
@@ -98,6 +99,12 @@ function registerPortabilitySuite(name: string, harness: PortabilityAssertions):
     it('supports SSE streaming', async () => {
       await harness.assertSupportsSseStreaming();
     });
+
+    if (options.streamDrainCloseEdge === true) {
+      it('settles stream drain waits when the stream closes first', async () => {
+        await harness.assertSettlesStreamDrainWaitOnClose();
+      });
+    }
 
     it('reports the configured host in startup logs', async () => {
       await harness.assertReportsConfiguredHostInStartupLogs();
@@ -150,4 +157,5 @@ registerPortabilitySuite(
     name: 'fastify',
     run: runFastifyApplication,
   }),
+  { streamDrainCloseEdge: true },
 );
