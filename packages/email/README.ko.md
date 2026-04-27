@@ -208,7 +208,7 @@ Behavioral contract 메모:
 
 ### 큐 기반 대량 전달
 
-`@fluojs/notifications`가 대량 이메일 전달을 백그라운드로 넘겨야 한다면 `QueueLifecycleService`를 주입해 `createEmailNotificationsQueueAdapter(queue)`를 만들고 `QueueModule`을 함께 import합니다.
+`@fluojs/notifications`가 대량 이메일 전달을 백그라운드로 넘겨야 한다면 `QueueModule`을 import하고, `QueueLifecycleService`를 주입해 `createEmailNotificationsQueueAdapter(queue)`를 만든 뒤, `EmailNotificationsQueueWorker`를 애플리케이션 provider로 등록합니다. 루트 `EmailModule`은 worker를 자동 등록하지 않으므로 `@fluojs/email/queue`를 import하지 않는 애플리케이션은 런타임에서 `@fluojs/queue`를 필요로 하지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -216,7 +216,7 @@ import {
   EmailModule,
   EMAIL_CHANNEL,
 } from '@fluojs/email';
-import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
+import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
@@ -242,6 +242,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       }),
     }),
   ],
+  providers: [EmailNotificationsQueueWorker],
 })
 export class AppModule {}
 ```
@@ -256,13 +257,19 @@ export class AppModule {}
 
 이 기본값은 `@fluojs/email/queue`에서 `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`로 export되므로, 호출 측에서 커스텀 queue adapter/worker를 만들 때 동일한 계약을 문서화하거나 반영할 수 있습니다.
 
+Behavioral contract 메모:
+
+- Queue 지원은 opt-in입니다. 루트 `@fluojs/email` 엔트리포인트와 `EmailModule`은 `@fluojs/queue`를 import하거나 `EmailNotificationsQueueWorker`를 등록하거나 queue peer 설치를 요구하지 않습니다.
+- `EmailNotificationsQueueWorker`는 `@fluojs/email/queue`에서 export되며, queue 기반 전달을 활성화하는 애플리케이션이 직접 등록해야 합니다.
+- worker는 `EmailChannel` 전달 semantics를 재사용하므로 transport가 수락된 수신자 0명 또는 `pending`/`rejected` 수신자를 보고하면 queued job이 실패합니다. 따라서 incomplete delivery는 성공한 job으로 승인되지 않고 `@fluojs/queue`의 retry/dead-letter 흐름으로 넘어갑니다.
+
 ### 의도적인 제한 사항
 
 email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 - `process.env`에서 transport 자격 증명을 직접 읽는 동작
 - 공유 루트 패키지에 내장된 SMTP 또는 Nodemailer transport 제공
-- `QueueModule` 자동 설정
+- `QueueModule` 설정 또는 queue worker 자동 등록
 - provider 전용 옵션 타입을 `@fluojs/notifications`에 누출하는 것
 
 이 제한 사항은 transport 선택, 템플릿 전략, 큐 도입 여부가 애플리케이션 경계에서 명시적으로 결정되도록 하기 위한 package contract의 일부입니다.
@@ -286,7 +293,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 통합 서브패스
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### 상태 및 에러
 
@@ -308,7 +315,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 | 관심사 | 서브패스 | export |
 | --- | --- | --- |
-| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
+| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## 관련 패키지
 

@@ -208,7 +208,7 @@ Behavioral contract notes:
 
 ### Queue-backed bulk delivery
 
-When `@fluojs/notifications` should offload bulk email delivery to the background, inject `QueueLifecycleService`, call `createEmailNotificationsQueueAdapter(queue)`, and import `QueueModule`.
+When `@fluojs/notifications` should offload bulk email delivery to the background, import `QueueModule`, inject `QueueLifecycleService`, call `createEmailNotificationsQueueAdapter(queue)`, and register `EmailNotificationsQueueWorker` as an application provider. The root `EmailModule` does not register the worker automatically, so applications that never import `@fluojs/email/queue` do not need `@fluojs/queue` at runtime.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -216,7 +216,7 @@ import {
   EmailModule,
   EMAIL_CHANNEL,
 } from '@fluojs/email';
-import { createEmailNotificationsQueueAdapter } from '@fluojs/email/queue';
+import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
@@ -242,6 +242,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       }),
     }),
   ],
+  providers: [EmailNotificationsQueueWorker],
 })
 export class AppModule {}
 ```
@@ -256,13 +257,19 @@ The built-in queue worker contract uses these defaults:
 
 These defaults are exported from `@fluojs/email/queue` as `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` so callers can document or mirror them when they build custom queue adapters/workers.
 
+Behavioral contract notes:
+
+- Queue support is opt-in. The root `@fluojs/email` entrypoint and `EmailModule` do not import `@fluojs/queue`, register `EmailNotificationsQueueWorker`, or require queue peer installation.
+- `EmailNotificationsQueueWorker` is exported from `@fluojs/email/queue` and must be registered by applications that enable queue-backed delivery.
+- The worker reuses `EmailChannel` delivery semantics, so a queued job fails when the underlying transport reports zero accepted recipients or any `pending`/`rejected` recipients. This lets `@fluojs/queue` retry and dead-letter incomplete deliveries instead of acknowledging them as successful jobs.
+
 ### Intentional limitations
 
 The email package intentionally does **not**:
 
 - read transport credentials from `process.env`
 - ship a built-in SMTP or Nodemailer transport in the shared root package
-- configure `QueueModule` automatically
+- configure `QueueModule` or register queue workers automatically
 - leak provider-specific option types into `@fluojs/notifications`
 
 These limitations are part of the package contract so transport selection, template strategy, and queue rollout stay explicit at the application boundary.
@@ -286,7 +293,7 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Integration subpaths
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### Status and errors
 
@@ -308,7 +315,7 @@ These limitations are part of the package contract so transport selection, templ
 
 | Concern | Subpath | Exports |
 | --- | --- | --- |
-| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
+| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## Related Packages
 
