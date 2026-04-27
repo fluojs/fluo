@@ -11,6 +11,8 @@
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [공개 API 개요](#공개-api-개요)
+- [어댑터 계약](#어댑터-계약)
+- [Conformance 커버리지](#conformance-커버리지)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
 
@@ -75,6 +77,28 @@ export class MyGateway {}
 - `createBunFetchHandler(options)`: 커스텀 `Bun.serve()` 설정을 위한 네이티브 `fetch(request)` 핸들러를 생성합니다.
 - `bootstrapBunApplication(module, options)`: 암시적 시작 로그 없이 애플리케이션을 부트스트랩하는 고급 헬퍼입니다.
 - `runBunApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다.
+
+어댑터는 realtime 패키지가 사용하는 타입 지정 Bun 통합 seam도 함께 내보냅니다.
+
+- `BunHttpApplicationAdapter`: `Bun.serve()`를 기반으로 동작하는 `HttpApplicationAdapter` 구현체입니다.
+- `BunAdapterOptions`: `createBunAdapter()`가 받는 host, port, TLS, raw-body, multipart, shutdown 옵션입니다.
+- `BootstrapBunApplicationOptions` 및 `RunBunApplicationOptions`: Bun 호스팅 애플리케이션의 bootstrap/run 옵션입니다.
+- `BunWebSocketBinding` 및 `BunRealtimeBindingHost`: 일반 HTTP dispatch 전에 `@fluojs/websockets/bun`이 사용하는 binding 계약입니다.
+
+## 어댑터 계약
+
+- **런타임 host**: 이 패키지는 listen 시점에 `globalThis.Bun.serve()`가 필요합니다. 테스트에서는 Bun 호환 test double을 제공할 수 있지만, production 사용은 Bun 전용입니다.
+- **요청 portability**: Fetch 요청은 shared web dispatcher를 통해 변환되며 malformed cookie 값, query 배열, `rawBody: true`일 때 JSON/text raw body, SSE framing을 보존합니다.
+- **Multipart 동작**: Multipart 요청은 `rawBody`를 노출하지 않으며 multipart limit은 shared runtime parser를 통해 계속 적용됩니다.
+- **시작 target**: `hostname`, `port`, `tls`는 `Bun.serve()`로 전달됩니다. 시작 로그는 설정된 HTTP 또는 HTTPS listen URL을 보고합니다.
+- **종료 소유권**: `close()`는 새 유입을 중단하고, in-flight HTTP handler를 기다린 뒤, drain이 끝나면 adapter state를 정리하며 `runBunApplication()`이 등록한 signal listener를 제거합니다.
+- **Realtime seam**: Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다. Upgrade 요청은 HTTP dispatch로 넘어가기 전에 구성된 binding에 먼저 전달됩니다.
+
+## Conformance 커버리지
+
+`packages/platform-bun/src/adapter.test.ts`는 문서화된 계약을 검증하는 package-local regression 대상입니다. 이 파일은 malformed cookie, JSON/text raw-body 보존, multipart raw-body 제외, SSE framing을 검증하는 Bun fetch-style portability assertion과 startup logging, shutdown listener cleanup, in-flight drain, timeout reporting, websocket binding delegation을 검증하는 집중 테스트를 포함합니다.
+
+저장소의 더 넓은 suite도 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`에서 `createWebRuntimeHttpAdapterPortabilityHarness(...)`로 Bun을 Deno 및 Cloudflare Workers와 함께 실행해 fetch-style platform 간 shared web-runtime portability baseline을 맞춥니다.
 
 ## 관련 패키지
 
