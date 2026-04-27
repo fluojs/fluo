@@ -93,6 +93,8 @@ Internal readers and writers live under `@fluojs/core/internal`, which is how pa
 
 Application code should import public decorators and `ensureMetadataSymbol()` from `@fluojs/core`. The `@fluojs/core/internal` subpath is reserved for fluo packages that need class DI metadata readers such as `getClassDiMetadata()` and `getOwnClassDiMetadata()`, merge explicit stores with `Symbol.metadata`, or build framework-level decorators.
 
+The class DI metadata readers `getClassDiMetadata()` and `getOwnClassDiMetadata()` return frozen snapshots, so callers must treat the returned object as read-only (`Object.isFrozen(result) === true`) and must not mutate it directly. When the same class is read repeatedly without an intervening metadata write, the readers may return the same reference instead of a fresh clone to reuse the stable snapshot. **Migration note:** code that previously mutated returned metadata must copy it first or move the update to the supported metadata writer path.
+
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
 

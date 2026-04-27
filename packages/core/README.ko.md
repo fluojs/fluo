@@ -91,6 +91,8 @@ class UsesConfigValue {
 
 애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 `getClassDiMetadata()`와 `getOwnClassDiMetadata()` 같은 class DI 메타데이터 reader가 필요하거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다.
 
+class DI 메타데이터 reader인 `getClassDiMetadata()`와 `getOwnClassDiMetadata()`는 frozen snapshot을 반환하므로, 호출자는 반환 객체를 read-only로 취급해야 하며 직접 mutate하면 안 됩니다(`Object.isFrozen(result) === true`). 같은 클래스에 대해 metadata write 없이 반복해서 읽으면 fresh clone이 아니라 같은 reference를 반환해 stable snapshot을 재사용할 수 있습니다. **Migration note:** 기존에 반환된 metadata를 직접 mutate하던 코드는 먼저 복사본을 만들거나 지원되는 metadata writer 경로로 업데이트하도록 수정해야 합니다.
+
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
 
