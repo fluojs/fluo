@@ -90,3 +90,29 @@ export function replaceConfigServiceSnapshot<T extends Record<string, unknown>>(
 ): void {
   service['values'] = cloneConfigDictionary(values);
 }
+
+/**
+ * Replaces the underlying configuration snapshot with an already-detached value.
+ *
+ * @param service The `ConfigService` instance to update.
+ * @param values A trusted configuration dictionary that must not be mutated after adoption.
+ */
+export function replaceConfigServiceSnapshotUnchecked<T extends Record<string, unknown>>(
+  service: ConfigService<T>,
+  values: T,
+): void {
+  service['values'] = values;
+}
+
+/**
+ * Creates a `ConfigService` by adopting an already-detached configuration snapshot.
+ *
+ * @param values A trusted configuration dictionary produced by the config loader.
+ * @returns A `ConfigService` backed by the provided snapshot without an additional constructor clone.
+ */
+export function createConfigServiceFromSnapshot<T extends Record<string, unknown>>(values: T): ConfigService<T> {
+  const service = Object.create(ConfigService.prototype) as ConfigService<T>;
+  service['values'] = values;
+
+  return service;
+}

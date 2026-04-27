@@ -1,7 +1,7 @@
 import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { loadConfig } from './load.js';
-import { ConfigService } from './service.js';
+import { ConfigService, createConfigServiceFromSnapshot } from './service.js';
 import type { ConfigModuleOptions } from './types.js';
 
 /**
@@ -36,7 +36,7 @@ export class ConfigModule {
       providers: [
         {
           provide: ConfigService,
-          useFactory: () => new ConfigService(loadConfig(options ?? {})),
+          useFactory: () => createConfigServiceFromSnapshot(loadConfig(options ?? {})),
         },
       ],
     });

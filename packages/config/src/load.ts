@@ -60,11 +60,15 @@ function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions
 }
 
 function readEnvFileValues(options: NormalizedLoadOptions): ConfigDictionary {
-  if (!existsSync(options.envFile)) {
-    return {};
-  }
+  try {
+    return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      return {};
+    }
 
-  return parseEnvContent(readFileSync(options.envFile, 'utf8'), options.safeProcessEnv, options.parse);
+    throw error;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -75,20 +79,23 @@ function mergeConfigEntries(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...target };
-
   for (const [key, sourceValue] of Object.entries(source)) {
-    const targetValue = merged[key];
+    const targetValue = target[key];
 
     if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
-      merged[key] = mergeConfigEntries(targetValue, sourceValue);
+      mergeConfigEntries(targetValue, sourceValue);
       continue;
     }
 
-    merged[key] = cloneConfigDictionary(sourceValue);
+    if (isPlainObject(sourceValue)) {
+      target[key] = mergeConfigEntries({}, sourceValue);
+      continue;
+    }
+
+    target[key] = cloneConfigDictionary(sourceValue);
   }
 
-  return merged;
+  return target;
 }
 
 function mergeConfigSources(...sources: ConfigDictionary[]): ConfigDictionary {
@@ -139,6 +146,8 @@ function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubs
 
 type ReloaderState = {
   current: ConfigDictionary;
+  pendingReloadReason: ConfigReloadReason | undefined;
+  reloading: boolean;
   watcher: FSWatcher | undefined;
 };
 
@@ -162,7 +171,7 @@ function notifyReloadErrorListeners(
   }
 }
 
-function applyReload(
+function applyReloadNow(
   normalized: NormalizedLoadOptions,
   state: ReloaderState,
   listeners: ReadonlySet<ConfigReloadListener>,
@@ -181,6 +190,35 @@ function applyReload(
   }
 
   return cloneConfigDictionary(next);
+}
+
+function applyReload(
+  normalized: NormalizedLoadOptions,
+  state: ReloaderState,
+  listeners: ReadonlySet<ConfigReloadListener>,
+  reason: ConfigReloadReason,
+): ConfigDictionary {
+  if (state.reloading) {
+    state.pendingReloadReason = reason;
+    return cloneConfigDictionary(state.current);
+  }
+
+  state.reloading = true;
+
+  try {
+    let latest = applyReloadNow(normalized, state, listeners, reason);
+
+    while (state.pendingReloadReason) {
+      const pendingReason = state.pendingReloadReason;
+      state.pendingReloadReason = undefined;
+      latest = applyReloadNow(normalized, state, listeners, pendingReason);
+    }
+
+    return latest;
+  } finally {
+    state.pendingReloadReason = undefined;
+    state.reloading = false;
+  }
 }
 
 function startReloaderWatcher(
@@ -241,6 +279,8 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
   const normalized = normalizeLoadOptions(options);
   const state: ReloaderState = {
     current: resolveConfig(normalized),
+    pendingReloadReason: undefined,
+    reloading: false,
     watcher: undefined,
   };
   const listeners = new Set<ConfigReloadListener>();
