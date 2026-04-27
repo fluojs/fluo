@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  appendClassValidationRule,
   appendDtoFieldValidationRule,
   defineClassDiMetadata,
   defineControllerMetadata,
@@ -11,6 +12,7 @@ import {
   ensureMetadataSymbol,
   getClassDiMetadata,
   getControllerMetadata,
+  getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
   getDtoFieldBindingMetadata,
@@ -647,6 +649,36 @@ describe('metadata helpers', () => {
 
   it('ensures Symbol.metadata is available through the exported initializer', () => {
     expect(ensureMetadataSymbol()).toBe((Symbol as typeof Symbol & { metadata?: symbol }).metadata);
+  });
+
+  it('returns detached mutable class validation rule clones without mutating stored metadata', () => {
+    const validate = vi.fn(() => true);
+    const standardRule = { code: 'standard', message: 'Standard rule', validate };
+    const storedRule = { code: 'stored', message: 'Stored rule', validate };
+
+    class ExampleDto {}
+
+    Object.defineProperty(ExampleDto, ensureMetadataSymbol(), {
+      configurable: true,
+      value: {
+        [standardMetadataKeys.classValidation]: [standardRule],
+      },
+    });
+    appendClassValidationRule(ExampleDto, storedRule);
+
+    const rules = getClassValidationRules(ExampleDto);
+
+    expect(rules).toEqual([standardRule, storedRule]);
+    expect(Object.isFrozen(rules)).toBe(false);
+    expect(Object.isFrozen(rules[0])).toBe(false);
+    expect(Object.isFrozen(rules[1])).toBe(false);
+
+    const mutableRules = rules as unknown as typeof storedRule[];
+    mutableRules[0]!.code = 'mutated-standard';
+    mutableRules[1]!.code = 'mutated-stored';
+    mutableRules.push({ code: 'extra', message: 'Extra rule', validate });
+
+    expect(getClassValidationRules(ExampleDto)).toEqual([standardRule, storedRule]);
   });
 
   it('uses a runtime-installed Symbol.metadata instead of a stale fallback symbol', () => {

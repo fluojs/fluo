@@ -37,7 +37,15 @@ function getStandardDtoValidationMap(target: object): Map<MetadataPropertyKey, S
 function getStandardClassValidationRules(target: Function): ClassValidationRule[] | undefined {
   const rules = getStandardMetadataBag(target)?.[standardMetadataKeys.classValidation] as ClassValidationRule[] | undefined;
 
-  return rules ? rules.map((rule) => cloneMutableValue(rule)) : undefined;
+  return rules ? rules.map((rule) => cloneClassValidationRule(rule)) : undefined;
+}
+
+function cloneClassValidationRule(rule: ClassValidationRule): ClassValidationRule {
+  return {
+    ...(rule.code === undefined ? {} : { code: rule.code }),
+    ...(rule.message === undefined ? {} : { message: rule.message }),
+    validate: rule.validate,
+  };
 }
 
 /**
@@ -194,5 +202,8 @@ export function getDtoValidationSchema(dto: Constructor): DtoValidationSchemaEnt
  * @returns Ordered class-level validation rules from standard metadata followed by explicit store metadata.
  */
 export function getClassValidationRules(target: Function): readonly ClassValidationRule[] {
-  return [...(getStandardClassValidationRules(target) ?? []), ...(classValidationStore.read(target) ?? [])];
+  return [
+    ...(getStandardClassValidationRules(target) ?? []),
+    ...(classValidationStore.read(target) ?? []).map((rule) => cloneClassValidationRule(rule)),
+  ];
 }
