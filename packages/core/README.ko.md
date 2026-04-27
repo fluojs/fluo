@@ -89,7 +89,7 @@ class UsesConfigValue {
 
 내부 메타데이터 reader/writer는 `@fluojs/core/internal` 아래에 있으며, `@fluojs/di`, `@fluojs/http`, `@fluojs/runtime` 같은 패키지들이 같은 메타데이터 모델을 공유할 수 있게 합니다.
 
-애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 immutable 메타데이터 snapshot을 읽거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다.
+애플리케이션 코드는 공개 데코레이터와 `ensureMetadataSymbol()`을 `@fluojs/core`에서 import해야 합니다. `@fluojs/core/internal` 서브패스는 `getClassDiMetadata()`와 `getOwnClassDiMetadata()` 같은 class DI 메타데이터 reader가 필요하거나, 명시적 저장소와 `Symbol.metadata`를 병합하거나, 프레임워크 수준 데코레이터를 만드는 fluo 패키지를 위한 경로입니다.
 
 ```ts
 import { getModuleMetadata } from '@fluojs/core/internal';
