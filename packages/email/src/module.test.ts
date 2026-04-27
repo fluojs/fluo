@@ -161,6 +161,17 @@ class PartialDeliveryTransport implements EmailTransport {
   }
 }
 
+class ZeroAcceptedTransport implements EmailTransport {
+  async send(): Promise<{ accepted: []; messageId: string; pending: []; rejected: [] }> {
+    return {
+      accepted: [],
+      messageId: 'zero-accepted-1',
+      pending: [],
+      rejected: [],
+    };
+  }
+}
+
 class RecordingTransport implements EmailTransport {
   constructor(private readonly messagePrefix: string) {}
 
@@ -473,6 +484,35 @@ describe('EmailModule', () => {
       ),
     ).rejects.toMatchObject({
       message: 'Email transport reported an incomplete delivery (accepted=1, pending=1, rejected=1).',
+      name: 'EmailDeliveryError',
+    });
+  });
+
+  it('fails queued notifications when the transport accepts zero recipients', async () => {
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: new ZeroAcceptedTransport(),
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const channel = await container.resolve(EmailChannel);
+    const worker = new EmailNotificationsQueueWorker(channel);
+
+    await expect(
+      worker.handle(
+        new EmailNotificationQueueJob(
+          {
+            channel: 'email',
+            payload: { text: 'Queued hello' },
+            recipients: ['user@example.com'],
+            subject: 'Queued subject',
+          },
+          '2026-04-27T00:00:00.000Z',
+        ),
+      ),
+    ).rejects.toMatchObject({
+      message: 'Email transport reported an incomplete delivery (accepted=0, pending=0, rejected=0).',
       name: 'EmailDeliveryError',
     });
   });
