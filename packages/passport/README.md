@@ -83,6 +83,8 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections and promise completion without an action become authentication failures instead of leaving the request unresolved. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
+
 ### Cookie Auth Preset
 
 Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HTTP cookies.
@@ -109,6 +111,8 @@ export class AuthModule {}
 ```
 
 Import `CookieAuthModule.forRoot(...)` alongside `PassportModule.forRoot(...)` when you want cookie-auth support in an application module.
+
+`CookieAuthStrategy` preserves the normalized JWT principal contract from `@fluojs/jwt`, including `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
 
 ### Refresh Token Lifecycle
 

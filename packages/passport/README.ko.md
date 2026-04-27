@@ -83,6 +83,8 @@ const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
 });
 ```
 
+브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection 또는 액션 없이 완료된 promise는 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
+
 ### 쿠키 인증 프리셋
 
 HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAuthModule.forRoot(...)`를 사용합니다.
@@ -109,6 +111,8 @@ export class AuthModule {}
 ```
 
 애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하세요.
+
+`CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
 ### 리프레시 토큰 수명 주기
 
