@@ -417,4 +417,110 @@ describe('buildOpenApiDocument', () => {
       },
     });
   });
+
+  it('preserves explicit OpenAPI schema keywords from request and response decorators', () => {
+    @Controller('/schema-surface')
+    class SchemaSurfaceController {
+      @ApiResponse(200, {
+        description: 'Schema keyword response',
+        schema: {
+          additionalProperties: {
+            type: 'string',
+          },
+          deprecated: true,
+          examples: [{ mode: 'preview' }],
+          pattern: '^[a-z]+$',
+          properties: {
+            id: { readOnly: true, type: 'string' },
+            mode: { default: 'preview', enum: ['preview', 'live'], type: 'string' },
+          },
+          required: ['id'],
+          type: 'object',
+        },
+      })
+      @Get('/response')
+      response() {
+        return { id: 'schema-1', mode: 'preview' };
+      }
+
+      @ApiBody({
+        schema: {
+          properties: {
+            tags: {
+              items: { type: 'string' },
+              maxItems: 5,
+              minItems: 1,
+              type: 'array',
+              uniqueItems: true,
+            },
+            title: {
+              minLength: 1,
+              nullable: true,
+              type: ['string', 'null'],
+              writeOnly: true,
+            },
+          },
+          type: 'object',
+        },
+      })
+      @Post('/request')
+      request() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: SchemaSurfaceController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Schema Surface API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/schema-surface/response']?.get?.responses['200']).toEqual({
+      content: {
+        'application/json': {
+          schema: {
+            additionalProperties: {
+              type: 'string',
+            },
+            deprecated: true,
+            examples: [{ mode: 'preview' }],
+            pattern: '^[a-z]+$',
+            properties: {
+              id: { readOnly: true, type: 'string' },
+              mode: { default: 'preview', enum: ['preview', 'live'], type: 'string' },
+            },
+            required: ['id'],
+            type: 'object',
+          },
+        },
+      },
+      description: 'Schema keyword response',
+    });
+    expect(document.paths['/schema-surface/request']?.post?.requestBody).toEqual({
+      content: {
+        'application/json': {
+          schema: {
+            properties: {
+              tags: {
+                items: { type: 'string' },
+                maxItems: 5,
+                minItems: 1,
+                type: 'array',
+                uniqueItems: true,
+              },
+              title: {
+                minLength: 1,
+                nullable: true,
+                type: ['string', 'null'],
+                writeOnly: true,
+              },
+            },
+            type: 'object',
+          },
+        },
+      },
+    });
+  });
 });
