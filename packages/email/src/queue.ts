@@ -1,13 +1,22 @@
 import { Inject } from '@fluojs/core';
 import type { NotificationsQueueAdapter, NotificationsQueueJob } from '@fluojs/notifications';
-import { QueueLifecycleService, QueueWorker } from '@fluojs/queue';
+import { QueueWorker, type QueueLifecycleService, type QueueWorkerOptions } from '@fluojs/queue';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
-import { EmailService } from './service.js';
+import { EmailChannel } from './channel.js';
 import type { EmailNotificationDispatchRequest } from './types.js';
+
+/** Queue worker execution defaults used by the built-in notifications queue integration. */
+export type EmailQueueWorkerOptions = QueueWorkerOptions;
 
 /** Serialized queue payload used by the built-in notifications queue adapter. */
 export class EmailNotificationQueueJob {
+  /**
+   * Creates one queued email notification job payload.
+   *
+   * @param notification Notification envelope that will be delivered by the email channel worker.
+   * @param queuedAt ISO timestamp captured when the notifications foundation delegated the job.
+   */
   constructor(
     public readonly notification: EmailNotificationDispatchRequest,
     public readonly queuedAt: string,
@@ -47,13 +56,19 @@ export function createEmailNotificationsQueueAdapter(queue: QueueLifecycleServic
   };
 }
 
-/** Internal queue worker that converts queued notification jobs back into email delivery. */
+/** Queue worker that converts queued notification jobs back into email delivery. */
 @QueueWorker(EmailNotificationQueueJob, DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS)
-@Inject(EmailService)
+@Inject(EmailChannel)
 export class EmailNotificationsQueueWorker {
-  constructor(private readonly email: EmailService) {}
+  constructor(private readonly channel: EmailChannel) {}
 
+  /**
+   * Delivers one queued email notification through the same channel semantics as direct dispatch.
+   *
+   * @param job Queued notification payload created by `createEmailNotificationsQueueAdapter(...)`.
+   * @returns A promise that resolves only when email delivery is accepted by the channel contract.
+   */
   async handle(job: EmailNotificationQueueJob): Promise<void> {
-    await this.email.sendNotification(job.notification);
+    await this.channel.send(job.notification, {});
   }
 }
