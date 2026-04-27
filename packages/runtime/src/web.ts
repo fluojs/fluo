@@ -316,9 +316,12 @@ export async function createWebFrameworkRequest(
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url);
-  const headers = createMemoizedValue(() => cloneWebHeaders(request.headers));
-  const cookies = createMemoizedValue(() => parseCookieHeader(request.headers.get('cookie') ?? undefined));
-  const query = createMemoizedValue(() => parseQueryParams(url.searchParams));
+  const headerEntries = Array.from(request.headers.entries());
+  const cookieHeader = request.headers.get('cookie') ?? undefined;
+  const searchParams = new URLSearchParams(url.searchParams);
+  const headers = createMemoizedValue(() => cloneWebHeaders(headerEntries));
+  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
+  const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = request.headers.get('content-type') ?? undefined;
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
@@ -405,10 +408,10 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
   return query;
 }
 
-function cloneWebHeaders(headers: Headers): FrameworkRequest['headers'] {
+function cloneWebHeaders(headers: Array<[string, string]>): FrameworkRequest['headers'] {
   const clonedHeaders: Record<string, string | string[] | undefined> = {};
 
-  for (const [name, value] of headers.entries()) {
+  for (const [name, value] of headers) {
     clonedHeaders[name] = value;
   }
 

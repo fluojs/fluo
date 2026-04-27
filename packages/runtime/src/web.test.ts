@@ -146,7 +146,7 @@ describe('dispatchWebRequest', () => {
 });
 
 describe('createWebFrameworkRequest', () => {
-  it('materializes headers lazily and memoizes the cloned object', async () => {
+  it('captures headers at creation, then materializes and memoizes the cloned object lazily', async () => {
     const request = new Request('https://runtime.test/headers', {
       headers: {
         'x-runtime': 'before',
@@ -160,8 +160,8 @@ describe('createWebFrameworkRequest', () => {
     request.headers.set('x-runtime', 'ignored');
     const secondHeaders = frameworkRequest.headers;
 
-    expect(firstHeaders['x-runtime']).toBe('after');
+    expect(firstHeaders['x-runtime']).toBe('before');
     expect(secondHeaders).toBe(firstHeaders);
-    expect(secondHeaders['x-runtime']).toBe('after');
+    expect(secondHeaders['x-runtime']).toBe('before');
   });
 });
