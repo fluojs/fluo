@@ -10,6 +10,10 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+  - [repository에서 `DrizzleDatabase.current()` 사용하기](#repository에서-drizzledatabasecurrent-사용하기)
+  - [수동 트랜잭션 경계](#수동-트랜잭션-경계)
+  - [인터셉터 기반 요청 단위 트랜잭션](#인터셉터-기반-요청-단위-트랜잭션)
+  - [종료와 상태 계약](#종료와-상태-계약)
 - [수동 모듈 구성](#수동-모듈-구성)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -95,6 +99,17 @@ import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 @UseInterceptors(DrizzleTransactionInterceptor)
 class UsersController {}
 ```
+
+### 종료와 상태 계약
+
+`DrizzleTransactionInterceptor`는 각 HTTP 요청을 `DrizzleDatabase.requestTransaction(...)`으로 실행합니다. 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 해당 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 이 순서는 pool이나 외부 관리 리소스를 닫기 전에 driver가 rollback/cleanup 작업을 끝낼 수 있게 보장합니다.
+
+`createDrizzlePlatformStatusSnapshot(...)`과 `DrizzleDatabase.createPlatformStatusSnapshot()`은 같은 계약을 진단 surface에 노출합니다.
+
+- Drizzle이 종료 중이거나 중지된 상태이면, 또는 `strictTransactions`가 켜져 있는데 `database.transaction(...)` 지원이 없으면 `readiness.status`는 `not-ready`입니다.
+- 요청 트랜잭션을 drain하는 종료 중에는 `health.status`가 `degraded`이고, dispose 이후에는 `unhealthy`입니다.
+- `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`은 현재 요청 트랜잭션과 트랜잭션 지원 상태를 설명합니다.
+- `ownership.externallyManaged: true`와 `ownership.ownsResources: false`는 이 패키지가 설정된 dispose hook은 실행하지만 underlying driver resource의 소유권을 주장하지 않는다는 뜻입니다.
 
 ## 수동 모듈 구성
 

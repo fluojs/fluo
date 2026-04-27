@@ -10,6 +10,10 @@ Drizzle ORM integration for fluo with a transaction-aware database wrapper and a
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Use `DrizzleDatabase.current()` inside repositories](#use-drizzledatabasecurrent-inside-repositories)
+  - [Manual transaction boundaries](#manual-transaction-boundaries)
+  - [Request-scoped transactions with an interceptor](#request-scoped-transactions-with-an-interceptor)
+  - [Shutdown and status contracts](#shutdown-and-status-contracts)
 - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -95,6 +99,17 @@ import { DrizzleTransactionInterceptor } from '@fluojs/drizzle';
 @UseInterceptors(DrizzleTransactionInterceptor)
 class UsersController {}
 ```
+
+### Shutdown and status contracts
+
+`DrizzleTransactionInterceptor` runs each HTTP request through `DrizzleDatabase.requestTransaction(...)`. During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for its transaction callback to settle or roll back, and only then runs the optional `dispose(database)` hook. This ordering lets drivers finish rollback/cleanup work before pools or externally managed resources are closed.
+
+`createDrizzlePlatformStatusSnapshot(...)` and `DrizzleDatabase.createPlatformStatusSnapshot()` expose the same contract to diagnostics surfaces:
+
+- `readiness.status` is `not-ready` while Drizzle is shutting down or stopped, and when `strictTransactions` is enabled without `database.transaction(...)` support.
+- `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disposal.
+- `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, and `details.supportsTransaction` describe the current request transaction and transaction-capability state.
+- `ownership.externallyManaged: true` and `ownership.ownsResources: false` mean the package runs your configured dispose hook but does not claim ownership of the underlying driver resources.
 
 ## Manual Module Composition
 

@@ -154,6 +154,76 @@ describe('@fluojs/drizzle', () => {
     ]);
   });
 
+  it('waits for delayed request transaction settlement before dispose on shutdown', async () => {
+    const events: string[] = [];
+    const transactionDatabase = {};
+    let releaseRollback!: () => void;
+    const rollbackBarrier = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } catch (error) {
+          events.push('transaction:rollback:pending');
+          await rollbackBarrier;
+          events.push('transaction:rollback:done');
+          throw error;
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({
+      database,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
+    const requestAbortController = new AbortController();
+    const openTransaction = drizzle.requestTransaction(
+      async () => new Promise<never>(() => undefined),
+      requestAbortController.signal,
+    );
+
+    requestAbortController.abort(new Error('request aborted'));
+    await Promise.resolve();
+
+    const shutdownPromise = app.close();
+
+    await Promise.resolve();
+    expect(events).toContain('transaction:rollback:pending');
+    expect(events).not.toContain('dispose');
+
+    releaseRollback();
+
+    await expect(openTransaction).rejects.toThrow();
+    await shutdownPromise;
+
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:rollback:pending',
+      'transaction:rollback:done',
+      'transaction:end',
+      'dispose',
+    ]);
+  });
+
   it('enforces strictTransactions for sync and async module builders', async () => {
     const database = {};
 
