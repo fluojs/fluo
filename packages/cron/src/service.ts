@@ -420,8 +420,22 @@ export class CronLifecycleService
       );
     }
 
-    await this.distributedLocks.releaseOwnedLocks();
+    await this.distributedLocks.releaseOwnedLocks(
+      shutdownTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
+    );
     this.lifecycleState = 'stopped';
+  }
+
+  private getRunningDistributedLockKeys(): ReadonlySet<string> {
+    const lockKeys = new Set<string>();
+
+    for (const task of this.tasks.values()) {
+      if (task.running && this.shouldUseDistributedExecution(task.descriptor)) {
+        lockKeys.add(task.descriptor.lockKey);
+      }
+    }
+
+    return lockKeys;
   }
 
   private registerDecoratorTasks(): void {
