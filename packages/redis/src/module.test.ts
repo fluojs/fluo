@@ -141,6 +141,27 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'quit']);
   });
 
+  it('forces lazyConnect for default and named clients so bootstrap owns connection timing', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({ host: '127.0.0.1', lazyConnect: false, port: 6379 } as never),
+        RedisModule.forRootNamed('cache', { host: '127.0.0.1', lazyConnect: false, port: 6380 } as never),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    expect(mockRedisState.instances).toHaveLength(2);
+    expect(mockRedisState.instances[0]?.options.lazyConnect).toBe(true);
+    expect(mockRedisState.instances[1]?.options.lazyConnect).toBe(true);
+    expect(mockRedisState.events).toEqual(['connect', 'connect']);
+
+    await app.close();
+
+    expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
+  });
+
   it('registers named Redis clients without changing the default aliases', async () => {
     const NAMED_REDIS_CLIENT = getRedisClientToken('cache');
     const NAMED_REDIS_SERVICE = getRedisServiceToken('cache');
@@ -222,6 +243,23 @@ describe('@fluojs/redis', () => {
 
     await expect(app.close()).resolves.toBeUndefined();
     expect(mockRedisState.events).toEqual(['connect', 'quit', 'disconnect']);
+  });
+
+  it('falls back to disconnect for each named client when quit fails after bootstrap', async () => {
+    mockRedisState.quitError = new Error('quit failed');
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        RedisModule.forRoot({ db: 0, host: '127.0.0.1', port: 6379 }),
+        RedisModule.forRootNamed('cache', { db: 1, host: '127.0.0.1', port: 6380 }),
+      ],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'disconnect', 'quit', 'disconnect']);
   });
 
   it('rethrows quit failures when disconnect does not close the client', async () => {
