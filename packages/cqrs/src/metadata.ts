@@ -1,5 +1,5 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { metadataSymbol } from '@fluojs/core/internal';
+import { getStandardMetadataBag } from '@fluojs/core/internal';
 
 import type {
   CommandHandlerMetadata,
@@ -10,8 +10,6 @@ import type {
   QueryType,
   SagaMetadata,
 } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 const commandHandlerMetadataStore = new WeakMap<Function, CommandHandlerMetadata>();
 const queryHandlerMetadataStore = new WeakMap<Function, QueryHandlerMetadata>();
@@ -41,11 +39,6 @@ function isEventType(value: unknown): value is CqrsEventType {
 
 function isEventTypeList(value: unknown): value is readonly CqrsEventType[] {
   return Array.isArray(value) && value.every((eventType) => isEventType(eventType));
-}
-
-function getStandardMetadataBag(target: Function): StandardMetadataBag | undefined {
-  const metadata = (target as unknown as Record<symbol, unknown>)[metadataSymbol];
-  return isObjectRecord(metadata) ? metadata : undefined;
 }
 
 function cloneCommandHandlerMetadata(metadata: CommandHandlerMetadata): CommandHandlerMetadata {

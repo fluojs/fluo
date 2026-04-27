@@ -2,7 +2,14 @@ export { getClassDiMetadata, getInheritedClassDiMetadata, getOwnClassDiMetadata,
 export { defineControllerMetadata, defineRouteMetadata, getControllerMetadata, getRouteMetadata } from './metadata/controller-route.js';
 export { defineInjectionMetadata, getInjectionSchema } from './metadata/injection.js';
 export { defineModuleMetadata, getModuleMetadata } from './metadata/module.js';
-export { ensureMetadataSymbol, metadataKeys, metadataSymbol } from './metadata/shared.js';
+export {
+  ensureMetadataSymbol,
+  getOwnStandardConstructorMetadataBag,
+  getStandardConstructorMetadataBag,
+  getStandardMetadataBag,
+  metadataKeys,
+  metadataSymbol,
+} from './metadata/shared.js';
 export { ensureSymbolMetadataPolyfill } from './metadata/symbol-metadata-polyfill.js';
 export {
   appendClassValidationRule,

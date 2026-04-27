@@ -1,18 +1,11 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
+import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag, getStandardMetadataBag } from '@fluojs/core/internal';
 
 import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
 
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 
-const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
-const metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
-
-if (!symbolWithMetadata.metadata) {
-  Object.defineProperty(Symbol, 'metadata', {
-    configurable: true,
-    value: metadataSymbol,
-  });
-}
+void ensureSymbolMetadataPolyfill();
 
 const standardResolverMetadataKey = Symbol.for('fluo.graphql.standard.resolver');
 const standardHandlerMetadataKey = Symbol.for('fluo.graphql.standard.handler');
@@ -46,10 +39,6 @@ function cloneArgFieldMetadata(metadata: ArgFieldMetadata): ArgFieldMetadata {
   };
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardResolverMetadata(target: object): ResolverMetadata | undefined {
   const metadata = getStandardMetadataBag(target)?.[standardResolverMetadataKey] as ResolverMetadata | undefined;
 
@@ -61,21 +50,15 @@ function getStandardResolverMetadata(target: object): ResolverMetadata | undefin
 }
 
 function getStandardHandlerMap(target: object): Map<MetadataPropertyKey, ResolverHandlerMetadata> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardHandlerMetadataKey] as
-        | Map<MetadataPropertyKey, ResolverHandlerMetadata>
-        | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardHandlerMetadataKey] as
+    | Map<MetadataPropertyKey, ResolverHandlerMetadata>
+    | undefined;
 }
 
 function getStandardArgFieldMap(target: object): Map<MetadataPropertyKey, ArgFieldMetadata> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardArgFieldMetadataKey] as Map<MetadataPropertyKey, ArgFieldMetadata> | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardArgFieldMetadataKey] as
+    | Map<MetadataPropertyKey, ArgFieldMetadata>
+    | undefined;
 }
 
 function getOrCreateHandlerMetadataMap(target: object): Map<MetadataPropertyKey, ResolverHandlerMetadata> {

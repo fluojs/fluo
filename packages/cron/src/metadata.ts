@@ -1,9 +1,7 @@
 import { type MetadataPropertyKey } from '@fluojs/core';
-import { ensureSymbolMetadataPolyfill, metadataSymbol } from '@fluojs/core/internal';
+import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
 import type { CronTaskMetadata, SchedulingTaskMetadata } from './types.js';
-
-type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 void ensureSymbolMetadataPolyfill();
 
@@ -34,16 +32,10 @@ function cloneTaskMetadata(metadata: SchedulingTaskMetadata): SchedulingTaskMeta
   };
 }
 
-function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  return (target as Record<symbol, StandardMetadataBag | undefined>)[metadataSymbol];
-}
-
 function getStandardSchedulingMap(target: object): Map<MetadataPropertyKey, SchedulingTaskMetadata> | undefined {
-  const constructor = (target as { constructor?: object }).constructor;
-
-  return constructor
-    ? (getStandardMetadataBag(constructor)?.[standardSchedulingMetadataKey] as Map<MetadataPropertyKey, SchedulingTaskMetadata> | undefined)
-    : undefined;
+  return getStandardConstructorMetadataBag(target)?.[standardSchedulingMetadataKey] as
+    | Map<MetadataPropertyKey, SchedulingTaskMetadata>
+    | undefined;
 }
 
 function getOrCreateSchedulingMap(target: object): Map<MetadataPropertyKey, SchedulingTaskMetadata> {

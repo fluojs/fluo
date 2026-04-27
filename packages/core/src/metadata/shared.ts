@@ -7,10 +7,12 @@ import { fallbackClone } from '../utils.js';
 export type StandardMetadataBag = Record<PropertyKey, unknown>;
 
 const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
+const fallbackMetadataSymbol = Symbol.for('fluo.symbol.metadata');
+
 /**
  * Active symbol key used to read and write standard metadata bags.
  */
-export let metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
+export let metadataSymbol = symbolWithMetadata.metadata ?? fallbackMetadataSymbol;
 
 /**
  * Ensures `Symbol.metadata` exists and returns the symbol used by Fluo metadata helpers.
@@ -32,6 +34,71 @@ export function ensureMetadataSymbol(): symbol {
 }
 
 void ensureMetadataSymbol();
+
+function getActiveMetadataSymbol(): symbol {
+  const nativeMetadataSymbol = symbolWithMetadata.metadata;
+
+  if (nativeMetadataSymbol && nativeMetadataSymbol !== metadataSymbol) {
+    metadataSymbol = nativeMetadataSymbol;
+  }
+
+  return metadataSymbol;
+}
+
+function getOwnStandardMetadataBagFromSymbol(target: object, symbol: symbol): StandardMetadataBag | undefined {
+  if (!Object.prototype.hasOwnProperty.call(target, symbol)) {
+    return undefined;
+  }
+
+  const metadata = Reflect.get(target, symbol);
+
+  if (typeof metadata !== 'object' || metadata === null) {
+    return undefined;
+  }
+
+  return metadata as StandardMetadataBag;
+}
+
+function getOwnStandardMetadataBagForEra(target: object, activeMetadataSymbol: symbol): StandardMetadataBag | undefined {
+  const activeMetadata = getOwnStandardMetadataBagFromSymbol(target, activeMetadataSymbol);
+
+  if (activeMetadata) {
+    return activeMetadata;
+  }
+
+  if (activeMetadataSymbol !== fallbackMetadataSymbol) {
+    return getOwnStandardMetadataBagFromSymbol(target, fallbackMetadataSymbol);
+  }
+
+  return undefined;
+}
+
+function getInheritedStandardMetadataBag(target: object, activeMetadataSymbol: symbol): StandardMetadataBag | undefined {
+  let prototype = Object.getPrototypeOf(target) as object | null;
+
+  while (prototype) {
+    const inheritedMetadata = getOwnStandardMetadataBagForEra(prototype, activeMetadataSymbol);
+
+    if (inheritedMetadata) {
+      return inheritedMetadata;
+    }
+
+    prototype = Object.getPrototypeOf(prototype) as object | null;
+  }
+
+  return undefined;
+}
+
+function overlayStandardMetadataBag(
+  ownMetadata: StandardMetadataBag,
+  inheritedMetadata: StandardMetadataBag | undefined,
+): StandardMetadataBag {
+  if (!inheritedMetadata) {
+    return ownMetadata;
+  }
+
+  return Object.create(inheritedMetadata, Object.getOwnPropertyDescriptors(ownMetadata)) as StandardMetadataBag;
+}
 
 function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -142,24 +209,59 @@ export function mergeUnique<T>(existing: readonly T[] | undefined, values: reado
   return merged;
 }
 
+
 /**
- * Reads the standard metadata bag stored directly on a target.
+ * Reads the standard metadata bag owned directly by a constructor.
+ *
+ * Own current/native metadata wins over own fallback-era metadata. When the
+ * constructor owns neither era, this helper returns `undefined`; it does not
+ * inspect inherited constructors.
+ *
+ * @param constructor Constructor whose own metadata bag should be inspected.
+ * @returns The own metadata bag when present, otherwise `undefined`.
+ */
+export function getOwnStandardConstructorMetadataBag(constructor: Function): StandardMetadataBag | undefined {
+  return getOwnStandardMetadataBagForEra(constructor, getActiveMetadataSymbol());
+}
+
+/**
+ * Reads the effective standard metadata bag for a target.
+ *
+ * Lookup prefers the target's own current/native metadata bag, then the target's
+ * own fallback-era bag, then inherited bags using the same per-object era order.
+ * When an own bag from either era exists alongside inherited metadata from
+ * either era, the returned bag preserves own-key precedence while allowing
+ * property lookup to fall through to inherited records.
  *
  * @param target Target object that may own standard metadata.
  * @returns The metadata bag when present, otherwise `undefined`.
  */
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  const metadata = Reflect.get(target, metadataSymbol);
+  const activeMetadataSymbol = getActiveMetadataSymbol();
+  const ownActiveMetadata = getOwnStandardMetadataBagFromSymbol(target, activeMetadataSymbol);
 
-  if (typeof metadata !== 'object' || metadata === null) {
-    return undefined;
+  if (ownActiveMetadata) {
+    return overlayStandardMetadataBag(ownActiveMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
   }
 
-  return metadata as StandardMetadataBag;
+  if (activeMetadataSymbol !== fallbackMetadataSymbol) {
+    const ownFallbackMetadata = getOwnStandardMetadataBagFromSymbol(target, fallbackMetadataSymbol);
+
+    if (ownFallbackMetadata) {
+      return overlayStandardMetadataBag(ownFallbackMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
+    }
+  }
+
+  return getInheritedStandardMetadataBag(target, activeMetadataSymbol);
 }
 
 /**
- * Reads the standard metadata bag stored on a target's constructor.
+ * Reads the effective standard metadata bag stored on a target's constructor.
+ *
+ * Constructor lookup delegates to {@link getStandardMetadataBag}, so it uses the
+ * constructor's own current/native bag, own fallback-era bag, then inherited
+ * constructor bags. Own current/native records retain precedence while inherited
+ * records remain visible through property lookup.
  *
  * @param target Instance or prototype whose constructor metadata should be inspected.
  * @returns The constructor metadata bag when present, otherwise `undefined`.
