@@ -11,16 +11,19 @@ import type { AuthStrategy, AuthStrategyResult } from '../types.js';
 export const COOKIE_AUTH_OPTIONS = Symbol.for('fluo.passport.cookie-auth-options');
 
 /**
- * Configures cookie names and fallback behavior for cookie-based authentication.
+ * Configures cookie names and missing-cookie behavior for cookie-based authentication.
  */
 export interface CookieAuthOptions {
+  /** Cookie name used for access-token lookup. */
   accessTokenCookieName?: string;
+  /** Cookie name used for refresh-token lookup. */
   refreshTokenCookieName?: string;
+  /** Whether protected routes should fail immediately when the access-token cookie is missing. */
   requireAccessToken?: boolean;
 }
 
 /**
- * Supplies the default cookie names and access-token requirement for cookie auth.
+ * Supplies the default cookie names and protected-route requirement for cookie auth.
  */
 export const DEFAULT_COOKIE_AUTH_OPTIONS: Required<CookieAuthOptions> = {
   accessTokenCookieName: 'access_token',
@@ -44,6 +47,12 @@ export function normalizeCookieAuthOptions(options?: CookieAuthOptions): Require
 
 /**
  * Authenticates requests by reading and verifying JWTs from HTTP cookies.
+ *
+ * @remarks
+ * When `requireAccessToken` is `false`, missing cookies produce an explicit
+ * unauthenticated result. Routes still need `@UseOptionalAuth(...)` to allow
+ * guest access; protected `@UseAuth(...)` routes continue to reject requests
+ * without an access-token cookie.
  */
 @Inject(DefaultJwtVerifier, COOKIE_AUTH_OPTIONS)
 export class CookieAuthStrategy implements AuthStrategy {
@@ -65,10 +74,7 @@ export class CookieAuthStrategy implements AuthStrategy {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }
 
-      return {
-        claims: {},
-        subject: 'anonymous',
-      };
+      return { authenticated: false };
     }
 
     const accessToken = cookies[this.options.accessTokenCookieName];
@@ -78,10 +84,7 @@ export class CookieAuthStrategy implements AuthStrategy {
         throw new AuthenticationRequiredError('Access token cookie is required.');
       }
 
-      return {
-        claims: {},
-        subject: 'anonymous',
-      };
+      return { authenticated: false };
     }
 
     try {
