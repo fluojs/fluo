@@ -1,5 +1,8 @@
 import type { Constructor, MaybePromise, MetadataSource } from '@fluojs/core';
 
+/**
+ * Describes the validation issue contract.
+ */
 export interface ValidationIssue {
   /** Stable issue code for programmatic error handling. */
   code: string;

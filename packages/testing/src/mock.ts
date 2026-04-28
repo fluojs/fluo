@@ -6,12 +6,19 @@ import type { ValueProvider } from '@fluojs/di';
 
 import type { DeepMocked } from './types.js';
 
+/**
+ * Defines the mocked methods type.
+ */
 export type MockedMethods<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K];
 };
 
 /**
  * Creates a proxy mock object with optional strict missing-property checks.
+ *
+ * @param partial The partial.
+ * @param options The options.
+ * @returns The create mock result.
  */
 export function createMock<T extends object>(
   partial: Partial<MockedMethods<T>> = {},
@@ -42,6 +49,9 @@ export function createMock<T extends object>(
 
 /**
  * Casts a function to a strongly typed Vitest mock.
+ *
+ * @param fn The fn.
+ * @returns The as mock result.
  */
 export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> {
   return vi.mocked(fn);
@@ -49,6 +59,9 @@ export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> 
 
 /**
  * Creates a deep mock by replacing prototype methods with `vi.fn()` spies.
+ *
+ * @param type The type.
+ * @returns The create deep mock result.
  */
 export function createDeepMock<T extends object>(type: new (...args: unknown[]) => T): DeepMocked<T> {
   const spies: Record<string | symbol, unknown> = {};
@@ -72,6 +85,10 @@ export function createDeepMock<T extends object>(type: new (...args: unknown[]) 
 
 /**
  * Creates a `useValue` provider for overriding a token in tests.
+ *
+ * @param token The token.
+ * @param partial The partial.
+ * @returns The mock token result.
  */
 export function mockToken<T>(token: Token<T>, partial: Partial<T> = {}): ValueProvider<T> {
   return { provide: token, useValue: partial as T };

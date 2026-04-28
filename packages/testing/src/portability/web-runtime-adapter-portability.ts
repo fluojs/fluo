@@ -15,6 +15,9 @@ type WebRuntimePortabilityAppLike = {
   dispatch(request: Request): Promise<Response>;
 };
 
+/**
+ * Describes the web runtime http adapter portability harness options contract.
+ */
 export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   TBootstrapOptions extends object,
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
@@ -33,6 +36,9 @@ async function closeSilently(app: WebRuntimePortabilityAppLike): Promise<void> {
   } catch {}
 }
 
+/**
+ * Represents the web runtime http adapter portability harness.
+ */
 export class WebRuntimeHttpAdapterPortabilityHarness<
   TBootstrapOptions extends object,
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
@@ -231,6 +237,12 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
   }
 }
 
+/**
+ * Create web runtime http adapter portability harness.
+ *
+ * @param options The options.
+ * @returns The create web runtime http adapter portability harness result.
+ */
 export function createWebRuntimeHttpAdapterPortabilityHarness<
   TBootstrapOptions extends object,
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,

@@ -1,5 +1,8 @@
 import type { FetchStyleHttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
 
+/**
+ * Describes the fetch style web socket conformance harness options contract.
+ */
 export interface FetchStyleWebSocketConformanceHarnessOptions<
   TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,
 > {
@@ -9,6 +12,9 @@ export interface FetchStyleWebSocketConformanceHarnessOptions<
   name: string;
 }
 
+/**
+ * Represents the fetch style web socket conformance harness.
+ */
 export class FetchStyleWebSocketConformanceHarness<
   TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,
 > {
@@ -52,6 +58,12 @@ export class FetchStyleWebSocketConformanceHarness<
   }
 }
 
+/**
+ * Create fetch style web socket conformance harness.
+ *
+ * @param options The options.
+ * @returns The create fetch style web socket conformance harness result.
+ */
 export function createFetchStyleWebSocketConformanceHarness<
   TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,
 >(
