@@ -188,6 +188,10 @@ export class HttpAdapterPortabilityHarness<
   }
 
   async assertPreservesRawBodyForJsonAndText(): Promise<void> {
+    const jsonPayload = JSON.stringify({ provider: 'stripe', emoji: '👩🏽‍🚀' });
+    const textPayload = 'ping=👩🏽‍🚀';
+    const binaryPayload = Buffer.from([0x66, 0x6c, 0x75, 0x6f, 0x00, 0xc3, 0x28, 0xff]);
+
     @Controller('/webhooks')
     class WebhookController {
       @Post('/json')
@@ -195,6 +199,7 @@ export class HttpAdapterPortabilityHarness<
         return {
           parsed: context.request.body,
           raw: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+          rawHex: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('hex'),
         };
       }
 
@@ -203,6 +208,14 @@ export class HttpAdapterPortabilityHarness<
         return {
           parsed: context.request.body,
           raw: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+          rawHex: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('hex'),
+        };
+      }
+
+      @Post('/bytes')
+      handleBytes(_input: undefined, context: RequestContext) {
+        return {
+          rawHex: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('hex'),
         };
       }
     }
@@ -218,31 +231,52 @@ export class HttpAdapterPortabilityHarness<
     await app.listen();
 
     try {
-      const [jsonResponse, textResponse] = await Promise.all([
+      const [jsonResponse, textResponse, bytesResponse] = await Promise.all([
         fetch(`http://127.0.0.1:${String(port)}/webhooks/json`, {
-          body: JSON.stringify({ provider: 'stripe' }),
+          body: jsonPayload,
           headers: { 'content-type': 'application/json' },
           method: 'POST',
         }),
         fetch(`http://127.0.0.1:${String(port)}/webhooks/text`, {
-          body: 'ping=1',
+          body: textPayload,
           headers: { 'content-type': 'text/plain; charset=utf-8' },
+          method: 'POST',
+        }),
+        fetch(`http://127.0.0.1:${String(port)}/webhooks/bytes`, {
+          body: binaryPayload,
+          headers: { 'content-type': 'text/plain' },
           method: 'POST',
         }),
       ]);
 
-      if (jsonResponse.status !== 201 || textResponse.status !== 201) {
+      if (jsonResponse.status !== 201 || textResponse.status !== 201 || bytesResponse.status !== 201) {
         throw new Error(`${this.options.name} adapter changed rawBody response status semantics.`);
       }
 
-      const [jsonBody, textBody] = await Promise.all([jsonResponse.json(), textResponse.json()]);
+      const [jsonBody, textBody, bytesBody] = await Promise.all([
+        jsonResponse.json(),
+        textResponse.json(),
+        bytesResponse.json(),
+      ]);
 
-      if (JSON.stringify(jsonBody) !== JSON.stringify({ parsed: { provider: 'stripe' }, raw: '{"provider":"stripe"}' })) {
+      if (JSON.stringify(jsonBody) !== JSON.stringify({
+        parsed: { provider: 'stripe', emoji: '👩🏽‍🚀' },
+        raw: jsonPayload,
+        rawHex: Buffer.from(jsonPayload).toString('hex'),
+      })) {
         throw new Error(`${this.options.name} adapter changed JSON rawBody semantics.`);
       }
 
-      if (JSON.stringify(textBody) !== JSON.stringify({ parsed: 'ping=1', raw: 'ping=1' })) {
+      if (JSON.stringify(textBody) !== JSON.stringify({
+        parsed: textPayload,
+        raw: textPayload,
+        rawHex: Buffer.from(textPayload).toString('hex'),
+      })) {
         throw new Error(`${this.options.name} adapter changed text rawBody semantics.`);
+      }
+
+      if (JSON.stringify(bytesBody) !== JSON.stringify({ rawHex: binaryPayload.toString('hex') })) {
+        throw new Error(`${this.options.name} adapter changed byte-sensitive rawBody semantics.`);
       }
     } finally {
       await closeSilently(app);
