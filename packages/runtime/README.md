@@ -123,6 +123,7 @@ class UsersModule {}
 ## Behavioral Contracts
 
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests.
+- Node-backed and Web-standard request wrappers snapshot cheap request metadata before body parsing, then materialize `body`/`rawBody` once at the dispatch boundary so userland continues to observe synchronous parsed values.
 - Node-backed cookies/query values and Web-standard headers are snapshotted when the request wrapper is created, then lazily normalized and memoized per request; later upstream object mutations do not change the `FrameworkRequest` view.
 - `ApplicationContext.get()` and `Application.get()` memoize only direct root singleton class/factory provider lookups known at bootstrap, while preserving alias, request, transient, post-close, multi-provider, and `container.override()` resolution semantics.
 - `multi: true` provider tokens are not context-cache memoized: each `get()` call delegates to DI so the container can assemble a fresh contribution array while still reusing each contribution according to its own provider scope.

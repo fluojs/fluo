@@ -221,7 +221,9 @@ function compileModule(
   const compiledModule: CompiledModule = {
     type: moduleType,
     definition,
+    accessibleTokens: new Set<Token>(),
     exportedTokens: new Set<Token>(),
+    importedExportedTokens: new Set<Token>(),
     providerTokens,
   };
 
@@ -278,6 +280,21 @@ function createAccessibleTokenSet(
     ...importedExportedTokens,
     ...globalExportedTokens,
   ]);
+}
+
+function memoizeAccessibleTokenSet(
+  compiledModule: CompiledModule,
+  importedModules: CompiledModule[],
+  runtimeProviderTokens: Set<Token>,
+  globalExportedTokens: Set<Token>,
+): void {
+  compiledModule.importedExportedTokens = createImportedExportedTokenSet(importedModules);
+  compiledModule.accessibleTokens = createAccessibleTokenSet(
+    runtimeProviderTokens,
+    compiledModule.providerTokens,
+    compiledModule.importedExportedTokens,
+    globalExportedTokens,
+  );
 }
 
 function validateProviderVisibility(
@@ -387,17 +404,16 @@ function validateCompiledModules(
 
   for (const compiledModule of modules) {
     const scope = `module ${compiledModule.type.name}`;
-    const importedExportedTokens = createImportedExportedTokenSet(resolveImportedModules(compiledModule, compiledByType));
-    const accessibleTokens = createAccessibleTokenSet(
+    memoizeAccessibleTokenSet(
+      compiledModule,
+      resolveImportedModules(compiledModule, compiledByType),
       runtimeProviderTokens,
-      compiledModule.providerTokens,
-      importedExportedTokens,
       globalExportedTokens,
     );
 
-    validateProviderVisibility(compiledModule, scope, accessibleTokens);
-    validateControllerVisibility(compiledModule, scope, accessibleTokens);
-    compiledModule.exportedTokens = createExportedTokenSet(compiledModule, importedExportedTokens);
+    validateProviderVisibility(compiledModule, scope, compiledModule.accessibleTokens);
+    validateControllerVisibility(compiledModule, scope, compiledModule.accessibleTokens);
+    compiledModule.exportedTokens = createExportedTokenSet(compiledModule, compiledModule.importedExportedTokens);
   }
 }
 

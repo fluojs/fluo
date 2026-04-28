@@ -20,9 +20,10 @@ import {
   compressNodeResponse,
 } from './internal-node-compression.js';
 import {
-  createFrameworkRequest,
+  createDeferredFrameworkRequest,
   NodeRequestPayloadTooLargeException,
   createRequestSignal,
+  materializeFrameworkRequestBody,
   resolveRequestIdFromHeaders,
 } from './internal-node-request.js';
 import {
@@ -205,13 +206,16 @@ function createNodeRequestResponseFactory(
 > {
   return {
     async createRequest(request, signal) {
-      return createFrameworkRequest(
+      return createDeferredFrameworkRequest(
         request,
         signal,
         multipartOptions,
         maxBodySize,
         preserveRawBody,
       );
+    },
+    materializeRequest(request) {
+      return materializeFrameworkRequestBody(request);
     },
     createRequestSignal(response) {
       return createRequestSignal(response);

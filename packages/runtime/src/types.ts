@@ -42,7 +42,9 @@ export interface BootstrapModuleOptions {
 export interface CompiledModule {
   type: ModuleType;
   definition: ModuleDefinition;
+  accessibleTokens: Set<Token>;
   exportedTokens: Set<Token>;
+  importedExportedTokens: Set<Token>;
   providerTokens: Set<Token>;
 }
 

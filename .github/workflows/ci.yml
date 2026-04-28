@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -287,3 +289,27 @@ jobs:
           echo "verification mode: ${{ needs.resolve-pr-verification-scope.outputs.mode }}"
           echo "scope reason: ${{ needs.resolve-pr-verification-scope.outputs.reason }}"
           echo "scoped packages: ${{ needs.resolve-pr-verification-scope.outputs.package_names }}"
+
+  verify-release-readiness:
+    name: Verify release readiness
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release readiness
+        run: pnpm verify:release-readiness

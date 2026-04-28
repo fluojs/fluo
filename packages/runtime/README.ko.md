@@ -123,6 +123,7 @@ class UsersModule {}
 ## 동작 계약
 
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다.
+- Node 기반 및 Web 표준 요청 wrapper는 바디 파싱 전에 저비용 요청 metadata를 snapshot으로 고정한 뒤 dispatch 경계에서 `body`/`rawBody`를 한 번 materialize하므로 userland는 계속 동기 parsed 값을 관찰합니다.
 - Node 기반 쿠키/쿼리 값과 Web 표준 헤더는 요청 wrapper가 생성되는 시점에 snapshot으로 고정된 뒤 요청별로 lazy하게 normalize되고 memoize됩니다. 이후 upstream 객체가 변경되어도 `FrameworkRequest` view는 바뀌지 않습니다.
 - `ApplicationContext.get()`과 `Application.get()`은 bootstrap 시점에 알려진 직접 root singleton class/factory provider 조회만 memoize하며, alias, request, transient, 종료 이후, multi-provider, `container.override()` 해석 의미는 그대로 유지합니다.
 - `multi: true` provider token은 context cache에 memoize되지 않습니다. 각 `get()` 호출은 DI로 위임되어 컨테이너가 새로운 contribution 배열을 조립하며, 각 contribution 자체는 해당 provider scope에 따라 재사용됩니다.

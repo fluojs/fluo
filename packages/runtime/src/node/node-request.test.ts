@@ -3,7 +3,11 @@ import { EventEmitter } from 'node:events';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { createFrameworkRequest } from './node-request.js';
+import {
+  createDeferredFrameworkRequest,
+  createFrameworkRequest,
+  materializeFrameworkRequestBody,
+} from './node-request.js';
 import { NodeRequestPayloadTooLargeException } from './internal-node-request.js';
 
 function createIncomingMessage(options: {
@@ -134,6 +138,40 @@ describe('node request adapter', () => {
     const frameworkRequest = await createFrameworkRequest(request, new AbortController().signal);
 
     expect(frameworkRequest.body).toEqual({ ok: true });
+  });
+
+  it('creates the request shell before materializing body and rawBody', async () => {
+    let chunksRead = 0;
+    const request = {
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+      async *[Symbol.asyncIterator]() {
+        chunksRead += 1;
+        yield Buffer.from('{"ok":true}', 'utf8');
+      },
+      url: '/body?tag=one',
+    } as unknown as IncomingMessage;
+
+    const frameworkRequest = createDeferredFrameworkRequest(
+      request,
+      new AbortController().signal,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(chunksRead).toBe(0);
+    expect(frameworkRequest.path).toBe('/body');
+    expect(frameworkRequest.query).toEqual({ tag: 'one' });
+
+    await materializeFrameworkRequestBody(frameworkRequest);
+    await materializeFrameworkRequestBody(frameworkRequest);
+
+    expect(chunksRead).toBe(1);
+    expect(frameworkRequest.body).toEqual({ ok: true });
+    expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
 
   it('destroys the raw Node request stream when maxBodySize is exceeded', async () => {

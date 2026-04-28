@@ -20,6 +20,7 @@ import {
 
 type NodeFrameworkRequest = FrameworkRequest & {
   files?: UploadedFile[];
+  materializeBody?: () => Promise<void>;
   rawBody?: Uint8Array;
 };
 
@@ -65,6 +66,35 @@ export async function createFrameworkRequest(
   maxBodySize = 1 * 1024 * 1024,
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
+  const frameworkRequest = createDeferredFrameworkRequest(
+    request,
+    signal,
+    multipartOptions,
+    maxBodySize,
+    preserveRawBody,
+  );
+  await materializeFrameworkRequestBody(frameworkRequest);
+
+  return frameworkRequest;
+}
+
+/**
+ * Creates the cheap Node framework request shell before consuming the body stream.
+ *
+ * @param request - Raw Node request carrying headers, URL, and body stream.
+ * @param signal - Abort signal tied to the response lifecycle.
+ * @param multipartOptions - Multipart parser options applied when materializing multipart requests.
+ * @param maxBodySize - Maximum allowed non-multipart body size in bytes.
+ * @param preserveRawBody - Whether materialization should retain raw request body bytes.
+ * @returns The framework request shell with metadata snapshotted and body materialization deferred.
+ */
+export function createDeferredFrameworkRequest(
+  request: IncomingMessage,
+  signal: AbortSignal,
+  multipartOptions?: MultipartOptions,
+  maxBodySize = 1 * 1024 * 1024,
+  preserveRawBody = false,
+): FrameworkRequest {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const headers = cloneRequestHeaders(request.headers);
   const cookieHeader = cloneHeaderValue(headers.cookie);
@@ -73,34 +103,34 @@ export async function createFrameworkRequest(
   const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = readPrimaryHeaderValue(headers['content-type']);
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const materializeBody = createMemoizedAsyncValue(async () => {
+    if (isMultipart) {
+      const result = await parseMultipart(
+        {
+          body: Readable.toWeb(request),
+          headers,
+          method: request.method,
+          url: url.toString(),
+        },
+        {
+          ...multipartOptions,
+          maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+        },
+      );
+      frameworkRequest.body = result.fields;
+      frameworkRequest.files = result.files;
+      return;
+    }
 
-  let body: unknown;
-  let files: UploadedFile[] | undefined;
-  let rawBody: Uint8Array | undefined;
-
-  if (isMultipart) {
-    const result = await parseMultipart(
-      {
-        body: Readable.toWeb(request),
-        headers,
-        method: request.method,
-        url: url.toString(),
-      },
-      {
-        ...multipartOptions,
-        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-      },
-    );
-    body = result.fields;
-    files = result.files;
-  } else {
     const bodyResult = await readRequestBody(request, headers['content-type'], maxBodySize, preserveRawBody);
-    body = bodyResult.body;
-    rawBody = bodyResult.rawBody;
-  }
+    frameworkRequest.body = bodyResult.body;
+
+    if (bodyResult.rawBody) {
+      frameworkRequest.rawBody = bodyResult.rawBody;
+    }
+  });
 
   const frameworkRequest: NodeFrameworkRequest = {
-    body,
     get cookies() {
       return cookies();
     },
@@ -114,17 +144,21 @@ export async function createFrameworkRequest(
     raw: request,
     signal,
     url: url.pathname + url.search,
+    materializeBody,
   };
 
-  if (files) {
-    frameworkRequest.files = files;
-  }
-
-  if (rawBody) {
-    frameworkRequest.rawBody = rawBody;
-  }
-
   return frameworkRequest;
+}
+
+/**
+ * Materializes a deferred Node framework request body exactly once.
+ *
+ * @param request - Framework request returned by {@link createDeferredFrameworkRequest}.
+ * @returns A promise that settles after body, rawBody, and files fields are populated when applicable.
+ */
+export async function materializeFrameworkRequestBody(request: FrameworkRequest): Promise<void> {
+  await (request as NodeFrameworkRequest).materializeBody?.();
+  delete (request as NodeFrameworkRequest).materializeBody;
 }
 
 function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
@@ -138,6 +172,15 @@ function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
     }
 
     return value;
+  };
+}
+
+function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<void> {
+  let promise: Promise<void> | undefined;
+
+  return () => {
+    promise ??= factory();
+    return promise;
   };
 }
 

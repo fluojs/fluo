@@ -46,6 +46,10 @@ describe('dispatchWithRequestResponseFactory', () => {
         events.push(`response:${rawResponse.id}`);
         return response;
       },
+      async materializeRequest(request) {
+        events.push('materialize');
+        request.body = { ready: true };
+      },
       resolveRequestId(rawRequest) {
         return rawRequest.id;
       },
@@ -57,6 +61,7 @@ describe('dispatchWithRequestResponseFactory', () => {
     const frameworkResponse = await dispatchWithRequestResponseFactory({
       dispatcher: {
         async dispatch(request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(request.body).toEqual({ ready: true });
           events.push(`dispatch:${String(request.raw === (request.raw as { id: string }))}`);
           expect(frameworkResponse).toBe(response);
         },
@@ -73,6 +78,7 @@ describe('dispatchWithRequestResponseFactory', () => {
       'response:res-1',
       'signal',
       'request:req-1:false',
+      'materialize',
       'dispatch:true',
       'send',
     ]);

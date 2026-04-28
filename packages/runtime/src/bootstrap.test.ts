@@ -49,6 +49,42 @@ describe('bootstrapModule', () => {
     ]);
   });
 
+  it('memoizes imported and accessible token sets while preserving re-export visibility', () => {
+    class Logger {}
+
+    class SharedModule {}
+    defineModuleMetadata(SharedModule, {
+      exports: [Logger],
+      providers: [Logger],
+    });
+
+    class ReExportModule {}
+    defineModuleMetadata(ReExportModule, {
+      exports: [Logger],
+      imports: [SharedModule],
+    });
+
+    @Inject(Logger)
+    class AppService {
+      constructor(readonly logger: Logger) {}
+    }
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [ReExportModule],
+      providers: [AppService],
+    });
+
+    const result = bootstrapModule(AppModule);
+    const reExportModule = result.modules.find((compiledModule) => compiledModule.type === ReExportModule);
+    const appModule = result.modules.find((compiledModule) => compiledModule.type === AppModule);
+
+    expect(reExportModule?.importedExportedTokens.has(Logger)).toBe(true);
+    expect(reExportModule?.exportedTokens.has(Logger)).toBe(true);
+    expect(appModule?.importedExportedTokens.has(Logger)).toBe(true);
+    expect(appModule?.accessibleTokens.has(Logger)).toBe(true);
+  });
+
   it('fails when a provider is not exported across modules', () => {
     class InternalRepository {}
 
