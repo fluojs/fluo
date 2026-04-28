@@ -210,4 +210,24 @@ describe('createWebFrameworkRequest', () => {
     expect(frameworkRequest.body).toEqual({ ok: true });
     expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
+
+  it('uses creation-time metadata when materializing deferred multipart bodies', async () => {
+    const formData = new FormData();
+    formData.set('title', 'before');
+    const request = new Request('https://runtime.test/upload?tag=one', {
+      body: formData,
+      method: 'POST',
+    });
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    request.headers.set('content-type', 'text/plain');
+    request.headers.set('x-runtime', 'after');
+
+    await factory.materializeRequest?.(frameworkRequest);
+
+    expect(frameworkRequest.body).toEqual({ title: 'before' });
+    expect(frameworkRequest.headers['content-type']).toContain('multipart/form-data');
+    expect(frameworkRequest.headers['x-runtime']).toBeUndefined();
+  });
 });

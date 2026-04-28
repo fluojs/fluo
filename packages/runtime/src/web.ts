@@ -350,6 +350,7 @@ function createDeferredWebFrameworkRequest(
 ): FrameworkRequest {
   const url = new URL(request.url);
   const headerEntries = Array.from(request.headers.entries());
+  const method = request.method;
   const cookieHeader = request.headers.get('cookie') ?? undefined;
   const searchParams = new URLSearchParams(url.searchParams);
   const headers = createMemoizedValue(() => cloneWebHeaders(headerEntries));
@@ -359,7 +360,13 @@ function createDeferredWebFrameworkRequest(
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
-      const result = await parseMultipart(request.clone(), {
+      const materializedRequest = request.clone();
+      const result = await parseMultipart({
+        body: materializedRequest.body,
+        headers: new Headers(headerEntries),
+        method,
+        url: url.toString(),
+      }, {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
       });
@@ -383,7 +390,7 @@ function createDeferredWebFrameworkRequest(
     get headers() {
       return headers();
     },
-    method: request.method,
+    method,
     params: {},
     path: url.pathname,
     get query() {
