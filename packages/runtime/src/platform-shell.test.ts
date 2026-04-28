@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type {
   PlatformComponent,
@@ -175,6 +175,34 @@ describe('RuntimePlatformShell', () => {
     expect(snapshot.components.find((component) => component.id === 'search.default')?.dependencies).toEqual(['cache.default']);
 
     await shell.stop();
+  });
+
+  it('collects snapshot readiness and health without re-entering shell probe methods', async () => {
+    const events: string[] = [];
+    const component = new StubPlatformComponent(
+      'cache.default',
+      'cache',
+      events,
+      { critical: false, status: 'ready' },
+      { status: 'healthy' },
+    );
+
+    const shell = RuntimePlatformShell.fromInputs([
+      { component, dependencies: [] },
+    ]);
+    const shellReady = vi.spyOn(shell, 'ready');
+    const shellHealth = vi.spyOn(shell, 'health');
+    const componentReady = vi.spyOn(component, 'ready');
+    const componentHealth = vi.spyOn(component, 'health');
+
+    const snapshot = await shell.snapshot();
+
+    expect(snapshot.readiness.status).toBe('ready');
+    expect(snapshot.health.status).toBe('healthy');
+    expect(shellReady).not.toHaveBeenCalled();
+    expect(shellHealth).not.toHaveBeenCalled();
+    expect(componentReady).toHaveBeenCalledTimes(1);
+    expect(componentHealth).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the original start failure as primary and allows follow-up cleanup when rollback stop fails', async () => {

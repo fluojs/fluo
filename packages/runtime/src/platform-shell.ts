@@ -130,6 +130,28 @@ function normalizeSnapshot(snapshot: PlatformSnapshot, component: PlatformCompon
   };
 }
 
+interface PlatformSnapshotProbeResult {
+  diagnostics: PlatformDiagnosticIssue[];
+  health: PlatformHealthReport;
+  readiness: PlatformReadinessReport;
+  snapshot: PlatformSnapshot;
+}
+
+interface PlatformSnapshotResult {
+  diagnostics: PlatformDiagnosticIssue[];
+  snapshot: PlatformSnapshot;
+}
+
+interface PlatformReadinessResult {
+  diagnostics: PlatformDiagnosticIssue[];
+  readiness: PlatformReadinessReport;
+}
+
+interface PlatformHealthResult {
+  diagnostics: PlatformDiagnosticIssue[];
+  health: PlatformHealthReport;
+}
+
 /**
  * A runtime implementation of the {@link PlatformShell} that manages the lifecycle
  * of registered platform components, including dependency ordering and diagnostics.
@@ -282,15 +304,55 @@ export class RuntimePlatformShell implements PlatformShell {
       return createEmptyShellSnapshot([...this.diagnostics]);
     }
 
-    const components: PlatformSnapshot[] = [];
-    for (const registration of this.registeredComponents) {
-      try {
-        const snapshot = registration.component.snapshot();
-        components.push(normalizeSnapshot(snapshot, registration.component, registration.dependencies));
-      } catch (error) {
-        const issue = createUnknownFailureIssue(registration.component.id, 'snapshot', error);
-        this.diagnostics.push(issue);
-        components.push({
+    const probeResults = await Promise.all(
+      this.registeredComponents.map((registration) => this.collectSnapshotProbe(registration)),
+    );
+    const components = probeResults.map((result) => result.snapshot);
+    const readiness = aggregateReadiness(probeResults.map((result) => result.readiness));
+    const health = aggregateHealth(probeResults.map((result) => result.health));
+    const diagnostics = probeResults.flatMap((result) => result.diagnostics);
+    this.diagnostics.push(...diagnostics);
+
+    return {
+      components,
+      diagnostics: [...this.diagnostics],
+      generatedAt: new Date().toISOString(),
+      health,
+      readiness,
+    };
+  }
+
+  private async collectSnapshotProbe(registration: RegisteredPlatformComponent): Promise<PlatformSnapshotProbeResult> {
+    const [snapshot, readiness, health] = await Promise.all([
+      this.collectComponentSnapshot(registration),
+      this.collectComponentReadiness(registration),
+      this.collectComponentHealth(registration),
+    ]);
+
+    return {
+      diagnostics: [
+        ...snapshot.diagnostics,
+        ...readiness.diagnostics,
+        ...health.diagnostics,
+      ],
+      health: health.health,
+      readiness: readiness.readiness,
+      snapshot: snapshot.snapshot,
+    };
+  }
+
+  private collectComponentSnapshot(registration: RegisteredPlatformComponent): PlatformSnapshotResult {
+    try {
+      const snapshot = registration.component.snapshot();
+      return {
+        diagnostics: [],
+        snapshot: normalizeSnapshot(snapshot, registration.component, registration.dependencies),
+      };
+    } catch (error) {
+      const issue = createUnknownFailureIssue(registration.component.id, 'snapshot', error);
+      return {
+        diagnostics: [issue],
+        snapshot: {
           dependencies: [...registration.dependencies],
           details: {},
           health: {
@@ -313,19 +375,46 @@ export class RuntimePlatformShell implements PlatformShell {
             namespace: 'fluo.platform',
             tags: {},
           },
-        });
-      }
+        },
+      };
     }
+  }
 
-    const [readiness, health] = await Promise.all([this.ready(), this.health()]);
+  private async collectComponentReadiness(registration: RegisteredPlatformComponent): Promise<PlatformReadinessResult> {
+    try {
+      return {
+        diagnostics: [],
+        readiness: await registration.component.ready(),
+      };
+    } catch (error) {
+      const issue = createUnknownFailureIssue(registration.component.id, 'ready', error);
+      return {
+        diagnostics: [issue],
+        readiness: {
+          critical: true,
+          reason: issue.cause,
+          status: 'not-ready',
+        },
+      };
+    }
+  }
 
-    return {
-      components,
-      diagnostics: [...this.diagnostics],
-      generatedAt: new Date().toISOString(),
-      health,
-      readiness,
-    };
+  private async collectComponentHealth(registration: RegisteredPlatformComponent): Promise<PlatformHealthResult> {
+    try {
+      return {
+        diagnostics: [],
+        health: await registration.component.health(),
+      };
+    } catch (error) {
+      const issue = createUnknownFailureIssue(registration.component.id, 'health', error);
+      return {
+        diagnostics: [issue],
+        health: {
+          reason: issue.cause,
+          status: 'unhealthy',
+        },
+      };
+    }
   }
 
   async assertCriticalReadiness(): Promise<void> {
