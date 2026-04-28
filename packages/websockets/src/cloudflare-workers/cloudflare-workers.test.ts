@@ -151,7 +151,7 @@ class TestWorkerServer {
   }
 
   upgrade(): CloudflareWorkerWebSocketUpgradeResult {
-    const _clientSocket = new MockWorkerSocket();
+    new MockWorkerSocket();
     const serverSocket = new MockWorkerSocket();
     this.lastSocket = serverSocket;
 
@@ -197,6 +197,23 @@ class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSo
 
 async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function withoutNodeBuffer<T>(callback: () => Promise<T>): Promise<T> {
+  const runtimeGlobal = globalThis as typeof globalThis & { Buffer?: unknown };
+  const originalBuffer = runtimeGlobal.Buffer;
+
+  Reflect.deleteProperty(runtimeGlobal, 'Buffer');
+
+  try {
+    return await callback();
+  } finally {
+    if (originalBuffer === undefined) {
+      Reflect.deleteProperty(runtimeGlobal, 'Buffer');
+    } else {
+      runtimeGlobal.Buffer = originalBuffer;
+    }
+  }
 }
 
 function createDeferred<T = void>() {
@@ -449,56 +466,61 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await app.close();
   });
 
-  it('closes Worker sockets when inbound payloads exceed the configured limit', async () => {
-    const adapter = new TestWorkerAdapter();
+  it('closes Worker sockets when string payloads exceed the configured limit without Node globals', async () => {
+    await withoutNodeBuffer(async () => {
+      const adapter = new TestWorkerAdapter();
 
-    class GatewayState {
-      messages: unknown[] = [];
-    }
-
-    @Inject(GatewayState)
-    @WebSocketGateway({ path: '/payload' })
-    class PayloadGateway {
-      constructor(private readonly state: GatewayState) {}
-
-      @OnMessage('ping')
-      onPing(payload: unknown) {
-        this.state.messages.push(payload);
+      class GatewayState {
+        messages: unknown[] = [];
       }
-    }
 
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CloudflareWorkersWebSocketModule.forRoot({
-        limits: {
-          maxPayloadBytes: 4,
-        },
-      })],
-      providers: [GatewayState, PayloadGateway],
+      @Inject(GatewayState)
+      @WebSocketGateway({ path: '/payload' })
+      class PayloadGateway {
+        constructor(private readonly state: GatewayState) {}
+
+        @OnMessage('ping')
+        onPing(payload: unknown) {
+          this.state.messages.push(payload);
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [CloudflareWorkersWebSocketModule.forRoot({
+          limits: {
+            maxPayloadBytes: 4,
+          },
+        })],
+        providers: [GatewayState, PayloadGateway],
+      });
+
+      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+      try {
+        const state = await app.container.resolve<GatewayState>(GatewayState);
+        await app.listen();
+
+        const server = adapter.getServer();
+        await server?.fetch(new Request('https://worker.test/payload', {
+          headers: { upgrade: 'websocket' },
+        }));
+        await flushAsyncWork();
+
+        const socket = server?.lastSocket;
+
+        if (!socket) {
+          throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+        }
+
+        socket.emitMessage('hello');
+        await flushAsyncWork();
+
+        expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
+        expect(state.messages).toEqual([]);
+      } finally {
+        await app.close();
+      }
     });
-
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    const state = await app.container.resolve<GatewayState>(GatewayState);
-    await app.listen();
-
-    const server = adapter.getServer();
-    await server?.fetch(new Request('https://worker.test/payload', {
-      headers: { upgrade: 'websocket' },
-    }));
-    await flushAsyncWork();
-
-    const socket = server?.lastSocket;
-
-    if (!socket) {
-      throw new Error('Expected Worker test socket to be available after websocket upgrade.');
-    }
-
-    socket.emitMessage('hello');
-    await flushAsyncWork();
-
-    expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
-    expect(state.messages).toEqual([]);
-
-    await app.close();
   });
 });
