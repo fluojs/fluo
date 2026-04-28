@@ -121,6 +121,12 @@ PrismaModule.forRootAsync({
 
 하나의 컴파일된 애플리케이션 안에서는 하위 provider가 동일하게 resolve된 `PrismaService`, ALS 트랜잭션 컨텍스트, 라이프사이클 관리 대상 클라이언트를 공유합니다. 서로 다른 애플리케이션 컨테이너는 독립된 factory 결과를 받으므로 `$connect` / `$disconnect` 소유권과 요청 트랜잭션 상태가 격리됩니다.
 
+### 애플리케이션 컨테이너당 unnamed PrismaModule 1개만 지원
+
+현재 `@fluojs/prisma`는 애플리케이션 컨테이너마다 unnamed `PrismaService` / `PRISMA_CLIENT` / `PRISMA_OPTIONS` 바인딩 한 세트만 노출합니다. 하나의 모듈 그래프에서는 `PrismaModule.forRoot(...)` 또는 `forRootAsync(...)`를 한 번만 등록하세요. 동일한 컨테이너에 unnamed Prisma 모듈 등록을 여러 번 import하면, 마지막 등록이 조용히 덮어쓰는 대신 bootstrap 중 예외가 발생합니다.
+
+여러 Prisma client가 필요하다면, 현재는 하나의 그래프에 `PrismaModule`을 여러 번 import하는 대신 별도의 Fluo 애플리케이션 컨테이너나 커스텀 어댑터 코드로 격리해야 합니다.
+
 ### 수동 모듈 조합
 
 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 사용해 Prisma를 등록합니다. 커스텀 `defineModule(...)` 등록 안에서 Prisma 지원을 조합해야 할 때도 동일한 모듈 entrypoint를 import해서 사용하세요.
@@ -147,6 +153,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `forRootAsync(...)`는 `AsyncModuleOptions<PrismaModuleOptions<...>>`를 받습니다.
 - `forRootAsync(...)`는 애플리케이션 컨테이너마다 옵션을 한 번 resolve하여, 별도 bootstrap 사이에서 클라이언트 라이프사이클과 요청 트랜잭션 격리를 보존합니다.
+- 하나의 애플리케이션 컨테이너에서는 unnamed Prisma 모듈 등록 1개만 지원하며, 중복 등록 시 bootstrap 단계에서 예외가 발생합니다.
 - `strictTransactions: true` 설정 시 트랜잭션 미지원 환경에서 즉시 예외를 발생시킵니다.
 
 ### `PrismaService<TClient>`

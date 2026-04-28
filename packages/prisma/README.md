@@ -121,6 +121,12 @@ PrismaModule.forRootAsync({
 
 Within one compiled application, downstream providers share the same resolved `PrismaService`, ALS transaction context, and lifecycle-managed client. Separate application containers receive independent factory results, so `$connect` / `$disconnect` ownership and request transaction state remain isolated.
 
+### One Unnamed PrismaModule per Application Container
+
+`@fluojs/prisma` currently exposes one unnamed `PrismaService` / `PRISMA_CLIENT` / `PRISMA_OPTIONS` binding set per application container. Register `PrismaModule.forRoot(...)` or `forRootAsync(...)` once in a given module graph. Importing multiple unnamed Prisma module registrations into the same container now throws during bootstrap instead of silently letting the last registration win.
+
+If you need multiple Prisma clients today, isolate them behind separate Fluo application containers or custom adapter code rather than importing `PrismaModule` multiple times into one graph.
+
 ### Manual Module Composition
 
 Use `PrismaModule.forRoot(...)` / `forRootAsync(...)` to register Prisma. When you need to compose Prisma support inside a custom `defineModule(...)` registration, import the module entrypoint there as well.
@@ -147,6 +153,7 @@ defineModule(ManualPrismaModule, {
 - `PrismaModule.forRoot(options)` / `PrismaModule.forRootAsync(options)`
 - `forRootAsync(...)` accepts `AsyncModuleOptions<PrismaModuleOptions<...>>`.
 - `forRootAsync(...)` resolves options once per application container, preserving client lifecycle and request transaction isolation across separate bootstraps.
+- A single application container supports only one unnamed Prisma module registration; duplicate registrations throw during bootstrap.
 - Supports `strictTransactions: true` to throw if transaction support is missing.
 
 ### `PrismaService<TClient>`
