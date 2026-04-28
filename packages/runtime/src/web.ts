@@ -69,6 +69,7 @@ interface WebFrameworkResponseStream {
 
 type WebFrameworkRequest = FrameworkRequest & {
   files?: UploadedFile[];
+  materializeBody?: () => Promise<void>;
   rawBody?: Uint8Array;
 };
 
@@ -250,13 +251,16 @@ export function createWebRequestResponseFactory(
 ): RequestResponseFactory<Request, AbortSignal | undefined, WebFrameworkResponse> {
   return {
     async createRequest(request: Request, signal: AbortSignal) {
-      return await createWebFrameworkRequest(
+      return createDeferredWebFrameworkRequest(
         request,
         signal,
         options.multipart,
         options.maxBodySize ?? DEFAULT_MAX_BODY_SIZE,
         options.rawBody ?? false,
       );
+    },
+    materializeRequest(request) {
+      return materializeWebFrameworkRequestBody(request);
     },
     createRequestSignal(signal) {
       return signal ?? new AbortController().signal;
@@ -315,6 +319,35 @@ export async function createWebFrameworkRequest(
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
+  const frameworkRequest = createDeferredWebFrameworkRequest(
+    request,
+    signal,
+    multipartOptions,
+    maxBodySize,
+    preserveRawBody,
+  );
+  await materializeWebFrameworkRequestBody(frameworkRequest);
+
+  return frameworkRequest;
+}
+
+/**
+ * Creates the cheap Web framework request shell before consuming the body stream.
+ *
+ * @param request - Native Web request to normalize.
+ * @param signal - Abort signal propagated to the framework request.
+ * @param multipartOptions - Multipart parser options applied when materializing multipart requests.
+ * @param maxBodySize - Maximum allowed non-multipart body size in bytes.
+ * @param preserveRawBody - Whether materialization should retain raw request body bytes.
+ * @returns The framework request shell with metadata snapshotted and body materialization deferred.
+ */
+function createDeferredWebFrameworkRequest(
+  request: Request,
+  signal: AbortSignal,
+  multipartOptions?: MultipartOptions,
+  maxBodySize = DEFAULT_MAX_BODY_SIZE,
+  preserveRawBody = false,
+): FrameworkRequest {
   const url = new URL(request.url);
   const headerEntries = Array.from(request.headers.entries());
   const cookieHeader = request.headers.get('cookie') ?? undefined;
@@ -324,26 +357,26 @@ export async function createWebFrameworkRequest(
   const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = request.headers.get('content-type') ?? undefined;
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const materializeBody = createMemoizedAsyncValue(async () => {
+    if (isMultipart) {
+      const result = await parseMultipart(request.clone(), {
+        ...multipartOptions,
+        maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+      });
+      frameworkRequest.body = result.fields;
+      frameworkRequest.files = result.files;
+      return;
+    }
 
-  let body: unknown;
-  let files: UploadedFile[] | undefined;
-  let rawBody: Uint8Array | undefined;
-
-  if (isMultipart) {
-    const result = await parseMultipart(request.clone(), {
-      ...multipartOptions,
-      maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
-    });
-    body = result.fields;
-    files = result.files;
-  } else {
     const bodyResult = await readWebRequestBody(request.clone(), contentType, maxBodySize, preserveRawBody);
-    body = bodyResult.body;
-    rawBody = bodyResult.rawBody;
-  }
+    frameworkRequest.body = bodyResult.body;
+
+    if (bodyResult.rawBody) {
+      frameworkRequest.rawBody = bodyResult.rawBody;
+    }
+  });
 
   const frameworkRequest: WebFrameworkRequest = {
-    body,
     get cookies() {
       return cookies();
     },
@@ -359,17 +392,21 @@ export async function createWebFrameworkRequest(
     raw: request,
     signal,
     url: url.pathname + url.search,
+    materializeBody,
   };
 
-  if (files) {
-    frameworkRequest.files = files;
-  }
-
-  if (rawBody) {
-    frameworkRequest.rawBody = rawBody;
-  }
-
   return frameworkRequest;
+}
+
+/**
+ * Materializes a deferred Web framework request body exactly once.
+ *
+ * @param request - Framework request returned by {@link createDeferredWebFrameworkRequest}.
+ * @returns A promise that settles after body, rawBody, and files fields are populated when applicable.
+ */
+async function materializeWebFrameworkRequestBody(request: FrameworkRequest): Promise<void> {
+  await (request as WebFrameworkRequest).materializeBody?.();
+  delete (request as WebFrameworkRequest).materializeBody;
 }
 
 function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
@@ -383,6 +420,15 @@ function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
     }
 
     return value;
+  };
+}
+
+function createMemoizedAsyncValue(factory: () => Promise<void>): () => Promise<void> {
+  let promise: Promise<void> | undefined;
+
+  return () => {
+    promise ??= factory();
+    return promise;
   };
 }
 

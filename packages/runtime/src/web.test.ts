@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
-import { createWebFrameworkRequest, dispatchWebRequest } from './web.js';
+import {
+  createWebFrameworkRequest,
+  createWebRequestResponseFactory,
+  dispatchWebRequest,
+} from './web.js';
 
 describe('dispatchWebRequest', () => {
   it('translates Web Request semantics into the framework request contract', async () => {
@@ -163,5 +167,47 @@ describe('createWebFrameworkRequest', () => {
     expect(firstHeaders['x-runtime']).toBe('before');
     expect(secondHeaders).toBe(firstHeaders);
     expect(secondHeaders['x-runtime']).toBe('before');
+  });
+
+  it('creates the request shell before materializing body and rawBody', async () => {
+    let pulls = 0;
+    const request = new Request('https://runtime.test/body?tag=one', {
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+          controller.close();
+        },
+      }),
+      duplex: 'half',
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    } as RequestInit & { duplex: 'half' });
+    const originalClone = request.clone.bind(request);
+    let cloneCalls = 0;
+
+    Object.defineProperty(request, 'clone', {
+      value: () => {
+        cloneCalls += 1;
+        return originalClone();
+      },
+    });
+
+    const factory = createWebRequestResponseFactory({ rawBody: true });
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    expect(cloneCalls).toBe(0);
+    expect(frameworkRequest.path).toBe('/body');
+    expect(frameworkRequest.query).toEqual({ tag: 'one' });
+
+    await factory.materializeRequest?.(frameworkRequest);
+    await factory.materializeRequest?.(frameworkRequest);
+
+    expect(cloneCalls).toBe(1);
+    expect(pulls).toBe(1);
+    expect(frameworkRequest.body).toEqual({ ok: true });
+    expect(Buffer.from(frameworkRequest.rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
 });
