@@ -72,6 +72,8 @@ type WebFrameworkRequest = FrameworkRequest & {
   rawBody?: Uint8Array;
 };
 
+type MemoizedValue<T> = () => T;
+
 class WebResponseStream implements WebFrameworkResponseStream {
   private readonly closeListeners = new Set<() => void>();
   private controller?: ReadableStreamDefaultController<Uint8Array>;
@@ -314,7 +316,12 @@ export async function createWebFrameworkRequest(
   preserveRawBody = false,
 ): Promise<FrameworkRequest> {
   const url = new URL(request.url);
-  const headers = cloneWebHeaders(request.headers);
+  const headerEntries = Array.from(request.headers.entries());
+  const cookieHeader = request.headers.get('cookie') ?? undefined;
+  const searchParams = new URLSearchParams(url.searchParams);
+  const headers = createMemoizedValue(() => cloneWebHeaders(headerEntries));
+  const cookies = createMemoizedValue(() => parseCookieHeader(cookieHeader));
+  const query = createMemoizedValue(() => parseQueryParams(searchParams));
   const contentType = request.headers.get('content-type') ?? undefined;
   const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
 
@@ -337,12 +344,18 @@ export async function createWebFrameworkRequest(
 
   const frameworkRequest: WebFrameworkRequest = {
     body,
-    cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
-    headers,
+    get cookies() {
+      return cookies();
+    },
+    get headers() {
+      return headers();
+    },
     method: request.method,
     params: {},
     path: url.pathname,
-    query: parseQueryParams(url.searchParams),
+    get query() {
+      return query();
+    },
     raw: request,
     signal,
     url: url.pathname + url.search,
@@ -357,6 +370,20 @@ export async function createWebFrameworkRequest(
   }
 
   return frameworkRequest;
+}
+
+function createMemoizedValue<T>(factory: () => T): MemoizedValue<T> {
+  let initialized = false;
+  let value: T;
+
+  return () => {
+    if (!initialized) {
+      value = factory();
+      initialized = true;
+    }
+
+    return value;
+  };
 }
 
 function parseQueryParams(searchParams: URLSearchParams): Record<string, string | string[]> {
@@ -381,10 +408,10 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, string 
   return query;
 }
 
-function cloneWebHeaders(headers: Headers): FrameworkRequest['headers'] {
+function cloneWebHeaders(headers: Array<[string, string]>): FrameworkRequest['headers'] {
   const clonedHeaders: Record<string, string | string[] | undefined> = {};
 
-  for (const [name, value] of headers.entries()) {
+  for (const [name, value] of headers) {
     clonedHeaders[name] = value;
   }
 

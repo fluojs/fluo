@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
-import { dispatchWebRequest } from './web.js';
+import { createWebFrameworkRequest, dispatchWebRequest } from './web.js';
 
 describe('dispatchWebRequest', () => {
   it('translates Web Request semantics into the framework request contract', async () => {
@@ -142,5 +142,26 @@ describe('dispatchWebRequest', () => {
       },
     });
     expect(producedChunks).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('createWebFrameworkRequest', () => {
+  it('captures headers at creation, then materializes and memoizes the cloned object lazily', async () => {
+    const request = new Request('https://runtime.test/headers', {
+      headers: {
+        'x-runtime': 'before',
+      },
+    });
+
+    const frameworkRequest = await createWebFrameworkRequest(request, new AbortController().signal);
+
+    request.headers.set('x-runtime', 'after');
+    const firstHeaders = frameworkRequest.headers;
+    request.headers.set('x-runtime', 'ignored');
+    const secondHeaders = frameworkRequest.headers;
+
+    expect(firstHeaders['x-runtime']).toBe('before');
+    expect(secondHeaders).toBe(firstHeaders);
+    expect(secondHeaders['x-runtime']).toBe('before');
   });
 });

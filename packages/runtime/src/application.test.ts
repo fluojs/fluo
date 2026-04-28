@@ -3,7 +3,7 @@ import { request as httpsRequest } from 'node:https';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Inject } from '@fluojs/core';
+import { Inject, Scope } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import {
   Controller,
@@ -2177,6 +2177,51 @@ describe('bootstrapApplication', () => {
     expect(loggerEvents).toContain('error:HttpDispatcher:Request-scoped container dispose threw an error.:scope dispose failed');
   });
 
+  it('isolates request-scoped providers during concurrent dispatch', async () => {
+    const seenIds = new Set<number>();
+    let nextId = 0;
+
+    @Scope('request')
+    class RequestScopedCounter {
+      readonly id = ++nextId;
+    }
+
+    @Controller('/concurrent-scope')
+    class ConcurrentScopeController {
+      @Get('/')
+      async get(_input: unknown, ctx: RequestContext) {
+        const counter = await ctx.container.resolve(RequestScopedCounter);
+        seenIds.add(counter.id);
+        return { id: counter.id };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ConcurrentScopeController],
+      providers: [RequestScopedCounter],
+    });
+
+    const port = await findAvailablePort();
+    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    }));
+
+    await app.listen();
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, () => fetchForTest(`http://127.0.0.1:${String(port)}/concurrent-scope`)),
+    );
+    const bodies = await Promise.all(responses.map(async (response) => response.json() as Promise<{ id: number }>));
+
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(new Set(bodies.map((body) => body.id)).size).toBe(20);
+    expect(seenIds.size).toBe(20);
+
+    await app.close();
+  });
+
   it('parses Cookie header and exposes individual cookies via FromCookie', async () => {
     class TokenInput {
       @FromCookie()
@@ -2444,6 +2489,111 @@ describe('bootstrapApplication', () => {
 });
 
 describe('FluoFactory facade', () => {
+  it('does not memoize useExisting aliases that target transient providers', async () => {
+    const TRANSIENT_ALIAS = Symbol('TransientAlias');
+
+    @Scope('transient')
+    class TransientService {
+      readonly instance = Symbol('transient-instance');
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [
+        TransientService,
+        { provide: TRANSIENT_ALIAS, useExisting: TransientService },
+      ],
+    });
+
+    const context = registerAppForCleanup(await FluoFactory.createApplicationContext(AppModule));
+
+    const first = await context.get<TransientService>(TRANSIENT_ALIAS);
+    const second = await context.get<TransientService>(TRANSIENT_ALIAS);
+
+    expect(first).not.toBe(second);
+    expect(first.instance).not.toBe(second.instance);
+  });
+
+  it('does not keep alias cache entries when a request-scoped alias target is later overridden', async () => {
+    const REQUEST_ALIAS = Symbol('RequestAlias');
+
+    @Scope('request')
+    class RequestScopedService {}
+
+    class ReplacementService {
+      readonly replacement = true;
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [
+        RequestScopedService,
+        { provide: REQUEST_ALIAS, useExisting: RequestScopedService },
+      ],
+    });
+
+    const context = registerAppForCleanup(await FluoFactory.createApplicationContext(AppModule));
+
+    await expect(context.get(REQUEST_ALIAS)).rejects.toThrow('cannot be resolved outside request scope');
+
+    context.container.override({ provide: REQUEST_ALIAS, useClass: ReplacementService });
+
+    await expect(context.get(REQUEST_ALIAS)).resolves.toBeInstanceOf(ReplacementService);
+  });
+
+  it('invalidates memoized direct singleton lookups after container.override()', async () => {
+    const SERVICE_TOKEN = Symbol('ServiceToken');
+
+    class InitialService {
+      readonly value = 'initial';
+    }
+
+    class ReplacementService {
+      readonly value = 'replacement';
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [
+        { provide: SERVICE_TOKEN, useClass: InitialService },
+      ],
+    });
+
+    const context = registerAppForCleanup(await FluoFactory.createApplicationContext(AppModule));
+
+    await expect(context.get<InitialService>(SERVICE_TOKEN)).resolves.toBeInstanceOf(InitialService);
+
+    context.container.override({ provide: SERVICE_TOKEN, useClass: ReplacementService });
+
+    const resolved = await context.get<ReplacementService>(SERVICE_TOKEN);
+
+    expect(resolved).toBeInstanceOf(ReplacementService);
+    expect(resolved.value).toBe('replacement');
+  });
+
+  it('preserves post-close get() failures instead of returning memoized values', async () => {
+    class SingletonService {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [SingletonService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule);
+    await expect(context.get(SingletonService)).resolves.toBeInstanceOf(SingletonService);
+
+    await context.close();
+
+    await expect(context.get(SingletonService)).rejects.toThrow('Container has been disposed');
+
+    const app = await FluoFactory.create(AppModule);
+    await expect(app.get(SingletonService)).resolves.toBeInstanceOf(SingletonService);
+
+    await app.close();
+
+    await expect(app.get(SingletonService)).rejects.toThrow('Container has been disposed');
+  });
+
   it('creates an application shell without requiring options', async () => {
     class AppModule {}
     defineModule(AppModule, {});

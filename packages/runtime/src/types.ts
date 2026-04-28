@@ -46,9 +46,17 @@ export interface CompiledModule {
   providerTokens: Set<Token>;
 }
 
+/** Provider declarations that actually win runtime bootstrap registration after duplicate-policy selection. */
+export interface BootstrapEffectiveProviders {
+  moduleProviders: Provider[];
+  rootModuleProviders: Provider[];
+  runtimeProviders: Provider[];
+}
+
 /** Result returned by low-level bootstrap compilation helpers. */
 export interface BootstrapResult {
   container: Container;
+  effectiveProviders: BootstrapEffectiveProviders;
   modules: CompiledModule[];
   rootModule: ModuleType;
 }
