@@ -1,5 +1,14 @@
 # @fluojs/config
 
+## 1.0.0-beta.3
+
+### Patch Changes
+
+- [#1377](https://github.com/fluojs/fluo/pull/1377) [`aa80042`](https://github.com/fluojs/fluo/commit/aa80042038de9dbdf062c3938710041d937b4631) Thanks [@ayden94](https://github.com/ayden94)! - Reduce redundant config snapshot cloning during bootstrap and reloads, optimize multi-source deep merging, and serialize overlapping reload requests so consumers keep isolated snapshots without reload interleaving corrupting the active config state.
+
+- Updated dependencies [[`fa0ecca`](https://github.com/fluojs/fluo/commit/fa0eccae6d31f2df5b759061c48b3973c141c440)]:
+  - @fluojs/core@1.0.0-beta.2
+
 ## 1.0.0-beta.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @fluojs/di
 
+## 1.0.0-beta.3
+
+### Patch Changes
+
+- [#1381](https://github.com/fluojs/fluo/pull/1381) [`33d51e1`](https://github.com/fluojs/fluo/commit/33d51e163b2fc6d2cf43b820a91d0b95ee552e75) Thanks [@ayden94](https://github.com/ayden94)! - Cache forwardRef token lookups and avoid extra singleton cache traversal work on repeated DI resolutions.
+
+- Updated dependencies [[`fa0ecca`](https://github.com/fluojs/fluo/commit/fa0eccae6d31f2df5b759061c48b3973c141c440)]:
+  - @fluojs/core@1.0.0-beta.2
+
 ## 1.0.0-beta.2
 
 ### Minor Changes

@@ -1,6 +1,6 @@
-# @fluojs/cron
+# @fluojs/websockets
 
-## 1.0.0-beta.3
+## 1.0.0-beta.2
 
 ### Patch Changes
 
@@ -9,15 +9,5 @@
 - Updated dependencies [[`da003a1`](https://github.com/fluojs/fluo/commit/da003a1a5f7fec7b46fcf37d5a19a91e04d8b301), [`fa0ecca`](https://github.com/fluojs/fluo/commit/fa0eccae6d31f2df5b759061c48b3973c141c440), [`33d51e1`](https://github.com/fluojs/fluo/commit/33d51e163b2fc6d2cf43b820a91d0b95ee552e75), [`c509e27`](https://github.com/fluojs/fluo/commit/c509e27da630c0cd5cffbfc72381dbc1594efc1c)]:
   - @fluojs/runtime@1.0.0-beta.3
   - @fluojs/core@1.0.0-beta.2
+  - @fluojs/http@1.0.0-beta.2
   - @fluojs/di@1.0.0-beta.3
-
-## 1.0.0-beta.2
-
-### Patch Changes
-
-- [#1352](https://github.com/fluojs/fluo/pull/1352) [`d05ee13`](https://github.com/fluojs/fluo/commit/d05ee1326a9e76ed97104d74c2751950aeecd8fb) Thanks [@ayden94](https://github.com/ayden94)! - Preserve active distributed cron locks when bounded shutdown times out so another node cannot start the same job while the original task is still running.
-
-- Updated dependencies [[`288a0b1`](https://github.com/fluojs/fluo/commit/288a0b1a9a7ee26fd94a1ff66d20390ec94cfd06), [`00f4d90`](https://github.com/fluojs/fluo/commit/00f4d9015c597a7f6dd660a5697cf8389022611a), [`4333cee`](https://github.com/fluojs/fluo/commit/4333cee59deefe0e96e96903e8a2681cd174761f)]:
-  - @fluojs/di@1.0.0-beta.2
-  - @fluojs/redis@1.0.0-beta.2
-  - @fluojs/runtime@1.0.0-beta.2
